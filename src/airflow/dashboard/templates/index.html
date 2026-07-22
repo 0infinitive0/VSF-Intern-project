@@ -88,6 +88,9 @@
                             popupContent = "📍 <b>" + loc.name + "</b><br>Region: " + loc.category;
                         } else if (loc.type === 'hotel') {
                             popupContent = "🏨 <b>" + loc.name + "</b><br>Rating: " + loc.category;
+                            if (loc.source_urls && loc.source_urls.length > 0) {
+                                popupContent += `<br><a href="${loc.source_urls[0]}" target="_blank" style="display:inline-block; margin-top:5px; margin-bottom:5px; padding:4px 8px; background:#3498db; color:white; text-decoration:none; border-radius:3px; font-size:12px;">🔗 View Source</a>`;
+                            }
                         } else {
                             popupContent = "<b>" + loc.name + "</b><br>" + loc.category;
                         }

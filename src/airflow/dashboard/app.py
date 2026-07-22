@@ -39,7 +39,7 @@ def get_locations():
         destination_rows = cursor.fetchall()
         
         # Hotels
-        cursor.execute("SELECT id, name, star_rating, coordinates, images FROM hotels WHERE coordinates IS NOT NULL;")
+        cursor.execute("SELECT id, name, star_rating, coordinates, images, source_urls FROM hotels WHERE coordinates IS NOT NULL;")
         hotel_rows = cursor.fetchall()
         
         locations = []
@@ -76,7 +76,7 @@ def get_locations():
                 continue
                 
         for row in hotel_rows:
-            item_id, name, star_rating, coords, images = row
+            item_id, name, star_rating, coords, images, source_urls = row
             try:
                 lat, lng = coords.split(',')
                 locations.append({
@@ -86,6 +86,7 @@ def get_locations():
                     "lat": float(lat),
                     "lng": float(lng),
                     "images": parse_images(images),
+                    "source_urls": parse_images(source_urls),
                     "type": "hotel"
                 })
             except Exception:
