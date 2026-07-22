@@ -1,4 +1,5 @@
 <?php
+$_GET["text_length"] = 9999; // Force Adminer to not truncate long strings
 class AllowIframe {
     function headers() {
         header_remove("X-Frame-Options");
@@ -51,12 +52,35 @@ class AllowIframe {
                 // 3. Resizable Columns (wrap th content in resizable divs)
                 var headers = table.querySelectorAll("th");
                 headers.forEach(function(th) {
+                    var a = th.querySelector("a");
+                    var colName = a ? a.innerText.toLowerCase() : "";
+                    var colType = (a && a.getAttribute("title")) ? a.getAttribute("title").toLowerCase() : "";
+
+                    var defaultWidth = "150px";
+                    if (!a) {
+                        defaultWidth = "60px"; // Action columns
+                    } else if (colType.includes("int") || colType.includes("serial") || colType.includes("bool")) {
+                        defaultWidth = "80px";
+                    } else if (colType.includes("timestamp") || colType.includes("date") || colType.includes("time")) {
+                        defaultWidth = "160px";
+                    } else if (colType.includes("json") || colType.includes("text") || colName === "images") {
+                        defaultWidth = "300px";
+                    } else if (colType.includes("varchar") || colType.includes("char")) {
+                        defaultWidth = "200px";
+                    } else if (colType.includes("float") || colType.includes("double") || colType.includes("numeric") || colType.includes("real")) {
+                        defaultWidth = "100px";
+                    }
+
                     var div = document.createElement("div");
                     div.innerHTML = th.innerHTML;
                     div.style.resize = "horizontal";
-                    div.style.overflow = "auto";
-                    div.style.minWidth = "100px";
-                    div.style.padding = "2px";
+                    div.style.overflow = "hidden"; // Changed to hidden so scrollbars do not cover the resize handle
+                    div.style.minWidth = "40px";
+                    // Set width based on data type!
+                    div.style.width = defaultWidth;
+                    div.style.padding = "2px 6px 12px 2px"; // Extra padding on right/bottom for the handle
+                    div.style.boxSizing = "border-box";
+                    div.style.borderBottom = "1px dotted #ccc"; // Visual indicator
                     th.innerHTML = "";
                     th.appendChild(div);
                 });
@@ -78,8 +102,8 @@ class AllowIframe {
 
                     var tds = row.querySelectorAll("td");
                     for (var i = 0; i < tds.length; i++) {
-                        var text = tds[i].innerText;
-                        var match = text.match(/^(-?\\d+\\.\\d+),\\s*(-?\\d+\\.\\d+)$/);
+                        var text = tds[i].textContent.trim(); // textContent ignores CSS truncation like text-overflow: ellipsis, but needs trimming
+                        var match = text.match(/^(-?\d+\.\d+),\s*(-?\d+\.\d+)$/);
                         if (match) {
                             window.parent.postMessage({
                                 action: "focus_map",

@@ -7,8 +7,20 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { margin: 0; padding: 0; display: flex; height: 100vh; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
-        #adminer-container { flex: 1; display: flex; flex-direction: column; border-right: 2px solid #333; }
+        #adminer-container { flex: 0 0 50%; display: flex; flex-direction: column; }
         #adminer-frame { flex: 1; border: none; width: 100%; }
+        #resizer {
+            width: 8px;
+            background-color: #333;
+            cursor: col-resize;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        #resizer:hover, #resizer:active { background-color: #555; }
+        #resizer::after { content: "⋮"; color: #888; font-size: 18px; }
+        body.resizing-active #adminer-frame { pointer-events: none; }
         #map-container { flex: 1; position: relative; }
         #map { width: 100%; height: 100%; }
         .header { background: #1a1a1a; color: white; padding: 10px 15px; font-weight: bold; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
@@ -30,6 +42,8 @@
         </div>
         <iframe id="adminer-frame" src="http://localhost:8081/?pgsql=postgres&username=airflow&db=vsf_database&ns=public&select=attractions"></iframe>
     </div>
+
+    <div id="resizer"></div>
 
     <div id="map-container">
         <div class="header">
@@ -79,7 +93,7 @@
                         }
                         
                         if (loc.images && loc.images.length > 0) {
-                            popupContent += `<br><img src="${loc.images[0]}" style="width:100%; max-height:150px; margin-top:5px; border-radius:5px;">`;
+                            popupContent += `<br><img src="${loc.images[0]}" referrerpolicy="no-referrer" loading="lazy" style="width:100%; max-height:150px; margin-top:5px; border-radius:5px;">`;
                         }
 
                         if (currentMarkers[loc.id]) {
@@ -143,6 +157,34 @@
                         }
                     }
                 }
+            }
+        });
+
+        // Resizer logic
+        const resizer = document.getElementById('resizer');
+        const leftPanel = document.getElementById('adminer-container');
+        let isResizing = false;
+
+        resizer.addEventListener('mousedown', function(e) {
+            isResizing = true;
+            document.body.classList.add('resizing-active');
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!isResizing) return;
+            let newWidth = (e.clientX / window.innerWidth) * 100;
+            if (newWidth < 20) newWidth = 20;
+            if (newWidth > 80) newWidth = 80;
+            leftPanel.style.flex = `0 0 ${newWidth}%`;
+            if (map) { map.invalidateSize(); }
+        });
+
+        document.addEventListener('mouseup', function(e) {
+            if (isResizing) {
+                isResizing = false;
+                document.body.classList.remove('resizing-active');
+                if (map) { map.invalidateSize(); }
             }
         });
 

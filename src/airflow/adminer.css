@@ -1,6 +1,9 @@
 table td, table th {
-    max-width: 400px;
-    overflow: auto;
-    resize: horizontal;
+    min-width: 50px;
     white-space: nowrap;
+}
+table td {
+    max-width: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
