@@ -1,0 +1,6 @@
+table td, table th {
+    max-width: 400px;
+    overflow: auto;
+    resize: horizontal;
+    white-space: nowrap;
+}

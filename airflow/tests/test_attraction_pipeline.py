@@ -1,0 +1,1482 @@
+import sys
+import unittest
+from pathlib import Path
+from unittest.mock import Mock, patch
+
+
+PIPELINE_DIR = Path(__file__).resolve().parents[1] / "dags" / "data_pipeline"
+sys.path.insert(0, str(PIPELINE_DIR))
+
+from attraction_utils import (  # noqa: E402
+    deduplicate_attractions,
+    is_coordinate_allowed,
+    normalize_text,
+    parse_coordinates,
+    sanitize_attraction_name,
+    select_diverse_attractions,
+)
+from destination_geo import crawler_user_agent  # noqa: E402
+from destination_geo import resolve_location_context  # noqa: E402
+from dag_common import optional_location_coords_param_kwargs  # noqa: E402
+from google_maps_pipeline import (  # noqa: E402
+    _coordinates_from_google_maps_url,
+    _fact_based_description,
+    _google_maps_enrichment_urls,
+    _is_google_maps_place_url,
+    _large_google_image_url,
+    _load_google_maps_detail,
+    _merge_google_maps_detail,
+    _normalize_google_maps_detail,
+    _normalize_google_maps_destination,
+    collect_google_maps_attractions,
+    normalize_google_maps_candidate,
+)
+from ota_pipeline import (  # noqa: E402
+    _agoda_browser_context_options,
+    _canonical_agoda_product_url,
+    collect_ota_attractions,
+    geofilter_ota_candidates,
+    parse_agoda_html,
+    parse_booking_html,
+)
+from osm_pipeline import (  # noqa: E402
+    collect_osm_attractions,
+    fetch_osm_attractions,
+    get_or_create_destination,
+    load_attractions_to_db,
+    transform_to_attraction,
+)
+from pipeline_stages import deduplicate_and_select, summarize_quality  # noqa: E402
+
+
+class AttractionNameTests(unittest.TestCase):
+    def test_name_keeps_vietnamese_english_and_normal_punctuation(self):
+        self.assertEqual(
+            sanitize_attraction_name(
+                "Huyền Hương Cơm Bắc, Cơm Niêu Restaurant "
+                "후엔흐엉 북부밥 및 나짱 뚝배기밥"
+            ),
+            "Huyền Hương Cơm Bắc, Cơm Niêu Restaurant",
+        )
+
+    def test_name_removes_other_scripts_and_symbols_without_empty_punctuation(self):
+        self.assertEqual(
+            sanitize_attraction_name("海洋博物館 Museum (한글) 🌊 - Nha Trang"),
+            "Museum - Nha Trang",
+        )
+
+    def test_name_keeps_balanced_parentheses_at_the_name_boundary(self):
+        name = "La Viet Coffee (Nha Trang - 8 Le Loi)"
+
+        self.assertEqual(sanitize_attraction_name(name), name)
+
+    @patch("osm_pipeline.psycopg2")
+    def test_database_loader_sanitizes_names_before_upsert(self, psycopg2_mock):
+        connection = psycopg2_mock.connect.return_value
+        cursor = connection.cursor.return_value
+        record = {
+            "id": "0ac540c9-3ec1-5b4e-9938-a978aa566268",
+            "name": "Huyền Hương Restaurant 후엔흐엉",
+        }
+
+        load_attractions_to_db([record], {"dbname": "test"})
+
+        loaded_records = cursor.executemany.call_args.args[1]
+        self.assertEqual(loaded_records[0]["name"], "Huyền Hương Restaurant")
+        self.assertEqual(record["name"], "Huyền Hương Restaurant 후엔흐엉")
+
+
+class PipelineStageTests(unittest.TestCase):
+    def test_deduplicate_stage_selects_canonical_records_and_quality_reports_coverage(self):
+        records = [
+            {
+                "id": "booking-museum",
+                "destination_id": "destination-id",
+                "name": "Nha Trang Ocean Museum Admission",
+                "description": "Short description",
+                "category": "Museums & culture",
+                "source": "booking",
+                "source_id": "booking-1",
+                "is_tour": False,
+                "latitude": 12.2070,
+                "longitude": 109.2140,
+                "coordinates": "12.207,109.214",
+                "images": [],
+            },
+            {
+                "id": "agoda-museum",
+                "destination_id": "destination-id",
+                "name": "Nha Trang Ocean Museum Ticket",
+                "description": "A complete museum description.",
+                "category": "Museums & culture",
+                "source": "agoda",
+                "source_id": "agoda-1",
+                "is_tour": False,
+                "latitude": 12.2071,
+                "longitude": 109.2141,
+                "coordinates": "12.2071,109.2141",
+                "images": ["https://example.com/museum.jpg"],
+            },
+        ]
+
+        selected = deduplicate_and_select(records, item_limit=10)
+        report = summarize_quality(selected, extracted_count=len(records))
+
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(report["extracted_records"], 2)
+        self.assertEqual(report["selected_records"], 1)
+        self.assertEqual(report["schema_valid_records"], 1)
+        self.assertEqual(report["description_coverage_percent"], 100.0)
+        self.assertEqual(report["image_coverage_percent"], 100.0)
+
+
+class GeographyTests(unittest.TestCase):
+    def test_nominatim_user_agent_does_not_use_placeholder_contact(self):
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(crawler_user_agent(), "VSFAttractionCrawler/1.0")
+
+    def test_nominatim_user_agent_uses_configured_contact(self):
+        with patch.dict(
+            "os.environ",
+            {"VSF_CRAWLER_CONTACT": "crawler@example.org"},
+            clear=True,
+        ):
+            self.assertEqual(
+                crawler_user_agent(),
+                "VSFAttractionCrawler/1.0 (crawler@example.org)",
+            )
+
+    def test_coordinates_are_authoritative_when_provided(self):
+        context = {
+            "mode": "radius",
+            "latitude": 12.245071,
+            "longitude": 109.194317,
+            "radius_meters": 2_000,
+        }
+
+        self.assertTrue(is_coordinate_allowed(12.2500, 109.1900, context))
+        self.assertFalse(is_coordinate_allowed(12.3000, 109.2500, context))
+
+    def test_name_only_mode_uses_region_polygon(self):
+        context = {
+            "mode": "boundary",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [109.0, 12.0],
+                        [109.4, 12.0],
+                        [109.4, 12.4],
+                        [109.0, 12.4],
+                        [109.0, 12.0],
+                    ]
+                ],
+            },
+        }
+
+        self.assertTrue(is_coordinate_allowed(12.2, 109.2, context))
+        self.assertFalse(is_coordinate_allowed(12.5, 109.2, context))
+
+
+    def test_coordinate_parser_rejects_invalid_values(self):
+        self.assertEqual(parse_coordinates("12.25,109.19"), (12.25, 109.19))
+        with self.assertRaises(ValueError):
+            parse_coordinates("95,109")
+
+    def test_vietnamese_destination_normalization_preserves_d(self):
+        self.assertEqual(normalize_text("Đà Nẵng"), "da nang")
+
+    @patch("destination_geo.scrape_google_maps_destination", return_value=None)
+    @patch("destination_geo._nominatim_get")
+    def test_name_only_resolution_ignores_non_administrative_polygons(
+        self,
+        nominatim_mock,
+        google_maps_mock,
+    ):
+        polygon = {
+            "type": "Polygon",
+            "coordinates": [[[109.0, 12.0], [109.1, 12.0], [109.1, 12.1], [109.0, 12.0]]],
+        }
+        nominatim_mock.return_value = [
+            {
+                "lat": "12.2",
+                "lon": "109.2",
+                "category": "tourism",
+                "type": "attraction",
+                "addresstype": "attraction",
+                "geojson": polygon,
+                "address": {"country_code": "vn"},
+                "display_name": "A similarly named attraction",
+            },
+            {
+                "lat": "12.25",
+                "lon": "109.19",
+                "category": "boundary",
+                "type": "administrative",
+                "addresstype": "city",
+                "geojson": polygon,
+                "address": {"country_code": "vn"},
+                "display_name": "Nha Trang, Khanh Hoa, Vietnam",
+            },
+        ]
+
+        context = resolve_location_context("Nha Trang")
+
+        self.assertEqual(context["display_name"], "Nha Trang, Khanh Hoa, Vietnam")
+
+    @patch("destination_geo.scrape_google_maps_destination", return_value=None)
+    @patch("destination_geo._nominatim_get")
+    def test_name_only_resolution_accepts_historic_city_boundary(
+        self,
+        nominatim_mock,
+        google_maps_mock,
+    ):
+        city_polygon = {
+            "type": "MultiPolygon",
+            "coordinates": [[[[109.0, 12.0], [109.4, 12.0], [109.4, 12.4], [109.0, 12.0]]]],
+        }
+        ward_polygon = {
+            "type": "Polygon",
+            "coordinates": [[[109.1, 12.1], [109.2, 12.1], [109.2, 12.2], [109.1, 12.1]]],
+        }
+        nominatim_mock.return_value = [
+            {
+                "lat": "12.24",
+                "lon": "109.19",
+                "category": "boundary",
+                "type": "historic",
+                "addresstype": "historic",
+                "geojson": city_polygon,
+                "address": {"country_code": "vn"},
+                "display_name": "Thanh pho Nha Trang, Khanh Hoa, Vietnam",
+            },
+            {
+                "lat": "12.23",
+                "lon": "109.20",
+                "category": "boundary",
+                "type": "administrative",
+                "addresstype": "suburb",
+                "geojson": ward_polygon,
+                "address": {"country_code": "vn"},
+                "display_name": "Phuong Nha Trang, Khanh Hoa, Vietnam",
+            },
+        ]
+
+        context = resolve_location_context("Nha Trang")
+
+        self.assertEqual(
+            context["display_name"],
+            "Thanh pho Nha Trang, Khanh Hoa, Vietnam",
+        )
+
+    @patch("destination_geo.scrape_google_maps_destination")
+    @patch("destination_geo._nominatim_get")
+    def test_name_only_resolution_uses_google_center_inside_osm_boundary(
+        self,
+        nominatim_mock,
+        google_maps_mock,
+    ):
+        polygon = {
+            "type": "Polygon",
+            "coordinates": [[
+                [109.0, 12.0],
+                [109.4, 12.0],
+                [109.4, 12.4],
+                [109.0, 12.4],
+                [109.0, 12.0],
+            ]],
+        }
+        nominatim_mock.return_value = [{
+            "lat": "12.2500",
+            "lon": "109.1900",
+            "category": "boundary",
+            "type": "administrative",
+            "addresstype": "city",
+            "geojson": polygon,
+            "address": {
+                "city": "ThÃ nh phá»‘ Nha Trang",
+                "state": "Tá»‰nh KhÃ¡nh HÃ²a",
+                "country_code": "vn",
+            },
+            "display_name": "Nha Trang, Khanh Hoa, Vietnam",
+        }]
+        google_maps_mock.return_value = {
+            "name": "Nha Trang",
+            "address": "Nha Trang, Khanh Hoa",
+            "latitude": 12.245071,
+            "longitude": 109.194317,
+            "url": "https://www.google.com/maps/place/Nha+Trang/",
+            "source": "google_maps_poc",
+        }
+
+        context = resolve_location_context("Nha Trang")
+
+        self.assertEqual(context["mode"], "boundary")
+        self.assertIs(context["geometry"], polygon)
+        self.assertEqual(context["latitude"], 12.245071)
+        self.assertEqual(context["longitude"], 109.194317)
+        self.assertEqual(context["destination_coordinates"], "12.245071,109.194317")
+        self.assertEqual(context["coordinate_source"], "google_maps_poc")
+
+    @patch("destination_geo.scrape_google_maps_destination")
+    @patch("destination_geo._nominatim_get")
+    def test_name_only_resolution_rejects_google_center_outside_osm_boundary(
+        self,
+        nominatim_mock,
+        google_maps_mock,
+    ):
+        polygon = {
+            "type": "Polygon",
+            "coordinates": [[
+                [109.0, 12.0],
+                [109.4, 12.0],
+                [109.4, 12.4],
+                [109.0, 12.4],
+                [109.0, 12.0],
+            ]],
+        }
+        nominatim_mock.return_value = [{
+            "lat": "12.2500",
+            "lon": "109.1900",
+            "category": "boundary",
+            "type": "administrative",
+            "addresstype": "city",
+            "geojson": polygon,
+            "address": {"country_code": "vn"},
+            "display_name": "Nha Trang, Khanh Hoa, Vietnam",
+        }]
+        google_maps_mock.return_value = {
+            "name": "Wrong result",
+            "latitude": 10.7769,
+            "longitude": 106.7009,
+            "source": "google_maps_poc",
+        }
+
+        context = resolve_location_context("Nha Trang")
+
+        self.assertEqual(context["latitude"], 12.25)
+        self.assertEqual(context["longitude"], 109.19)
+        self.assertEqual(context["coordinate_source"], "openstreetmap")
+
+
+class GoogleMapsPipelineTests(unittest.TestCase):
+    def test_google_maps_url_coordinates_support_rendered_place_links(self):
+        url = (
+            "https://www.google.com/maps/place/Thap-Ba/"
+            "data=!4m7!3m6!1s0xabc:0xdef!8m2!3d12.2653665!4d109.1953678"
+        )
+
+        self.assertEqual(
+            _coordinates_from_google_maps_url(url),
+            (12.2653665, 109.1953678),
+        )
+
+    def test_google_maps_destination_normalization_extracts_center(self):
+        result = _normalize_google_maps_destination(
+            "Nha Trang",
+            "Nha Trang",
+            "Nha Trang, Khanh Hoa, Vietnam",
+            "https://www.google.com/maps/place/Nha+Trang/"
+            "data=!4m6!3m5!8m2!3d12.245071!4d109.194317",
+        )
+
+        self.assertEqual(result["name"], "Nha Trang")
+        self.assertEqual(result["address"], "Nha Trang, Khanh Hoa, Vietnam")
+        self.assertEqual(result["latitude"], 12.245071)
+        self.assertEqual(result["longitude"], 109.194317)
+        self.assertEqual(result["source"], "google_maps_poc")
+
+    def test_google_maps_detail_keeps_editorial_text_and_large_photos(self):
+        detail = _normalize_google_maps_detail(
+            [
+                "",
+                "Các hiện vật gồm bộ xương cá voi, mô hình tàu thuyền "
+                "và thủy cung có nhiều loài vật.",
+            ],
+            [
+                {
+                    "src": "https://lh3.googleusercontent.com/avatar=w80-h92-p-k-no",
+                    "width": 80,
+                    "height": 92,
+                },
+                {
+                    "src": "https://lh3.googleusercontent.com/place=w408-h306-k-no",
+                    "width": 408,
+                    "height": 306,
+                },
+                {
+                    "src": "https://example.com/not-google.jpg",
+                    "width": 1200,
+                    "height": 800,
+                },
+                {
+                    "src": "https://evilgoogleusercontent.com/tracker=w1200-h800-k-no",
+                    "width": 1200,
+                    "height": 800,
+                },
+            ],
+        )
+
+        self.assertTrue(detail["description"].startswith("Các hiện vật"))
+        self.assertEqual(
+            detail["images"],
+            ["https://lh3.googleusercontent.com/place=w1200-h900-k-no"],
+        )
+
+    def test_google_maps_image_urls_are_resized_without_changing_aspect_ratio(self):
+        self.assertEqual(
+            _large_google_image_url(
+                "https://lh3.googleusercontent.com/portrait=w86-h114-k-no"
+            ),
+            "https://lh3.googleusercontent.com/portrait=w905-h1200-k-no",
+        )
+
+    def test_google_maps_detail_merge_prefers_detail_and_deduplicates_photo_sizes(self):
+        record = {
+            "description": None,
+            "images": [
+                "https://lh3.googleusercontent.com/place=w114-h86-k-no",
+                "https://lh3.googleusercontent.com/second=w114-h86-k-no",
+            ],
+        }
+        detail = {
+            "description": "A reliable editorial description.",
+            "images": ["https://lh3.googleusercontent.com/place=w408-h306-k-no"],
+        }
+
+        result = _merge_google_maps_detail(record, detail)
+
+        self.assertEqual(result["description"], detail["description"])
+        self.assertEqual(
+            result["images"],
+            [
+                "https://lh3.googleusercontent.com/place=w1200-h900-k-no",
+                "https://lh3.googleusercontent.com/second=w1200-h905-k-no",
+            ],
+        )
+
+    def test_google_maps_detail_navigation_accepts_only_google_place_urls(self):
+        self.assertTrue(
+            _is_google_maps_place_url(
+                "https://www.google.com/maps/place/Bao-Tang/data=!4m1!3d12!4d109"
+            )
+        )
+        self.assertFalse(_is_google_maps_place_url("http://www.google.com/maps/place/test"))
+        self.assertFalse(_is_google_maps_place_url("https://example.com/maps/place/test"))
+
+    @patch(
+        "google_maps_pipeline._google_maps_detail_from_page",
+        return_value={"description": "Place description", "images": []},
+    )
+    @patch("google_maps_pipeline._raise_if_google_blocked")
+    @patch("google_maps_pipeline._accept_google_consent")
+    def test_google_maps_detail_accepts_heading_attached_but_not_visible(
+        self,
+        _consent_mock,
+        _blocked_mock,
+        detail_mock,
+    ):
+        page = Mock()
+        page.url = "https://www.google.com/maps/place/test"
+
+        def require_attached_heading(_selector, **kwargs):
+            if kwargs.get("state") != "attached":
+                raise TimeoutError("heading is attached but hidden")
+
+        page.wait_for_selector.side_effect = require_attached_heading
+
+        result = _load_google_maps_detail(
+            page,
+            "https://www.google.com/maps/place/test",
+        )
+
+        self.assertEqual(result["description"], "Place description")
+        detail_mock.assert_called_once_with(page)
+
+    def test_google_maps_description_fallback_uses_actual_place_type(self):
+        self.assertEqual(
+            _fact_based_description(
+                {"name": "Công viên Tuệ Tĩnh"},
+                "Nha Trang",
+                "Công viên",
+            ),
+            "Công viên Tuệ Tĩnh là công viên tại Nha Trang.",
+        )
+
+    def test_google_maps_description_fallback_remains_factual_without_place_type(self):
+        self.assertEqual(
+            _fact_based_description(
+                {"name": "Quảng trường Thần Thoại"},
+                "Nha Trang",
+            ),
+            "Quảng trường Thần Thoại là một địa điểm tại Nha Trang.",
+        )
+
+
+class DestinationDatabaseTests(unittest.TestCase):
+    def test_existing_destination_coordinates_are_updated(self):
+        connection = Mock()
+        cursor = connection.cursor.return_value
+        cursor.fetchone.return_value = ("destination-id",)
+
+        with patch("osm_pipeline.psycopg2", Mock()) as psycopg2_mock:
+            psycopg2_mock.connect.return_value = connection
+            result = get_or_create_destination(
+                "Nha Trang",
+                "12.245071,109.194317",
+                {"dbname": "test"},
+            )
+
+        self.assertEqual(result, "destination-id")
+        self.assertEqual(cursor.execute.call_count, 2)
+        self.assertIn("UPDATE destinations", cursor.execute.call_args_list[1].args[0])
+        self.assertEqual(
+            cursor.execute.call_args_list[1].args[1][1],
+            "Mi\u1ec1n Trung (Central Vietnam)",
+        )
+        connection.commit.assert_called_once_with()
+
+    def test_google_maps_attraction_requires_vietnamese_name(self):
+        context = {
+            "mode": "radius",
+            "latitude": 12.24,
+            "longitude": 109.19,
+            "radius_meters": 20_000,
+        }
+        candidate = {
+            "source_id": "0xabc:0xdef",
+            "name": "Robinson Beach Nha Trang",
+            "category": "Nature & outdoor",
+            "latitude": 12.24,
+            "longitude": 109.19,
+        }
+
+        self.assertIsNone(
+            normalize_google_maps_candidate(candidate, "destination-id", context)
+        )
+
+    def test_google_maps_candidate_uses_vietnamese_name_and_geofilter(self):
+        context = {
+            "mode": "radius",
+            "latitude": 12.24,
+            "longitude": 109.19,
+            "radius_meters": 20_000,
+        }
+        candidate = {
+            "source_id": "0xabc:0xdef",
+            "name": "Tháp Bà Ponagar",
+            "category": "Museums & culture",
+            "latitude": 12.2653665,
+            "longitude": 109.1953678,
+            "rating": 4.5,
+            "image": "https://lh3.googleusercontent.com/place-photo=w114-h86-k-no",
+            "description": "Ngôi đền trên triền núi với đồ trưng bày",
+        }
+
+        result = normalize_google_maps_candidate(
+            candidate,
+            "destination-id",
+            context,
+        )
+
+        self.assertEqual(result["name"], "Tháp Bà Ponagar")
+        self.assertEqual(result["source"], "google_maps_poc")
+        self.assertEqual(result["coordinates"], "12.2653665,109.1953678")
+        self.assertEqual(
+            result["images"],
+            ["https://lh3.googleusercontent.com/place-photo=w1200-h905-k-no"],
+        )
+
+    def test_google_maps_candidate_cleans_name_before_enrichment(self):
+        context = {
+            "mode": "radius",
+            "latitude": 12.24,
+            "longitude": 109.19,
+            "radius_meters": 20_000,
+        }
+        candidate = {
+            "source_id": "restaurant-mixed-name",
+            "name": (
+                "Huyền Hương Cơm Bắc, Cơm Niêu Restaurant "
+                "후엔흐엉 북부밥 및 나짱 뚝배기밥"
+            ),
+            "category": "Restaurants & cafes",
+            "latitude": 12.23767,
+            "longitude": 109.1899056,
+        }
+
+        result = normalize_google_maps_candidate(
+            candidate,
+            "destination-id",
+            context,
+        )
+
+        self.assertEqual(
+            result["name"],
+            "Huyền Hương Cơm Bắc, Cơm Niêu Restaurant",
+        )
+
+    def test_google_maps_enrichment_searches_clean_name_before_exact_url(self):
+        exact_url = "https://www.google.com/maps/place/huyen-huong"
+        urls = _google_maps_enrichment_urls(
+            {
+                "name": "Huyền Hương Restaurant 후엔흐엉",
+                "latitude": 12.23767,
+                "longitude": 109.1899056,
+            },
+            exact_url,
+            "Nha Trang",
+        )
+
+        self.assertEqual(len(urls), 2)
+        self.assertTrue(urls[0].startswith("https://www.google.com/maps/search/"))
+        self.assertIn("Huy%E1%BB%81n%20H%C6%B0%C6%A1ng%20Restaurant", urls[0])
+        self.assertNotIn("%ED%9B%84%EC%97%94", urls[0])
+        self.assertEqual(urls[1], exact_url)
+
+    def test_google_maps_candidate_rejects_outside_destination(self):
+        context = {
+            "mode": "radius",
+            "latitude": 12.24,
+            "longitude": 109.19,
+            "radius_meters": 1_000,
+        }
+        candidate = {
+            "source_id": "outside",
+            "name": "Đảo Hòn Tằm",
+            "category": "Nature & outdoor",
+            "latitude": 12.1789019,
+            "longitude": 109.245158,
+        }
+
+        self.assertIsNone(
+            normalize_google_maps_candidate(candidate, "destination-id", context)
+        )
+
+    @patch(
+        "google_maps_pipeline.enrich_google_maps_records",
+        side_effect=lambda records, candidates, destination_name: records,
+    )
+    @patch("google_maps_pipeline.scrape_google_maps_candidates")
+    def test_google_maps_collection_keeps_restaurants_without_vietnamese_diacritics(
+        self,
+        scrape_mock,
+        enrich_mock,
+    ):
+        scrape_mock.return_value = [
+            {
+                "source_id": "restaurant-1",
+                "name": "Lanterns",
+                "category": "Restaurants & cafes",
+                "latitude": 12.24,
+                "longitude": 109.19,
+            }
+        ]
+        context = {
+            "mode": "radius",
+            "latitude": 12.24,
+            "longitude": 109.19,
+            "radius_meters": 20_000,
+        }
+
+        result = collect_google_maps_attractions(
+            "Nha Trang",
+            context,
+            "destination-id",
+            1,
+        )
+
+        self.assertEqual([item["name"] for item in result], ["Lanterns"])
+        self.assertEqual(len(enrich_mock.call_args.args[0]), 1)
+
+    @patch(
+        "google_maps_pipeline.enrich_google_maps_records",
+        side_effect=lambda records, candidates, destination_name: records,
+    )
+    @patch("google_maps_pipeline.scrape_google_maps_candidates")
+    def test_google_maps_collection_enriches_only_selected_records(
+        self,
+        scrape_mock,
+        enrich_mock,
+    ):
+        names = ["Nhà hàng Biển Xanh", "Quán Tre", "Bếp Nhà", "Cơm Niêu"]
+        scrape_mock.return_value = [
+            {
+                "source_id": f"place-{index}",
+                "name": names[index],
+                "category": "Restaurants & cafes",
+                "latitude": 12.24 + index / 100,
+                "longitude": 109.19,
+                "url": f"https://www.google.com/maps/place/restaurant-{index}",
+            }
+            for index in range(4)
+        ]
+        context = {
+            "mode": "radius",
+            "latitude": 12.24,
+            "longitude": 109.19,
+            "radius_meters": 20_000,
+        }
+
+        result = collect_google_maps_attractions(
+            "Nha Trang",
+            context,
+            "destination-id",
+            2,
+        )
+
+        self.assertEqual(len(result), 2)
+        self.assertEqual(len(enrich_mock.call_args.args[0]), 2)
+        self.assertEqual(len(enrich_mock.call_args.args[1]), 4)
+        self.assertEqual(enrich_mock.call_args.args[2], "Nha Trang")
+
+
+class AirflowDiscoveryTests(unittest.TestCase):
+    def test_location_coordinates_param_is_nullable_and_defaults_to_none(self):
+        param_kwargs = optional_location_coords_param_kwargs()
+
+        self.assertIsNone(param_kwargs["default"])
+        self.assertEqual(param_kwargs["type"], ["null", "string"])
+
+    def test_support_modules_are_excluded_from_dag_discovery(self):
+        ignore_file = PIPELINE_DIR / ".airflowignore"
+        patterns = {
+            line.strip()
+            for line in ignore_file.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        }
+
+        self.assertEqual(
+            patterns,
+            {
+                "attraction_utils.py",
+                "dag_common.py",
+                "destination_geo.py",
+                "osm_pipeline.py",
+                "ota_pipeline.py",
+                "google_maps_pipeline.py",
+            },
+        )
+
+
+class OtaParserTests(unittest.TestCase):
+    def test_agoda_uses_installed_browser_identity(self):
+        options = _agoda_browser_context_options()
+
+        self.assertEqual(options, {"locale": "en-GB"})
+        self.assertNotIn("user_agent", options)
+
+    def test_ota_collection_requires_explicit_opt_in(self):
+        with patch.dict("os.environ", {}, clear=True):
+            with self.assertRaisesRegex(ValueError, "OTA web scraping is disabled"):
+                collect_ota_attractions(
+                    destination_name="Nha Trang",
+                    location_context={"mode": "radius"},
+                    destination_id="destination-id",
+                    item_limit=1,
+                )
+
+    def test_booking_parser_extracts_public_product_fields(self):
+        html = """
+        <html><head>
+          <meta name="description" content="A guided cultural experience in Nha Trang.">
+        </head><body>
+          <h1>Nha Trang Museum Admission</h1>
+          <div data-testid="attraction-reviews">
+            <span aria-label="User reviews, 4.6 out of 5 stars from 27 reviews"></span>
+          </div>
+          <section><h2>About this activity</h2><p>A guided cultural experience in Nha Trang.</p></section>
+          <section><h2>Duration</h2><p>2 hours 30 minutes</p></section>
+          <section><h2>Location</h2><address>10 Tran Phu, Nha Trang, Vietnam</address></section>
+          <div>Current price from US$12.50</div>
+          <img src="https://cf.bstatic.com/xdata/images/xphoto/500x375/sample.jpg">
+          <script>
+            {"latitude":"12.2731916","locationType":"arrival","longitude":"109.1757778"}
+            {"latitude":12.23850155,"longitude":109.19517517,"ufi":-3723998}
+          </script>
+        </body></html>
+        """
+
+        result = parse_booking_html(
+            html,
+            "https://www.booking.com/attractions/vn/prabc123-nha-trang-museum.en-gb.html",
+        )
+
+        self.assertEqual(result["source"], "booking")
+        self.assertEqual(result["source_id"], "prabc123")
+        self.assertEqual(result["name"], "Nha Trang Museum Admission")
+        self.assertEqual(result["category"], "Museums & culture")
+        self.assertEqual(result["estimated_duration_minutes"], 150)
+        self.assertEqual(result["rating"], 4.6)
+        self.assertEqual(result["review_count"], 27)
+        self.assertEqual(result["ticket_price_adult"], 12.50)
+        self.assertEqual(result["address"], "10 Tran Phu, Nha Trang, Vietnam")
+        self.assertEqual(result["latitude"], 12.2731916)
+        self.assertEqual(result["longitude"], 109.1757778)
+        self.assertEqual(len(result["images"]), 1)
+
+    def test_agoda_parser_extracts_rendered_product_fields(self):
+        html = """
+        <html><body>
+          <h1>Thang Long Water Puppet Theater Ticket</h1>
+          <div>4.3 stars rating</div><div>(427 reviews)</div>
+          <section><h2>At a glance</h2><p>1 hour (approx.)</p></section>
+          <section><h2>Product Overview</h2><p>Traditional Vietnamese water puppetry.</p></section>
+          <section><h2>Location</h2><address>57B Dinh Tien Hoang, Hanoi, Vietnam</address></section>
+          <div>Starts from USD 13.00</div>
+          <img src="https://cdn6.agoda.net/images/activity.jpg">
+        </body></html>
+        """
+
+        result = parse_agoda_html(
+            html,
+            "https://www.agoda.com/activities/detail/vn/hanoi/water-puppet-797853",
+        )
+
+        self.assertEqual(result["source"], "agoda")
+        self.assertEqual(result["source_id"], "797853")
+        self.assertEqual(result["category"], "Entertainment & tickets")
+        self.assertEqual(result["estimated_duration_minutes"], 60)
+        self.assertEqual(result["rating"], 4.3)
+        self.assertEqual(result["review_count"], 427)
+        self.assertEqual(result["ticket_price_adult"], 13.00)
+        self.assertEqual(result["address"], "57B Dinh Tien Hoang, Hanoi, Vietnam")
+
+    def test_agoda_parser_supports_current_activity_id_urls(self):
+        html = """
+        <html><body>
+          <h1>Nha Trang Island Tour</h1>
+          <section><h2>Location</h2><address>Nha Trang, Khanh Hoa, Vietnam</address></section>
+        </body></html>
+        """
+        url = (
+            "https://www.agoda.com/en-gb/activities/detail"
+            "?activityId=1177850&cityId=2679"
+        )
+
+        result = parse_agoda_html(html, url)
+
+        self.assertEqual(result["source_id"], "1177850")
+
+    def test_agoda_current_product_link_keeps_required_query_parameters(self):
+        result = _canonical_agoda_product_url(
+            "/en-gb/activities/detail?activityId=1177850&cityId=2679&utm_source=test"
+        )
+
+        self.assertEqual(
+            result,
+            "https://www.agoda.com/en-gb/activities/detail?activityId=1177850&cityId=2679",
+        )
+        self.assertIsNone(_canonical_agoda_product_url("/en-gb/activities"))
+
+    def test_agoda_parser_ignores_ratings_from_related_products(self):
+        html = """
+        <html><body>
+          <h1>Quiet Nha Trang Museum Admission</h1>
+          <div>Product Overview</div>
+          <div>Explore a locally curated museum collection in central Nha Trang.</div>
+          <div>Highlights</div>
+          <div>While you're exploring Nha Trang</div>
+          <div>Unrelated Airport Fast Track</div>
+          <div>Star rating 4.9</div><div>(284 reviews)</div>
+          <img src="https://cdn6.agoda.net/images/mobile/flag-us@2x.png">
+        </body></html>
+        """
+
+        result = parse_agoda_html(
+            html,
+            "https://www.agoda.com/en-gb/activities/detail?activityId=42&cityId=2679",
+        )
+
+        self.assertEqual(
+            result["description"],
+            "Explore a locally curated museum collection in central Nha Trang.",
+        )
+        self.assertIsNone(result["rating"])
+        self.assertIsNone(result["review_count"])
+        self.assertEqual(result["images"], [])
+
+    @patch("ota_pipeline.geocode_address", return_value=(12.2, 109.2))
+    def test_fixed_place_without_address_is_geocoded_by_product_name(self, geocode_mock):
+        candidates = [
+            {
+                "source": "agoda",
+                "name": "Nha Trang Ocean Museum Admission",
+                "address": "",
+                "is_tour": False,
+            }
+        ]
+        context = {
+            "mode": "boundary",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [[109.0, 12.0], [109.4, 12.0], [109.4, 12.4], [109.0, 12.4], [109.0, 12.0]]
+                ],
+            },
+        }
+
+        result = geofilter_ota_candidates(candidates, "Nha Trang", context)
+
+        self.assertEqual(len(result), 1)
+        geocode_mock.assert_called_once_with("Nha Trang Ocean Museum Admission", "Nha Trang")
+
+    @patch("ota_pipeline.geocode_address")
+    def test_source_coordinates_are_preferred_over_title_geocoding(self, geocode_mock):
+        candidates = [
+            {
+                "source": "booking",
+                "name": "I Resort Nha Trang Mud Bath Experience",
+                "address": "Hot mineral springs I-Resort Nha Trang",
+                "is_tour": False,
+                "latitude": 12.2731916,
+                "longitude": 109.1757778,
+            }
+        ]
+        context = {
+            "mode": "boundary",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [[109.1, 12.2], [109.3, 12.2], [109.3, 12.4], [109.1, 12.4], [109.1, 12.2]]
+                ],
+            },
+        }
+
+        result = geofilter_ota_candidates(candidates, "Nha Trang", context)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["latitude"], 12.2731916)
+        self.assertEqual(result[0]["longitude"], 109.1757778)
+        geocode_mock.assert_not_called()
+
+    @patch(
+        "ota_pipeline.scrape_google_maps_coordinates",
+        return_value={"Royal Salon Nha Trang": (12.2416878, 109.1914417)},
+    )
+    @patch("ota_pipeline.geocode_address", return_value=None)
+    def test_fixed_place_uses_scraped_map_coordinates_after_geocoding_miss(
+        self,
+        geocode_mock,
+        maps_mock,
+    ):
+        candidates = [
+            {
+                "source": "agoda",
+                "name": "Royal Salon Nha Trang",
+                "address": "",
+                "is_tour": False,
+                "latitude": None,
+                "longitude": None,
+            }
+        ]
+        context = {
+            "mode": "boundary",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [[109.1, 12.2], [109.3, 12.2], [109.3, 12.4], [109.1, 12.4], [109.1, 12.2]]
+                ],
+            },
+        }
+
+        result = geofilter_ota_candidates(candidates, "Nha Trang", context)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["latitude"], 12.2416878)
+        self.assertEqual(result[0]["longitude"], 109.1914417)
+        geocode_mock.assert_called_once_with("Royal Salon Nha Trang", "Nha Trang")
+        maps_mock.assert_called_once_with(candidates, "Nha Trang")
+
+    @patch("ota_pipeline.geocode_address")
+    def test_tour_without_specific_location_is_rejected(self, geocode_mock):
+        result = geofilter_ota_candidates(
+            [{"source": "agoda", "name": "Nha Trang Day Tour", "address": "", "is_tour": True}],
+            "Nha Trang",
+            {"mode": "boundary", "geometry": {"type": "Polygon", "coordinates": []}},
+        )
+
+        self.assertEqual(result, [])
+        geocode_mock.assert_not_called()
+
+    @patch("ota_pipeline.geocode_address")
+    def test_snorkeling_departure_coordinates_are_not_treated_as_attraction_location(
+        self,
+        geocode_mock,
+    ):
+        html = """
+        <html><body>
+          <h1>Nha Trang Half-Day Snorkeling Adventure with BBQ Onboard</h1>
+          <h2>Location</h2>
+          <div>Departure point</div>
+          <div>Nha Trang Tourist Pier, Nha Trang, Vietnam</div>
+          <script>
+            {"latitude":"12.1996875","locationType":"departure","longitude":"109.2015625"}
+          </script>
+        </body></html>
+        """
+        candidate = parse_booking_html(
+            html,
+            "https://www.booking.com/attractions/vn/prsnorkel123-snorkeling.en-gb.html",
+        )
+        context = {
+            "mode": "boundary",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [[109.1, 12.1], [109.3, 12.1], [109.3, 12.3], [109.1, 12.3], [109.1, 12.1]]
+                ],
+            },
+        }
+
+        result = geofilter_ota_candidates([candidate], "Nha Trang", context)
+
+        self.assertTrue(candidate["is_tour"])
+        self.assertEqual(result, [])
+        geocode_mock.assert_not_called()
+
+    def test_booking_parser_ignores_unrelated_time_values(self):
+        html = """
+        <html><body>
+          <h1>Ba Na Hills Evening Tour</h1>
+          <p>Guests must be 18 years old and arrive 15 minutes before departure.</p>
+          <h2>Location</h2>
+          <div>Departure point</div>
+          <div>Da Nang Downtown, 2/9 Street, Hai Chau, Da Nang, 550000</div>
+          <h2>User ratings</h2>
+        </body></html>
+        """
+
+        result = parse_booking_html(
+            html,
+            "https://www.booking.com/attractions/vn/prtour123-ba-na-hills.en-gb.html",
+        )
+
+        self.assertIsNone(result["estimated_duration_minutes"])
+        self.assertEqual(result["location_kind"], "Departure point")
+        self.assertEqual(
+            result["address"],
+            "Da Nang Downtown, 2/9 Street, Hai Chau, Da Nang, 550000",
+        )
+
+
+class SelectionTests(unittest.TestCase):
+    def test_cross_source_physical_duplicates_are_merged(self):
+        candidates = [
+            {
+                "source": "booking",
+                "source_id": "pr1",
+                "name": "Nha Trang Ocean Museum Admission",
+                "category": "Museums & culture",
+                "is_tour": False,
+                "latitude": 12.2070,
+                "longitude": 109.2140,
+                "description": "Short",
+                "images": [],
+                "review_count": 10,
+            },
+            {
+                "source": "agoda",
+                "source_id": "22",
+                "name": "Nha Trang Ocean Museum Ticket",
+                "category": "Museums & culture",
+                "is_tour": False,
+                "latitude": 12.2071,
+                "longitude": 109.2141,
+                "description": "A much more complete description",
+                "images": ["https://example.com/museum.jpg"],
+                "review_count": 30,
+            },
+        ]
+
+        result = deduplicate_attractions(candidates)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["review_count"], 30)
+        self.assertEqual(result[0]["images"], ["https://example.com/museum.jpg"])
+
+    def test_nearby_physical_name_variants_are_merged(self):
+        candidates = [
+            {
+                "source": "osm",
+                "source_id": "1",
+                "name": "Po Nagar Cham Towers",
+                "category": "Museums & culture",
+                "is_tour": False,
+                "latitude": 12.2650,
+                "longitude": 109.1950,
+            },
+            {
+                "source": "booking",
+                "source_id": "2",
+                "name": "Po Nagar Towers Admission",
+                "category": "Museums & culture",
+                "is_tour": False,
+                "latitude": 12.2651,
+                "longitude": 109.1951,
+            },
+        ]
+
+        result = deduplicate_attractions(candidates)
+
+        self.assertEqual(len(result), 1)
+
+    def test_diversity_selection_round_robins_categories(self):
+        candidates = []
+        for index in range(6):
+            candidates.append(
+                {
+                    "name": f"Tour {index}",
+                    "category": "Sightseeing tours",
+                    "review_count": 100 - index,
+                }
+            )
+        candidates.extend(
+            [
+                {"name": "Museum", "category": "Museums & culture", "review_count": 20},
+                {"name": "Waterfall", "category": "Nature & outdoor", "review_count": 10},
+            ]
+        )
+
+        selected = select_diverse_attractions(candidates, limit=4)
+
+        self.assertEqual(len(selected), 4)
+        self.assertIn("Museums & culture", {item["category"] for item in selected})
+        self.assertIn("Nature & outdoor", {item["category"] for item in selected})
+        self.assertLessEqual(
+            sum(item["category"] == "Sightseeing tours" for item in selected),
+            2,
+        )
+
+    def test_soft_category_cap_relaxes_evenly_to_fill_limit(self):
+        candidates = []
+        for index in range(10):
+            candidates.append(
+                {
+                    "name": f"Other {index}",
+                    "category": "Other activities",
+                    "description": "high quality description " * 10,
+                }
+            )
+            candidates.append(
+                {
+                    "name": f"Museum {index}",
+                    "category": "Museums & culture",
+                }
+            )
+
+        selected = select_diverse_attractions(candidates, limit=10)
+        counts = {
+            category: sum(item["category"] == category for item in selected)
+            for category in {item["category"] for item in selected}
+        }
+
+        self.assertEqual(counts, {"Museums & culture": 5, "Other activities": 5})
+
+
+class OsmTransformTests(unittest.TestCase):
+    @patch("osm_pipeline.time.sleep")
+    @patch("osm_pipeline.fetch_wikidata_details", return_value={})
+    @patch("osm_pipeline.fetch_wikipedia_details", return_value={})
+    @patch("osm_pipeline.fetch_osm_attractions")
+    def test_osm_collection_requires_vietnamese_attraction_names_and_rejects_aircraft(
+        self,
+        fetch_mock,
+        wikipedia_mock,
+        wikidata_mock,
+        sleep_mock,
+    ):
+        fetch_mock.return_value = [
+            {
+                "id": 13508160125,
+                "type": "node",
+                "lat": 12.2343077,
+                "lon": 109.1932702,
+                "tags": {
+                    "name": "Bell UH-1 Iroquois",
+                    "name:vi": "Trực thăng Bell UH-1 Iroquois",
+                    "historic": "aircraft",
+                    "aircraft:type": "helicopter",
+                },
+            },
+            {
+                "id": 2,
+                "type": "node",
+                "lat": 12.24,
+                "lon": 109.19,
+                "tags": {"name": "English-only Museum", "tourism": "museum"},
+            },
+            {
+                "id": 3,
+                "type": "node",
+                "lat": 12.25,
+                "lon": 109.20,
+                "tags": {
+                    "name": "Po Nagar Cham Towers",
+                    "name:vi": "Tháp Bà Po Nagar",
+                    "tourism": "attraction",
+                },
+            },
+            {
+                "id": 4,
+                "type": "node",
+                "lat": 12.23,
+                "lon": 109.20,
+                "tags": {"name": "Lanterns", "amenity": "restaurant"},
+            },
+        ]
+        context = {
+            "mode": "radius",
+            "latitude": 12.2,
+            "longitude": 109.2,
+            "radius_meters": 20_000,
+        }
+
+        result = collect_osm_attractions("Nha Trang", context, "destination-id", 4)
+
+        self.assertEqual(
+            {item["name"] for item in result},
+            {"Tháp Bà Po Nagar", "Lanterns"},
+        )
+
+    def test_overpass_query_filters_vietnamese_attractions_and_aircraft(self):
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {"elements": []}
+        post_mock = Mock(return_value=response)
+
+        with patch("osm_pipeline.requests", Mock(post=post_mock)):
+            fetch_osm_attractions("12.2,109.2", radius_meters=20_000, limit=20)
+
+        query = post_mock.call_args.kwargs["data"].decode("utf-8")
+        self.assertIn('["name:vi"]', query)
+        self.assertIn('["historic"!~"aircraft|airplane"]', query)
+        self.assertIn(
+            'nwr["amenity"~"restaurant|cafe|bar"]["name"]',
+            query,
+        )
+
+    def test_osm_tags_are_authoritative_for_category(self):
+        cases = (
+            ({"name": "Lantern", "amenity": "restaurant"}, "Restaurants & cafes"),
+            ({"name": "Alexandre", "tourism": "museum"}, "Museums & culture"),
+            ({"name": "Safari Land", "tourism": "zoo"}, "Entertainment & tickets"),
+            ({"name": "Hon Ba", "natural": "peak"}, "Nature & outdoor"),
+        )
+        for tags, expected_category in cases:
+            with self.subTest(tags=tags):
+                result = transform_to_attraction(
+                    {"id": 1, "type": "node", "lat": 12.2, "lon": 109.2, "tags": tags},
+                    {},
+                    "destination-id",
+                    {},
+                )
+                self.assertEqual(result["category"], expected_category)
+
+    def test_osm_relation_retains_center_coordinates(self):
+        result = transform_to_attraction(
+            {
+                "id": 99,
+                "type": "relation",
+                "center": {"lat": 12.25, "lon": 109.19},
+                "tags": {"name": "Protected Garden", "leisure": "garden"},
+            },
+            {},
+            "destination-id",
+            {},
+        )
+
+        self.assertEqual(result["coordinates"], "12.25,109.19")
+        self.assertEqual(result["latitude"], 12.25)
+        self.assertEqual(result["longitude"], 109.19)
+
+    def test_osm_source_id_keeps_element_type_namespace(self):
+        node = transform_to_attraction(
+            {
+                "id": 7,
+                "type": "node",
+                "lat": 12.2,
+                "lon": 109.2,
+                "tags": {"name": "North Garden", "leisure": "garden"},
+            },
+            {},
+            "destination-id",
+            {},
+        )
+        way = transform_to_attraction(
+            {
+                "id": 7,
+                "type": "way",
+                "center": {"lat": 12.3, "lon": 109.3},
+                "tags": {"name": "South Garden", "leisure": "garden"},
+            },
+            {},
+            "destination-id",
+            {},
+        )
+
+        self.assertEqual(node["source_id"], "node:7")
+        self.assertEqual(way["source_id"], "way:7")
+        self.assertEqual(len(deduplicate_attractions([node, way])), 2)
+
+    @patch("osm_pipeline.time.sleep")
+    @patch("osm_pipeline.fetch_wikidata_details", return_value={})
+    @patch("osm_pipeline.fetch_wikipedia_details", return_value={})
+    @patch("osm_pipeline.fetch_osm_attractions")
+    def test_osm_collection_deduplicates_and_keeps_food_candidates(
+        self,
+        fetch_mock,
+        wikipedia_mock,
+        wikidata_mock,
+        sleep_mock,
+    ):
+        fetch_mock.return_value = [
+            {
+                "id": 1,
+                "type": "node",
+                "lat": 12.2000,
+                "lon": 109.2000,
+                "tags": {
+                    "name": "Twin View",
+                    "name:vi": "Điểm ngắm đôi",
+                    "tourism": "viewpoint",
+                },
+            },
+            {
+                "id": 2,
+                "type": "way",
+                "center": {"lat": 12.2001, "lon": 109.2001},
+                "tags": {
+                    "name": "Twin View",
+                    "name:vi": "Điểm ngắm đôi",
+                    "tourism": "viewpoint",
+                },
+            },
+            {
+                "id": 3,
+                "type": "node",
+                "lat": 12.2100,
+                "lon": 109.2100,
+                "tags": {
+                    "name": "Silver",
+                    "name:vi": "Thác Bạc",
+                    "natural": "waterfall",
+                },
+            },
+            {
+                "id": 4,
+                "type": "node",
+                "lat": 12.2200,
+                "lon": 109.2200,
+                "tags": {"name": "Lantern", "amenity": "restaurant"},
+            },
+        ]
+        context = {
+            "mode": "radius",
+            "latitude": 12.2,
+            "longitude": 109.2,
+            "radius_meters": 20_000,
+        }
+
+        result = collect_osm_attractions("Nha Trang", context, "destination-id", 4)
+
+        self.assertEqual(len(result), 3)
+        self.assertEqual(
+            {item["name"] for item in result},
+            {"Điểm ngắm đôi", "Thác Bạc", "Lantern"},
+        )
+        self.assertIn("Restaurants & cafes", {item["category"] for item in result})
+
+    @patch("osm_pipeline.time.sleep")
+    @patch("osm_pipeline.fetch_wikidata_details", return_value={})
+    @patch("osm_pipeline.fetch_wikipedia_details", return_value={})
+    @patch("osm_pipeline.fetch_osm_attractions")
+    def test_osm_collection_does_not_stop_before_food_output(
+        self,
+        fetch_mock,
+        wikipedia_mock,
+        wikidata_mock,
+        sleep_mock,
+    ):
+        attractions = [
+            {
+                "id": index,
+                "type": "node",
+                "lat": 12.20 + index / 10_000,
+                "lon": 109.20,
+                "tags": {
+                    "name": f"Sight {index}",
+                    "name:vi": f"Điểm tham quan {index}",
+                    "tourism": "attraction",
+                },
+            }
+            for index in range(1, 7)
+        ]
+        food = [
+            {
+                "id": 100 + index,
+                "type": "node",
+                "lat": 12.21 + index / 10_000,
+                "lon": 109.21,
+                "tags": {"name": f"Kitchen {index}", "amenity": "restaurant"},
+            }
+            for index in range(2)
+        ]
+        fetch_mock.return_value = attractions + food
+        context = {
+            "mode": "radius",
+            "latitude": 12.2,
+            "longitude": 109.2,
+            "radius_meters": 20_000,
+        }
+
+        result = collect_osm_attractions("Nha Trang", context, "destination-id", 2)
+
+        self.assertIn("Restaurants & cafes", {item["category"] for item in result})
+
+    @patch("osm_pipeline.time.sleep")
+    def test_overpass_attraction_query_retries_after_gateway_timeout(
+        self,
+        sleep_mock,
+    ):
+        failed_response = Mock()
+        failed_response.raise_for_status.side_effect = RuntimeError("504 Gateway Timeout")
+        successful_response = Mock()
+        successful_response.raise_for_status.return_value = None
+        successful_response.json.return_value = {
+            "elements": [
+                {"id": element_id, "type": "node"}
+                for element_id in range(1, 6)
+            ]
+        }
+        post_mock = Mock(side_effect=[failed_response, successful_response])
+
+        with patch("osm_pipeline.requests", Mock(post=post_mock)):
+            result = fetch_osm_attractions("12.2,109.2", radius_meters=20_000, limit=20)
+
+        self.assertEqual({item["id"] for item in result}, {1, 2, 3, 4, 5})
+        self.assertEqual(post_mock.call_count, 2)
+        sleep_mock.assert_called_once()
+
+    def test_osm_transform_does_not_invent_ratings(self):
+        element = {
+            "id": 123,
+            "type": "node",
+            "lat": 12.2,
+            "lon": 109.2,
+            "tags": {"name": "Local History Museum", "tourism": "museum"},
+        }
+
+        result = transform_to_attraction(element, {}, "destination-id", {})
+
+        self.assertIsNone(result["rating"])
+        self.assertIsNone(result["review_count"])
+        self.assertEqual(result["category"], "Museums & culture")
+        self.assertEqual(result["source"], "osm")
+        self.assertEqual(result["source_id"], "node:123")
+        self.assertEqual(result["latitude"], 12.2)
+        self.assertEqual(result["longitude"], 109.2)
+
+
+if __name__ == "__main__":
+    unittest.main()

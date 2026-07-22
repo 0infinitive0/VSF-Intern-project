@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>VSF Real-Time Dashboard</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { margin: 0; padding: 0; display: flex; height: 100vh; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
+        #adminer-container { flex: 1; display: flex; flex-direction: column; border-right: 2px solid #333; }
+        #adminer-frame { flex: 1; border: none; width: 100%; }
+        #map-container { flex: 1; position: relative; }
+        #map { width: 100%; height: 100%; }
+        .header { background: #1a1a1a; color: white; padding: 10px 15px; font-weight: bold; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
+        .status-dot { height: 10px; width: 10px; background-color: #2ecc71; border-radius: 50%; display: inline-block; margin-right: 5px; box-shadow: 0 0 5px #2ecc71; }
+        .table-btn { background: #333; color: white; border: 1px solid #555; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px; margin-left: 5px; }
+        .table-btn:hover { background: #555; }
+    </style>
+</head>
+<body>
+    
+    <div id="adminer-container">
+        <div class="header">
+            <span>💾 Database Manager</span>
+            <div>
+                <button class="table-btn" onclick="document.getElementById('adminer-frame').src='http://localhost:8081/?pgsql=postgres&username=airflow&db=vsf_database&ns=public&select=attractions'">Attractions</button>
+                <button class="table-btn" onclick="document.getElementById('adminer-frame').src='http://localhost:8081/?pgsql=postgres&username=airflow&db=vsf_database&ns=public&select=hotels'">Hotels</button>
+                <button class="table-btn" onclick="document.getElementById('adminer-frame').src='http://localhost:8081/?pgsql=postgres&username=airflow&db=vsf_database&ns=public&select=destinations'">Destinations</button>
+            </div>
+        </div>
+        <iframe id="adminer-frame" src="http://localhost:8081/?pgsql=postgres&username=airflow&db=vsf_database&ns=public&select=attractions"></iframe>
+    </div>
+
+    <div id="map-container">
+        <div class="header">
+            <span>🗺️ Live Map Viewer</span>
+            <span><span class="status-dot"></span> Live Sync Active</span>
+        </div>
+        <div id="map"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        var map = L.map('map').setView([12.245, 109.194], 13);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap'
+        }).addTo(map);
+        
+        var currentMarkers = {};
+        
+        async function fetchLocations() {
+            try {
+                const response = await fetch('/api/locations');
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    const locations = result.data;
+                    const newIds = new Set(locations.map(loc => loc.id));
+                    
+                    // Remove deleted locations
+                    for (let id in currentMarkers) {
+                        if (!newIds.has(id)) {
+                            map.removeLayer(currentMarkers[id]);
+                            delete currentMarkers[id];
+                        }
+                    }
+                    
+                    // Add or update locations
+                    locations.forEach(loc => {
+                        let popupContent = "";
+                        if (loc.type === 'destination') {
+                            popupContent = "📍 <b>" + loc.name + "</b><br>Region: " + loc.category;
+                        } else if (loc.type === 'hotel') {
+                            popupContent = "🏨 <b>" + loc.name + "</b><br>Rating: " + loc.category;
+                        } else {
+                            popupContent = "<b>" + loc.name + "</b><br>" + loc.category;
+                        }
+                        
+                        if (loc.images && loc.images.length > 0) {
+                            popupContent += `<br><img src="${loc.images[0]}" style="width:100%; max-height:150px; margin-top:5px; border-radius:5px;">`;
+                        }
+
+                        if (currentMarkers[loc.id]) {
+                            // Update position if changed
+                            const existingPos = currentMarkers[loc.id].getLatLng();
+                            if (existingPos.lat !== loc.lat || existingPos.lng !== loc.lng) {
+                                currentMarkers[loc.id].setLatLng([loc.lat, loc.lng]);
+                            }
+                            // Always update popup content in case data changed
+                            currentMarkers[loc.id].bindPopup(popupContent);
+                        } else {
+                            // Create new marker
+                            let marker;
+                            if (loc.type === 'destination') {
+                                marker = L.circleMarker([loc.lat, loc.lng], {
+                                    radius: 12,
+                                    fillColor: "#e74c3c",
+                                    color: "#fff",
+                                    weight: 2,
+                                    opacity: 1,
+                                    fillOpacity: 0.9
+                                }).addTo(map);
+                            } else if (loc.type === 'hotel') {
+                                const hotelIcon = L.divIcon({
+                                    html: '<div style="background-color: #f39c12; width: 16px; height: 16px; border-radius: 4px; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.4);"></div>',
+                                    className: '',
+                                    iconSize: [20, 20],
+                                    iconAnchor: [10, 10],
+                                    popupAnchor: [0, -10]
+                                });
+                                marker = L.marker([loc.lat, loc.lng], {icon: hotelIcon}).addTo(map);
+                            } else {
+                                marker = L.marker([loc.lat, loc.lng]).addTo(map);
+                            }
+                            
+                            marker.bindPopup(popupContent);
+                            currentMarkers[loc.id] = marker;
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error("Failed to sync map:", err);
+            }
+        }
+
+        // Listen for clicks from the Adminer iframe
+        window.addEventListener("message", function(event) {
+            if (event.data && event.data.action === 'focus_map') {
+                const lat = parseFloat(event.data.lat);
+                const lng = parseFloat(event.data.lng);
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    map.setView([lat, lng], 16);
+                    
+                    // Find and open popup if marker exists
+                    for (let id in currentMarkers) {
+                        let m = currentMarkers[id];
+                        let pos = m.getLatLng();
+                        if (Math.abs(pos.lat - lat) < 0.0001 && Math.abs(pos.lng - lng) < 0.0001) {
+                            m.openPopup();
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+
+        // Initial fetch
+        fetchLocations();
+        // Sync every 2 seconds
+        setInterval(fetchLocations, 2000);
+    </script>
+</body>
+</html>
