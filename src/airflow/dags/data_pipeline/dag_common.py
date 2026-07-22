@@ -49,6 +49,16 @@ def prepare_destination_task(**kwargs: Any) -> Dict[str, Any]:
     return payload
 
 
+def destination_from_xcom(source_task_id: str, **kwargs: Any) -> Dict[str, Any]:
+    destination = kwargs["ti"].xcom_pull(
+        task_ids=source_task_id,
+        key="destination",
+    )
+    if not destination:
+        raise ValueError("Destination setup was not found in XCom.")
+    return destination
+
+
 def load_records_task(records_task_id: str, records_key: str, **kwargs: Any) -> str:
     records = kwargs["ti"].xcom_pull(task_ids=records_task_id, key=records_key)
     if not records:

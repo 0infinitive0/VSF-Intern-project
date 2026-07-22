@@ -13,6 +13,7 @@ from attraction_utils import (
     normalize_category,
     normalize_text,
     parse_duration_minutes,
+    sanitize_attraction_name,
     select_diverse_attractions,
     stable_attraction_id,
 )
@@ -867,14 +868,13 @@ def candidate_to_db_record(candidate: Dict[str, Any], destination_id: str) -> Di
     }
 
 
-def collect_ota_attractions(
+def extract_ota_candidates(
     destination_name: str,
-    location_context: Dict[str, Any],
-    destination_id: str,
     item_limit: int,
     source: str = "both",
     allow_web_scraping: bool = False,
 ) -> List[Dict[str, Any]]:
+    """Extract public Booking.com and Agoda product candidates."""
     env_opt_in = os.getenv("ALLOW_OTA_WEB_SCRAPING", "").lower() in {"1", "true", "yes"}
     if not allow_web_scraping and not env_opt_in:
         raise ValueError(
@@ -901,7 +901,51 @@ def collect_ota_attractions(
                 raise
             print(f"[agoda] Source failed without stopping Booking: {exc}")
 
-    filtered = geofilter_ota_candidates(candidates, destination_name, location_context)
-    deduplicated = deduplicate_attractions(filtered)
-    selected = select_diverse_attractions(deduplicated, item_limit)
-    return [candidate_to_db_record(candidate, destination_id) for candidate in selected]
+    return candidates
+
+
+def validate_clean_ota_candidates(
+    candidates: Iterable[Dict[str, Any]],
+    destination_name: str,
+    location_context: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """Clean public product names, then apply strict geographic validation."""
+    cleaned = []
+    for candidate in candidates:
+        name = sanitize_attraction_name(candidate.get("name", ""))
+        if not name:
+            continue
+        cleaned.append({**candidate, "name": name})
+    return geofilter_ota_candidates(cleaned, destination_name, location_context)
+
+
+def normalize_ota_candidates(
+    candidates: Iterable[Dict[str, Any]],
+    destination_id: str,
+) -> List[Dict[str, Any]]:
+    """Map validated OTA products into the canonical attraction schema."""
+    return [candidate_to_db_record(candidate, destination_id) for candidate in candidates]
+
+
+def collect_ota_attractions(
+    destination_name: str,
+    location_context: Dict[str, Any],
+    destination_id: str,
+    item_limit: int,
+    source: str = "both",
+    allow_web_scraping: bool = False,
+) -> List[Dict[str, Any]]:
+    """Legacy wrapper for the explicit OTA extract-to-deduplicate stages."""
+    candidates = extract_ota_candidates(
+        destination_name,
+        item_limit,
+        source=source,
+        allow_web_scraping=allow_web_scraping,
+    )
+    cleaned_candidates = validate_clean_ota_candidates(
+        candidates,
+        destination_name,
+        location_context,
+    )
+    records = normalize_ota_candidates(cleaned_candidates, destination_id)
+    return select_diverse_attractions(deduplicate_attractions(records), item_limit)

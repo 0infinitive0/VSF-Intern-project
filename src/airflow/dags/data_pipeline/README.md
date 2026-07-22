@@ -1,7 +1,6 @@
 # Attraction crawler DAGs
 
-This folder exposes four Airflow DAGs that share the same destination filtering,
-normalization, diversity selection, and PostgreSQL loader.
+This folder exposes four Airflow DAGs that share the same seven-stage pipeline.
 
 | DAG | Sources | Schedule |
 | --- | --- | --- |
@@ -9,6 +8,24 @@ normalization, diversity selection, and PostgreSQL loader.
 | `google_maps_poc_attractions_pipeline` | Rendered public Google Maps result cards through Playwright; no Maps API | Manual |
 | `booking_agoda_attractions_pipeline` | Booking.com and/or Agoda public pages | Manual |
 | `combined_attractions_pipeline` | Both source families, followed by cross-source deduplication | Manual |
+
+## Pipeline blocks
+
+Each single-source DAG exposes these task IDs in the Airflow graph:
+
+| Diagram block | Airflow task | Responsibility |
+| --- | --- | --- |
+| 1. Data Source | `data_source` | Resolve the Vietnam destination boundary or coordinate radius and prepare its database identity. |
+| 2. Extract | `extract` | Read public source candidates without mapping them to the database schema. |
+| 3. Validate & Clean | `validate_clean` | Enforce geography, source eligibility, and clean display names. |
+| 4. Normalize | `normalize` | Map valid candidates into the canonical `attractions` record; source enrichment happens here. |
+| 5. Deduplicate | `deduplicate` | Apply shared duplicate rules and category-balanced selection. |
+| 6. Load to PostgreSQL | `load_to_postgresql` | Upsert canonical records into the primary PostgreSQL database. |
+| 7. Quality Check | `quality_check` | Publish schema validity plus description, image, category, and source coverage metrics through XCom. |
+
+The combined DAG uses parallel `*_osm` and `*_ota` variants for blocks 2 through
+4, then joins them at the shared `deduplicate`, `load_to_postgresql`, and
+`quality_check` blocks.
 
 ## Destination parameters
 

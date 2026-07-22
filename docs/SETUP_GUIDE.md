@@ -17,9 +17,9 @@ cd vsf-project
 ## Step 2: Start the Services
 The project uses Docker Compose to manage all of its services, including Airflow, Postgres, and the custom Dashboard.
 
-Navigate into the `airflow` directory. First, initialize the Airflow environment:
+Navigate into the `src/airflow` directory. First, initialize the Airflow environment:
 ```bash
-cd airflow
+cd src/airflow
 docker compose up airflow-init
 ```
 Wait for the initialization to complete (you should see a `exited with code 0` message).
@@ -43,7 +43,7 @@ docker exec airflow-postgres-1 psql -U airflow -c "CREATE DATABASE vsf_database;
 
 2. **Import the Database Schema (and any data):**
 ```bash
-docker exec -i airflow-postgres-1 psql -U airflow -d vsf_database < database_schema.sql
+docker exec -i airflow-postgres-1 psql -U airflow -d vsf_database < scripts/database_schema.sql
 ```
 
 ## Step 4: Access the Applications

@@ -18,6 +18,7 @@ from attraction_utils import (
     deduplicate_attractions,
     is_coordinate_allowed,
     normalize_category,
+    normalize_text,
     sanitize_attraction_name,
     select_diverse_attractions,
 )
@@ -386,7 +387,13 @@ def transform_to_attraction(osm_element: Dict[str, Any], wiki_details: Dict[str,
     tags = osm_element.get("tags", {})
     
     # 1. Name
-    name = tags.get("name:vi") or tags.get("name:en") or tags.get("name") or "Unknown Attraction"
+    name = (
+        tags.get("_clean_name")
+        or tags.get("name:vi")
+        or tags.get("name:en")
+        or tags.get("name")
+        or "Unknown Attraction"
+    )
     
     # 2. Description (From Wikipedia, fallback to basic OSM data)
     description = (
@@ -544,24 +551,75 @@ def _osm_element_coordinates(osm_element: Dict[str, Any]) -> Optional[tuple]:
     return float(latitude), float(longitude)
 
 
-def collect_osm_attractions(
-    destination_name: str,
+def extract_osm_candidates(
     location_context: Dict[str, Any],
-    destination_id: str,
     item_limit: int,
 ) -> List[Dict[str, Any]]:
-    """Collect OSM places, enforce geography, enrich from Wikimedia, and normalize."""
+    """Extract raw OSM elements without applying record-level rules."""
     center = f"{location_context['latitude']},{location_context['longitude']}"
     radius_meters = int(
         location_context.get("radius_meters")
         or location_context.get("search_radius_meters")
         or 20_000
     )
-    raw_results = fetch_osm_attractions(
+    return fetch_osm_attractions(
         center,
         radius_meters=radius_meters,
         limit=max(item_limit * 4, item_limit),
     )
+
+
+def _is_excluded_osm_name(name: str) -> bool:
+    normalized_name = normalize_text(name)
+    return any(
+        token in normalized_name
+        for token in (
+            "cay xang",
+            "hotel",
+            "khach san",
+            "homestay",
+            "hostel",
+            "motel",
+            "resort",
+            "villa",
+        )
+    )
+
+
+def validate_clean_osm_candidates(
+    raw_results: List[Dict[str, Any]],
+    location_context: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """Reject invalid OSM elements and attach a sanitized display name."""
+    accepted = []
+    for place in raw_results:
+        coordinates = _osm_element_coordinates(place)
+        if not coordinates or not is_coordinate_allowed(*coordinates, location_context):
+            continue
+        tags = place.get("tags", {})
+        if not _is_eligible_osm_place(tags):
+            continue
+        name = tags.get("name:vi") or tags.get("name:en") or tags.get("name")
+        cleaned_name = sanitize_attraction_name(name or "")
+        if not cleaned_name or _is_excluded_osm_name(cleaned_name):
+            continue
+        accepted_tags = dict(tags)
+        accepted_tags["_clean_name"] = cleaned_name
+        accepted.append({**place, "tags": accepted_tags})
+    return accepted
+
+
+def collect_osm_attractions(
+    destination_name: str,
+    location_context: Dict[str, Any],
+    destination_id: str,
+    item_limit: int,
+    raw_results: Optional[List[Dict[str, Any]]] = None,
+    select_final: bool = True,
+) -> List[Dict[str, Any]]:
+    """Collect OSM places, enforce geography, enrich from Wikimedia, and normalize."""
+    if raw_results is None:
+        raw_results = extract_osm_candidates(location_context, item_limit)
     raw_by_record_id: Dict[str, Dict[str, Any]] = {}
     normalized_candidates = []
     for place in raw_results:
@@ -625,9 +683,29 @@ def collect_osm_attractions(
         )
         time.sleep(random.uniform(1.0, 2.0))
 
+    if not select_final:
+        return enriched_candidates
     return select_diverse_attractions(
         deduplicate_attractions(enriched_candidates),
         item_limit,
+    )
+
+
+def normalize_osm_candidates(
+    candidates: List[Dict[str, Any]],
+    destination_name: str,
+    location_context: Dict[str, Any],
+    destination_id: str,
+    item_limit: int,
+) -> List[Dict[str, Any]]:
+    """Map clean OSM candidates to canonical records and enrich from Wikimedia."""
+    return collect_osm_attractions(
+        destination_name,
+        location_context,
+        destination_id,
+        item_limit,
+        raw_results=candidates,
+        select_final=False,
     )
 
 def process_osm_pipeline(destination_name: str, location_coords: str, db_conn_kwargs: Dict[str, str]):

@@ -755,6 +755,7 @@ class AirflowDiscoveryTests(unittest.TestCase):
                 "osm_pipeline.py",
                 "ota_pipeline.py",
                 "google_maps_pipeline.py",
+                "pipeline_stages.py",
             },
         )
 
