@@ -83,3 +83,6 @@ out/
 # AI logs
 .ai-log/*.jsonl
 .ai-log/archive/
+CLAUDE.md
+docs/
+plans/
