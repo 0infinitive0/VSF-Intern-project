@@ -63,9 +63,16 @@ graph LR
 ```
 
 ### 4. Database
-- **Type:** [PostgreSQL / SQLite]
-- **Tables:** [danh sách]
-- **Migrations:** Alembic
+- **Type:** PostgreSQL
+- **Tables:** `destinations`, `hotels`, `rooms`, `room_prices`, `attractions`, `events`, `sessions`, `chat_messages`, `itineraries`, `itinerary_items`
+- **Schema management:** Hand-written SQL in `scripts/database_schema.sql`
+
+### 4.1. Data Pipelines
+- **Airflow stack:** `src/airflow/docker-compose.yaml`
+- **Attraction producers:** `osm_dag.py`, `ota_dag.py`, `google_maps_dag.py`, `hotel_nearby_dag.py`
+- **Hotel producer:** `hotel_dag.py` orchestrates `hotel_pipeline.py` stages: extract, validate, normalize, dedupe, load, quality check
+- **Hotel input data:** `data/agoda.json` and `data/booking.json`, mounted read-only into Airflow at `/opt/airflow/data`
+- **Hotel schema convention:** one `hotels` row per `(source_platform, source_hotel_id)` OTA listing; cross-OTA physical-property merge is deferred
 
 ### 5. Vector Store
 - **Type:** [ChromaDB / FAISS / Pinecone]

@@ -17,38 +17,56 @@ Lưu trữ thông tin về các địa danh, vùng miền hoặc thành phố l�
 | `updated_at` | TIMESTAMP | | Thời gian cập nhật bản ghi |
 
 ### 1.2. Bảng `hotels` (Khách sạn)
-Lưu trữ thông tin cốt lõi của các cơ sở lưu trú được thu thập từ OTA.
+Lưu trữ thông tin cốt lõi của các cơ sở lưu trú được thu thập từ OTA. **Quy ước: 1 dòng = 1 khách sạn theo 1 OTA** (`source_platform` + `source_hotel_id`), KHÔNG gộp — một khách sạn vật lý xuất hiện trên cả Agoda và Booking sẽ có 2 dòng riêng, vì giá và chính sách mỗi OTA khác nhau (giữ cả 2 để chatbot so sánh/tư vấn). Việc gộp khách sạn vật lý trùng nguồn là công việc riêng, chưa triển khai.
 | Tên Cột | Kiểu Dữ Liệu | Khóa | Ràng Buộc / Mô Tả |
 | :--- | :--- | :--- | :--- |
 | `id` | UUID | PK | Khóa chính |
 | `destination_id` | UUID | FK | Liên kết đến bảng `destinations`. `ON DELETE SET NULL` |
+| `source_platform` | VARCHAR(20) | UK | `'agoda'` \| `'booking'` |
+| `source_hotel_id` | BIGINT | UK | `hotel_id` gốc từ OTA |
+| `source_url` | TEXT | | `property_url` gốc trên OTA |
 | `name` | VARCHAR(255) | | Tên khách sạn (VD: Vinpearl Resort Nha Trang) |
-| `description` | TEXT | | Bài viết mô tả tổng quan |
-| `star_rating` | SMALLINT | | Hạng sao (1-5) |
-| `amenities` | TEXT[] | | Mảng các tiện ích (VD: Wifi, Hồ bơi) |
+| `accommodation_type` | VARCHAR(50) | | Chuẩn hóa lúc ETL (Agoda: nhãn tiếng Việt, Booking: enum tiếng Anh) |
+| `description` | TEXT | | Bài viết mô tả tổng quan (chỉ có ở Agoda) |
+| `star_rating` | DECIMAL(2,1) | | Hạng sao (0-5, Agoda có nửa sao) |
+| `address` | VARCHAR(500) | | Địa chỉ đầy đủ |
+| `city` | VARCHAR(100) | | Raw text gốc từ nguồn, dùng `destination_id` cho query chuẩn |
+| `area_name` | VARCHAR(100) | | Khu vực |
+| `country` | VARCHAR(100) | | Chuẩn hóa (VD ISO code) lúc ETL |
 | `coordinates` | VARCHAR(50) | | Tọa độ GPS (Dùng để tính khoảng cách đi bộ/di chuyển) |
-| `images` | TEXT[] | | Mảng URL hình ảnh ngang (Gallery) |
-| `videos` | TEXT[] | | Mảng URL video dọc |
-| `source_urls` | TEXT[] | | Mảng các link gốc đến khách sạn trên nhiều OTA |
-| `source_ids` | TEXT[] | | Mảng các ID gốc của khách sạn trên các hệ thống OTA |
+| `amenities` | TEXT[] | | Mảng phẳng tiện ích (VD: Wifi, Hồ bơi) |
+| `amenity_groups` | JSONB | | Tiện ích nhóm theo danh mục (cấu trúc khác nhau giữa 2 nguồn) |
+| `review_score` | DECIMAL(4,2) | | Điểm đánh giá |
+| `review_count` | INT | | Số lượng đánh giá |
+| `category_scores` | JSONB | | Subratings, tên tiêu chí khác nhau giữa 2 nguồn |
+| `image_url` | TEXT | | Ảnh đại diện/thumbnail |
+| `images` | TEXT[] | | Mảng URL toàn bộ hình ảnh (Gallery) |
+| `nearby_attractions` | JSONB | | Cấu trúc khác nhau giữa 2 nguồn (Agoda: list string, Booking: list object) |
+| `nearby_essentials` | JSONB | | Tương tự `nearby_attractions` |
+| `lowest_price` | DECIMAL(12,2) | | Cache giá thấp nhất tại lần crawl gần nhất (nguồn xác thực là `room_prices`) |
 | `created_at` | TIMESTAMP | | Thời gian tạo |
 | `updated_at` | TIMESTAMP | | Thời gian cập nhật |
 
+*(Khóa Unique `(source_platform, source_hotel_id)` dùng cho UPSERT khi crawl lại đúng khách sạn/đúng OTA. Danh sách đầy đủ các cột — bao gồm các trường chỉ có ở một nguồn như `highlights`, `awards`, `warnings`, `score_distribution`, `check_in_time`, v.v. — xem `scripts/database_schema.sql`.)*
+
 ### 1.3. Bảng `rooms` (Phòng)
-Lưu trữ các loại phòng khác nhau thuộc một khách sạn.
+Lưu trữ các loại phòng khác nhau thuộc một khách sạn — theo đúng 1 OTA của khách sạn đó (không gộp liên-nguồn, tương tự `hotels`).
 | Tên Cột | Kiểu Dữ Liệu | Khóa | Ràng Buộc / Mô Tả |
 | :--- | :--- | :--- | :--- |
 | `id` | UUID | PK | Khóa chính |
 | `hotel_id` | UUID | FK | Liên kết đến `hotels`. `ON DELETE CASCADE` |
+| `source_room_id` | BIGINT | UK | `room_id` gốc từ OTA |
 | `name` | VARCHAR(255) | | Tên loại phòng (VD: Deluxe Ocean View) |
-| `max_adults` | SMALLINT | | Số lượng người lớn tối đa |
-| `max_children` | SMALLINT | | Số lượng trẻ em tối đa ngủ cùng |
-| `number_of_beds` | SMALLINT | | Số lượng giường |
-| `bed_type` | VARCHAR(100) | | Loại giường (VD: 1 King, 2 Twin) |
+| `bed_description` | TEXT | | Text thô mô tả giường — không tách thành số lượng/loại vì dữ liệu 2 nguồn tự do, khác ngôn ngữ |
+| `room_size_sqm` | DECIMAL(6,2) | | Diện tích phòng (m²) |
+| `max_guests` | SMALLINT | | Sức chứa (best-effort). Lưu ý: Agoda chỉ tính người lớn, Booking là tổng khách — 2 nguồn khác ngữ nghĩa, không so sánh trực tiếp liên-nguồn |
 | `room_facilities`| TEXT[] | | Các tiện ích riêng có trong phòng này |
+| `amenity_groups` | JSONB | | Nullable, chỉ có ở Agoda |
 | `images` | TEXT[] | | Mảng URL hình ảnh của phòng |
 | `created_at` | TIMESTAMP | | Thời gian tạo |
 | `updated_at` | TIMESTAMP | | Thời gian cập nhật |
+
+*(Khóa Unique `(hotel_id, source_room_id)`.)*
 
 ### 1.4. Bảng `room_prices` (Giá theo thời điểm)
 Lưu trữ giá phòng. Bảng này được thiết kế theo cơ chế UPSERT (cập nhật đè) để chỉ lấy giá mới nhất cho mỗi khoảng thời gian check-in/check-out.
@@ -60,12 +78,15 @@ Lưu trữ giá phòng. Bảng này được thiết kế theo cơ chế UPSERT 
 | `currency` | VARCHAR(10) | | Đơn vị tiền tệ (Mặc định: 'VND') |
 | `check_in_date` | DATE | UK | Ngày nhận phòng |
 | `check_out_date`| DATE | UK | Ngày trả phòng |
-| `source_url` | TEXT | UK | Link chuyển hướng (Affiliate/gốc) trang đặt phòng |
+| `sold_out` | BOOLEAN | | Cờ hết phòng (thay cho `available_rooms` cũ — không nguồn nào có số phòng trống thực tế) |
+| `crossed_out` | BOOLEAN | | Cờ hiển thị giá gạch ngang (khuyến mãi), chỉ có ở Agoda |
+| `source_url` | TEXT | UK | Link chuyển hướng (Affiliate/gốc) trang đặt phòng; fallback dùng `hotels.source_url` nếu không có link riêng |
 | `package_details`| TEXT | UK | Gói đi kèm (VD: 'Bữa sáng miễn phí', 'Không hoàn tiền') |
-| `available_rooms`| SMALLINT | | Số lượng phòng còn trống tại mức giá này |
 | `crawled_at` | TIMESTAMP | | Thời điểm hệ thống lấy được giá này |
 
-*(Lưu ý: Khóa Unique là tổ hợp của `room_id`, `check_in_date`, `check_out_date`, `source_url`, `package_details` để UPSERT chính xác giá mới nhất cho từng nền tảng và từng gói tiện ích).*
+*(Lưu ý: Khóa Unique là expression index trên tổ hợp `room_id`, `check_in_date`, `check_out_date`, `COALESCE(source_url, '')`, `COALESCE(package_details, '')` để UPSERT chính xác giá mới nhất — dùng `COALESCE` vì Postgres coi mỗi NULL là khác nhau, một `UNIQUE` thường sẽ không dedupe đúng khi các cột này NULL.)*
+
+**Nguồn nạp dữ liệu:** `booking_agoda_hotel_loader_pipeline` (`src/airflow/dags/data_pipeline/hotel_dag.py`) đọc `data/agoda.json` và `data/booking.json`, gọi `hotel_pipeline.py` theo chuỗi Extract -> Validate -> Normalize -> Dedupe -> Load -> QualityCheck. Lần xác thực 2026-07-23 nạp 1,103 khách sạn, 6,375 phòng và 6,375 giá phòng; cross-OTA physical-hotel dedup chưa nằm trong phạm vi M1.
 
 ### 1.5. Bảng `attractions` (Điểm tham quan & Tour)
 Lưu trữ thông tin chi tiết về các địa điểm tham quan hoặc các Tour tuyến hoạt động tại điểm đến.

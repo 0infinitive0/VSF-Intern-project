@@ -17,15 +17,45 @@ erDiagram
     hotels {
         UUID id PK
         UUID destination_id FK
+        VARCHAR source_platform
+        BIGINT source_hotel_id
+        TEXT source_url
         VARCHAR name
+        VARCHAR accommodation_type
         TEXT description
-        SMALLINT star_rating
-        TEXT_ARRAY amenities
+        DECIMAL star_rating
+        VARCHAR address
+        VARCHAR city
+        VARCHAR area_name
+        VARCHAR country
+        VARCHAR location_highlight
         VARCHAR coordinates
+        TEXT_ARRAY amenities
+        JSONB amenity_groups
+        TEXT_ARRAY highlights
+        TEXT_ARRAY awards
+        TEXT_ARRAY warnings
+        DECIMAL review_score
+        INT review_count
+        VARCHAR review_text
+        JSONB category_scores
+        JSONB score_distribution
+        VARCHAR check_in_time
+        VARCHAR check_in_until
+        VARCHAR check_out_time
+        VARCHAR reception_open_until
+        TEXT image_url
         TEXT_ARRAY images
-        TEXT_ARRAY videos
-        TEXT_ARRAY source_urls
-        TEXT_ARRAY source_ids
+        INT image_count
+        JSONB nearby_attractions
+        JSONB nearby_essentials
+        DECIMAL lowest_price
+        VARCHAR currency
+        DATE price_check_in_date
+        DATE price_check_out_date
+        BOOLEAN rooms_available
+        SMALLINT offer_count
+        TIMESTAMP scraped_at
         TIMESTAMP created_at
         TIMESTAMP updated_at
     }
@@ -33,13 +63,17 @@ erDiagram
     rooms {
         UUID id PK
         UUID hotel_id FK
+        BIGINT source_room_id
         VARCHAR name
-        SMALLINT max_adults
-        SMALLINT max_children
-        SMALLINT number_of_beds
-        VARCHAR bed_type
+        TEXT bed_description
+        DECIMAL room_size_sqm
+        VARCHAR max_occupancy_raw
+        SMALLINT max_guests
+        VARCHAR view
         TEXT_ARRAY room_facilities
+        JSONB amenity_groups
         TEXT_ARRAY images
+        INT image_count
         TIMESTAMP created_at
         TIMESTAMP updated_at
     }
@@ -51,9 +85,12 @@ erDiagram
         VARCHAR currency
         DATE check_in_date
         DATE check_out_date
+        BOOLEAN sold_out
+        BOOLEAN crossed_out
+        DECIMAL review_score
+        VARCHAR review_text
         TEXT source_url
         TEXT package_details
-        SMALLINT available_rooms
         TIMESTAMP crawled_at
     }
     

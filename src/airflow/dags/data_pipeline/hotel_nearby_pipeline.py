@@ -207,15 +207,19 @@ def fetch_hotel_sources(
     destination_id: str,
     hotel_id: str = "",
 ) -> List[Dict[str, Any]]:
-    """Load one selected hotel or all positioned destination hotels with OTA URLs."""
+    """Load one selected hotel-listing or all positioned destination hotel-listings with OTA URLs.
+
+    One row per (source_platform, source_hotel_id) OTA listing — a physical hotel
+    listed on both Agoda and Booking yields two rows here, not one merged entry.
+    """
     if psycopg2 is None:
         raise RuntimeError("PostgreSQL driver is unavailable in this environment.")
     query = """
-        SELECT id::text, name, coordinates, source_urls
+        SELECT id::text, name, coordinates, source_platform, source_url
         FROM hotels
         WHERE destination_id = %s
           AND coordinates IS NOT NULL
-          AND source_urls IS NOT NULL
+          AND source_url IS NOT NULL
     """
     arguments: List[Any] = [destination_id]
     if hotel_id:
@@ -231,31 +235,30 @@ def fetch_hotel_sources(
         connection.close()
 
     hotels: List[Dict[str, Any]] = []
-    for hotel_id, name, coordinates, source_urls in rows:
+    for hotel_id, name, coordinates, source_platform, source_url in rows:
         point = _coordinates_from_hotel(coordinates)
         if not point:
             continue
-        for url in source_urls or []:
-            source = hotel_source_name(str(url))
-            if source:
-                source_url = (
-                    canonical_booking_hotel_url(str(url))
-                    if source == "booking"
-                    else str(url)
-                )
-                if not source_url:
-                    continue
-                hotels.append(
-                    {
-                        "hotel_id": hotel_id,
-                        "hotel_name": name,
-                        "hotel_latitude": point[0],
-                        "hotel_longitude": point[1],
-                        "source": source,
-                        "source_url": source_url,
-                    }
-                )
-                break
+        source = str(source_platform or "").lower()
+        if not source:
+            continue
+        resolved_url = (
+            canonical_booking_hotel_url(str(source_url))
+            if source == "booking"
+            else str(source_url)
+        )
+        if not resolved_url:
+            continue
+        hotels.append(
+            {
+                "hotel_id": hotel_id,
+                "hotel_name": name,
+                "hotel_latitude": point[0],
+                "hotel_longitude": point[1],
+                "source": source,
+                "source_url": resolved_url,
+            }
+        )
     return hotels
 
 

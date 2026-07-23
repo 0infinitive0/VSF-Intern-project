@@ -361,6 +361,43 @@ class HotelNearbyPipelineTests(unittest.TestCase):
         self.assertNotIn("LIMIT", query)
         self.assertEqual(arguments, ("destination-id",))
 
+    @patch("hotel_nearby_pipeline.psycopg2")
+    def test_hotel_sources_returns_one_entry_per_ota_listing(self, psycopg2_mock):
+        cursor = psycopg2_mock.connect.return_value.cursor.return_value.__enter__.return_value
+        cursor.fetchall.return_value = [
+            ("hotel-agoda", "Same Physical Hotel", "10.7627,106.6603", "agoda",
+             "https://www.agoda.com/same-hotel/hotel/ho-chi-minh-city-vn.html"),
+            ("hotel-booking", "Same Physical Hotel", "10.7627,106.6603", "booking",
+             "https://www.booking.com/hotel/vn/same-hotel.vi.html"),
+        ]
+
+        results = fetch_hotel_sources("destination-id")
+
+        self.assertEqual(len(results), 2)
+        self.assertEqual(
+            [entry["source"] for entry in results],
+            ["agoda", "booking"],
+        )
+        self.assertEqual(
+            results[0]["source_url"],
+            "https://www.agoda.com/same-hotel/hotel/ho-chi-minh-city-vn.html",
+        )
+        self.assertEqual(results[0]["hotel_id"], "hotel-agoda")
+        self.assertEqual(results[0]["hotel_latitude"], 10.7627)
+        self.assertEqual(results[0]["hotel_longitude"], 106.6603)
+
+    @patch("hotel_nearby_pipeline.psycopg2")
+    def test_hotel_sources_skip_rows_missing_platform_or_coordinates(self, psycopg2_mock):
+        cursor = psycopg2_mock.connect.return_value.cursor.return_value.__enter__.return_value
+        cursor.fetchall.return_value = [
+            ("no-coords", "Missing Coordinates", "", "agoda", "https://www.agoda.com/x/hotel/y.html"),
+            ("no-platform", "Missing Platform", "10.0,106.0", "", "https://www.agoda.com/x/hotel/y.html"),
+        ]
+
+        results = fetch_hotel_sources("destination-id")
+
+        self.assertEqual(results, [])
+
 
 class GeographyTests(unittest.TestCase):
     def test_nominatim_user_agent_does_not_use_placeholder_contact(self):
@@ -1307,6 +1344,7 @@ class AirflowDiscoveryTests(unittest.TestCase):
                 "osm_pipeline.py",
                 "ota_pipeline.py",
                 "google_maps_pipeline.py",
+                "hotel_pipeline.py",
                 "hotel_nearby_pipeline.py",
                 "pipeline_stages.py",
             },
@@ -1319,9 +1357,39 @@ class AirflowDiscoveryTests(unittest.TestCase):
             "google_maps_dag.py",
             "combined_dag.py",
             "hotel_nearby_dag.py",
+            "hotel_dag.py",
         ):
             content = (PIPELINE_DIR / dag_file).read_text(encoding="utf-8")
             self.assertIn('"do_xcom_push": False', content, dag_file)
+
+    def test_hotel_loader_dag_orchestrates_pipeline_without_inline_stage_logic(self):
+        content = (PIPELINE_DIR / "hotel_dag.py").read_text(encoding="utf-8")
+
+        for task_id in (
+            "extract",
+            "validate",
+            "normalize",
+            "dedupe",
+            "load_to_postgresql",
+            "quality_check",
+        ):
+            self.assertIn(f'task_id="{task_id}"', content)
+
+        for function_name in (
+            "extract_hotels",
+            "validate_hotels",
+            "normalize_hotels",
+            "dedupe_hotels",
+            "load_hotels_to_db",
+            "quality_check_hotels",
+        ):
+            self.assertIn(function_name, content)
+
+        self.assertIn('dag_id="booking_agoda_hotel_loader_pipeline"', content)
+        self.assertIn('"agoda_path": Param(', content)
+        self.assertIn('"booking_path": Param(', content)
+        self.assertIn('"/opt/airflow/data"', content)
+        self.assertIn('"/opt/airflow/logs/reports"', content)
 
 
 class OtaParserTests(unittest.TestCase):

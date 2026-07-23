@@ -38,8 +38,9 @@ def get_locations():
         cursor.execute("SELECT id, name, region, coordinates FROM destinations WHERE coordinates IS NOT NULL;")
         destination_rows = cursor.fetchall()
         
-        # Hotels
-        cursor.execute("SELECT id, name, star_rating, coordinates, images, source_urls FROM hotels WHERE coordinates IS NOT NULL;")
+        # Hotels — one row per (source_platform, source_hotel_id) OTA listing;
+        # a physical hotel listed on both Agoda and Booking yields two pins here.
+        cursor.execute("SELECT id, name, star_rating, coordinates, images, source_url FROM hotels WHERE coordinates IS NOT NULL;")
         hotel_rows = cursor.fetchall()
         
         locations = []
@@ -76,7 +77,7 @@ def get_locations():
                 continue
                 
         for row in hotel_rows:
-            item_id, name, star_rating, coords, images, source_urls = row
+            item_id, name, star_rating, coords, images, source_url = row
             try:
                 lat, lng = coords.split(',')
                 locations.append({
@@ -86,7 +87,7 @@ def get_locations():
                     "lat": float(lat),
                     "lng": float(lng),
                     "images": parse_images(images),
-                    "source_urls": parse_images(source_urls),
+                    "source_urls": [source_url] if source_url else [],
                     "type": "hotel"
                 })
             except Exception:

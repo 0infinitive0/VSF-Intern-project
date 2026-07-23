@@ -14,51 +14,104 @@ CREATE TABLE destinations (
 );
 
 -- Bảng 2: Thông tin Khách sạn / Resort (Hotels)
+-- Quy ước: 1 dòng = 1 khách sạn theo 1 OTA (source_platform + source_hotel_id), KHÔNG gộp.
+-- Agoda/Booking dù trùng khách sạn vật lý — giá và chính sách mỗi OTA khác nhau, giữ cả 2 để
+-- chatbot so sánh/tư vấn. Việc gộp khách sạn vật lý trùng nguồn là việc khác, chưa làm ở đây.
 CREATE TABLE hotels (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     destination_id UUID REFERENCES destinations(id) ON DELETE SET NULL,
+    source_platform VARCHAR(20) NOT NULL, -- 'agoda' | 'booking'
+    source_hotel_id BIGINT NOT NULL, -- hotel_id gốc từ OTA
+    source_url TEXT, -- property_url gốc trên OTA
     name VARCHAR(255) NOT NULL,
-    description TEXT,
-    star_rating SMALLINT CHECK (star_rating >= 1 AND star_rating <= 5),
-    amenities TEXT[], -- Lưu mảng các tiện ích, ví dụ: '{"Hồ bơi", "Spa", "Wifi"}'
+    accommodation_type VARCHAR(50), -- Chuẩn hóa lúc ETL (Agoda: nhãn tiếng Việt, Booking: enum tiếng Anh)
+    description TEXT, -- Chỉ có ở Agoda
+    star_rating DECIMAL(2, 1) CHECK (star_rating >= 0 AND star_rating <= 5), -- Agoda có nửa sao (3.5) và cả 0 (chưa xếp hạng)
+    address VARCHAR(500),
+    city VARCHAR(100), -- Raw text gốc từ nguồn, dùng destination_id cho query chuẩn
+    area_name VARCHAR(100),
+    country VARCHAR(100), -- Chuẩn hóa (VD ISO code) lúc ETL
+    location_highlight VARCHAR(255), -- Chỉ có ở Agoda
     coordinates VARCHAR(50), -- Tọa độ GPS (VD: '10.762622, 106.660172') để tính khoảng cách đi bộ
-    images TEXT[], -- Mảng URL hình ảnh cho Gallery
-    videos TEXT[], -- Mảng URL video dọc cho Modal
-    source_urls TEXT[], -- Mảng các link gốc (Booking, Agoda...) nếu khách sạn bị trùng (Deduplicated)
-    source_ids TEXT[], -- Mảng các ID gốc trên OTA để đối chiếu
+    amenities TEXT[], -- Mảng phẳng tiện ích, ví dụ: '{"Hồ bơi", "Spa", "Wifi"}'
+    amenity_groups JSONB, -- Tiện ích nhóm theo danh mục (cấu trúc khác nhau giữa 2 nguồn)
+    highlights TEXT[], -- Chỉ có ở Agoda
+    awards TEXT[], -- Chỉ có ở Agoda
+    warnings TEXT[],
+    review_score DECIMAL(4, 2),
+    review_count INT,
+    review_text VARCHAR(100), -- Chỉ có ở Agoda
+    category_scores JSONB, -- Subratings, tên tiêu chí khác nhau giữa 2 nguồn
+    score_distribution JSONB, -- Chỉ có ở Agoda
+    check_in_time VARCHAR(20),
+    check_in_until VARCHAR(20),
+    check_out_time VARCHAR(20),
+    reception_open_until VARCHAR(50), -- Chỉ có ở Agoda
+    image_url TEXT, -- Ảnh đại diện/thumbnail
+    images TEXT[], -- Mảng URL toàn bộ hình ảnh cho Gallery
+    image_count INT,
+    nearby_attractions JSONB, -- Cấu trúc khác nhau giữa 2 nguồn (Agoda: list string, Booking: list object)
+    nearby_essentials JSONB,
+    lowest_price DECIMAL(12, 2), -- Cache giá thấp nhất tại lần crawl gần nhất (nguồn xác thực là room_prices)
+    currency VARCHAR(10),
+    price_check_in_date DATE,
+    price_check_out_date DATE,
+    rooms_available BOOLEAN, -- Agoda: bool gốc; Booking: số phòng còn trống (int) ép về (>0) lúc ETL
+    offer_count SMALLINT,
+    scraped_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(source_platform, source_hotel_id) -- Khóa UPSERT khi crawl lại đúng khách sạn/đúng OTA
 );
 
--- Bảng 3: Thông tin Loại Phòng (Rooms)
+-- Bảng 3: Thông tin Loại Phòng (Rooms) — theo đúng 1 OTA của khách sạn đó
 CREATE TABLE rooms (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     hotel_id UUID REFERENCES hotels(id) ON DELETE CASCADE,
+    source_room_id BIGINT NOT NULL, -- room_id gốc từ OTA
     name VARCHAR(255) NOT NULL,
-    max_adults SMALLINT DEFAULT 2, -- Số người lớn tối đa
-    max_children SMALLINT DEFAULT 0, -- Số trẻ em tối đa ngủ cùng
-    number_of_beds SMALLINT, -- Số lượng giường
-    bed_type VARCHAR(100), -- Loại giường (VD: 1 Giường đôi siêu lớn, 2 giường đơn)
-    room_facilities TEXT[], -- Tiện ích riêng của phòng
+    bed_description TEXT, -- Text thô (VD: '1 giường đơn', '1 Large double bed') — không tách number_of_beds/bed_type
+                          -- vì dữ liệu 2 nguồn tự do, khác ngôn ngữ, không tin cậy để parse cứng
+    room_size_sqm DECIMAL(6, 2), -- Diện tích phòng (m²), parse từ "20 m²"
+    max_occupancy_raw VARCHAR(100), -- Text/số gốc mô tả sức chứa, giữ nguyên để không mất ngữ cảnh
+    max_guests SMALLINT, -- Parse best-effort. LƯU Ý: Agoda chỉ tính người lớn, Booking là tổng khách
+                         -- — 2 nguồn khác ngữ nghĩa, không so sánh trực tiếp liên-nguồn
+    view VARCHAR(255),
+    room_facilities TEXT[], -- Tiện ích riêng của phòng (flatten amenity_groups với Agoda)
+    amenity_groups JSONB, -- Nullable, chỉ có ở Agoda
     images TEXT[], -- Mảng URL hình ảnh của phòng
+    image_count INT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(hotel_id, source_room_id)
 );
 
 -- Bảng 4: Giá phòng (Room Prices - Chỉ lưu giá mới nhất theo ngày check-in/check-out)
 CREATE TABLE room_prices (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     room_id UUID REFERENCES rooms(id) ON DELETE CASCADE,
-    price DECIMAL(12, 2) NOT NULL,
+    price DECIMAL(12, 2),
     currency VARCHAR(10) DEFAULT 'VND',
-    check_in_date DATE NOT NULL,
-    check_out_date DATE NOT NULL,
-    source_url TEXT NOT NULL, -- Link affiliate/gốc trang đặt phòng
-    package_details TEXT, -- VD: 'Bao gồm bữa sáng, Không hoàn tiền'
-    available_rooms SMALLINT, -- Số phòng còn trống ở mức giá này (cảnh báo khan hiếm)
-    crawled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    -- Unique constraint để cho phép thao tác UPSERT (ON CONFLICT DO UPDATE)
-    UNIQUE(room_id, check_in_date, check_out_date, source_url, package_details) 
+    check_in_date DATE,
+    check_out_date DATE,
+    sold_out BOOLEAN DEFAULT FALSE, -- Thay cho available_rooms cũ: không nguồn nào có số phòng trống, chỉ có cờ hết phòng
+    crossed_out BOOLEAN DEFAULT FALSE, -- Cờ hiển thị giá gạch ngang (khuyến mãi). Chỉ có ở Agoda, không kèm giá gốc
+    review_score DECIMAL(4, 2), -- Review điểm theo phòng, chỉ có ở Agoda
+    review_text VARCHAR(100),
+    source_url TEXT, -- Link affiliate/gốc trang đặt phòng; fallback dùng hotels.source_url nếu không có link riêng
+    package_details TEXT, -- VD: 'Bao gồm bữa sáng, Không hoàn tiền' — 2 nguồn hiện tại chưa cung cấp field này
+    crawled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Expression unique index (không dùng UNIQUE(...) thường trong CREATE TABLE) vì source_url/
+-- package_details có thể NULL — Postgres coi mỗi NULL là khác nhau nên UNIQUE thường sẽ không
+-- dedupe đúng lúc UPSERT. COALESCE về '' để NULL so khớp được với nhau.
+CREATE UNIQUE INDEX ux_room_prices_natural_key ON room_prices (
+    room_id,
+    check_in_date,
+    check_out_date,
+    COALESCE(source_url, ''),
+    COALESCE(package_details, '')
 );
 
 -- Bảng 5: Điểm tham quan / Hoạt động (Attractions)
