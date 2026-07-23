@@ -1,8 +1,6 @@
-# Crawler DAGs
+# Attraction crawler DAGs
 
-This folder exposes five Airflow DAGs that share the same seven-stage pipeline.
-Four of them fill `attractions`; the hotel DAG fills `hotels`, `rooms` and
-`room_prices`.
+This folder exposes four Airflow DAGs that share the same seven-stage pipeline.
 
 | DAG | Sources | Schedule |
 | --- | --- | --- |
@@ -10,7 +8,6 @@ Four of them fill `attractions`; the hotel DAG fills `hotels`, `rooms` and
 | `google_maps_poc_attractions_pipeline` | Rendered public Google Maps result cards through Playwright; no Maps API | Manual |
 | `booking_agoda_attractions_pipeline` | Booking.com and/or Agoda public pages | Manual |
 | `combined_attractions_pipeline` | Both source families, followed by cross-source deduplication | Manual |
-| `booking_agoda_hotels_pipeline` | Exported Booking.com and Agoda scraper datasets under `data/raw/` | Manual |
 
 ## Pipeline blocks
 
@@ -94,47 +91,7 @@ Booking pages are parsed from their public HTML. Agoda activity pages are render
 with Playwright Chromium because their product content is client-rendered. The
 custom Airflow image installs that browser runtime.
 
-## Hotel dataset pipeline
-
-`booking_agoda_hotels_pipeline` reads scraper exports instead of crawling, and
-differs from the attraction DAGs in two ways:
-
-- `data_source` discovers dataset files rather than geocoding one destination.
-  Destinations come from the records themselves and are created in `normalize`.
-- Stages exchange JSONL paths under `data/interim/<run_id>/` through XCom
-  instead of the records. A full export is roughly 1000 hotels with 45 images
-  each, which the XCom metadata backend should not carry.
-
-Files are routed by name: `dataset_booking-*.json` and `dataset_agoda-*.json`.
-Byte-identical re-exports are skipped by SHA-256, so a manually re-downloaded
-`... (1).json` copy cannot double-load.
-
-Normalization rules that reconcile the two scrapers live in `hotel_utils.py`:
-
-- Currency tokens `US` and `US$` both become `USD`; unknown codes reject the
-  offer instead of guessing. Prices are stored in their original currency.
-- City spellings in either language map to one destination slug (`Hue`, `Huế`).
-- `star_rating` 0 and null both become NULL; Agoda encodes "unrated" as 0 and
-  the `hotels` CHECK constraint only accepts 1-5.
-- Coordinates outside Vietnam are dropped rather than stored.
-- `package_details` is never NULL, otherwise the `room_prices` unique key
-  cannot upsert: PostgreSQL treats NULLs as distinct.
-
-Deduplication is deliberately conservative. Within one OTA only an identical
-source id is a duplicate, because two listing ids are two products the OTA
-itself considers distinct, such as neighbouring apartments in one tower. Only
-cross-OTA pairs are matched on geography and name, and only above 92 name
-similarity within 80 metres. Everything else lands in `merge_review.jsonl` for
-a human, including same-chain pairs whose scores sit on the threshold.
-
-All primary keys are `uuid5` values derived from the source identity, so
-re-running the DAG upserts the same rows instead of inserting duplicates.
-
 ## Runtime configuration
-
-`VSF_HOTEL_DATASET_DIR` (default `/opt/airflow/data/raw`) and
-`VSF_HOTEL_WORK_DIR` (default `/opt/airflow/data/interim`) locate the hotel
-datasets and stage artefacts.
 
 Database values can be overridden with `VSF_DB_NAME`, `VSF_DB_USER`,
 `VSF_DB_PASSWORD`, `VSF_DB_HOST`, and `VSF_DB_PORT`. Set

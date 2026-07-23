@@ -76,20 +76,11 @@ x-airflow-common:
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
     # The following line can be used to set a custom config file, stored in the local config folder
     AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
-    # The hotel DAG derives these from its own location, which only resolves to
-    # the repository when the tree is intact; dags/ is mounted flat here, so the
-    # container paths are set explicitly.
-    VSF_HOTEL_DATASET_DIR: '/opt/airflow/data/raw'
-    VSF_HOTEL_WORK_DIR: '/opt/airflow/data/interim'
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
     - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
-    # Repository data directory: raw/ holds the exported OTA datasets the hotel
-    # DAG reads, interim/ receives its per-run JSONL stage output. Mounted so
-    # those artefacts survive `docker compose down` and stay readable on the host.
-    - ${AIRFLOW_PROJ_DIR:-.}/../../data:/opt/airflow/data
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on
