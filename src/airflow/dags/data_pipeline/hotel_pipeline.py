@@ -6,11 +6,6 @@ into the flat, per-OTA-listing `hotels`/`rooms`/`room_prices` tables (one row pe
 Booking stays as two separate rows, since price/policy differ per OTA and the
 chatbot needs to compare them; see scripts/database_schema.sql).
 
-Ported from github.com/NhatLam71388/data_pipeline_hotel's `pipeline/` package,
-translated from SQLAlchemy+Pydantic to raw psycopg2 + plain dicts to match this
-repo's existing convention (see osm_pipeline.py's get_or_create_destination /
-load_attractions_to_db).
-
 Cross-OTA physical-hotel deduplication is out of scope here (same as upstream):
 a hotel on both Agoda and Booking is loaded as two rows, not merged into one.
 """
