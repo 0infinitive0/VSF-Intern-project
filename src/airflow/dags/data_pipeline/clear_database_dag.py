@@ -4,7 +4,7 @@ from datetime import datetime
 import psycopg2
 
 def clear_database(**kwargs):
-    print("Clearing all data from destinations and attractions tables...")
+    print("Clearing data from attractions table...")
     
     db_conn_kwargs = {
         "host": "postgres",
@@ -20,7 +20,7 @@ def clear_database(**kwargs):
         cursor = conn.cursor()
         
         # CASCADE ensures any dependent tables (like events or hotels) are also cleared
-        cursor.execute("TRUNCATE destinations, attractions CASCADE;")
+        cursor.execute("TRUNCATE attractions CASCADE;")
         conn.commit()
         
         print("Database successfully cleared! All history has been wiped.")

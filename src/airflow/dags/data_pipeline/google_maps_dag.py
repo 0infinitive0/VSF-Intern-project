@@ -28,6 +28,7 @@ DEFAULT_ARGS = {
     "depends_on_past": False,
     "email_on_failure": False,
     "email_on_retry": False,
+    "do_xcom_push": False,
     "retries": 0,
 }
 
@@ -60,14 +61,23 @@ def validate_clean_task(**kwargs):
 def normalize_task(**kwargs):
     destination = destination_from_xcom("data_source", **kwargs)
     item_limit = int((kwargs.get("params") or {}).get("item_limit") or 20)
+    cleaned_records = kwargs["ti"].xcom_pull(
+        task_ids="validate_clean",
+        key="clean_google_maps_records",
+    ) or []
+    print(
+        "[google-maps-poc] Normalize: "
+        f"received {len(cleaned_records)} cleaned candidates; target={item_limit}."
+    )
     records = normalize_google_maps_candidates(
-        kwargs["ti"].xcom_pull(
-            task_ids="validate_clean",
-            key="clean_google_maps_records",
-        ) or [],
+        cleaned_records,
         destination["destination_id"],
         destination["destination_name"],
         item_limit,
+    )
+    print(
+        "[google-maps-poc] Normalize: "
+        f"completed {len(records)} normalized records."
     )
     kwargs["ti"].xcom_push(key="normalized_google_maps_records", value=records)
     return f"Normalized and enriched {len(records)} Google Maps records"
@@ -90,7 +100,7 @@ with DAG(
         "destination_name": Param("Nha Trang", type="string", minLength=1),
         "location_coords": Param(**optional_location_coords_param_kwargs()),
         "radius_meters": Param(20_000, type="integer", minimum=500, maximum=100_000),
-        "item_limit": Param(20, type="integer", minimum=1, maximum=100),
+        "item_limit": Param(20, type="integer", minimum=1, maximum=300),
     },
 ) as dag:
     data_source = PythonOperator(task_id="data_source", python_callable=prepare_destination_task)

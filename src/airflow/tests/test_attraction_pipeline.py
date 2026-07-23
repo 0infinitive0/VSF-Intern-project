@@ -1,7 +1,8 @@
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from types import ModuleType
+from unittest.mock import MagicMock, Mock, patch
 
 
 PIPELINE_DIR = Path(__file__).resolve().parents[1] / "dags" / "data_pipeline"
@@ -20,16 +21,39 @@ from destination_geo import resolve_location_context  # noqa: E402
 from dag_common import optional_location_coords_param_kwargs  # noqa: E402
 from google_maps_pipeline import (  # noqa: E402
     _coordinates_from_google_maps_url,
+    _card_description,
+    _candidate_from_google_maps_place_page,
+    _is_geographically_valid_nearby_maps_result,
+    _google_maps_shared_place_url,
     _fact_based_description,
     _google_maps_enrichment_urls,
+    _google_maps_official_website,
+    _trim_incomplete_description,
+    _is_safe_official_site_url,
     _is_google_maps_place_url,
     _large_google_image_url,
     _load_google_maps_detail,
     _merge_google_maps_detail,
+    _merge_official_site_detail,
     _normalize_google_maps_detail,
     _normalize_google_maps_destination,
+    _parse_google_maps_hours,
+    _google_maps_detail_from_page,
     collect_google_maps_attractions,
+    enrich_google_maps_records,
     normalize_google_maps_candidate,
+    resolve_google_maps_nearby_candidates,
+)
+from hotel_nearby_pipeline import (  # noqa: E402
+    _batches_by_hotel,
+    canonical_booking_hotel_url,
+    crawl_hotel_surroundings,
+    extract_agoda_surrounding_names,
+    extract_booking_surrounding_names,
+    fetch_hotel_sources,
+    filter_existing_attraction_names,
+    is_within_hotel_radius,
+    resolve_hotel_surrounding_seeds,
 )
 from ota_pipeline import (  # noqa: E402
     _agoda_browser_context_options,
@@ -128,6 +152,214 @@ class PipelineStageTests(unittest.TestCase):
         self.assertEqual(report["schema_valid_records"], 1)
         self.assertEqual(report["description_coverage_percent"], 100.0)
         self.assertEqual(report["image_coverage_percent"], 100.0)
+
+
+class HotelNearbyPipelineTests(unittest.TestCase):
+    def test_existing_attraction_names_are_filtered_after_name_normalization(self):
+        records = [
+            {"name": "Bảo tàng Cổ vật Cung đình"},
+            {"name": "Công viên Lê Lợi"},
+        ]
+
+        retained = filter_existing_attraction_names(
+            records,
+            {"bảo tàng cổ vật cung đình"},
+        )
+
+        self.assertEqual(retained, [{"name": "Công viên Lê Lợi"}])
+
+    def test_hotel_batches_keep_all_surroundings_for_the_same_hotel_together(self):
+        records = [
+            {"hotel_id": "hotel-a", "name": "A1"},
+            {"hotel_id": "hotel-a", "name": "A2"},
+            {"hotel_id": "hotel-b", "name": "B1"},
+            {"hotel_id": "hotel-c", "name": "C1"},
+        ]
+
+        batches = _batches_by_hotel(records, worker_count=2)
+        hotel_a_batches = [
+            batch for batch in batches
+            if any(record["hotel_id"] == "hotel-a" for record in batch)
+        ]
+
+        self.assertEqual(len(hotel_a_batches), 1)
+        self.assertEqual(
+            [
+                record["name"] for record in hotel_a_batches[0]
+                if record["hotel_id"] == "hotel-a"
+            ],
+            ["A1", "A2"],
+        )
+        self.assertEqual(len(batches), 2)
+        self.assertEqual(sum(len(batch) for batch in batches), len(records))
+
+    @patch("hotel_nearby_pipeline._crawl_hotel_surroundings_batch")
+    def test_hotel_crawler_uses_a_bounded_parallel_batch_for_each_hotel_group(self, crawl_batch):
+        hotels = [
+            {"hotel_id": "hotel-a", "name": "Hotel A"},
+            {"hotel_id": "hotel-b", "name": "Hotel B"},
+        ]
+        crawl_batch.side_effect = lambda batch, _limit: list(batch)
+
+        result = crawl_hotel_surroundings(hotels, nearby_limit_per_hotel=8, worker_count=2)
+
+        self.assertEqual(result, hotels)
+        self.assertEqual(crawl_batch.call_count, 2)
+
+    @patch("hotel_nearby_pipeline.resolve_google_maps_nearby_candidates")
+    def test_hotel_maps_resolver_processes_hotel_groups_in_parallel_batches(self, resolve_maps):
+        seeds = [
+            {"hotel_id": "hotel-a", "name": "A1"},
+            {"hotel_id": "hotel-a", "name": "A2"},
+            {"hotel_id": "hotel-b", "name": "B1"},
+        ]
+        resolve_maps.side_effect = lambda batch, *_args: list(batch)
+
+        result = resolve_hotel_surrounding_seeds(
+            seeds,
+            {"mode": "radius", "latitude": 16.4, "longitude": 107.5},
+            hotel_radius_meters=5_000,
+            destination_name="Huế",
+            worker_count=2,
+        )
+
+        self.assertEqual(result, seeds)
+        self.assertEqual(resolve_maps.call_count, 2)
+
+    def test_booking_hotel_url_uses_canonical_vietnam_path_without_tracking_query(self):
+        self.assertEqual(
+            canonical_booking_hotel_url(
+                "https://www.booking.com/hotel/vn/an-tam.en-gb.html?"
+                "lang=en-gb&force_referer=http%3A%2F%2Flocalhost%3A8082%2F"
+            ),
+            "https://www.booking.com/hotel/vn/an-tam.en-gb.html?lang=vi",
+        )
+        self.assertEqual(
+            canonical_booking_hotel_url(
+                "https://www.booking.com/hotel/example.html?lang=en-gb"
+            ),
+            "https://www.booking.com/hotel/vn/example.html?lang=vi",
+        )
+
+    def test_booking_surroundings_parser_keeps_named_places_in_its_nearby_section(self):
+        html = """
+        <section><h2>Property surroundings</h2>
+          <ul><li>Chợ Đầm</li><li>Tháp Bà Ponagar</li><li>500 m</li></ul>
+        </section>
+        <section><h2>House rules</h2><p>Check-in is from 14:00.</p></section>
+        """
+
+        self.assertEqual(
+            extract_booking_surrounding_names(html, "Khách sạn mẫu"),
+            ["Chợ Đầm", "Tháp Bà Ponagar"],
+        )
+
+    def test_agoda_surroundings_parser_uses_its_landmarks_section(self):
+        html = """
+        <section><h2>Popular landmarks</h2>
+          <ul><li>Nhà thờ Đá Nha Trang</li><li>Bãi biển Trần Phú</li></ul>
+        </section>
+        <section><h2>Rooms</h2><p>Deluxe room</p></section>
+        """
+
+        self.assertEqual(
+            extract_agoda_surrounding_names(html, "Khách sạn mẫu"),
+            ["Nhà thờ Đá Nha Trang", "Bãi biển Trần Phú"],
+        )
+
+    def test_booking_surroundings_excludes_public_transport_and_airports(self):
+        html = """
+        <section><h2>Hotel surroundings</h2>
+          <h3>What's nearby</h3><ul><li>Fine Arts Museum</li></ul>
+          <h3>Top attractions</h3><ul><li>Ho Chi Minh City Museum</li></ul>
+          <h3>Public transport</h3><ul><li>Saigon Railway Station</li></ul>
+          <h3>Closest airports</h3><ul><li>Tan Son Nhat International Airport</li></ul>
+        </section>
+        """
+
+        self.assertEqual(
+            extract_booking_surrounding_names(html, "Mays Hotel- Ben Thanh"),
+            ["Fine Arts Museum", "Ho Chi Minh City Museum"],
+        )
+
+    def test_booking_surroundings_removes_distances_and_ui_labels(self):
+        html = """
+        <section><h2>Hotel surroundings</h2>
+          <h3>What's nearby</h3>
+          <ul>
+            <li>Excellent location - show map</li>
+            <li>Museum of Royal Antiquities 550 yd</li>
+            <li>Forbidden Purple City 0.7 mi</li>
+            <li>Truong Tien Bridge 1,050 yd</li>
+            <li>Tử Cấm Thành 1,2 km</li>
+          </ul>
+        </section>
+        """
+
+        self.assertEqual(
+            extract_booking_surrounding_names(html, "Hotel in Hue"),
+            [
+                "Museum of Royal Antiquities",
+                "Forbidden Purple City",
+                "Truong Tien Bridge",
+                "Tử Cấm Thành",
+            ],
+        )
+
+    def test_booking_surroundings_supports_vietnamese_hotel_surroundings_heading(self):
+        html = """
+        <section><h2>Xung quanh khách sạn</h2>
+          <ul><li>Bảo tàng Mỹ thuật Thành phố Hồ Chí Minh</li></ul>
+        </section>
+        """
+
+        self.assertEqual(
+            extract_booking_surrounding_names(html, "Mays Hotel- Ben Thanh"),
+            ["Bảo tàng Mỹ thuật Thành phố Hồ Chí Minh"],
+        )
+
+    def test_booking_surroundings_supports_vietnamese_category_headings(self):
+        html = """
+        <section><h2>Xung quanh khách sạn</h2>
+          <h3>Xung quanh có gì?</h3><ul><li>Bảo tàng Mỹ thuật</li></ul>
+          <h3>Địa điểm tham quan hàng đầu</h3><ul><li>Bảo tàng Thành phố Hồ Chí Minh</li></ul>
+          <h3>Phương tiện công cộng</h3><ul><li>Ga Hòa Hưng</li></ul>
+          <h3>Các sân bay gần nhất</h3><ul><li>Sân bay Quốc tế Tân Sơn Nhất</li></ul>
+        </section>
+        """
+
+        self.assertEqual(
+            extract_booking_surrounding_names(html, "Mays Hotel- Ben Thanh"),
+            ["Bảo tàng Mỹ thuật", "Bảo tàng Thành phố Hồ Chí Minh"],
+        )
+
+    def test_hotel_radius_rejects_same_named_result_that_is_too_far_away(self):
+        self.assertTrue(is_within_hotel_radius(12.245, 109.194, 12.247, 109.195, 1_000))
+        self.assertFalse(is_within_hotel_radius(12.245, 109.194, 12.300, 109.250, 1_000))
+
+    @patch("hotel_nearby_pipeline.psycopg2")
+    def test_hotel_source_query_limits_to_one_hotel_when_id_is_provided(self, psycopg2_mock):
+        cursor = psycopg2_mock.connect.return_value.cursor.return_value.__enter__.return_value
+        cursor.fetchall.return_value = []
+
+        fetch_hotel_sources("destination-id", hotel_id="hotel-id")
+
+        query, arguments = cursor.execute.call_args.args
+        self.assertIn("id::text = %s", query)
+        self.assertNotIn("LIMIT", query)
+        self.assertEqual(arguments, ("destination-id", "hotel-id"))
+
+    @patch("hotel_nearby_pipeline.psycopg2")
+    def test_hotel_source_query_uses_all_destination_hotels_when_id_is_empty(self, psycopg2_mock):
+        cursor = psycopg2_mock.connect.return_value.cursor.return_value.__enter__.return_value
+        cursor.fetchall.return_value = []
+
+        fetch_hotel_sources("destination-id")
+
+        query, arguments = cursor.execute.call_args.args
+        self.assertNotIn("id::text = %s", query)
+        self.assertNotIn("LIMIT", query)
+        self.assertEqual(arguments, ("destination-id",))
 
 
 class GeographyTests(unittest.TestCase):
@@ -360,6 +592,195 @@ class GeographyTests(unittest.TestCase):
 
 
 class GoogleMapsPipelineTests(unittest.TestCase):
+    def test_nearby_resolver_retries_a_valid_place_after_an_initial_maps_shell(self):
+        page = Mock()
+        articles = Mock()
+        articles.count.return_value = 0
+        page.locator.return_value = articles
+        context = Mock()
+        context.new_page.return_value = page
+        browser = Mock()
+        browser.new_context.return_value = context
+        playwright = Mock()
+        playwright.chromium.launch.return_value = browser
+        playwright_context = MagicMock()
+        playwright_context.__enter__.return_value = playwright
+
+        sync_api_module = ModuleType("playwright.sync_api")
+        sync_api_module.sync_playwright = Mock(return_value=playwright_context)
+        seed = {
+            "name": "Bảo tàng Museum of Royal Antiquities",
+            "category": "Museums & culture",
+            "hotel_latitude": 16.4712,
+            "hotel_longitude": 107.5853,
+        }
+        canonical_candidate = {
+            **seed,
+            "name": "Bảo tàng Cổ vật Cung đình",
+            "source_id": "google-maps-museum",
+            "latitude": 16.471343,
+            "longitude": 107.58208,
+        }
+        location_context = {
+            "mode": "radius",
+            "latitude": 16.4712,
+            "longitude": 107.5853,
+            "radius_meters": 5_000,
+        }
+
+        with (
+            patch.dict(
+                sys.modules,
+                {
+                    "playwright": ModuleType("playwright"),
+                    "playwright.sync_api": sync_api_module,
+                },
+            ),
+            patch("google_maps_pipeline._accept_google_consent"),
+            patch("google_maps_pipeline._raise_if_google_blocked"),
+            patch(
+                "google_maps_pipeline._candidate_from_google_maps_place_page",
+                side_effect=[None, canonical_candidate],
+            ),
+            patch("google_maps_pipeline.time.sleep"),
+            patch("builtins.print"),
+        ):
+            result = resolve_google_maps_nearby_candidates(
+                [seed],
+                location_context,
+                hotel_radius_meters=5_000,
+                destination_name="Huế",
+            )
+
+        self.assertEqual(result, [canonical_candidate])
+        self.assertEqual(page.goto.call_count, 2)
+
+    def test_nearby_maps_result_can_use_a_different_canonical_name(self):
+        context = {
+            "mode": "radius",
+            "latitude": 16.4712,
+            "longitude": 107.5853,
+            "radius_meters": 5_000,
+        }
+        seed = {"hotel_latitude": 16.4712, "hotel_longitude": 107.5853}
+
+        self.assertTrue(
+            _is_geographically_valid_nearby_maps_result(
+                {**seed, "name": "Hue Historic Citadel", "latitude": 16.47694, "longitude": 107.5739587},
+                context,
+                5_000,
+            )
+        )
+        self.assertFalse(
+            _is_geographically_valid_nearby_maps_result(
+                {**seed, "name": "Far-away Citadel", "latitude": 16.60, "longitude": 107.80},
+                context,
+                5_000,
+            )
+        )
+
+    def test_google_maps_share_dialog_returns_generated_canonical_place_link(self):
+        share_button = Mock()
+        share_button.count.return_value = 1
+        inputs = Mock()
+        inputs.count.return_value = 2
+        inputs.nth.side_effect = [
+            Mock(input_value=Mock(return_value="https://maps.app.goo.gl/place-link")),
+            Mock(input_value=Mock(return_value="Kinh thành Huế")),
+        ]
+        page = Mock()
+        page.get_by_role.return_value = share_button
+        page.locator.return_value = inputs
+
+        self.assertEqual(
+            _google_maps_shared_place_url(page),
+            "https://maps.app.goo.gl/place-link",
+        )
+        share_button.first.click.assert_called_once()
+
+    def test_direct_maps_place_accepts_translated_name_before_geographic_validation(self):
+        heading = Mock()
+        heading.count.return_value = 1
+        heading.first.inner_text.return_value = "Đại Nội Huế"
+        images = Mock()
+        images.count.return_value = 0
+        page = Mock()
+        page.url = (
+            "https://www.google.com/maps/place/Dai-Noi-Hue/"
+            "data=!3d16.469!4d107.579"
+        )
+        page.locator.side_effect = [heading, images]
+
+        result = _candidate_from_google_maps_place_page(
+            page,
+            {
+                "name": "Tử Cấm Thành",
+                "hotel_latitude": 16.471,
+                "hotel_longitude": 107.585,
+            },
+        )
+
+        self.assertEqual(result["name"], "Đại Nội Huế")
+        self.assertEqual(result["latitude"], 16.469)
+
+    def test_official_description_trims_incomplete_trailing_phrase(self):
+        self.assertEqual(
+            _trim_incomplete_description(
+                "A complete description of the attraction. A truncated phrase,"
+            ),
+            "A complete description of the attraction.",
+        )
+
+    def test_official_site_url_requires_public_https_domain(self):
+        self.assertTrue(_is_safe_official_site_url("https://museum.example.vn/about"))
+        self.assertFalse(_is_safe_official_site_url("http://museum.example.vn"))
+        self.assertFalse(_is_safe_official_site_url("https://localhost/info"))
+        self.assertFalse(_is_safe_official_site_url("https://127.0.0.1/info"))
+
+    def test_official_site_detail_upgrades_sparse_maps_content(self):
+        result = _merge_official_site_detail(
+            {
+                "description": "A short Maps snippet.",
+                "images": ["https://lh3.googleusercontent.com/place=w408-h306-k-no"],
+            },
+            {
+                "description": (
+                    "A detailed official description of the attraction, its history, "
+                    "and the visitor experience."
+                ),
+                "images": ["https://museum.example.vn/images/exterior.jpg"],
+            },
+        )
+
+        self.assertTrue(result["description"].startswith("A detailed official"))
+        self.assertEqual(
+            result["images"],
+            [
+                "https://museum.example.vn/images/exterior.jpg",
+                "https://lh3.googleusercontent.com/place=w1200-h900-k-no",
+            ],
+        )
+
+    def test_google_maps_official_website_reads_authority_link(self):
+        authority_link = Mock()
+        authority_link.count.return_value = 1
+        authority_link.first.get_attribute.return_value = "https://museum.example.vn/"
+        page = Mock()
+        page.locator.return_value = authority_link
+
+        self.assertEqual(
+            _google_maps_official_website(page),
+            "https://museum.example.vn/",
+        )
+
+    def test_google_maps_card_description_ignores_sponsored_labels(self):
+        self.assertIsNone(
+            _card_description(
+                ["Over extracteD coffee", "Được tài trợ"],
+                "Over extracteD coffee",
+            )
+        )
+
     def test_google_maps_url_coordinates_support_rendered_place_links(self):
         url = (
             "https://www.google.com/maps/place/Thap-Ba/"
@@ -453,6 +874,116 @@ class GoogleMapsPipelineTests(unittest.TestCase):
                 "https://lh3.googleusercontent.com/place=w1200-h900-k-no",
                 "https://lh3.googleusercontent.com/second=w1200-h905-k-no",
             ],
+        )
+
+    def test_google_maps_hours_extracts_one_clear_daily_range(self):
+        self.assertEqual(
+            _parse_google_maps_hours(
+                ["Thứ Tư,07:30 đến 21:30, Sao chép giờ mở cửa"]
+            ),
+            {"opening_time": "07:30:00", "closing_time": "21:30:00"},
+        )
+
+    def test_google_maps_hours_ignores_split_or_unrelated_ranges(self):
+        self.assertEqual(
+            _parse_google_maps_hours(
+                [
+                    "Thứ Tư,07:00 đến 11:00, 17:00 đến 22:00, "
+                    "Sao chép giờ mở cửa",
+                    "Lịch sự kiện,08:00 đến 10:00",
+                ]
+            ),
+            {"opening_time": None, "closing_time": None},
+        )
+
+    def test_google_maps_detail_merge_adds_clear_opening_hours(self):
+        result = _merge_google_maps_detail(
+            {"description": None, "images": []},
+            {
+                "description": None,
+                "images": [],
+                "opening_time": "07:30:00",
+                "closing_time": "21:30:00",
+            },
+        )
+
+        self.assertEqual(result["opening_time"], "07:30:00")
+        self.assertEqual(result["closing_time"], "21:30:00")
+
+    def test_google_maps_detail_reads_hours_from_accessibility_button(self):
+        description_locator = Mock()
+        description_locator.all_inner_texts.return_value = []
+        image_locator = Mock()
+        image_locator.evaluate_all.return_value = []
+        category_locator = Mock()
+        category_locator.all_inner_texts.return_value = ["Công viên"]
+        authority_locator = Mock()
+        authority_locator.count.return_value = 1
+        authority_locator.first.get_attribute.return_value = "https://park.example.vn/"
+        hours_locator = Mock()
+        hours_locator.count.return_value = 1
+        hours_locator.nth.return_value.get_attribute.return_value = (
+            "Thứ Tư,07:30 đến 21:30, Sao chép giờ mở cửa"
+        )
+        page = Mock()
+        page.locator.side_effect = [
+            description_locator,
+            image_locator,
+            category_locator,
+            authority_locator,
+            hours_locator,
+        ]
+
+        result = _google_maps_detail_from_page(page)
+
+        self.assertEqual(result["opening_time"], "07:30:00")
+        self.assertEqual(result["closing_time"], "21:30:00")
+        self.assertEqual(result["official_website"], "https://park.example.vn/")
+
+    def test_google_maps_enrichment_logs_record_progress(self):
+        sync_api_module = ModuleType("playwright.sync_api")
+        sync_playwright = MagicMock()
+        sync_api_module.sync_playwright = sync_playwright
+        playwright_module = ModuleType("playwright")
+        playwright_module.sync_api = sync_api_module
+        browser = Mock()
+        context = Mock()
+        browser.new_context.return_value = context
+        context.new_page.return_value = Mock()
+        sync_playwright.return_value.__enter__.return_value.chromium.launch.return_value = browser
+
+        with (
+            patch.dict(
+                sys.modules,
+                {"playwright": playwright_module, "playwright.sync_api": sync_api_module},
+            ),
+            patch(
+                "google_maps_pipeline._load_google_maps_detail",
+                return_value={"description": "A description", "images": []},
+            ),
+            patch("google_maps_pipeline.time.sleep"),
+            patch("builtins.print") as print_mock,
+        ):
+            enrich_google_maps_records(
+                [
+                    {"source_id": "one", "name": "Place One", "images": []},
+                    {"source_id": "two", "name": "Place Two", "images": []},
+                ],
+                [
+                    {"source_id": "one", "url": ""},
+                    {"source_id": "two", "url": ""},
+                ],
+                "Nha Trang",
+            )
+
+        messages = [str(call.args[0]) for call in print_mock.call_args_list]
+        self.assertIn(
+            "[google-maps-poc] Normalize enrichment: processing 1/2.",
+            messages,
+        )
+        self.assertIn(
+            "[google-maps-poc] Normalize enrichment: completed 2/2.",
+            messages,
         )
 
     def test_google_maps_detail_navigation_accepts_only_google_place_urls(self):
@@ -732,6 +1263,27 @@ class DestinationDatabaseTests(unittest.TestCase):
 
 
 class AirflowDiscoveryTests(unittest.TestCase):
+    def test_hotel_nearby_dag_logs_lifecycle_events_for_every_pipeline_block(self):
+        content = (PIPELINE_DIR / "hotel_nearby_dag.py").read_text(encoding="utf-8")
+
+        for stage in (
+            "data_source",
+            "extract",
+            "validate_clean",
+            "normalize",
+            "deduplicate",
+            "load",
+            "quality_check",
+        ):
+            self.assertIn(f"stage={stage} event=start", content)
+            self.assertIn(f"stage={stage} event=complete", content)
+
+    def test_hotel_nearby_dag_skips_database_load_when_no_records_are_produced(self):
+        content = (PIPELINE_DIR / "hotel_nearby_dag.py").read_text(encoding="utf-8")
+
+        self.assertIn('if not records:', content)
+        self.assertIn('No valid hotel-nearby attractions to load', content)
+
     def test_location_coordinates_param_is_nullable_and_defaults_to_none(self):
         param_kwargs = optional_location_coords_param_kwargs()
 
@@ -755,9 +1307,21 @@ class AirflowDiscoveryTests(unittest.TestCase):
                 "osm_pipeline.py",
                 "ota_pipeline.py",
                 "google_maps_pipeline.py",
+                "hotel_nearby_pipeline.py",
                 "pipeline_stages.py",
             },
         )
+
+    def test_pipeline_dags_disable_automatic_return_value_xcom(self):
+        for dag_file in (
+            "osm_dag.py",
+            "ota_dag.py",
+            "google_maps_dag.py",
+            "combined_dag.py",
+            "hotel_nearby_dag.py",
+        ):
+            content = (PIPELINE_DIR / dag_file).read_text(encoding="utf-8")
+            self.assertIn('"do_xcom_push": False', content, dag_file)
 
 
 class OtaParserTests(unittest.TestCase):
