@@ -95,6 +95,9 @@
                             popupContent = "<b>" + loc.name + "</b><br>" + loc.category;
                         }
                         
+                        // Add a Focus in Table button to all popups
+                        popupContent += `<br><button onclick="window.focusTable('${loc.type}', '${loc.id}')" style="margin-top:5px; padding:4px 8px; background:#2ecc71; color:white; border:none; border-radius:3px; font-size:12px; cursor:pointer;">🔍 Find in Table</button>`;
+                        
                         if (loc.images && loc.images.length > 0) {
                             popupContent += `<br><img src="${loc.images[0]}" referrerpolicy="no-referrer" loading="lazy" style="width:100%; max-height:150px; margin-top:5px; border-radius:5px;">`;
                         }
@@ -105,8 +108,11 @@
                             if (existingPos.lat !== loc.lat || existingPos.lng !== loc.lng) {
                                 currentMarkers[loc.id].setLatLng([loc.lat, loc.lng]);
                             }
-                            // Always update popup content in case data changed
-                            currentMarkers[loc.id].bindPopup(popupContent);
+                            // Only update popup if content actually changed
+                            if (currentMarkers[loc.id].customPopupContent !== popupContent) {
+                                currentMarkers[loc.id].bindPopup(popupContent);
+                                currentMarkers[loc.id].customPopupContent = popupContent;
+                            }
                         } else {
                             // Create new marker
                             let marker;
@@ -133,6 +139,13 @@
                             }
                             
                             marker.bindPopup(popupContent);
+                            marker.customPopupContent = popupContent;
+                            
+                            // 5. Navigate iframe to the corresponding row when marker is clicked
+                            marker.on('dblclick', function() {
+                                window.focusTable(loc.type, loc.id);
+                            });
+
                             currentMarkers[loc.id] = marker;
                         }
                     });
@@ -162,6 +175,16 @@
                 }
             }
         });
+
+        // Global function for the popup buttons and double clicks
+        window.focusTable = function(type, id) {
+            var table = type + "s";
+            var iframe = document.getElementById('adminer-frame');
+            var targetUrl = 'http://localhost:8081/?pgsql=postgres&username=airflow&db=vsf_database&ns=public&select=' + table + 
+                            '&where%5B0%5D%5Bcol%5D=id&where%5B0%5D%5Bop%5D=%3D&where%5B0%5D%5Bval%5D=' + id + 
+                            '#focus-id-' + id;
+            iframe.src = targetUrl;
+        };
 
         // Resizer logic
         const resizer = document.getElementById('resizer');

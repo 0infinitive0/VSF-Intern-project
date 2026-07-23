@@ -100,6 +100,15 @@ class AllowIframe {
                     e.preventDefault();
                     e.stopPropagation();
 
+                    // Highlight the selected row
+                    var allRows = document.querySelectorAll("table tr");
+                    allRows.forEach(r => {
+                        if (r.style.backgroundColor === "rgb(255, 243, 205)" || r.style.backgroundColor === "#fff3cd") {
+                            r.style.backgroundColor = "";
+                        }
+                    });
+                    row.style.backgroundColor = "#fff3cd";
+
                     var tds = row.querySelectorAll("td");
                     for (var i = 0; i < tds.length; i++) {
                         var text = tds[i].textContent.trim(); // textContent ignores CSS truncation like text-overflow: ellipsis, but needs trimming
@@ -115,6 +124,36 @@ class AllowIframe {
                     }
                 }, true);
             });
+
+            // 5. Highlight and focus row from URL hash
+            function focusRowFromHash() {
+                var hash = window.location.hash;
+                if (hash.startsWith("#focus-id-")) {
+                    var targetId = hash.substring(10);
+                    var rows = document.querySelectorAll("table tr");
+                    
+                    // Reset all row backgrounds first
+                    rows.forEach(r => {
+                        if (r.style.backgroundColor === "rgb(255, 243, 205)") {
+                            r.style.backgroundColor = "";
+                        }
+                    });
+                    
+                    rows.forEach(function(row) {
+                        var tds = row.querySelectorAll("td");
+                        for (var i = 0; i < tds.length; i++) {
+                            if (tds[i].textContent.trim() === targetId) {
+                                row.style.backgroundColor = "#fff3cd"; // Highlight with a light yellow
+                                row.style.transition = "background-color 0.5s";
+                                row.scrollIntoView({behavior: "smooth", block: "center"});
+                                break;
+                            }
+                        }
+                    });
+                }
+            }
+            window.addEventListener("hashchange", focusRowFromHash);
+            focusRowFromHash(); // Check on initial load
         });
         </script>';
         return false;
