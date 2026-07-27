@@ -9,8 +9,9 @@ Lưu trữ thông tin về các địa danh, vùng miền hoặc thành phố l�
 | Tên Cột | Kiểu Dữ Liệu | Khóa | Ràng Buộc / Mô Tả |
 | :--- | :--- | :--- | :--- |
 | `id` | UUID | PK | Khóa chính, tự động sinh (`uuid_generate_v4`) |
-| `name` | VARCHAR(100) | | Tên địa điểm (VD: Nha Trang, Phú Quốc) |
+| `name` | VARCHAR(100) | UK | Tên địa điểm (VD: Nha Trang, Phú Quốc). Unique — dùng để resolve `destination_id` từ `city` thô của OTA |
 | `region` | VARCHAR(100) | | Vùng / miền |
+| `aliases` | TEXT[] | | Các biến thể tên gặp trong dữ liệu OTA (VD: `{"Nha Trang", "Nha Trang City"}`) |
 | `coordinates` | VARCHAR(50) | | Tọa độ GPS |
 | `description` | TEXT | | Mô tả tổng quan về địa điểm |
 | `created_at` | TIMESTAMP | | Thời gian tạo bản ghi |
@@ -32,12 +33,11 @@ Lưu trữ thông tin cốt lõi của các cơ sở lưu trú được thu th�
 | `address` | VARCHAR(500) | | Địa chỉ đầy đủ |
 | `city` | VARCHAR(100) | | Raw text gốc từ nguồn, dùng `destination_id` cho query chuẩn |
 | `area_name` | VARCHAR(100) | | Khu vực |
-| `country` | VARCHAR(100) | | Chuẩn hóa (VD ISO code) lúc ETL |
 | `coordinates` | VARCHAR(50) | | Tọa độ GPS (Dùng để tính khoảng cách đi bộ/di chuyển) |
 | `amenities` | TEXT[] | | Mảng phẳng tiện ích (VD: Wifi, Hồ bơi) |
 | `amenity_groups` | JSONB | | Tiện ích nhóm theo danh mục (cấu trúc khác nhau giữa 2 nguồn) |
 | `review_score` | DECIMAL(4,2) | | Điểm đánh giá |
-| `review_count` | INT | | Số lượng đánh giá |
+| `review_count` | SMALLINT | | Số lượng đánh giá (tối đa 32767) |
 | `category_scores` | JSONB | | Subratings, tên tiêu chí khác nhau giữa 2 nguồn |
 | `image_url` | TEXT | | Ảnh đại diện/thumbnail |
 | `images` | TEXT[] | | Mảng URL toàn bộ hình ảnh (Gallery) |
@@ -47,7 +47,9 @@ Lưu trữ thông tin cốt lõi của các cơ sở lưu trú được thu th�
 | `created_at` | TIMESTAMP | | Thời gian tạo |
 | `updated_at` | TIMESTAMP | | Thời gian cập nhật |
 
-*(Khóa Unique `(source_platform, source_hotel_id)` dùng cho UPSERT khi crawl lại đúng khách sạn/đúng OTA. Danh sách đầy đủ các cột — bao gồm các trường chỉ có ở một nguồn như `highlights`, `awards`, `warnings`, `score_distribution`, `check_in_time`, v.v. — xem `scripts/database_schema.sql`.)*
+*(Khóa Unique `(source_platform, source_hotel_id)` dùng cho UPSERT khi crawl lại đúng khách sạn/đúng OTA. Danh sách đầy đủ các cột — bao gồm các trường chỉ có ở một nguồn như `awards`, `warnings`, `check_in_time`, v.v. — xem `scripts/database_schema.sql`.)*
+
+**Không lưu ở bảng `hotels` (cố ý):** `country` và `highlights` chỉ tồn tại trong bản ghi đã normalize của ETL — `country` làm khóa dedupe liên-OTA + payload Qdrant, `highlights` ghép vào `embedding_text` — nên không cần cột SQL. `review_text` / `score_distribution` / `offer_count` là dữ liệu chỉ có ở Agoda, không tiêu thụ ở đâu nên đã loại khỏi cả pipeline (xem `_HOTEL_COLUMNS` trong `hotel_pipeline.py`).
 
 ### 1.3. Bảng `rooms` (Phòng)
 Lưu trữ các loại phòng khác nhau thuộc một khách sạn — theo đúng 1 OTA của khách sạn đó (không gộp liên-nguồn, tương tự `hotels`).
@@ -85,6 +87,9 @@ Lưu trữ giá phòng. Bảng này được thiết kế theo cơ chế UPSERT 
 | `crawled_at` | TIMESTAMP | | Thời điểm hệ thống lấy được giá này |
 
 *(Lưu ý: Khóa Unique là expression index trên tổ hợp `room_id`, `check_in_date`, `check_out_date`, `COALESCE(source_url, '')`, `COALESCE(package_details, '')` để UPSERT chính xác giá mới nhất — dùng `COALESCE` vì Postgres coi mỗi NULL là khác nhau, một `UNIQUE` thường sẽ không dedupe đúng khi các cột này NULL.)*
+
+### 1.4a/1.4b. Bảng `hotel_identity_groups` / `hotel_identity_members` (Nhóm khách sạn vật lý trùng lặp liên-OTA)
+Nhóm các dòng `hotels` cùng 1 khách sạn vật lý (VD: cùng khách sạn trên cả Agoda và Booking) để AI/RAG không đề xuất trùng lặp — **không gộp dòng `hotels`**, cả hai dòng OTA luôn được giữ nguyên. `review_status` = `'pending_review'` (điểm match `0.72-0.86`) chặn nhóm dùng cho AI/vector cho tới khi duyệt thủ công; chỉ nhóm điểm `>= 0.86` mới `'auto_approved'` ngay. Xem `hotel_pipeline.group_physical_hotels()`/`assign_physical_hotel_groups()` cho thuật toán tính điểm và `plans/260724-0925-hotel-normalize-dedupe-for-vector-rag/phase-03-dedupe-canonical-identity.md` cho thiết kế đầy đủ. Nhóm được **tính trong pipeline** (in-memory) mỗi lần chạy; việc ghi persist vào 2 bảng này chưa gắn vào `load_hotels_to_db()` ở M1/M2.
 
 **Nguồn nạp dữ liệu:** `booking_agoda_hotel_loader_pipeline` (`src/airflow/dags/data_pipeline/hotel_dag.py`) đọc `data/agoda.json` và `data/booking.json`, gọi `hotel_pipeline.py` theo chuỗi Extract -> Validate -> Normalize -> Dedupe -> Load -> QualityCheck. Lần xác thực 2026-07-23 nạp 1,103 khách sạn, 6,375 phòng và 6,375 giá phòng; cross-OTA physical-hotel dedup chưa nằm trong phạm vi M1.
 
@@ -176,18 +181,30 @@ Hệ thống sử dụng Qdrant làm Vector Database để xử lý các truy v�
 - **Distance Metric:** `Cosine`
 
 ### 2.1. Collection: `hotels_vector`
-Lưu trữ vector của Khách sạn. Vector được tạo ra từ chuỗi văn bản gộp giữa: Tên khách sạn + Mô tả + Tiện ích.
-**Cấu trúc Payload (Metadata dùng để Pre-filtering):**
+Lưu trữ vector của Khách sạn. **Đã triển khai** (`hotel_pipeline.build_hotel_embedding_text()`/`build_hotel_payload()`, xem `plans/260724-0925-hotel-normalize-dedupe-for-vector-rag/phase-02-field-normalize-contract.md`) — việc index thật vào Qdrant vẫn thuộc roadmap Phase 2 riêng (`plans/260723-1015-v-ota-poc-master-roadmap/phase-02-semantic-search-foundation-with-qdrant.md`), chưa có code kết nối Qdrant trong repo.
+
+`embedding_text` gộp có thứ tự: `Hotel: {name}` → `Destination: {destination_name}, {area_name}` → `Type: {accommodation_type}; Stars: {star_rating}` → `Description: {description}` (cắt 500 ký tự) → `Amenities: {top 10}` → `Highlights: {top 5}` → `Nearby: {top 5 tên}`. Loại trừ các trường biến động (giá chính xác, source URL, `scraped_at`, room ID, JSON thô) — các trường này nằm ở `grounding_facts` thay vì embedding text.
+
+**Cấu trúc Payload (Metadata dùng để Pre-filtering) — như `hotel_pipeline.build_hotel_payload()` trả về:**
 ```json
 {
-    "hotel_id": "UUID (Khóa ngoại trỏ về PostgreSQL)",
-    "name": "Tên khách sạn",
-    "destination_id": "UUID (Dùng để lọc cứng theo thành phố trước khi search vector)",
+    "source_platform": "agoda",
+    "source_hotel_id": 12345,
+    "name": "Vinpearl Resort Nha Trang",
+    "destination_name": "Nha Trang",
+    "area_name": "...",
+    "country": "VN",
     "star_rating": 5.0,
-    "price_tier": "Budget / Mid-range / Luxury",
-    "amenities": ["Hồ bơi", "Spa", "Đưa đón sân bay"]
+    "accommodation_type": "hotel",
+    "min_price": 3000000,
+    "currency": "VND",
+    "price_tier": "budget | mid_range | luxury (chỉ tính cho VND)",
+    "amenity_keys": ["ho_boi", "wifi"],
+    "lat": 12.238791,
+    "lon": 106.660172
 }
 ```
+`destination_id` (UUID) join với PostgreSQL sẽ được bổ sung ở bước indexing thật (roadmap Phase 2) vì `destination_id` chỉ được resolve lúc `load_hotels_to_db()` gọi `get_or_create_destination()`, sau khi payload này đã tính xong.
 
 ### 2.2. Collection: `attractions_vector`
 Lưu trữ vector của Điểm tham quan và Tour tuyến. Vector được tạo từ: Tên + Mô tả + Thể loại.

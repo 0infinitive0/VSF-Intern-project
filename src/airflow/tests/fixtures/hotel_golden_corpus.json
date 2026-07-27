@@ -1,0 +1,1788 @@
+{
+  "duplicate_pairs": [
+    [
+      {
+        "hotel_id": 37331206,
+        "hotel_name": "Lucky Home",
+        "accommodation_type": "Khách sạn",
+        "address": "09 Ngo The Lan, Tay Loc, Đại Nội Huế, Huế, Việt Nam",
+        "city": "Huế",
+        "country": "Việt Nam",
+        "area_name": "Đại Nội Huế",
+        "location_highlight": "cách trung tâm thành phố 2,01 km",
+        "star_rating": 3,
+        "review_score": 8.3,
+        "review_count": 183,
+        "review_text": "Tuyệt vời",
+        "category_scores": {
+          "Độ sạch sẽ": 8.3,
+          "Cơ sở vật chất": 8.1,
+          "Vị trí": 8.7,
+          "Dịch vụ": 8.7,
+          "Đáng tiền": 8.6
+        },
+        "score_distribution": {
+          "9+ Hiếm Có": 88,
+          "8-9 Xuất Sắc": 22,
+          "7-8 Rất Tốt": 15,
+          "6-7 Tốt": 8,
+          "<6 Dưới Mức Mong Đợi": 14
+        },
+        "awards": null,
+        "price": 231481,
+        "currency": "VND",
+        "rooms_available": true,
+        "offer_count": 5,
+        "check_in": "2026-07-28",
+        "check_out": "2026-07-29",
+        "room_types": [
+          "Phòng Đôi Loại Sang (Deluxe Double Room)",
+          "Phòng Tiêu Chuẩn (Standard)",
+          "Phòng Có 2 Giường Cỡ Queen (Queen Room with Two Queen Beds)",
+          "Superior 2 Queen",
+          "Standard 2 Double"
+        ],
+        "rooms": [
+          {
+            "name": "Phòng Đôi Loại Sang (Deluxe Double Room)",
+            "room_id": 1363604652,
+            "bed": "1 giường đôi",
+            "size": "20 m²",
+            "max_occupancy": "Tối đa 2 người lớn",
+            "view": "Hướng Ngoài trời",
+            "amenity_groups": {
+              "Bếp": [
+                "Ấm nước điện"
+              ],
+              "Phòng tắm và vật dụng vệ sinh": [
+                "Các loại khăn",
+                "Máy sấy tóc",
+                "Nhà vệ sinh phụ",
+                "phòng tắm riêng",
+                "Vật dụng tắm rửa",
+                "Vòi sen"
+              ],
+              "Giải trí ": [
+                "TV",
+                "TV [màn hình phẳng]"
+              ],
+              "Tiện nghi": [
+                "Dép đi trong nhà",
+                "Điều hòa",
+                "Quạt",
+                "Vải trải giường"
+              ],
+              "Ăn uống": [
+                "Bàn ăn",
+                "Nước đóng chai miễn phí",
+                "Tủ lạnh",
+                "Tủ lạnh nhỏ trong phòng"
+              ],
+              "Bố trí và nội thất phòng": [
+                "Bàn làm việc",
+                "Ghế sofa",
+                "Thùng rác"
+              ],
+              "Quần áo và Giặt ủi": [
+                "Giá treo quần áo",
+                "Tiện nghi là/ủi",
+                "Tủ quần áo"
+              ],
+              "Tính năng an toàn và an ninh": [
+                "Điều hòa cá nhân"
+              ]
+            },
+            "sold_out": false,
+            "price_per_night": 231481,
+            "currency": "VND",
+            "crossed_out": false,
+            "review_score": null,
+            "review_text": null,
+            "image_count": 5,
+            "images": [
+              "https://q-xx.bstatic.com/xdata/images/hotel/840x460/873057496.jpg?k=023b6eb6820eb3869425a695f964bfcbf140b5f0e4bd8a940748aa1ee7bbd35c&o="
+            ]
+          }
+        ],
+        "amenities": [
+          "tiếng Việt",
+          "Tiếng Anh",
+          "Dịch vụ Internet",
+          "Internet",
+          "Wi-Fi miễn phí trong tất cả các phòng!",
+          "Wi-Fi ở nơi công cộng",
+          "Vườn",
+          "Băng niêm phong phòng dành cho khách sau khi vệ sinh",
+          "bộ dụng cụ sơ cứu",
+          "Cách bày bàn ăn an toàn",
+          "Có thể yêu cầu không khử trùng phòng",
+          "Dịch vụ bán thức ăn sáng mang về",
+          "Dịch vụ khử trùng chuyên nghiệp",
+          "Dịch vụ thanh toán không sử dụng tiền mặt",
+          "Giãn cách vật lý ít nhất 1 mét",
+          "Giặt đồ vải lanh và quần áo bằng nước nóng",
+          "khẩu trang miễn phí",
+          "Không có văn phòng phẩm dùng chung",
+          "Lựa chọn thức ăn bọc riêng",
+          "Màn bảo vệ ở khu vực chung",
+          "Nhân viên được đào tạo về giao thức an toàn",
+          "nước rửa tay",
+          "Phòng được vệ sinh giữa các lần ở",
+          "Sản phẩm làm sạch chống virus",
+          "Ứng dụng dịch vụ tại phòng của khách sạn",
+          "Vật dụng nhà bếp và bộ đồ ăn được vệ sinh",
+          "Bếp chung",
+          "Dịch vụ phòng",
+          "Quán bar",
+          "Dịch vụ giặt là",
+          "Dịch vụ ủi đồ",
+          "Dọn phòng hằng ngày",
+          "Đổi ngoại tệ",
+          "Giao đồ ăn",
+          "Giữ hành lý",
+          "hoàn toàn không hút thuốc",
+          "Máy điều hòa ở khu vực chung",
+          "Nhận/trả phòng không tiếp xúc",
+          "Sân hiên",
+          "Bàn tiếp tân [24 giờ]",
+          "Bảo vệ [24 giờ]",
+          "Bình chữa cháy",
+          "CCTV bên ngoài chỗ nghỉ",
+          "CCTV trong khu vực chung",
+          "Được phép đưa thú nuôi vào",
+          "Nhận/trả phòng [riêng]",
+          "Nhận phòng [24 giờ]",
+          "Thiết bị báo cháy",
+          "Tính năng an toàn/bảo mật",
+          "Bãi đỗ xe [miễn phí]"
+        ],
+        "amenity_groups": {
+          "Ngôn ngữ được sử dụng": [
+            "tiếng Việt",
+            "Tiếng Anh"
+          ],
+          "Truy cập Internet": [
+            "Dịch vụ Internet",
+            "Internet",
+            "Wi-Fi miễn phí trong tất cả các phòng!",
+            "Wi-Fi ở nơi công cộng"
+          ],
+          "Thư giãn & Vui chơi giải trí": [
+            "Vườn"
+          ],
+          "Độ sạch sẽ và an toàn": [
+            "Băng niêm phong phòng dành cho khách sau khi vệ sinh",
+            "bộ dụng cụ sơ cứu",
+            "Cách bày bàn ăn an toàn",
+            "Có thể yêu cầu không khử trùng phòng",
+            "Dịch vụ bán thức ăn sáng mang về",
+            "Dịch vụ khử trùng chuyên nghiệp",
+            "Dịch vụ thanh toán không sử dụng tiền mặt",
+            "Giãn cách vật lý ít nhất 1 mét",
+            "Giặt đồ vải lanh và quần áo bằng nước nóng",
+            "khẩu trang miễn phí",
+            "Không có văn phòng phẩm dùng chung",
+            "Lựa chọn thức ăn bọc riêng",
+            "Màn bảo vệ ở khu vực chung",
+            "Nhân viên được đào tạo về giao thức an toàn",
+            "nước rửa tay",
+            "Phòng được vệ sinh giữa các lần ở",
+            "Sản phẩm làm sạch chống virus",
+            "Ứng dụng dịch vụ tại phòng của khách sạn",
+            "Vật dụng nhà bếp và bộ đồ ăn được vệ sinh"
+          ],
+          "Ăn uống": [
+            "Bếp chung",
+            "Dịch vụ phòng",
+            "Quán bar"
+          ],
+          "Dịch vụ và tiện nghi": [
+            "Dịch vụ giặt là",
+            "Dịch vụ ủi đồ",
+            "Dọn phòng hằng ngày",
+            "Đổi ngoại tệ",
+            "Giao đồ ăn",
+            "Giữ hành lý",
+            "hoàn toàn không hút thuốc",
+            "Máy điều hòa ở khu vực chung",
+            "Nhận/trả phòng không tiếp xúc",
+            "Sân hiên"
+          ],
+          "Dễ dàng tiếp cận": [
+            "Bàn tiếp tân [24 giờ]",
+            "Bảo vệ [24 giờ]",
+            "Bình chữa cháy",
+            "CCTV bên ngoài chỗ nghỉ",
+            "CCTV trong khu vực chung",
+            "Được phép đưa thú nuôi vào",
+            "Nhận/trả phòng [riêng]",
+            "Nhận phòng [24 giờ]",
+            "Thiết bị báo cháy",
+            "Tính năng an toàn/bảo mật"
+          ],
+          "Đi lại": [
+            "Bãi đỗ xe [miễn phí]"
+          ]
+        },
+        "highlights": [
+          "Địa danh và thắng cảnh",
+          "Hue Imperial Citadel",
+          "Văn hóa bản địa",
+          "Thien Mu Pagoda"
+        ],
+        "nearby_attractions": [
+          "Cung Diên Thọ - Cách nơi ở 920 m",
+          "Thế Miếu - cách nơi ở 1.1 km",
+          "Cửu Đỉnh - cách nơi ở 1.13 km",
+          "Cầu Trường Tiền - cách nơi ở 2.34 km"
+        ],
+        "nearby_essentials": [
+          {
+            "category": "Sân bay lân cận",
+            "name": "Sân bay Quốc tế Phú Bài (HUI)",
+            "distance_km": 16.37,
+            "distance_text": "16,37 km",
+            "coordinates": "16.397991,107.700367"
+          },
+          {
+            "category": "Sân bay lân cận",
+            "name": "Sân bay Quốc tế Đà Nẵng (DAD)",
+            "distance_km": 81.88,
+            "distance_text": "81,88 km",
+            "coordinates": "16.056327,108.200833"
+          },
+          {
+            "category": "Phương tiện công cộng",
+            "name": "Bến xe An Hòa",
+            "distance_km": 1.4,
+            "distance_text": "1,4 km",
+            "coordinates": "16.479219,107.55735"
+          },
+          {
+            "category": "Phương tiện công cộng",
+            "name": "Ga Huế",
+            "distance_km": 1.97,
+            "distance_text": "1,97 km",
+            "coordinates": "16.456436,107.578069"
+          },
+          {
+            "category": "Bệnh viện & phòng khám",
+            "name": "Phòng khám Đa khoa Nguyễn Quang Hợp",
+            "distance_km": 0.72,
+            "distance_text": "720 mét",
+            "coordinates": "16.476337,107.569839"
+          },
+          {
+            "category": "Nơi mua sắm",
+            "name": "Đông Ba thị trường",
+            "distance_km": 2.35,
+            "distance_text": "2,35 km",
+            "coordinates": "16.472314,107.58879"
+          }
+        ],
+        "check_in_time": "14:00",
+        "check_in_until": "15:00",
+        "check_out_time": "12:00",
+        "reception_open_until": "22:00",
+        "description": "Hãy để chuyến đi của quý khách có một khởi đầu tuyệt vời khi ở lại khách sạn này, nơi có Wi-Fi miễn phí trong tất cả các phòng. Nằm ở vị trí trung tâm tại Đại Nội Huế của Huế, chỗ nghỉ này đặt quý khách ở gần các điểm thu hút và tùy chọn ăn uống thú vị. Chỗ nghỉ 3 sao này được trang bị nhiều tiện nghi trong khuôn viên, giúp kỳ nghỉ của quý khách thoải mái và trọn vẹn hơn.",
+        "image_url": "https://pix8.agoda.net/hotelImages/37331206/0/a88e4e3ad1097fd97474c7a435666d39.jpeg?ce=0&s=1024x768",
+        "image_count": 2,
+        "all_images": [
+          "https://pix8.agoda.net/hotelImages/37331206/0/a88e4e3ad1097fd97474c7a435666d39.jpeg?ce=0&s=1024x768",
+          "https://q-xx.bstatic.com/xdata/images/hotel/max1024x768/714284953.jpg?k=1f23be4a92a3da67c04d47c92557dbbc14520583502faaa746d5a7f1e60b0eda&o="
+        ],
+        "coordinates": "16.4705143,107.566856",
+        "property_url": "https://www.agoda.com/lucky-home/hotel/hue-vn.html",
+        "scraped_at": "2026-07-22T14:56:25.234059+00:00",
+        "warnings": [],
+        "source_platform": "agoda"
+      },
+      {
+        "hotel_id": 16183651,
+        "hotel_name": "Lucky Home",
+        "accommodation_type": "HOTEL",
+        "star_rating": 2,
+        "address": "9 Ngô Thế Lân, Phường Phú Xuân, 530000 Huế, Việt Nam",
+        "city": "Huế",
+        "area_name": null,
+        "country": "vn",
+        "review_score": 8.4,
+        "review_count": 12,
+        "category_scores": {
+          "Nhân viên phục vụ": 8.3,
+          "Tiện nghi": 8.3,
+          "Sạch sẽ": 8.3,
+          "Thoải mái": 8.5,
+          "Đáng giá tiền": 9.2,
+          "Địa điểm": 9
+        },
+        "amenities": [
+          "Điều hòa nhiệt độ",
+          "Cấm hút thuốc trong toàn bộ khuôn viên",
+          "Quạt máy",
+          "Bàn là",
+          "Dọn phòng hàng ngày",
+          "Giữ hành lí",
+          "Dịch vụ là (ủi)",
+          "Giặt ủi",
+          "Lễ tân 24 giờ",
+          "Dịch vụ phòng",
+          "Giá treo quần áo",
+          "Giấy vệ sinh",
+          "Khăn tắm",
+          "Khăn tắm/Bộ khăn trải giường (có thu phí)",
+          "Nhà vệ sinh phụ",
+          "Dép lê",
+          "Phòng tắm riêng",
+          "Nhà vệ sinh",
+          "Đồ vệ sinh cá nhân miễn phí",
+          "Máy sấy tóc",
+          "Vòi sen",
+          "TV màn hình phẳng",
+          "TV",
+          "Quầy bar",
+          "Minibar",
+          "Dịch vụ Internet",
+          "Bếp chung",
+          "Bàn ăn",
+          "Ấm đun nước điện",
+          "Tủ lạnh",
+          "Bàn ghế ngoài trời",
+          "Sân hiên phơi nắng",
+          "Sân thượng / hiên",
+          "Sân vườn",
+          "Ngắm cảnh",
+          "Ghế sofa",
+          "Bàn làm việc",
+          "Chỗ đỗ xe",
+          "Bộ khăn trải giường",
+          "Tủ hoặc phòng để quần áo",
+          "Ô (dù) che nắng loại to",
+          "Bình chữa cháy",
+          "Hệ thống CCTV bên ngoài chỗ nghỉ",
+          "Hệ thống CCTV trong khu vực chung",
+          "Thiết bị báo cháy",
+          "Báo động an ninh",
+          "Bảo vệ 24/7"
+        ],
+        "amenity_groups": {
+          "Tổng quát": [
+            "Điều hòa nhiệt độ",
+            "Cấm hút thuốc trong toàn bộ khuôn viên",
+            "Quạt máy",
+            "Bàn là"
+          ],
+          "Dịch vụ": [
+            "Dọn phòng hàng ngày",
+            "Giữ hành lí",
+            "Dịch vụ là (ủi)",
+            "Giặt ủi",
+            "Lễ tân 24 giờ",
+            "Dịch vụ phòng"
+          ],
+          "Tiện ích trong phòng": [
+            "Giá treo quần áo"
+          ],
+          "Phòng tắm": [
+            "Giấy vệ sinh",
+            "Khăn tắm",
+            "Khăn tắm/Bộ khăn trải giường (có thu phí)",
+            "Nhà vệ sinh phụ",
+            "Dép lê",
+            "Phòng tắm riêng",
+            "Nhà vệ sinh",
+            "Đồ vệ sinh cá nhân miễn phí",
+            "Máy sấy tóc",
+            "Vòi sen"
+          ],
+          "Truyền thông & Công nghệ": [
+            "TV màn hình phẳng",
+            "TV"
+          ],
+          "Đồ ăn & thức uống": [
+            "Quầy bar",
+            "Minibar"
+          ],
+          "Internet": [
+            "Dịch vụ Internet"
+          ],
+          "Nhà bếp": [
+            "Bếp chung",
+            "Bàn ăn",
+            "Ấm đun nước điện",
+            "Tủ lạnh"
+          ],
+          "Ngoài trời": [
+            "Bàn ghế ngoài trời",
+            "Sân hiên phơi nắng",
+            "Sân thượng / hiên",
+            "Sân vườn"
+          ],
+          "Tầm nhìn": [
+            "Ngắm cảnh"
+          ],
+          "Khu vực phòng khách": [
+            "Ghế sofa",
+            "Bàn làm việc"
+          ],
+          "Chỗ đậu xe": [
+            "Chỗ đỗ xe"
+          ],
+          "Phòng ngủ": [
+            "Bộ khăn trải giường",
+            "Tủ hoặc phòng để quần áo"
+          ],
+          "Chăm sóc sức khỏe": [
+            "Ô (dù) che nắng loại to"
+          ],
+          "An ninh": [
+            "Bình chữa cháy",
+            "Hệ thống CCTV bên ngoài chỗ nghỉ",
+            "Hệ thống CCTV trong khu vực chung",
+            "Thiết bị báo cháy",
+            "Báo động an ninh",
+            "Bảo vệ 24/7"
+          ]
+        },
+        "nearby_attractions": [
+          {
+            "name": "Tử Cấm Thành",
+            "distance_km": 1.113,
+            "distance_text": "1,1 km",
+            "coordinates": "16.4697524850001,107.577223778"
+          },
+          {
+            "name": "Ngũ Phụng",
+            "distance_km": 1.087,
+            "distance_text": "1,1 km",
+            "coordinates": "16.4715170000001,107.5769609"
+          },
+          {
+            "name": "Bảo tàng Museum of Royal Antiquities",
+            "distance_km": 1.614,
+            "distance_text": "1,6 km",
+            "coordinates": "16.471307,107.581923"
+          },
+          {
+            "name": "Bảo tàng Hồ Chí Minh",
+            "distance_km": 1.934,
+            "distance_text": "1,9 km",
+            "coordinates": "16.4597002,107.5810754"
+          },
+          {
+            "name": "Cầu Tràng Tiền",
+            "distance_km": 2.367,
+            "distance_text": "2,4 km",
+            "coordinates": "16.468822,107.588926"
+          },
+          {
+            "name": "Cung An Định",
+            "distance_km": 3.639,
+            "distance_text": "3,6 km",
+            "coordinates": "16.4571793750001,107.597994804"
+          },
+          {
+            "name": "Lăng Tự Đức",
+            "distance_km": 4.151,
+            "distance_text": "4,2 km",
+            "coordinates": "16.4330031000001,107.5656098"
+          },
+          {
+            "name": "Thanh Toan Bridge",
+            "distance_km": 8.105,
+            "distance_text": "8 km",
+            "coordinates": "16.466755,107.642632"
+          },
+          {
+            "name": "Minh Mang Tomb",
+            "distance_km": 9.17,
+            "distance_text": "9 km",
+            "coordinates": "16.387656,107.569042"
+          }
+        ],
+        "nearby_essentials": [
+          {
+            "category": "Airports",
+            "name": "Sân bay quốc tế Phú Bài",
+            "distance_km": 14.988,
+            "distance_text": "15 km",
+            "coordinates": "16.4015,107.703"
+          },
+          {
+            "category": "Airports",
+            "name": "Sân bay Quốc tế Đà Nẵng",
+            "distance_km": 80.74,
+            "distance_text": "80 km",
+            "coordinates": "16.0439,108.199"
+          },
+          {
+            "category": "Public transportation",
+            "name": "Hue Railway Station",
+            "distance_km": 1.957,
+            "distance_text": "2 km",
+            "coordinates": "16.456489,107.578014"
+          }
+        ],
+        "price": 250000,
+        "currency": "VND",
+        "rooms_available": 5,
+        "check_in": "2026-07-24",
+        "check_out": "2026-07-25",
+        "check_in_time": "14:00",
+        "check_in_until": "16:00",
+        "check_out_time": "12:00",
+        "room_types": [
+          "Phòng Deluxe Giường Đôi",
+          "Phòng Có Giường Cỡ Queen",
+          "Phòng Có Giường Cỡ King",
+          "Phòng Superior Có 2 Giường Cỡ Queen",
+          "Phòng Có 2 Giường Cỡ Queen",
+          "Phòng Gia Đình Có Ban Công"
+        ],
+        "rooms": [
+          {
+            "name": "Phòng Deluxe Giường Đôi",
+            "room_id": 1618365101,
+            "bed": "1 Double bed",
+            "size": "20 m²",
+            "max_occupancy": "2",
+            "view": "Ngắm cảnh",
+            "amenities": [
+              "Máy điều hòa",
+              "Bàn là",
+              "Quạt máy",
+              "Giá treo quần áo",
+              "Vòi sen",
+              "Máy sấy tóc",
+              "Đồ vệ sinh cá nhân miễn phí",
+              "Nhà vệ sinh",
+              "Phòng tắm riêng",
+              "Dép lê",
+              "Nhà vệ sinh phụ",
+              "Khăn tắm/Bộ khăn trải giường (có thu phí)",
+              "Khăn tắm",
+              "Giấy vệ sinh",
+              "TV",
+              "TV màn hình phẳng",
+              "Minibar",
+              "Tủ lạnh",
+              "Ấm đun nước điện",
+              "Bàn ăn",
+              "Bàn làm việc",
+              "Ghế sofa",
+              "Tủ hoặc phòng để quần áo",
+              "Bộ khăn trải giường",
+              "Máy điều hòa độc lập cho từng phòng"
+            ],
+            "image_count": 5,
+            "images": [
+              "https://cf.bstatic.com/xdata/images/hotel/max1024x768/873057537.jpg?k=fd8ad586cca38cfe21c100a4adacb41078de84c9c0af0d063ae4fc8060da95fe&o="
+            ],
+            "price_per_night": 250000,
+            "currency": "VND",
+            "sold_out": false,
+            "review_score": null,
+            "review_text": null
+          }
+        ],
+        "image_url": "https://cf.bstatic.com/xdata/images/hotel/max1024x768/853797879.jpg?k=44f09885bbb011cd28b792d6131232d8133e1af324879feafe4ebfa124f02a60&o=",
+        "image_count": 2,
+        "all_images": [
+          "https://cf.bstatic.com/xdata/images/hotel/max1024x768/853797879.jpg?k=44f09885bbb011cd28b792d6131232d8133e1af324879feafe4ebfa124f02a60&o=",
+          "https://cf.bstatic.com/xdata/images/hotel/max1024x768/873058366.jpg?k=0a9a15b885a7421a85d3ae3ecc924795e1a602a82a32355cb1a0c3d78f63886a&o="
+        ],
+        "coordinates": "16.4704985,107.5668272",
+        "property_url": "https://www.booking.com/hotel/vn/lucky-home-thanh-pho-hue3.html",
+        "scraped_at": "2026-07-22T15:07:35.455570+00:00",
+        "warnings": [],
+        "source_platform": "booking"
+      }
+    ],
+    [
+      {
+        "hotel_id": 47003936,
+        "hotel_name": "Son Ca Motel",
+        "accommodation_type": "Khách sạn",
+        "address": "1/28 Lê Thánh Tôn, Phường Đông Ba, Đại Nội Huế, Huế, Việt Nam",
+        "city": "Huế",
+        "country": "Việt Nam",
+        "area_name": "Đại Nội Huế",
+        "location_highlight": "Cách trung tâm TP. 800 m",
+        "star_rating": 2,
+        "review_score": 9,
+        "review_count": 683,
+        "review_text": "Trên cả tuyệt vời",
+        "category_scores": {
+          "Độ sạch sẽ": 8.6,
+          "Cơ sở vật chất": 8.2,
+          "Vị trí": 8.6,
+          "Dịch vụ": 8.2,
+          "Đáng tiền": 8.6
+        },
+        "score_distribution": {
+          "9+ Hiếm Có": 45,
+          "8-9 Xuất Sắc": 17,
+          "7-8 Rất Tốt": 1,
+          "6-7 Tốt": 3,
+          "<6 Dưới Mức Mong Đợi": 10
+        },
+        "awards": null,
+        "price": 435185,
+        "currency": "VND",
+        "rooms_available": true,
+        "offer_count": 2,
+        "check_in": "2026-07-28",
+        "check_out": "2026-07-29",
+        "room_types": [
+          "Phòng Deluxe Có Giường Cỡ King (Deluxe King Room)",
+          "Phòng Gia Đình Tiêu Chuẩn (Standard Family Room)"
+        ],
+        "rooms": [
+          {
+            "name": "Phòng Deluxe Có Giường Cỡ King (Deluxe King Room)",
+            "room_id": 752045460,
+            "bed": "1 giường đôi lớn",
+            "size": "26 m²",
+            "max_occupancy": "Tối đa 2 người lớn",
+            "view": "Hướng Vườn",
+            "amenity_groups": {
+              "Bếp": [
+                "Ấm nước điện"
+              ],
+              "Phòng tắm và vật dụng vệ sinh": [
+                "Các loại khăn",
+                "Máy sấy tóc",
+                "phòng tắm riêng",
+                "Vật dụng tắm rửa",
+                "Vòi sen"
+              ],
+              "Giải trí ": [
+                "TV",
+                "TV [màn hình phẳng]"
+              ],
+              "Tiện nghi": [
+                "Cách âm",
+                "Dép đi trong nhà",
+                "Điều hòa",
+                "Đồ dùng cho giấc ngủ thoải mái",
+                "Ổ cắm điện gần giường",
+                "Quạt",
+                "Vải trải giường"
+              ],
+              "Ăn uống": [
+                "Nước đóng chai miễn phí",
+                "Tủ lạnh"
+              ],
+              "Bố trí và nội thất phòng": [
+                "Bàn làm việc",
+                "Sàn lát gạch/Sàn đá cẩm thạch",
+                "Thùng rác"
+              ],
+              "Quần áo và Giặt ủi": [
+                "Giá treo quần áo",
+                "Phòng thay đồ",
+                "Tủ quần áo"
+              ],
+              "Tính năng an toàn và an ninh": [
+                "Đầu báo khói",
+                "Điều hòa cá nhân"
+              ]
+            },
+            "sold_out": false,
+            "price_per_night": 435185,
+            "currency": "VND",
+            "crossed_out": false,
+            "review_score": 8.556,
+            "review_text": "Tuyệt vời",
+            "image_count": 18,
+            "images": [
+              "https://q-xx.bstatic.com/xdata/images/hotel/840x460/503741927.jpg?k=60cc0fb2592f99f46b90502431448deef81ce1a796767c51bf97542ee450558c&o="
+            ]
+          }
+        ],
+        "amenities": [
+          "tiếng Việt",
+          "Dịch vụ Internet",
+          "Internet",
+          "Wi-Fi miễn phí trong tất cả các phòng!",
+          "Wi-Fi ở nơi công cộng",
+          "Chuyến du lịch",
+          "Vườn",
+          "bộ dụng cụ sơ cứu",
+          "Dịch vụ khử trùng chuyên nghiệp",
+          "khẩu trang miễn phí",
+          "Nhân viên được đào tạo về giao thức an toàn",
+          "Dịch vụ phòng",
+          "Dịch vụ giặt là",
+          "Dịch vụ ủi đồ",
+          "Dọn phòng hằng ngày",
+          "Đổi ngoại tệ",
+          "Giữ hành lý",
+          "hoàn toàn không hút thuốc",
+          "Khu vực hút thuốc",
+          "Máy điều hòa ở khu vực chung",
+          "Nhân viên chăm sóc khách hàng",
+          "Phòng chờ chung/khu vực TV",
+          "Sân hiên",
+          "Phòng gia đình",
+          "Thích hợp cho gia đình/trẻ em",
+          "Bảo vệ [24 giờ]",
+          "Bình chữa cháy",
+          "Nhận/trả phòng [nhanh]",
+          "Nhận/trả phòng [riêng]",
+          "Phòng cách âm",
+          "Phòng không hút thuốc",
+          "Thiết bị báo cháy",
+          "Tính năng an toàn/bảo mật",
+          "Bãi đỗ xe [miễn phí]",
+          "Bãi đỗ xe có nhân viên",
+          "Dịch vụ đưa đón",
+          "Đưa đón sân bay",
+          "Ô tô cho thuê",
+          "Ấm nước điện",
+          "Bàn làm việc",
+          "Cách âm",
+          "Các loại khăn",
+          "Dép đi trong nhà",
+          "Đầu báo khói",
+          "Điều hòa",
+          "Điều hòa cá nhân",
+          "Đồ dùng cho giấc ngủ thoải mái",
+          "Giá treo quần áo",
+          "Máy sấy tóc",
+          "Nước đóng chai miễn phí",
+          "Ổ cắm điện gần giường",
+          "phòng tắm riêng",
+          "Phòng thay đồ",
+          "Quạt",
+          "Sàn lát gạch/Sàn đá cẩm thạch",
+          "Thùng rác",
+          "Tủ lạnh",
+          "Tủ quần áo",
+          "TV [màn hình phẳng]",
+          "Vải trải giường",
+          "Vật dụng tắm rửa",
+          "Vòi sen"
+        ],
+        "amenity_groups": {
+          "Ngôn ngữ được sử dụng": [
+            "tiếng Việt"
+          ],
+          "Truy cập Internet": [
+            "Dịch vụ Internet",
+            "Internet",
+            "Wi-Fi miễn phí trong tất cả các phòng!",
+            "Wi-Fi ở nơi công cộng"
+          ],
+          "Thư giãn & Vui chơi giải trí": [
+            "Chuyến du lịch",
+            "Vườn"
+          ],
+          "Độ sạch sẽ và an toàn": [
+            "bộ dụng cụ sơ cứu",
+            "Dịch vụ khử trùng chuyên nghiệp",
+            "khẩu trang miễn phí",
+            "Nhân viên được đào tạo về giao thức an toàn"
+          ],
+          "Ăn uống": [
+            "Dịch vụ phòng"
+          ],
+          "Dịch vụ và tiện nghi": [
+            "Dịch vụ giặt là",
+            "Dịch vụ ủi đồ",
+            "Dọn phòng hằng ngày",
+            "Đổi ngoại tệ",
+            "Giữ hành lý",
+            "hoàn toàn không hút thuốc",
+            "Khu vực hút thuốc",
+            "Máy điều hòa ở khu vực chung",
+            "Nhân viên chăm sóc khách hàng",
+            "Phòng chờ chung/khu vực TV",
+            "Sân hiên"
+          ],
+          "Dành cho trẻ em": [
+            "Phòng gia đình",
+            "Thích hợp cho gia đình/trẻ em"
+          ],
+          "Dễ dàng tiếp cận": [
+            "Bảo vệ [24 giờ]",
+            "Bình chữa cháy",
+            "Nhận/trả phòng [nhanh]",
+            "Nhận/trả phòng [riêng]",
+            "Phòng cách âm",
+            "Phòng không hút thuốc",
+            "Thiết bị báo cháy",
+            "Tính năng an toàn/bảo mật"
+          ],
+          "Đi lại": [
+            "Bãi đỗ xe [miễn phí]",
+            "Bãi đỗ xe có nhân viên",
+            "Dịch vụ đưa đón",
+            "Đưa đón sân bay",
+            "Ô tô cho thuê"
+          ],
+          "Có trong tất cả phòng": [
+            "Ấm nước điện",
+            "Bàn làm việc",
+            "Cách âm",
+            "Các loại khăn",
+            "Dép đi trong nhà",
+            "Đầu báo khói",
+            "Điều hòa",
+            "Điều hòa cá nhân",
+            "Đồ dùng cho giấc ngủ thoải mái",
+            "Giá treo quần áo",
+            "Máy sấy tóc",
+            "Nước đóng chai miễn phí",
+            "Ổ cắm điện gần giường",
+            "phòng tắm riêng",
+            "Phòng thay đồ",
+            "Quạt",
+            "Sàn lát gạch/Sàn đá cẩm thạch",
+            "Thùng rác",
+            "Tủ lạnh",
+            "Tủ quần áo",
+            "TV [màn hình phẳng]",
+            "Vải trải giường",
+            "Vật dụng tắm rửa",
+            "Vòi sen"
+          ]
+        },
+        "highlights": [
+          "Cách phương tiện công cộng 400 mét",
+          "Địa danh và thắng cảnh",
+          "Hue Imperial Citadel",
+          "Văn hóa bản địa"
+        ],
+        "nearby_attractions": [
+          "Đông Ba thị trường - Cách nơi ở 510 m",
+          "Cầu Trường Tiền - Cách nơi ở 680 m",
+          "Chùa Từ Đàm - Cách nơi ở 700 m",
+          "Sông Hương - Cách nơi ở 970 m"
+        ],
+        "nearby_essentials": [
+          {
+            "category": "Sân bay lân cận",
+            "name": "Sân bay Quốc tế Phú Bài (HUI)",
+            "distance_km": 14.91,
+            "distance_text": "14,91 km",
+            "coordinates": "16.397991,107.700367"
+          },
+          {
+            "category": "Sân bay lân cận",
+            "name": "Sân bay Quốc tế Đà Nẵng (DAD)",
+            "distance_km": 80.48,
+            "distance_text": "80,48 km",
+            "coordinates": "16.056327,108.200833"
+          },
+          {
+            "category": "Phương tiện công cộng",
+            "name": "Bến xe Đông Ba",
+            "distance_km": 0.36,
+            "distance_text": "360 mét",
+            "coordinates": "16.471388,107.587497"
+          },
+          {
+            "category": "Phương tiện công cộng",
+            "name": "Ga Huế",
+            "distance_km": 1.95,
+            "distance_text": "1,95 km",
+            "coordinates": "16.456436,107.578069"
+          },
+          {
+            "category": "Bệnh viện & phòng khám",
+            "name": "Than Minh",
+            "distance_km": 1.03,
+            "distance_text": "1,03 km",
+            "coordinates": "16.4700489,107.5936107"
+          },
+          {
+            "category": "Nơi mua sắm",
+            "name": "Đông Ba thị trường",
+            "distance_km": 0.47,
+            "distance_text": "470 mét",
+            "coordinates": "16.472314,107.58879"
+          },
+          {
+            "category": "Rút tiền mặt",
+            "name": "ATM",
+            "distance_km": 1.11,
+            "distance_text": "1,11 km",
+            "coordinates": "16.4636,107.5881"
+          }
+        ],
+        "check_in_time": "14:00",
+        "check_in_until": "22:00",
+        "check_out_time": "11:30",
+        "reception_open_until": null,
+        "description": "Nằm ở vị trí trung tâm tại Đại Nội Huế của Huế, chỗ nghỉ này đặt quý khách ở gần các điểm thu hút và tùy chọn ăn uống thú vị.",
+        "image_url": "https://q-xx.bstatic.com/xdata/images/hotel/max1024x768/503741926.jpg?k=2836f0f68f80543eac44d4e27d3be8400b9e5c00f441945ef3eaabbe381660df&o=",
+        "image_count": 2,
+        "all_images": [
+          "https://q-xx.bstatic.com/xdata/images/hotel/max1024x768/503741926.jpg?k=2836f0f68f80543eac44d4e27d3be8400b9e5c00f441945ef3eaabbe381660df&o=",
+          "https://q-xx.bstatic.com/xdata/images/hotel/max1024x768/503741927.jpg?k=60cc0fb2592f99f46b90502431448deef81ce1a796767c51bf97542ee450558c&o="
+        ],
+        "coordinates": "16.47283935546875,107.5844497680664",
+        "property_url": "https://www.agoda.com/son-ca-motel-h47003936/hotel/all/hue-vn.html",
+        "scraped_at": "2026-07-22T14:55:57.569956+00:00",
+        "warnings": [],
+        "source_platform": "agoda"
+      },
+      {
+        "hotel_id": 10804879,
+        "hotel_name": "Son Ca Motel",
+        "accommodation_type": "HOTEL",
+        "star_rating": 2,
+        "address": "1/28 Lê Thánh Tôn, Phường Đông Ba, Huế, Việt Nam",
+        "city": "Huế",
+        "area_name": null,
+        "country": "vn",
+        "review_score": 9.1,
+        "review_count": 594,
+        "category_scores": {
+          "Nhân viên phục vụ": 9,
+          "Tiện nghi": 9.3,
+          "Sạch sẽ": 9.4,
+          "Thoải mái": 9.2,
+          "Đáng giá tiền": 9.4,
+          "Địa điểm": 9.3,
+          "WiFi miễn phí": 8.4
+        },
+        "amenities": [
+          "Dịch vụ đưa đón",
+          "Khu vực xem TV/sảnh chung",
+          "Khu vực cho phép hút thuốc",
+          "Điều hòa nhiệt độ",
+          "Cấm hút thuốc trong toàn bộ khuôn viên",
+          "Sàn lát gạch/đá cẩm thạch",
+          "Cách âm",
+          "Cho thuê xe hơi",
+          "Phòng cách âm",
+          "Quạt máy",
+          "Phòng gia đình",
+          "Xe đưa đón sân bay",
+          "Phòng không hút thuốc",
+          "Dịch vụ phòng",
+          "Ổ cắm gần giường",
+          "Giá phơi quần áo",
+          "Giá treo quần áo",
+          "Giấy vệ sinh",
+          "Khăn tắm",
+          "Chậu rửa vệ sinh (bidet)",
+          "Dép lê",
+          "Phòng tắm riêng",
+          "Nhà vệ sinh",
+          "Đồ vệ sinh cá nhân miễn phí",
+          "Máy sấy tóc",
+          "Vòi sen",
+          "TV màn hình phẳng",
+          "TV",
+          "Dịch vụ Internet",
+          "Ấm đun nước điện",
+          "Tủ lạnh",
+          "Bàn ghế ngoài trời",
+          "Sân thượng / hiên",
+          "Sân vườn",
+          "Nhìn ra vườn",
+          "Ngắm cảnh",
+          "Bàn làm việc",
+          "Chỗ đỗ xe",
+          "Bộ khăn trải giường",
+          "Tủ hoặc phòng để quần áo",
+          "Phòng thay quần áo",
+          "Nhận/trả phòng riêng",
+          "Dịch vụ trợ giúp đặc biệt",
+          "Giữ hành lí",
+          "Bàn bán tour",
+          "Thu đổi ngoại tệ",
+          "Nhận/trả phòng cấp tốc",
+          "Dọn phòng hàng ngày",
+          "Dịch vụ là (ủi)",
+          "Giặt ủi",
+          "Bình chữa cháy",
+          "Thiết bị báo cháy",
+          "Báo động an ninh",
+          "Bảo vệ 24/7"
+        ],
+        "amenity_groups": {
+          "Tổng quát": [
+            "Dịch vụ đưa đón",
+            "Khu vực xem TV/sảnh chung",
+            "Khu vực cho phép hút thuốc",
+            "Điều hòa nhiệt độ",
+            "Cấm hút thuốc trong toàn bộ khuôn viên",
+            "Sàn lát gạch/đá cẩm thạch",
+            "Cách âm",
+            "Cho thuê xe hơi",
+            "Phòng cách âm",
+            "Quạt máy",
+            "Phòng gia đình",
+            "Xe đưa đón sân bay",
+            "Phòng không hút thuốc",
+            "Dịch vụ phòng"
+          ],
+          "Tiện ích trong phòng": [
+            "Ổ cắm gần giường",
+            "Giá phơi quần áo",
+            "Giá treo quần áo"
+          ],
+          "Phòng tắm": [
+            "Giấy vệ sinh",
+            "Khăn tắm",
+            "Chậu rửa vệ sinh (bidet)",
+            "Dép lê",
+            "Phòng tắm riêng",
+            "Nhà vệ sinh",
+            "Đồ vệ sinh cá nhân miễn phí",
+            "Máy sấy tóc",
+            "Vòi sen"
+          ],
+          "Truyền thông & Công nghệ": [
+            "TV màn hình phẳng",
+            "TV"
+          ],
+          "Internet": [
+            "Dịch vụ Internet"
+          ],
+          "Nhà bếp": [
+            "Ấm đun nước điện",
+            "Tủ lạnh"
+          ],
+          "Ngoài trời": [
+            "Bàn ghế ngoài trời",
+            "Sân thượng / hiên",
+            "Sân vườn"
+          ],
+          "Tầm nhìn": [
+            "Nhìn ra vườn",
+            "Ngắm cảnh"
+          ],
+          "Khu vực phòng khách": [
+            "Bàn làm việc"
+          ],
+          "Chỗ đậu xe": [
+            "Chỗ đỗ xe"
+          ],
+          "Phòng ngủ": [
+            "Bộ khăn trải giường",
+            "Tủ hoặc phòng để quần áo",
+            "Phòng thay quần áo"
+          ],
+          "Dịch vụ khách hàng": [
+            "Nhận/trả phòng riêng",
+            "Dịch vụ trợ giúp đặc biệt",
+            "Giữ hành lí",
+            "Bàn bán tour",
+            "Thu đổi ngoại tệ",
+            "Nhận/trả phòng cấp tốc"
+          ],
+          "Dịch vụ lau dọn": [
+            "Dọn phòng hàng ngày",
+            "Dịch vụ là (ủi)",
+            "Giặt ủi"
+          ],
+          "An ninh": [
+            "Bình chữa cháy",
+            "Thiết bị báo cháy",
+            "Báo động an ninh",
+            "Bảo vệ 24/7"
+          ]
+        },
+        "nearby_attractions": [
+          {
+            "name": "Bảo tàng Museum of Royal Antiquities",
+            "distance_km": 0.318,
+            "distance_text": "300 m",
+            "coordinates": "16.471307,107.581923"
+          },
+          {
+            "name": "Tử Cấm Thành",
+            "distance_km": 0.843,
+            "distance_text": "800 m",
+            "coordinates": "16.4697524850001,107.577223778"
+          },
+          {
+            "name": "Ngũ Phụng",
+            "distance_km": 0.812,
+            "distance_text": "800 m",
+            "coordinates": "16.4715170000001,107.5769609"
+          },
+          {
+            "name": "Cầu Tràng Tiền",
+            "distance_km": 0.653,
+            "distance_text": "650 m",
+            "coordinates": "16.468822,107.588926"
+          },
+          {
+            "name": "Bảo tàng Hồ Chí Minh",
+            "distance_km": 1.497,
+            "distance_text": "1,5 km",
+            "coordinates": "16.4597002,107.5810754"
+          },
+          {
+            "name": "Cung An Định",
+            "distance_km": 2.257,
+            "distance_text": "2,3 km",
+            "coordinates": "16.4571793750001,107.597994804"
+          },
+          {
+            "name": "Lăng Tự Đức",
+            "distance_km": 4.845,
+            "distance_text": "4,8 km",
+            "coordinates": "16.4330031000001,107.5656098"
+          },
+          {
+            "name": "Thanh Toan Bridge",
+            "distance_km": 6.249,
+            "distance_text": "6 km",
+            "coordinates": "16.466755,107.642632"
+          },
+          {
+            "name": "Minh Mang Tomb",
+            "distance_km": 9.569,
+            "distance_text": "9 km",
+            "coordinates": "16.387656,107.569042"
+          }
+        ],
+        "nearby_essentials": [
+          {
+            "category": "Airports",
+            "name": "Sân bay quốc tế Phú Bài",
+            "distance_km": 13.549,
+            "distance_text": "13 km",
+            "coordinates": "16.4015,107.703"
+          },
+          {
+            "category": "Airports",
+            "name": "Sân bay Quốc tế Đà Nẵng",
+            "distance_km": 79.341,
+            "distance_text": "79 km",
+            "coordinates": "16.0439,108.199"
+          },
+          {
+            "category": "Public transportation",
+            "name": "Hue Railway Station",
+            "distance_km": 1.935,
+            "distance_text": "1,9 km",
+            "coordinates": "16.456489,107.578014"
+          }
+        ],
+        "price": 470000,
+        "currency": "VND",
+        "rooms_available": 2,
+        "check_in": "2026-07-24",
+        "check_out": "2026-07-25",
+        "check_in_time": "14:00",
+        "check_in_until": "22:00",
+        "check_out_time": "11:30",
+        "room_types": [
+          "Phòng Deluxe Có Giường Cỡ King",
+          "Phòng Gia Đình Tiêu Chuẩn"
+        ],
+        "rooms": [
+          {
+            "name": "Phòng Deluxe Có Giường Cỡ King",
+            "room_id": 1080487901,
+            "bed": "1 Large double bed",
+            "size": "26 m²",
+            "max_occupancy": "2",
+            "view": "Nhìn ra vườn",
+            "amenities": [
+              "Máy điều hòa",
+              "Quạt máy",
+              "Cách âm",
+              "Sàn lát gạch/đá cẩm thạch",
+              "Giá treo quần áo",
+              "Giá phơi quần áo",
+              "Ổ cắm gần giường",
+              "Vòi sen",
+              "Máy sấy tóc",
+              "Đồ vệ sinh cá nhân miễn phí",
+              "Nhà vệ sinh",
+              "Phòng tắm riêng",
+              "Dép lê",
+              "Chậu rửa vệ sinh (bidet)",
+              "Khăn tắm",
+              "Giấy vệ sinh",
+              "TV",
+              "TV màn hình phẳng",
+              "Tủ lạnh",
+              "Ấm đun nước điện",
+              "Bàn làm việc",
+              "Phòng thay quần áo",
+              "Tủ hoặc phòng để quần áo",
+              "Bộ khăn trải giường",
+              "Máy điều hòa độc lập cho từng phòng"
+            ],
+            "image_count": 23,
+            "images": [
+              "https://cf.bstatic.com/xdata/images/hotel/max1024x768/503741927.jpg?k=60cc0fb2592f99f46b90502431448deef81ce1a796767c51bf97542ee450558c&o="
+            ],
+            "price_per_night": 470000,
+            "currency": "VND",
+            "sold_out": false,
+            "review_score": null,
+            "review_text": null
+          }
+        ],
+        "image_url": "https://cf.bstatic.com/xdata/images/hotel/max1024x768/503741926.jpg?k=2836f0f68f80543eac44d4e27d3be8400b9e5c00f441945ef3eaabbe381660df&o=",
+        "image_count": 2,
+        "all_images": [
+          "https://cf.bstatic.com/xdata/images/hotel/max1024x768/503741926.jpg?k=2836f0f68f80543eac44d4e27d3be8400b9e5c00f441945ef3eaabbe381660df&o=",
+          "https://cf.bstatic.com/xdata/images/hotel/max1024x768/503741918.jpg?k=13bf4006c1ff0a9d7e195724bd850ccce85a11d6acaaae87e1589b994e86b9d4&o="
+        ],
+        "coordinates": "16.472840138209,107.58444457904",
+        "property_url": "https://www.booking.com/hotel/vn/son-ca-motel-thanh-pho-hue.html",
+        "scraped_at": "2026-07-22T15:08:06.101991+00:00",
+        "warnings": [],
+        "source_platform": "booking"
+      }
+    ]
+  ],
+  "non_duplicate_near_miss": [
+    {
+      "hotel_id": 37272417,
+      "hotel_name": "Grandma Lu's Saigon Japan Town",
+      "accommodation_type": "Khách sạn",
+      "address": "18 Thái Văn Lung, Quận 1, Hồ Chí Minh, Việt Nam, 700000",
+      "city": "Hồ Chí Minh",
+      "country": "Việt Nam",
+      "area_name": "Quận 1",
+      "location_highlight": "trong nội thành",
+      "star_rating": 1,
+      "review_score": 8.4,
+      "review_count": 2175,
+      "review_text": "Tuyệt vời",
+      "category_scores": {
+        "Độ sạch sẽ": 8.4,
+        "Cơ sở vật chất": 8,
+        "Vị trí": 9.2,
+        "Dịch vụ": 8.5,
+        "Đáng tiền": 8.8
+      },
+      "score_distribution": {
+        "9+ Hiếm Có": 887,
+        "8-9 Xuất Sắc": 367,
+        "7-8 Rất Tốt": 123,
+        "6-7 Tốt": 116,
+        "<6 Dưới Mức Mong Đợi": 116
+      },
+      "awards": [
+        "advanceGuaranteeProgram"
+      ],
+      "price": 218993,
+      "currency": "VND",
+      "rooms_available": true,
+      "offer_count": 2,
+      "check_in": "2026-07-29",
+      "check_out": "2026-07-30",
+      "room_types": [
+        "Phòng giường đơn - Phòng nghỉ (Single - Room)",
+        "Phòng hướng thành phố (City View)"
+      ],
+      "rooms": [
+        {
+          "name": "Phòng giường đơn - Phòng nghỉ (Single - Room)",
+          "room_id": 613866035,
+          "bed": "1 giường đơn",
+          "size": null,
+          "max_occupancy": "Tối đa 1 người lớn",
+          "view": null,
+          "amenity_groups": {
+            "Phòng tắm và vật dụng vệ sinh": [
+              "Gương",
+              "Máy sấy tóc",
+              "Phòng tắm chung",
+              "Phòng tắm đứng",
+              "Sản phẩm vệ sinh",
+              "Vật dụng tắm rửa",
+              "Vòi sen"
+            ],
+            "Giải trí ": [
+              "Wi-Fi [miễn phí]"
+            ],
+            "Tiện nghi": [
+              "Điều hòa"
+            ],
+            "Bố trí và nội thất phòng": [
+              "Bàn làm việc"
+            ],
+            "Dễ dàng tiếp cận": [
+              "Hành lang ngoài"
+            ],
+            "Tính năng an toàn và an ninh": [
+              "Không hút thuốc"
+            ]
+          },
+          "sold_out": false,
+          "price_per_night": 218993,
+          "currency": "VND",
+          "crossed_out": false,
+          "review_score": 8.487,
+          "review_text": "Tuyệt vời",
+          "image_count": 11,
+          "images": [
+            "https://pix8.agoda.net/hotelImages/37272417/613866035/8c7d7e976a0fa212a1c6724355b14204.png?ce=3&s=800x600"
+          ]
+        }
+      ],
+      "amenities": [
+        "tiếng Việt",
+        "Tiếng Anh",
+        "Dịch vụ Internet",
+        "Internet",
+        "Wi-Fi miễn phí trong tất cả các phòng!",
+        "Wi-Fi ở nơi công cộng",
+        "Nhà hàng",
+        "Quán cà phê",
+        "chứng nhận vệ sinh",
+        "Dịch vụ bán thức ăn sáng mang về",
+        "Dịch vụ thanh toán không sử dụng tiền mặt",
+        "khử trùng hằng ngày",
+        "Màn bảo vệ ở khu vực chung",
+        "nước rửa tay",
+        "Dọn phòng hằng ngày",
+        "Giữ hành lý",
+        "Khu vực hút thuốc",
+        "Máy điều hòa ở khu vực chung",
+        "Nhận/trả phòng không tiếp xúc",
+        "Nhân viên chăm sóc khách hàng",
+        "Thang máy",
+        "Bàn tiếp tân [24 giờ]",
+        "Bảo vệ [24 giờ]",
+        "Bình chữa cháy",
+        "CCTV bên ngoài chỗ nghỉ",
+        "CCTV trong khu vực chung",
+        "Chuỗi khách sạn",
+        "Hành lang ngoài",
+        "Khu vực tầng thượng",
+        "Nhận/trả phòng [nhanh]",
+        "Nhận phòng [24 giờ]",
+        "Phòng cách âm",
+        "Phòng có gương",
+        "Phòng không gây dị ứng",
+        "Phòng không hút thuốc",
+        "Thiết bị báo cháy",
+        "Tính năng an toàn/bảo mật",
+        "Bãi đỗ xe [gần bên]",
+        "Bãi đỗ xe [miễn phí]",
+        "Dịch vụ taxi",
+        "Bàn làm việc",
+        "Điều hòa",
+        "Gương",
+        "Không hút thuốc",
+        "Máy sấy tóc",
+        "Phòng tắm chung",
+        "Phòng tắm đứng",
+        "Sản phẩm vệ sinh",
+        "Vòi sen"
+      ],
+      "amenity_groups": {
+        "Ngôn ngữ được sử dụng": [
+          "tiếng Việt",
+          "Tiếng Anh"
+        ],
+        "Truy cập Internet": [
+          "Dịch vụ Internet",
+          "Internet",
+          "Wi-Fi miễn phí trong tất cả các phòng!",
+          "Wi-Fi ở nơi công cộng"
+        ],
+        "Ăn uống": [
+          "Nhà hàng",
+          "Quán cà phê"
+        ],
+        "Độ sạch sẽ và an toàn": [
+          "chứng nhận vệ sinh",
+          "Dịch vụ bán thức ăn sáng mang về",
+          "Dịch vụ thanh toán không sử dụng tiền mặt",
+          "khử trùng hằng ngày",
+          "Màn bảo vệ ở khu vực chung",
+          "nước rửa tay"
+        ],
+        "Dịch vụ và tiện nghi": [
+          "Dọn phòng hằng ngày",
+          "Giữ hành lý",
+          "Khu vực hút thuốc",
+          "Máy điều hòa ở khu vực chung",
+          "Nhận/trả phòng không tiếp xúc",
+          "Nhân viên chăm sóc khách hàng",
+          "Thang máy"
+        ],
+        "Dễ dàng tiếp cận": [
+          "Bàn tiếp tân [24 giờ]",
+          "Bảo vệ [24 giờ]",
+          "Bình chữa cháy",
+          "CCTV bên ngoài chỗ nghỉ",
+          "CCTV trong khu vực chung",
+          "Chuỗi khách sạn",
+          "Hành lang ngoài",
+          "Khu vực tầng thượng",
+          "Nhận/trả phòng [nhanh]",
+          "Nhận phòng [24 giờ]",
+          "Phòng cách âm",
+          "Phòng có gương",
+          "Phòng không gây dị ứng",
+          "Phòng không hút thuốc",
+          "Thiết bị báo cháy",
+          "Tính năng an toàn/bảo mật"
+        ],
+        "Đi lại": [
+          "Bãi đỗ xe [gần bên]",
+          "Bãi đỗ xe [miễn phí]",
+          "Dịch vụ taxi"
+        ],
+        "Có trong tất cả phòng": [
+          "Bàn làm việc",
+          "Điều hòa",
+          "Gương",
+          "Hành lang ngoài",
+          "Không hút thuốc",
+          "Máy sấy tóc",
+          "Phòng tắm chung",
+          "Phòng tắm đứng",
+          "Sản phẩm vệ sinh",
+          "Vòi sen"
+        ]
+      },
+      "highlights": [
+        "Tọa lạc tại trung tâm Hồ Chí Minh",
+        "Điểm mua sắm và chợ",
+        "War Remnants Museum",
+        "Nhà hàng"
+      ],
+      "nearby_attractions": [
+        "UBND Thành phố Hồ Chí Minh - Cách nơi ở 520 m",
+        "Tòa nhà Ủy ban nhân dân - Cách nơi ở 520 m",
+        "Nhà thờ Đức Bà Sài Gòn - Cách nơi ở 550 m",
+        "Dinh Độc Lập - Cách nơi ở 970 m"
+      ],
+      "nearby_essentials": [
+        {
+          "category": "Sân bay lân cận",
+          "name": "Sân bay Quốc tế Tân Sơn Nhất (SGN)",
+          "distance_km": 6.52,
+          "distance_text": "6,52 km",
+          "coordinates": "10.818463,106.658824"
+        },
+        {
+          "category": "Sân bay lân cận",
+          "name": "Sân bay Quốc tế Cần Thơ (VCA)",
+          "distance_km": 133.5,
+          "distance_text": "133,5 km",
+          "coordinates": "10.080483,105.712177"
+        },
+        {
+          "category": "Phương tiện công cộng",
+          "name": "Ga Sài Gòn",
+          "distance_km": 3,
+          "distance_text": "3 km",
+          "coordinates": "10.78223,106.676566"
+        },
+        {
+          "category": "Phương tiện công cộng",
+          "name": "Bến xe Miền Đông",
+          "distance_km": 3.92,
+          "distance_text": "3,92 km",
+          "coordinates": "10.814531,106.711422"
+        },
+        {
+          "category": "Bệnh viện & phòng khám",
+          "name": "Nha khoa Westcoast",
+          "distance_km": 0.12,
+          "distance_text": "120 mét",
+          "coordinates": "10.7810932,106.7041539"
+        },
+        {
+          "category": "Nơi mua sắm",
+          "name": "Chợ Bến Thành",
+          "distance_km": 1.08,
+          "distance_text": "1,08 km",
+          "coordinates": "10.772109,106.698278"
+        },
+        {
+          "category": "Cửa hàng tạp hóa",
+          "name": "Family Mart",
+          "distance_km": 0.16,
+          "distance_text": "160 mét",
+          "coordinates": "10.7811441,106.7050673"
+        },
+        {
+          "category": "Rút tiền mặt",
+          "name": "ATM",
+          "distance_km": 0.12,
+          "distance_text": "120 mét",
+          "coordinates": "10.780539,106.704959"
+        }
+      ],
+      "check_in_time": "14:00",
+      "check_in_until": null,
+      "check_out_time": "12:00",
+      "reception_open_until": "23:59",
+      "description": "Hãy để chuyến đi của quý khách có một khởi đầu tuyệt vời khi ở lại khách sạn này, nơi có Wi-Fi miễn phí trong tất cả các phòng. Nằm ở vị trí chiến lược tại Quận 1, cho phép quý khách lui tới và gần với các điểm thu hút và tham quan địa phương. Đừng rời đi trước khi ghé thăm Bảo tàng Chứng tích chiến tranh nổi tiếng. Như một lợi ích thêm, nhà hàng có sẵn ngay trong khuôn viên nghỉ để phục vụ nhu cầu của quý khách một cách thuận tiện.",
+      "image_url": "https://q-xx.bstatic.com/xdata/images/hotel/max1024x768/895899878.jpg?k=00e792136803d5ed8b57d75084487ffabc45d38c7751180c56db41cfd707b6db&o=",
+      "image_count": 2,
+      "all_images": [
+        "https://q-xx.bstatic.com/xdata/images/hotel/max1024x768/895899878.jpg?k=00e792136803d5ed8b57d75084487ffabc45d38c7751180c56db41cfd707b6db&o=",
+        "https://pix8.agoda.net/hotelImages/37272417/0/2643bf9986dbb49d699b1ce0ac938a15.png?ce=3&s=1024x768"
+      ],
+      "coordinates": "10.7800789,106.7039",
+      "property_url": "https://www.agoda.com/grandma-lu-h36209150/hotel/ho-chi-minh-city-vn.html",
+      "scraped_at": "2026-07-22T13:56:02.414424+00:00",
+      "warnings": [],
+      "source_platform": "agoda"
+    },
+    {
+      "hotel_id": 80114585,
+      "hotel_name": "Khách sạn PureJoy Saigon - Premium (PureJoy Hotel Saigon - Premium)",
+      "accommodation_type": "Khách sạn",
+      "address": "26A Le Thanh Ton Street, Ben Nghe ward, District 1, Viet Nam, Quận 1, Hồ Chí Minh, Việt Nam, 700000",
+      "city": "Hồ Chí Minh",
+      "country": "Việt Nam",
+      "area_name": "Quận 1",
+      "location_highlight": "trong nội thành",
+      "star_rating": 4,
+      "review_score": 8.7,
+      "review_count": 462,
+      "review_text": "Tuyệt vời",
+      "category_scores": {
+        "Độ sạch sẽ": 9.2,
+        "Cơ sở vật chất": 8.6,
+        "Vị trí": 9.5,
+        "Dịch vụ": 9.2,
+        "Đáng tiền": 9
+      },
+      "score_distribution": {
+        "9+ Hiếm Có": 252,
+        "8-9 Xuất Sắc": 55,
+        "7-8 Rất Tốt": 13,
+        "6-7 Tốt": 11,
+        "<6 Dưới Mức Mong Đợi": 21
+      },
+      "awards": null,
+      "price": 953131,
+      "currency": "VND",
+      "rooms_available": true,
+      "offer_count": 10,
+      "check_in": "2026-07-29",
+      "check_out": "2026-07-30",
+      "room_types": [
+        "Twin Standard",
+        "HAI GIƯỜNG ĐƠN (Twin)",
+        "Superior hướng thành phố (Superior City View)",
+        "Phòng Loại Sang (Deluxe)",
+        "Junior Suite",
+        "Suite Deluxe (Deluxe Suite)",
+        "Phòng Suite Hướng Thành Phố Không Hút Thuốc (Suites With City View - Non-Smoking)",
+        "Phòng giường Queen (Queen Room)",
+        "Deluxe hướng thành phố (Deluxe City View)"
+      ],
+      "rooms": [
+        {
+          "name": "Twin Standard",
+          "room_id": 1258781306,
+          "bed": "2 giường đơn",
+          "size": "20 m²",
+          "max_occupancy": "Tối đa 2 người lớn",
+          "view": null,
+          "amenity_groups": {
+            "Phòng tắm và vật dụng vệ sinh": [
+              "phòng tắm riêng",
+              "Vật dụng tắm rửa",
+              "Vòi sen"
+            ],
+            "Giải trí ": [
+              "Truy cập Internet - không dây",
+              "Truyền hình cáp/vệ tinh",
+              "TV [màn hình phẳng]",
+              "Wi-Fi [miễn phí]"
+            ],
+            "Tiện nghi": [
+              "Dép đi trong nhà",
+              "Điều hòa",
+              "Rèm che ánh sáng"
+            ],
+            "Ăn uống": [
+              "Trà miễn phí",
+              "Tủ lạnh nhỏ trong phòng"
+            ],
+            "Bố trí và nội thất phòng": [
+              "Bàn làm việc"
+            ],
+            "Quần áo và Giặt ủi": [
+              "Giá treo quần áo",
+              "Tủ quần áo"
+            ],
+            "Tính năng an toàn và an ninh": [
+              "Không hút thuốc"
+            ]
+          },
+          "sold_out": false,
+          "price_per_night": 953131,
+          "currency": "VND",
+          "crossed_out": false,
+          "review_score": 9.4,
+          "review_text": "Trên cả tuyệt vời",
+          "image_count": 5,
+          "images": [
+            "https://pix8.agoda.net/hotelImages/80114585/1258781306/99071f4d6ecb3a458eed2e41e68da05a.jpg?ce=3&s=800x600"
+          ]
+        }
+      ],
+      "amenities": [
+        "tiếng Việt",
+        "Tiếng Anh",
+        "Dịch vụ Internet",
+        "Internet",
+        "Wi-Fi miễn phí trong tất cả các phòng!",
+        "Wi-Fi ở nơi công cộng",
+        "Nhà hàng",
+        "Cửa hàng tạp hóa",
+        "Dọn phòng hằng ngày",
+        "Giữ hành lý",
+        "hoàn toàn không hút thuốc",
+        "Khu vực hút thuốc",
+        "Máy điều hòa ở khu vực chung",
+        "Nhân viên trực cửa",
+        "Thang máy",
+        "bộ dụng cụ sơ cứu",
+        "Giặt đồ vải lanh và quần áo bằng nước nóng",
+        "Bàn tiếp tân [24 giờ]",
+        "Bảo vệ [24 giờ]",
+        "CCTV bên ngoài chỗ nghỉ",
+        "CCTV trong khu vực chung",
+        "Nhận/trả phòng [nhanh]",
+        "Nhận/trả phòng [riêng]",
+        "Nhận phòng [24 giờ]",
+        "Phòng không hút thuốc",
+        "Thiết bị báo cháy"
+      ],
+      "amenity_groups": {
+        "Ngôn ngữ được sử dụng": [
+          "tiếng Việt",
+          "Tiếng Anh"
+        ],
+        "Truy cập Internet": [
+          "Dịch vụ Internet",
+          "Internet",
+          "Wi-Fi miễn phí trong tất cả các phòng!",
+          "Wi-Fi ở nơi công cộng"
+        ],
+        "Ăn uống": [
+          "Nhà hàng"
+        ],
+        "Dịch vụ và tiện nghi": [
+          "Cửa hàng tạp hóa",
+          "Dọn phòng hằng ngày",
+          "Giữ hành lý",
+          "hoàn toàn không hút thuốc",
+          "Khu vực hút thuốc",
+          "Máy điều hòa ở khu vực chung",
+          "Nhân viên trực cửa",
+          "Thang máy"
+        ],
+        "Độ sạch sẽ và an toàn": [
+          "bộ dụng cụ sơ cứu",
+          "Giặt đồ vải lanh và quần áo bằng nước nóng"
+        ],
+        "Dễ dàng tiếp cận": [
+          "Bàn tiếp tân [24 giờ]",
+          "Bảo vệ [24 giờ]",
+          "CCTV bên ngoài chỗ nghỉ",
+          "CCTV trong khu vực chung",
+          "Nhận/trả phòng [nhanh]",
+          "Nhận/trả phòng [riêng]",
+          "Nhận phòng [24 giờ]",
+          "Phòng không hút thuốc",
+          "Thiết bị báo cháy"
+        ]
+      },
+      "highlights": [
+        "Tọa lạc tại trung tâm Hồ Chí Minh",
+        "Điểm mua sắm và chợ",
+        "War Remnants Museum",
+        "Nhà hàng"
+      ],
+      "nearby_attractions": [
+        "UBND Thành phố Hồ Chí Minh - Cách nơi ở 500 m",
+        "Tòa nhà Ủy ban nhân dân - Cách nơi ở 510 m",
+        "Nhà thờ Đức Bà Sài Gòn - Cách nơi ở 550 m",
+        "Dinh Độc Lập - Cách nơi ở 960 m"
+      ],
+      "nearby_essentials": [
+        {
+          "category": "Sân bay lân cận",
+          "name": "Sân bay Quốc tế Tân Sơn Nhất (SGN)",
+          "distance_km": 6.54,
+          "distance_text": "6,54 km",
+          "coordinates": "10.818463,106.658824"
+        },
+        {
+          "category": "Sân bay lân cận",
+          "name": "Sân bay Quốc tế Cần Thơ (VCA)",
+          "distance_km": 133.51,
+          "distance_text": "133,51 km",
+          "coordinates": "10.080483,105.712177"
+        },
+        {
+          "category": "Phương tiện công cộng",
+          "name": "Ga Sài Gòn",
+          "distance_km": 3.02,
+          "distance_text": "3,02 km",
+          "coordinates": "10.78223,106.676566"
+        },
+        {
+          "category": "Phương tiện công cộng",
+          "name": "Bến xe Miền Đông",
+          "distance_km": 3.93,
+          "distance_text": "3,93 km",
+          "coordinates": "10.814531,106.711422"
+        },
+        {
+          "category": "Bệnh viện & phòng khám",
+          "name": "Nha khoa Westcoast",
+          "distance_km": 0.13,
+          "distance_text": "130 mét",
+          "coordinates": "10.7810932,106.7041539"
+        },
+        {
+          "category": "Nơi mua sắm",
+          "name": "Chợ Bến Thành",
+          "distance_km": 1.08,
+          "distance_text": "1,08 km",
+          "coordinates": "10.772109,106.698278"
+        },
+        {
+          "category": "Cửa hàng tạp hóa",
+          "name": "",
+          "distance_km": 0,
+          "distance_text": "Có tại chỗ",
+          "coordinates": "0.0,0.0"
+        },
+        {
+          "category": "Rút tiền mặt",
+          "name": "ATM",
+          "distance_km": 0.13,
+          "distance_text": "130 mét",
+          "coordinates": "10.780539,106.704959"
+        }
+      ],
+      "check_in_time": "14:00",
+      "check_in_until": "23:00",
+      "check_out_time": "12:00",
+      "reception_open_until": null,
+      "description": "Hãy để chuyến đi của quý khách có một khởi đầu tuyệt vời khi ở lại khách sạn này, nơi có Wi-Fi miễn phí trong tất cả các phòng. Nằm ở vị trí chiến lược tại Quận 1, cho phép quý khách lui tới và gần với các điểm thu hút và tham quan địa phương. Đừng rời đi trước khi ghé thăm Bảo tàng Chứng tích chiến tranh nổi tiếng. Chỗ nghỉ 4 sao này có nhà hàng giúp cho kỳ nghỉ của quý khách thêm thư thái và đáng nhớ.",
+      "image_url": "https://pix8.agoda.net/hotelImages/80114585/0/aaf98ae49800adf0089f90e799f2fcd1.jpg?ce=3&s=1024x768",
+      "image_count": 2,
+      "all_images": [
+        "https://pix8.agoda.net/hotelImages/80114585/0/aaf98ae49800adf0089f90e799f2fcd1.jpg?ce=3&s=1024x768",
+        "https://pix8.agoda.net/hotelImages/80114585/1258781308/d0b17d5837f8628eac3fcbd97996f4ac.jpg?ce=3&s=1024x768"
+      ],
+      "coordinates": "10.7799480720754,106.704079222702",
+      "property_url": "https://www.agoda.com/purejoy-hotel-saigon-premium-japanese-street-h79526642/hotel/ho-chi-minh-city-vn.html",
+      "scraped_at": "2026-07-22T13:56:35.700582+00:00",
+      "warnings": [],
+      "source_platform": "agoda"
+    }
+  ]
+}
