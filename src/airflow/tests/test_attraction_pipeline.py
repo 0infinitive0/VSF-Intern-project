@@ -19,12 +19,27 @@ from attraction_utils import (  # noqa: E402
 from destination_geo import crawler_user_agent  # noqa: E402
 from destination_geo import resolve_location_context  # noqa: E402
 from dag_common import optional_location_coords_param_kwargs  # noqa: E402
+from grounded_description import (  # noqa: E402
+    _is_trusted_search_source_url,
+    _is_grounded_description_valid,
+    _parse_ollama_description,
+    _trusted_search_result_urls,
+    _validated_web_source,
+    _validated_wikipedia_source,
+    enrich_description_from_sources,
+)
 from google_maps_pipeline import (  # noqa: E402
     _coordinates_from_google_maps_url,
     _card_description,
+    _candidate_from_google_card,
     _candidate_from_google_maps_place_page,
+    _google_ai_description_from_block_text,
+    _google_ai_search_query,
     _is_geographically_valid_nearby_maps_result,
     _google_maps_shared_place_url,
+    _is_supported_official_content_url,
+    _is_usable_attraction_description,
+    _json_ld_description_candidates,
     _fact_based_description,
     _google_maps_enrichment_urls,
     _google_maps_official_website,
@@ -42,6 +57,7 @@ from google_maps_pipeline import (  # noqa: E402
     collect_google_maps_attractions,
     enrich_google_maps_records,
     normalize_google_maps_candidate,
+    normalize_google_maps_candidates,
     resolve_google_maps_nearby_candidates,
 )
 from hotel_nearby_pipeline import (  # noqa: E402
@@ -629,6 +645,290 @@ class GeographyTests(unittest.TestCase):
 
 
 class GoogleMapsPipelineTests(unittest.TestCase):
+    def test_trusted_grounding_urls_allow_editorial_sources_not_social_or_private_hosts(self):
+        self.assertTrue(
+            _is_trusted_search_source_url(
+                "https://svhtt.khanhhoa.gov.vn/di-tich-lich-su"
+            )
+        )
+        self.assertTrue(
+            _is_trusted_search_source_url(
+                "https://laodong.vn/du-lich/khu-tuong-niem-123.html"
+            )
+        )
+        self.assertTrue(
+            _is_trusted_search_source_url(
+                "https://vi.wikivoyage.org/wiki/Nha_Trang"
+            )
+        )
+        self.assertFalse(
+            _is_trusted_search_source_url(
+                "https://instagram.com/example-attraction"
+            )
+        )
+        self.assertFalse(
+            _is_trusted_search_source_url(
+                "https://127.0.0.1/internal-description"
+            )
+        )
+        self.assertFalse(
+            _is_trusted_search_source_url(
+                "http://laodong.vn/unencrypted"
+            )
+        )
+
+    def test_google_search_links_are_unwrapped_and_filtered_to_trusted_sources(self):
+        urls = _trusted_search_result_urls(
+            [
+                (
+                    "https://www.google.com/url?"
+                    "url=https%3A%2F%2Fsvhtt.khanhhoa.gov.vn%2Fdi-tich"
+                ),
+                "https://laodong.vn/du-lich/khu-tuong-niem-123.html",
+                "https://example.com/seo-page",
+                "https://facebook.com/untrusted-profile",
+            ]
+        )
+
+        self.assertEqual(
+            urls,
+            [
+                "https://svhtt.khanhhoa.gov.vn/di-tich",
+                "https://laodong.vn/du-lich/khu-tuong-niem-123.html",
+            ],
+        )
+
+    def test_external_grounding_source_requires_matching_name_and_destination(self):
+        source = _validated_web_source(
+            attraction_name="Khu Tưởng niệm Chủ tịch Hồ Chí Minh",
+            destination_name="Nha Trang",
+            source_url="https://svhtt.khanhhoa.gov.vn/khu-tuong-niem",
+            heading="Khu Tưởng niệm Chủ tịch Hồ Chí Minh",
+            paragraphs=[
+                (
+                    "Khu Tưởng niệm Chủ tịch Hồ Chí Minh tại thành phố Nha Trang "
+                    "là không gian trưng bày, lưu giữ tư liệu và hình ảnh về "
+                    "cuộc đời, sự nghiệp của Chủ tịch Hồ Chí Minh."
+                )
+            ],
+        )
+
+        self.assertEqual(source["source_type"], "trusted_web")
+        self.assertIn("thành phố Nha Trang", source["text"])
+        self.assertIsNone(
+            _validated_web_source(
+                attraction_name="Khu Tưởng niệm Chủ tịch Hồ Chí Minh",
+                destination_name="Nha Trang",
+                source_url="https://laodong.vn/du-lich/bao-tang-ha-noi.html",
+                heading="Bảo tàng Hà Nội",
+                paragraphs=[
+                    (
+                        "Bảo tàng Hà Nội giới thiệu lịch sử Thủ đô và nhiều "
+                        "bộ sưu tập hiện vật có giá trị."
+                    )
+                ],
+            )
+        )
+
+    @patch("builtins.print")
+    @patch(
+        "grounded_description._ollama_grounded_description",
+        return_value={
+            "description": "Mô tả có căn cứ từ nguồn báo chí.",
+            "source_url": "https://laodong.vn/du-lich/khu-tuong-niem.html",
+            "source_type": "trusted_web",
+            "model": "llama3:latest",
+        },
+    )
+    @patch(
+        "grounded_description._load_trusted_search_source",
+        return_value={
+            "source_type": "trusted_web",
+            "source_url": "https://laodong.vn/du-lich/khu-tuong-niem.html",
+            "text": (
+                "Khu Tưởng niệm Chủ tịch Hồ Chí Minh tại Nha Trang lưu giữ "
+                "nhiều tư liệu và hình ảnh lịch sử."
+            ),
+        },
+    )
+    @patch("grounded_description._load_wikipedia_source", return_value=None)
+    def test_grounded_description_uses_trusted_web_when_wikipedia_has_no_match(
+        self,
+        _wikipedia_mock,
+        trusted_search_mock,
+        ollama_mock,
+        _print_mock,
+    ):
+        result = enrich_description_from_sources(
+            Mock(),
+            {"name": "Khu Tưởng niệm Chủ tịch Hồ Chí Minh"},
+            "Nha Trang",
+        )
+
+        self.assertEqual(result["source_type"], "trusted_web")
+        trusted_search_mock.assert_called_once()
+        self.assertEqual(
+            ollama_mock.call_args.args[2]["source_url"],
+            "https://laodong.vn/du-lich/khu-tuong-niem.html",
+        )
+
+    def test_wikipedia_source_requires_matching_attraction_and_destination(self):
+        source = _validated_wikipedia_source(
+            attraction_name="Lăng Tự Đức",
+            destination_name="Huế",
+            source_url="https://vi.wikipedia.org/wiki/L%C4%83ng_T%E1%BB%B1_%C4%90%E1%BB%A9c",
+            heading="Lăng Tự Đức",
+            paragraphs=[
+                (
+                    "Lăng Tự Đức là một quần thể di tích kiến trúc tọa lạc "
+                    "tại phường Thủy Xuân, thành phố Huế."
+                )
+            ],
+        )
+
+        self.assertEqual(source["source_type"], "wikipedia_web")
+        self.assertIn("thành phố Huế", source["text"])
+
+    def test_wikipedia_source_rejects_a_different_place(self):
+        source = _validated_wikipedia_source(
+            attraction_name="Lăng Tự Đức",
+            destination_name="Huế",
+            source_url="https://vi.wikipedia.org/wiki/L%C4%83ng_Minh_M%E1%BA%A1ng",
+            heading="Lăng Minh Mạng",
+            paragraphs=[
+                (
+                    "Lăng Minh Mạng là một quần thể kiến trúc tại thành phố "
+                    "Huế và không phải Lăng Tự Đức."
+                )
+            ],
+        )
+
+        self.assertIsNone(source)
+
+    def test_grounded_description_rejects_numbers_absent_from_source(self):
+        source_text = (
+            "Lăng Tự Đức là quần thể di tích kiến trúc tại thành phố Huế. "
+            "Công trình có phong cảnh sơn thủy và nhiều hạng mục lịch sử."
+        )
+        description = (
+            "Lăng Tự Đức là một quần thể di tích kiến trúc tại thành phố Huế, "
+            "nổi bật với bố cục hài hòa cùng cảnh quan sơn thủy. Không gian di "
+            "tích gồm nhiều công trình lịch sử gắn với triều Nguyễn và phản ánh "
+            "giá trị kiến trúc cung đình của cố đô."
+        )
+
+        self.assertTrue(
+            _is_grounded_description_valid(
+                description,
+                "Lăng Tự Đức",
+                "Huế",
+                source_text,
+            )
+        )
+        self.assertFalse(
+            _is_grounded_description_valid(
+                f"{description} Công trình được xây dựng lại vào năm 2099.",
+                "Lăng Tự Đức",
+                "Huế",
+                source_text,
+            )
+        )
+
+    def test_ollama_json_parser_returns_only_the_description(self):
+        response = {
+            "message": {
+                "content": (
+                    '{"description":"Lăng Tự Đức là một quần thể di tích '
+                    'kiến trúc nổi tiếng tại thành phố Huế."}'
+                )
+            }
+        }
+
+        self.assertEqual(
+            _parse_ollama_description(response),
+            "Lăng Tự Đức là một quần thể di tích kiến trúc nổi tiếng tại thành phố Huế.",
+        )
+
+    def test_google_ai_search_query_uses_name_destination_and_vietnamese_intent(self):
+        query = _google_ai_search_query(
+            "Địa điểm chiến thắng Đầm Dơi - Cái Nước - Chà Là",
+            "Cà Mau",
+        )
+
+        self.assertEqual(
+            query,
+            '"Địa điểm chiến thắng Đầm Dơi - Cái Nước - Chà Là" '
+            '"Cà Mau" giới thiệu lịch sử địa điểm tham quan',
+        )
+
+    def test_google_ai_description_parser_returns_the_overview_lead_paragraph(self):
+        description = (
+            "Địa điểm chiến thắng Đầm Dơi - Cái Nước - Chà Là tọa lạc tại "
+            "xã Trần Phán, tỉnh Cà Mau và là di tích lịch sử cấp quốc gia ghi "
+            "dấu những chiến công trong thời kỳ kháng chiến."
+        )
+        block_text = (
+            "Thông tin tổng quan do AI tạo\n"
+            f"{description}\n"
+            "Laodong.vn\n"
+            "+2\n"
+            "Lịch sử chiến thắng\n"
+            "Giá trị lịch sử\n"
+            "Hiện thêm"
+        )
+
+        self.assertEqual(
+            _google_ai_description_from_block_text(block_text),
+            description,
+        )
+
+    def test_instagram_profile_metadata_is_not_a_usable_attraction_description(self):
+        description = (
+            "2,310 người theo dõi, 0 đang theo dõi, 262 bài viết – "
+            "Ăn thôi Nhà Hàng (@anthoi.vietnam) trên Instagram: "
+            '"Michelin Bib Gourmand 2024"'
+        )
+
+        self.assertFalse(_is_usable_attraction_description(description))
+
+    def test_social_profile_is_not_an_official_content_source(self):
+        self.assertFalse(
+            _is_supported_official_content_url(
+                "https://www.instagram.com/anthoi.vietnam/"
+            )
+        )
+        self.assertTrue(
+            _is_supported_official_content_url(
+                "https://museum.example.vn/about"
+            )
+        )
+
+    def test_maps_merge_does_not_replace_editorial_text_with_a_generic_label(self):
+        editorial = (
+            "The museum presents historical collections and permanent exhibitions "
+            "about the development of the city."
+        )
+
+        result = _merge_google_maps_detail(
+            {"description": editorial, "images": []},
+            {"description": "Trạm xe buýt", "images": []},
+        )
+
+        self.assertEqual(result["description"], editorial)
+
+    def test_official_json_ld_supplies_attraction_description(self):
+        description = (
+            "This museum preserves royal objects and presents the history of the "
+            "Nguyen dynasty through permanent exhibitions."
+        )
+        payload = (
+            '{"@context":"https://schema.org","@graph":['
+            '{"@type":"Museum","name":"Royal Museum",'
+            f'"description":"{description}"}}]}}'
+        )
+
+        self.assertEqual(_json_ld_description_candidates([payload]), [description])
+
     def test_nearby_resolver_retries_a_valid_place_after_an_initial_maps_shell(self):
         page = Mock()
         articles = Mock()
@@ -817,6 +1117,58 @@ class GoogleMapsPipelineTests(unittest.TestCase):
                 "Over extracteD coffee",
             )
         )
+
+    def test_google_maps_poc_card_skips_description_but_keeps_metadata(self):
+        place_url = (
+            "https://www.google.com/maps/place/Thap-Ba/"
+            "data=!4m7!3m6!1s0xabc:0xdef!8m2!3d12.2653665!4d109.1953678"
+        )
+        place_link = Mock()
+        place_link.get_attribute.side_effect = lambda attribute: {
+            "href": place_url,
+            "aria-label": "Tháp Bà Ponagar",
+        }.get(attribute)
+        links = Mock()
+        links.count.return_value = 1
+        links.nth.return_value = place_link
+
+        rating_node = Mock()
+        rating_node.get_attribute.return_value = "4,7 sao"
+        rating_nodes = Mock()
+        rating_nodes.count.return_value = 1
+        rating_nodes.nth.return_value = rating_node
+
+        image_node = Mock()
+        image_node.get_attribute.return_value = (
+            "https://lh3.googleusercontent.com/place-photo=w114-h86-k-no"
+        )
+        images = Mock()
+        images.count.return_value = 1
+        images.nth.return_value = image_node
+
+        article = Mock()
+        article.locator.side_effect = [links, rating_nodes, images]
+        article.inner_text.return_value = (
+            "Tháp Bà Ponagar\n"
+            "Một quần thể kiến trúc Chăm cổ tại Nha Trang."
+        )
+
+        candidate = _candidate_from_google_card(
+            article,
+            "Museums & culture",
+            include_description=False,
+        )
+
+        self.assertEqual(candidate["name"], "Tháp Bà Ponagar")
+        self.assertEqual(candidate["rating"], 4.7)
+        self.assertEqual(candidate["latitude"], 12.2653665)
+        self.assertEqual(candidate["longitude"], 109.1953678)
+        self.assertEqual(
+            candidate["image"],
+            "https://lh3.googleusercontent.com/place-photo=w114-h86-k-no",
+        )
+        self.assertIsNone(candidate["description"])
+        article.inner_text.assert_not_called()
 
     def test_google_maps_url_coordinates_support_rendered_place_links(self):
         url = (
@@ -1023,6 +1375,106 @@ class GoogleMapsPipelineTests(unittest.TestCase):
             messages,
         )
 
+    def test_google_maps_enrichment_uses_grounded_description_before_fallback(self):
+        sync_api_module = ModuleType("playwright.sync_api")
+        sync_playwright = MagicMock()
+        sync_api_module.sync_playwright = sync_playwright
+        playwright_module = ModuleType("playwright")
+        playwright_module.sync_api = sync_api_module
+        browser = Mock()
+        context = Mock()
+        browser.new_context.return_value = context
+        context.new_page.return_value = Mock()
+        sync_playwright.return_value.__enter__.return_value.chromium.launch.return_value = browser
+        generated_description = (
+            "Lăng Tự Đức là một quần thể di tích kiến trúc tại thành phố Huế, "
+            "nổi bật với bố cục hài hòa cùng cảnh quan sơn thủy. Không gian di "
+            "tích gồm nhiều công trình lịch sử gắn với triều Nguyễn và phản ánh "
+            "giá trị kiến trúc cung đình của cố đô."
+        )
+
+        with (
+            patch.dict(
+                sys.modules,
+                {"playwright": playwright_module, "playwright.sync_api": sync_api_module},
+            ),
+            patch(
+                "google_maps_pipeline._load_google_maps_detail",
+                return_value={"description": None, "images": []},
+            ),
+            patch(
+                "google_maps_pipeline.enrich_description_from_sources",
+                return_value={
+                    "description": generated_description,
+                    "source_url": (
+                        "https://vi.wikipedia.org/wiki/"
+                        "L%C4%83ng_T%E1%BB%B1_%C4%90%E1%BB%A9c"
+                    ),
+                },
+            ),
+            patch("google_maps_pipeline.time.sleep"),
+        ):
+            result = enrich_google_maps_records(
+                [{"source_id": "tuduc", "name": "Lăng Tự Đức", "images": []}],
+                [{"source_id": "tuduc", "url": ""}],
+                "Huế",
+            )
+
+        self.assertEqual(result[0]["description"], generated_description)
+
+    def test_google_maps_poc_enrichment_uses_one_successful_maps_lookup(self):
+        sync_api_module = ModuleType("playwright.sync_api")
+        sync_playwright = MagicMock()
+        sync_api_module.sync_playwright = sync_playwright
+        playwright_module = ModuleType("playwright")
+        playwright_module.sync_api = sync_api_module
+        browser = Mock()
+        context = Mock()
+        browser.new_context.return_value = context
+        context.new_page.return_value = Mock()
+        sync_playwright.return_value.__enter__.return_value.chromium.launch.return_value = browser
+        exact_url = "https://www.google.com/maps/place/lang-tu-duc"
+
+        with (
+            patch.dict(
+                sys.modules,
+                {"playwright": playwright_module, "playwright.sync_api": sync_api_module},
+            ),
+            patch(
+                "google_maps_pipeline._load_google_maps_detail",
+                return_value={
+                    "description": None,
+                    "images": [],
+                    "place_category": "Di tích lịch sử",
+                },
+            ) as load_detail_mock,
+            patch(
+                "google_maps_pipeline.enrich_description_from_sources",
+                return_value=None,
+            ),
+            patch("google_maps_pipeline.time.sleep"),
+        ):
+            result = enrich_google_maps_records(
+                [
+                    {
+                        "source_id": "tuduc",
+                        "name": "Lăng Tự Đức",
+                        "latitude": 16.4326,
+                        "longitude": 107.5665,
+                        "images": [],
+                    }
+                ],
+                [{"source_id": "tuduc", "url": exact_url}],
+                "Huế",
+                fast_poc_mode=True,
+            )
+
+        load_detail_mock.assert_called_once_with(context.new_page.return_value, exact_url)
+        self.assertEqual(
+            result[0]["description"],
+            "Lăng Tự Đức là di tích lịch sử tại Huế.",
+        )
+
     def test_google_maps_detail_navigation_accepts_only_google_place_urls(self):
         self.assertTrue(
             _is_google_maps_place_url(
@@ -1202,6 +1654,61 @@ class DestinationDatabaseTests(unittest.TestCase):
         self.assertNotIn("%ED%9B%84%EC%97%94", urls[0])
         self.assertEqual(urls[1], exact_url)
 
+    def test_google_maps_poc_enrichment_prefers_exact_url_before_name_search(self):
+        exact_url = "https://www.google.com/maps/place/huyen-huong"
+
+        urls = _google_maps_enrichment_urls(
+            {
+                "name": "Huyền Hương Restaurant 후엔흉",
+                "latitude": 12.23767,
+                "longitude": 109.1899056,
+            },
+            exact_url,
+            "Nha Trang",
+            prefer_exact_place=True,
+        )
+
+        self.assertEqual(urls[0], exact_url)
+        self.assertTrue(urls[1].startswith("https://www.google.com/maps/search/"))
+
+    @patch(
+        "google_maps_pipeline.enrich_google_maps_records",
+        side_effect=lambda records, candidates, destination_name, **kwargs: records,
+    )
+    def test_google_maps_poc_normalization_drops_stale_card_description(
+        self,
+        enrich_mock,
+    ):
+        result = normalize_google_maps_candidates(
+            [
+                {
+                    "source_id": "place-1",
+                    "name": "Tháp Bà Ponagar",
+                    "description": (
+                        "Card text that looks long enough to pass the general "
+                        "description quality filter but is not editorial content."
+                    ),
+                    "category": "Museums & culture",
+                    "latitude": 12.2653665,
+                    "longitude": 109.1953678,
+                    "rating": 4.7,
+                    "image": (
+                        "https://lh3.googleusercontent.com/"
+                        "place-photo=w114-h86-k-no"
+                    ),
+                }
+            ],
+            "destination-id",
+            "Nha Trang",
+            1,
+            fast_poc_mode=True,
+        )
+
+        self.assertIsNone(result[0]["description"])
+        self.assertEqual(result[0]["rating"], 4.7)
+        self.assertEqual(len(result[0]["images"]), 1)
+        self.assertTrue(enrich_mock.call_args.kwargs["fast_poc_mode"])
+
     def test_google_maps_candidate_rejects_outside_destination(self):
         context = {
             "mode": "radius",
@@ -1223,7 +1730,7 @@ class DestinationDatabaseTests(unittest.TestCase):
 
     @patch(
         "google_maps_pipeline.enrich_google_maps_records",
-        side_effect=lambda records, candidates, destination_name: records,
+        side_effect=lambda records, candidates, destination_name, **kwargs: records,
     )
     @patch("google_maps_pipeline.scrape_google_maps_candidates")
     def test_google_maps_collection_keeps_restaurants_without_vietnamese_diacritics(
@@ -1259,7 +1766,7 @@ class DestinationDatabaseTests(unittest.TestCase):
 
     @patch(
         "google_maps_pipeline.enrich_google_maps_records",
-        side_effect=lambda records, candidates, destination_name: records,
+        side_effect=lambda records, candidates, destination_name, **kwargs: records,
     )
     @patch("google_maps_pipeline.scrape_google_maps_candidates")
     def test_google_maps_collection_enriches_only_selected_records(

@@ -9,11 +9,47 @@ services:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      - OLLAMA_URL=http://ollama:11434
     volumes:
       - ./data:/app/data
     restart: unless-stopped
+    depends_on:
+      - qdrant
+      - ollama
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
+      
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./data/ollama:/root/.ollama
+    restart: unless-stopped
+
+  ollama-pull:
+    image: curlimages/curl:latest
+    command: >
+      sh -c "
+      echo 'Waiting for Ollama to be ready...' &&
+      while ! curl -s http://ollama:11434/api/tags > /dev/null; do sleep 2; done &&
+      echo 'Pulling bge-m3 model...' &&
+      curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"bge-m3\"}' &&
+      echo 'Model pulled successfully.'
+      "
+    depends_on:
+      - ollama

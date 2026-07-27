@@ -361,65 +361,61 @@ def _batches_by_hotel(
     return batches
 
 
-def _crawl_hotel_surroundings_batch(
-    hotels: Iterable[Dict[str, Any]],
-    nearby_limit_per_hotel: int,
-) -> List[Dict[str, Any]]:
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError as exc:
-        raise RuntimeError("Hotel surroundings scraping requires Playwright and Chromium in the Airflow image.") from exc
-
-    seeds: List[Dict[str, Any]] = []
-    with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
-        context = browser.new_context(locale="en-GB")
-        try:
-            for hotel in hotels:
-                page = context.new_page()
-                try:
-                    html = _scrape_page_html(page, hotel["source_url"])
-                    parser = (
-                        extract_booking_surrounding_names
-                        if hotel["source"] == "booking"
-                        else extract_agoda_surrounding_names
-                    )
-                    for name in parser(html, hotel["hotel_name"])[:nearby_limit_per_hotel]:
-                        seeds.append({**hotel, "name": name, "category": _classify_nearby_name(name)})
-                except Exception as exc:
-                    print(f"[hotel-nearby] Skipped {hotel['source']} hotel {hotel['hotel_id']}: {exc}")
-                finally:
-                    page.close()
-                time.sleep(0.75)
-        finally:
-            context.close()
-            browser.close()
-    return seeds
-
-
 def crawl_hotel_surroundings(
     hotels: Iterable[Dict[str, Any]],
     nearby_limit_per_hotel: int,
     worker_count: int = 1,
 ) -> List[Dict[str, Any]]:
-    """Use source-specific parsers in independent, bounded hotel batches."""
-    batches = _batches_by_hotel(hotels, worker_count)
-    if not batches:
-        return []
-    if len(batches) == 1:
-        return _crawl_hotel_surroundings_batch(
-            batches[0],
-            nearby_limit_per_hotel,
-        )
-    results: List[List[Dict[str, Any]]] = [[] for _ in batches]
-    with ThreadPoolExecutor(max_workers=len(batches), thread_name_prefix="hotel-crawl") as executor:
-        futures = {
-            executor.submit(_crawl_hotel_surroundings_batch, batch, nearby_limit_per_hotel): index
-            for index, batch in enumerate(batches)
-        }
-        for future in as_completed(futures):
-            results[futures[future]] = future.result()
-    return [seed for batch in results for seed in batch]
+    """Extract names and coordinates from the DB nearby_attractions column."""
+    import json
+    seeds = []
+    for hotel in hotels:
+        nearby = hotel.get("nearby_attractions")
+        if not nearby:
+            continue
+            
+        if isinstance(nearby, str):
+            try:
+                nearby = json.loads(nearby)
+            except json.JSONDecodeError:
+                continue
+                
+        if isinstance(nearby, list):
+            count = 0
+            for attr in nearby:
+                if count >= nearby_limit_per_hotel:
+                    break
+                name = None
+                latitude = None
+                longitude = None
+                if isinstance(attr, dict):
+                    name = attr.get("name")
+                    if attr.get("coordinates"):
+                        coords = attr.get("coordinates").split(",")
+                        if len(coords) == 2:
+                            try:
+                                latitude = float(coords[0].strip())
+                                longitude = float(coords[1].strip())
+                            except ValueError:
+                                pass
+                elif isinstance(attr, str):
+                    name = attr.split(" - ")[0].strip()
+                    
+                if name:
+                    seed_dict = {
+                        "hotel_id": hotel["hotel_id"],
+                        "hotel_name": hotel["hotel_name"],
+                        "hotel_latitude": hotel["hotel_latitude"],
+                        "hotel_longitude": hotel["hotel_longitude"],
+                        "name": name,
+                        "category": _classify_nearby_name(name)
+                    }
+                    if latitude is not None and longitude is not None:
+                        seed_dict["seed_latitude"] = latitude
+                        seed_dict["seed_longitude"] = longitude
+                    seeds.append(seed_dict)
+                    count += 1
+    return seeds
 
 
 def validate_hotel_surrounding_seeds(

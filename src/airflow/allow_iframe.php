@@ -1,5 +1,8 @@
 <?php
-$_GET["text_length"] = 9999; // Force Adminer to not truncate long strings
+// Force Adminer to not truncate long strings, EXCEPT when exporting (which breaks date columns)
+if (!isset($_GET["dump"])) {
+    $_GET["text_length"] = 9999; 
+}
 class AllowIframe {
     function headers() {
         header_remove("X-Frame-Options");

@@ -1,4 +1,6 @@
-<!DOCTYPE html>
+import os
+
+html_content = """<!DOCTYPE html>
 <html>
 <head>
     <title>VSF Real-Time Dashboard</title>
@@ -7,7 +9,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { margin: 0; padding: 0; display: flex; height: 100vh; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; background: #0f0f13; color: #ecf0f1; }
-        #data-viewer-container { flex: 0 0 50%; min-width: 0; display: flex; flex-direction: column; background: #1a1a24; border-right: 1px solid #2c2c3a; }
+        #data-viewer-container { flex: 0 0 50%; display: flex; flex-direction: column; background: #1a1a24; border-right: 1px solid #2c2c3a; }
         
         #resizer {
             width: 6px;
@@ -20,7 +22,7 @@
         }
         #resizer:hover, #resizer:active { background-color: #3498db; }
         
-        #map-container { flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column; }
+        #map-container { flex: 1; position: relative; display: flex; flex-direction: column; }
         #map { width: 100%; flex: 1; }
         
         .header { background: #13131a; color: white; padding: 12px 15px; font-weight: 600; font-size: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #2c2c3a; }
@@ -32,7 +34,6 @@
         .btn-primary:hover { background: #3498db; }
         .btn-success { background: #27ae60; border-color: #2ecc71; }
         .btn-success:hover { background: #2ecc71; }
-        .btn:disabled { opacity: 0.6; cursor: not-allowed; pointer-events: none; }
         
         .tabs { display: flex; gap: 8px; margin-right: 10px; }
         .tab { padding: 6px 12px; background: #2c2c3a; border: 1px solid #444455; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; color: #bdc3c7; transition: all 0.2s; }
@@ -40,9 +41,9 @@
         .tab.active { background: #3498db; border-color: #2980b9; color: white; }
         
         #table-wrapper { flex: 1; overflow: auto; padding: 0; }
-        table { width: 0px; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
-        th, td { text-align: left; border-bottom: 1px solid #2c2c3a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 8px 12px; }
-        th { background: #1f1f2e; color: #bdc3c7; font-weight: 600; position: sticky; top: 0; box-shadow: 0 1px 0 #2c2c3a; z-index: 10; resize: horizontal; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #2c2c3a; white-space: nowrap; max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
+        th { background: #1f1f2e; color: #bdc3c7; font-weight: 600; position: sticky; top: 0; box-shadow: 0 1px 0 #2c2c3a; z-index: 10; }
         tr:hover td { background: #2c2c3a; cursor: pointer; }
         tr.highlighted td { background: #34495e; }
         
@@ -68,7 +69,6 @@
                     <button class="tab active" onclick="setTable('attractions')">Attractions</button>
                     <button class="tab" onclick="setTable('hotels')">Hotels</button>
                     <button class="tab" onclick="setTable('destinations')">Destinations</button>
-                    <button class="tab" onclick="setTable('rooms')">Rooms</button>
                 </div>
             </span>
             <div style="display: flex; gap: 8px;">
@@ -97,17 +97,13 @@
     <div id="resizer"></div>
 
     <div id="map-container">
-        <div class="header" style="flex-wrap: wrap;">
+        <div class="header">
             <span>🗺️ Live Map Viewer</span>
-            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
-                <input type="text" id="semantic-search-attr" placeholder="Search attractions..." style="width: 140px;" onkeydown="if(event.key==='Enter') performSearch('attraction')">
-                <button id="btn-search-attr" onclick="performSearch('attraction')" class="btn btn-primary">🔍 Attr</button>
-                <div style="width: 1px; height: 16px; background: #444; margin: 0 4px;"></div>
-                <input type="text" id="semantic-search-hotel" placeholder="Search hotels/rooms..." style="width: 140px;" onkeydown="if(event.key==='Enter') performSearch('hotel')">
-                <button id="btn-search-hotel" onclick="performSearch('hotel')" class="btn btn-primary">🔍 Hotel</button>
-                <div style="width: 1px; height: 16px; background: #444; margin: 0 4px;"></div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="semantic-search" placeholder="Semantic search attractions..." style="width: 200px;">
+                <button onclick="performSearch()" class="btn btn-primary">Search</button>
                 <button onclick="clearSearch()" class="btn">Clear</button>
-                <span style="margin-left: 5px;"><span class="status-dot"></span> Live Sync</span>
+                <span style="margin-left: 10px;"><span class="status-dot"></span> Live Sync</span>
             </div>
         </div>
         <div id="search-results-panel" style="display: none; position: absolute; top: 55px; left: 15px; width: 280px; max-height: calc(100% - 70px); background: #1a1a24; border: 1px solid #444455; z-index: 1000; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border-radius: 6px; overflow-y: auto; flex-direction: column;">
@@ -129,68 +125,31 @@
         
         var currentMarkers = {};
         let filteredIds = null;
-        let isSearching = false;
 
-        async function performSearch(type = 'attraction') {
-            if (isSearching) return;
-            const inputId = type === 'attraction' ? 'semantic-search-attr' : 'semantic-search-hotel';
-            const btnId = type === 'attraction' ? 'btn-search-attr' : 'btn-search-hotel';
-            const endpoint = type === 'attraction' ? 'search_attractions' : 'search_hotels';
-            const query = document.getElementById(inputId).value;
-            
+        async function performSearch() {
+            const query = document.getElementById('semantic-search').value;
             if (!query) { clearSearch(); return; }
-            
-            isSearching = true;
-            document.getElementById('btn-search-attr').disabled = true;
-            document.getElementById('btn-search-hotel').disabled = true;
-            const activeBtn = document.getElementById(btnId);
-            const originalText = activeBtn.innerHTML;
-            activeBtn.innerHTML = '⏳...';
-            
             try {
-                const response = await fetch(`http://localhost:8000/api/v1/${endpoint}?q=${encodeURIComponent(query)}`);
+                const response = await fetch(`http://localhost:8000/api/v1/search_attractions?q=${encodeURIComponent(query)}`);
                 const result = await response.json();
                 if (result.status === 'success') {
                     window.orderedFilteredIds = result.results.map(r => r.id);
                     window.searchScores = {};
-                    window.searchType = type;
-                    window.matchedRooms = {};
-                    
-                    result.results.forEach(r => {
-                        window.searchScores[r.id] = r.score;
-                        if (r.matched_rooms) {
-                            window.matchedRooms[r.id] = r.matched_rooms;
-                        }
-                    });
-                    
+                    result.results.forEach(r => window.searchScores[r.id] = r.score);
                     filteredIds = new Set(window.orderedFilteredIds);
                     fetchLocations();
-                    
-                    if (type === 'hotel') {
-                        setTable('hotels');
-                    } else {
-                        setTable('attractions');
-                    }
                 }
             } catch(e) {
                 console.error("Semantic search failed", e);
                 alert("Search failed. Ensure main backend is running on port 8000.");
-            } finally {
-                isSearching = false;
-                document.getElementById('btn-search-attr').disabled = false;
-                document.getElementById('btn-search-hotel').disabled = false;
-                activeBtn.innerHTML = originalText;
             }
         }
         
         function clearSearch() {
-            document.getElementById('semantic-search-attr').value = '';
-            document.getElementById('semantic-search-hotel').value = '';
+            document.getElementById('semantic-search').value = '';
             filteredIds = null;
-            window.searchType = null;
             document.getElementById('search-results-panel').style.display = 'none';
             fetchLocations();
-            loadTableData();
         }
 
         // Expose focusMap globally so table rows can click to map
@@ -210,24 +169,18 @@
                     let locations = result.data;
                     
                     if (filteredIds) {
-                        const targetType = window.searchType || 'attraction';
-                        locations = locations.filter(loc => loc.type !== targetType || filteredIds.has(loc.id));
+                        locations = locations.filter(loc => loc.type !== 'attraction' || filteredIds.has(loc.id));
                         const listContainer = document.getElementById('search-results-list');
                         listContainer.innerHTML = '';
                         if (window.orderedFilteredIds) {
                             window.orderedFilteredIds.forEach(id => {
-                                const loc = locations.find(l => l.type === targetType && l.id === id);
+                                const loc = locations.find(l => l.type === 'attraction' && l.id === id);
                                 if (loc) {
                                     const score = window.searchScores[id];
                                     const scorePercent = score ? Math.round(score * 100) + '%' : '';
-                                    
-                                    const roomMatches = window.matchedRooms && window.matchedRooms[id];
-                                    const roomCount = roomMatches ? Object.keys(roomMatches).length : 0;
-                                    const roomPill = roomCount > 0 ? `<span style="background:#e67e22; padding:1px 5px; border-radius:3px; font-size:10px; margin-left:5px;">${roomCount} rooms</span>` : '';
-                                    
                                     const item = document.createElement('div');
                                     item.style.cssText = 'padding: 10px; border: 1px solid #2c2c3a; border-radius: 4px; cursor: pointer; font-size: 13px; display: flex; flex-direction: column; background: #1f1f2e; color:#ecf0f1; transition:all 0.2s;';
-                                    item.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center;"><b>${loc.name}</b> <span style="background:#2ecc7122; color:#2ecc71; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:bold;">${scorePercent}</span></div><span style="color:#bdc3c7;font-size:11px;margin-top:5px;">${loc.category} ${roomPill}</span>`;
+                                    item.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center;"><b>${loc.name}</b> <span style="background:#2ecc7122; color:#2ecc71; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:bold;">${scorePercent}</span></div><span style="color:#bdc3c7;font-size:11px;margin-top:5px;">${loc.category}</span>`;
                                     item.onmouseover = () => item.style.background = '#2c2c3a';
                                     item.onmouseout = () => item.style.background = '#1f1f2e';
                                     item.onclick = () => window.focusMap(loc.lat, loc.lng, loc.type + '-' + loc.id);
@@ -313,23 +266,13 @@
         let currentSearchId = null;
 
         function setTable(tableName) {
-            const isHotelRoomSwitch = (currentTable === 'hotels' && tableName === 'rooms') || 
-                                      (currentTable === 'rooms' && tableName === 'hotels');
-                                      
             currentTable = tableName;
             currentPage = 1;
-            
-            if (!isHotelRoomSwitch) {
-                currentSearchId = null;
-                document.getElementById('id-search').value = '';
-            }
-            
-            document.getElementById('id-search').placeholder = tableName === 'rooms' ? 'Search by Hotel ID...' : 'Search by ID...';
+            currentSearchId = null;
+            document.getElementById('id-search').value = '';
             
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            const tabs = Array.from(document.querySelectorAll('.tab'));
-            const targetTab = tabs.find(t => t.textContent.toLowerCase() === tableName.toLowerCase());
-            if (targetTab) targetTab.classList.add('active');
+            event.target.classList.add('active');
             
             loadTableData();
         }
@@ -371,17 +314,7 @@
                 
                 // Build headers based on the first row keys
                 const keys = Object.keys(data[0]);
-                thead.innerHTML = '<tr>' + keys.map(k => {
-                    let w = '150px';
-                    const val = data[0][k];
-                    if (k === 'id' || k.endsWith('_id')) w = '150px';
-                    else if (k === 'lat' || k === 'lng' || k === 'rating' || k === 'price') w = '90px';
-                    else if (k === 'name' || k === 'title') w = '250px';
-                    else if (k === 'description' || k === 'summary') w = '350px';
-                    else if (k === 'images' || k === 'source_urls' || k === 'amenities' || Array.isArray(val) || typeof val === 'object') w = '300px';
-                    else if (typeof val === 'string' && val.length > 50) w = '250px';
-                    return `<th style="width: ${w}; min-width: 50px;">${k}</th>`;
-                }).join('') + '</tr>';
+                thead.innerHTML = '<tr>' + keys.map(k => `<th>${k}</th>`).join('') + '</tr>';
                 
                 // Build rows
                 tbody.innerHTML = data.map(row => {
@@ -494,4 +427,7 @@
 
     </script>
 </body>
-</html>
+</html>"""
+
+with open(r'd:\Git repo\vsf-project\src\airflow\dashboard\templates\index.html', 'w', encoding='utf-8') as f:
+    f.write(html_content)

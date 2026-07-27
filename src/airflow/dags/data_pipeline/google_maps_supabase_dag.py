@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from dag_common import (
     destination_from_xcom,
-    load_records_task,
+    load_records_to_supabase_task,
     optional_location_coords_param_kwargs,
     prepare_destination_task,
 )
@@ -85,18 +85,18 @@ def normalize_task(**kwargs):
 
 
 def load_task(**kwargs):
-    return load_records_task("deduplicate", "selected_records", **kwargs)
+    return load_records_to_supabase_task("deduplicate", "selected_records", **kwargs)
 
 
 with DAG(
-    dag_id="google_maps_poc_attractions_pipeline",
+    dag_id="google_maps_poc_attractions_pipeline_supabase",
     default_args=DEFAULT_ARGS,
-    description="Seven-stage public Google Maps POC attraction pipeline; no Maps API",
+    description="Seven-stage public Google Maps POC attraction pipeline; no Maps API, output to Supabase",
     schedule=None,
     start_date=datetime(2026, 7, 22),
     catchup=False,
     max_active_runs=1,
-    tags=["vsf", "google-maps", "poc", "scraper", "attractions", "etl"],
+    tags=["vsf", "google-maps", "poc", "scraper", "attractions", "etl", "supabase"],
     params={
         "destination_name": Param("Nha Trang", type="string", minLength=1),
         "location_coords": Param(**optional_location_coords_param_kwargs()),
@@ -117,11 +117,11 @@ with DAG(
             "output_key": "selected_records",
         },
     )
-    load_to_postgresql = PythonOperator(task_id="load_to_postgresql", python_callable=load_task)
+    load_to_supabase = PythonOperator(task_id="load_to_supabase", python_callable=load_task)
     quality_check = PythonOperator(
         task_id="quality_check",
         python_callable=quality_check_task,
         op_kwargs={"records_task_id": "deduplicate", "records_key": "selected_records"},
     )
 
-    data_source >> extract >> validate_clean >> normalize >> deduplicate >> load_to_postgresql >> quality_check
+    data_source >> extract >> validate_clean >> normalize >> deduplicate >> load_to_supabase >> quality_check

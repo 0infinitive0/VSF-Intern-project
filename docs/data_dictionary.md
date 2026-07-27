@@ -202,3 +202,17 @@ Lưu trữ vector của Điểm tham quan và Tour tuyến. Vector được tạ
     "ticket_price_range": "Dưới 500k"
 }
 ```
+
+### 2.3. Collection: `rooms_vector`
+Lưu trữ vector của Phòng khách sạn. Vector được tạo từ: Tên phòng + Loại giường + Tiện ích phòng + Hướng nhìn (View).
+**Cấu trúc Payload (Metadata dùng để Pre-filtering):**
+```json
+{
+    "room_id": "UUID (Khóa chính của bảng rooms)",
+    "hotel_id": "UUID (Khóa ngoại trỏ về bảng hotels)",
+    "name": "Tên phòng",
+    "max_guests": 2,
+    "room_size_sqm": 35.0,
+    "view": "Hướng biển"
+}
+```

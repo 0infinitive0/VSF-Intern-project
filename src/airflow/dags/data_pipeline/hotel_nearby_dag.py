@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dag_common import (
     destination_from_xcom,
     load_records_task,
+    load_records_to_supabase_task,
     optional_location_coords_param_kwargs,
     prepare_destination_task,
 )
@@ -174,8 +175,8 @@ def load_task(**kwargs):
     LOGGER.info("[hotel-nearby] stage=load event=start records=%d", len(records))
     if not records:
         LOGGER.info("[hotel-nearby] stage=load event=skipped reason=no_valid_records")
-        return "No valid hotel-nearby attractions to load; skipping PostgreSQL load."
-    result = load_records_task("deduplicate", "selected_records", **kwargs)
+        return "No valid hotel-nearby attractions to load; skipping Supabase load."
+    result = load_records_to_supabase_task("deduplicate", "selected_records", **kwargs)
     LOGGER.info("[hotel-nearby] stage=load event=complete records=%d", len(records))
     return result
 
@@ -244,7 +245,7 @@ with DAG(
         "nearby_limit_per_hotel": Param(8, type="integer", minimum=1, maximum=30),
         "hotel_radius_meters": Param(5_000, type="integer", minimum=100, maximum=20_000),
         "parallel_hotel_workers": Param(
-            2,
+            3,
             type="integer",
             minimum=1,
             maximum=4,
@@ -260,10 +261,10 @@ with DAG(
         task_id="deduplicate",
         python_callable=deduplicate_all_task,
     )
-    load_to_postgresql = PythonOperator(task_id="load_to_postgresql", python_callable=load_task)
+    load_to_supabase = PythonOperator(task_id="load_to_supabase", python_callable=load_task)
     quality_check = PythonOperator(
         task_id="quality_check",
         python_callable=quality_stage_task,
     )
 
-    data_source >> extract >> validate_clean >> normalize >> deduplicate >> load_to_postgresql >> quality_check
+    data_source >> extract >> validate_clean >> normalize >> deduplicate >> load_to_supabase >> quality_check

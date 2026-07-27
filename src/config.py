@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     app_port: int = Field(default=8000, ge=1, le=65535)
     app_host: str = "0.0.0.0"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
-    cors_origins: str = "http://localhost:3000"
+    cors_origins: str = "http://localhost:3000,http://localhost:8082"
 
     # LLM
     openai_api_key: str = ""
@@ -29,7 +29,9 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/app.db"
 
     # Vector Store
-    chroma_persist_dir: str = "./data/chroma"
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_api_key: str = ""
+    ollama_url: str = "http://localhost:11434"
 
 
 @lru_cache

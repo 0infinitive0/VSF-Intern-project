@@ -65,3 +65,47 @@ def load_records_task(records_task_id: str, records_key: str, **kwargs: Any) -> 
         raise ValueError("No geographically valid attraction records were produced.")
     load_attractions_to_db(records, DB_KWARGS)
     return f"Loaded {len(records)} attractions into PostgreSQL"
+
+
+def load_records_to_supabase_task(records_task_id: str, records_key: str, **kwargs: Any) -> str:
+    records = kwargs["ti"].xcom_pull(task_ids=records_task_id, key=records_key)
+    if not records:
+        raise ValueError("No geographically valid attraction records were produced.")
+    
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+
+    try:
+        from supabase import create_client, Client
+    except ImportError:
+        raise ImportError("Missing supabase library.")
+        
+    supabase_url = os.environ.get("SUPABASE_URL")
+    supabase_key = os.environ.get("SUPABASE_SERVICE_KEY")
+    if not supabase_url or not supabase_key:
+        raise ValueError("Missing SUPABASE_URL or SUPABASE_SERVICE_KEY in environment variables.")
+        
+    supabase: Client = create_client(supabase_url, supabase_key)
+    
+    allowed_keys = {
+        "id", "destination_id", "name", "description", "category", "is_tour",
+        "estimated_duration_minutes", "opening_time", "closing_time", "departure_schedule",
+        "ticket_price_adult", "ticket_price_child", "rating", "review_count",
+        "coordinates", "images"
+    }
+    
+    sanitized_data = []
+    for record in records:
+        sanitized = {k: v for k, v in record.items() if k in allowed_keys}
+        sanitized_data.append(sanitized)
+
+    batch_size = 100
+    for i in range(0, len(sanitized_data), batch_size):
+        batch = sanitized_data[i:i+batch_size]
+        supabase.table("attractions").upsert(batch).execute()
+        
+    return f"Loaded {len(records)} attractions into Supabase"
+

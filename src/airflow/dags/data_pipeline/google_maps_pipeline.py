@@ -1,6 +1,9 @@
 import ipaddress
+import json
 import math
+import os
 import re
+import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote, urljoin, urlparse
@@ -12,6 +15,29 @@ from attraction_utils import (
     select_diverse_attractions,
     stable_attraction_id,
 )
+from grounded_description import enrich_description_from_sources
+
+
+_MAPS_CACHE_FILE = "data/google_maps_cache.jsonl"
+_MAPS_CACHE_LOCK = threading.Lock()
+
+def _load_maps_cache() -> Dict[str, Any]:
+    cache = {}
+    if os.path.exists(_MAPS_CACHE_FILE):
+        with open(_MAPS_CACHE_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    entry = json.loads(line)
+                    cache[entry["seed_name"]] = entry["result"]
+                except Exception:
+                    pass
+    return cache
+
+def _append_to_maps_cache(seed_name: str, result: Optional[Dict[str, Any]]):
+    with _MAPS_CACHE_LOCK:
+        os.makedirs(os.path.dirname(_MAPS_CACHE_FILE), exist_ok=True)
+        with open(_MAPS_CACHE_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"seed_name": seed_name, "result": result}, ensure_ascii=False) + "\n")
 
 
 VIETNAMESE_CHARACTERS = set(
@@ -24,6 +50,35 @@ VIETNAMESE_CHARACTERS = set(
     "ÙÚỤỦŨỪỨỰỬỮỲÝỴỶỸ"
 )
 GOOGLE_IMAGE_HOSTS = ("googleusercontent.com", "ggpht.com")
+SOCIAL_PROFILE_HOSTS = (
+    "facebook.com",
+    "instagram.com",
+    "linkedin.com",
+    "tiktok.com",
+    "twitter.com",
+    "x.com",
+    "youtube.com",
+)
+SOCIAL_DESCRIPTION_MARKERS = (
+    "người theo dõi",
+    "đang theo dõi",
+    "bài viết",
+    "trên instagram",
+    "followers",
+    "following",
+    "posts on instagram",
+)
+OFFICIAL_DESCRIPTION_SCHEMA_TYPES = {
+    "landmarksorhistoricalbuildings",
+    "localbusiness",
+    "museum",
+    "organization",
+    "park",
+    "place",
+    "restaurant",
+    "touristattraction",
+    "touristdestination",
+}
 GOOGLE_MAPS_SEARCHES = (
     ("bảo tàng và di tích tại {destination}", "Museums & culture"),
     ("công viên và địa điểm thiên nhiên tại {destination}", "Nature & outdoor"),
@@ -160,6 +215,30 @@ def _is_safe_official_site_url(url: str) -> bool:
     return False
 
 
+def _is_supported_official_content_url(url: str) -> bool:
+    """Reject social-profile pages while retaining public first-party websites."""
+    if not _is_safe_official_site_url(url):
+        return False
+    hostname = (urlparse(url).hostname or "").lower().removeprefix("www.")
+    return not any(
+        hostname == social_host or hostname.endswith(f".{social_host}")
+        for social_host in SOCIAL_PROFILE_HOSTS
+    )
+
+
+def _is_usable_attraction_description(value: Any) -> bool:
+    """Accept editorial text, not Maps labels, phone numbers, or social bios."""
+    description = " ".join(str(value or "").split()).strip()
+    if not 30 <= len(description) <= 1_000:
+        return False
+    lowered = description.casefold()
+    if any(marker in lowered for marker in SOCIAL_DESCRIPTION_MARKERS):
+        return False
+    if "instagram" in lowered or re.fullmatch(r"\+?[\d\s().-]{7,}", description):
+        return False
+    return sum(character.isalpha() for character in description) >= 20
+
+
 def _same_site_host(first_url: str, second_url: str) -> bool:
     first_host = (urlparse(first_url).hostname or "").lower().removeprefix("www.")
     second_host = (urlparse(second_url).hostname or "").lower().removeprefix("www.")
@@ -168,7 +247,8 @@ def _same_site_host(first_url: str, second_url: str) -> bool:
 
 def _needs_official_site_enrichment(record: Dict[str, Any]) -> bool:
     return (
-        len(str(record.get("description") or "").strip()) < 80
+        not _is_usable_attraction_description(record.get("description"))
+        or len(str(record.get("description") or "").strip()) < 80
         or len(record.get("images") or []) < 2
     )
 
@@ -193,7 +273,11 @@ def _merge_official_site_detail(
     merged = dict(record)
     official_description = str(detail.get("description") or "").strip()
     current_description = str(record.get("description") or "").strip()
-    if len(official_description) >= 80 and len(official_description) > len(current_description):
+    if (
+        _is_usable_attraction_description(official_description)
+        and len(official_description) >= 80
+        and len(official_description) > len(current_description)
+    ):
         merged["description"] = official_description
     images: List[str] = []
     identities = set()
@@ -214,11 +298,17 @@ def _google_maps_enrichment_urls(
     record: Dict[str, Any],
     candidate_url: str,
     destination_name: str,
+    prefer_exact_place: bool = False,
 ) -> List[str]:
-    """Search by the cleaned name first, retaining the exact place URL as fallback."""
+    """Build detail URLs, optionally preferring an already-resolved exact place."""
     name = sanitize_attraction_name(record.get("name", ""))
     destination = sanitize_attraction_name(destination_name)
     urls: List[str] = []
+    exact_place_url = (
+        candidate_url if _is_google_maps_place_url(candidate_url) else ""
+    )
+    if prefer_exact_place and exact_place_url:
+        urls.append(exact_place_url)
     if name:
         query = quote(f"{name}, {destination}" if destination else name)
         latitude = record.get("latitude")
@@ -231,8 +321,8 @@ def _google_maps_enrichment_urls(
         urls.append(
             f"https://www.google.com/maps/search/{query}{center}?hl=vi"
         )
-    if _is_google_maps_place_url(candidate_url) and candidate_url not in urls:
-        urls.append(candidate_url)
+    if exact_place_url and exact_place_url not in urls:
+        urls.append(exact_place_url)
     return urls
 
 
@@ -277,7 +367,7 @@ def _normalize_google_maps_detail(
         (
             text.strip()
             for text in description_candidates
-            if 40 <= len((text or "").strip()) <= 1_000
+            if _is_usable_attraction_description(text)
         ),
         None,
     )
@@ -341,7 +431,7 @@ def _merge_google_maps_detail(
     detail: Dict[str, Any],
 ) -> Dict[str, Any]:
     merged = dict(record)
-    if detail.get("description"):
+    if _is_usable_attraction_description(detail.get("description")):
         merged["description"] = detail["description"]
     images: List[str] = []
     identities = set()
@@ -353,7 +443,7 @@ def _merge_google_maps_detail(
         identities.add(identity)
         images.append(source)
     merged["images"] = images[:5]
-    for field in ("opening_time", "closing_time"):
+    for field in ("opening_time", "closing_time", "rating", "review_count"):
         if detail.get(field):
             merged[field] = detail[field]
     return merged
@@ -470,17 +560,34 @@ def normalize_google_maps_candidates(
     destination_id: str,
     destination_name: str,
     enrichment_limit: int,
+    fast_poc_mode: bool = False,
 ) -> List[Dict[str, Any]]:
     """Map clean cards to the canonical schema, then enrich their details."""
+    normalization_candidates = (
+        [
+            {
+                **candidate,
+                "description": None,
+            }
+            for candidate in candidates
+        ]
+        if fast_poc_mode
+        else candidates
+    )
     records = [
         _google_maps_candidate_to_record(candidate, destination_id)
-        for candidate in candidates
+        for candidate in normalization_candidates
     ]
     enrichment_pool = select_diverse_attractions(
         deduplicate_attractions(records),
         enrichment_limit,
     )
-    return enrich_google_maps_records(enrichment_pool, candidates, destination_name)
+    return enrich_google_maps_records(
+        enrichment_pool,
+        normalization_candidates,
+        destination_name,
+        fast_poc_mode=fast_poc_mode,
+    )
 
 
 def _select_google_maps_records(
@@ -517,6 +624,161 @@ def _raise_if_google_blocked(page: Any) -> None:
     blocked_markers = ("unusual traffic", "lưu lượng truy cập bất thường", "captcha")
     if "/sorry/" in url or any(marker in title or marker in body for marker in blocked_markers):
         raise RuntimeError("Google Maps blocked the POC browser scrape with an access challenge.")
+
+
+def _google_ai_search_query(attraction_name: str, destination_name: str) -> str:
+    cleaned_name = sanitize_attraction_name(attraction_name).strip()
+    cleaned_destination = " ".join(str(destination_name or "").split()).strip()
+    return (
+        f'"{cleaned_name}" "{cleaned_destination}" '
+        "giới thiệu lịch sử địa điểm tham quan"
+    )
+
+
+def _google_ai_description_from_block_text(block_text: str) -> Optional[str]:
+    lines = [
+        " ".join(line.split()).strip()
+        for line in str(block_text or "").splitlines()
+        if line.strip()
+    ]
+    overview_markers = (
+        "thông tin tổng quan do ai tạo",
+        "ai overview",
+    )
+    stop_markers = (
+        "đặc điểm nổi bật",
+        "hiện thêm",
+        "show more",
+        "sources",
+        "nguồn",
+    )
+    start_index = next(
+        (
+            index + 1
+            for index, line in enumerate(lines)
+            if any(marker in line.casefold() for marker in overview_markers)
+        ),
+        0,
+    )
+    description_lines: List[str] = []
+    overview_lines = lines[start_index:]
+    for index, line in enumerate(overview_lines):
+        lowered = line.casefold()
+        if any(lowered.startswith(marker) for marker in stop_markers):
+            break
+        next_line = (
+            overview_lines[index + 1].casefold()
+            if index + 1 < len(overview_lines)
+            else ""
+        )
+        if re.fullmatch(r"\+\d+", next_line):
+            break
+        if re.search(
+            r"(?:\+\d+|và \d+ nguồn(?: khác)?|and \d+ (?:other )?sources?)$",
+            lowered,
+        ):
+            break
+        description_lines.append(line)
+    description = _trim_incomplete_description(" ".join(description_lines))
+    if len(description) > 1_000:
+        description = description[:1_000].rsplit(" ", 1)[0].rstrip(" ,;:-")
+    return description if _is_usable_attraction_description(description) else None
+
+
+def _google_ai_overview_from_page(page: Any) -> Dict[str, Any]:
+    marker = page.get_by_text(
+        re.compile(r"Thông tin tổng quan do AI tạo|AI Overview", re.IGNORECASE)
+    )
+    if not marker.count():
+        return {"description": None, "citations": []}
+    marker = marker.first
+    block = marker.evaluate(
+        """
+        element => {
+          let current = element;
+          let fallback = null;
+          for (let depth = 0; current && depth < 10; depth += 1) {
+            const text = (current.innerText || "").trim();
+            if (!fallback && text.length >= 180 && text.length <= 6000) {
+              fallback = current;
+            }
+            if (
+              text.length >= 100 &&
+              text.length <= 6000 &&
+              /Hiện thêm|Show more/i.test(text)
+            ) {
+              fallback = current;
+              break;
+            }
+            current = current.parentElement;
+          }
+          if (!fallback) {
+            return {text: "", citations: []};
+          }
+          const citations = Array.from(fallback.querySelectorAll("a[href]"))
+            .map(link => link.href)
+            .filter(href => href && /^https?:/i.test(href));
+          return {
+            text: (fallback.innerText || "").trim(),
+            citations: [...new Set(citations)],
+          };
+        }
+        """
+    )
+    if not isinstance(block, dict):
+        return {"description": None, "citations": []}
+    return {
+        "description": _google_ai_description_from_block_text(block.get("text", "")),
+        "citations": block.get("citations") or [],
+    }
+
+
+def fetch_google_ai_overview_description(
+    attraction_name: str,
+    destination_name: str,
+) -> Dict[str, Any]:
+    """Run one rendered Google Search query and return its visible AI Overview."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise RuntimeError(
+            "Google AI Overview POC requires Playwright and Chromium."
+        ) from exc
+
+    query = _google_ai_search_query(attraction_name, destination_name)
+    search_url = f"https://www.google.com/search?q={quote(query)}&hl=vi&gl=vn"
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        context = browser.new_context(locale="vi-VN")
+        page = context.new_page()
+        try:
+            page.goto(
+                search_url,
+                wait_until="domcontentloaded",
+                timeout=60_000,
+            )
+            _accept_google_consent(page)
+            try:
+                page.get_by_text(
+                    re.compile(
+                        r"Thông tin tổng quan do AI tạo|AI Overview",
+                        re.IGNORECASE,
+                    )
+                ).first.wait_for(state="visible", timeout=15_000)
+            except Exception:
+                page.wait_for_timeout(1_000)
+            _raise_if_google_blocked(page)
+            overview = _google_ai_overview_from_page(page)
+            return {
+                "source": "google_ai_overview",
+                "query": query,
+                "search_url": page.url or search_url,
+                "description": overview.get("description"),
+                "citations": overview.get("citations") or [],
+            }
+        finally:
+            context.close()
+            browser.close()
 
 
 def scrape_google_maps_destination(destination_name: str) -> Optional[Dict[str, Any]]:
@@ -598,12 +860,16 @@ def _scroll_results(page: Any, target: int) -> None:
         if current_count >= target or unchanged_rounds >= 2:
             break
         feed.evaluate("element => { element.scrollTop = element.scrollHeight; }")
-        page.wait_for_timeout(900)
+        page.wait_for_timeout(500)
         unchanged_rounds = unchanged_rounds + 1 if current_count == previous_count else 0
         previous_count = current_count
 
 
-def _candidate_from_google_card(article: Any, fallback_category: str) -> Optional[Dict[str, Any]]:
+def _candidate_from_google_card(
+    article: Any,
+    fallback_category: str,
+    include_description: bool = True,
+) -> Optional[Dict[str, Any]]:
     links = article.locator("a")
     place_link = None
     for index in range(links.count()):
@@ -636,7 +902,14 @@ def _candidate_from_google_card(article: Any, fallback_category: str) -> Optiona
             image = source
             break
 
-    lines = [line.strip() for line in article.inner_text().splitlines() if line.strip()]
+    description = None
+    if include_description:
+        lines = [
+            line.strip()
+            for line in article.inner_text().splitlines()
+            if line.strip()
+        ]
+        description = _card_description(lines, name)
     return {
         "source_id": _google_maps_source_id(url),
         "name": name,
@@ -645,7 +918,7 @@ def _candidate_from_google_card(article: Any, fallback_category: str) -> Optiona
         "longitude": coordinates[1],
         "rating": rating,
         "review_count": None,
-        "description": _card_description(lines, name),
+        "description": description,
         "image": image,
         "url": url,
     }
@@ -680,7 +953,14 @@ def scrape_google_maps_candidates(
                 )
                 page.goto(url, wait_until="domcontentloaded", timeout=60_000)
                 _accept_google_consent(page)
-                page.wait_for_timeout(2_500)
+                try:
+                    page.wait_for_selector(
+                        '[role="article"]',
+                        state="attached",
+                        timeout=8_000,
+                    )
+                except Exception:
+                    pass
                 _raise_if_google_blocked(page)
                 _scroll_results(page, target_per_query)
                 articles = page.locator('[role="article"]')
@@ -689,13 +969,13 @@ def scrape_google_maps_candidates(
                         candidate = _candidate_from_google_card(
                             articles.nth(index),
                             category,
+                            include_description=False,
                         )
                     except Exception as exc:
                         print(f"[google-maps-poc] Skipped unreadable result card: {exc}")
                         continue
                     if candidate:
                         candidates.setdefault(candidate["source_id"], candidate)
-                time.sleep(0.75)
         finally:
             context.close()
             browser.close()
@@ -833,12 +1113,38 @@ def resolve_google_maps_nearby_candidates(
         ) from exc
 
     candidates: Dict[str, Dict[str, Any]] = {}
+    
+    cache = _load_maps_cache()
+    unseen_seeds = []
+    for seed in seeds:
+        name = sanitize_attraction_name(seed.get("name", ""))
+        if not name:
+            continue
+        if name in cache:
+            candidate = cache[name]
+            if candidate:
+                if not _within_hotel_radius(candidate, hotel_radius_meters):
+                    pass
+                elif not is_coordinate_allowed(
+                    float(candidate["latitude"]),
+                    float(candidate["longitude"]),
+                    location_context,
+                ):
+                    pass
+                else:
+                    candidates.setdefault(str(candidate["source_id"]), candidate)
+        else:
+            unseen_seeds.append(seed)
+
+    if not unseen_seeds:
+        return list(candidates.values())
+
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         context = browser.new_context(locale="vi-VN")
         page = context.new_page()
         try:
-            for seed in seeds:
+            for seed in unseen_seeds:
                 name = sanitize_attraction_name(seed.get("name", ""))
                 if not name:
                     continue
@@ -847,7 +1153,11 @@ def resolve_google_maps_nearby_candidates(
                     if destination_name
                     else name
                 )
-                url = f"https://www.google.com/maps/search/?api=1&query={quote(query)}&hl=vi"
+                if "seed_latitude" in seed and "seed_longitude" in seed:
+                    center = f"/@{seed['seed_latitude']},{seed['seed_longitude']},15z"
+                    url = f"https://www.google.com/maps/search/{quote(query)}{center}?hl=vi"
+                else:
+                    url = f"https://www.google.com/maps/search/?api=1&query={quote(query)}&hl=vi"
                 try:
                     candidate = None
                     # Maps occasionally renders only its search shell on the first
@@ -901,8 +1211,10 @@ def resolve_google_maps_nearby_candidates(
                         print(f"[hotel-nearby] Rejected Maps result outside destination: {name}")
                     else:
                         candidates.setdefault(str(candidate["source_id"]), candidate)
+                    _append_to_maps_cache(name, candidate)
                 except Exception as exc:
                     print(f"[hotel-nearby] Could not resolve {name} near hotel: {exc}")
+                    _append_to_maps_cache(name, None)
                 time.sleep(0.75)
         finally:
             context.close()
@@ -935,21 +1247,98 @@ def _google_maps_detail_from_page(page: Any) -> Dict[str, Any]:
         for index in range(hour_buttons.count())
     ]
     detail.update(_parse_google_maps_hours(hour_labels))
+
+    rating = None
+    review_count = None
+    rating_nodes = page.locator('[role="img"]')
+    for index in range(min(rating_nodes.count(), 10)):
+        label = rating_nodes.nth(index).get_attribute("aria-label") or ""
+        if "sao" in label.lower() or "star" in label.lower():
+            match = re.search(r"(\d+(?:[.,]\d+)?)", label)
+            if match:
+                rating = float(match.group(1).replace(",", "."))
+            review_match = re.search(r"(?:sao|stars?)\s*([\d.,]+)", label, re.IGNORECASE)
+            if review_match:
+                rev_str = review_match.group(1).replace(".", "").replace(",", "")
+                if rev_str.isdigit():
+                    review_count = int(rev_str)
+            break
+    
+    if rating is not None:
+        detail["rating"] = rating
+    if review_count is not None:
+        detail["review_count"] = review_count
+
     return detail
 
 
-def _official_site_detail_from_page(page: Any, website_url: str) -> Dict[str, Any]:
+def _json_ld_description_candidates(payloads: List[str]) -> List[str]:
+    """Read usable place/business descriptions from embedded Schema.org JSON-LD."""
     descriptions: List[str] = []
+
+    def visit(value: Any) -> None:
+        if isinstance(value, list):
+            for item in value:
+                visit(item)
+            return
+        if not isinstance(value, dict):
+            return
+        raw_types = value.get("@type") or []
+        types = raw_types if isinstance(raw_types, list) else [raw_types]
+        normalized_types = {str(item).casefold() for item in types}
+        description = _trim_incomplete_description(value.get("description") or "")
+        if (
+            normalized_types.intersection(OFFICIAL_DESCRIPTION_SCHEMA_TYPES)
+            and _is_usable_attraction_description(description)
+            and description not in descriptions
+        ):
+            descriptions.append(description)
+        for nested in value.values():
+            if isinstance(nested, (dict, list)):
+                visit(nested)
+
+    for payload in payloads:
+        try:
+            visit(json.loads(payload))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+    return descriptions
+
+
+def _official_site_detail_from_page(page: Any, website_url: str) -> Dict[str, Any]:
+    meta_descriptions: List[str] = []
     for selector in ("meta[name='description']", "meta[property='og:description']"):
         nodes = page.locator(selector)
         for index in range(min(nodes.count(), 2)):
             content = nodes.nth(index).get_attribute("content") or ""
             if content.strip():
-                descriptions.append(_trim_incomplete_description(content))
-    description = next(
-        (text for text in descriptions if 80 <= len(text) <= 1_000),
-        None,
+                meta_descriptions.append(_trim_incomplete_description(content))
+    json_ld_nodes = page.locator('script[type="application/ld+json"]')
+    json_ld_payloads = [
+        json_ld_nodes.nth(index).inner_text(timeout=2_000) or ""
+        for index in range(min(json_ld_nodes.count(), 20))
+    ]
+    body_nodes = page.locator(
+        "main p, article p, [class*='about' i] p, [id*='about' i] p"
     )
+    try:
+        body_descriptions = body_nodes.all_inner_texts()
+    except Exception:
+        body_descriptions = []
+    description = None
+    for candidates in (
+        _json_ld_description_candidates(json_ld_payloads),
+        body_descriptions,
+        meta_descriptions,
+    ):
+        usable = [
+            _trim_incomplete_description(text)
+            for text in candidates
+            if _is_usable_attraction_description(text)
+        ]
+        if usable:
+            description = max(usable, key=len)
+            break
     images: List[str] = []
     og_image = page.locator("meta[property='og:image']")
     if og_image.count():
@@ -982,7 +1371,7 @@ def _official_site_detail_from_page(page: Any, website_url: str) -> Dict[str, An
 
 
 def _load_official_site_detail(context: Any, website_url: str) -> Dict[str, Any]:
-    if not _is_safe_official_site_url(website_url):
+    if not _is_supported_official_content_url(website_url):
         return {"description": None, "images": []}
     official_page = context.new_page()
     try:
@@ -992,7 +1381,7 @@ def _load_official_site_detail(context: Any, website_url: str) -> Dict[str, Any]
             timeout=20_000,
         )
         if (
-            not _is_safe_official_site_url(official_page.url or "")
+            not _is_supported_official_content_url(official_page.url or "")
             or not _same_site_host(website_url, official_page.url or "")
         ):
             return {"description": None, "images": []}
@@ -1034,6 +1423,7 @@ def enrich_google_maps_records(
     records: List[Dict[str, Any]],
     candidates: List[Dict[str, Any]],
     destination_name: str,
+    fast_poc_mode: bool = False,
 ) -> List[Dict[str, Any]]:
     """Enrich only selected records from rendered Google Maps detail panels."""
     enriched = []
@@ -1042,6 +1432,10 @@ def enrich_google_maps_records(
         cleaned_name = sanitize_attraction_name(enriched_record.get("name", ""))
         if cleaned_name:
             enriched_record["name"] = cleaned_name
+        if not _is_usable_attraction_description(
+            enriched_record.get("description")
+        ):
+            enriched_record["description"] = None
         enriched.append(enriched_record)
     if not enriched:
         return enriched
@@ -1086,6 +1480,7 @@ def enrich_google_maps_records(
                         record,
                         candidate_url,
                         destination_name,
+                        prefer_exact_place=fast_poc_mode,
                     )
                     enriched_record = record
                     place_category = ""
@@ -1106,9 +1501,24 @@ def enrich_google_maps_records(
                             place_category = str(
                                 detail.get("place_category") or place_category
                             )
+                            if place_category and enriched_record.get("category") == "Other activities":
+                                # Map the Google Maps place category to one of our internal categories
+                                norm_cat = place_category.lower()
+                                if any(term in norm_cat for term in ("bảo tàng", "museum", "di tích", "heritage", "temple", "chùa", "đền", "thờ", "dinh", "palace")):
+                                    enriched_record["category"] = "Museums & culture"
+                                elif any(term in norm_cat for term in ("công viên", "park", "beach", "biển", "đảo", "island", "thác", "nature")):
+                                    enriched_record["category"] = "Nature & outdoor"
+                                elif any(term in norm_cat for term in ("chợ", "market", "theater", "nhà hát", "giải trí", "entertainment", "cơ quan")):
+                                    enriched_record["category"] = "Entertainment & tickets"
+                                elif "nhà hàng" in norm_cat or "restaurant" in norm_cat:
+                                    enriched_record["category"] = "Restaurants & cafes"
+                                elif "khách sạn" in norm_cat or "hotel" in norm_cat:
+                                    enriched_record["category"] = "Hotels & lodging"
                             official_website = str(
                                 detail.get("official_website") or official_website
                             )
+                            if fast_poc_mode:
+                                break
                         except RuntimeError as exc:
                             print(
                                 f"[google-maps-poc] Stopped detail enrichment: {exc}"
@@ -1120,7 +1530,8 @@ def enrich_google_maps_records(
                                 "[google-maps-poc] Kept available data after detail "
                                 f"lookup failed for {record.get('name')}: {exc}"
                             )
-                        time.sleep(0.5)
+                        if not fast_poc_mode:
+                            time.sleep(0.5)
                     if official_website and _needs_official_site_enrichment(
                         enriched_record
                     ):
@@ -1137,6 +1548,35 @@ def enrich_google_maps_records(
                             print(
                                 "[google-maps-poc] Kept Maps data after official-site "
                                 f"lookup failed for {record.get('name')}: {exc}"
+                            )
+                    if (
+                        not _is_usable_attraction_description(
+                            enriched_record.get("description")
+                        )
+                        or len(
+                            str(enriched_record.get("description") or "").strip()
+                        )
+                        < 80
+                    ):
+                        print(
+                            "[google-maps-poc] Normalize enrichment: "
+                            f"grounded-description fallback for "
+                            f"{completed}/{total_records}."
+                        )
+                        grounded_detail = enrich_description_from_sources(
+                            page,
+                            enriched_record,
+                            destination_name,
+                        )
+                        if grounded_detail:
+                            enriched_record["description"] = grounded_detail[
+                                "description"
+                            ]
+                            print(
+                                "[google-maps-poc] Normalize enrichment: "
+                                f"grounded description accepted for "
+                                f"{completed}/{total_records} from "
+                                f"{grounded_detail['source_url']}."
                             )
                     if not enriched_record.get("description"):
                         enriched_record["description"] = _fact_based_description(
@@ -1189,5 +1629,6 @@ def collect_google_maps_attractions(
         destination_id,
         destination_name,
         item_limit,
+        fast_poc_mode=True,
     )
     return select_diverse_attractions(deduplicate_attractions(records), item_limit)
