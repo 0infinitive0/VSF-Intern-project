@@ -17,7 +17,9 @@ from dag_common import DB_KWARGS
 from hotel_pipeline import (
     DedupeStats,
     LoadStats,
+    PhysicalMatchStats,
     ValidationStats,
+    assign_physical_hotel_groups,
     dedupe_hotels,
     extract_hotels,
     load_hotels_to_db,
@@ -79,8 +81,17 @@ def dedupe_task(**kwargs):
     return f"Deduped {len(records)} hotel records ({stats.hotels_removed} duplicate hotels removed)"
 
 
+def physical_match_task(**kwargs):
+    records, stats = assign_physical_hotel_groups(
+        kwargs["ti"].xcom_pull(task_ids="dedupe", key="deduped_hotel_records") or []
+    )
+    kwargs["ti"].xcom_push(key="physical_matched_hotel_records", value=records)
+    kwargs["ti"].xcom_push(key="hotel_physical_match_stats", value=asdict(stats))
+    return f"Cross-OTA grouping: {stats.groups_created} groups ({stats.groups_pending_review} pending review)"
+
+
 def load_task(**kwargs):
-    records = kwargs["ti"].xcom_pull(task_ids="dedupe", key="deduped_hotel_records") or []
+    records = kwargs["ti"].xcom_pull(task_ids="physical_match", key="physical_matched_hotel_records") or []
     if not records:
         raise ValueError("No valid hotel records were produced.")
     stats = load_hotels_to_db(records, DB_KWARGS)
@@ -95,12 +106,16 @@ def quality_task(**kwargs):
     params = kwargs.get("params") or {}
     validation_stats = kwargs["ti"].xcom_pull(task_ids="validate", key="hotel_validation_stats") or {}
     dedupe_stats = kwargs["ti"].xcom_pull(task_ids="dedupe", key="hotel_dedupe_stats") or {}
+    physical_match_stats = (
+        kwargs["ti"].xcom_pull(task_ids="physical_match", key="hotel_physical_match_stats") or {}
+    )
     load_stats = kwargs["ti"].xcom_pull(task_ids="load_to_postgresql", key="hotel_load_stats") or {}
     report_path = quality_check_hotels(
         ValidationStats(**validation_stats),
         DedupeStats(**dedupe_stats),
+        PhysicalMatchStats(**physical_match_stats),
         LoadStats(**load_stats),
-        kwargs["ti"].xcom_pull(task_ids="dedupe", key="deduped_hotel_records") or [],
+        kwargs["ti"].xcom_pull(task_ids="physical_match", key="physical_matched_hotel_records") or [],
         _path_param(params, "reports_dir", DEFAULT_REPORTS_DIR),
     )
     kwargs["ti"].xcom_push(key="hotel_quality_report_path", value=report_path)
@@ -126,7 +141,8 @@ with DAG(
     validate = PythonOperator(task_id="validate", python_callable=validate_task)
     normalize = PythonOperator(task_id="normalize", python_callable=normalize_task)
     dedupe = PythonOperator(task_id="dedupe", python_callable=dedupe_task)
+    physical_match = PythonOperator(task_id="physical_match", python_callable=physical_match_task)
     load_to_postgresql = PythonOperator(task_id="load_to_postgresql", python_callable=load_task)
     quality_check = PythonOperator(task_id="quality_check", python_callable=quality_task)
 
-    extract >> validate >> normalize >> dedupe >> load_to_postgresql >> quality_check
+    extract >> validate >> normalize >> dedupe >> physical_match >> load_to_postgresql >> quality_check
