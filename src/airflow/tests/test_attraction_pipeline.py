@@ -1370,6 +1370,7 @@ class AirflowDiscoveryTests(unittest.TestCase):
             "validate",
             "normalize",
             "dedupe",
+            "physical_match",
             "load_to_postgresql",
             "quality_check",
         ):
@@ -1380,10 +1381,13 @@ class AirflowDiscoveryTests(unittest.TestCase):
             "validate_hotels",
             "normalize_hotels",
             "dedupe_hotels",
+            "assign_physical_hotel_groups",
             "load_hotels_to_db",
             "quality_check_hotels",
         ):
             self.assertIn(function_name, content)
+
+        self.assertIn("dedupe >> physical_match >> load_to_postgresql", content)
 
         self.assertIn('dag_id="booking_agoda_hotel_loader_pipeline"', content)
         self.assertIn('"agoda_path": Param(', content)
