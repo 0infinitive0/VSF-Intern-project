@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str = ""
     ollama_url: str = "http://localhost:11434"
+    supabase_url: str = ""
+    supabase_service_key: str = ""
 
 
 @lru_cache

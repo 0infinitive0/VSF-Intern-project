@@ -26,20 +26,19 @@ async def agent_status():
 
 @router.get("/search_attractions")
 async def search_attractions(q: str, k: int = 10):
-    """Tìm kiếm semantic cho attractions."""
+    """Tìm kiếm semantic cho attractions sử dụng Supabase RPC."""
     try:
-        from src.services.vector_store import get_vector_store
-        vector_store = get_vector_store("attractions_vector")
-        results = vector_store.similarity_search_with_score(q, k=k)
+        from src.services.supabase_search import search_attractions as rpc_search_attractions
+        results = rpc_search_attractions(q, match_count=k)
         
-        # Return a list of dicts containing attraction_id and score
         search_results = []
-        for doc, score in results:
-            attraction_id = doc.metadata.get("attraction_id")
-            if attraction_id:
+        for a in results:
+            if a.get("id"):
                 search_results.append({
-                    "id": attraction_id,
-                    "score": float(score)
+                    "id": str(a["id"]),
+                    "score": float(a.get("similarity", 0.0)),
+                    "name": a.get("name"),
+                    "category": a.get("category"),
                 })
         
         return {"status": "success", "results": search_results}
@@ -48,54 +47,27 @@ async def search_attractions(q: str, k: int = 10):
 
 @router.get("/search_hotels")
 async def search_hotels(q: str, k: int = 10):
-    """Tìm kiếm semantic cho hotels và rooms."""
+    """Tìm kiếm semantic cho hotels và rooms sử dụng Supabase RPC."""
     try:
-        from src.services.vector_store import get_vector_store
+        from src.services.supabase_search import search_hotels_with_rooms
+        results = search_hotels_with_rooms(q, match_count=k)
         
-        hotel_store = get_vector_store("hotels_vector")
-        room_store = get_vector_store("rooms_vector")
-        
-        hotel_results = hotel_store.similarity_search_with_score(q, k=k)
-        room_results = room_store.similarity_search_with_score(q, k=k)
-        
-        hotel_scores = {}
-        
-        # Process hotel matches
-        for doc, score in hotel_results:
-            h_id = doc.metadata.get("hotel_id")
-            if h_id:
-                hotel_scores[h_id] = {
-                    "id": h_id,
-                    "score": float(score),
-                    "matched_rooms": {}
-                }
+        search_results = []
+        for h in results:
+            if h.get("id"):
+                matched_rooms_dict = {}
+                for idx, r_name in enumerate(h.get("matched_room_names") or []):
+                    matched_rooms_dict[f"room_{idx}"] = r_name
                 
-        # Process room matches
-        for doc, score in room_results:
-            h_id = doc.metadata.get("hotel_id")
-            r_id = doc.metadata.get("room_id")
-            
-            if h_id and r_id:
-                if h_id not in hotel_scores:
-                    hotel_scores[h_id] = {
-                        "id": h_id,
-                        "score": float(score),
-                        "matched_rooms": {}
-                    }
-                else:
-                    # Update hotel score if room score is higher
-                    hotel_scores[h_id]["score"] = max(hotel_scores[h_id]["score"], float(score))
-                
-                # Store the room score
-                hotel_scores[h_id]["matched_rooms"][r_id] = float(score)
-
-        # Convert to list and sort by score descending
-        results_list = list(hotel_scores.values())
-        results_list.sort(key=lambda x: x["score"], reverse=True)
+                search_results.append({
+                    "id": str(h["id"]),
+                    "score": float(h.get("similarity", 0.0)),
+                    "name": h.get("name"),
+                    "star_rating": h.get("star_rating"),
+                    "matched_rooms": matched_rooms_dict,
+                    "matched_room_names": h.get("matched_room_names") or [],
+                })
         
-        # Take top k hotels
-        results_list = results_list[:k]
-        
-        return {"status": "success", "results": results_list}
+        return {"status": "success", "results": search_results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

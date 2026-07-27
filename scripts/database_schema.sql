@@ -205,6 +205,7 @@ CREATE TABLE itineraries (
     number_of_children SMALLINT DEFAULT 0, -- Số lượng trẻ em
     budget DECIMAL(12, 2), -- Ngân sách
     preferences TEXT[], -- Sở thích
+    day_themes JSONB NOT NULL DEFAULT '[]'::jsonb, -- Chủ đề theo ngày: [{day_number, title, query}]
     status VARCHAR(50) DEFAULT 'Draft', -- Trạng thái (Draft, Finalized)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

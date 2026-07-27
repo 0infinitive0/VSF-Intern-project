@@ -56,6 +56,26 @@
         ::-webkit-scrollbar-track { background: #13131a; }
         ::-webkit-scrollbar-thumb { background: #444455; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #555566; }
+
+        /* Trip Plan Viewer Styles */
+        #trip-plan-viewer { display: none; flex: 1; overflow-y: auto; padding: 16px; background: #0f172a; color: #f8fafc; }
+        .trip-header-card { background: linear-gradient(135deg, #1e293b, #0f172a); border: 1px solid #334155; border-radius: 8px; padding: 16px; margin-bottom: 15px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3); }
+        .trip-title { font-size: 18px; font-weight: 700; color: #38bdf8; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+        .trip-badge { background: #0284c7; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+        .trip-hotel-card { background: rgba(30, 41, 59, 0.7); border: 1px solid #38bdf8; border-left: 4px solid #38bdf8; border-radius: 6px; padding: 14px; margin-bottom: 15px; position: relative; }
+        .day-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 12px; }
+        .day-btn { background: #1e293b; color: #94a3b8; border: 1px solid #334155; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s; }
+        .day-btn:hover { background: #334155; color: white; }
+        .day-btn.active { background: #0284c7; color: white; border-color: #38bdf8; box-shadow: 0 0 10px rgba(56, 189, 248, 0.3); }
+        .timeline-item { display: flex; gap: 12px; padding: 12px; background: #1e293b; border: 1px solid #334155; border-radius: 6px; margin-bottom: 8px; align-items: center; transition: transform 0.15s, border-color 0.15s; }
+        .timeline-item:hover { transform: translateX(4px); border-color: #64748b; }
+        .timeline-time { font-size: 12px; font-weight: 700; color: #94a3b8; min-width: 90px; }
+        .kind-badge { padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+        .kind-breakfast, .kind-coffee { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid #d97706; }
+        .kind-lunch, .kind-dinner { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid #dc2626; }
+        .kind-attraction { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #059669; }
+        .kind-rest, .kind-evening { background: rgba(139, 92, 246, 0.2); color: #a78bfa; border: 1px solid #7c3aed; }
+        .room-pill { display: inline-block; background: #334155; color: #e2e8f0; font-size: 11px; padding: 2px 8px; border-radius: 4px; margin: 2px; }
     </style>
 </head>
 <body>
@@ -69,6 +89,7 @@
                     <button class="tab" onclick="setTable('hotels')">Hotels</button>
                     <button class="tab" onclick="setTable('destinations')">Destinations</button>
                     <button class="tab" onclick="setTable('rooms')">Rooms</button>
+                    <button class="tab" onclick="setTable('trip_plan')" style="border-color:#0284c7; color:#38bdf8;">🗺️ Trip Plan</button>
                 </div>
             </span>
             <div style="display: flex; gap: 8px;">
@@ -91,6 +112,10 @@
                 <button class="btn" onclick="changePage(-1)" id="btn-prev">Previous</button>
                 <button class="btn" onclick="changePage(1)" id="btn-next">Next</button>
             </div>
+        </div>
+
+        <div id="trip-plan-viewer">
+            <div id="trip-plan-content">Loading trip plan...</div>
         </div>
     </div>
 
@@ -246,7 +271,10 @@
                         }
                     }
                     
+                    window.allLocationsMap = window.allLocationsMap || {};
                     locations.forEach(loc => {
+                        window.allLocationsMap[loc.id] = loc;
+                        window.allLocationsMap[loc.type + '-' + loc.id] = loc;
                         const globalId = loc.type + '-' + loc.id;
                         let popupContent = "";
                         if (loc.type === 'destination') {
@@ -278,12 +306,12 @@
                         } else {
                             let marker;
                             if (loc.type === 'destination') {
-                                marker = L.circleMarker([loc.lat, loc.lng], { radius: 10, fillColor: "#e74c3c", color: "#fff", weight: 2, opacity: 1, fillOpacity: 0.9 }).addTo(map);
+                                marker = L.circleMarker([loc.lat, loc.lng], { radius: 10, fillColor: "#e74c3c", color: "#fff", weight: 2, opacity: 1, fillOpacity: 0.9 });
                             } else if (loc.type === 'hotel') {
                                 const hotelIcon = L.divIcon({ html: '<div style="background-color: #f39c12; width: 14px; height: 14px; border-radius: 3px; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>', className: '', iconSize: [18, 18], iconAnchor: [9, 9], popupAnchor: [0, -9] });
-                                marker = L.marker([loc.lat, loc.lng], {icon: hotelIcon}).addTo(map);
+                                marker = L.marker([loc.lat, loc.lng], {icon: hotelIcon});
                             } else {
-                                marker = L.marker([loc.lat, loc.lng]).addTo(map);
+                                marker = L.marker([loc.lat, loc.lng]);
                             }
                             
                             marker.bindPopup(popupContent, {className: 'custom-popup'});
@@ -294,6 +322,16 @@
                             });
 
                             currentMarkers[globalId] = marker;
+                        }
+
+                        if (window.isTripPlanMode) {
+                            if (currentMarkers[globalId] && map.hasLayer(currentMarkers[globalId])) {
+                                map.removeLayer(currentMarkers[globalId]);
+                            }
+                        } else {
+                            if (currentMarkers[globalId] && !map.hasLayer(currentMarkers[globalId])) {
+                                currentMarkers[globalId].addTo(map);
+                            }
                         }
                     });
                 }
@@ -328,8 +366,31 @@
             
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             const tabs = Array.from(document.querySelectorAll('.tab'));
-            const targetTab = tabs.find(t => t.textContent.toLowerCase() === tableName.toLowerCase());
+            const targetTab = tabs.find(t => t.onclick.toString().includes(tableName) || t.textContent.toLowerCase() === tableName.toLowerCase());
             if (targetTab) targetTab.classList.add('active');
+            
+            if (tableName === 'trip_plan') {
+                window.isTripPlanMode = true;
+                Object.values(currentMarkers).forEach(m => {
+                    if (m && map && map.hasLayer(m)) map.removeLayer(m);
+                });
+                document.getElementById('table-wrapper').style.display = 'none';
+                document.querySelector('.pagination').style.display = 'none';
+                document.getElementById('trip-plan-viewer').style.display = 'block';
+                loadTripPlan();
+                return;
+            } else {
+                window.isTripPlanMode = false;
+                if (window.tripPlanLayerGroup && map) {
+                    window.tripPlanLayerGroup.clearLayers();
+                }
+                Object.values(currentMarkers).forEach(m => {
+                    if (m && map && !map.hasLayer(m)) m.addTo(map);
+                });
+                document.getElementById('table-wrapper').style.display = 'block';
+                document.querySelector('.pagination').style.display = 'flex';
+                document.getElementById('trip-plan-viewer').style.display = 'none';
+            }
             
             loadTableData();
         }
@@ -491,6 +552,358 @@
                 if (map) { map.invalidateSize(); }
             }
         });
+
+        // === TRIP PLAN VIEWER LOGIC ===
+        let currentTripData = null;
+        let selectedDay = 1;
+
+        async function loadTripPlan() {
+            const container = document.getElementById('trip-plan-content');
+            container.innerHTML = '<div style="text-align:center; padding:30px; color:#94a3b8;">⏳ Loading Trip Plan from API...</div>';
+            try {
+                if (!window.allLocationsMap || Object.keys(window.allLocationsMap).length === 0) {
+                    await fetchLocations();
+                }
+                const res = await fetch('/api/trip_plan');
+                const result = await res.json();
+                if (result.status === 'success' && result.data) {
+                    currentTripData = result.data;
+                    renderTripPlanUI();
+                } else {
+                    container.innerHTML = `<div style="text-align:center; padding:30px; color:#f87171;">⚠️ ${result.message || 'Failed to load trip plan.'}<br><br><button class="btn btn-primary" onclick="loadTripPlan()">🔄 Retry</button></div>`;
+                }
+            } catch (e) {
+                container.innerHTML = `<div style="text-align:center; padding:30px; color:#f87171;">⚠️ Network error: ${e.message}<br><br><button class="btn btn-primary" onclick="loadTripPlan()">🔄 Retry</button></div>`;
+            }
+        }
+
+        function updateMapForTripDay(dayNumber, dayItems, hotel) {
+            if (!map) return null;
+            
+            window.isTripPlanMode = true;
+            Object.values(currentMarkers).forEach(m => {
+                if (m && map.hasLayer(m)) map.removeLayer(m);
+            });
+
+            if (window.tripPlanLayerGroup) {
+                window.tripPlanLayerGroup.clearLayers();
+            } else {
+                window.tripPlanLayerGroup = L.layerGroup().addTo(map);
+            }
+
+            const bounds = L.latLngBounds();
+            let hotelLatLng = null;
+
+            if (hotel && hotel.coordinates) {
+                const coords = hotel.coordinates.split(',');
+                if (coords.length === 2) {
+                    hotelLatLng = [parseFloat(coords[0]), parseFloat(coords[1])];
+                    bounds.extend(hotelLatLng);
+                    
+                    const hotelIcon = L.divIcon({
+                        html: `<div style="background:#d97706; color:#fff; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px; border:2px solid white; box-shadow:0 2px 6px rgba(0,0,0,0.5);" title="${hotel.name || 'Hotel'}">🏨</div>`,
+                        className: '',
+                        iconSize: [30, 30],
+                        iconAnchor: [15, 15],
+                        popupAnchor: [0, -15]
+                    });
+                    
+                    L.marker(hotelLatLng, {icon: hotelIcon, zIndexOffset: 1000})
+                        .bindPopup(`<b>🏨 ${hotel.name || 'Hotel'}</b><br>Base Hotel`)
+                        .addTo(window.tripPlanLayerGroup);
+                }
+            }
+
+            const routeColors = [
+                '#ff6b00', // 0: Vibrant Orange
+                '#10b981', // 1: Emerald Green
+                '#06b6d4', // 2: Cyan / Electric Blue
+                '#ec4899', // 3: Hot Pink / Magenta
+                '#8b5cf6', // 4: Violet / Purple
+                '#eab308', // 5: Golden Yellow
+                '#f43f5e', // 6: Rose Red
+                '#3b82f6', // 7: Royal Blue
+                '#14b8a6', // 8: Teal
+                '#84cc16'  // 9: Lime Green
+            ];
+            const routeCoords = [];
+            const stepDistances = [];
+            const stepColors = [];
+            let prevCoord = hotelLatLng;
+            let totalMeters = 0;
+
+            dayItems.forEach((item, index) => {
+                let loc = window.allLocationsMap ? window.allLocationsMap[item.reference_id] : null;
+                if (!loc && item.reference_id && currentMarkers['attraction-' + item.reference_id]) {
+                    const pos = currentMarkers['attraction-' + item.reference_id].getLatLng();
+                    loc = { lat: pos.lat, lng: pos.lng, name: item.activity };
+                }
+
+                if (loc && loc.lat && loc.lng) {
+                    const currCoord = [loc.lat, loc.lng];
+                    routeCoords.push(currCoord);
+                    bounds.extend(currCoord);
+
+                    let distKm = 0;
+                    if (prevCoord) {
+                        const distMeters = L.latLng(prevCoord[0], prevCoord[1]).distanceTo(L.latLng(currCoord[0], currCoord[1]));
+                        totalMeters += distMeters;
+                        distKm = (distMeters / 1000).toFixed(1);
+                    }
+                    stepDistances.push(distKm);
+                    stepColors.push(routeColors[index % routeColors.length]);
+                    prevCoord = currCoord;
+
+                    const kind = (item.kind || 'attraction').toLowerCase();
+                    const kindIcons = {
+                        'breakfast': '☕', 'coffee': '🍵', 'lunch': '🍽️', 'dinner': '🍲',
+                        'attraction': '🏖️', 'rest': '🛏️', 'evening': '🌙'
+                    };
+                    const emoji = kindIcons[kind] || '📍';
+                    const stepNum = item.order_index || (index + 1);
+
+                    const stepIcon = L.divIcon({
+                        html: `<div style="background:#0284c7; color:#fff; padding:3px 8px; border-radius:14px; font-weight:bold; font-size:12px; border:2px solid white; box-shadow:0 2px 6px rgba(0,0,0,0.5); display:flex; align-items:center; gap:4px; white-space:nowrap; transform: translate(-50%, -50%);">
+                                 <span style="background:#38bdf8; color:#0f172a; width:18px; height:18px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:800;">${stepNum}</span>
+                                 <span>${emoji}</span>
+                               </div>`,
+                        className: '',
+                        iconSize: [45, 26],
+                        iconAnchor: [0, 0],
+                        popupAnchor: [0, -13]
+                    });
+
+                    const marker = L.marker(currCoord, { icon: stepIcon, zIndexOffset: 500 - index }).addTo(window.tripPlanLayerGroup);
+                    marker.bindPopup(`<b>Step #${stepNum}: ${item.activity || loc.name || 'Activity'}</b><br>Time: ${item.start_time || ''} - ${item.end_time || ''}<br>Distance from prev: ~${distKm} km`);
+                } else {
+                    stepDistances.push(0);
+                    stepColors.push(routeColors[index % routeColors.length]);
+                }
+            });
+
+            let fullRouteCoords = [];
+            if (hotelLatLng && routeCoords.length > 0) {
+                fullRouteCoords = [hotelLatLng, ...routeCoords, hotelLatLng];
+                if (prevCoord) {
+                    const returnMeters = L.latLng(prevCoord[0], prevCoord[1]).distanceTo(L.latLng(hotelLatLng[0], hotelLatLng[1]));
+                    totalMeters += returnMeters;
+                }
+            } else {
+                fullRouteCoords = routeCoords;
+            }
+
+            if (fullRouteCoords.length > 1) {
+                for (let i = 0; i < fullRouteCoords.length - 1; i++) {
+                    const p1 = fullRouteCoords[i];
+                    const p2 = fullRouteCoords[i+1];
+                    const color = routeColors[i % routeColors.length];
+
+                    L.polyline([p1, p2], {
+                        color: '#0f172a',
+                        weight: 7,
+                        opacity: 0.8,
+                        lineJoin: 'round',
+                        lineCap: 'round'
+                    }).addTo(window.tripPlanLayerGroup);
+
+                    L.polyline([p1, p2], {
+                        color: color,
+                        weight: 4,
+                        opacity: 1.0,
+                        lineJoin: 'round',
+                        lineCap: 'round'
+                    }).addTo(window.tripPlanLayerGroup);
+
+                    const lat1 = p1[0], lng1 = p1[1];
+                    const lat2 = p2[0], lng2 = p2[1];
+                    const dy = lat2 - lat1;
+                    const dx = (lng2 - lng1) * Math.cos(lat1 * Math.PI / 180);
+                    const dist = Math.hypot(dy, dx);
+
+                    if (dist > 0.0001) {
+                        const angleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
+                        const fractions = dist > 0.03 ? [0.3, 0.7] : [0.5];
+
+                        fractions.forEach(frac => {
+                            const ptLat = lat1 + (lat2 - lat1) * frac;
+                            const ptLng = lng1 + (lng2 - lng1) * frac;
+
+                            const arrowIcon = L.divIcon({
+                                html: `<div style="transform: rotate(${-angleDeg}deg); display:flex; align-items:center; justify-content:center; width:22px; height:22px; filter: drop-shadow(0px 1px 3px rgba(0,0,0,0.8)); pointer-events:none;">
+                                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                           <path d="M5 4L19 12L5 20V4Z" fill="${color}" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>
+                                         </svg>
+                                       </div>`,
+                                className: '',
+                                iconSize: [22, 22],
+                                iconAnchor: [11, 11]
+                            });
+
+                            L.marker([ptLat, ptLng], { icon: arrowIcon, interactive: false, zIndexOffset: 300 }).addTo(window.tripPlanLayerGroup);
+                        });
+                    }
+                }
+            }
+
+            if (bounds.isValid()) {
+                map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+            }
+
+            return {
+                totalKm: (totalMeters / 1000).toFixed(1),
+                stepDistances: stepDistances,
+                stepColors: stepColors,
+                returnColor: routeColors[routeCoords.length % routeColors.length]
+            };
+        }
+
+        function renderTripPlanUI() {
+            if (!currentTripData) return;
+            const container = document.getElementById('trip-plan-content');
+            const hotel = currentTripData.hotel || {};
+            const itineraries = currentTripData.itineraries || [];
+            const itinerary = itineraries[0] || {};
+            const items = currentTripData.itinerary_items || [];
+            
+            // Use day_themes from itineraries instead, not the top-level
+            const dayThemes = itinerary.day_themes || [];
+            const themesMap = {};
+            dayThemes.forEach(t => {
+                if (t.day_number && t.title) {
+                    themesMap[t.day_number] = t.title;
+                }
+            });
+            
+            // Calculate days
+            const daysSet = new Set(items.map(i => i.day_number || 1));
+            const maxDays = Math.max(...Array.from(daysSet), itinerary.duration_days || 1);
+            if (selectedDay > maxDays) selectedDay = 1;
+
+            // Header Card
+            const dest = (itinerary.preferences && itinerary.preferences.length) ? itinerary.preferences[0] : 'Trip Destination';
+            const duration = itinerary.duration_days || maxDays;
+            const adults = itinerary.number_of_adults || 2;
+            const status = itinerary.status || 'Draft';
+
+            let html = `
+                <div class="trip-header-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div class="trip-title">🌴 ${dest} <span class="trip-badge">${status}</span></div>
+                        <button class="btn btn-primary" onclick="loadTripPlan()" style="font-size:11px;">🔄 Refresh</button>
+                    </div>
+                    <div style="font-size:13px; color:#cbd5e1; margin-top:6px; display:flex; gap:15px; flex-wrap:wrap;">
+                        <span>⏱️ <b>${duration}</b> Days</span>
+                        <span>👥 <b>${adults}</b> Adults</span>
+                        <span>📅 Created: ${itinerary.created_at ? itinerary.created_at.split('T')[0] : 'Recent'}</span>
+                    </div>
+                </div>
+            `;
+
+            // Hotel Card
+            if (hotel.name) {
+                const stars = hotel.star_rating ? '⭐'.repeat(Math.round(hotel.star_rating)) + ` (${hotel.star_rating})` : '';
+                const rooms = (hotel.matched_rooms || []).map(r => `<span class="room-pill">🛏️ ${r}</span>`).join(' ');
+                const coords = hotel.coordinates ? hotel.coordinates.split(',') : null;
+                const mapBtn = coords ? `<button class="btn btn-success" style="margin-top:10px; width:100%; font-size:12px; font-weight:bold;" onclick="window.focusMap(${coords[0]}, ${coords[1]}, 'hotel-${hotel.id || ''}')">📍 Highlight Hotel on Live Map</button>` : '';
+
+                html += `
+                    <div class="trip-hotel-card">
+                        <div style="font-size:15px; font-weight:700; color:#f1f5f9; display:flex; justify-content:space-between;">
+                            <span>🏨 ${hotel.name}</span>
+                            <span style="font-size:13px; color:#fbbf24;">${stars}</span>
+                        </div>
+                        <div style="font-size:12px; color:#94a3b8; margin-top:6px; line-height:1.4;">${hotel.description || 'Verified hotel stay for your trip.'}</div>
+                        ${rooms ? `<div style="margin-top:8px;">${rooms}</div>` : ''}
+                        ${mapBtn}
+                    </div>
+                `;
+            }
+
+            // Day Navigation Tabs
+            html += `<div class="day-tabs">`;
+            for (let d = 1; d <= maxDays; d++) {
+                const dayItemsCount = items.filter(i => i.day_number === d).length;
+                const activeClass = (d === selectedDay) ? 'active' : '';
+                const themeTitle = themesMap[d] ? ` - ${themesMap[d]}` : '';
+                html += `<button class="day-btn ${activeClass}" onclick="selectTripDay(${d})">Day ${d}${themeTitle} (${dayItemsCount})</button>`;
+            }
+            html += `</div>`;
+
+            // Day Timeline
+            const dayItems = items.filter(i => i.day_number === selectedDay).sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+            const routeStats = updateMapForTripDay(selectedDay, dayItems, hotel);
+            const totalKmStr = (routeStats && routeStats.totalKm && parseFloat(routeStats.totalKm) > 0) ? ` <span style="background:#0284c7; color:#fff; padding:3px 10px; border-radius:12px; font-size:12px; font-weight:700; margin-left:12px; border:1px solid #38bdf8; display:inline-flex; align-items:center; gap:5px;">🚗 Route Distance: ~${routeStats.totalKm} km</span>` : '';
+            const selectedThemeTitle = themesMap[selectedDay] ? ` <span style="color:#38bdf8; font-weight:normal; font-size:14px;">— ${themesMap[selectedDay]}</span>` : '';
+            html += `<div style="font-size:15px; font-weight:700; color:#f8fafc; margin-bottom:10px; display:flex; align-items:center; flex-wrap:wrap; gap:6px;">📅 Day ${selectedDay} Itinerary${selectedThemeTitle}${totalKmStr}</div>`;
+            html += `<div class="timeline-list">`;
+            if (dayItems.length === 0) {
+                html += `<div style="text-align:center; padding:25px; color:#64748b; background:#1e293b; border-radius:6px;">No activities planned for Day ${selectedDay}.</div>`;
+            } else {
+                dayItems.forEach((item, index) => {
+                    const kind = (item.kind || 'attraction').toLowerCase();
+                    const kindIcons = {
+                        'breakfast': '☕', 'coffee': '🍵', 'lunch': '🍽️', 'dinner': '🍲',
+                        'attraction': '🏖️', 'rest': '🛏️', 'evening': '🌙'
+                    };
+                    const icon = kindIcons[kind] || '📌';
+                    const timeStr = item.start_time ? `${item.start_time.slice(0,5)} - ${item.end_time ? item.end_time.slice(0,5) : ''}` : `Step #${item.order_index}`;
+                    
+                    let actionBtn = '';
+                    const loc = window.allLocationsMap ? window.allLocationsMap[item.reference_id] : null;
+                    if (loc && loc.lat && loc.lng) {
+                        actionBtn += `<button class="btn btn-success" style="padding:4px 8px; font-size:11px; margin-right:4px;" onclick="map.setView([${loc.lat}, ${loc.lng}], 16)">📍 Map</button>`;
+                    }
+                    if (item.reference_id && item.reference_type) {
+                        const targetType = item.reference_type.toLowerCase();
+                        actionBtn += `<button class="btn btn-primary" style="padding:4px 8px; font-size:11px;" onclick="window.focusTable('${targetType}', '${item.reference_id}')">🔍 Data</button>`;
+                    }
+
+                    const distKm = (routeStats && routeStats.stepDistances && routeStats.stepDistances[index] && parseFloat(routeStats.stepDistances[index]) > 0) ? routeStats.stepDistances[index] : 0;
+                    const stepColor = (routeStats && routeStats.stepColors && routeStats.stepColors[index]) ? routeStats.stepColors[index] : '#38bdf8';
+                    const distBadge = distKm > 0 ? `<span style="background:#1e293b; color:${stepColor}; padding:2px 8px; border-radius:12px; font-size:11px; margin-left:8px; border:1px solid ${stepColor}; font-weight:700; display:inline-flex; align-items:center; gap:5px; white-space:nowrap;"><span style="width:8px; height:8px; border-radius:50%; background:${stepColor}; display:inline-block;"></span>🚗 ~${distKm} km</span>` : '';
+
+                    html += `
+                        <div class="timeline-item" style="border-left: 4px solid ${stepColor};">
+                            <div class="timeline-time">${timeStr}</div>
+                            <div class="kind-badge kind-${kind}">${icon} ${kind}</div>
+                            <div style="flex:1; font-size:13px; font-weight:600; color:#e2e8f0; display:flex; align-items:center; flex-wrap:wrap;">
+                                <span>${item.activity || 'Activity'}</span>
+                                ${distBadge}
+                            </div>
+                            <div>${actionBtn}</div>
+                        </div>
+                    `;
+                });
+
+                if (dayItems.length > 0 && hotel.coordinates && routeStats && routeStats.returnColor) {
+                    const returnColor = routeStats.returnColor;
+                    const lastStep = dayItems[dayItems.length - 1];
+                    const lastCoord = window.allLocationsMap && window.allLocationsMap[lastStep.reference_id] ? [window.allLocationsMap[lastStep.reference_id].lat, window.allLocationsMap[lastStep.reference_id].lng] : null;
+                    if (lastCoord) {
+                        const hotelCoords = hotel.coordinates.split(',');
+                        const returnKm = (L.latLng(lastCoord[0], lastCoord[1]).distanceTo(L.latLng(parseFloat(hotelCoords[0]), parseFloat(hotelCoords[1]))) / 1000).toFixed(1);
+                        html += `
+                            <div class="timeline-item" style="opacity:0.9; border-left: 4px solid ${returnColor};">
+                                <div class="timeline-time">Return</div>
+                                <div class="kind-badge" style="background:#1e293b; color:#fbbf24; border:1px solid #334155;">🏨 Return</div>
+                                <div style="flex:1; font-size:13px; font-weight:600; color:#e2e8f0; display:flex; align-items:center; flex-wrap:wrap;">
+                                    <span>Return to Base Hotel (${hotel.name || 'Hotel'})</span>
+                                    <span style="background:#1e293b; color:${returnColor}; padding:2px 8px; border-radius:12px; font-size:11px; margin-left:8px; border:1px solid ${returnColor}; font-weight:700; display:inline-flex; align-items:center; gap:5px; white-space:nowrap;"><span style="width:8px; height:8px; border-radius:50%; background:${returnColor}; display:inline-block;"></span>🚗 ~${returnKm} km</span>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+            }
+            html += `</div>`;
+
+            container.innerHTML = html;
+        }
+
+        function selectTripDay(dayNum) {
+            selectedDay = dayNum;
+            renderTripPlanUI();
+        }
 
     </script>
 </body>

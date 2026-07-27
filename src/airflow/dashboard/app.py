@@ -1,4 +1,5 @@
 import os
+import json
 from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
@@ -123,6 +124,24 @@ def get_table_data(table_name: str, page: int = 1, page_size: int = 100, item_id
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+@app.get("/api/trip_plan")
+def get_trip_plan():
+    candidates = [
+        BASE_DIR.parent.parent.parent / "current_trip_plan.json", # local root repo dir
+        Path("/project/current_trip_plan.json"), # docker volume mount
+        Path("/opt/airflow/current_trip_plan.json"),
+        Path("current_trip_plan.json"),
+    ]
+    for p in candidates:
+        if p.exists():
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                return {"status": "success", "data": data, "source": str(p)}
+            except Exception as e:
+                return {"status": "error", "message": f"Error reading {p}: {str(e)}"}
+    return {"status": "error", "message": "current_trip_plan.json not found in candidate paths. Generate a trip plan first."}
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
