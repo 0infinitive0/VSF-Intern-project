@@ -75,7 +75,7 @@ graph TD
 ## Giải thích Luồng (Flow Details):
 1. **Extract:** Sử dụng Python Playwright để vượt qua anti-bot cơ bản, trích xuất dữ liệu ra file JSON tạm thời.
 2. **Transform (Booking - Core):** Data của Booking được xem là luồng chính. Sau khi làm sạch, nó sẽ được gọi qua Gemini API để lấy Vector nhúng (Embedding) cho mô tả khách sạn.
-3. **Transform (Agoda - Deduplication):** Đây là bước quan trọng nhất. Data Agoda sau khi làm sạch sẽ được đem so sánh với PostgreSQL. Nếu một khách sạn (VD: Vinpearl Nha Trang) đã được Booking crawl rồi, luồng Agoda sẽ KHÔNG tạo vector mới, KHÔNG tạo khách sạn mới, mà rẽ nhánh sang chỉ **cập nhật đè (Upsert) giá phòng** để làm phong phú lựa chọn cho người dùng.
+3. **Transform (Agoda - Deduplication):** Sơ đồ trên mô tả kiến trúc mục tiêu dài hạn. **Trạng thái triển khai thực tế (M1, xem `hotel_pipeline.py`) khác với sơ đồ ở bước này:** một khách sạn vật lý xuất hiện trên cả Agoda và Booking hiện được nạp thành **2 dòng `hotels` riêng biệt** (không upsert-đè giá vào 1 dòng), vì giá/chính sách mỗi OTA khác nhau và chatbot cần so sánh cả hai. Việc nhóm khách sạn vật lý trùng lặp liên-OTA cho mục đích AI/RAG (không gộp dòng DB) được tính riêng trong bước Normalize/Dedupe và lưu ở `hotel_identity_groups`/`hotel_identity_members` — xem `docs/data_dictionary.md` §1.4a/1.4b và `plans/260724-0925-hotel-normalize-dedupe-for-vector-rag/`.
 4. **Transform (Attractions - Google API):** Luồng này gọi API chính thống của Google Places để lấy tên, hình ảnh và đặc biệt là `opening_hours` (Giờ mở cửa) của các điểm tham quan để phục vụ tính năng xếp lịch trình. (Chỉ áp dụng cho bản PoC).
 5. **Databases:** Đích đến cuối cùng được tách bạch rõ ràng giữa PostgreSQL (chuyên filter bằng SQL) và Qdrant (chuyên tìm kiếm ngữ nghĩa).
 
