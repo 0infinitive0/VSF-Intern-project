@@ -1,6 +1,7 @@
 import os
 import sys
-import psycopg2
+from dotenv import load_dotenv
+from supabase import create_client, Client
 from qdrant_client.http.models import Filter, FilterSelector, HasIdCondition
 from langchain_core.documents import Document
 
@@ -10,38 +11,56 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../'
 from src.services.vector_store import get_vector_store, get_qdrant_client
 from src.services.qdrant_schema import ATTRACTIONS_VECTOR, ensure_collection, point_id
 
+
+def _fetch_all(supabase: Client, table: str, columns: str, page_size: int = 1000) -> list:
+    """Supabase REST caps a single select at `page_size` rows — page through
+    with .range() or every table beyond that cap silently gets truncated."""
+    rows = []
+    start = 0
+    while True:
+        page = supabase.table(table).select(columns).range(start, start + page_size - 1).execute().data
+        rows.extend(page)
+        if len(page) < page_size:
+            break
+        start += page_size
+    return rows
+
+
 def sync_attractions():
-    # We use localhost and 5432 since this script runs on the host
-    conn = psycopg2.connect(
-        dbname='vsf_database',
-        user='airflow',
-        password='airflow',
-        host='localhost',
-        port='5432'
+    load_dotenv()
+
+    SUPABASE_URL = os.environ.get("SUPABASE_URL")
+    SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        print("Error: SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in .env")
+        return
+
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+
+    print("Fetching attractions from Supabase...")
+    rows = _fetch_all(
+        supabase,
+        "attractions",
+        "id,name,destination_id,description,category,is_tour,ticket_price_adult,ticket_price_child",
     )
-    cursor = conn.cursor()
-    
-    print("Fetching attractions from PostgreSQL...")
-    # Fetch data according to the schema
-    try:
-        cursor.execute("SELECT id, name, destination_id, description, category, is_tour, ticket_price_adult, ticket_price_child FROM attractions;")
-        rows = cursor.fetchall()
-    except Exception as e:
-        # Fallback if some columns don't exist yet
-        print(f"Error fetching exact columns, falling back to basic: {e}")
-        conn.rollback()
-        cursor.execute("SELECT id, name, destination_id, description, category, is_tour FROM attractions;")
-        rows = [row + (None, None) for row in cursor.fetchall()]
-        
+
     documents = []
     ids = []
     for row in rows:
-        attraction_id, name, dest_id, desc, category, is_tour, price_adult, price_child = row
+        attraction_id = row["id"]
+        name = row.get("name")
+        dest_id = row.get("destination_id")
+        desc = row.get("description")
+        category = row.get("category")
+        is_tour = row.get("is_tour")
+        price_adult = row.get("ticket_price_adult")
+        price_child = row.get("ticket_price_child")
 
         # The text to embed: Tên + Mô tả + Thể loại
         page_content = f"Tên: {name}\nMô tả: {desc or ''}\nThể loại: {category or ''}"
 
-        # Ticket price string formatting
+        # Human-readable string for display, kept alongside the raw numeric
+        # value so callers can filter on price without parsing the string.
         price_range = None
         if price_adult is not None:
             price_range = f"Người lớn: {price_adult}"
@@ -55,7 +74,8 @@ def sync_attractions():
             "destination_id": str(dest_id) if dest_id else "",
             "category": category or "",
             "is_tour": bool(is_tour),
-            "ticket_price_range": price_range
+            "ticket_price_range": price_range,
+            "ticket_price_adult": float(price_adult) if price_adult is not None else None,
         }
 
         documents.append(Document(page_content=page_content, metadata=metadata))
@@ -97,8 +117,6 @@ def sync_attractions():
     )
     print("Reconciled attractions_vector: removed points not in this run's source set.")
 
-    cursor.close()
-    conn.close()
 
 if __name__ == "__main__":
     sync_attractions()

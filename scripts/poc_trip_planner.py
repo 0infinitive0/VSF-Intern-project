@@ -32,7 +32,7 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import MemorySaver
 from supabase import create_client, Client
 
-from src.services.supabase_search import search_attractions as rpc_search_attractions, search_hotels_with_rooms
+from src.services.qdrant_search import search_attractions as rpc_search_attractions, search_hotels_with_rooms
 from src.services.trip_intake import TripIntakeState
 from src.services.trip_scheduler import (
     DayTheme,

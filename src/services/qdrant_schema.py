@@ -77,6 +77,10 @@ ROOMS_VECTOR = CollectionSpec(
         "source_platform": "keyword",
         "source_hotel_id": "keyword",
         "max_guests": "integer",
+        # qdrant_search.py filters rooms_vector by hotel_id to pull a
+        # hotel's matched room names; without this it's an unindexed
+        # full-scan filter at every query.
+        "hotel_id": "keyword",
     }),
 )
 
