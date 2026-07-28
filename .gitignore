@@ -85,3 +85,4 @@ out/
 .ai-log/archive/
 CLAUDE.md
 plans/
+docs/design/*

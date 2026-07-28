@@ -17,6 +17,27 @@ cd vsf-project
 ## Step 2: Start the Services
 The project uses Docker Compose to manage all of its services, including Airflow, Postgres, and the custom Dashboard.
 
+The root stack (`qdrant`, `ollama`) and the Airflow stack are two separate Compose
+projects that share one external network so the Airflow scheduler/worker can
+reach Qdrant/Ollama by service name. Create it once (idempotent — no-op if it
+already exists):
+```bash
+docker network create vsf-shared
+```
+
+`airflow-scheduler` and `airflow-worker` also load the root `.env` (in
+addition to `src/airflow/.env`) for `QDRANT_API_KEY`/`SUPABASE_URL`/
+`SUPABASE_SERVICE_KEY` — make sure the root `.env` exists (see `.env.example`)
+before starting the Airflow stack, or those two containers will fail to start.
+
+**`QDRANT_API_KEY` is mandatory** (Phase 6) — the root `docker-compose.yml`'s
+`qdrant` service has no unauthenticated fallback; `docker compose up` refuses
+to start at all if it's unset. Any non-empty value works for local
+development; see `.env.example`. The local Qdrant is bound to `127.0.0.1`
+only (not reachable from outside the host) and has no TLS in front of it, so
+the key travels as a cleartext header — acceptable only because it's
+loopback-bound, not because the key alone secures it.
+
 Navigate into the `src/airflow` directory. First, initialize the Airflow environment:
 ```bash
 cd src/airflow
@@ -59,6 +80,30 @@ Once all the containers are running and the database is populated, you can acces
 - 🌪️ **Apache Airflow UI**: http://localhost:8080
   - **Username**: airflow
   - **Password**: airflow
+
+## Qdrant Snapshot & Restore
+
+Before a change that rewrites a Qdrant collection (e.g. re-running a full
+hotel sync), take a manual snapshot: `scripts/qdrant_snapshot.sh` is not
+scheduled — the hotel corpus rebuilds from Supabase through `hotel_dag` in
+minutes, so a manual pre-change snapshot is proportionate; scheduled backups
+belong in a deployment plan.
+
+```bash
+# Create + download a snapshot of a collection
+QDRANT_URL=http://localhost:6333 QDRANT_API_KEY=<your key> \
+  scripts/qdrant_snapshot.sh create hotels_vector
+
+# Restore into a NEW collection (verify before trusting the backup — an
+# untested backup is not a backup):
+QDRANT_URL=http://localhost:6333 QDRANT_API_KEY=<your key> \
+  scripts/qdrant_snapshot.sh restore ./data/qdrant_snapshots/<snapshot_file> hotels_vector_restore_test
+```
+
+Restoring into `hotels_vector` directly would overwrite live data — always
+restore into a scratch collection name first, verify the point count matches
+(`GET /collections/<name>`), then decide whether to alias/rename it into
+place.
 
 ## Useful Commands & Troubleshooting
 

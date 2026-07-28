@@ -182,11 +182,13 @@ Hệ thống sử dụng Qdrant làm Vector Database để xử lý các truy v�
 - Collection/index declarations, deterministic point IDs, and the `QdrantClient` factory live in one module: `src/services/qdrant_schema.py`.
 
 ### 2.1. Collection: `hotels_vector`
-Lưu trữ vector của Khách sạn. **Đã triển khai** (`hotel_pipeline.build_hotel_embedding_text()`/`build_hotel_payload()`, xem `plans/260724-0925-hotel-normalize-dedupe-for-vector-rag/phase-02-field-normalize-contract.md`). Kết nối/embed thật vào Qdrant hiện qua `scripts/sync_accommodations_to_qdrant.py`; việc gắn `destination_id`/`canonical_hotel_key` vào payload và chạy từ Airflow DAG thuộc `plans/260727-1113-qdrant-vector-store-correctness-and-hybrid-retrieval/phase-04-airflow-runtime-and-supabase-hotel-load.md` trở đi (chưa triển khai).
+Lưu trữ vector của Khách sạn. **Đã triển khai** — ghi qua `hotel_dag`'s `sync_qdrant` task (`src/services/qdrant_writer.py: upsert_hotels()`), không còn qua `scripts/sync_accommodations_to_qdrant.py` nữa (nhánh hotel ở đó đã bị xoá — file này giờ chỉ còn đồng bộ `rooms_vector`). `hotels_vector` là một **alias** (không phải collection literal): mỗi lần chạy ghi vào `hotels_vector_{run_id}` rồi swap alias khi thành công — một lần chạy lỗi giữa chừng không làm hỏng dữ liệu đang phục vụ. Xem `plans/260727-1113-qdrant-vector-store-correctness-and-hybrid-retrieval/phase-05-qdrant-writer-and-dedupe-aware-retrieval.md`.
+
+**Khác biệt payload so với `attractions_vector`/`rooms_vector`:** hai collection kia ghi qua LangChain `add_documents()` nên payload nằm lồng dưới `metadata.*`; `hotels_vector` ghi trực tiếp bằng `client.upsert()` nên payload **phẳng** (không có khoá `metadata`). Các index field trong `qdrant_schema.HOTELS_VECTOR` vì vậy không có tiền tố `metadata.` — khác với `ATTRACTIONS_VECTOR`/`ROOMS_VECTOR`.
 
 `embedding_text` gộp có thứ tự: `Hotel: {name}` → `Destination: {destination_name}, {area_name}` → `Type: {accommodation_type}; Stars: {star_rating}` → `Description: {description}` (cắt 500 ký tự) → `Amenities: {top 10}` → `Highlights: {top 5}` → `Nearby: {top 5 tên}`. Loại trừ các trường biến động (giá chính xác, source URL, `scraped_at`, room ID, JSON thô) — các trường này nằm ở `grounding_facts` thay vì embedding text.
 
-**Cấu trúc Payload (Metadata dùng để Pre-filtering) — như `hotel_pipeline.build_hotel_payload()` trả về:**
+**Cấu trúc Payload thực tế (phẳng) — `hotel_pipeline.build_hotel_payload()` cộng thêm các trường Phase 5 gắn vào lúc ghi:**
 ```json
 {
     "source_platform": "agoda",
@@ -202,10 +204,16 @@ Lưu trữ vector của Khách sạn. **Đã triển khai** (`hotel_pipeline.bui
     "price_tier": "budget | mid_range | luxury (chỉ tính cho VND)",
     "amenity_keys": ["ho_boi", "wifi"],
     "lat": 12.238791,
-    "lon": 106.660172
+    "lon": 106.660172,
+    "destination_id": "UUID Supabase, null nếu sync_to_supabase=false",
+    "supabase_hotel_id": "UUID Supabase hotels.id, null nếu chưa sync",
+    "canonical_hotel_key": "khoá gộp cross-OTA, null nếu chưa xếp nhóm",
+    "group_review_status": "auto_approved | pending_review | ungrouped",
+    "grounding_facts": "dict — xem hotel_pipeline.build_grounding_facts()",
+    "payload_version": 1
 }
 ```
-`destination_id` (UUID) join với PostgreSQL sẽ được bổ sung ở bước indexing thật (roadmap Phase 2) vì `destination_id` chỉ được resolve lúc `load_hotels_to_db()` gọi `get_or_create_destination()`, sau khi payload này đã tính xong.
+`destination_id`/`supabase_hotel_id` chỉ có giá trị thật khi DAG chạy với `sync_to_supabase=true` (mặc định `false` — khách sạn hiện chỉ lưu local Postgres). `payload_version` dùng để `hotel_search.search_hotels()` bỏ qua các điểm chưa được ghi lại theo shape mới (ví dụ collection chưa từng chạy `sync_qdrant` thật).
 
 ### 2.2. Collection: `attractions_vector`
 Lưu trữ vector của Điểm tham quan và Tour tuyến. Vector được tạo từ: Tên + Mô tả + Thể loại.

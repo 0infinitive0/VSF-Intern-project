@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -34,6 +34,18 @@ class Settings(BaseSettings):
     ollama_url: str = "http://localhost:11434"
     supabase_url: str = ""
     supabase_service_key: str = ""
+
+    @model_validator(mode="after")
+    def _require_qdrant_api_key_in_production(self) -> "Settings":
+        # Defense in depth, not the control — the control is
+        # docker-compose.yml's QDRANT__SERVICE__API_KEY having no `:-`
+        # fallback, which is what actually stops the server from starting
+        # unauthenticated. This validator only catches the app itself being
+        # misconfigured to run in production without a key; it can't make
+        # any Qdrant server require one.
+        if self.app_env == "production" and not self.qdrant_api_key:
+            raise ValueError("QDRANT_API_KEY must be set when APP_ENV=production")
+        return self
 
 
 @lru_cache
