@@ -1,36 +1,16 @@
 import os
 import sys
 import psycopg2
-from qdrant_client.http.models import Distance, VectorParams
+from qdrant_client.http.models import Filter, FilterSelector, HasIdCondition
 from langchain_core.documents import Document
 
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
-from src.services.vector_store import get_vector_store
-from src.config import get_settings
-from qdrant_client import QdrantClient
-
-def init_qdrant_collection(client: QdrantClient, collection_name: str, vector_size: int = 1024):
-    """Ensure the Qdrant collection exists with the correct configuration."""
-    if not client.collection_exists(collection_name):
-        print(f"Creating collection '{collection_name}' with vector size {vector_size}...")
-        client.create_collection(
-            collection_name=collection_name,
-            vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
-        )
-        
-        # Create payload indexes for fast filtering
-        client.create_payload_index(collection_name, "destination_id", field_schema="keyword")
-        client.create_payload_index(collection_name, "category", field_schema="keyword")
-        client.create_payload_index(collection_name, "is_tour", field_schema="bool")
-        print("Collection created with payload indexes.")
-    else:
-        print(f"Collection '{collection_name}' already exists.")
+from src.services.vector_store import get_vector_store, get_qdrant_client
+from src.services.qdrant_schema import ATTRACTIONS_VECTOR, ensure_collection, point_id
 
 def sync_attractions():
-    settings = get_settings()
-    
     # We use localhost and 5432 since this script runs on the host
     conn = psycopg2.connect(
         dbname='vsf_database',
@@ -54,19 +34,20 @@ def sync_attractions():
         rows = [row + (None, None) for row in cursor.fetchall()]
         
     documents = []
+    ids = []
     for row in rows:
         attraction_id, name, dest_id, desc, category, is_tour, price_adult, price_child = row
-        
+
         # The text to embed: Tên + Mô tả + Thể loại
         page_content = f"Tên: {name}\nMô tả: {desc or ''}\nThể loại: {category or ''}"
-        
+
         # Ticket price string formatting
         price_range = None
         if price_adult is not None:
             price_range = f"Người lớn: {price_adult}"
             if price_child is not None:
                 price_range += f", Trẻ em: {price_child}"
-                
+
         # Create metadata payload
         metadata = {
             "attraction_id": str(attraction_id),
@@ -76,29 +57,46 @@ def sync_attractions():
             "is_tour": bool(is_tour),
             "ticket_price_range": price_range
         }
-        
+
         documents.append(Document(page_content=page_content, metadata=metadata))
+        ids.append(point_id("attraction", attraction_id))
 
     print(f"Prepared {len(documents)} documents for embedding.")
-    
+
     if not documents:
         print("No documents to sync.")
         return
 
-    # Initialize Qdrant Client directly to set up collection
-    client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key if settings.qdrant_api_key else None)
-    init_qdrant_collection(client, "attractions_vector", vector_size=1024)
-    
+    client = get_qdrant_client()
+    ensure_collection(client, ATTRACTIONS_VECTOR)
+
     print("Connecting to vector store and embedding documents via Ollama (bge-m3)...")
     # This will take a while if the model is large and it's the first time processing
-    vector_store = get_vector_store("attractions_vector")
-    
-    # We clear the existing docs by re-creating it or just add to it. 
-    # For now, we just add (upsert). We could optionally delete the collection first for a clean sync.
-    vector_store.add_documents(documents)
-    
+    vector_store = get_vector_store(ATTRACTIONS_VECTOR.name)
+
+    # Deterministic ids make this an upsert: re-running leaves points_count
+    # unchanged instead of minting a fresh random id per document per run.
+    written_ids = []
+    batch_size = 100
+    for i in range(0, len(documents), batch_size):
+        doc_batch = documents[i:i + batch_size]
+        id_batch = ids[i:i + batch_size]
+        vector_store.add_documents(doc_batch, ids=id_batch)
+        written_ids.extend(id_batch)
+
     print(f"Successfully synced {len(documents)} attractions to Qdrant!")
-    
+
+    # Reconcile: remove points for source rows that no longer exist. Only
+    # runs after every batch above succeeded — a partial failure must not
+    # delete points it never got to rewrite.
+    client.delete(
+        collection_name=ATTRACTIONS_VECTOR.name,
+        points_selector=FilterSelector(
+            filter=Filter(must_not=[HasIdCondition(has_id=written_ids)])
+        ),
+    )
+    print("Reconciled attractions_vector: removed points not in this run's source set.")
+
     cursor.close()
     conn.close()
 

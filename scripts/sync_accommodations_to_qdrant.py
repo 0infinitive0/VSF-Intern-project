@@ -2,29 +2,30 @@ import os
 import sys
 from dotenv import load_dotenv
 from supabase import create_client, Client
-from qdrant_client.http.models import Distance, VectorParams
+from qdrant_client.http.models import Filter, FilterSelector, HasIdCondition
 from langchain_core.documents import Document
 
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
-from src.services.vector_store import get_vector_store
-from src.config import get_settings
-from qdrant_client import QdrantClient
+from src.services.vector_store import get_vector_store, get_qdrant_client
+from src.services.qdrant_schema import HOTELS_VECTOR, ROOMS_VECTOR, ensure_collection, point_id
 
-def init_qdrant_collection(client: QdrantClient, collection_name: str, vector_size: int = 1024):
-    """Ensure the Qdrant collection exists with the correct configuration."""
-    if not client.collection_exists(collection_name):
-        print(f"Creating collection '{collection_name}' with vector size {vector_size}...")
-        client.create_collection(
-            collection_name=collection_name,
-            vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
-        )
-    else:
-        print(f"Collection '{collection_name}' already exists.")
+def _fetch_all(supabase: Client, table: str, page_size: int = 1000) -> list:
+    """Supabase REST caps a single select at `page_size` rows — page through
+    with .range() or every table beyond that cap silently gets truncated."""
+    rows = []
+    start = 0
+    while True:
+        page = supabase.table(table).select("*").range(start, start + page_size - 1).execute().data
+        rows.extend(page)
+        if len(page) < page_size:
+            break
+        start += page_size
+    return rows
+
 
 def sync_accommodations():
-    settings = get_settings()
     load_dotenv()
     
     SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -37,8 +38,7 @@ def sync_accommodations():
     
     # 1. Sync Hotels
     print("Fetching hotels from Supabase...")
-    hotels_response = supabase.table("hotels").select("*").execute()
-    hotels = hotels_response.data
+    hotels = _fetch_all(supabase, "hotels")
     
     hotel_documents = []
     for h in hotels:
@@ -63,53 +63,78 @@ def sync_accommodations():
 
     # 2. Sync Rooms
     print("Fetching rooms from Supabase...")
-    rooms_response = supabase.table("rooms").select("*").execute()
-    rooms = rooms_response.data
-    
+    rooms = _fetch_all(supabase, "rooms")
+
+    # Room point IDs must key on (source_platform, source_hotel_id,
+    # source_room_id), not rooms.hotel_id — hotel_id is a surrogate that can
+    # change on a hotel reload, which would otherwise duplicate every room.
+    hotel_identity = {h["id"]: (h.get("source_platform"), h.get("source_hotel_id")) for h in hotels}
+
     room_documents = []
+    room_ids = []
     for r in rooms:
         name = r.get('name') or ''
         bed = r.get('bed_description') or ''
         facilities = r.get('room_facilities') or []
         facilities_str = ', '.join(facilities) if isinstance(facilities, list) else facilities
         view = r.get('view') or ''
-        
+
         page_content = f"Tên phòng: {name}\nGiường: {bed}\nHướng nhìn: {view}\nTiện ích phòng: {facilities_str}"
-        
+
+        source_platform, source_hotel_id = hotel_identity.get(r.get("hotel_id"), (None, None))
         metadata = {
             "room_id": r.get("id"),
             "hotel_id": r.get("hotel_id"),
+            "source_platform": source_platform,
+            "source_hotel_id": source_hotel_id,
             "name": name,
             "max_guests": r.get("max_guests"),
             "room_size_sqm": float(r.get("room_size_sqm")) if r.get("room_size_sqm") else None,
             "view": view
         }
         room_documents.append(Document(page_content=page_content, metadata=metadata))
+        room_ids.append(point_id("room", source_platform, source_hotel_id, r.get("source_room_id")))
 
-    client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key if settings.qdrant_api_key else None)
-    
+    client = get_qdrant_client()
+
     print(f"Prepared {len(hotel_documents)} hotels and {len(room_documents)} rooms for embedding.")
-    
+
     # Init and embed Hotels
     if hotel_documents:
-        init_qdrant_collection(client, "hotels_vector", vector_size=1024)
+        ensure_collection(client, HOTELS_VECTOR)
         print("Connecting to vector store and embedding hotels...")
-        hotels_vector_store = get_vector_store("hotels_vector")
+        hotels_vector_store = get_vector_store(HOTELS_VECTOR.name)
         hotels_vector_store.add_documents(hotel_documents)
         print("Successfully synced hotels to Qdrant!")
 
     # Init and embed Rooms
     if room_documents:
-        init_qdrant_collection(client, "rooms_vector", vector_size=1024)
+        ensure_collection(client, ROOMS_VECTOR)
         print("Connecting to vector store and embedding rooms...")
-        rooms_vector_store = get_vector_store("rooms_vector")
-        
+        rooms_vector_store = get_vector_store(ROOMS_VECTOR.name)
+
+        # Slice one list of (document, id) pairs, not two parallel lists —
+        # slicing them separately risks an off-by-one that mis-assigns ids.
+        pairs = list(zip(room_documents, room_ids))
+        written_room_ids = []
         batch_size = 100
-        for i in range(0, len(room_documents), batch_size):
-            batch = room_documents[i:i+batch_size]
+        for i in range(0, len(pairs), batch_size):
+            batch = pairs[i:i + batch_size]
+            doc_batch = [p[0] for p in batch]
+            id_batch = [p[1] for p in batch]
             print(f"Embedding rooms batch {i} to {i+len(batch)}...")
-            rooms_vector_store.add_documents(batch)
+            rooms_vector_store.add_documents(doc_batch, ids=id_batch)
+            written_room_ids.extend(id_batch)
         print("Successfully synced rooms to Qdrant!")
+
+        # Reconcile: only after every batch above succeeded.
+        client.delete(
+            collection_name=ROOMS_VECTOR.name,
+            points_selector=FilterSelector(
+                filter=Filter(must_not=[HasIdCondition(has_id=written_room_ids)])
+            ),
+        )
+        print("Reconciled rooms_vector: removed points not in this run's source set.")
 
 if __name__ == "__main__":
     sync_accommodations()

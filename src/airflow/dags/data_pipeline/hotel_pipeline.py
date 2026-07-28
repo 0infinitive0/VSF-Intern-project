@@ -120,7 +120,16 @@ def _nfc_deep(value: Any) -> Any:
     return value
 
 
+# Canonical source_platform vocabulary. Every writer of this field (this
+# module, sync_hotels_rest.py) must emit one of these exact values — a second
+# vocabulary (e.g. "booking.com") mints a different point_id for the same
+# hotel and duplicates it instead of overwriting it.
+CANONICAL_SOURCE_PLATFORMS = frozenset({"agoda", "booking"})
+
+
 def extract_source(path: str, source_platform: str) -> List[Dict[str, Any]]:
+    if source_platform not in CANONICAL_SOURCE_PLATFORMS:
+        raise ValueError(f"Unknown source_platform: {source_platform!r}")
     with Path(path).open(encoding="utf-8") as f:
         records = json.load(f)
     records = [_nfc_deep(record) for record in records]

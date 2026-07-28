@@ -176,12 +176,13 @@ Lưu trữ lịch sử hội thoại chi tiết.
 
 ## 2. Cấu trúc Qdrant (Dữ liệu Vector Ngữ nghĩa)
 Hệ thống sử dụng Qdrant làm Vector Database để xử lý các truy vấn tìm kiếm ngữ nghĩa (Semantic Search) bằng ngôn ngữ tự nhiên.
-- **Model Nhúng (Embedding Model):** OpenAI `text-embedding-3-small` (Đề xuất vì hỗ trợ Tiếng Việt cực tốt).
-- **Vector Size (Kích thước):** `1536`
+- **Model Nhúng (Embedding Model):** Ollama `bge-m3` (`src/services/vector_store.py`).
+- **Vector Size (Kích thước):** `1024`
 - **Distance Metric:** `Cosine`
+- Collection/index declarations, deterministic point IDs, and the `QdrantClient` factory live in one module: `src/services/qdrant_schema.py`.
 
 ### 2.1. Collection: `hotels_vector`
-Lưu trữ vector của Khách sạn. **Đã triển khai** (`hotel_pipeline.build_hotel_embedding_text()`/`build_hotel_payload()`, xem `plans/260724-0925-hotel-normalize-dedupe-for-vector-rag/phase-02-field-normalize-contract.md`) — việc index thật vào Qdrant vẫn thuộc roadmap Phase 2 riêng (`plans/260723-1015-v-ota-poc-master-roadmap/phase-02-semantic-search-foundation-with-qdrant.md`), chưa có code kết nối Qdrant trong repo.
+Lưu trữ vector của Khách sạn. **Đã triển khai** (`hotel_pipeline.build_hotel_embedding_text()`/`build_hotel_payload()`, xem `plans/260724-0925-hotel-normalize-dedupe-for-vector-rag/phase-02-field-normalize-contract.md`). Kết nối/embed thật vào Qdrant hiện qua `scripts/sync_accommodations_to_qdrant.py`; việc gắn `destination_id`/`canonical_hotel_key` vào payload và chạy từ Airflow DAG thuộc `plans/260727-1113-qdrant-vector-store-correctness-and-hybrid-retrieval/phase-04-airflow-runtime-and-supabase-hotel-load.md` trở đi (chưa triển khai).
 
 `embedding_text` gộp có thứ tự: `Hotel: {name}` → `Destination: {destination_name}, {area_name}` → `Type: {accommodation_type}; Stars: {star_rating}` → `Description: {description}` (cắt 500 ký tự) → `Amenities: {top 10}` → `Highlights: {top 5}` → `Nearby: {top 5 tên}`. Loại trừ các trường biến động (giá chính xác, source URL, `scraped_at`, room ID, JSON thô) — các trường này nằm ở `grounding_facts` thay vì embedding text.
 

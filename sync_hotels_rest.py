@@ -56,29 +56,27 @@ def sync_hotels_rest():
     # Convert the RealDictRow objects to standard Python dicts and serialize custom types
     supabase_columns = set(['id', 'destination_id', 'source_platform', 'source_hotel_id', 'source_url', 'name', 'accommodation_type', 'description', 'star_rating', 'address', 'city', 'area_name', 'country', 'location_highlight', 'coordinates', 'amenities', 'amenity_groups', 'highlights', 'awards', 'warnings', 'review_score', 'review_count', 'review_text', 'category_scores', 'score_distribution', 'check_in_time', 'check_in_until', 'check_out_time', 'reception_open_until', 'image_url', 'images', 'image_count', 'nearby_attractions', 'nearby_essentials', 'lowest_price', 'currency', 'price_check_in_date', 'price_check_out_date', 'rooms_available', 'offer_count', 'scraped_at', 'created_at', 'updated_at'])
 
+    # Canonical source_platform vocabulary (matches hotel_pipeline.py's
+    # extract_source() and the "agoda"/"booking" values already in this table).
+    _CANONICAL_SOURCE_PLATFORMS = {"agoda", "booking"}
+
     data_to_upsert = []
     for row in rows:
         row_dict = dict(row)
-        
-        # Map plural source_urls to singular source_url for Supabase
-        source_urls = row_dict.pop('source_urls', None)
-        if source_urls and isinstance(source_urls, list) and len(source_urls) > 0:
-            row_dict['source_url'] = source_urls[0]
-        else:
-            row_dict['source_url'] = None
-            
-        source_platforms = row_dict.pop('source_platforms', None)
-        if source_platforms and isinstance(source_platforms, list) and len(source_platforms) > 0:
-            row_dict['source_platform'] = source_platforms[0]
-        else:
-            row_dict['source_platform'] = 'booking.com'
-            
-        source_ids = row_dict.pop('source_ids', None)
-        if source_ids and isinstance(source_ids, list) and len(source_ids) > 0:
-            row_dict['source_hotel_id'] = source_ids[0]
-        else:
-            row_dict['source_hotel_id'] = 'unknown'
-            
+
+        # `hotels.source_url`/`source_platform`/`source_hotel_id` are already
+        # singular columns on this table (scripts/database_schema.sql) and are
+        # present as-is from `SELECT *` — no plural array to unwrap. The old
+        # code here unconditionally overwrote every row's source_platform with
+        # the literal 'booking.com' and source_hotel_id with 'unknown', since
+        # it looked for nonexistent 'source_platforms'/'source_ids' columns.
+        platform = (row_dict.get("source_platform") or "").strip().lower()
+        if platform not in _CANONICAL_SOURCE_PLATFORMS:
+            raise ValueError(
+                f"hotels.id={row_dict.get('id')}: unknown source_platform {row_dict.get('source_platform')!r}"
+            )
+        row_dict["source_platform"] = platform
+
         # Filter out any columns that don't exist in Supabase
         filtered_dict = {k: v for k, v in row_dict.items() if k in supabase_columns}
         data_to_upsert.append(serialize_row(filtered_dict))
