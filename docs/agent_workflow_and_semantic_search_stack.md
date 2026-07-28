@@ -15,22 +15,71 @@ record.
 
 ## System at a glance
 
+### Current implemented workflow
+
 ```mermaid
 flowchart TD
-    U["Vietnamese user message"] --> I["TripIntakeState<br/>extracts destination, duration, people"]
-    I -->|"missing fact"| Q["Ask only the missing question"]
-    I -->|"complete facts"| H["Semantic hotel search<br/>+ coordinate hydration"]
-    H -->|"real hotel required"| T["LLM creates daily themes<br/>queries only, not venues"]
-    T --> R["Supabase semantic retrieval<br/>per-theme attractions + meal pools"]
-    R --> D["Deterministic scheduler<br/>distance, hours, meals, rest"]
-    D --> P["current_trip_plan.json<br/>and itinerary metadata"]
-    P --> F["Terminal itinerary with times and day theme"]
+    U["User message"] --> I["Deterministic intake<br/>destination, duration, people"]
+    I -->|"Missing fact"| Q["Ask only the missing question"]
+    Q --> U
+    I -->|"Complete facts"| A["Search available itineraries"]
+    A -->|"No reusable match"| H["Select a real hotel<br/>and hydrate coordinates"]
+    A -->|"Reusable match"| W["Validate and adapt<br/>the saved itinerary"]
+    W -->|"Valid"| P
+    W -->|"Invalid"| H
+    H --> T["LLM creates daily theme queries<br/>but never selects venues"]
+    T --> R["Retrieve real places from Supabase<br/>for each theme and meal type"]
+    R --> D["Deterministic scheduler applies<br/>distance, hours, meals, and rest"]
+    D --> P["Save current_trip_plan.json<br/>and itinerary metadata"]
+    P --> O["Show itinerary with<br/>times and day themes"]
 
-    U -->|"saved-plan edit"| C["Structured change intent"]
-    C -->|"hotel"| H
-    C -->|"other edit"| V["Repair affected day only"]
+    U -->|"Edit saved plan"| C["Classify structured change"]
+    C -->|"Hotel change"| H
+    C -->|"Other change"| V["Repair only the affected day"]
     V --> P
+
+    classDef reuse fill:#e8f3ff,stroke:#3572a5,stroke-width:1.5px,stroke-dasharray:5 5;
+    class A,W reuse;
 ```
+
+This retains the implemented workflow and shows the itinerary-search insertion
+point in blue. When no reusable plan is found, the existing hotel-aware planner
+continues unchanged.
+
+### Planned itinerary-reuse extension
+
+```mermaid
+flowchart TD
+    A["Complete new-trip facts"] --> S["Search finalized templates<br/>BGE-M3 + Supabase"]
+    S --> M{"Matching template?<br/>same destination and duration"}
+    M -->|"No or search error"| N["Run the current workflow"]
+    M -->|"Yes"| L["Load real hotel and item records"]
+    L --> V{"Passes current scheduler policy?"}
+    V -->|"No"| N
+    V -->|"Yes"| H{"Cached hotel usable?"}
+    H -->|"Yes"| R["Repair and revalidate schedule"]
+    H -->|"No"| B["Select a real hotel and<br/>rebuild every day"]
+
+    N --> D["New Draft with new IDs"]
+    R --> D
+    B --> D
+    D --> O["User reviews the itinerary"]
+    O --> U{"User action"}
+    U -->|"Edit"| E["Use current modification flow"]
+    E --> D
+    U -->|"Finalize"| F["Finalize once and<br/>credit parent template"]
+    F --> G["Create BGE-M3 embedding"]
+    G --> T["Reusable finalized template"]
+    T -.->|"Future trip"| S
+
+    classDef current fill:#e8f3ff,stroke:#3572a5,stroke-width:1.5px;
+    class N,E current;
+```
+
+The reuse extension is a safe shortcut into the existing flow, not a separate
+planner. Every retrieved template is hydrated and checked again. An invalid
+template returns to the current workflow; a hotel replacement rebuilds all days
+rather than changing only the hotel ID.
 
 ## Agent workflow
 
@@ -212,6 +261,23 @@ limit.
 | Fully deterministic command loop | Smallest runtime surface and easiest traceability. | Less flexible language interaction and edit interpretation. | Used for intake and first-pass edit intent, not the whole chat. |
 | Multi-agent planner/writer/synthesizer | Clear conceptual separation at large scale. | More prompts, state handoffs, hallucination surface, and GPU/API load. | Older proposal; not the active terminal implementation. |
 
+## Planned itinerary-reuse extension
+
+The reviewed itinerary-embedding plan integrates before daily theme generation.
+After deterministic intake resolves destination and duration, the planner may
+search finalized Supabase itinerary templates. A hit is only a candidate: the
+system must hydrate its hotel and items, apply the current scheduler policies,
+and fall through to normal planning when validation or repair fails.
+
+Finalization becomes a third narrow agent capability alongside generation and
+modification. Only explicit user confirmation finalizes a draft, credits its
+source template exactly once, and makes its embedding eligible for reuse. Hotel
+availability and cost recalculation remain outside the reuse MVP until travel
+dates and grounded room-price contracts are added.
+
+See `docs/ideas/itinerary-embedding-reuse-v2.md` for the reviewed schema,
+service boundaries, phased tasks, tests, and rollout gates.
+
 ## Operational requirements and limits
 
 - Ollama must be reachable at `OLLAMA_URL` (default
@@ -252,4 +318,3 @@ records** and **deterministic code to make schedule decisions**. Keep the LLM
 at the edges—theme/query generation and structured language interpretation—so
 correctness-critical outputs remain tied to Supabase data, fixed policies, and
 testable functions.
-

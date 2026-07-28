@@ -1,13 +1,14 @@
 -- V-OTA AI Chat: PostgreSQL Database Schema
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS vector;
 
 -- Bảng 1: Điểm đến (Destinations - Tỉnh/Thành phố hoặc Khu vực)
 CREATE TABLE destinations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(100) NOT NULL UNIQUE, -- Khóa UPSERT khi resolve destination từ city thô của OTA
     region VARCHAR(100), -- Vùng / miền
-    aliases TEXT[], -- Các biến thể tên gặp trong dữ liệu OTA (VD: '{"Nha Trang", "Nha Trang City"}')
+    aliases TEXT[] NOT NULL DEFAULT '{}'::TEXT[], -- Tên thay thế từ người dùng/OTA để resolve tên chuẩn
     coordinates VARCHAR(50), -- Tọa độ (Lat, Long)
     description TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -207,6 +208,13 @@ CREATE TABLE itineraries (
     preferences TEXT[], -- Sở thích
     day_themes JSONB NOT NULL DEFAULT '[]'::jsonb, -- Chủ đề theo ngày: [{day_number, title, query}]
     status VARCHAR(50) DEFAULT 'Draft', -- Trạng thái (Draft, Finalized)
+    destination_id UUID REFERENCES destinations(id) ON DELETE SET NULL, -- Lọc reuse chính xác theo điểm đến
+    hotel_id UUID REFERENCES hotels(id) ON DELETE SET NULL, -- Khách sạn đã chọn để hydrate/revalidate
+    summary TEXT, -- Input embedding xác định, không chứa dữ liệu biến động
+    parent_itinerary_id UUID REFERENCES itineraries(id) ON DELETE SET NULL,
+    reuse_root_id UUID REFERENCES itineraries(id) ON DELETE SET NULL,
+    reuse_count INTEGER NOT NULL DEFAULT 0 CHECK (reuse_count >= 0), -- Total finalized descendants
+    embedding vector(1024),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -222,6 +230,7 @@ CREATE TABLE itinerary_items (
     reference_type VARCHAR(50) NOT NULL, -- 'Hotel', 'Attraction', 'Event'
     reference_id UUID NOT NULL, -- ID trỏ đến bảng tương ứng
     estimated_cost DECIMAL(12, 2), -- Chi phí dự tính
+    item_kind VARCHAR(20) CHECK (item_kind IN ('breakfast', 'attraction', 'lunch', 'rest', 'coffee', 'dinner', 'evening')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

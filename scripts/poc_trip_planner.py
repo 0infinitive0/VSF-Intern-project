@@ -33,13 +33,24 @@ from langgraph.checkpoint.memory import MemorySaver
 from supabase import create_client, Client
 
 from src.services.supabase_search import search_attractions as rpc_search_attractions, search_hotels_with_rooms
-from src.services.trip_intake import TripIntakeState
+from src.services.itinerary_reuse import (
+    ItineraryReuseQuery,
+    ItineraryTemplate,
+    classify_reuse_candidate,
+    validate_template_bundle,
+)
+from src.services.itinerary_store import ItineraryStore, ItineraryStoreError
+from src.services.trip_intake import (
+    DestinationOption,
+    TripIntakeState,
+    destination_options_from_rows,
+)
 from src.services.trip_scheduler import (
     DayTheme,
     PlaceCandidate,
     ScheduledItem,
     TripChange,
-    build_itinerary,
+    build_itinerary_with_hotel_reselection,
     default_duration_minutes,
     detect_covered_hotel_meals,
     fits_opening_hours,
@@ -61,6 +72,8 @@ if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 CURRENT_TRIP_PLAN_FILE = "current_trip_plan.json"
+ENABLE_ITINERARY_REUSE = os.getenv("ENABLE_ITINERARY_REUSE", "false").casefold() in {"1", "true", "yes"}
+ITINERARY_REUSE_TIER1_THRESHOLD = float(os.getenv("ITINERARY_REUSE_TIER1_THRESHOLD", "0.88"))
 
 
 def _get_destination_id(destination_name: str):
@@ -76,15 +89,23 @@ def _get_destination_id(destination_name: str):
 
 
 @lru_cache
-def _get_destination_names() -> tuple[str, ...]:
-    """Load canonical destination names once for deterministic terminal intake."""
+def _get_destination_names() -> tuple[DestinationOption, ...]:
+    """Load canonical destinations and aliases once for deterministic intake."""
     try:
-        response = supabase.table("destinations").select("name").limit(1000).execute()
-        return tuple(
-            str(row["name"])
-            for row in response.data or []
-            if row.get("name")
-        )
+        try:
+            response = (
+                supabase.table("destinations")
+                .select("name, aliases")
+                .limit(1000)
+                .execute()
+            )
+        except Exception as exc:
+            logger.warning(
+                "Destination aliases are unavailable; falling back to canonical names: %s",
+                exc,
+            )
+            response = supabase.table("destinations").select("name").limit(1000).execute()
+        return destination_options_from_rows(response.data or [])
     except Exception as exc:
         logger.error("Failed to load destination names for trip intake: %s", exc)
         return ()
@@ -180,7 +201,7 @@ def _select_real_hotel(
     destination_id: str,
     people: str,
     hotel_query: str | None = None,
-) -> tuple[Dict[str, Any], PlaceCandidate] | None:
+) -> List[tuple[Dict[str, Any], PlaceCandidate]]:
     search_results = search_hotels_with_rooms(
         query=hotel_query or f"Hotel in {destination} for {people} people",
         match_count=5,
@@ -191,6 +212,7 @@ def _select_real_hotel(
         search_results,
         "id,destination_id,name,star_rating,description,coordinates,amenities,amenity_groups",
     )
+    options = []
     for hotel in hydrated:
         if str(hotel.get("destination_id")) != destination_id:
             continue
@@ -214,7 +236,46 @@ def _select_real_hotel(
             "matched_rooms": (hotel.get("matched_room_names") or [])[:2],
             "covered_meals": sorted(covered_meals),
         }
-        return hotel_data, candidate
+        options.append((hotel_data, candidate))
+    return options
+
+
+def _find_reusable_template(query: ItineraryReuseQuery) -> ItineraryTemplate | None:
+    """Return a hydrated Tier 1 candidate or safely fall through to normal planning."""
+    if not ENABLE_ITINERARY_REUSE:
+        return None
+    try:
+        store = ItineraryStore.from_default()
+        candidates = store.search_reusable_itineraries(
+            query,
+            threshold=ITINERARY_REUSE_TIER1_THRESHOLD,
+        )
+        for candidate in candidates:
+            decision = classify_reuse_candidate(
+                candidate,
+                query,
+                threshold=ITINERARY_REUSE_TIER1_THRESHOLD,
+            )
+            if decision.action != "reuse":
+                logger.info("reuse_rejected template=%s reason=%s", candidate.id, decision.reason)
+                continue
+            bundle = store.load_itinerary_bundle(candidate.id)
+            if not bundle:
+                logger.info("reuse_rejected template=%s reason=missing_bundle", candidate.id)
+                continue
+            valid, reasons = validate_template_bundle(bundle.template)
+            hotel_destination = str(bundle.hotel.get("destination_id") or "")
+            if not valid or hotel_destination != query.destination_id or not bundle.hotel.get("coordinates"):
+                reason = reasons[0] if reasons else "invalid_hotel"
+                logger.info("reuse_rejected template=%s reason=%s", candidate.id, reason)
+                continue
+            logger.info("reuse_hit template=%s similarity=%.3f", candidate.id, candidate.similarity)
+            return bundle.template
+        logger.info("reuse_miss reason=no_qualified_candidate")
+    except ItineraryStoreError as exc:
+        logger.warning("reuse_miss reason=store_error detail=%s", exc)
+    except Exception as exc:
+        logger.warning("reuse_miss reason=unexpected_error detail=%s", exc)
     return None
 
 
@@ -237,15 +298,21 @@ def _serialize_schedule_item(
         "updated_at": timestamp,
         "activity": item.activity,
         "kind": item.kind,
+        "item_kind": item.kind,
     }
 
 
 def _persist_itinerary_metadata(trip_data: Dict[str, Any]) -> None:
-    """Upsert the itinerary-level fields, including JSONB day themes, to Supabase."""
+    """Persist a complete bundle, falling back only for an unapplied migration."""
     itineraries = trip_data.get("itineraries") or []
     itinerary = itineraries[0] if isinstance(itineraries, list) else itineraries
     if not isinstance(itinerary, dict) or not itinerary.get("id"):
         return
+    try:
+        ItineraryStore.from_default().persist_itinerary_bundle(trip_data)
+        return
+    except ItineraryStoreError as exc:
+        logger.warning("Complete itinerary persistence unavailable; retaining local JSON: %s", exc)
     row = {
         key: itinerary.get(key)
         for key in (
@@ -278,6 +345,7 @@ def _build_trip_data(
     people: str,
     preferences_text: str = "",
     hotel_query: str | None = None,
+    themes_override: List[Dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
     destination_id = _get_destination_id(destination)
     if not destination_id:
@@ -289,25 +357,44 @@ def _build_trip_data(
     except (TypeError, ValueError):
         number_of_people = 1
 
-    selected_hotel = _select_real_hotel(destination, destination_id, people, hotel_query)
-    if not selected_hotel:
+    preferences = [part.strip() for part in preferences_text.replace(";", ",").split(",") if part.strip()]
+    child_focused_text = f"{people} {preferences_text}".casefold()
+    child_focused = any(
+        keyword in child_focused_text
+        for keyword in ("trẻ em", "tre em", "children", "child", "kids", "gia đình", "gia dinh")
+    )
+    reuse_query = ItineraryReuseQuery(
+        destination_id=destination_id,
+        destination_name=destination,
+        duration_days=number_of_days,
+        number_of_adults=number_of_people,
+        preferences=tuple(preferences),
+        child_focused=child_focused,
+    )
+    reusable_template = _find_reusable_template(reuse_query) if themes_override is None else None
+
+    hotel_options = _select_real_hotel(destination, destination_id, people, hotel_query)
+    if not hotel_options:
         raise ValueError(
             f"Không tìm thấy khách sạn có tọa độ hợp lệ tại {destination}; không thể lập lịch trình theo vị trí khách sạn."
         )
-    hotel_data, hotel_candidate = selected_hotel
+    hotel_candidates = [candidate for _, candidate in hotel_options]
 
-    preferences = [part.strip() for part in preferences_text.replace(";", ",").split(",") if part.strip()]
-    category_rows = (
-        supabase.table("attractions")
-        .select("category")
-        .eq("destination_id", destination_id)
-        .limit(1000)
-        .execute()
-        .data
-        or []
-    )
-    categories = sorted({str(row.get("category")) for row in category_rows if row.get("category")})
-    themes = _generate_day_themes(destination, number_of_days, categories, preferences)
+    raw_themes = themes_override or (list(reusable_template.day_themes) if reusable_template else None)
+    if raw_themes is not None:
+        themes = normalize_day_themes(raw_themes, number_of_days, preferences)
+    else:
+        category_rows = (
+            supabase.table("attractions")
+            .select("category")
+            .eq("destination_id", destination_id)
+            .limit(1000)
+            .execute()
+            .data
+            or []
+        )
+        categories = sorted({str(row.get("category")) for row in category_rows if row.get("category")})
+        themes = _generate_day_themes(destination, number_of_days, categories, preferences)
 
     themed_candidates: Dict[int, List[PlaceCandidate]] = {}
     for theme in themes:
@@ -318,7 +405,7 @@ def _build_trip_data(
         )
     pool_size = min(max(number_of_days * 3, 15), 50)
     restaurants = []
-    if "lunch" not in hotel_candidate.covered_meals:
+    if any("lunch" not in hotel.covered_meals for hotel in hotel_candidates):
         restaurants = _search_attraction_candidates(
             f"local restaurant lunch Vietnamese food in {destination}",
             destination_id,
@@ -330,26 +417,21 @@ def _build_trip_data(
         match_count=pool_size,
     )
     breakfasts = []
-    if "breakfast" not in hotel_candidate.covered_meals:
+    if any("breakfast" not in hotel.covered_meals for hotel in hotel_candidates):
         breakfasts = _search_attraction_candidates(
             f"breakfast restaurant cafe morning food in {destination}",
             destination_id,
             match_count=pool_size,
         )
     dinners = []
-    if "dinner" not in hotel_candidate.covered_meals:
+    if any("dinner" not in hotel.covered_meals for hotel in hotel_candidates):
         dinners = _search_attraction_candidates(
             f"dinner restaurant evening dining in {destination}",
             destination_id,
             match_count=pool_size,
         )
-    child_focused_text = f"{people} {preferences_text}".casefold()
-    child_focused = any(
-        keyword in child_focused_text
-        for keyword in ("trẻ em", "tre em", "children", "child", "kids", "gia đình", "gia dinh")
-    )
-    schedule = build_itinerary(
-        hotel_candidate,
+    hotel_candidate, schedule = build_itinerary_with_hotel_reselection(
+        hotel_candidates,
         themes,
         themed_candidates,
         restaurants,
@@ -358,6 +440,15 @@ def _build_trip_data(
         dinners=dinners,
         child_focused=child_focused,
     )
+    hotel_data = next(
+        data for data, candidate in hotel_options if candidate.id == hotel_candidate.id
+    )
+    if hotel_candidate.id != hotel_candidates[0].id:
+        logger.info(
+            "hotel_reselected primary=%s selected=%s reason=insufficient_core_attractions",
+            hotel_candidates[0].id,
+            hotel_candidate.id,
+        )
 
     now_iso = datetime.now().isoformat()
     itinerary_id = str(uuid.uuid4())
@@ -371,6 +462,9 @@ def _build_trip_data(
         "budget": None,
         "preferences": [destination, *preferences],
         "day_themes": day_themes,
+        "destination_id": destination_id,
+        "hotel_id": hotel_data["id"],
+        "parent_itinerary_id": reusable_template.id if reusable_template else None,
         "status": "Draft",
         "created_at": now_iso,
         "updated_at": now_iso,
@@ -381,7 +475,10 @@ def _build_trip_data(
         "itinerary_items": [
             _serialize_schedule_item(item, itinerary_id, now_iso) for item in schedule.items
         ],
-        "adjustments": schedule.adjustments,
+        "adjustments": [
+            *schedule.adjustments,
+            *(["Đã dùng chủ đề từ lịch trình tương tự và lập lại lịch mới theo dữ liệu hiện tại."] if reusable_template else []),
+        ],
     }
 
 
@@ -447,7 +544,7 @@ def _current_trip_parameters(current_data: Dict[str, Any]) -> tuple[str, str, st
 
 
 def _item_kind(item: Dict[str, Any]) -> str:
-    explicit = item.get("kind")
+    explicit = item.get("item_kind") or item.get("kind")
     if explicit in {
         "breakfast",
         "attraction",
@@ -932,6 +1029,10 @@ def modify_trip_plan(modification_request: str) -> str:
     except Exception as e:
         return f"SYSTEM ERROR: Không thể đọc file kế hoạch hiện tại: {e}"
 
+    saved_itinerary = (current_data.get("itineraries") or [{}])[0]
+    if isinstance(saved_itinerary, dict) and str(saved_itinerary.get("status") or "").casefold() == "finalized":
+        return "Kế hoạch đã xác nhận không thể chỉnh sửa. Hãy tạo một kế hoạch mới nếu cần thay đổi."
+
     logger.info(f"Modifying trip plan based on request: {modification_request}")
     try:
         change = _parse_trip_change(modification_request)
@@ -953,6 +1054,10 @@ def modify_trip_plan(modification_request: str) -> str:
             updated_data = current_data
             adjustments = _apply_local_trip_change(updated_data, change, modification_request)
             updated_data.setdefault("adjustments", []).extend(adjustments)
+        updated_itinerary = (updated_data.get("itineraries") or [{}])[0]
+        if isinstance(updated_itinerary, dict):
+            updated_itinerary["status"] = "Draft"
+            updated_itinerary.pop("summary", None)
         _save_trip_data(updated_data)
         logger.info("Successfully applied structured trip change: %s", change.action)
     except Exception as exc:
@@ -960,6 +1065,58 @@ def modify_trip_plan(modification_request: str) -> str:
         return f"SYSTEM ERROR: {exc}"
 
     return format_trip_response_from_json(updated_data)
+
+
+def _is_finalization_request(message: str) -> bool:
+    normalized = message.casefold().strip()
+    return any(
+        phrase in normalized
+        for phrase in ("finalize", "confirm trip", "chốt lịch trình", "chot lich trinh", "xác nhận lịch")
+    )
+
+
+@tool
+def finalize_trip_plan() -> str:
+    """Finalize the saved draft only after the user explicitly confirms it."""
+    if not os.path.exists(CURRENT_TRIP_PLAN_FILE):
+        return "SYSTEM ERROR: Chưa có kế hoạch để xác nhận. Hãy tạo kế hoạch trước."
+    try:
+        with open(CURRENT_TRIP_PLAN_FILE, "r", encoding="utf-8") as file_handle:
+            trip_data = json.load(file_handle)
+        itinerary = (trip_data.get("itineraries") or [{}])[0]
+        destination, duration, people, preferences = _current_trip_parameters(trip_data)
+        destination_id = str(itinerary.get("destination_id") or _get_destination_id(destination) or "")
+        if not destination_id:
+            raise ValueError("Không xác định được điểm đến của kế hoạch hiện tại.")
+        number_of_people = int("".join(filter(str.isdigit, people)) or 1)
+        child_context = f"{people} {preferences}".casefold()
+        child_focused = any(
+            keyword in child_context
+            for keyword in ("trẻ em", "tre em", "children", "child", "kids", "gia đình", "gia dinh")
+        )
+        reuse_query = ItineraryReuseQuery(
+            destination_id=destination_id,
+            destination_name=destination,
+            duration_days=parse_duration_to_days(duration),
+            number_of_adults=number_of_people,
+            preferences=tuple(part.strip() for part in preferences.split(",") if part.strip()),
+            child_focused=child_focused,
+        )
+        store = ItineraryStore.from_default()
+        store.persist_itinerary_bundle(trip_data)
+        result = store.finalize_trip_data(trip_data, reuse_query)
+        itinerary["status"] = "Finalized"
+        itinerary["summary"] = result.get("summary")
+        _save_trip_data(trip_data)
+        if not result.get("embedding_saved", result.get("has_embedding", False)):
+            return "Đã xác nhận lịch trình. Phần tìm kiếm tái sử dụng sẽ tự thử lại sau."
+        return "Đã xác nhận lịch trình và lưu làm mẫu có thể tái sử dụng."
+    except (ItineraryStoreError, ValueError) as exc:
+        logger.exception("Trip finalization failed")
+        return f"SYSTEM ERROR: {exc}"
+    except Exception as exc:
+        logger.exception("Unexpected trip finalization failure")
+        return f"SYSTEM ERROR: {exc}"
 
 
 # --- Main Supervisor Agent ---
@@ -977,6 +1134,9 @@ You are chatting with a user in Vietnamese. Your goal is to manage trip planning
 2. MODIFYING AN EXISTING TRIP:
    - If a trip plan has ALREADY been generated and saved, and the user asks to edit, change, swap, or update anything (e.g., change hotel, add an attraction, edit timing), call `modify_trip_plan(modification_request)`.
 
+3. FINALIZING A TRIP:
+   - Call `finalize_trip_plan` only after an explicit confirmation such as "finalize", "confirm trip", or "chốt lịch trình".
+
 IMPORTANT RULES:
 - NEVER guess missing duration or people values.
 - Never output raw JSON in your text responses.
@@ -984,7 +1144,7 @@ IMPORTANT RULES:
 - Return the EXACT text response from the tool to the user. Do not add conversational filler.
 - All your responses to the user MUST be entirely in Vietnamese."""
 
-agent = create_react_agent(llm, [generate_full_itinerary, modify_trip_plan], checkpointer=memory, prompt=SUPERVISOR_PROMPT)
+agent = create_react_agent(llm, [generate_full_itinerary, modify_trip_plan, finalize_trip_plan], checkpointer=memory, prompt=SUPERVISOR_PROMPT)
 config = {"configurable": {"thread_id": "poc_trip_planner_1"}}
 
 
@@ -1006,6 +1166,13 @@ def main():
                 continue
                 
             logger.info(f"User Input: {user_input}")
+
+            if os.path.exists(CURRENT_TRIP_PLAN_FILE) and _is_finalization_request(user_input):
+                tool_response = finalize_trip_plan.invoke({})
+                logger.info("Finalization response: %s", tool_response)
+                print(f"\nAI:\n{tool_response}")
+                initial_plan_complete = not str(tool_response).startswith("SYSTEM ERROR:")
+                continue
 
             change_intent = infer_trip_change(user_input)
             is_saved_plan_edit = bool(

@@ -9,6 +9,7 @@ from src.services.trip_scheduler import (
     PlanningPolicy,
     ScheduledItem,
     build_itinerary,
+    build_itinerary_with_hotel_reselection,
     default_duration_minutes,
     detect_covered_hotel_meals,
     fits_opening_hours,
@@ -180,6 +181,70 @@ def test_same_day_places_prefer_five_kilometre_cluster_over_far_match() -> None:
     assert "anchor" in ids
     assert "nearby" in ids
     assert "far" not in ids
+
+
+def test_reselects_hotel_when_primary_cannot_fill_core_attraction_slots() -> None:
+    primary_hotel = place("hotel-far", "Outer Hotel", "Hotel", 16.000, 108.000)
+    alternate_hotel = place("hotel-central", "Central Hotel", "Hotel", 16.100, 108.000)
+    themes = [DayTheme(1, "City", "city"), DayTheme(2, "Culture", "culture")]
+    primary_cluster = [
+        place(
+            "a1",
+            "Outer Stop One",
+            "Museums & culture",
+            16.001,
+            108.000,
+            opening_time="07:00:00",
+            closing_time="18:00:00",
+        ),
+        place(
+            "a2",
+            "Outer Stop Two",
+            "Museums & culture",
+            16.002,
+            108.000,
+            opening_time="07:00:00",
+            closing_time="18:00:00",
+        ),
+    ]
+    alternate_cluster = [
+        place(
+            "c1",
+            "Central Stop One",
+            "Museums & culture",
+            16.101,
+            108.000,
+            opening_time="07:00:00",
+            closing_time="18:00:00",
+        ),
+        place(
+            "c2",
+            "Central Stop Two",
+            "Museums & culture",
+            16.102,
+            108.000,
+            opening_time="07:00:00",
+            closing_time="18:00:00",
+        ),
+    ]
+
+    selected_hotel, schedule = build_itinerary_with_hotel_reselection(
+        hotels=[primary_hotel, alternate_hotel],
+        themes=themes,
+        themed_candidates={
+            1: [*primary_cluster, *alternate_cluster],
+            2: primary_cluster,
+        },
+        restaurants=[],
+        cafes=[],
+    )
+
+    assert selected_hotel.id == alternate_hotel.id
+    assert all(
+        sum(item.kind == "attraction" for item in schedule.items_for_day(day)) == 2
+        for day in (1, 2)
+    )
+    assert any("Đã đổi khách sạn" in adjustment for adjustment in schedule.adjustments)
 
 
 def test_playgrounds_are_capped_once_per_trip_unless_child_focused() -> None:

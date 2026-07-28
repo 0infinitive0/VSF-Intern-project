@@ -11,11 +11,15 @@ Lưu trữ thông tin về các địa danh, vùng miền hoặc thành phố l�
 | `id` | UUID | PK | Khóa chính, tự động sinh (`uuid_generate_v4`) |
 | `name` | VARCHAR(100) | UK | Tên địa điểm (VD: Nha Trang, Phú Quốc). Unique — dùng để resolve `destination_id` từ `city` thô của OTA |
 | `region` | VARCHAR(100) | | Vùng / miền |
-| `aliases` | TEXT[] | | Các biến thể tên gặp trong dữ liệu OTA (VD: `{"Nha Trang", "Nha Trang City"}`) |
+| `aliases` | TEXT[] | | Không null, mặc định `{}`. Các tên thay thế từ người dùng hoặc OTA dùng để resolve về `name` chuẩn, ví dụ `{"TP HCM", "TPHCM", "Sài Gòn"}` cho Hồ Chí Minh |
 | `coordinates` | VARCHAR(50) | | Tọa độ GPS |
 | `description` | TEXT | | Mô tả tổng quan về địa điểm |
 | `created_at` | TIMESTAMP | | Thời gian tạo bản ghi |
 | `updated_at` | TIMESTAMP | | Thời gian cập nhật bản ghi |
+
+Terminal trip intake tải cả `name` và `aliases`, chuẩn hóa dấu và chữ hoa/thường,
+sau đó đối chiếu theo cụm từ đầy đủ. Giá trị được giữ trong trạng thái và truyền
+sang planner luôn là `name` chuẩn; alias không thay thế tên chuẩn trong lịch trình.
 
 ### 1.2. Bảng `hotels` (Khách sạn)
 Lưu trữ thông tin cốt lõi của các cơ sở lưu trú được thu thập từ OTA. **Quy ước: 1 dòng = 1 khách sạn theo 1 OTA** (`source_platform` + `source_hotel_id`), KHÔNG gộp — một khách sạn vật lý xuất hiện trên cả Agoda và Booking sẽ có 2 dòng riêng, vì giá và chính sách mỗi OTA khác nhau (giữ cả 2 để chatbot so sánh/tư vấn). Việc gộp khách sạn vật lý trùng nguồn là công việc riêng, chưa triển khai.
@@ -127,7 +131,9 @@ Lưu trữ thông tin chi tiết về các địa điểm tham quan hoặc các 
 | `images` | TEXT[] | | Mảng URL hình ảnh |
 
 ### 1.7. Bảng `itineraries` (Lịch trình)
+
 Lưu trữ các bản nháp hoặc lịch trình chính thức của một phiên chat.
+
 | Tên Cột | Kiểu Dữ Liệu | Khóa | Ràng Buộc / Mô Tả |
 | :--- | :--- | :--- | :--- |
 | `id` | UUID | PK | Khóa chính |
@@ -137,10 +143,22 @@ Lưu trữ các bản nháp hoặc lịch trình chính thức của một phiê
 | `number_of_children`| SMALLINT | | Số lượng trẻ em |
 | `budget` | DECIMAL(12, 2) | | Ngân sách ước tính |
 | `preferences` | TEXT[] | | Sở thích (Vibe) |
-| `status` | VARCHAR(50) | | 'Draft' hoặc 'Finalized' |
+| `day_themes` | JSONB | | Chủ đề và truy vấn semantic search của từng ngày |
+| `status` | VARCHAR(50) | | `Draft` hoặc `Finalized`; lịch trình đã Finalized không được chỉnh sửa |
+| `destination_id` | UUID | FK | Điểm đến dùng để giới hạn tìm kiếm và tái sử dụng lịch trình |
+| `hotel_id` | UUID | FK | Khách sạn được chọn để hydrate và kiểm tra lại lịch trình |
+| `summary` | TEXT | | Nội dung chuẩn hóa, ổn định dùng làm đầu vào embedding |
+| `parent_itinerary_id` | UUID | FK | Lịch trình mẫu trực tiếp được clone để tạo bản hiện tại |
+| `reuse_root_id` | UUID | FK | Lịch trình gốc của lineage, dùng để gộp kết quả semantic search cùng dòng |
+| `reuse_count` | INTEGER | | Tổng số hậu duệ đã Finalized; mỗi lần finalize clone sẽ cộng cho parent |
+| `embedding` | VECTOR(1024) | | Vector BGE-M3 dùng để tìm lịch trình tương tự |
+| `created_at` | TIMESTAMP | | Thời gian tạo lịch trình |
+| `updated_at` | TIMESTAMP | | Thời gian cập nhật lịch trình |
 
 ### 1.8. Bảng `itinerary_items` (Chi tiết Lịch trình)
-Chi tiết từng điểm đến (khách sạn, tour, điểm tham quan) trong một lịch trình.
+
+Chi tiết từng hoạt động, bữa ăn hoặc khoảng nghỉ trong một lịch trình.
+
 | Tên Cột | Kiểu Dữ Liệu | Khóa | Ràng Buộc / Mô Tả |
 | :--- | :--- | :--- | :--- |
 | `id` | UUID | PK | Khóa chính |
@@ -152,6 +170,19 @@ Chi tiết từng điểm đến (khách sạn, tour, điểm tham quan) trong m
 | `reference_type`| VARCHAR(50) | | Phân loại (Hotel, Attraction, Event) |
 | `reference_id` | UUID | | ID của dịch vụ được trỏ đến |
 | `estimated_cost`| DECIMAL(12, 2) | | Chi phí dự kiến |
+| `item_kind` | VARCHAR(20) | | Vai trò của item trong lịch trình: `breakfast`, `attraction`, `lunch`, `rest`, `coffee`, `dinner`, hoặc `evening` |
+| `created_at` | TIMESTAMP | | Thời gian tạo |
+| `updated_at` | TIMESTAMP | | Thời gian cập nhật |
+
+`reference_type` xác định bảng/loại thực thể được tham chiếu, còn `item_kind`
+xác định vai trò của item trong ngày. Ví dụ, một item có thể có
+`reference_type = Hotel` và `item_kind = breakfast`, hoặc
+`reference_type = Attraction` và `item_kind = lunch` khi nhà hàng được lưu trong
+bảng `attractions`.
+
+`poc_trip_planner.py` đã tạo `item_kind` từ `ScheduledItem.kind`. Lớp persistence
+ưu tiên `item_kind` và chỉ đọc `kind` làm fallback tương thích cho JSON cũ trước
+khi ghi vào Supabase.
 
 ### 1.9. Bảng `sessions` (Phiên hội thoại)
 Quản lý Context (Ngữ cảnh) cho AI.
@@ -172,14 +203,22 @@ Lưu trữ lịch sử hội thoại chi tiết.
 | `message_content`| TEXT | | Nội dung tin nhắn |
 | `created_at` | TIMESTAMP | | Thời điểm gửi tin nhắn |
 
+### 1.11. Các Hàm Stored Procedures / RPC Functions trong Supabase
+
+Các hàm SQL nguyên tử được triển khai trên Supabase để phục vụ tìm kiếm ngữ nghĩa, chuyển trạng thái và lưu gói lịch trình:
+
+| Tên Hàm RPC | Tham Số Đầu Vào | Mục Đích & Mô Tả |
+| :--- | :--- | :--- |
+| `match_itineraries` | `query_embedding vector(1024)`, `match_threshold float`, `match_count int`, `filter_destination_id uuid`, `filter_duration_days smallint` | Tìm kiếm semantic search các lịch trình mẫu đã Finalized trong `pgvector` với bộ lọc cứng theo điểm đến và số ngày. Gom nhóm khử trùng cùng lineage bằng `DISTINCT ON (COALESCE(reuse_root_id, id))`. |
+| `finalize_itinerary` | `p_itinerary_id uuid`, `p_summary text` | Chuyển trạng thái lịch trình từ `Draft` sang `Finalized` nguyên tử (`FOR UPDATE` row lock), tự động cộng `reuse_count` cho `parent_itinerary_id` đúng 1 lần (Idempotent). |
+| `persist_itinerary_bundle` | `p_itinerary jsonb`, `p_items jsonb` | Ghi nguyên tử toàn bộ lịch trình (Metadata + danh sách tất cả các `itinerary_items`) vào PostgreSQL trong 1 transaction. |
+
 ---
 
-## 2. Cấu trúc Qdrant (Dữ liệu Vector Ngữ nghĩa)
-Hệ thống sử dụng Qdrant làm Vector Database để xử lý các truy vấn tìm kiếm ngữ nghĩa (Semantic Search) bằng ngôn ngữ tự nhiên.
-- **Model Nhúng (Embedding Model):** Ollama `bge-m3` (`src/services/vector_store.py`).
-- **Vector Size (Kích thước):** `1024`
-- **Distance Metric:** `Cosine`
-- Collection/index declarations, deterministic point IDs, and the `QdrantClient` factory live in one module: `src/services/qdrant_schema.py`.
+## 2. Cấu trúc Vector Database (Qdrant & Supabase pgvector)
+Hệ thống sử dụng Vector DB để xử lý các truy vấn tìm kiếm ngữ nghĩa bằng ngôn ngữ tự nhiên (`bge-m3`, dimension 1024).
+- **Supabase pgvector:** Dùng cho bảng `itineraries` (`embedding vector(1024)`), gọi trực tiếp qua RPC `match_itineraries`.
+- **Qdrant Vector DB:** Dùng cho các collection `hotels_vector`, `attractions_vector`, và `rooms_vector` (`src/services/qdrant_schema.py`).
 
 ### 2.1. Collection: `hotels_vector`
 Lưu trữ vector của Khách sạn. **Đã triển khai** (`hotel_pipeline.build_hotel_embedding_text()`/`build_hotel_payload()`, xem `plans/260724-0925-hotel-normalize-dedupe-for-vector-rag/phase-02-field-normalize-contract.md`). Kết nối/embed thật vào Qdrant hiện qua `scripts/sync_accommodations_to_qdrant.py`; việc gắn `destination_id`/`canonical_hotel_key` vào payload và chạy từ Airflow DAG thuộc `plans/260727-1113-qdrant-vector-store-correctness-and-hybrid-retrieval/phase-04-airflow-runtime-and-supabase-hotel-load.md` trở đi (chưa triển khai).

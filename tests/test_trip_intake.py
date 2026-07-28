@@ -1,4 +1,10 @@
-from src.services.trip_intake import TripIntakeState
+from pathlib import Path
+
+from src.services.trip_intake import (
+    DestinationOption,
+    TripIntakeState,
+    destination_options_from_rows,
+)
 
 DESTINATIONS = ["Đà Nẵng", "Hồ Chí Minh", "Đắk Nông"]
 
@@ -49,3 +55,53 @@ def test_destination_is_taken_from_user_input_not_a_corrupted_model_argument() -
 
     assert arguments["destination"] == "Đà Nẵng"
     assert arguments["destination"] != "Ễôi Đă Nông"
+
+
+def test_hcm_abbreviation_does_not_repeat_the_destination_question() -> None:
+    destinations = destination_options_from_rows(
+        [
+            {
+                "name": "Hồ Chí Minh",
+                "aliases": ["TP HCM", "TPHCM", "HCM", "Sài Gòn", "Saigon"],
+            }
+        ]
+    )
+
+    assert destinations == (
+        DestinationOption(
+            name="Hồ Chí Minh",
+            aliases=("TP HCM", "TPHCM", "HCM", "Sài Gòn", "Saigon"),
+        ),
+    )
+
+    state = TripIntakeState().with_message(
+        "tôi muốn đi chơi tp hcm 3 ngày",
+        destinations,
+    )
+
+    assert state.destination == "Hồ Chí Minh"
+    assert state.duration == "3 ngày"
+    assert state.next_question() == "Chuyến đi có bao nhiêu người?"
+
+    state = state.with_message("tp hcm", destinations)
+
+    assert state.destination == "Hồ Chí Minh"
+    assert state.next_question() == "Chuyến đi có bao nhiêu người?"
+
+
+def test_destination_alias_schema_and_terminal_loader_contract() -> None:
+    root = Path(__file__).resolve().parents[1]
+    migration = (
+        root / "scripts" / "migrations" / "20260728_add_destination_aliases.sql"
+    ).read_text(encoding="utf-8")
+    schema = (root / "scripts" / "database_schema.sql").read_text(encoding="utf-8")
+    planner = (root / "scripts" / "poc_trip_planner.py").read_text(encoding="utf-8")
+
+    assert "ADD COLUMN IF NOT EXISTS aliases TEXT[]" in migration
+    assert "ALTER COLUMN aliases SET DEFAULT '{}'::TEXT[]" in migration
+    assert "ALTER COLUMN aliases SET NOT NULL" in migration
+    assert "UPDATE destinations" in migration
+    assert "TP HCM" in migration
+    assert "aliases TEXT[] NOT NULL DEFAULT '{}'::TEXT[]" in schema
+    assert '.select("name, aliases")' in planner
+    assert "destination_options_from_rows(response.data or [])" in planner

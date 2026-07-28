@@ -718,6 +718,101 @@ def build_itinerary(
     return ItinerarySchedule(list(themes), all_items, adjustments)
 
 
+def build_itinerary_with_hotel_reselection(
+    hotels: Sequence[PlaceCandidate],
+    themes: Sequence[DayTheme],
+    themed_candidates: dict[int, Sequence[PlaceCandidate]],
+    restaurants: Sequence[PlaceCandidate],
+    cafes: Sequence[PlaceCandidate],
+    breakfasts: Sequence[PlaceCandidate] | None = None,
+    dinners: Sequence[PlaceCandidate] | None = None,
+    child_focused: bool = False,
+    policy: PlanningPolicy | None = None,
+) -> tuple[PlaceCandidate, ItinerarySchedule]:
+    """Keep the primary hotel when viable; otherwise choose the best complete schedule."""
+    if not hotels:
+        raise ValueError("At least one real hotel with coordinates is required.")
+    policy = policy or PlanningPolicy()
+
+    def build_for(hotel: PlaceCandidate) -> ItinerarySchedule:
+        return build_itinerary(
+            hotel,
+            themes,
+            themed_candidates,
+            restaurants,
+            cafes,
+            breakfasts=breakfasts,
+            dinners=dinners,
+            child_focused=child_focused,
+            policy=policy,
+        )
+
+    primary_hotel = hotels[0]
+    primary_schedule = build_for(primary_hotel)
+    required_core_attractions = len(themes) * 2
+    primary_core_count = _core_attraction_count(primary_schedule)
+    if primary_core_count >= required_core_attractions:
+        return primary_hotel, primary_schedule
+
+    choices = [(primary_hotel, primary_schedule)]
+    choices.extend((hotel, build_for(hotel)) for hotel in hotels[1:])
+    selected_index, (selected_hotel, selected_schedule) = max(
+        enumerate(choices),
+        key=lambda indexed: (
+            *_hotel_schedule_score(indexed[1][0], indexed[1][1], themes, policy),
+            -indexed[0],
+        ),
+    )
+    if selected_index:
+        selected_core_count = _core_attraction_count(selected_schedule)
+        selected_schedule.adjustments.insert(
+            0,
+            "Đã đổi khách sạn từ "
+            f"{primary_hotel.name} sang {selected_hotel.name} vì lịch trình quanh khách sạn ban đầu "
+            f"chỉ có {primary_core_count}/{required_core_attractions} điểm tham quan chính; "
+            f"lựa chọn mới có {selected_core_count}/{required_core_attractions}.",
+        )
+    return selected_hotel, selected_schedule
+
+
+def _core_attraction_count(schedule: ItinerarySchedule) -> int:
+    return sum(
+        item.kind == "attraction" and item.reference_type == "Attraction"
+        for item in schedule.items
+    )
+
+
+def _hotel_schedule_score(
+    hotel: PlaceCandidate,
+    schedule: ItinerarySchedule,
+    themes: Sequence[DayTheme],
+    policy: PlanningPolicy,
+) -> tuple[int, int, int, float, float]:
+    core_items = [
+        item
+        for item in schedule.items
+        if item.kind == "attraction" and item.reference_type == "Attraction"
+    ]
+    fully_covered_days = sum(
+        sum(item.day_number == theme.day_number for item in core_items) >= 2
+        for theme in themes
+    )
+    max_radius = max(policy.cluster_radii_km)
+    distances = [
+        haversine_distance_km(hotel.coordinate_pair, item.coordinates)
+        for item in core_items
+        if hotel.coordinate_pair and item.coordinates
+    ]
+    nearby_count = sum(distance <= max_radius for distance in distances)
+    return (
+        fully_covered_days,
+        len(core_items),
+        nearby_count,
+        -sum(distances),
+        float(hotel.rating or 0.0),
+    )
+
+
 def validate_or_repair_day(
     items: Sequence[ScheduledItem],
     hotel: PlaceCandidate,

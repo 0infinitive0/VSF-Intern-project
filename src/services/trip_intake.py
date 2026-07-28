@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 
 _NUMBER_WORDS = {
@@ -32,6 +32,35 @@ _PREFERENCE_TERMS = (
     ("trẻ em", ("tre em", "children", "kids", "family")),
 )
 
+@dataclass(frozen=True)
+class DestinationOption:
+    name: str
+    aliases: tuple[str, ...] = ()
+
+
+def destination_options_from_rows(
+    rows: Sequence[Mapping[str, object]],
+) -> tuple[DestinationOption, ...]:
+    options = []
+    for row in rows:
+        name = str(row.get("name") or "").strip()
+        if not name:
+            continue
+        raw_aliases = row.get("aliases")
+        aliases = (
+            tuple(
+                dict.fromkeys(
+                    str(alias).strip()
+                    for alias in raw_aliases
+                    if str(alias).strip()
+                )
+            )
+            if isinstance(raw_aliases, Sequence) and not isinstance(raw_aliases, str)
+            else ()
+        )
+        options.append(DestinationOption(name=name, aliases=aliases))
+    return tuple(options)
+
 
 @dataclass(frozen=True)
 class TripIntakeState:
@@ -47,7 +76,7 @@ class TripIntakeState:
     def with_message(
         self,
         message: str,
-        destination_names: Sequence[str],
+        destination_names: Sequence[str | DestinationOption],
     ) -> TripIntakeState:
         destination = self.destination or _extract_destination(message, destination_names)
         duration = self.duration or _extract_duration(message)
@@ -85,13 +114,25 @@ class TripIntakeState:
         }
 
 
-def _extract_destination(message: str, destination_names: Sequence[str]) -> str | None:
+def _extract_destination(
+    message: str,
+    destination_names: Sequence[str | DestinationOption],
+) -> str | None:
     normalized = _normalize(message)
-    matches = [
-        name
-        for name in destination_names
-        if name and _contains_phrase(normalized, _normalize(name))
-    ]
+    matches = []
+    for destination in destination_names:
+        option = destination if isinstance(destination, DestinationOption) else DestinationOption(destination)
+        if not option.name:
+            continue
+        normalized_name = _normalize(option.name)
+        normalized_aliases = tuple(
+            normalized_alias
+            for alias in option.aliases
+            if (normalized_alias := _normalize(alias).strip())
+        )
+        phrases = (normalized_name, *normalized_aliases)
+        if any(_contains_phrase(normalized, phrase) for phrase in phrases):
+            matches.append(option.name)
     return max(matches, key=len) if matches else None
 
 
