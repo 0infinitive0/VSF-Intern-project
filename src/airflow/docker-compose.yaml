@@ -44,6 +44,17 @@
 #
 # Feel free to modify this file to suit your needs.
 ---
+# `vsf-shared` is an externally-created bridge network (`docker network create
+# vsf-shared`) also joined by the root `docker-compose.yml`'s `qdrant`/`ollama`
+# services (Phase 4). Only `airflow-scheduler` and `airflow-worker` join it —
+# they are the only services that execute task code and need the reach;
+# apiserver/dag-processor/triggerer/flower stay off it.
+networks:
+  default:
+    name: airflow_default
+  vsf-shared:
+    external: true
+
 x-airflow-common:
   &airflow-common
   # In order to add custom dependencies or upgrade provider distributions you can use your extended image.
@@ -141,7 +152,14 @@ services:
     <<: *airflow-common
     command: api-server
     ports:
-      - "8080:8080"
+      # Bound to localhost only (Phase 4) — was previously 0.0.0.0:8080 with
+      # admin credentials defaulting to airflow/airflow. Decision: accept the
+      # default credentials for this local-development stack (this file's own
+      # header states it is not for production) now that the loopback bind
+      # closes the actual network exposure; change
+      # _AIRFLOW_WWW_USER_USERNAME/_AIRFLOW_WWW_USER_PASSWORD in airflow-init
+      # if a shared/remote deployment ever needs this compose file.
+      - "127.0.0.1:8080:8080"
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
       interval: 30s
@@ -157,6 +175,38 @@ services:
   airflow-scheduler:
     <<: *airflow-common
     command: scheduler
+    # Phase 4: root `.env` is the source of truth for QDRANT_API_KEY /
+    # SUPABASE_URL / SUPABASE_SERVICE_KEY (same secrets the backend uses).
+    # Loaded as an *additional* env_file only here and on airflow-worker —
+    # not on the shared x-airflow-common anchor — so apiserver/dag-processor/
+    # triggerer/flower never receive it.
+    env_file:
+      - ${ENV_FILE_PATH:-.env}
+      - ../../.env
+    environment:
+      <<: *airflow-common-env
+      PYTHONPATH: /opt/airflow/repo
+      # QDRANT_URL is deliberately NOT overridden here (Phase 6 correction —
+      # an earlier version of this file hardcoded http://qdrant:6333,
+      # pointing Airflow's writes at the local dev container while backend
+      # reads from the Qdrant Cloud URL in root .env: two different
+      # instances that would never see the same data). It now inherits
+      # QDRANT_URL/QDRANT_API_KEY straight from the additional `../../.env`
+      # env_file above, same as backend. OLLAMA_URL still needs the override:
+      # root .env's value (http://localhost:11434) is correct for the host,
+      # but Ollama is always self-hosted (no cloud equivalent), so inside
+      # this container it must resolve via the shared Docker network.
+      OLLAMA_URL: http://ollama:11434
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
+      - ../../data:/opt/airflow/data:ro
+      - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
+      - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
+      - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
+      - ../../src:/opt/airflow/repo/src:ro
+    networks:
+      - default
+      - vsf-shared
     healthcheck:
       test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
       interval: 30s
@@ -194,11 +244,29 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
+    # Phase 4: same scoped-secret decision as airflow-scheduler above.
+    env_file:
+      - ${ENV_FILE_PATH:-.env}
+      - ../../.env
     environment:
       <<: *airflow-common-env
       # Required to handle warm shutdown of the celery workers properly
       # See https://airflow.apache.org/docs/docker-stack/entrypoint.html#signal-propagation
       DUMB_INIT_SETSID: "0"
+      PYTHONPATH: /opt/airflow/repo
+      # See airflow-scheduler above: QDRANT_URL deliberately not overridden
+      # (Phase 6 correction) — inherits the Cloud URL from ../../.env.
+      OLLAMA_URL: http://ollama:11434
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
+      - ../../data:/opt/airflow/data:ro
+      - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
+      - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
+      - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
+      - ../../src:/opt/airflow/repo/src:ro
+    networks:
+      - default
+      - vsf-shared
     restart: always
     depends_on:
       <<: *airflow-common-depends-on

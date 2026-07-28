@@ -3,8 +3,10 @@ import sys
 import unittest
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
 PIPELINE_DIR = Path(__file__).resolve().parents[1] / "dags" / "data_pipeline"
 sys.path.insert(0, str(PIPELINE_DIR))
+sys.path.insert(0, str(REPO_ROOT))
 
 from hotel_pipeline import (  # noqa: E402
     AUTO_APPROVED,
@@ -12,7 +14,7 @@ from hotel_pipeline import (  # noqa: E402
     assign_physical_hotel_groups,
     normalize_hotel,
 )
-from hotel_retrieval import render_hotel_search_results  # noqa: E402
+from src.services.hotel_retrieval import render_hotel_search_results  # noqa: E402
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "hotel_golden_corpus.json"
 
@@ -165,6 +167,17 @@ class RetrievalShapeTests(unittest.TestCase):
         results = render_hotel_search_results(hotels)
 
         self.assertEqual(len(results), 2, "pending-review pairs must not look merged to the AI/user")
+
+
+class AutoApprovedConstantDriftTests(unittest.TestCase):
+    def test_hotel_retrieval_auto_approved_matches_hotel_pipeline(self):
+        # src/services/hotel_retrieval.py duplicates this value locally
+        # (can't import hotel_pipeline.py — it's Airflow-only and pulls in
+        # psycopg2 as an import side effect). This test is what catches the
+        # two constants drifting apart if hotel_pipeline.py's value changes.
+        from src.services.hotel_retrieval import AUTO_APPROVED as RENDERER_AUTO_APPROVED
+
+        self.assertEqual(AUTO_APPROVED, RENDERER_AUTO_APPROVED)
 
 
 if __name__ == "__main__":

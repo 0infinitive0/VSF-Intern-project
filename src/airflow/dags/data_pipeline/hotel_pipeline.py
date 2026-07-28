@@ -1201,7 +1201,7 @@ def quality_check_hotels(
     load_stats: LoadStats,
     hotels: List[Dict[str, Any]],
     reports_dir: str,
-) -> str:
+) -> Tuple[str, Dict[str, Any]]:
     issues = _sanity_checks(hotels)
     vector_metrics = _vector_quality_metrics(hotels)
 
@@ -1267,7 +1267,7 @@ def quality_check_hotels(
 
     report_path.write_text("\n".join(lines), encoding="utf-8")
     logger.info("quality_check: report written to %s", report_path)
-    return str(report_path)
+    return str(report_path), vector_metrics
 
 
 # ---------------------------------------------------------------------------
@@ -1286,6 +1286,7 @@ def run_hotel_pipeline(
     deduped, dedupe_stats = dedupe_hotels(normalized)
     deduped, physical_match_stats = assign_physical_hotel_groups(deduped)
     load_stats = load_hotels_to_db(deduped, db_conn_kwargs)
-    return quality_check_hotels(
+    report_path, _metrics = quality_check_hotels(
         validation_stats, dedupe_stats, physical_match_stats, load_stats, deduped, reports_dir
     )
+    return report_path

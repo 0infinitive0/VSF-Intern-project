@@ -1879,7 +1879,9 @@ class AirflowDiscoveryTests(unittest.TestCase):
             "dedupe",
             "physical_match",
             "load_to_postgresql",
+            "load_to_supabase",
             "quality_check",
+            "sync_qdrant",
         ):
             self.assertIn(f'task_id="{task_id}"', content)
 
@@ -1890,11 +1892,20 @@ class AirflowDiscoveryTests(unittest.TestCase):
             "dedupe_hotels",
             "assign_physical_hotel_groups",
             "load_hotels_to_db",
+            "load_hotels_to_supabase_task",
             "quality_check_hotels",
+            "upsert_hotels",
         ):
             self.assertIn(function_name, content)
 
-        self.assertIn("dedupe >> physical_match >> load_to_postgresql", content)
+        # Whitespace-insensitive check of the actual chain order (the source
+        # wraps `>>` across multiple lines), not just substring presence.
+        normalized_chain = " ".join(content.split())
+        self.assertIn(
+            "extract >> validate >> normalize >> dedupe >> physical_match "
+            ">> load_to_postgresql >> load_to_supabase >> quality_check >> sync_qdrant",
+            normalized_chain,
+        )
 
         self.assertIn('dag_id="booking_agoda_hotel_loader_pipeline"', content)
         self.assertIn('"agoda_path": Param(', content)

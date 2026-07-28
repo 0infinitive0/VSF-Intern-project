@@ -309,7 +309,7 @@ class QualityCheckVectorMetricsTests(unittest.TestCase):
     def test_report_includes_vector_rag_quality_section(self):
         hotels = [normalize_hotel(_raw_agoda_hotel())]
         with tempfile.TemporaryDirectory() as tmpdir:
-            report_path = quality_check_hotels(
+            report_path, metrics = quality_check_hotels(
                 ValidationStats(total=1, valid=1),
                 DedupeStats(),
                 PhysicalMatchStats(),
@@ -321,6 +321,8 @@ class QualityCheckVectorMetricsTests(unittest.TestCase):
         self.assertIn("## Vector/RAG quality", content)
         self.assertIn("Hotels missing coordinates: 0/1", content)
         self.assertIn("Hotels with empty embedding_text: 0/1", content)
+        self.assertEqual(metrics["total"], 1)
+        self.assertEqual(metrics["missing_coordinates"], 0)
 
 
 def _raw_grouping_hotel(**overrides):

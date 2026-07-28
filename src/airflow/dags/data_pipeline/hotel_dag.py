@@ -1,19 +1,24 @@
 """Airflow DAG for loading Booking and Agoda hotel JSON dumps into PostgreSQL."""
 
+import logging
 import os
 import sys
+import time
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
 from airflow import DAG
+from airflow.exceptions import AirflowFailException
 from airflow.providers.standard.operators.python import PythonOperator
 from airflow.sdk import Param
+
+logger = logging.getLogger(__name__)
 
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from dag_common import DB_KWARGS
+from dag_common import DB_KWARGS, load_hotels_to_supabase_task
 from hotel_pipeline import (
     DedupeStats,
     LoadStats,
@@ -102,6 +107,17 @@ def load_task(**kwargs):
     )
 
 
+def load_to_supabase_task(**kwargs):
+    params = kwargs.get("params") or {}
+    if not params.get("sync_to_supabase", False):
+        return "Skipped: sync_to_supabase param is off (data stays local to Postgres)"
+    return load_hotels_to_supabase_task(
+        records_task_id="physical_match",
+        records_key="physical_matched_hotel_records",
+        **kwargs,
+    )
+
+
 def quality_task(**kwargs):
     params = kwargs.get("params") or {}
     validation_stats = kwargs["ti"].xcom_pull(task_ids="validate", key="hotel_validation_stats") or {}
@@ -110,7 +126,10 @@ def quality_task(**kwargs):
         kwargs["ti"].xcom_pull(task_ids="physical_match", key="hotel_physical_match_stats") or {}
     )
     load_stats = kwargs["ti"].xcom_pull(task_ids="load_to_postgresql", key="hotel_load_stats") or {}
-    report_path = quality_check_hotels(
+    # This gate can only ever protect the downstream Qdrant sync — load_to_postgresql
+    # already committed to Postgres, and load_to_supabase already committed to
+    # Supabase, both before this task runs.
+    report_path, metrics = quality_check_hotels(
         ValidationStats(**validation_stats),
         DedupeStats(**dedupe_stats),
         PhysicalMatchStats(**physical_match_stats),
@@ -119,7 +138,49 @@ def quality_task(**kwargs):
         _path_param(params, "reports_dir", DEFAULT_REPORTS_DIR),
     )
     kwargs["ti"].xcom_push(key="hotel_quality_report_path", value=report_path)
+    kwargs["ti"].xcom_push(key="hotel_vector_quality_metrics", value=metrics)
     return f"Hotel quality report written to {report_path}"
+
+
+def sync_qdrant_task(**kwargs):
+    from hotel_quality_gate import VectorQualityGateFailure, check_vector_quality_gate
+
+    metrics = kwargs["ti"].xcom_pull(task_ids="quality_check", key="hotel_vector_quality_metrics") or {}
+    try:
+        check_vector_quality_gate(metrics)
+    except VectorQualityGateFailure as exc:
+        raise AirflowFailException(f"Quality gate: {exc}") from exc
+
+    records = kwargs["ti"].xcom_pull(task_ids="physical_match", key="physical_matched_hotel_records") or []
+    if not records:
+        raise ValueError("No physically-matched hotel records were produced.")
+
+    identity_map = (
+        kwargs["ti"].xcom_pull(task_ids="load_to_supabase", key="hotel_supabase_identity_map") or {}
+    )
+
+    # Lazy imports: dag-processor (which parses this file) has neither the
+    # `src` mount nor these dependencies — only scheduler/worker do. Keeping
+    # `src.services.*` imports inside task callables, not module top-level,
+    # is what keeps DAG parsing working there (see Phase 4's report).
+    from qdrant_client import QdrantClient
+
+    from src.config import get_settings
+    from src.services.qdrant_writer import upsert_hotels
+
+    settings = get_settings()
+    client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key or None, timeout=60)
+
+    started = time.monotonic()
+    stats = upsert_hotels(client, records, identity_map)
+    duration_seconds = round(time.monotonic() - started, 1)
+
+    kwargs["ti"].xcom_push(key="hotel_qdrant_upsert_stats", value=asdict(stats))
+    kwargs["ti"].xcom_push(key="hotel_qdrant_sync_duration_seconds", value=duration_seconds)
+    return (
+        f"Synced {stats.hotels_upserted} hotels to Qdrant in {duration_seconds}s "
+        f"({stats.identity_resolved} with resolved Supabase identity)"
+    )
 
 
 with DAG(
@@ -135,6 +196,10 @@ with DAG(
         "agoda_path": Param(str(DEFAULT_DATA_DIR / "agoda.json"), type="string", minLength=1),
         "booking_path": Param(str(DEFAULT_DATA_DIR / "booking.json"), type="string", minLength=1),
         "reports_dir": Param(str(DEFAULT_REPORTS_DIR), type="string", minLength=1),
+        # Off by default: hotels stay local to Postgres. Set true to also push
+        # to Supabase (make it authoritative for hotels, per the 2026-07-27
+        # plan decision) once that path is ready to use.
+        "sync_to_supabase": Param(False, type="boolean"),
     },
 ) as dag:
     extract = PythonOperator(task_id="extract", python_callable=extract_task)
@@ -143,6 +208,18 @@ with DAG(
     dedupe = PythonOperator(task_id="dedupe", python_callable=dedupe_task)
     physical_match = PythonOperator(task_id="physical_match", python_callable=physical_match_task)
     load_to_postgresql = PythonOperator(task_id="load_to_postgresql", python_callable=load_task)
+    load_to_supabase = PythonOperator(task_id="load_to_supabase", python_callable=load_to_supabase_task)
     quality_check = PythonOperator(task_id="quality_check", python_callable=quality_task)
+    sync_qdrant = PythonOperator(task_id="sync_qdrant", python_callable=sync_qdrant_task)
 
-    extract >> validate >> normalize >> dedupe >> physical_match >> load_to_postgresql >> quality_check
+    (
+        extract
+        >> validate
+        >> normalize
+        >> dedupe
+        >> physical_match
+        >> load_to_postgresql
+        >> load_to_supabase
+        >> quality_check
+        >> sync_qdrant
+    )
