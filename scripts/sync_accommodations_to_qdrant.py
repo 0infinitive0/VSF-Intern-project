@@ -1,7 +1,6 @@
 import os
 import sys
 from dotenv import load_dotenv
-from supabase import create_client, Client
 from qdrant_client.http.models import Filter, FilterSelector, HasIdCondition
 from langchain_core.documents import Document
 
@@ -10,35 +9,15 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../'
 
 from src.services.vector_store import get_vector_store, get_qdrant_client
 from src.services.qdrant_schema import HOTELS_VECTOR, ROOMS_VECTOR, ensure_collection, point_id
-
-def _fetch_all(supabase: Client, table: str, page_size: int = 1000) -> list:
-    """Supabase REST caps a single select at `page_size` rows — page through
-    with .range() or every table beyond that cap silently gets truncated."""
-    rows = []
-    start = 0
-    while True:
-        page = supabase.table(table).select("*").range(start, start + page_size - 1).execute().data
-        rows.extend(page)
-        if len(page) < page_size:
-            break
-        start += page_size
-    return rows
+from src.services.supabase_client import fetch_all
 
 
 def sync_accommodations():
     load_dotenv()
-    
-    SUPABASE_URL = os.environ.get("SUPABASE_URL")
-    SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
-    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-        print("Error: SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in .env")
-        return
 
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-    
     # 1. Sync Hotels
     print("Fetching hotels from Supabase...")
-    hotels = _fetch_all(supabase, "hotels")
+    hotels = fetch_all("hotels", "*")
     
     hotel_documents = []
     for h in hotels:
@@ -63,7 +42,7 @@ def sync_accommodations():
 
     # 2. Sync Rooms
     print("Fetching rooms from Supabase...")
-    rooms = _fetch_all(supabase, "rooms")
+    rooms = fetch_all("rooms", "*")
 
     # Room point IDs must key on (source_platform, source_hotel_id,
     # source_room_id), not rooms.hotel_id — hotel_id is a surrogate that can

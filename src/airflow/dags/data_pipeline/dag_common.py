@@ -8,7 +8,7 @@ from osm_pipeline import get_or_create_destination, load_attractions_to_db
 DB_KWARGS = {
     "dbname": os.getenv("VSF_DB_NAME", "vsf_database"),
     "user": os.getenv("VSF_DB_USER", "airflow"),
-    "password": os.getenv("VSF_DB_PASSWORD", "airflow"),
+    "password": os.getenv("AIRFLOW_DB_PASSWORD", "airflow"),
     "host": os.getenv("VSF_DB_HOST", "postgres"),
     "port": os.getenv("VSF_DB_PORT", "5432"),
 }
