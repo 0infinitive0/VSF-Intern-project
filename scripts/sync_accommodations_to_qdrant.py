@@ -8,39 +8,25 @@ from langchain_core.documents import Document
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
 from src.services.vector_store import get_vector_store, get_qdrant_client
-from src.services.qdrant_schema import HOTELS_VECTOR, ROOMS_VECTOR, ensure_collection, point_id
+from src.services.qdrant_schema import ROOMS_VECTOR, ensure_collection, point_id
 from src.services.supabase_client import fetch_all
 
 
 def sync_accommodations():
+    """Rooms only. Hotel embedding moved to `hotel_dag`'s `sync_qdrant` task
+    (Phase 5) — a staged, deterministic-ID, alias-swapped writer
+    (`src/services/qdrant_writer.py`) replacing this script's old
+    no-explicit-ids `add_documents()` call, which duplicated `hotels_vector`
+    on every run."""
     load_dotenv()
 
-    # 1. Sync Hotels
-    print("Fetching hotels from Supabase...")
+    # `hotels` is still needed here: rooms key on (source_platform,
+    # source_hotel_id, source_room_id), and that identity is only resolvable
+    # by looking up each room's `hotel_id` against this table.
+    print("Fetching hotels from Supabase (for room identity resolution)...")
     hotels = fetch_all("hotels", "*")
-    
-    hotel_documents = []
-    for h in hotels:
-        name = h.get('name') or ''
-        desc = h.get('description') or ''
-        acc_type = h.get('accommodation_type') or ''
-        area = h.get('area_name') or ''
-        amenities = h.get('amenities') or []
-        amenities_str = ', '.join(amenities) if isinstance(amenities, list) else amenities
-        
-        page_content = f"Tên: {name}\nLoại hình: {acc_type}\nKhu vực: {area}\nMô tả: {desc}\nTiện ích: {amenities_str}"
-        
-        metadata = {
-            "hotel_id": h.get("id"),
-            "name": name,
-            "destination_id": h.get("destination_id"),
-            "star_rating": h.get("star_rating"),
-            "price_tier": None, # Will populate dynamically if needed later
-            "amenities": amenities if isinstance(amenities, list) else []
-        }
-        hotel_documents.append(Document(page_content=page_content, metadata=metadata))
 
-    # 2. Sync Rooms
+    # Sync Rooms
     print("Fetching rooms from Supabase...")
     rooms = fetch_all("rooms", "*")
 
@@ -76,15 +62,7 @@ def sync_accommodations():
 
     client = get_qdrant_client()
 
-    print(f"Prepared {len(hotel_documents)} hotels and {len(room_documents)} rooms for embedding.")
-
-    # Init and embed Hotels
-    if hotel_documents:
-        ensure_collection(client, HOTELS_VECTOR)
-        print("Connecting to vector store and embedding hotels...")
-        hotels_vector_store = get_vector_store(HOTELS_VECTOR.name)
-        hotels_vector_store.add_documents(hotel_documents)
-        print("Successfully synced hotels to Qdrant!")
+    print(f"Prepared {len(room_documents)} rooms for embedding.")
 
     # Init and embed Rooms
     if room_documents:

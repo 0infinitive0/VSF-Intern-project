@@ -1,10 +1,12 @@
 from functools import lru_cache
+from typing import TYPE_CHECKING
 
-from langchain_ollama import OllamaEmbeddings
-from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 
 from src.config import get_settings
+
+if TYPE_CHECKING:
+    from langchain_qdrant import QdrantVectorStore
 
 
 @lru_cache(maxsize=1)
@@ -24,10 +26,18 @@ def get_qdrant_client() -> QdrantClient:
     )
 
 
-def get_vector_store(collection_name: str) -> QdrantVectorStore:
+def get_vector_store(collection_name: str) -> "QdrantVectorStore":  # noqa: F821 (see TYPE_CHECKING import above)
     """
     Initializes and returns a QdrantVectorStore instance.
+
+    Imports are local, not module-level: `langchain_qdrant`/`langchain_ollama`
+    aren't installed in the Airflow image (only `qdrant-client` is), and
+    `get_qdrant_client()` above is used from Airflow DAG code (Phase 4/5) that
+    doesn't need LangChain's wrapper at all.
     """
+    from langchain_ollama import OllamaEmbeddings
+    from langchain_qdrant import QdrantVectorStore
+
     settings = get_settings()
 
     # Initialize Ollama embeddings for BGE-M3

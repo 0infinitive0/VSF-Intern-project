@@ -7,16 +7,21 @@ with multiple OTA offers, so AI presentation never shows the same physical
 hotel twice. `pending_review` and ungrouped hotels always render individually
 — a group awaiting manual approval must never look merged to the AI/user.
 
-This has no live Qdrant/DB dependency: it operates purely on the in-memory
-hotel dicts `hotel_pipeline.normalize_hotels()` + `assign_physical_hotel_groups()`
-produce, so it is usable by tests today and by the future indexing/search
-service (roadmap Phase 2) once that exists.
+This has no live Qdrant/DB dependency: it operates purely on hotel-shaped
+dicts (either the DAG's in-memory records, or Qdrant payloads hydrated back
+into the same shape by `src/services/hotel_search.py`). Moved here from
+`src/airflow/dags/data_pipeline/` in Phase 5 so both the DAG (via its `src`
+mount) and the backend process can import it without a `sys.path` hack.
 """
 
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
-from hotel_pipeline import AUTO_APPROVED
+# Mirrors hotel_pipeline.AUTO_APPROVED (src/airflow/dags/data_pipeline/hotel_pipeline.py).
+# Not imported directly: that module is Airflow-only (pulls in psycopg2 and the
+# full ETL pipeline as import side effects) and isn't on this process's path.
+# hotel_pipeline.py is the source of truth for the value; keep them in sync.
+AUTO_APPROVED = "auto_approved"
 
 # scraped_at is timezone-aware (UTC); datetime.min alone is naive and would
 # raise TypeError when compared against it in the tie-breaker sort key below.
@@ -31,6 +36,11 @@ def _build_offer(hotel: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "source_platform": hotel["source_platform"],
         "source_hotel_id": hotel["source_hotel_id"],
+        # Present only once Phase 4's Supabase load has run for this hotel
+        # (sync_to_supabase on) and Phase 5's writer resolved it into the
+        # Qdrant payload; None otherwise (DAG-side in-memory hotel dicts,
+        # pre-Qdrant, never have this key either — hotel.get() is safe).
+        "supabase_hotel_id": hotel.get("supabase_hotel_id"),
         "min_price": hotel.get("lowest_price"),
         "currency": hotel.get("currency"),
         "check_in_date": hotel.get("price_check_in_date"),

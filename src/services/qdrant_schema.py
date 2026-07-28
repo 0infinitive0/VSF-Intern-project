@@ -55,20 +55,21 @@ ATTRACTIONS_VECTOR = CollectionSpec(
     }),
 )
 
+# Phase 5's writer (src/services/qdrant_writer.py) bypasses LangChain and
+# upserts a flat payload directly — unlike attractions_vector/rooms_vector,
+# these keys are NOT under the "metadata." prefix. Do not reuse
+# _metadata_indexes() here; it would index a path nothing writes to.
 HOTELS_VECTOR = CollectionSpec(
     name="hotels_vector",
-    payload_indexes=_metadata_indexes({
+    payload_indexes={
         "destination_name": "keyword",
         "source_platform": "keyword",
         "price_tier": "keyword",
         "amenity_keys": "keyword",
         "star_rating": "float",
-        # Not yet produced by build_hotel_payload() — indexing an absent
-        # field is harmless (matches nothing, costs nothing). Phase 4 wires
-        # these up; do not add filter code against them before then.
         "destination_id": "keyword",
         "canonical_hotel_key": "keyword",
-    }),
+    },
 )
 
 ROOMS_VECTOR = CollectionSpec(
