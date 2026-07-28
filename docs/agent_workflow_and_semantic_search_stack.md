@@ -1,0 +1,255 @@
+# Agent Workflow and Semantic Search Stack
+
+## Purpose and scope
+
+This document describes the implemented terminal trip-planning flow and the
+semantic-search stack it uses today. It is the source of truth for
+`scripts/poc_trip_planner.py`; it intentionally distinguishes that runtime
+from older architecture documents that describe a proposed multi-agent Qdrant
+design.
+
+The main design choice is simple: **the LLM interprets constrained language,
+but deterministic Python selects and schedules real places.** The planner never
+accepts an LLM-invented hotel, restaurant, cafe, or attraction as an itinerary
+record.
+
+## System at a glance
+
+```mermaid
+flowchart TD
+    U["Vietnamese user message"] --> I["TripIntakeState<br/>extracts destination, duration, people"]
+    I -->|"missing fact"| Q["Ask only the missing question"]
+    I -->|"complete facts"| H["Semantic hotel search<br/>+ coordinate hydration"]
+    H -->|"real hotel required"| T["LLM creates daily themes<br/>queries only, not venues"]
+    T --> R["Supabase semantic retrieval<br/>per-theme attractions + meal pools"]
+    R --> D["Deterministic scheduler<br/>distance, hours, meals, rest"]
+    D --> P["current_trip_plan.json<br/>and itinerary metadata"]
+    P --> F["Terminal itinerary with times and day theme"]
+
+    U -->|"saved-plan edit"| C["Structured change intent"]
+    C -->|"hotel"| H
+    C -->|"other edit"| V["Repair affected day only"]
+    V --> P
+```
+
+## Agent workflow
+
+### 1. Deterministic intake first
+
+`TripIntakeState` reads the user’s message, matches a supplied canonical
+destination name, and extracts duration, party size, and preference terms. It
+asks a question only when destination, duration, or party size is missing. This
+avoids a general-purpose model losing or corrupting facts the user already gave.
+
+### 2. Intent routing
+
+For a new trip, the terminal loop calls the planner directly once the three
+required facts are present. For a saved trip, simple edit phrases are classified
+deterministically as `change_hotel`, `replace_place`, `reschedule`,
+`add_place`, or `remove_place`. The LLM is a structured-JSON fallback only
+when the rule classifier cannot identify the edit.
+
+### 3. Hotel selection is a hard gate
+
+The planner first runs the shared semantic hotel search, then hydrates result
+IDs from Supabase. A hotel is eligible only when it belongs to the requested
+destination and has valid coordinates. If no such record exists, planning stops
+with an explanatory error rather than silently selecting a different hotel or
+inventing one.
+
+The selected hotel anchors the daily geographic clusters and supplies explicit
+meal-inclusion metadata. Only meals marked as included, complimentary, free, or
+otherwise clearly covered are treated as hotel meals.
+
+### 4. The LLM generates themes, not venue lists
+
+`llama3.1` receives the destination, available categories, preferences, and
+number of days. It returns a constrained JSON list of
+`{day_number, title, query}`. The deterministic normalizer accepts only a
+usable query, derives a safe Vietnamese title from query keywords, removes
+duplicates, and fills gaps with a deterministic category rotation.
+
+This keeps semantic expansion while preventing malformed titles and fictitious
+venues from entering the itinerary.
+
+### 5. Semantic candidate retrieval and hydration
+
+The application queries attractions independently for every daily theme. It
+also queries separate pools for breakfast, lunch restaurants, cafes, and dinner.
+Search returns compact ranked records; a second Supabase table read hydrates
+each result with the fields required for truthful scheduling: UUID, category,
+coordinates, rating, opening and closing times, tour flag, description, and
+stored duration.
+
+### 6. Deterministic scheduling and repair
+
+The scheduler consumes only hydrated `PlaceCandidate` objects. It creates a
+balanced day using real IDs: breakfast, morning attraction, lunch, hotel rest,
+afternoon attraction, recovery cafe, dinner, and an optional light evening stop.
+It uses straight-line Haversine distance, assumed urban travel speed, opening
+hours, meals covered by the hotel, and playground limits. When valid food or
+coffee is unavailable, it uses a hotel meal/rest block instead of substituting
+an unrelated attraction.
+
+Edits other than a hotel change preserve unaffected days and item IDs where
+possible, then revalidate the changed day. A hotel change regenerates the plan
+so all daily clusters are based on the new hotel location.
+
+## Active technology stack
+
+| Layer | Technology used now | How it is used | Why it is used |
+|---|---|---|---|
+| Terminal orchestration | Python, LangGraph, LangChain tools | `create_react_agent` exposes only generate and modify tools; deterministic intake bypasses model routing for complete new-trip facts. | Keeps conversational capability without placing factual venue selection in the model. |
+| Chat / constrained extraction | Ollama `llama3.1` (`llama3.1:latest` for search-filter extraction) | Produces daily semantic queries and structured edit intent; optionally extracts semantic text plus filters from general search queries. | Runs locally, supports Vietnamese interactions, and is limited to small structured tasks. |
+| Embeddings | Ollama `bge-m3` through `OllamaEmbeddings` | Embeds the cleaned hotel or attraction query once per semantic search. | Multilingual embeddings suit Vietnamese and English travel queries and avoid a cloud embedding dependency. |
+| Semantic vector store | Supabase PostgreSQL RPC / pgvector deployment | Calls `match_attractions` and `match_hotels_with_rooms` with query embedding, threshold, count, and optional destination filter. | Keeps vector retrieval beside relational records and uses SQL/RPC filtering without a second active data store. |
+| Relational source of truth | Supabase PostgreSQL | Holds destinations, hotels, rooms, attractions, itineraries, and itinerary items; hydrates search results by UUID. | Schedules require factual fields and durable IDs, not vector snippets. |
+| Deterministic planner | Pure Python scheduler | Scores candidates and creates/revalidates time blocks. | Makes geo/time safety reproducible and unit-testable. |
+| API surface | FastAPI | Preserves `/search_attractions` and `/search_hotels` response contracts. | Makes semantic search reusable without exposing internal scheduling details. |
+| Durable local plan | UTF-8 JSON | Writes `current_trip_plan.json`; daily themes are stored under `itineraries[0].day_themes`. | Simple terminal-session persistence and a stable edit target. |
+
+## Model responsibilities
+
+| Model | Responsibility | Not responsible for |
+|---|---|---|
+| Ollama `llama3.1` | Daily theme query generation, structured edit fallback, optional query-filter extraction. | Selecting venue records, scheduling times, calculating distance, or fabricating facts. |
+| Ollama `bge-m3` | Turning a cleaned natural-language query into a vector used by Supabase retrieval. | Producing user-visible prose or deciding business rules. |
+| Ollama `llama3:latest` | Optional Airflow attraction-description enrichment, configured with `OLLAMA_DESCRIPTION_MODEL`. | Terminal planning and semantic search in this workflow. |
+
+## Semantic search: request-to-result path
+
+1. A caller supplies a natural-language query and an optional destination UUID.
+2. In the general reusable search service, `llama3.1:latest` may extract a
+   clean semantic phrase and filters such as destination, category, star rating,
+   or maximum price. The planner passes `use_llm_filter=False` because it has
+   already resolved the destination and created a precise themed query.
+3. `bge-m3` embeds the semantic phrase locally through Ollama.
+4. The client calls the matching Supabase RPC with `query_embedding`,
+   `match_threshold`, `match_count`, and `filter_destination_id` when
+   known. Default thresholds are 0.40 for attractions and 0.35 for hotels.
+5. The service applies exact metadata filters locally after retrieval. It
+   over-fetches three times when a category, budget, star-rating, or price
+   filter is active, then returns up to the requested count. If strict metadata
+   filtering yields no result, it deliberately falls back to semantic matches.
+6. The trip planner hydrates result UUIDs from the relational table before
+   scheduling. Candidates without a UUID, name, or valid coordinates are
+   rejected.
+
+### Search contracts
+
+The shared `search_attractions` and `search_hotels_with_rooms` interfaces
+stay unchanged because they also back FastAPI endpoints. The planner adds its
+own hydration step rather than widening API response shapes.
+
+| Search | Active RPC | Planner-specific use |
+|---|---|---|
+| Hotels and rooms | `match_hotels_with_rooms` | Select one real, same-destination hotel with coordinates. |
+| Attractions | `match_attractions` | Retrieve per-day theme candidates and separate food/cafe pools. |
+
+## Scheduling policy
+
+The policy is implemented as pure functions and typed records in
+`trip_scheduler.py`. These are application rules, not LLM prompt suggestions.
+
+| Concern | Rule |
+|---|---|
+| Daily cluster | Day anchor uses 60% semantic similarity, 25% hotel proximity, 10% rating, and 5% known-hours completeness. Extra stops use 45% semantic similarity, 35% proximity to the anchor, 10% hotel proximity, and 10% rating. |
+| Distance relaxation | Prefer candidates within 5 km of the anchor; relax to 10 km, then 15 km. No cluster candidate means a non-fabricated hotel fallback. |
+| Travel time | Haversine straight-line distance at 25 km/h, rounded to five minutes with a 10-minute minimum. This is an estimate, not routing-engine ETA. |
+| Hours | A known opening/closing interval must contain the full visit. Missing hours are treated as unknown, not as a fabricated opening interval. |
+| Duration defaults | Tours: 180 min; nature/entertainment: 120; other attractions: 90; meal: 75; coffee: 45; hotel rest: 90. Stored duration wins. |
+| Lunch | Starts in a flexible 11:00-12:30 window, preferring 11:30 rather than forcing 11:00. |
+| Beach safety | Beach activities may start before 10:30 or at/after 15:30, never in the midday interval. |
+| Recovery | A cafe is preferred after the afternoon activity; when no valid cafe exists, the hotel provides recovery/rest. |
+| Meals | Use a real breakfast/lunch/dinner venue when available, unless the selected hotel explicitly covers that meal. |
+| Children | At most one child-playground attraction per trip by default. A clearly child-focused request permits one per day. |
+
+## Persistence and edit behavior
+
+`current_trip_plan.json` contains `hotel`, `itineraries`,
+`itinerary_items`, and `adjustments`. Each itinerary owns its
+`day_themes` JSON array so the metadata is not duplicated at the top level.
+The Supabase `itineraries` schema includes the additive `day_themes JSONB`
+column; the runtime upserts itinerary metadata when the column is present.
+
+On a local edit, the planner reloads the saved JSON, rehydrates referenced
+attractions, applies the requested mutation, repairs conflicts, and replaces
+only the affected day. The repairer moves noon beach activities, prevents
+overlaps, enforces known hours, and removes playgrounds above the applicable
+limit.
+
+## Design comparison and trade-offs
+
+### Deterministic scheduler vs. LLM-generated venue lists
+
+| Option | Strengths | Weaknesses | Decision |
+|---|---|---|---|
+| LLM selects venues and emits itinerary JSON | Minimal code; fluent narrative. | Hallucinated records, weak geographic grouping, unreliable opening-hours compliance, and unstable edits. | Rejected for final selection and scheduling. |
+| Semantic retrieval + deterministic scheduler | All itinerary references originate in Supabase; rules are testable and repeatable. | More retrieval/hydration calls and rule maintenance. | Chosen. |
+| Hand-authored fixed itineraries | Highly predictable. | Does not adapt to hotel, theme, availability, or new data. | Not suitable for a trip planner. |
+
+### Supabase pgvector RPC vs. Qdrant
+
+| Option | Strengths | Weaknesses | Status |
+|---|---|---|---|
+| Supabase pgvector RPC | Active relational source of truth, UUID-based hydration, destination filters, one managed database for this flow. | Vector tuning and very large-scale ANN operations are less specialized than a dedicated vector engine. | Chosen for the active planner. |
+| Qdrant | Strong dedicated vector-search features, payload filtering, and collection isolation. | A second index, synchronization path, and operational surface; `vector_store.py` is not used by the terminal planner. | Available/future path, not current planner runtime. |
+| External managed vector API | Fast initial setup and vendor-managed scaling. | Cost, external data transfer, and less local-control alignment. | Not selected. |
+
+### Local Ollama models vs. cloud LLM and embedding APIs
+
+| Option | Strengths | Weaknesses | Decision |
+|---|---|---|---|
+| Local Ollama (`llama3.1`, `bge-m3`) | Keeps queries and embeddings local, avoids per-token API cost, works without an external model account. | Model quality and latency depend on local hardware; models must be installed and served. | Chosen for current implementation. |
+| Cloud LLM / embedding API | Often stronger model quality and elastic throughput. | Cost, network dependency, privacy/data-transfer considerations, and an additional vendor dependency. | Not required for the current scoped tasks. |
+| Rules/keyword-only search | Cheap and fully deterministic. | Poor synonym and multilingual intent matching, especially for subjective travel themes. | Used only as a supplement for intake and scheduling rules. |
+
+### LangGraph tool orchestration vs. a fully bespoke loop
+
+| Option | Strengths | Weaknesses | Decision |
+|---|---|---|---|
+| LangGraph with two narrow tools | Supports conversation, tool lifecycle, and future extension while limiting mutating actions. | Adds a framework dependency and is unnecessary for facts already deterministically extracted. | Used for chat and fallback paths. |
+| Fully deterministic command loop | Smallest runtime surface and easiest traceability. | Less flexible language interaction and edit interpretation. | Used for intake and first-pass edit intent, not the whole chat. |
+| Multi-agent planner/writer/synthesizer | Clear conceptual separation at large scale. | More prompts, state handoffs, hallucination surface, and GPU/API load. | Older proposal; not the active terminal implementation. |
+
+## Operational requirements and limits
+
+- Ollama must be reachable at `OLLAMA_URL` (default
+  `http://localhost:11434`) with `llama3.1` and `bge-m3` installed.
+- `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` must be available. The service
+  key is server-side only and must not be exposed in a browser client.
+- The Supabase schema needs embeddings and the `match_attractions` and
+  `match_hotels_with_rooms` RPCs. The additive day-theme migration is
+  `scripts/migrations/20260727_add_itinerary_day_themes.sql`.
+- Coordinates are mandatory for selected hotels and scheduler candidates. Data
+  lacking coordinates cannot be safely clustered.
+- Straight-line travel is deliberately approximate. Add a routing provider only
+  if street-network ETA becomes a product requirement.
+- Opening hours have no weekday model in the current schema, so a stored range
+  is treated as a daily interval. Unknown hours remain usable but are not
+  claimed to be open.
+
+## Key code and data references
+
+- `scripts/poc_trip_planner.py` — terminal loop, constrained LLM roles,
+  Supabase hydration, persistence, and edit application.
+- `src/services/trip_intake.py` — deterministic Vietnamese fact extraction.
+- `src/services/trip_scheduler.py` — pure scoring, timing, validation,
+  repair, and meal/playground policy.
+- `src/services/supabase_search.py` — Ollama embedding, optional filter
+  extraction, and Supabase RPC calls.
+- `src/api/routes.py` — stable semantic-search API endpoints.
+- `scripts/database_schema.sql` and
+  `scripts/migrations/20260727_add_itinerary_day_themes.sql` — durable
+  relational and JSONB data shape.
+- `src/services/vector_store.py` — Qdrant adapter retained outside the active
+  terminal-planner path.
+
+## Decision summary
+
+For the current trip planner, use **local semantic retrieval to find real
+records** and **deterministic code to make schedule decisions**. Keep the LLM
+at the edges—theme/query generation and structured language interpretation—so
+correctness-critical outputs remain tied to Supabase data, fixed policies, and
+testable functions.
+

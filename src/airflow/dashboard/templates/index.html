@@ -96,6 +96,7 @@
                 <input type="text" id="id-search" placeholder="Search by ID..." style="width: 120px;" onkeydown="if(event.key==='Enter') searchId()">
                 <button class="btn btn-primary" onclick="searchId()">Find</button>
                 <button class="btn" onclick="clearTableSearch()">Clear</button>
+                <button class="btn btn-success btn-sync-all" onclick="syncAllData()" style="font-weight: 600;" title="Manual sync API call">🔄 Sync</button>
             </div>
         </div>
         
@@ -132,7 +133,7 @@
                 <button id="btn-search-hotel" onclick="performSearch('hotel')" class="btn btn-primary">🔍 Hotel</button>
                 <div style="width: 1px; height: 16px; background: #444; margin: 0 4px;"></div>
                 <button onclick="clearSearch()" class="btn">Clear</button>
-                <span style="margin-left: 5px;"><span class="status-dot"></span> Live Sync</span>
+                <button id="btn-sync-map" onclick="syncAllData()" class="btn btn-success btn-sync-all" style="margin-left: 5px; font-weight: 600;" title="Manual sync API call">🔄 Sync</button>
             </div>
         </div>
         <div id="search-results-panel" style="display: none; position: absolute; top: 55px; left: 15px; width: 280px; max-height: calc(100% - 70px); background: #1a1a24; border: 1px solid #444455; z-index: 1000; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border-radius: 6px; overflow-y: auto; flex-direction: column;">
@@ -341,7 +342,19 @@
         }
 
         fetchLocations();
-        setInterval(fetchLocations, 60000);
+
+        async function syncAllData() {
+            const btns = document.querySelectorAll('.btn-sync-all');
+            btns.forEach(btn => btn.innerHTML = '⌛ Syncing...');
+            try {
+                await fetchLocations();
+                if (typeof loadTableData === 'function') await loadTableData();
+                if (typeof loadTripPlan === 'function' && window.isTripPlanMode) await loadTripPlan();
+            } catch (err) {
+                console.error("Manual sync failed:", err);
+            }
+            btns.forEach(btn => btn.innerHTML = '🔄 Sync');
+        }
 
 
         // === DATA VIEWER LOGIC ===
@@ -692,28 +705,67 @@
                 fullRouteCoords = routeCoords;
             }
 
+            window.routeSegmentLayers = {};
+
+            window.highlightRouteSegment = function(index) {
+                if (!window.routeSegmentLayers) return;
+                Object.keys(window.routeSegmentLayers).forEach(key => {
+                    const seg = window.routeSegmentLayers[key];
+                    if (parseInt(key) === parseInt(index)) {
+                        seg.colorLine.setStyle({ opacity: 1.0, weight: 6 });
+                        seg.shadowLine.setStyle({ opacity: 0.9, weight: 8 });
+                        seg.colorLine.bringToFront();
+                        seg.arrows.forEach(a => a.setOpacity(1.0));
+                    } else {
+                        seg.colorLine.setStyle({ opacity: 0.15, weight: 3 });
+                        seg.shadowLine.setStyle({ opacity: 0.1, weight: 5 });
+                        seg.arrows.forEach(a => a.setOpacity(0.2));
+                    }
+                });
+                const rowEl = document.getElementById(`timeline-row-${index}`);
+                if (rowEl) {
+                    rowEl.style.background = '#334155';
+                    rowEl.style.boxShadow = '0 0 12px rgba(255, 255, 255, 0.15)';
+                }
+            };
+
+            window.resetRouteSegments = function() {
+                if (!window.routeSegmentLayers) return;
+                Object.keys(window.routeSegmentLayers).forEach(key => {
+                    const seg = window.routeSegmentLayers[key];
+                    seg.colorLine.setStyle({ opacity: 0.45, weight: 4 });
+                    seg.shadowLine.setStyle({ opacity: 0.3, weight: 6 });
+                    seg.arrows.forEach(a => a.setOpacity(0.5));
+                });
+                document.querySelectorAll('.timeline-item').forEach(el => {
+                    el.style.background = '';
+                    el.style.boxShadow = '';
+                });
+            };
+
             if (fullRouteCoords.length > 1) {
                 for (let i = 0; i < fullRouteCoords.length - 1; i++) {
                     const p1 = fullRouteCoords[i];
                     const p2 = fullRouteCoords[i+1];
                     const color = routeColors[i % routeColors.length];
 
-                    L.polyline([p1, p2], {
+                    const shadowLine = L.polyline([p1, p2], {
                         color: '#0f172a',
-                        weight: 7,
-                        opacity: 0.8,
+                        weight: 6,
+                        opacity: 0.3,
                         lineJoin: 'round',
                         lineCap: 'round'
                     }).addTo(window.tripPlanLayerGroup);
 
-                    L.polyline([p1, p2], {
+                    const colorLine = L.polyline([p1, p2], {
                         color: color,
                         weight: 4,
-                        opacity: 1.0,
+                        opacity: 0.45,
                         lineJoin: 'round',
                         lineCap: 'round'
                     }).addTo(window.tripPlanLayerGroup);
 
+                    const arrows = [];
                     const lat1 = p1[0], lng1 = p1[1];
                     const lat2 = p2[0], lng2 = p2[1];
                     const dy = lat2 - lat1;
@@ -739,9 +791,22 @@
                                 iconAnchor: [11, 11]
                             });
 
-                            L.marker([ptLat, ptLng], { icon: arrowIcon, interactive: false, zIndexOffset: 300 }).addTo(window.tripPlanLayerGroup);
+                            const marker = L.marker([ptLat, ptLng], { icon: arrowIcon, interactive: false, opacity: 0.5, zIndexOffset: 300 }).addTo(window.tripPlanLayerGroup);
+                            arrows.push(marker);
                         });
                     }
+
+                    window.routeSegmentLayers[i] = {
+                        shadowLine: shadowLine,
+                        colorLine: colorLine,
+                        arrows: arrows,
+                        color: color
+                    };
+
+                    colorLine.on('mouseover', () => window.highlightRouteSegment(i));
+                    colorLine.on('mouseout', () => window.resetRouteSegments());
+                    shadowLine.on('mouseover', () => window.highlightRouteSegment(i));
+                    shadowLine.on('mouseout', () => window.resetRouteSegments());
                 }
             }
 
@@ -863,7 +928,7 @@
                     const distBadge = distKm > 0 ? `<span style="background:#1e293b; color:${stepColor}; padding:2px 8px; border-radius:12px; font-size:11px; margin-left:8px; border:1px solid ${stepColor}; font-weight:700; display:inline-flex; align-items:center; gap:5px; white-space:nowrap;"><span style="width:8px; height:8px; border-radius:50%; background:${stepColor}; display:inline-block;"></span>🚗 ~${distKm} km</span>` : '';
 
                     html += `
-                        <div class="timeline-item" style="border-left: 4px solid ${stepColor};">
+                        <div id="timeline-row-${index}" class="timeline-item" style="border-left: 4px solid ${stepColor}; transition: all 0.2s ease;" onmouseenter="window.highlightRouteSegment(${index})" onmouseleave="window.resetRouteSegments()">
                             <div class="timeline-time">${timeStr}</div>
                             <div class="kind-badge kind-${kind}">${icon} ${kind}</div>
                             <div style="flex:1; font-size:13px; font-weight:600; color:#e2e8f0; display:flex; align-items:center; flex-wrap:wrap;">
@@ -883,7 +948,7 @@
                         const hotelCoords = hotel.coordinates.split(',');
                         const returnKm = (L.latLng(lastCoord[0], lastCoord[1]).distanceTo(L.latLng(parseFloat(hotelCoords[0]), parseFloat(hotelCoords[1]))) / 1000).toFixed(1);
                         html += `
-                            <div class="timeline-item" style="opacity:0.9; border-left: 4px solid ${returnColor};">
+                            <div id="timeline-row-${dayItems.length}" class="timeline-item" style="opacity:0.9; border-left: 4px solid ${returnColor}; transition: all 0.2s ease;" onmouseenter="window.highlightRouteSegment(${dayItems.length})" onmouseleave="window.resetRouteSegments()">
                                 <div class="timeline-time">Return</div>
                                 <div class="kind-badge" style="background:#1e293b; color:#fbbf24; border:1px solid #334155;">🏨 Return</div>
                                 <div style="flex:1; font-size:13px; font-weight:600; color:#e2e8f0; display:flex; align-items:center; flex-wrap:wrap;">

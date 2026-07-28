@@ -84,5 +84,4 @@ out/
 .ai-log/*.jsonl
 .ai-log/archive/
 CLAUDE.md
-docs/
 plans/
