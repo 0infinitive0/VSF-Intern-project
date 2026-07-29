@@ -28,6 +28,7 @@ from src.cli.trip_builder_svc import (
 )
 from src.services.hotel_selection import (
     fetch_hotel_by_id,
+    lookup_sea_view_hotel_ids,
     rank_hotel_candidates,
     resolve_hotel_selection,
     select_hotel_candidates,
@@ -171,13 +172,17 @@ def recommend_hotels(
     people: str = "",
     preferences: str = "",
     hotel_preferences: str = "",
+    target_price: str = "",
+    hotel_amenity_prefs: str = "",
 ) -> str:
     """
     CRITICAL: Use this tool ONCE destination, duration, and number of people are all known, to show
     a ranked list of real hotel options. This is the ONLY way to start planning a new trip — never
     call `generate_full_itinerary` yourself. If the user mentioned specific hotel wants (budget, star
-    rating, view, amenities...), pass them in `hotel_preferences`. After this returns, the user's next
-    reply must be handled by `select_hotel`, not by calling this tool or generate_full_itinerary again.
+    rating, view, amenities...), pass them in `hotel_preferences`. `target_price`/`hotel_amenity_prefs`
+    are typically pre-resolved by the guided budget/amenity intake in terminal_chat.py, not by you.
+    After this returns, the user's next reply must be handled by `select_hotel`, not by calling this
+    tool or generate_full_itinerary again.
     """
     destination, error = _validate_trip_basics(destination, duration, people)
     if error:
@@ -189,9 +194,23 @@ def recommend_hotels(
     destination_id = str(destination_id)
 
     hotel_query = hotel_preferences.strip() or None
+    parsed_target_price = float(target_price) if target_price.strip() else None
+    amenity_pref_set = frozenset(
+        tag.strip() for tag in hotel_amenity_prefs.split(",") if tag.strip()
+    )
+
     try:
+        options = select_hotel_candidates(destination, destination_id, people, hotel_query=hotel_query)
+        sea_view_hotel_ids = (
+            lookup_sea_view_hotel_ids([data["id"] for data, _candidate in options])
+            if "sea_view" in amenity_pref_set
+            else frozenset()
+        )
         options = rank_hotel_candidates(
-            select_hotel_candidates(destination, destination_id, people, hotel_query=hotel_query)
+            options,
+            target_price=parsed_target_price,
+            amenity_prefs=amenity_pref_set,
+            sea_view_hotel_ids=sea_view_hotel_ids,
         )
     except Exception as exc:
         logger.exception("Hotel recommendation failed")

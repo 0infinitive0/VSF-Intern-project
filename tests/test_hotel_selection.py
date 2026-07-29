@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import src.services.hotel_selection as hotel_selection_module
 from src.services.hotel_selection import (
+    HotelPreferenceState,
+    _parse_free_text_budget,
     fetch_hotel_by_id,
+    hotel_matches_amenity_tag,
+    lookup_sea_view_hotel_ids,
     rank_hotel_candidates,
     resolve_hotel_selection,
     select_hotel_candidates,
@@ -250,3 +254,266 @@ def test_fetch_hotel_by_id_returns_none_when_not_found(monkeypatch):
     monkeypatch.setattr(hotel_selection_module, "_get_supabase_client", lambda: _FakeSupabaseClient([]))
 
     assert fetch_hotel_by_id("missing-hotel") is None
+
+
+# ---- _parse_free_text_budget ----------------------------------------------------------
+
+
+def test_parse_free_text_budget_million_phrasing():
+    assert _parse_free_text_budget("4 triệu") == 4_000_000
+    assert _parse_free_text_budget("khoảng 4tr thôi") == 4_000_000
+
+
+def test_parse_free_text_budget_thousand_phrasing():
+    assert _parse_free_text_budget("500 nghìn") == 500_000
+    assert _parse_free_text_budget("500k") == 500_000
+
+
+def test_parse_free_text_budget_qualitative_phrases():
+    assert _parse_free_text_budget("tôi muốn khách sạn sang trọng") == 3_500_000
+    assert _parse_free_text_budget("tiết kiệm thôi") == 500_000
+    assert _parse_free_text_budget("tầm trung là được") == 1_500_000
+
+
+def test_parse_free_text_budget_unrelated_text_returns_none():
+    assert _parse_free_text_budget("trời hôm nay đẹp quá") is None
+
+
+# ---- HotelPreferenceState ---------------------------------------------------------------
+
+
+def test_hotel_preference_state_starts_pending_budget():
+    state = HotelPreferenceState()
+
+    assert state.stage == "pending_budget"
+    assert not state.is_complete
+    assert "1." in state.next_question()
+
+
+def test_hotel_preference_state_rejects_unparseable_budget_and_reprompts():
+    state = HotelPreferenceState()
+
+    next_state = state.with_message("trời đẹp quá")
+
+    assert next_state.stage == "pending_budget"
+    assert next_state == state
+
+
+def test_hotel_preference_state_accepts_free_text_price_without_reprompt():
+    """The concrete case reported: the menu suggests 3 tiers but the user just
+    types a custom amount — must resolve immediately, never re-ask."""
+    state = HotelPreferenceState()
+
+    next_state = state.with_message("4 triệu")
+
+    assert next_state.stage == "pending_amenities"
+    assert next_state.target_price == 4_000_000
+
+
+def test_hotel_preference_state_numbered_tier_pick():
+    state = HotelPreferenceState()
+
+    next_state = state.with_message("2")
+
+    assert next_state.stage == "pending_amenities"
+    assert next_state.target_price == 1_500_000
+
+
+def test_hotel_preference_state_skip_budget():
+    state = HotelPreferenceState()
+
+    next_state = state.with_message("4")
+
+    assert next_state.stage == "pending_amenities"
+    assert next_state.target_price is None
+
+
+def test_hotel_preference_state_amenity_stage_always_resolves():
+    state = HotelPreferenceState(stage="pending_amenities", target_price=1_500_000)
+
+    next_state = state.with_message("blah blah no numbers here")
+
+    assert next_state.is_complete
+    assert next_state.amenity_prefs == ()
+
+
+def test_hotel_preference_state_amenity_multi_select():
+    state = HotelPreferenceState(stage="pending_amenities", target_price=None)
+
+    next_state = state.with_message("1,3")
+
+    assert next_state.is_complete
+    assert next_state.amenity_prefs == ("sea_view", "pool")
+
+
+def test_hotel_preference_state_full_walk_and_tool_arguments():
+    state = HotelPreferenceState()
+    state = state.with_message("4 triệu")
+    state = state.with_message("2,4")
+
+    assert state.is_complete
+    assert state.tool_arguments() == {
+        "target_price": "4000000.0",
+        "hotel_amenity_prefs": "non_smoking,breakfast",
+    }
+
+
+def test_hotel_preference_state_tool_arguments_raises_before_complete():
+    state = HotelPreferenceState()
+
+    try:
+        state.tool_arguments()
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("tool_arguments() should raise before is_complete")
+
+
+# ---- hotel_matches_amenity_tag -----------------------------------------------------------
+
+
+def test_hotel_matches_amenity_tag_non_smoking_requires_negation():
+    smoking_area_only = {"amenities": ["Khu vực hút thuốc"]}
+    non_smoking = {"amenities": ["Phòng không hút thuốc"]}
+
+    assert hotel_matches_amenity_tag(smoking_area_only, "non_smoking") is False
+    assert hotel_matches_amenity_tag(non_smoking, "non_smoking") is True
+
+
+def test_hotel_matches_amenity_tag_pool_and_family():
+    assert hotel_matches_amenity_tag({"amenities": ["Hồ bơi ngoài trời"]}, "pool") is True
+    assert hotel_matches_amenity_tag({"amenities": ["Phòng gia đình"]}, "family") is True
+    assert hotel_matches_amenity_tag({"amenities": ["Wifi"]}, "pool") is False
+
+
+def test_hotel_matches_amenity_tag_breakfast_reads_covered_meals_not_amenities():
+    # amenities text mentions breakfast-like words, but covered_meals doesn't list it —
+    # must NOT independently re-derive from amenities text.
+    data = {"amenities": ["Nhà hàng phục vụ bữa sáng"], "covered_meals": []}
+    assert hotel_matches_amenity_tag(data, "breakfast") is False
+
+    data_covered = {"amenities": [], "covered_meals": ["breakfast"]}
+    assert hotel_matches_amenity_tag(data_covered, "breakfast") is True
+
+
+def test_hotel_matches_amenity_tag_sea_view_uses_only_the_passed_id_set():
+    data = {"id": "hotel-1", "amenities": ["Nhìn ra biển tuyệt đẹp"]}
+
+    # amenities text mentions "biển" but id isn't in the resolved set -> no match
+    assert hotel_matches_amenity_tag(data, "sea_view", frozenset()) is False
+    assert hotel_matches_amenity_tag(data, "sea_view", frozenset({"hotel-1"})) is True
+
+
+def test_hotel_matches_amenity_tag_missing_data_and_unknown_tag_return_false():
+    assert hotel_matches_amenity_tag({}, "pool") is False
+    assert hotel_matches_amenity_tag({"amenities": ["Hồ bơi"]}, "not_a_real_tag") is False
+
+
+# ---- lookup_sea_view_hotel_ids (mocked Supabase, reusing the existing fake) --------------
+
+
+def test_lookup_sea_view_hotel_ids_empty_input_skips_query(monkeypatch):
+    called = []
+    monkeypatch.setattr(
+        hotel_selection_module,
+        "_get_supabase_client",
+        lambda: called.append(True) or _FakeSupabaseClient([]),
+    )
+
+    assert lookup_sea_view_hotel_ids([]) == frozenset()
+    assert called == []
+
+
+def test_lookup_sea_view_hotel_ids_matches_case_and_diacritic_insensitive(monkeypatch):
+    room_rows = [
+        {"id": "hotel-1", "hotel_id": "hotel-1", "view": "Nhìn ra biển"},
+        {"id": "hotel-2", "hotel_id": "hotel-2", "view": "Nhìn ra thành phố"},
+        {"id": "hotel-3", "hotel_id": "hotel-3", "view": "Nhìn ra vườn, Nhìn ra biển"},
+    ]
+    monkeypatch.setattr(
+        hotel_selection_module, "_get_supabase_client", lambda: _FakeSupabaseClient(room_rows)
+    )
+
+    result = lookup_sea_view_hotel_ids(["hotel-1", "hotel-2", "hotel-3"])
+
+    assert result == frozenset({"hotel-1", "hotel-3"})
+
+
+def test_lookup_sea_view_hotel_ids_fails_open_on_error(monkeypatch):
+    def _raise():
+        raise RuntimeError("supabase down")
+
+    monkeypatch.setattr(hotel_selection_module, "_get_supabase_client", _raise)
+
+    assert lookup_sea_view_hotel_ids(["hotel-1"]) == frozenset()
+
+
+# ---- rank_hotel_candidates: preference bonuses and backward compatibility ---------------
+
+
+def test_rank_hotel_candidates_no_preferences_matches_no_kwargs_call():
+    options = [_option("a", "A", similarity=0.3), _option("b", "B", similarity=0.8)]
+
+    ranked_no_kwargs = rank_hotel_candidates(list(options))
+    ranked_default_kwargs = rank_hotel_candidates(
+        list(options), target_price=None, amenity_prefs=(), sea_view_hotel_ids=frozenset()
+    )
+
+    ids_no_kwargs = [data["id"] for data, _c in ranked_no_kwargs]
+    ids_default_kwargs = [data["id"] for data, _c in ranked_default_kwargs]
+    assert ids_no_kwargs == ids_default_kwargs == ["b", "a"]
+
+
+def test_rank_hotel_candidates_budget_bonus_flips_a_near_tie():
+    # B's much higher similarity (0.75 vs 0.50) wins the baseline despite A's cheaper
+    # price already earning A the max relative price_score in this 2-hotel batch —
+    # isolates the NEW target_price-closeness bonus from the pre-existing relative
+    # price_score term, which is already baked into the baseline for both calls.
+    cheap = _option("a", "A", similarity=0.50, lowest_price=1_000_000)
+    pricier_better_match = _option("b", "B", similarity=0.75, lowest_price=5_000_000)
+
+    baseline = rank_hotel_candidates([cheap, pricier_better_match])
+    assert baseline[0][0]["id"] == "b"
+
+    boosted = rank_hotel_candidates([cheap, pricier_better_match], target_price=1_000_000)
+    assert boosted[0][0]["id"] == "a"
+
+
+def test_rank_hotel_candidates_amenity_bonus_flips_a_near_tie():
+    matches_amenity = _option("a", "A", similarity=0.55)
+    matches_amenity[0]["amenities"] = ["Phòng không hút thuốc"]
+    no_match = _option("b", "B", similarity=0.58)
+    no_match[0]["amenities"] = []
+
+    baseline = rank_hotel_candidates([matches_amenity, no_match])
+    assert baseline[0][0]["id"] == "b"
+
+    boosted = rank_hotel_candidates([matches_amenity, no_match], amenity_prefs=("non_smoking",))
+    assert boosted[0][0]["id"] == "a"
+
+
+def test_rank_hotel_candidates_never_penalizes_missing_data():
+    bare = _option("bare", "Bare Hotel", similarity=0.5)
+
+    ranked = rank_hotel_candidates(
+        [bare],
+        target_price=1_000_000,
+        amenity_prefs=("sea_view", "non_smoking", "pool", "breakfast", "family"),
+    )
+
+    data, _candidate = ranked[0]
+    assert data["recommendation_score"] == 0.55 * 0.5  # only the similarity term contributes
+
+
+def test_rank_hotel_candidates_amenity_bonus_scales_with_match_count():
+    two_tags = _option("two", "Two", similarity=0.5)
+    two_tags[0]["amenities"] = ["Hồ bơi", "Phòng gia đình"]
+    zero_tags = _option("zero", "Zero", similarity=0.5)
+    zero_tags[0]["amenities"] = []
+
+    ranked = rank_hotel_candidates(
+        [two_tags, zero_tags], amenity_prefs=("pool", "family")
+    )
+    scores = {data["id"]: data["recommendation_score"] for data, _c in ranked}
+
+    assert round(scores["two"] - scores["zero"], 6) == round(2 * 0.03, 6)

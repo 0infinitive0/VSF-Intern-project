@@ -1,9 +1,35 @@
 from fastapi import APIRouter, HTTPException
 
 from src.agents.graph import agent
-from src.models.schemas import ChatRequest, ChatResponse
+from src.models.schemas import ChatRequest, ChatResponse, PlannerChatRequest, PlannerChatResponse
+from src.services.chat_session import ChatSession, create_chat_session, process_chat_turn
 
 router = APIRouter()
+
+# In-memory session store for the basic web chat UI (GET /chat). Lost on
+# server restart, and shared globally like current_trip_plan.json/
+# pending_hotel_selection.json already are — a known "basic v1" limitation,
+# not a new one; see docs/architecture/agent_workflow_and_semantic_search_stack.md.
+_CHAT_SESSIONS: dict[str, ChatSession] = {}
+
+
+@router.post("/planner_chat", response_model=PlannerChatResponse)
+def planner_chat(request: PlannerChatRequest) -> PlannerChatResponse:
+    """Chat với trip planner thật (khác với /chat — endpoint đó dùng agent mẫu riêng).
+
+    A plain `def` (not `async def`) so FastAPI runs it in its worker thread pool —
+    process_chat_turn calls synchronous LangChain `.invoke()`s that would otherwise
+    block the event loop.
+    """
+    session = _CHAT_SESSIONS.get(request.session_id)
+    if session is None:
+        session = create_chat_session(request.session_id)
+        _CHAT_SESSIONS[request.session_id] = session
+    try:
+        reply = process_chat_turn(session, request.message)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return PlannerChatResponse(reply=reply)
 
 
 @router.post("/chat", response_model=ChatResponse)

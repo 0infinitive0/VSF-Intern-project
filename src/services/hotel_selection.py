@@ -10,11 +10,18 @@ import logging
 import os
 import re
 import unicodedata
-from typing import Any, Dict, List, Tuple
+from dataclasses import dataclass, replace
+from typing import Any, Collection, Dict, Iterable, List, Literal, Tuple
 
 from supabase import Client, create_client
 
 from src.config import get_settings
+from src.services.guided_question import (
+    GuidedOption,
+    GuidedQuestion,
+    format_guided_question,
+    resolve_guided_reply,
+)
 from src.services.supabase_search import search_hotels_with_rooms
 from src.services.trip_scheduler import PlaceCandidate, detect_covered_hotel_meals
 
@@ -115,25 +122,77 @@ def select_hotel_candidates(
             "currency": hotel.get("currency"),
             "image_url": hotel.get("image_url"),
             "similarity": hotel.get("similarity"),
+            "amenities": hotel.get("amenities") or [],
         }
         options.append((hotel_data, candidate))
 
     return options
 
 
+_BUDGET_MATCH_BONUS = 0.05
+_AMENITY_MATCH_BONUS = 0.03
+
+
+def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
+    return max(low, min(value, high))
+
+
+def _composite_score(data: Dict[str, Any], candidate: PlaceCandidate, price_score: float) -> float:
+    similarity_score = _clamp(float(data.get("similarity") or candidate.similarity or 0.0))
+    rating_score = _clamp(float(data.get("star_rating") or 0.0) / 5.0)
+    review_score_norm = _clamp(float(data.get("review_score") or 0.0) / 10.0)
+    return (
+        0.55 * similarity_score
+        + 0.20 * rating_score
+        + 0.15 * review_score_norm
+        + 0.10 * price_score
+    )
+
+
+def _budget_bonus(data: Dict[str, Any], target_price: float | None) -> float:
+    """Continuous closeness bonus, not a binary tier match — a hotel priced right at
+    target_price gets the full bonus, decaying linearly to 0 the further away it is.
+    Never negative: missing price or no target both contribute exactly 0.0."""
+    price = data.get("lowest_price")
+    if target_price is None or price is None or target_price <= 0:
+        return 0.0
+    diff_ratio = abs(float(price) - target_price) / target_price
+    return _BUDGET_MATCH_BONUS * max(0.0, 1.0 - diff_ratio)
+
+
+def _amenity_bonus(
+    data: Dict[str, Any],
+    amenity_prefs: Iterable[str],
+    sea_view_hotel_ids: Collection[str],
+) -> float:
+    matched = sum(
+        1 for tag in amenity_prefs if hotel_matches_amenity_tag(data, tag, sea_view_hotel_ids)
+    )
+    return _AMENITY_MATCH_BONUS * matched
+
+
 def rank_hotel_candidates(
     options: List[Tuple[Dict[str, Any], PlaceCandidate]],
+    *,
+    target_price: float | None = None,
+    amenity_prefs: Iterable[str] = (),
+    sea_view_hotel_ids: Collection[str] = frozenset(),
 ) -> List[Tuple[Dict[str, Any], PlaceCandidate]]:
-    """Sort search results by a weighted blend of similarity, rating, review score, and price.
+    """Sort search results by a weighted blend of similarity, rating, review score, price,
+    and (optionally) how well each hotel matches the user's stated budget/amenity preferences.
 
     Similarity stays dominant (0.55) since it reflects how well the hotel matches what the
     user asked for; rating/review/price only refine the order among otherwise-similar hits.
+    Preference bonuses (budget closeness, matched amenity tags) are additive and small
+    (max 0.20 combined) so they can reorder near-ties without ever outweighing a much
+    better semantic match. When target_price/amenity_prefs/sea_view_hotel_ids are all
+    left at their defaults, every bonus is exactly 0.0 and results are identical to
+    calling this function with no preferences at all — soft-boost only, never a penalty.
     """
     if not options:
         return []
 
-    def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
-        return max(low, min(value, high))
+    amenity_prefs = tuple(amenity_prefs)
 
     prices = [
         float(data["lowest_price"])
@@ -150,26 +209,22 @@ def rank_hotel_candidates(
             return 1.0
         return _clamp(1.0 - (float(price) - min_price) / (max_price - min_price))
 
-    def _composite_score(data: Dict[str, Any], candidate: PlaceCandidate) -> float:
-        similarity_score = _clamp(float(data.get("similarity") or candidate.similarity or 0.0))
-        rating_score = _clamp(float(data.get("star_rating") or 0.0) / 5.0)
-        review_score_norm = _clamp(float(data.get("review_score") or 0.0) / 10.0)
-        price_score = _price_score(data)
+    def _final_score(data: Dict[str, Any], candidate: PlaceCandidate) -> float:
+        base = _composite_score(data, candidate, _price_score(data))
         return (
-            0.55 * similarity_score
-            + 0.20 * rating_score
-            + 0.15 * review_score_norm
-            + 0.10 * price_score
+            base
+            + _budget_bonus(data, target_price)
+            + _amenity_bonus(data, amenity_prefs, sea_view_hotel_ids)
         )
 
     ranked = sorted(
         options,
-        key=lambda option: _composite_score(option[0], option[1]),
+        key=lambda option: _final_score(option[0], option[1]),
         reverse=True,
     )
     for index, (data, _candidate) in enumerate(ranked, start=1):
         data["rank"] = index
-        data["recommendation_score"] = _composite_score(data, _candidate)
+        data["recommendation_score"] = _final_score(data, _candidate)
     return ranked
 
 
@@ -252,5 +307,215 @@ def fetch_hotel_by_id(
         "lowest_price": hotel.get("lowest_price"),
         "currency": hotel.get("currency"),
         "image_url": hotel.get("image_url"),
+        "amenities": hotel.get("amenities") or [],
     }
     return hotel_data, candidate
+
+
+# ---------------------------------------------------------------------------
+# Guided budget/amenity preference intake (shown before the hotel list) and
+# the sea-view lookup + amenity matching used to soft-boost ranking above.
+# ---------------------------------------------------------------------------
+
+# Mirrors hotel_pipeline.py::compute_price_tier's thresholds (ETL-side, unused by
+# the live app) — duplicated rather than imported, since importing the Airflow DAG
+# package into the live chat app would be an awkward dependency direction.
+_BUDGET_TIER_MAX_VND = 800_000
+_MID_RANGE_TIER_MAX_VND = 2_500_000
+_BUDGET_TIER_TARGET_VND: dict[str, float] = {
+    "budget": 500_000,
+    "mid_range": 1_500_000,
+    "luxury": 3_500_000,
+}
+
+_QUALITATIVE_BUDGET_PHRASES: dict[str, tuple[str, ...]] = {
+    "luxury": ("sang trong", "cao cap", "luxury", "5 sao"),
+    "budget": ("tiet kiem", "gia re"),
+    "mid_range": ("tam trung", "vua phai", "trung binh"),
+}
+
+
+def _parse_free_text_price(text: str) -> float | None:
+    """Best-effort Vietnamese money parser: "4 triệu" -> 4_000_000, "500 nghìn"/"500k"
+    -> 500_000, or a plain 4+ digit number used as-is. Returns None if nothing matches
+    (a short number like "2" from "2 người" is deliberately not treated as a price)."""
+    normalized = _normalize_for_match(text)
+    # No leading \b before "tr"/"k": a digit is itself a word character, so a
+    # no-space form like "4tr"/"500k" has no boundary between the digit and the
+    # unit letter — only the trailing \b (rejecting "trong", "trung", ...) is needed.
+    million_match = re.search(r"(\d+(?:[.,]\d+)?)\s*(?:trieu|tr\b)", normalized)
+    if million_match:
+        return float(million_match.group(1).replace(",", ".")) * 1_000_000
+    thousand_match = re.search(r"(\d+(?:[.,]\d+)?)\s*(?:nghin|ngan|k\b)", normalized)
+    if thousand_match:
+        return float(thousand_match.group(1).replace(",", ".")) * 1_000
+    plain_match = re.search(r"\b(\d{4,})\b", normalized.replace(",", "").replace(".", ""))
+    if plain_match:
+        return float(plain_match.group(1))
+    return None
+
+
+def _parse_free_text_budget(reply: str) -> float | None:
+    """free_text_parser for the budget GuidedQuestion — used only when the reply
+    doesn't match a numbered option, e.g. the user typed "4 triệu" instead of picking
+    from the suggested tiers, or a qualitative phrase like "khách sạn sang trọng"."""
+    price = _parse_free_text_price(reply)
+    if price is not None:
+        return price
+    normalized = _normalize_for_match(reply)
+    for tier, phrases in _QUALITATIVE_BUDGET_PHRASES.items():
+        if any(phrase in normalized for phrase in phrases):
+            return _BUDGET_TIER_TARGET_VND[tier]
+    return None
+
+
+_BUDGET_QUESTION = GuidedQuestion(
+    prompt=(
+        "Bạn muốn mức giá khách sạn khoảng nào? Trả lời bằng số gợi ý bên dưới, hoặc "
+        'cứ nói thẳng mức giá bạn muốn (vd "4 triệu"):'
+    ),
+    options=(
+        GuidedOption(
+            f"Tiết kiệm (dưới {_BUDGET_TIER_MAX_VND:,.0f} VND/đêm)",
+            _BUDGET_TIER_TARGET_VND["budget"],
+        ),
+        GuidedOption(
+            f"Tầm trung ({_BUDGET_TIER_MAX_VND:,.0f} - {_MID_RANGE_TIER_MAX_VND:,.0f} VND/đêm)",
+            _BUDGET_TIER_TARGET_VND["mid_range"],
+        ),
+        GuidedOption(
+            f"Cao cấp (trên {_MID_RANGE_TIER_MAX_VND:,.0f} VND/đêm)",
+            _BUDGET_TIER_TARGET_VND["luxury"],
+        ),
+        GuidedOption("Bỏ qua, không cần lọc theo giá", None),
+    ),
+    free_text_parser=_parse_free_text_budget,
+    required=True,
+)
+
+_AMENITY_QUESTION = GuidedQuestion(
+    prompt=(
+        "Bạn có muốn thêm yêu cầu nào cho khách sạn không? (không bắt buộc — có thể "
+        "chọn nhiều số, cách nhau bằng dấu phẩy, ví dụ: 1,3)"
+    ),
+    options=(
+        GuidedOption("Phòng view biển", "sea_view"),
+        GuidedOption("Không hút thuốc", "non_smoking"),
+        GuidedOption("Hồ bơi", "pool"),
+        GuidedOption("Bao gồm bữa sáng", "breakfast"),
+        GuidedOption("Phù hợp gia đình / trẻ em", "family"),
+        GuidedOption("Bỏ qua, không cần thêm yêu cầu", None),
+    ),
+    free_text_parser=None,
+    required=False,
+)
+
+HotelPreferenceStage = Literal["pending_budget", "pending_amenities", "done"]
+
+
+@dataclass(frozen=True)
+class HotelPreferenceState:
+    """Deterministic, in-memory (not persisted) sequencer over the two guided
+    questions above — mirrors TripIntakeState's is_complete/next_question/
+    with_message/tool_arguments shape, scoped to hotel preferences only."""
+
+    stage: HotelPreferenceStage = "pending_budget"
+    target_price: float | None = None
+    amenity_prefs: tuple[str, ...] = ()
+
+    @property
+    def is_complete(self) -> bool:
+        return self.stage == "done"
+
+    def next_question(self) -> str | None:
+        if self.stage == "pending_budget":
+            return format_guided_question(_BUDGET_QUESTION)
+        if self.stage == "pending_amenities":
+            return format_guided_question(_AMENITY_QUESTION)
+        return None
+
+    def with_message(self, message: str) -> "HotelPreferenceState":
+        if self.stage == "pending_budget":
+            resolved, values = resolve_guided_reply(_BUDGET_QUESTION, message)
+            if not resolved:
+                return self
+            return replace(
+                self,
+                stage="pending_amenities",
+                target_price=values[0] if values else None,
+            )
+        if self.stage == "pending_amenities":
+            _resolved, values = resolve_guided_reply(_AMENITY_QUESTION, message)
+            return replace(self, stage="done", amenity_prefs=tuple(values))
+        return self
+
+    def tool_arguments(self) -> dict[str, str]:
+        if not self.is_complete:
+            raise ValueError("Budget and amenity preferences are not resolved yet.")
+        return {
+            "target_price": str(self.target_price) if self.target_price is not None else "",
+            "hotel_amenity_prefs": ",".join(self.amenity_prefs),
+        }
+
+
+_AMENITY_KEYWORD_TAGS: dict[str, tuple[str, ...]] = {
+    # Must require the negation phrase — a hotel whose only relevant amenity is
+    # "Khu vực hút thuốc" (a smoking area exists) must NOT match non_smoking.
+    "non_smoking": ("khong hut thuoc", "non smoking", "non-smoking", "no smoking"),
+    "pool": ("ho boi", "be boi", "swimming pool", "pool"),
+    "family": ("gia dinh", "tre em", "kids club", "family room"),
+}
+
+
+def hotel_matches_amenity_tag(
+    data: Dict[str, Any],
+    tag: str,
+    sea_view_hotel_ids: Collection[str] = frozenset(),
+) -> bool:
+    """Pure predicate: does this hotel satisfy the given preference tag? Missing
+    data, an unrecognized tag, or simply no match all resolve to False — never
+    raises, and never penalizes (callers only ever add a bonus for True)."""
+    if tag == "sea_view":
+        hotel_id = data.get("id")
+        return hotel_id is not None and str(hotel_id) in sea_view_hotel_ids
+    if tag == "breakfast":
+        return "breakfast" in (data.get("covered_meals") or [])
+    keywords = _AMENITY_KEYWORD_TAGS.get(tag)
+    if not keywords:
+        return False
+    amenities_text = " ".join(str(item) for item in (data.get("amenities") or []))
+    normalized = _normalize_for_match(amenities_text)
+    return any(keyword in normalized for keyword in keywords)
+
+
+def lookup_sea_view_hotel_ids(hotel_ids: List[str]) -> frozenset[str]:
+    """Batch-check the `rooms` table for sea-view rooms among the given hotel ids.
+
+    The compact hotel search RPC (match_hotels_with_rooms) never returns room-level
+    `view`, so sea-view can't be read off an existing search result — this is a
+    separate, explicit lookup, only worth calling when a caller actually requested
+    the sea_view tag. Fails open (empty set) on any error, consistent with
+    _hydrate_hotel_records's own error handling."""
+    if not hotel_ids:
+        return frozenset()
+    try:
+        supabase = _get_supabase_client()
+        response = (
+            supabase.table("rooms")
+            .select("hotel_id,view")
+            .in_("hotel_id", [str(hotel_id) for hotel_id in hotel_ids])
+            .execute()
+        )
+    except Exception as exc:
+        logger.error("Failed to look up sea-view rooms: %s", exc)
+        return frozenset()
+
+    matched: set[str] = set()
+    for row in response.data or []:
+        view = row.get("view")
+        hotel_id = row.get("hotel_id")
+        if not view or not hotel_id:
+            continue
+        if "bien" in _normalize_for_match(str(view)):
+            matched.add(str(hotel_id))
+    return frozenset(matched)

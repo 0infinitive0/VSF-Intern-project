@@ -34,3 +34,12 @@ class RoomPayload(BaseModel):
     max_guests: int | None = Field(default=None, description="Số khách tối đa")
     room_size_sqm: float | None = Field(default=None, description="Diện tích phòng")
     view: str | None = Field(default=None, description="Hướng nhìn")
+
+
+class PlannerChatRequest(BaseModel):
+    session_id: str = Field(..., min_length=1, description="ID phiên chat do trình duyệt tự sinh")
+    message: str = Field(..., min_length=1, max_length=5000, description="Tin nhắn từ user")
+
+
+class PlannerChatResponse(BaseModel):
+    reply: str = Field(..., description="Phản hồi từ trip planner")

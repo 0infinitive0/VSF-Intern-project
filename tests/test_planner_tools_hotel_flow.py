@@ -68,7 +68,7 @@ def test_recommend_hotels_writes_pending_file_and_lists_names(monkeypatch):
     options = [_fake_option("h1", "Khách sạn Một", 1), _fake_option("h2", "Khách sạn Hai", 2)]
     monkeypatch.setattr(planner_tools_module, "_get_destination_id", lambda destination: "dest-1")
     monkeypatch.setattr(planner_tools_module, "select_hotel_candidates", lambda *a, **k: options)
-    monkeypatch.setattr(planner_tools_module, "rank_hotel_candidates", lambda opts: opts)
+    monkeypatch.setattr(planner_tools_module, "rank_hotel_candidates", lambda opts, **_kwargs: opts)
 
     result = planner_tools_module.recommend_hotels.invoke(
         {
@@ -98,7 +98,7 @@ def test_select_hotel_with_valid_rank_builds_itinerary_and_clears_pending(monkey
     options = [_fake_option("h1", "Khách sạn Một", 1), _fake_option("h2", "Khách sạn Hai", 2)]
     monkeypatch.setattr(planner_tools_module, "_get_destination_id", lambda destination: "dest-1")
     monkeypatch.setattr(planner_tools_module, "select_hotel_candidates", lambda *a, **k: options)
-    monkeypatch.setattr(planner_tools_module, "rank_hotel_candidates", lambda opts: opts)
+    monkeypatch.setattr(planner_tools_module, "rank_hotel_candidates", lambda opts, **_kwargs: opts)
     planner_tools_module.recommend_hotels.invoke(
         {
             "destination": "Đà Nẵng",
@@ -125,7 +125,7 @@ def test_select_hotel_unresolved_selection_reshows_list_and_keeps_pending(monkey
     options = [_fake_option("h1", "Khách sạn Một", 1)]
     monkeypatch.setattr(planner_tools_module, "_get_destination_id", lambda destination: "dest-1")
     monkeypatch.setattr(planner_tools_module, "select_hotel_candidates", lambda *a, **k: options)
-    monkeypatch.setattr(planner_tools_module, "rank_hotel_candidates", lambda opts: opts)
+    monkeypatch.setattr(planner_tools_module, "rank_hotel_candidates", lambda opts, **_kwargs: opts)
     planner_tools_module.recommend_hotels.invoke(
         {
             "destination": "Đà Nẵng",
@@ -192,3 +192,61 @@ def test_generate_full_itinerary_without_hotel_id_uses_legacy_path(monkeypatch):
 
     assert captured["preselected_hotel"] is None
     assert not result.startswith("SYSTEM ERROR:")
+
+
+def test_recommend_hotels_threads_budget_and_amenity_prefs_into_ranking(monkeypatch):
+    options = [_fake_option("h1", "Khách sạn Một", 1)]
+    captured_rank_kwargs: dict = {}
+
+    def fake_rank_hotel_candidates(opts, **kwargs):
+        captured_rank_kwargs.update(kwargs)
+        return opts
+
+    monkeypatch.setattr(planner_tools_module, "_get_destination_id", lambda destination: "dest-1")
+    monkeypatch.setattr(planner_tools_module, "select_hotel_candidates", lambda *a, **k: options)
+    monkeypatch.setattr(planner_tools_module, "rank_hotel_candidates", fake_rank_hotel_candidates)
+    monkeypatch.setattr(planner_tools_module, "lookup_sea_view_hotel_ids", lambda ids: frozenset())
+
+    planner_tools_module.recommend_hotels.invoke(
+        {
+            "destination": "Đà Nẵng",
+            "duration": "3 ngày",
+            "people": "2 người",
+            "preferences": "",
+            "hotel_preferences": "",
+            "target_price": "4000000",
+            "hotel_amenity_prefs": "sea_view,pool",
+        }
+    )
+
+    assert captured_rank_kwargs["target_price"] == 4_000_000.0
+    assert captured_rank_kwargs["amenity_prefs"] == frozenset({"sea_view", "pool"})
+
+
+def test_recommend_hotels_calls_sea_view_lookup_only_when_requested(monkeypatch):
+    options = [_fake_option("h1", "Khách sạn Một", 1)]
+    lookup_calls: list = []
+
+    monkeypatch.setattr(planner_tools_module, "_get_destination_id", lambda destination: "dest-1")
+    monkeypatch.setattr(planner_tools_module, "select_hotel_candidates", lambda *a, **k: options)
+    monkeypatch.setattr(planner_tools_module, "rank_hotel_candidates", lambda opts, **kwargs: opts)
+    monkeypatch.setattr(
+        planner_tools_module,
+        "lookup_sea_view_hotel_ids",
+        lambda ids: lookup_calls.append(ids) or frozenset(ids),
+    )
+
+    base_args = {
+        "destination": "Đà Nẵng",
+        "duration": "3 ngày",
+        "people": "2 người",
+        "preferences": "",
+        "hotel_preferences": "",
+        "target_price": "",
+    }
+
+    planner_tools_module.recommend_hotels.invoke({**base_args, "hotel_amenity_prefs": "pool"})
+    assert lookup_calls == []
+
+    planner_tools_module.recommend_hotels.invoke({**base_args, "hotel_amenity_prefs": "sea_view,pool"})
+    assert lookup_calls == [["h1"]]
