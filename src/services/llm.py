@@ -236,6 +236,14 @@ def get_embeddings(
                 "model": openrouter_model,
                 "api_key": openrouter_key,
                 "base_url": openrouter_base,
+                # Non-OpenAI-hosted endpoints (OpenRouter, Cloudflare Workers AI, ...) only
+                # accept plain-text `input`, not this client's default pre-tokenized integer
+                # arrays. tiktoken_enabled=False alone still falls back to a local HuggingFace
+                # AutoTokenizer keyed on `model` for length-safety chunking, which fails for
+                # a non-HF model id like "@cf/baai/bge-m3" — check_embedding_ctx_length=False
+                # skips that local tokenization path entirely and sends raw strings.
+                "tiktoken_enabled": False,
+                "check_embedding_ctx_length": False,
             }
             return OpenAIEmbeddings(**kwargs)
         except Exception as exc:
@@ -252,6 +260,10 @@ def get_embeddings(
             kwargs: dict[str, Any] = {
                 "model": target_model or "text-embedding-3-small",
                 "api_key": target_key,
+                # See the OpenRouter branch above: a custom base_url usually means a
+                # non-OpenAI-hosted endpoint that only accepts plain-text `input`.
+                "tiktoken_enabled": False,
+                "check_embedding_ctx_length": False,
             }
             if target_base:
                 kwargs["base_url"] = target_base

@@ -10,10 +10,12 @@ from src.cli.planner_tools import (
     _is_finalization_request,
     create_planner_agent,
     finalize_trip_plan,
-    generate_full_itinerary,
+    recommend_hotels,
+    select_hotel,
 )
 from src.cli.trip_builder_svc import (
     CURRENT_TRIP_PLAN_FILE,
+    PENDING_HOTEL_SELECTION_FILE,
     _get_destination_names,
 )
 from src.services.trip_intake import TripIntakeState
@@ -45,6 +47,13 @@ def run_terminal_chat():
 
             logger.info(f"User Input: {user_input}")
 
+            if os.path.exists(PENDING_HOTEL_SELECTION_FILE):
+                tool_response = select_hotel.invoke({"selection": user_input})
+                logger.info("Hotel selection response: %s", tool_response)
+                print(f"\nAI:\n{tool_response}")
+                initial_plan_complete = not str(tool_response).startswith("SYSTEM ERROR:")
+                continue
+
             if os.path.exists(CURRENT_TRIP_PLAN_FILE) and _is_finalization_request(user_input):
                 tool_response = finalize_trip_plan.invoke({})
                 logger.info("Finalization response: %s", tool_response)
@@ -67,10 +76,9 @@ def run_terminal_chat():
                 print("\nAgent is building the verified trip plan...\n")
                 verified_arguments = intake_state.tool_arguments()
                 logger.info("Deterministic intake complete: %s", verified_arguments)
-                tool_response = generate_full_itinerary.invoke(verified_arguments)
+                tool_response = recommend_hotels.invoke(verified_arguments)
                 logger.info("Final Tool Response Output:\n%s", tool_response)
                 print(f"\nAI:\n{tool_response}")
-                initial_plan_complete = not str(tool_response).startswith("SYSTEM ERROR:")
                 continue
 
             print("\nAgent is thinking...\n")

@@ -12,7 +12,7 @@ def test_terminal_planner_persists_complete_bundles_and_exposes_finalization() -
     assert '"destination_id": destination_id' in svc
     assert '"hotel_id": hotel_data["id"]' in svc
     assert "def finalize_trip_plan()" in tools
-    assert "[generate_full_itinerary, modify_trip_plan, finalize_trip_plan]" in tools
+    assert "[recommend_hotels, select_hotel, modify_trip_plan, finalize_trip_plan]" in tools
     assert "ENABLE_ITINERARY_REUSE" in svc
 
 

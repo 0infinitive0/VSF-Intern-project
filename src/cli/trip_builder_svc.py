@@ -50,8 +50,32 @@ from src.services.trip_scheduler import (
 logger = logging.getLogger(__name__)
 
 CURRENT_TRIP_PLAN_FILE = "current_trip_plan.json"
+PENDING_HOTEL_SELECTION_FILE = "pending_hotel_selection.json"
 ENABLE_ITINERARY_REUSE = os.getenv("ENABLE_ITINERARY_REUSE", "false").casefold() in {"1", "true", "yes"}
 ITINERARY_REUSE_TIER1_THRESHOLD = float(os.getenv("ITINERARY_REUSE_TIER1_THRESHOLD", "0.88"))
+
+
+def _save_pending_hotel_selection(payload: Dict[str, Any]) -> None:
+    """Persist the hotel options just shown to the user, so the next chat turn can
+    resolve their reply (a rank number or a name) back to one of them."""
+    with open(PENDING_HOTEL_SELECTION_FILE, "w", encoding="utf-8") as file_handle:
+        json.dump(payload, file_handle, ensure_ascii=False, indent=2)
+
+
+def _load_pending_hotel_selection() -> Dict[str, Any] | None:
+    if not os.path.exists(PENDING_HOTEL_SELECTION_FILE):
+        return None
+    try:
+        with open(PENDING_HOTEL_SELECTION_FILE, "r", encoding="utf-8") as file_handle:
+            return json.load(file_handle)
+    except Exception as exc:
+        logger.error("Failed to read pending hotel selection: %s", exc)
+        return None
+
+
+def _clear_pending_hotel_selection() -> None:
+    if os.path.exists(PENDING_HOTEL_SELECTION_FILE):
+        os.remove(PENDING_HOTEL_SELECTION_FILE)
 
 
 @lru_cache
@@ -307,6 +331,7 @@ def _build_trip_data(
     preferences_text: str = "",
     hotel_query: str | None = None,
     themes_override: List[Dict[str, Any]] | None = None,
+    preselected_hotel: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     destination_id = _get_destination_id(destination)
     if not destination_id:
@@ -334,11 +359,17 @@ def _build_trip_data(
     )
     reusable_template = _find_reusable_template(reuse_query) if themes_override is None else None
 
-    hotel_options = _select_real_hotel(destination, destination_id, people, hotel_query)
-    if not hotel_options:
-        raise ValueError(
-            f"Không tìm thấy khách sạn có tọa độ hợp lệ tại {destination}; không thể lập lịch trình theo vị trí khách sạn."
-        )
+    if preselected_hotel is not None:
+        preselected_candidate = PlaceCandidate.from_mapping({**preselected_hotel, "category": "Hotel"})
+        if not preselected_candidate.id or not preselected_candidate.coordinate_pair:
+            raise ValueError("Khách sạn đã chọn thiếu tọa độ hợp lệ; không thể lập lịch trình.")
+        hotel_options = [(preselected_hotel, preselected_candidate)]
+    else:
+        hotel_options = _select_real_hotel(destination, destination_id, people, hotel_query)
+        if not hotel_options:
+            raise ValueError(
+                f"Không tìm thấy khách sạn có tọa độ hợp lệ tại {destination}; không thể lập lịch trình theo vị trí khách sạn."
+            )
     hotel_candidates = [candidate for _, candidate in hotel_options]
 
     raw_themes = themes_override or (list(reusable_template.day_themes) if reusable_template else None)
@@ -920,5 +951,54 @@ def format_trip_response_from_json(trip_data: Dict[str, Any]) -> str:
     if adjustments:
         output.append("Điều chỉnh tự động:")
         output.extend(f"- {adjustment}" for adjustment in adjustments)
-        
+
     return "\n".join(output)
+
+
+def format_hotel_options(options: List[tuple[Dict[str, Any], PlaceCandidate]]) -> str:
+    """Render a ranked hotel candidate list as numbered Vietnamese chat text."""
+    if not options:
+        return "Không tìm thấy khách sạn phù hợp. Bạn thử mô tả khác hoặc đổi điểm đến xem sao."
+
+    lines = ["Mình tìm được vài khách sạn phù hợp, bạn chọn giúp mình nhé:", "------"]
+    for data, _candidate in options:
+        rank = data.get("rank", "?")
+        name = data.get("name") or "Khách sạn chưa xác định"
+        star_rating = data.get("star_rating")
+        stars_str = f" ({star_rating} sao)" if star_rating else ""
+
+        review_score = data.get("review_score")
+        review_count = data.get("review_count")
+        review_str = ""
+        if review_score:
+            review_str = f" | Đánh giá: {review_score}/10"
+            if review_count:
+                review_str += f" ({review_count} lượt)"
+
+        lowest_price = data.get("lowest_price")
+        price_str = ""
+        if lowest_price is not None:
+            currency = data.get("currency") or "VND"
+            try:
+                price_str = f" | Giá từ: {float(lowest_price):,.0f} {currency}"
+            except (TypeError, ValueError):
+                price_str = f" | Giá từ: {lowest_price} {currency}"
+
+        lines.append(f"{rank}. {name}{stars_str}{review_str}{price_str}")
+
+        description = data.get("description")
+        if description:
+            lines.append(f"   {description}")
+
+        matched_rooms = (data.get("matched_rooms") or [])[:2]
+        if matched_rooms:
+            lines.append(f"   Phòng gợi ý: {', '.join(matched_rooms)}")
+
+        covered_meals = data.get("covered_meals") or []
+        if covered_meals:
+            lines.append(f"   Bữa ăn đã bao gồm: {', '.join(covered_meals)}")
+
+        lines.append("------")
+
+    lines.append("Trả lời bằng số thứ tự hoặc tên khách sạn để chọn.")
+    return "\n".join(lines)

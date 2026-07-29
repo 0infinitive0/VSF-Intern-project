@@ -5,6 +5,7 @@ from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
 import requests
+from langchain_core.embeddings import Embeddings
 from langchain_ollama import OllamaEmbeddings
 from supabase import Client, create_client
 
@@ -101,7 +102,7 @@ def search_hotels_with_rooms(
     match_count: int = 10,
     filter_destination_id: Optional[str] = None,
     use_llm_filter: bool = True,
-    model: str = "llama3.1:latest",
+    model: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Tìm kiếm semantic hotels và rooms cùng nhau sử dụng Supabase RPC match_hotels_with_rooms và local Ollama LLM filtering."""
     supabase = get_supabase_client()
@@ -159,7 +160,7 @@ def search_attractions(
     match_count: int = 10,
     filter_destination_id: Optional[str] = None,
     use_llm_filter: bool = True,
-    model: str = "llama3.1:latest",
+    model: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Tìm kiếm semantic attractions sử dụng Supabase RPC match_attractions và local Ollama LLM filtering."""
     supabase = get_supabase_client()

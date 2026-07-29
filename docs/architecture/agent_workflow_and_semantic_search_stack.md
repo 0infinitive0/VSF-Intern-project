@@ -167,6 +167,43 @@ so all daily clusters are based on the new hotel location.
 
 ## Semantic search: request-to-result path
 
+The steps below run on every hotel or attraction search. Embeddings on the
+data side — the vectors stored on each `hotels`/`attractions` row — are
+computed ahead of time by a separate sync job (e.g.
+`scripts/migrate_vectors_to_supabase.py`), not during this request. Only the
+caller's query is embedded live.
+
+```mermaid
+sequenceDiagram
+    actor U as Caller (planner or API)
+    participant App as supabase_search.py
+    participant LLM as Ollama llama3.1<br/>(filter extraction)
+    participant Emb as Ollama bge-m3<br/>(embedding)
+    participant RPC as Supabase RPC<br/>(pgvector similarity)
+    participant Tbl as Supabase table<br/>(hotels / attractions)
+
+    U->>App: query text + optional destination_id
+    opt use_llm_filter = true
+        App->>LLM: extract filters from query text
+        LLM-->>App: clean_query, destination_name,<br/>min_star_rating / category, max_price
+    end
+    App->>Emb: embed(clean_query)
+    Emb-->>App: 1024-d query vector
+    App->>RPC: match_hotels_with_rooms /<br/>match_attractions(query_embedding,<br/>match_threshold, match_count, filter_destination_id)
+    RPC-->>App: rows ranked by similarity<br/>(compared against pre-computed embeddings)
+    App->>App: apply extracted filters locally<br/>(star rating / price / category)
+    App->>Tbl: select full columns<br/>where id in (matched ids)
+    Tbl-->>App: hydrated rows
+    App-->>U: ranked, hydrated results
+```
+
+Two distinct local models are involved, not one. `llama3.1` only ever
+produces text/JSON (filter extraction here; theme generation and edit
+classification elsewhere in the planner). `bge-m3` only ever produces the
+embedding vector. Neither model sees the other's output, and neither model
+ever produces a venue record directly — that always comes from the Supabase
+row hydrated in the last step.
+
 1. A caller supplies a natural-language query and an optional destination UUID.
 2. In the general reusable search service, `llama3.1:latest` may extract a
    clean semantic phrase and filters such as destination, category, star rating,

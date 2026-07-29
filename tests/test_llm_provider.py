@@ -3,11 +3,35 @@
 import os
 from unittest.mock import patch
 
+import pytest
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
-from src.config import Settings
+from src.config import Settings, get_settings
 from src.services.llm import get_embeddings, get_llm
+
+_PROVIDER_ENV_PREFIXES = ("LLM_", "EMBEDDING_")
+_PROVIDER_ENV_KEYS = ("OPENAI_API_KEY", "OPENROUTER_API_KEY")
+
+
+@pytest.fixture(autouse=True)
+def _default_provider_settings(tmp_path, monkeypatch):
+    """These tests assert "no provider configured" fallback behavior, which must hold
+    regardless of a real local .env (expected in dev, per the free-API setup docs) or
+    ambient LLM_*/EMBEDDING_* vars in the shell. `get_settings()` is `@lru_cache`d and
+    reads `env_file=".env"` relative to CWD, so both the raw env and the settings
+    singleton need resetting — clearing os.environ alone would still leak through the
+    cached Settings object.
+    """
+    for key in list(os.environ):
+        if key.startswith(_PROVIDER_ENV_PREFIXES) or key in _PROVIDER_ENV_KEYS:
+            monkeypatch.delenv(key, raising=False)
+    monkeypatch.chdir(tmp_path)
+    get_settings.cache_clear()
+    get_embeddings.cache_clear()
+    yield
+    get_settings.cache_clear()
+    get_embeddings.cache_clear()
 
 
 def test_get_llm_default_ollama():
