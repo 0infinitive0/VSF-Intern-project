@@ -60,19 +60,20 @@ bash scripts/setup_hooks.sh
 
 Hooks tự động log mọi AI prompt khi dùng Claude Code, Cursor, Codex, Gemini CLI, Antigravity, hoặc GitHub Copilot. Không cần thao tác thủ công.
 
-### Bước 4: Chạy server
+### Bước 4: Chạy server & Terminal OTA Chat
 
 ```bash
-# Chạy FastAPI backend
+# 1. Chạy FastAPI backend API
 uvicorn src.main:app --reload --port 8000
+# Mở Swagger UI: http://localhost:8000/docs
 
-# Mở Swagger UI
-# http://localhost:8000/docs
+# 2. Chạy Terminal OTA Chat CLI
+python -m scripts.poc_trip_planner
 ```
 
-### Bước 5: Đọc hướng dẫn
+### Bước 5: Đọc hướng dẫn & Setup Chi Tiết
 
-📖 Mở **[Technical Guidebook](https://phoenix.note.transformerlabs.ai/technical-book)** và làm theo từng chương.
+📖 Mở **[Setup Guide](file:///d:/Git%20repo/vsf-project/docs/setup/SETUP_GUIDE.md)** hoặc **[Technical Guidebook](https://phoenix.note.transformerlabs.ai/technical-book)** và làm theo từng bước.
 
 ## 📁 Cấu trúc dự án
 
