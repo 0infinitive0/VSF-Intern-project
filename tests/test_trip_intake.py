@@ -95,7 +95,7 @@ def test_destination_alias_schema_and_terminal_loader_contract() -> None:
         root / "scripts" / "migrations" / "20260728_add_destination_aliases.sql"
     ).read_text(encoding="utf-8")
     schema = (root / "scripts" / "database_schema.sql").read_text(encoding="utf-8")
-    planner = (root / "scripts" / "poc_trip_planner.py").read_text(encoding="utf-8")
+    planner = (root / "src" / "cli" / "trip_builder_svc.py").read_text(encoding="utf-8")
 
     assert "ADD COLUMN IF NOT EXISTS aliases TEXT[]" in migration
     assert "ALTER COLUMN aliases SET DEFAULT '{}'::TEXT[]" in migration

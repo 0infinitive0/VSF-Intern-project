@@ -427,9 +427,9 @@ def test_itineraries_schema_has_an_additive_day_themes_jsonb_migration() -> None
 
 def test_generated_trip_json_keeps_day_themes_only_with_the_itinerary_record() -> None:
     root = Path(__file__).resolve().parents[1]
-    planner = (root / "scripts" / "poc_trip_planner.py").read_text(encoding="utf-8")
+    svc = (root / "src" / "cli" / "trip_builder_svc.py").read_text(encoding="utf-8")
 
-    assert planner.count('"day_themes": day_themes,') == 1
+    assert svc.count('"day_themes": day_themes,') == 1
 
 
 def test_validate_repairs_noon_beach_overlap_and_excess_playground() -> None:

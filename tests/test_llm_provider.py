@@ -59,3 +59,21 @@ def test_get_embeddings_openai_with_key():
     embeddings = get_embeddings(provider="openai", model="text-embedding-3-small", api_key="sk-dummykey123")
     assert isinstance(embeddings, OpenAIEmbeddings)
     assert embeddings.model == "text-embedding-3-small"
+
+
+def test_get_embeddings_openrouter_bge_m3_with_key():
+    """Verify that selecting OpenRouter with bge-m3 model configures OpenAIEmbeddings with baai/bge-m3."""
+    get_embeddings.cache_clear()
+    embeddings = get_embeddings(provider="openrouter", model="bge-m3", api_key="sk-or-dummy123")
+    assert isinstance(embeddings, OpenAIEmbeddings)
+    assert embeddings.model == "baai/bge-m3"
+    assert "openrouter.ai" in str(embeddings.openai_api_base)
+
+
+def test_get_embeddings_openrouter_without_key_falls_back():
+    """Verify that selecting OpenRouter embedding without an API key falls back to local OllamaEmbeddings."""
+    get_embeddings.cache_clear()
+    with patch.dict(os.environ, {"EMBEDDING_PROVIDER": "openrouter", "EMBEDDING_API_KEY": "", "OPENROUTER_API_KEY": ""}, clear=True):
+        embeddings = get_embeddings(provider="openrouter", api_key="")
+        assert isinstance(embeddings, OllamaEmbeddings)
+        assert embeddings.model == "bge-m3"

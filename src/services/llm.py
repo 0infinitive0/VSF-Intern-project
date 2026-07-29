@@ -128,7 +128,7 @@ def get_llm(
             logger.warning("Failed to initialize ChatGoogleGenerativeAI (%s). Falling back to local Ollama LLM.", exc)
             return _get_local_llm(temperature=target_temp)
 
-    if target_provider == "anthropic":
+    if target_provider in {"anthropic"}:
         if not target_key:
             logger.warning("Anthropic provider selected but no API key provided. Falling back to local Ollama LLM.")
             return _get_local_llm(temperature=target_temp)
@@ -142,6 +142,27 @@ def get_llm(
             )
         except Exception as exc:
             logger.warning("Failed to initialize ChatAnthropic (%s). Falling back to local Ollama LLM.", exc)
+            return _get_local_llm(temperature=target_temp)
+
+    if target_provider in {"openrouter", "openrouter_api"}:
+        openrouter_key = (
+            target_key
+            or os.environ.get("OPENROUTER_API_KEY")
+            or getattr(settings, "openrouter_api_key", "")
+        )
+        if not openrouter_key:
+            logger.warning("OpenRouter provider selected but no API key provided. Falling back to local Ollama LLM.")
+            return _get_local_llm(temperature=target_temp)
+        try:
+            kwargs: dict[str, Any] = {
+                "model": target_model or "meta-llama/llama-3.1-8b-instruct:free",
+                "api_key": openrouter_key,
+                "base_url": target_base or "https://openrouter.ai/api/v1",
+                "temperature": target_temp,
+            }
+            return ChatOpenAI(**kwargs)
+        except Exception as exc:
+            logger.warning("Failed to initialize OpenRouter ChatOpenAI (%s). Falling back to local Ollama LLM.", exc)
             return _get_local_llm(temperature=target_temp)
 
     logger.warning("Unknown LLM provider '%s'. Falling back to local Ollama LLM.", target_provider)
@@ -158,8 +179,8 @@ def get_embeddings(
     """Return configured Embeddings instance with local Ollama fallback.
 
     Args:
-        provider: Provider name ("ollama", "openai", "google", "gemini").
-        model: Model name string (e.g. "bge-m3", "text-embedding-3-small").
+        provider: Provider name ("ollama", "openai", "openrouter", "google", "gemini").
+        model: Model name string (e.g. "bge-m3", "baai/bge-m3", "text-embedding-3-small").
         api_key: API key for remote providers.
         base_url: Custom API endpoint base URL.
     """
@@ -182,7 +203,9 @@ def get_embeddings(
     target_key = (
         api_key
         or os.environ.get("EMBEDDING_API_KEY")
+        or os.environ.get("OPENROUTER_API_KEY")
         or getattr(settings, "embedding_api_key", "")
+        or getattr(settings, "openrouter_api_key", "")
         or getattr(settings, "openai_api_key", "")
     )
 
@@ -194,6 +217,32 @@ def get_embeddings(
 
     if target_provider in {"ollama", "local"}:
         return _get_local_embeddings(model=target_model, base_url=target_base)
+
+    if target_provider in {"openrouter", "openrouter_api"}:
+        openrouter_key = (
+            target_key
+            or os.environ.get("OPENROUTER_API_KEY")
+            or getattr(settings, "openrouter_api_key", "")
+        )
+        if not openrouter_key:
+            logger.warning(
+                "OpenRouter embedding provider selected but no API key provided. Falling back to local OllamaEmbeddings."
+            )
+            return _get_local_embeddings()
+        try:
+            openrouter_base = target_base or "https://openrouter.ai/api/v1"
+            openrouter_model = target_model if ("/" in target_model or target_model != "bge-m3") else "baai/bge-m3"
+            kwargs: dict[str, Any] = {
+                "model": openrouter_model,
+                "api_key": openrouter_key,
+                "base_url": openrouter_base,
+            }
+            return OpenAIEmbeddings(**kwargs)
+        except Exception as exc:
+            logger.warning(
+                "Failed to initialize OpenRouter OpenAIEmbeddings (%s). Falling back to local OllamaEmbeddings.", exc
+            )
+            return _get_local_embeddings()
 
     if target_provider == "openai":
         if not target_key:

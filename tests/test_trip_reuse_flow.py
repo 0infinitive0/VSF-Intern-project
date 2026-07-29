@@ -5,22 +5,23 @@ from pathlib import Path
 
 def test_terminal_planner_persists_complete_bundles_and_exposes_finalization() -> None:
     root = Path(__file__).resolve().parents[1]
-    planner = (root / "scripts" / "poc_trip_planner.py").read_text(encoding="utf-8")
+    svc = (root / "src" / "cli" / "trip_builder_svc.py").read_text(encoding="utf-8")
+    tools = (root / "src" / "cli" / "planner_tools.py").read_text(encoding="utf-8")
 
-    assert '"item_kind": item.kind' in planner
-    assert '"destination_id": destination_id' in planner
-    assert '"hotel_id": hotel_data["id"]' in planner
-    assert "def finalize_trip_plan()" in planner
-    assert "[generate_full_itinerary, modify_trip_plan, finalize_trip_plan]" in planner
-    assert "ENABLE_ITINERARY_REUSE" in planner
+    assert '"item_kind": item.kind' in svc
+    assert '"destination_id": destination_id' in svc
+    assert '"hotel_id": hotel_data["id"]' in svc
+    assert "def finalize_trip_plan()" in tools
+    assert "[generate_full_itinerary, modify_trip_plan, finalize_trip_plan]" in tools
+    assert "ENABLE_ITINERARY_REUSE" in svc
 
 
 def test_finalized_itinerary_is_not_mutated_by_the_edit_tool() -> None:
     root = Path(__file__).resolve().parents[1]
-    planner = (root / "scripts" / "poc_trip_planner.py").read_text(encoding="utf-8")
+    tools = (root / "src" / "cli" / "planner_tools.py").read_text(encoding="utf-8")
 
-    assert "Kế hoạch đã xác nhận không thể chỉnh sửa" in planner
-    assert planner.index("Kế hoạch đã xác nhận không thể chỉnh sửa") < planner.index(
+    assert "Kế hoạch đã xác nhận không thể chỉnh sửa" in tools
+    assert tools.index("Kế hoạch đã xác nhận không thể chỉnh sửa") < tools.index(
         "_parse_trip_change(modification_request)"
     )
 
