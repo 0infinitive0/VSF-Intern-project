@@ -19,6 +19,15 @@ MINIMUM_ITEMS_PER_DAY = 7
 VALID_ITEM_KINDS = frozenset(
     {"breakfast", "attraction", "lunch", "rest", "coffee", "dinner", "evening"}
 )
+HUMAN_LABELS = {
+    "breakfast": "bữa sáng",
+    "attraction": "tham quan",
+    "lunch": "bữa trưa",
+    "rest": "nghỉ ngơi",
+    "coffee": "nghỉ tại quán cà phê",
+    "dinner": "bữa tối",
+    "evening": "hoạt động nhẹ buổi tối",
+}
 
 
 def _canonical_text(value: object) -> str:
@@ -38,6 +47,10 @@ def _string_list(value: object) -> tuple[str, ...]:
     if isinstance(value, Iterable):
         return tuple(str(item) for item in value)
     return ()
+
+
+def _human_labels(values: Iterable[str]) -> tuple[str, ...]:
+    return tuple(HUMAN_LABELS.get(value, value) for value in values)
 
 
 @dataclass(frozen=True)
@@ -113,32 +126,50 @@ def build_itinerary_summary(
     items: Sequence[Mapping[str, Any]],
     budget: object = None,
 ) -> str:
-    """Create the deterministic, non-volatile text persisted for embedding."""
+    """Create deterministic, human-readable text persisted for embedding."""
 
-    fingerprint = build_reuse_fingerprint(query).summary
-    themes = []
+    destination = _canonical_text(query.destination_name) or "điểm đến chưa xác định"
+    traveler_parts = [f"{int(query.number_of_adults)} người lớn"]
+    if query.number_of_children:
+        traveler_parts.append(f"{int(query.number_of_children)} trẻ em")
+    parts = [
+        f"Chuyến đi {int(query.duration_days)} ngày tại {destination} "
+        f"dành cho {' và '.join(traveler_parts)}."
+    ]
+
+    preferences = _normalized_terms(query.preferences)
+    if preferences:
+        parts.append(f"Sở thích: {', '.join(preferences)}.")
+    if query.child_focused:
+        parts.append("Chuyến đi ưu tiên trải nghiệm phù hợp với trẻ em.")
+
+    meals = _normalized_terms(_string_list(hotel.get("covered_meals")))
+    star = _canonical_text(hotel.get("star_rating"))
+    if star:
+        meal_text = ", ".join(_human_labels(meals)) if meals else "không có"
+        parts.append(f"Khách sạn: {star} sao; bao gồm bữa ăn: {meal_text}.")
+    elif meals:
+        parts.append(f"Khách sạn bao gồm bữa ăn: {', '.join(_human_labels(meals))}.")
+
+    themes: list[str] = []
     for theme in sorted(day_themes, key=lambda value: int(value.get("day_number") or 0)):
         day = int(theme.get("day_number") or 0)
-        title = _canonical_text(theme.get("title")).casefold()
-        theme_query = _canonical_text(theme.get("query")).casefold()
+        title = _canonical_text(theme.get("title"))
+        theme_query = _canonical_text(theme.get("query"))
         if day and (title or theme_query):
-            themes.append(f"day_{day}={title}:{theme_query}")
+            description = f"{title} — {theme_query}" if title and theme_query else title or theme_query
+            themes.append(f"Ngày {day}: {description}.")
+    parts.extend(themes)
 
     kinds = _normalized_terms(item.get("item_kind") or item.get("kind") for item in items)
     categories = _normalized_terms(item.get("category") for item in items)
-    meals = _normalized_terms(_string_list(hotel.get("covered_meals")))
-    star = hotel.get("star_rating")
-    parts = [
-        fingerprint,
-        f"hotel_star_band={_canonical_text(star) or 'unknown'}",
-        f"covered_meals={','.join(meals) or 'none'}",
-        f"day_themes={';'.join(themes) or 'none'}",
-        f"item_kinds={','.join(kinds) or 'none'}",
-        f"categories={','.join(categories) or 'none'}",
-    ]
+    if kinds:
+        parts.append(f"Hoạt động trong lịch trình: {', '.join(_human_labels(kinds))}.")
+    if categories:
+        parts.append(f"Nhóm địa điểm: {', '.join(categories)}.")
     if budget not in (None, "", 0, 0.0):
-        parts.append(f"budget_band={_canonical_text(budget)}")
-    return " | ".join(parts)
+        parts.append(f"Ngân sách: {_canonical_text(budget)}.")
+    return " ".join(parts)
 
 
 def validate_template_bundle(template: ItineraryTemplate) -> tuple[bool, tuple[str, ...]]:

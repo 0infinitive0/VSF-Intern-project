@@ -92,7 +92,35 @@ def test_summary_excludes_volatile_place_ids_and_times() -> None:
     assert "hotel-uuid" not in summary
     assert "attraction-uuid" not in summary
     assert "08:00:00" not in summary
-    assert "covered_meals=breakfast" in summary
+    assert "Khách sạn: 4 sao; bao gồm bữa ăn: bữa sáng." in summary
+
+
+def test_summary_is_deterministic_human_readable_vietnamese() -> None:
+    summary = build_itinerary_summary(
+        query(),
+        day_themes=[
+            {"day_number": 2, "title": "Ẩm thực", "query": "local food"},
+            {"day_number": 1, "title": "Biển", "query": "beach relaxation"},
+        ],
+        hotel={"star_rating": 4, "covered_meals": ["breakfast"]},
+        items=[
+            {"item_kind": "coffee", "category": "Food"},
+            {"item_kind": "attraction", "category": "Nature"},
+            {"item_kind": "attraction", "category": "Nature"},
+        ],
+        budget="mid-range",
+    )
+
+    assert summary == (
+        "Chuyến đi 2 ngày tại Đà Nẵng dành cho 2 người lớn và 1 trẻ em. "
+        "Sở thích: beach, ẩm thực. Chuyến đi ưu tiên trải nghiệm phù hợp với trẻ em. "
+        "Khách sạn: 4 sao; bao gồm bữa ăn: bữa sáng. "
+        "Ngày 1: Biển — beach relaxation. Ngày 2: Ẩm thực — local food. "
+        "Hoạt động trong lịch trình: tham quan, nghỉ tại quán cà phê. "
+        "Nhóm địa điểm: food, nature. Ngân sách: mid-range."
+    )
+    assert "destination_id=" not in summary
+    assert " | " not in summary
 
 
 def test_template_bundle_requires_complete_real_item_references() -> None:

@@ -23,18 +23,16 @@ def get_supabase_client() -> Client:
     return create_client(url, key)
 
 
+from src.services.llm import get_embeddings as factory_get_embeddings, get_llm
+
+
 @lru_cache
-def get_embeddings() -> OllamaEmbeddings:
-    settings = get_settings()
-    ollama_url = getattr(settings, "ollama_url", "http://localhost:11434")
-    return OllamaEmbeddings(model="bge-m3", base_url=ollama_url)
+def get_embeddings() -> Embeddings:
+    return factory_get_embeddings()
 
 
-def extract_search_filters(query: str, search_type: str = "hotel", model: str = "llama3.1:latest") -> Dict[str, Any]:
-    """Sử dụng local Ollama model để trích xuất filters (thành phố, số sao, giá, clean_query) từ câu truy vấn."""
-    settings = get_settings()
-    ollama_url = getattr(settings, "ollama_url", "http://localhost:11434")
-
+def extract_search_filters(query: str, search_type: str = "hotel", model: Optional[str] = None) -> Dict[str, Any]:
+    """Sử dụng LLM (configured via Settings/get_llm) để trích xuất filters từ câu truy vấn."""
     if search_type == "hotel":
         prompt = f"""You are an expert travel search query analyzer for Vietnam tourism.
 Analyze the user query and extract filtering criteria for hotel accommodation.
@@ -63,16 +61,22 @@ User query: "{query}"
 """
 
     try:
-        res = requests.post(
-            f"{ollama_url}/api/generate",
-            json={"model": model, "prompt": prompt, "stream": False, "format": "json", "keep_alive": 0},
-            timeout=10,
-        )
-        if res.status_code == 200:
-            raw_text = res.json().get("response", "{}")
-            return json.loads(raw_text)
+        llm = get_llm(model=model, temperature=0.0)
+        from langchain_core.messages import HumanMessage, SystemMessage
+        response = llm.invoke([
+            SystemMessage(content="You analyze travel search queries and return valid JSON only."),
+            HumanMessage(content=prompt),
+        ])
+        content = str(response.content).strip()
+        if content.startswith("```json"):
+            content = content[7:]
+        if content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        return json.loads(content.strip())
     except Exception as e:
-        logger.warning(f"Ollama filter extraction failed for query '{query}': {e}")
+        logger.warning(f"Filter extraction failed for query '{query}': {e}")
 
     return {"clean_query": query}
 

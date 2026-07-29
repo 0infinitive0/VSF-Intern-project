@@ -102,8 +102,13 @@ uvicorn src.main:app --reload --port 8000
 ├── .agents/              # Antigravity rules + workflows
 ├── .ai-log/              # 📊 AI usage logs (auto-generated)
 ├── docs/
-│   ├── guide/            # 📖 Technical Guidebook (10 chapters)
-│   └── architecture_diagram.md
+│   ├── README.md         # 📖 Docs index & sitemap
+│   ├── architecture/     # 📐 Technical & agent architecture specs
+│   ├── setup/            # 🚀 Environment & Docker setup guide
+│   ├── design/           # 🎨 UI specs, wireframes, techstack diagrams
+│   ├── proposals/        # 💡 Feature design proposals (Itinerary Reuse v2)
+│   ├── brd/              # 📄 Business Requirements Document (BRD)
+│   └── guide/            # 📚 Technical Guidebook (10 chapters)
 ├── eval/                 # 📊 Evaluation results
 ├── presentation/         # 🎤 Demo Day slides
 ├── .github/workflows/    # ⚡ CI/CD (GitHub Actions)
@@ -123,10 +128,10 @@ uvicorn src.main:app --reload --port 8000
 | 4 | **LangGraph Agent** — State, nodes, edges, tools, RAG | 8 giờ |
 | 5 | FastAPI — Routes, validation, error handling, streaming | 6 giờ |
 | 6 | Giao diện — Next.js + Streamlit quickstart | 6 giờ |
-| 7 | DevOps — Docker, CI/CD, deploy, logging | 6 giờ |
-| 8 | Kiểm thử — Unit test, integration test, RAGAS | 4 giờ |
-| 9 | Demo Day — 10 deliverables, checklist, tips | 2 giờ |
-| 10 | Tài nguyên — Khóa học, docs, BMAD method | tham khảo |
+| 7 | Production — Docker, multi-stage, Railway deploy | 4 giờ |
+| 8 | Quan sát — LangSmith, auto AI usage logging | 4 giờ |
+| 9 | Kiểm thử — Unit, integration, eval pipeline | 6 giờ |
+| 10 | Tổng kết — Final checklist, presentation prep | 4 giờ |
 
 📖 **Đọc online:** [phoenix.note.transformerlabs.ai/technical-book](https://phoenix.note.transformerlabs.ai/technical-book)
 
@@ -136,7 +141,7 @@ uvicorn src.main:app --reload --port 8000
 |---|-------------|-------------|:---:|
 | 1 | Source Code | `src/` | ✅ |
 | 2 | README.md | `README_boilerplate.md` → copy thành `README.md` | ✅ |
-| 3 | Architecture Diagram | `docs/architecture_diagram.md` | ✅ |
+| 3 | Architecture Specs | `docs/architecture/agent_workflow_and_semantic_search_stack.md` | ✅ |
 | 4 | AI Logs | LangSmith (3 env vars) + Auto AI Usage Logging | ✅ |
 | 5 | Live URL | Deploy lên Render/Vercel | ⚡ CI/CD sẵn |
 | 6 | Video Demo | `presentation/` | 📝 |

@@ -10,12 +10,13 @@ from typing import List, Dict, Any
 from dotenv import load_dotenv
 
 # Setup logging
+os.makedirs("data", exist_ok=True)
 logging.basicConfig(
-    filename='poc_trip_planner.log',
-    filemode='w',
+    filename=os.path.join("data", "poc_trip_planner.log"),
+    filemode="w",
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    encoding='utf-8',
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    encoding="utf-8",
 )
 logger = logging.getLogger(__name__)
 
@@ -26,10 +27,9 @@ load_dotenv()
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from langchain_core.tools import tool
+from src.services.llm import get_llm
 from langchain_core.messages import SystemMessage, HumanMessage
-from langchain_ollama import ChatOllama
 from langgraph.prebuilt import create_react_agent
-from langgraph.checkpoint.memory import MemorySaver
 from supabase import create_client, Client
 
 from src.services.supabase_search import search_attractions as rpc_search_attractions, search_hotels_with_rooms
@@ -966,7 +966,7 @@ def format_trip_response_from_json(trip_data: Dict[str, Any]) -> str:
 
 
 # Setup LLM and Memory
-llm = ChatOllama(model="llama3.1", temperature=0.3)
+llm = get_llm(temperature=0.3)
 memory = MemorySaver()
 
 

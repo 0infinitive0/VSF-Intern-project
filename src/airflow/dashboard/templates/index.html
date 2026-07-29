@@ -520,19 +520,22 @@
             loadTableData();
         }
 
-        // Exposed for map popups
+        // Exposed for map popups and trip plan data viewer buttons
         window.focusTable = function(type, id) {
-            const tableName = type + 's';
+            let tableName = (type || 'attraction').toLowerCase();
+            if (!tableName.endsWith('s')) {
+                tableName = tableName + 's';
+            }
             
-            // Switch tab visually
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            const tabs = Array.from(document.querySelectorAll('.tab'));
-            const targetTab = tabs.find(t => t.textContent.toLowerCase() === tableName.toLowerCase());
-            if (targetTab) targetTab.classList.add('active');
+            // Switch panel view (hides trip-plan-viewer, shows table-wrapper & pagination)
+            setTable(tableName);
             
-            currentTable = tableName;
-            document.getElementById('id-search').value = id;
-            searchId();
+            if (id) {
+                document.getElementById('id-search').value = id;
+                currentSearchId = id;
+                currentPage = 1;
+                loadTableData();
+            }
         };
 
         // Initial table load
@@ -569,6 +572,64 @@
         // === TRIP PLAN VIEWER LOGIC ===
         let currentTripData = null;
         let selectedDay = 1;
+        let savedItinerariesList = [];
+
+        async function fetchItinerariesForPicker() {
+            try {
+                const res = await fetch('/api/itineraries');
+                const result = await res.json();
+                if (result.status === 'success' && result.data) {
+                    savedItinerariesList = result.data;
+                    populateItineraryPickerSelect();
+                }
+            } catch (e) {
+                console.error("Failed to fetch itineraries list for picker:", e);
+            }
+        }
+
+        function populateItineraryPickerSelect() {
+            const selectEl = document.getElementById('itinerary-picker');
+            if (!selectEl) return;
+            const currentItinId = (currentTripData && currentTripData.itineraries && currentTripData.itineraries[0]) ? currentTripData.itineraries[0].id : null;
+
+            let html = `<option value="">📋 Local current_trip_plan.json</option>`;
+            savedItinerariesList.forEach(it => {
+                const prefList = it.preferences || [];
+                const pref = prefList.length ? prefList.join(', ') : 'Chuyến đi';
+                const status = it.status || 'Draft';
+                const days = it.duration_days || 1;
+                const adults = it.number_of_adults || 1;
+                const dateStr = it.created_at ? it.created_at.split('T')[0] : '';
+                const selected = (currentItinId && currentItinId === it.id) ? 'selected' : '';
+                html += `<option value="${it.id}" ${selected}>[${status}] ${pref} (${days}d, ${adults}p - ${dateStr})</option>`;
+            });
+            selectEl.innerHTML = html;
+        }
+
+        async function onItineraryPicked(itineraryId) {
+            const container = document.getElementById('trip-plan-content');
+            container.innerHTML = '<div style="text-align:center; padding:30px; color:#94a3b8;">⏳ Loading selected itinerary from Supabase DB...</div>';
+            try {
+                let url = '/api/trip_plan';
+                if (itineraryId) {
+                    url += `?itinerary_id=${encodeURIComponent(itineraryId)}`;
+                }
+                const res = await fetch(url);
+                const result = await res.json();
+                if (result.status === 'success' && result.data) {
+                    currentTripData = result.data;
+                    selectedDay = 1;
+                    await fetchLocations();
+                    renderTripPlanUI();
+                } else {
+                    alert("Failed to load selected itinerary: " + (result.message || 'Unknown error'));
+                    loadTripPlan();
+                }
+            } catch (e) {
+                alert("Network error loading itinerary: " + e.message);
+                loadTripPlan();
+            }
+        }
 
         async function loadTripPlan() {
             const container = document.getElementById('trip-plan-content');
@@ -582,12 +643,67 @@
                 if (result.status === 'success' && result.data) {
                     currentTripData = result.data;
                     renderTripPlanUI();
+                    fetchItinerariesForPicker();
                 } else {
                     container.innerHTML = `<div style="text-align:center; padding:30px; color:#f87171;">⚠️ ${result.message || 'Failed to load trip plan.'}<br><br><button class="btn btn-primary" onclick="loadTripPlan()">🔄 Retry</button></div>`;
                 }
             } catch (e) {
                 container.innerHTML = `<div style="text-align:center; padding:30px; color:#f87171;">⚠️ Network error: ${e.message}<br><br><button class="btn btn-primary" onclick="loadTripPlan()">🔄 Retry</button></div>`;
             }
+        }
+
+        function getLocForItem(item, hotel) {
+            if (!item) return null;
+            if (item.lat && item.lng) {
+                return { lat: parseFloat(item.lat), lng: parseFloat(item.lng), name: item.activity };
+            }
+            if (item.coordinates && typeof item.coordinates === 'string') {
+                const parts = item.coordinates.split(',');
+                if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+                    return { lat: parseFloat(parts[0]), lng: parseFloat(parts[1]), name: item.activity };
+                }
+            }
+            const refId = item.reference_id;
+            const refType = (item.reference_type || '').toLowerCase();
+
+            if (hotel && hotel.id && refId === hotel.id && hotel.coordinates) {
+                const parts = hotel.coordinates.split(',');
+                if (parts.length === 2) {
+                    return { lat: parseFloat(parts[0]), lng: parseFloat(parts[1]), name: hotel.name || item.activity };
+                }
+            }
+            if ((refType === 'hotel' || item.kind === 'rest') && hotel && hotel.coordinates) {
+                const parts = hotel.coordinates.split(',');
+                if (parts.length === 2) {
+                    return { lat: parseFloat(parts[0]), lng: parseFloat(parts[1]), name: hotel.name || item.activity };
+                }
+            }
+
+            if (!refId) return null;
+
+            if (window.allLocationsMap) {
+                let found = window.allLocationsMap[refId] ||
+                            window.allLocationsMap['attraction-' + refId] ||
+                            window.allLocationsMap['hotel-' + refId] ||
+                            window.allLocationsMap['destination-' + refId];
+                if (found && found.lat && found.lng) return found;
+            }
+
+            if (window.currentMarkers) {
+                const keys = [
+                    (refType || 'attraction') + '-' + refId,
+                    'attraction-' + refId,
+                    'hotel-' + refId,
+                    refId
+                ];
+                for (let k of keys) {
+                    if (window.currentMarkers[k]) {
+                        const pos = window.currentMarkers[k].getLatLng();
+                        return { lat: pos.lat, lng: pos.lng, name: item.activity };
+                    }
+                }
+            }
+            return null;
         }
 
         function updateMapForTripDay(dayNumber, dayItems, hotel) {
@@ -646,11 +762,7 @@
             let totalMeters = 0;
 
             dayItems.forEach((item, index) => {
-                let loc = window.allLocationsMap ? window.allLocationsMap[item.reference_id] : null;
-                if (!loc && item.reference_id && currentMarkers['attraction-' + item.reference_id]) {
-                    const pos = currentMarkers['attraction-' + item.reference_id].getLatLng();
-                    loc = { lat: pos.lat, lng: pos.lng, name: item.activity };
-                }
+                let loc = getLocForItem(item, hotel);
 
                 if (loc && loc.lat && loc.lng) {
                     const currCoord = [loc.lat, loc.lng];
@@ -852,9 +964,14 @@
 
             let html = `
                 <div class="trip-header-card">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                         <div class="trip-title">🌴 ${dest} <span class="trip-badge">${status}</span></div>
-                        <button class="btn btn-primary" onclick="loadTripPlan()" style="font-size:11px;">🔄 Refresh</button>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <select id="itinerary-picker" class="btn" style="background:#1e293b; color:#f8fafc; border:1px solid #475569; font-size:12px; padding:4px 8px; max-width:280px;" onchange="onItineraryPicked(this.value)">
+                                <option value="">⏳ Loading itineraries...</option>
+                            </select>
+                            <button class="btn btn-primary" onclick="loadTripPlan()" style="font-size:11px;">🔄 Refresh</button>
+                        </div>
                     </div>
                     <div style="font-size:13px; color:#cbd5e1; margin-top:6px; display:flex; gap:15px; flex-wrap:wrap;">
                         <span>⏱️ <b>${duration}</b> Days</span>
@@ -914,7 +1031,7 @@
                     const timeStr = item.start_time ? `${item.start_time.slice(0,5)} - ${item.end_time ? item.end_time.slice(0,5) : ''}` : `Step #${item.order_index}`;
                     
                     let actionBtn = '';
-                    const loc = window.allLocationsMap ? window.allLocationsMap[item.reference_id] : null;
+                    const loc = getLocForItem(item, hotel);
                     if (loc && loc.lat && loc.lng) {
                         actionBtn += `<button class="btn btn-success" style="padding:4px 8px; font-size:11px; margin-right:4px;" onclick="map.setView([${loc.lat}, ${loc.lng}], 16)">📍 Map</button>`;
                     }
@@ -943,7 +1060,8 @@
                 if (dayItems.length > 0 && hotel.coordinates && routeStats && routeStats.returnColor) {
                     const returnColor = routeStats.returnColor;
                     const lastStep = dayItems[dayItems.length - 1];
-                    const lastCoord = window.allLocationsMap && window.allLocationsMap[lastStep.reference_id] ? [window.allLocationsMap[lastStep.reference_id].lat, window.allLocationsMap[lastStep.reference_id].lng] : null;
+                    const lastLoc = getLocForItem(lastStep, hotel);
+                    const lastCoord = (lastLoc && lastLoc.lat && lastLoc.lng) ? [lastLoc.lat, lastLoc.lng] : null;
                     if (lastCoord) {
                         const hotelCoords = hotel.coordinates.split(',');
                         const returnKm = (L.latLng(lastCoord[0], lastCoord[1]).distanceTo(L.latLng(parseFloat(hotelCoords[0]), parseFloat(hotelCoords[1]))) / 1000).toFixed(1);
@@ -963,6 +1081,7 @@
             html += `</div>`;
 
             container.innerHTML = html;
+            populateItineraryPickerSelect();
         }
 
         function selectTripDay(dayNum) {

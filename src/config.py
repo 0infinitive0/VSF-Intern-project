@@ -20,10 +20,20 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     cors_origins: str = "http://localhost:3000,http://localhost:8082"
 
-    # LLM
+    # Chat LLM
     openai_api_key: str = ""
     model_name: str = "gpt-4o-mini"
-    llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    llm_temperature: float = Field(default=0.3, ge=0.0, le=2.0)
+    llm_provider: str = "ollama"
+    llm_model: str = "llama3.1"
+    llm_api_key: str = ""
+    llm_api_base: str = ""
+
+    # Embedding Model
+    embedding_provider: str = "ollama"
+    embedding_model: str = "bge-m3"
+    embedding_api_key: str = ""
+    embedding_api_base: str = ""
 
     # Database
     database_url: str = "sqlite:///./data/app.db"

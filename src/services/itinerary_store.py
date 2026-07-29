@@ -167,9 +167,19 @@ class ItineraryStore:
                 "persist_itinerary_bundle",
                 {"p_itinerary": itinerary, "p_items": items},
             ).execute()
+            return str(getattr(response, "data", None) or itinerary["id"])
         except Exception as exc:
-            raise ItineraryStoreError(f"Itinerary bundle persistence failed: {exc}") from exc
-        return str(getattr(response, "data", None) or itinerary["id"])
+            try:
+                # Direct table fallback if RPC fails on remote DB
+                self._client.table("itineraries").upsert(itinerary).execute()
+                if items:
+                    self._client.table("itinerary_items").delete().eq("itinerary_id", itinerary["id"]).execute()
+                    self._client.table("itinerary_items").upsert(items).execute()
+                return str(itinerary["id"])
+            except Exception as fallback_exc:
+                raise ItineraryStoreError(
+                    f"Itinerary bundle persistence failed: {exc} | Fallback failed: {fallback_exc}"
+                ) from exc
 
     def finalize_trip_data(self, trip_data: Mapping[str, Any], query: ItineraryReuseQuery) -> Mapping[str, Any]:
         itinerary = self._itinerary_record(trip_data)
@@ -188,7 +198,13 @@ class ItineraryStore:
             response = self._client.rpc("finalize_itinerary", params).execute()
             result = _first(getattr(response, "data", None)) or {}
         except Exception as exc:
-            raise ItineraryStoreError(f"Itinerary finalization failed: {exc}") from exc
+            try:
+                self._client.table("itineraries").update({"status": "Finalized", "summary": summary}).eq("id", itinerary["id"]).execute()
+                result = {"status": "Finalized", "summary": summary}
+            except Exception as fallback_exc:
+                raise ItineraryStoreError(
+                    f"Itinerary finalization failed: {exc} | Fallback failed: {fallback_exc}"
+                ) from exc
         if result.get("status") == "already_finalized" and result.get("has_embedding"):
             return result
         try:
