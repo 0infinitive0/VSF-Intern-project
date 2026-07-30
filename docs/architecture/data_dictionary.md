@@ -209,7 +209,7 @@ Các hàm SQL nguyên tử được triển khai trên Supabase để phục v�
 
 | Tên Hàm RPC | Tham Số Đầu Vào | Mục Đích & Mô Tả |
 | :--- | :--- | :--- |
-| `match_itineraries` | `query_embedding vector(1024)`, `match_threshold float`, `match_count int`, `filter_destination_id uuid`, `filter_duration_days smallint` | Tìm kiếm semantic search các lịch trình mẫu đã Finalized trong `pgvector` với bộ lọc cứng theo điểm đến và số ngày. Gom nhóm khử trùng cùng lineage bằng `DISTINCT ON (COALESCE(reuse_root_id, id))`. |
+| `match_itineraries` | `query_embedding vector(1024)`, `match_threshold float`, `match_count int`, `filter_destination_id uuid`, `filter_duration_days smallint`, `filter_hotel_id uuid` | Tìm kiếm semantic search các lịch trình mẫu đã Finalized trong `pgvector` với bộ lọc cứng theo điểm đến, số ngày và đúng khách sạn người dùng đã chọn. Gom nhóm khử trùng cùng lineage bằng `DISTINCT ON (COALESCE(reuse_root_id, id))`. |
 | `finalize_itinerary` | `p_itinerary_id uuid`, `p_summary text` | Chuyển trạng thái lịch trình từ `Draft` sang `Finalized` nguyên tử (`FOR UPDATE` row lock), tự động cộng `reuse_count` cho `parent_itinerary_id` đúng 1 lần (Idempotent). |
 | `persist_itinerary_bundle` | `p_itinerary jsonb`, `p_items jsonb` | Ghi nguyên tử toàn bộ lịch trình (Metadata + danh sách tất cả các `itinerary_items`) vào PostgreSQL trong 1 transaction. |
 

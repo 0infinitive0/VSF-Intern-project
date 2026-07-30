@@ -25,6 +25,7 @@ def test_build_reuse_fingerprint_reproducible():
         number_of_children=0,
         preferences=("lịch sử", "văn hóa"),
         child_focused=False,
+        hotel_id="hotel-1",
     )
     query2 = ItineraryReuseQuery(
         destination_id=HCM_ID,
@@ -34,6 +35,7 @@ def test_build_reuse_fingerprint_reproducible():
         number_of_children=0,
         preferences=("Văn Hóa", "Lịch Sử"),
         child_focused=False,
+        hotel_id="hotel-1",
     )
     fp1 = build_reuse_fingerprint(query1)
     fp2 = build_reuse_fingerprint(query2)
@@ -48,6 +50,7 @@ def test_classify_reuse_candidate_qualified():
         destination_name="Hồ Chí Minh",
         duration_days=1,
         number_of_adults=1,
+        hotel_id="hotel-1",
     )
     items = tuple(
         {
@@ -83,6 +86,7 @@ def test_classify_reuse_candidate_rejected_duration_mismatch():
         destination_id=HCM_ID,
         destination_name="Hồ Chí Minh",
         duration_days=3,
+        hotel_id="hotel-1",
     )
     template = ItineraryTemplate(
         id="golden-template-2",

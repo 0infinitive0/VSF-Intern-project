@@ -99,6 +99,8 @@ class ItineraryStore:
         threshold: float,
         match_count: int = 5,
     ) -> list[ItineraryTemplate]:
+        if not query.hotel_id:
+            raise ItineraryStoreError("Itinerary reuse search requires a selected hotel_id.")
         fingerprint = build_reuse_fingerprint(query)
         vector = self._embed(fingerprint.summary)
         params = {
@@ -107,6 +109,7 @@ class ItineraryStore:
             "match_count": max(1, min(int(match_count), 20)),
             "filter_destination_id": query.destination_id,
             "filter_duration_days": int(query.duration_days),
+            "filter_hotel_id": query.hotel_id,
         }
         try:
             response = self._client.rpc("match_itineraries", params).execute()
@@ -171,9 +174,18 @@ class ItineraryStore:
         except Exception as exc:
             try:
                 # Direct table fallback if RPC fails on remote DB
+                session_id = itinerary.get("session_id")
+                if session_id:
+                    try:
+                        self._client.table("sessions").upsert({"session_id": session_id}).execute()
+                    except Exception as session_exc:
+                        logger.warning("Could not pre-insert session %s: %s", session_id, session_exc)
                 self._client.table("itineraries").upsert(itinerary).execute()
                 if items:
                     self._client.table("itinerary_items").delete().eq("itinerary_id", itinerary["id"]).execute()
+                    for item in items:
+                        if not item.get("id"):
+                            item["id"] = str(uuid.uuid4())
                     self._client.table("itinerary_items").upsert(items).execute()
                 return str(itinerary["id"])
             except Exception as fallback_exc:

@@ -19,6 +19,7 @@ def query() -> ItineraryReuseQuery:
         number_of_children=1,
         preferences=("ẩm thực", "beach", "ẨM THỰC"),
         child_focused=True,
+        hotel_id="hotel-1",
     )
 
 
@@ -65,6 +66,7 @@ def test_fingerprint_is_stable_for_reordered_preferences() -> None:
             number_of_children=1,
             preferences=("beach", "ẩm thực"),
             child_focused=True,
+            hotel_id="hotel-1",
         )
     )
 
@@ -145,6 +147,12 @@ def test_only_exact_safe_candidate_is_reused() -> None:
     )
     assert decision.action == "miss"
     assert decision.reason == "destination_mismatch"
+
+    decision = classify_reuse_candidate(
+        valid_template(hotel_id="hotel-2"), query(), threshold=0.88
+    )
+    assert decision.action == "miss"
+    assert decision.reason == "hotel_mismatch"
 
     decision = classify_reuse_candidate(
         valid_template(similarity=0.80), query(), threshold=0.88

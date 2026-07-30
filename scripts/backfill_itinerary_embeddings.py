@@ -55,6 +55,7 @@ def backfill(*, limit: int, dry_run: bool) -> tuple[int, int]:
             number_of_children=int(row.get("number_of_children") or 0),
             preferences=tuple(preferences),
             child_focused=_child_focused(preferences),
+            hotel_id=str(row["hotel_id"]),
         )
         summary = build_itinerary_summary(
             query,

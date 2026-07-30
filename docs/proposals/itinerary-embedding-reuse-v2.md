@@ -208,12 +208,13 @@ Inputs:
 - `match_count int`
 - `filter_destination_id uuid`
 - `filter_duration_days smallint`
+- `filter_hotel_id uuid`
 
 The function must filter on:
 
 - `status = 'Finalized'`;
 - `embedding is not null`;
-- exact destination and duration;
+- exact destination, duration, and selected hotel;
 
 Return the template ID, ownership fields, party counts, preferences, themes,
 lineage, reuse count, summary, and cosine similarity. Group or rank by
@@ -335,7 +336,7 @@ create indexes and the three database functions.
 
 - [ ] Migration is idempotent and does not make unresolved historical ownership
       fields non-null immediately.
-- [ ] `match_itineraries` hard-filters destination, duration, version, status,
+- [ ] `match_itineraries` hard-filters destination, duration, hotel, version, status,
       and embedding readiness.
 - [ ] Finalization is retry-safe and parent reuse credit increments once.
 

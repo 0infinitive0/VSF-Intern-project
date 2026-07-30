@@ -412,6 +412,7 @@ def finalize_trip_plan() -> str:
             number_of_adults=number_of_people,
             preferences=tuple(part.strip() for part in preferences.split(",") if part.strip()),
             child_focused=child_focused,
+            hotel_id=str(itinerary.get("hotel_id") or (trip_data.get("hotel") or {}).get("id") or ""),
         )
         store = ItineraryStore.from_default()
         store.persist_itinerary_bundle(trip_data)

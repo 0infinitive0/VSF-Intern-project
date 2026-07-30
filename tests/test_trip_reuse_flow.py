@@ -14,6 +14,7 @@ def test_terminal_planner_persists_complete_bundles_and_exposes_finalization() -
     assert "def finalize_trip_plan()" in tools
     assert "[recommend_hotels, select_hotel, modify_trip_plan, finalize_trip_plan]" in tools
     assert "ENABLE_ITINERARY_REUSE" in svc
+    assert svc.index("hotel_candidates =") < svc.index("reusable_template =")
 
 
 def test_finalized_itinerary_is_not_mutated_by_the_edit_tool() -> None:
@@ -36,6 +37,9 @@ def test_reuse_migration_contains_atomic_bundle_and_finalization_contracts() -> 
     assert "CREATE OR REPLACE FUNCTION persist_itinerary_bundle" in migration
     assert "CREATE OR REPLACE FUNCTION finalize_itinerary" in migration
     assert "CREATE OR REPLACE FUNCTION update_itinerary_embedding" in migration
+    assert "filter_hotel_id uuid" in migration
+    assert "itinerary.hotel_id = filter_hotel_id" in migration
+    assert "ON itineraries(destination_id, duration_days, hotel_id, status)" in migration
     assert "COALESCE(item->>'item_kind', item->>'kind')" in migration
     assert "is_embedded" not in migration
     for redundant_column in (

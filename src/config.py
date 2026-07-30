@@ -20,9 +20,11 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     cors_origins: str = "http://localhost:3000,http://localhost:8082"
 
-    # Chat LLM & OpenRouter
+    # Chat LLM & Providers
     openai_api_key: str = ""
     openrouter_api_key: str = ""
+    cloudflare_account_id: str = ""
+    cloudflare_api_token: str = ""
     model_name: str = "gpt-4o-mini"
     llm_temperature: float = Field(default=0.3, ge=0.0, le=2.0)
     llm_provider: str = "ollama"

@@ -211,7 +211,8 @@ def create_golden_trip_3d():
         number_of_adults=1,
         number_of_children=0,
         preferences=tuple(preferences),
-        child_focused=False
+        child_focused=False,
+        hotel_id=selected_hotel.id,
     )
 
     result = store.finalize_trip_data(trip_data, reuse_query)

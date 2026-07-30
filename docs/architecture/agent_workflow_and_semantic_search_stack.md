@@ -22,12 +22,13 @@ flowchart TD
     U["User message"] --> I["Deterministic intake<br/>destination, duration, people"]
     I -->|"Missing fact"| Q["Ask only the missing question"]
     Q --> U
-    I -->|"Complete facts"| A["Search available itineraries"]
-    A -->|"No reusable match"| H["Select a real hotel<br/>and hydrate coordinates"]
-    A -->|"Reusable match"| W["Validate and adapt<br/>the saved itinerary"]
-    W -->|"Valid"| P
-    W -->|"Invalid"| H
-    H --> T["LLM creates daily theme queries<br/>but never selects venues"]
+    I -->|"Complete facts"| H["Search real hotels<br/>and show ranked options"]
+    H --> S["User selects a hotel<br/>with verified coordinates"]
+    S --> A["Search available itineraries<br/>for the exact hotel"]
+    A -->|"No reusable match"| T["LLM creates daily theme queries<br/>but never selects venues"]
+    A -->|"Reusable match"| W["Validate the same-hotel template<br/>and reuse its daily themes"]
+    W -->|"Valid"| R
+    W -->|"Invalid"| T
     T --> R["Retrieve real places from Supabase<br/>for each theme and meal type"]
     R --> D["Deterministic scheduler applies<br/>distance, hours, meals, and rest"]
     D --> P["Save current_trip_plan.json<br/>and itinerary metadata"]
@@ -43,26 +44,25 @@ flowchart TD
 ```
 
 This retains the implemented workflow and shows the itinerary-search insertion
-point in blue. When no reusable plan is found, the existing hotel-aware planner
-continues unchanged.
+point in blue. The user chooses a hotel before reuse search, and the RPC requires
+an exact `hotel_id` match in addition to destination and duration. When no
+reusable plan is found, the existing hotel-aware planner continues unchanged.
 
 ### Planned itinerary-reuse extension
 
 ```mermaid
 flowchart TD
-    A["Complete new-trip facts"] --> S["Search finalized templates<br/>BGE-M3 + Supabase"]
-    S --> M{"Matching template?<br/>same destination and duration"}
-    M -->|"No or search error"| N["Run the current workflow"]
-    M -->|"Yes"| L["Load real hotel and item records"]
+    A["Complete new-trip facts"] --> C["User selects a real hotel<br/>with verified coordinates"]
+    C --> S["Search finalized templates<br/>for the exact hotel"]
+    S --> M{"Matching template?<br/>same destination, duration, and hotel"}
+    M -->|"No or search error"| N["Run the current workflow<br/>with the selected hotel"]
+    M -->|"Yes"| L["Load and validate the template bundle"]
     L --> V{"Passes current scheduler policy?"}
     V -->|"No"| N
-    V -->|"Yes"| H{"Cached hotel usable?"}
-    H -->|"Yes"| R["Repair and revalidate schedule"]
-    H -->|"No"| B["Select a real hotel and<br/>rebuild every day"]
+    V -->|"Yes"| R["Reuse themes and rebuild around<br/>the selected matching hotel"]
 
     N --> D["New Draft with new IDs"]
     R --> D
-    B --> D
     D --> O["User reviews the itinerary"]
     O --> U{"User action"}
     U -->|"Edit"| E["Use current modification flow"]
@@ -77,9 +77,9 @@ flowchart TD
 ```
 
 The reuse extension is a safe shortcut into the existing flow, not a separate
-planner. Every retrieved template is hydrated and checked again. An invalid
-template returns to the current workflow; a hotel replacement rebuilds all days
-rather than changing only the hotel ID.
+planner. Every retrieved template is for the selected hotel, hydrated, and
+checked again. An invalid template returns to the current workflow; a hotel
+replacement performs a new hotel-specific reuse search and rebuilds all days.
 
 ## Agent workflow
 
@@ -252,7 +252,7 @@ own hydration step rather than widening API response shapes.
 |---|---|---|
 | **Attraction Search** | `search_attractions` / `match_attractions` | • **Text Query (`query`)**: Theme phrase or meal query (e.g., `"{theme.query}. Destination: {destination}"`).<br>• **Query Embedding (`query_embedding`)**: 1024d dense vector from `bge-m3`.<br>• **Destination Filter (`filter_destination_id`)**: Supabase `destination_id` UUID.<br>• **Threshold & Count**: `match_threshold` (0.40), `match_count` (15–20).<br>• **LLM Filters** (optional): `category`, `max_price`. |
 | **Hotel Search** | `search_hotels_with_rooms` / `match_hotels_with_rooms` | • **Text Query (`query`)**: e.g., `"Hotel in {destination} for {people} people"`.<br>• **Query Embedding (`query_embedding`)**: 1024d dense vector from `bge-m3`.<br>• **Destination Filter (`filter_destination_id`)**: Supabase `destination_id` UUID.<br>• **Threshold & Count**: `match_threshold` (0.35), `match_count` (5–10).<br>• **LLM Filters** (optional): `min_star_rating`, `max_price`. |
-| **Itinerary Reuse Search** | `search_reusable_itineraries` | • **Reuse Fingerprint Query**: Text fingerprint string built from `ItineraryReuseQuery`.<br>• **Fingerprint Embedding**: 1024d dense vector from `bge-m3`.<br>• **Threshold**: Similarity threshold set to **0.88** (88% similarity match). |
+| **Itinerary Reuse Search** | `search_reusable_itineraries` / `match_itineraries` | • **Reuse Fingerprint Query**: Text fingerprint string built from `ItineraryReuseQuery`.<br>• **Fingerprint Embedding**: 1024d dense vector from `bge-m3`.<br>• **Hard Filters**: exact `destination_id`, `duration_days`, and selected `hotel_id`.<br>• **Threshold**: Similarity threshold set to **0.88** (88% similarity match). |
 
 
 ## Scheduling policy

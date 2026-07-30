@@ -64,6 +64,7 @@ class ItineraryReuseQuery:
     number_of_children: int = 0
     preferences: tuple[str, ...] = ()
     child_focused: bool = False
+    hotel_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -223,6 +224,8 @@ def classify_reuse_candidate(
 
     if template.destination_id != query.destination_id:
         return ReuseDecision("miss", "destination_mismatch")
+    if not query.hotel_id or template.hotel_id != query.hotel_id:
+        return ReuseDecision("miss", "hotel_mismatch")
     if template.duration_days != query.duration_days:
         return ReuseDecision("miss", "duration_mismatch")
     if template.status != "Finalized":

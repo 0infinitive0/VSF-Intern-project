@@ -55,6 +55,22 @@ ENABLE_ITINERARY_REUSE = os.getenv("ENABLE_ITINERARY_REUSE", "false").casefold()
 ITINERARY_REUSE_TIER1_THRESHOLD = float(os.getenv("ITINERARY_REUSE_TIER1_THRESHOLD", "0.88"))
 
 
+def clear_session_history() -> None:
+    """Clear transient current trip plan, pending hotel selections, and working session files."""
+    for filename in (
+        CURRENT_TRIP_PLAN_FILE,
+        PENDING_HOTEL_SELECTION_FILE,
+        os.path.join("data", CURRENT_TRIP_PLAN_FILE),
+        os.path.join("data", PENDING_HOTEL_SELECTION_FILE),
+    ):
+        if os.path.exists(filename):
+            try:
+                os.remove(filename)
+                logger.info("Removed session file: %s", filename)
+            except Exception as exc:
+                logger.warning("Could not remove %s: %s", filename, exc)
+
+
 def _save_pending_hotel_selection(payload: Dict[str, Any]) -> None:
     """Persist the hotel options just shown to the user, so the next chat turn can
     resolve their reply (a rank number or a name) back to one of them."""
@@ -292,6 +308,13 @@ def _persist_itinerary_metadata(trip_data: Dict[str, Any]) -> None:
     itinerary = itineraries[0] if isinstance(itineraries, list) else itineraries
     if not isinstance(itinerary, dict) or not itinerary.get("id"):
         return
+    session_id = itinerary.get("session_id")
+    if session_id:
+        try:
+            supabase = get_supabase_client()
+            supabase.table("sessions").upsert({"session_id": session_id}).execute()
+        except Exception as exc:
+            logger.debug("Could not pre-insert session %s: %s", session_id, exc)
     try:
         ItineraryStore.from_default().persist_itinerary_bundle(trip_data)
         return
@@ -301,6 +324,9 @@ def _persist_itinerary_metadata(trip_data: Dict[str, Any]) -> None:
         key: itinerary.get(key)
         for key in (
             "id",
+            "session_id",
+            "destination_id",
+            "hotel_id",
             "duration_days",
             "number_of_adults",
             "number_of_children",
@@ -349,16 +375,6 @@ def _build_trip_data(
         keyword in child_focused_text
         for keyword in ("trẻ em", "tre em", "children", "child", "kids", "gia đình", "gia dinh")
     )
-    reuse_query = ItineraryReuseQuery(
-        destination_id=destination_id,
-        destination_name=destination,
-        duration_days=number_of_days,
-        number_of_adults=number_of_people,
-        preferences=tuple(preferences),
-        child_focused=child_focused,
-    )
-    reusable_template = _find_reusable_template(reuse_query) if themes_override is None else None
-
     if preselected_hotel is not None:
         preselected_candidate = PlaceCandidate.from_mapping({**preselected_hotel, "category": "Hotel"})
         if not preselected_candidate.id or not preselected_candidate.coordinate_pair:
@@ -371,6 +387,16 @@ def _build_trip_data(
                 f"Không tìm thấy khách sạn có tọa độ hợp lệ tại {destination}; không thể lập lịch trình theo vị trí khách sạn."
             )
     hotel_candidates = [candidate for _, candidate in hotel_options]
+    reuse_query = ItineraryReuseQuery(
+        destination_id=destination_id,
+        destination_name=destination,
+        duration_days=number_of_days,
+        number_of_adults=number_of_people,
+        preferences=tuple(preferences),
+        child_focused=child_focused,
+        hotel_id=hotel_candidates[0].id,
+    )
+    reusable_template = _find_reusable_template(reuse_query) if themes_override is None else None
 
     raw_themes = themes_override or (list(reusable_template.day_themes) if reusable_template else None)
     if raw_themes is not None:
@@ -437,6 +463,10 @@ def _build_trip_data(
         data for data, candidate in hotel_options if candidate.id == hotel_candidate.id
     )
     if hotel_candidate.id != hotel_candidates[0].id:
+        # The initial reuse lookup was hard-filtered to the primary hotel. Do
+        # not attach that template's lineage when scheduling selected another
+        # hotel for geographic viability.
+        reusable_template = None
         logger.info(
             "hotel_reselected primary=%s selected=%s reason=insufficient_core_attractions",
             hotel_candidates[0].id,

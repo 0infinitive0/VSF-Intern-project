@@ -85,7 +85,7 @@ class FakeSupabase:
 
 
 def query() -> ItineraryReuseQuery:
-    return ItineraryReuseQuery("destination-1", "Đà Nẵng", 1, 2)
+    return ItineraryReuseQuery("destination-1", "Đà Nẵng", 1, 2, hotel_id="hotel-1")
 
 
 def test_search_passes_hard_filters_and_maps_templates() -> None:
@@ -99,6 +99,7 @@ def test_search_passes_hard_filters_and_maps_templates() -> None:
     assert rpc_name == "match_itineraries"
     assert params["filter_destination_id"] == "destination-1"
     assert params["filter_duration_days"] == 1
+    assert params["filter_hotel_id"] == "hotel-1"
     assert "filter_embedding_version" not in params
     assert len(params["query_embedding"]) == 1024
 
@@ -112,6 +113,18 @@ def test_search_rejects_wrong_embedding_dimension() -> None:
         assert "1024" in str(exc)
     else:
         raise AssertionError("wrong dimension must not call the itinerary search RPC")
+
+
+def test_search_requires_a_selected_hotel() -> None:
+    store = ItineraryStore(FakeSupabase(), lambda _: [0.1] * 1024)
+    query_without_hotel = ItineraryReuseQuery("destination-1", "Đà Nẵng", 1, 2)
+
+    try:
+        store.search_reusable_itineraries(query_without_hotel, threshold=0.88)
+    except ItineraryStoreError as exc:
+        assert "selected hotel_id" in str(exc)
+    else:
+        raise AssertionError("itinerary search must not run without a selected hotel")
 
 
 def test_persist_replaces_bundle_with_item_kind_contract() -> None:

@@ -62,16 +62,23 @@ def destination_options_from_rows(
     return tuple(options)
 
 
+_NEGATIVE_RESPONSES = {
+    "khong", "khong can", "khong co", "no", "none", "skip", "n/a", "k", "ko",
+    "khong can dau", "khong co yeu cau gi", "khong co gi", "ko can"
+}
+
+
 @dataclass(frozen=True)
 class TripIntakeState:
     destination: str | None = None
     duration: str | None = None
     people: str | None = None
     preferences: tuple[str, ...] = ()
+    asked_preferences: bool = False
 
     @property
     def is_complete(self) -> bool:
-        return bool(self.destination and self.duration and self.people)
+        return bool(self.destination and self.duration and self.people and self.asked_preferences)
 
     def with_message(
         self,
@@ -86,21 +93,64 @@ class TripIntakeState:
         for label, aliases in _PREFERENCE_TERMS:
             if label not in preferences and any(_contains_phrase(normalized, alias) for alias in aliases):
                 preferences.append(label)
+
+        asked_preferences = self.asked_preferences
+        if self.destination and self.duration and self.people and not self.asked_preferences:
+            asked_preferences = True
+            norm_msg = normalized.strip()
+            if (
+                norm_msg
+                and norm_msg not in _NEGATIVE_RESPONSES
+                and not any(neg in norm_msg for neg in ("khong can", "khong co", "ko can"))
+            ):
+                clean_custom = message.strip()
+                if clean_custom and clean_custom not in preferences:
+                    preferences.append(clean_custom)
+
         return replace(
             self,
             destination=destination,
             duration=duration,
             people=people,
             preferences=tuple(preferences),
+            asked_preferences=asked_preferences,
         )
 
-    def next_question(self) -> str | None:
+    def next_question(self, selected_hotel: str | None = None) -> str | None:
         if not self.destination:
             return "Bạn muốn đi đâu?"
         if not self.duration:
             return "Bạn dự định đi trong bao lâu?"
         if not self.people:
             return "Chuyến đi có bao nhiêu người?"
+        if not self.asked_preferences:
+            ctx_parts = []
+            if self.destination:
+                ctx_parts.append(f"tại {self.destination}")
+            if self.duration:
+                ctx_parts.append(f"{self.duration}")
+            if self.people:
+                ctx_parts.append(f"cho {self.people}")
+            if selected_hotel:
+                ctx_parts.append(f"ở {selected_hotel}")
+            ctx_str = f" ({', '.join(ctx_parts)})" if ctx_parts else ""
+
+            dest_lower = (self.destination or "").lower()
+            if "biển" in dest_lower or any(d in dest_lower for d in ("đà nẵng", "nha trang", "phú quốc", "vũng tàu", "quy nhơn")):
+                ex = "'tập trung tắm biển', 'thưởng thức hải sản', 'du lịch nghỉ dưỡng', 'dạo phố đêm'"
+            elif any(d in dest_lower for d in ("hà nội", "huế", "hội an")):
+                ex = "'du lịch lịch sử', 'khám phá ẩm thực dân tộc', 'dạo quanh phố cổ', 'check-in địa danh'"
+            elif any(d in dest_lower for d in ("hồ chí minh", "sài gòn")):
+                ex = "'dạo vòng quanh thành phố', 'du lịch lịch sử & bảo tàng', 'trải nghiệm ẩm thực', 'mua sắm & cà phê'"
+            elif "đà lạt" in dest_lower:
+                ex = "'săn mây & check-in', 'cà phê ngắm cảnh', 'tham quan vườn hoa', 'nghỉ dưỡng yên bình'"
+            else:
+                ex = "'du lịch lịch sử', 'tập trung tắm biển', 'dạo vòng quanh thành phố', 'thưởng thức ẩm thực địa phương'"
+
+            return (
+                f"Bạn có yêu cầu hay lưu ý đặc biệt nào cho chuyến đi{ctx_str} không?\n"
+                f"(Gợi ý ví dụ: {ex}... hoặc gõ 'không' để bỏ qua)"
+            )
         return None
 
     def tool_arguments(self) -> dict[str, str]:

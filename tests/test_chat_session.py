@@ -78,8 +78,13 @@ def test_process_chat_turn_asks_budget_question_right_after_intake_completes(mon
     session = _session(intake_state=TripIntakeState(destination="Đà Nẵng", duration="3 ngày"))
     reply = process_chat_turn(session, "2 người")
 
-    # This turn's input was consumed completing intake_state — must NOT also be fed
-    # into hotel_pref_state; the reply is the first (budget) guided question.
+    assert "yêu cầu hay lưu ý đặc biệt" in reply
+    assert not session.intake_state.is_complete
+
+    reply = process_chat_turn(session, "không")
+
+    # The preference reply completes trip intake and must not also be consumed as
+    # the hotel budget; the incoming guided hotel flow starts with its first question.
     assert session.intake_state.is_complete
     assert session.hotel_pref_state.stage == "pending_budget"
     assert "1." in reply
@@ -87,7 +92,12 @@ def test_process_chat_turn_asks_budget_question_right_after_intake_completes(mon
 
 def test_process_chat_turn_asks_amenity_question_after_budget_resolved():
     session = _session(
-        intake_state=TripIntakeState(destination="Đà Nẵng", duration="3 ngày", people="2 người"),
+        intake_state=TripIntakeState(
+            destination="Đà Nẵng",
+            duration="3 ngày",
+            people="2 người",
+            asked_preferences=True,
+        ),
         hotel_pref_state=HotelPreferenceState(),
     )
 
@@ -112,7 +122,12 @@ def test_process_chat_turn_calls_recommend_hotels_once_both_states_complete(monk
     )
 
     session = _session(
-        intake_state=TripIntakeState(destination="Đà Nẵng", duration="3 ngày", people="2 người"),
+        intake_state=TripIntakeState(
+            destination="Đà Nẵng",
+            duration="3 ngày",
+            people="2 người",
+            asked_preferences=True,
+        ),
         hotel_pref_state=HotelPreferenceState(stage="pending_amenities", target_price=1_500_000),
     )
 

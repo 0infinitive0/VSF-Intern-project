@@ -110,7 +110,8 @@ def main():
         number_of_adults=1,
         number_of_children=0,
         preferences=('lịch sử', 'văn hóa', 'ẩm thực'),
-        child_focused=False
+        child_focused=False,
+        hotel_id=selected_hotel.id,
     )
 
     itinerary_id = store.store_finalized_itinerary(

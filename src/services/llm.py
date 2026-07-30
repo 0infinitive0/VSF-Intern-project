@@ -12,7 +12,11 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
+from dotenv import load_dotenv
+
 from src.config import get_settings
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -165,6 +169,39 @@ def get_llm(
             logger.warning("Failed to initialize OpenRouter ChatOpenAI (%s). Falling back to local Ollama LLM.", exc)
             return _get_local_llm(temperature=target_temp)
 
+    if target_provider in {"cloudflare", "cloudflare_workers", "cloudflare_ai"}:
+        cf_account = (
+            os.environ.get("CLOUDFLARE_ACCOUNT_ID")
+            or getattr(settings, "cloudflare_account_id", "")
+        )
+        cf_token = (
+            target_key
+            or os.environ.get("CLOUDFLARE_API_TOKEN")
+            or getattr(settings, "cloudflare_api_token", "")
+            or getattr(settings, "llm_api_key", "")
+        )
+        if not cf_account or not cf_token:
+            logger.warning("Cloudflare provider selected but Account ID or API Token missing. Falling back to local Ollama LLM.")
+            return _get_local_llm(temperature=target_temp)
+        try:
+            cf_base = target_base or f"https://api.cloudflare.com/client/v4/accounts/{cf_account}/ai/v1"
+            if target_model in {"@cf/meta/llama-3.1-8b-instruct", "@cf/meta/llama-3-8b-instruct"}:
+                cf_model = "@cf/meta/llama-3.1-8b-instruct-fast"
+            elif target_model.startswith("@cf/"):
+                cf_model = target_model
+            else:
+                cf_model = "@cf/meta/llama-3.1-8b-instruct-fast" if target_model in {"llama3.1", "llama-3.1", "llama"} else f"@cf/meta/{target_model}"
+            kwargs: dict[str, Any] = {
+                "model": cf_model,
+                "api_key": cf_token,
+                "base_url": cf_base,
+                "temperature": target_temp,
+            }
+            return ChatOpenAI(**kwargs)
+        except Exception as exc:
+            logger.warning("Failed to initialize Cloudflare ChatOpenAI (%s). Falling back to local Ollama LLM.", exc)
+            return _get_local_llm(temperature=target_temp)
+
     logger.warning("Unknown LLM provider '%s'. Falling back to local Ollama LLM.", target_provider)
     return _get_local_llm(temperature=target_temp)
 
@@ -249,6 +286,41 @@ def get_embeddings(
         except Exception as exc:
             logger.warning(
                 "Failed to initialize OpenRouter OpenAIEmbeddings (%s). Falling back to local OllamaEmbeddings.", exc
+            )
+            return _get_local_embeddings()
+
+    if target_provider in {"cloudflare", "cloudflare_workers", "cloudflare_ai"}:
+        cf_account = (
+            os.environ.get("CLOUDFLARE_ACCOUNT_ID")
+            or getattr(settings, "cloudflare_account_id", "")
+        )
+        cf_token = (
+            target_key
+            or os.environ.get("CLOUDFLARE_API_TOKEN")
+            or getattr(settings, "cloudflare_api_token", "")
+            or getattr(settings, "embedding_api_key", "")
+        )
+        if not cf_account or not cf_token:
+            logger.warning(
+                "Cloudflare embedding provider selected but Account ID or API Token missing. Falling back to local OllamaEmbeddings."
+            )
+            return _get_local_embeddings()
+        try:
+            cf_base = target_base or f"https://api.cloudflare.com/client/v4/accounts/{cf_account}/ai/v1"
+            cf_model = target_model if target_model.startswith("@cf/") else (
+                "@cf/baai/bge-m3" if target_model in {"bge-m3", "bge", "bge-m3-local"} else f"@cf/baai/{target_model}"
+            )
+            kwargs: dict[str, Any] = {
+                "model": cf_model,
+                "api_key": cf_token,
+                "base_url": cf_base,
+                "tiktoken_enabled": False,
+                "check_embedding_ctx_length": False,
+            }
+            return OpenAIEmbeddings(**kwargs)
+        except Exception as exc:
+            logger.warning(
+                "Failed to initialize Cloudflare OpenAIEmbeddings (%s). Falling back to local OllamaEmbeddings.", exc
             )
             return _get_local_embeddings()
 

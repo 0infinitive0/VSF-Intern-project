@@ -51,6 +51,22 @@ def test_trip_cloning():
     supabase = get_supabase_client()
     store = ItineraryStore.from_default()
 
+    finalized_rows = (
+        supabase.table('itineraries')
+        .select('id,hotel_id,reuse_count')
+        .eq('destination_id', HCM_ID)
+        .eq('duration_days', 3)
+        .eq('status', 'Finalized')
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    assert finalized_rows and finalized_rows[0].get('hotel_id'), (
+        "No finalized 3-day itinerary with a hotel found for the cloning test!"
+    )
+    selected_hotel_id = str(finalized_rows[0]['hotel_id'])
+
     # 1. Search for existing Finalized Golden Trips in HCM
     query = ItineraryReuseQuery(
         destination_id=HCM_ID,
@@ -59,7 +75,8 @@ def test_trip_cloning():
         number_of_adults=1,
         number_of_children=0,
         preferences=('lịch sử', 'văn hóa', 'ẩm thực'),
-        child_focused=False
+        child_focused=False,
+        hotel_id=selected_hotel_id,
     )
 
     print("Searching Tier 1 Reusable Templates...")
@@ -67,7 +84,17 @@ def test_trip_cloning():
     print(f"Found {len(candidates)} reusable template candidates.")
 
     if not candidates:
-        rows = supabase.table('itineraries').select('*').eq('destination_id', HCM_ID).eq('status', 'Finalized').execute().data or []
+        rows = (
+            supabase.table('itineraries')
+            .select('*')
+            .eq('destination_id', HCM_ID)
+            .eq('duration_days', 3)
+            .eq('hotel_id', selected_hotel_id)
+            .eq('status', 'Finalized')
+            .execute()
+            .data
+            or []
+        )
         print(f"Direct DB lookup found {len(rows)} finalized itineraries.")
         assert len(rows) > 0, "No finalized itineraries found in DB for cloning test!"
         golden_id = rows[0]['id']
@@ -141,7 +168,8 @@ def test_trip_cloning():
         number_of_adults=2,
         number_of_children=0,
         preferences=('lịch sử', 'văn hóa', 'ẩm thực', 'cà phê'),
-        child_focused=False
+        child_focused=False,
+        hotel_id=str(bundle.template.hotel_id),
     )
 
     print("Finalizing cloned trip to trigger lineage reuse count update...")

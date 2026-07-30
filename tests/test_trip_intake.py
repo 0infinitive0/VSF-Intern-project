@@ -21,14 +21,16 @@ def test_sequential_vietnamese_intake_uses_verified_facts_without_asking_again()
     assert state.next_question() == "Chuyến đi có bao nhiêu người?"
 
     state = state.with_message("tôi đi cùng vợ của tôi", DESTINATIONS)
+    assert "Bạn có yêu cầu hay lưu ý đặc biệt nào cho chuyến đi" in state.next_question()
 
+    state = state.with_message("tập trung tắm biển và du lịch lịch sử", DESTINATIONS)
     assert state.is_complete
     assert state.next_question() is None
     assert state.tool_arguments() == {
         "destination": "Đà Nẵng",
         "duration": "1 tuần",
         "people": "2 người",
-        "preferences": "",
+        "preferences": "biển, lịch sử, tập trung tắm biển và du lịch lịch sử",
     }
 
 
@@ -38,6 +40,8 @@ def test_complete_single_message_preserves_optional_preferences_without_requirin
         DESTINATIONS,
     )
 
+    assert "Bạn có yêu cầu hay lưu ý đặc biệt" in state.next_question()
+    state = state.with_message("không", DESTINATIONS)
     assert state.is_complete
     assert state.destination == "Đà Nẵng"
     assert state.duration == "3 ngày"
@@ -49,7 +53,7 @@ def test_destination_is_taken_from_user_input_not_a_corrupted_model_argument() -
     state = TripIntakeState().with_message(
         "Đà Nẵng, 2 người, 4 ngày",
         DESTINATIONS,
-    )
+    ).with_message("không", DESTINATIONS)
 
     arguments = state.tool_arguments()
 
