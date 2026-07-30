@@ -2,7 +2,12 @@ from fastapi import APIRouter, HTTPException
 
 from src.agents.graph import agent
 from src.models.schemas import ChatRequest, ChatResponse, PlannerChatRequest, PlannerChatResponse
-from src.services.chat_session import ChatSession, create_chat_session, process_chat_turn
+from src.services.chat_session import (
+    ChatSession,
+    create_chat_session,
+    process_chat_turn,
+    suggestions_for,
+)
 
 router = APIRouter()
 
@@ -27,9 +32,10 @@ def planner_chat(request: PlannerChatRequest) -> PlannerChatResponse:
         _CHAT_SESSIONS[request.session_id] = session
     try:
         reply = process_chat_turn(session, request.message)
+        suggestions = suggestions_for(session)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    return PlannerChatResponse(reply=reply)
+    return PlannerChatResponse(reply=reply, suggestions=suggestions)
 
 
 @router.post("/chat", response_model=ChatResponse)

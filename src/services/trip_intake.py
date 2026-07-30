@@ -117,8 +117,21 @@ class TripIntakeState:
             preferences=tuple(preferences),
         )
 
-    def next_question(self) -> str | None:
+    def next_question(
+        self,
+        destination_names: Sequence[str | DestinationOption] = (),
+    ) -> str | None:
         if not self.destination:
+            # Naming the supported destinations matters when the user asked for one
+            # we don't cover: the grounding layer correctly refuses to guess, but a
+            # bare "Bạn muốn đi đâu?" gives them no way to know that, so they retype
+            # the same unsupported city and the conversation deadlocks.
+            choices = ", ".join(
+                option.name if isinstance(option, DestinationOption) else str(option)
+                for option in destination_names
+            )
+            if choices:
+                return f"Bạn muốn đi đâu? Hiện mình có dữ liệu cho: {choices}."
             return "Bạn muốn đi đâu?"
         if not self.duration:
             return "Bạn dự định đi trong bao lâu?"
@@ -156,11 +169,18 @@ def _llm_extract_intake_facts(
 
     prompt = f"""You are extracting trip-planning facts from a Vietnamese chat message.
 Already confirmed this conversation: {known_summary}
-Known valid destinations (pick the closest match, or null if none fit): {destination_choices or "unknown"}
+Destinations this system supports, for reference only: {destination_choices or "unknown"}
+
+Copy the destination the user actually named. Do NOT substitute a different city,
+even when the one they named is missing from the list above — "Hội An" must stay
+"Hội An", never become "Hà Nội" or "Đà Nẵng". Use null when they named none. A
+separate validation step matches your answer against the supported list, so an
+unsupported city is handled correctly; silently swapping it sends the user on a
+trip to the wrong place.
 
 Return ONLY valid JSON (no markdown fences) matching this schema:
 {{
-  "destination": "string or null - a destination name from the known list above, or the user's best-guess destination text if not yet confirmed",
+  "destination": "string or null - the destination the user named, copied verbatim",
   "duration_days": "integer or null - trip length in days (convert weeks/months to days, e.g. '1 tuần' = 7)",
   "people_count": "integer or null - number of travelers (e.g. 'vợ chồng tôi' = 2, 'một mình' = 1)",
   "preference_labels": "array of zero or more of these exact strings only: {allowed_labels}"

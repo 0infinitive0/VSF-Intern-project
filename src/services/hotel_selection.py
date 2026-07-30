@@ -350,10 +350,33 @@ _BUDGET_TIER_RANGE_VND: dict[str, tuple[float | None, float | None]] = {
 }
 
 _QUALITATIVE_BUDGET_PHRASES: dict[str, tuple[str, ...]] = {
-    "luxury": ("sang trong", "cao cap", "luxury", "5 sao"),
-    "budget": ("tiet kiem", "gia re"),
+    "luxury": ("sang trong", "cao cap", "luxury", "5 sao", "xin xo", "sang chanh"),
+    # "re" on its own covers "rẻ thôi"/"càng rẻ càng tốt"; a bare-word match is safe
+    # because _normalize_for_match strips tones, and no other budget phrase contains it.
+    "budget": ("tiet kiem", "gia re", "re", "binh dan", "gia thap", "vua tui tien"),
     "mid_range": ("tam trung", "vua phai", "trung binh"),
 }
+
+# "Anything goes" — a real answer meaning "don't filter by price", not a parse failure.
+# Without these the reply falls through to None and the question is asked again, which
+# reads as the bot ignoring them.
+_NO_BUDGET_PREFERENCE_PHRASES: tuple[str, ...] = (
+    "bao nhieu cung duoc",
+    "sao cung duoc",
+    "gi cung duoc",
+    "the nao cung duoc",
+    "khong quan tam",
+    "tuy ban",
+    "tuy ai",
+    "khong co yeu cau",
+)
+
+_MILLION_UNIT = r"(?:trieu|tr\b)"
+
+
+def _is_no_budget_preference(text: str) -> bool:
+    normalized = _normalize_for_match(text)
+    return any(phrase in normalized for phrase in _NO_BUDGET_PREFERENCE_PHRASES)
 
 
 def _tier_budget(tier: str) -> tuple[float | None, float | None, float | None]:
@@ -366,13 +389,41 @@ def _tier_budget(tier: str) -> tuple[float | None, float | None, float | None]:
 
 def _parse_free_text_price(text: str) -> float | None:
     """Best-effort Vietnamese money parser: "4 triệu" -> 4_000_000, "500 nghìn"/"500k"
-    -> 500_000, or a plain 4+ digit number used as-is. Returns None if nothing matches
+    -> 500_000, "1tr5"/"1 triệu rưỡi" -> 1_500_000, a range like "2-3 triệu" -> its
+    midpoint, or a plain 4+ digit number used as-is. Returns None if nothing matches
     (a short number like "2" from "2 người" is deliberately not treated as a price)."""
     normalized = _normalize_for_match(text)
+
+    # A range ("2-3 triệu", "từ 1 đến 2 triệu") means the whole span, so aim at its
+    # middle. Taking the last number instead — what a plain search does — silently
+    # pins the user to the top of the range they gave.
+    range_match = re.search(
+        rf"(\d+(?:[.,]\d+)?)\s*(?:-|den|toi|đen)\s*(\d+(?:[.,]\d+)?)\s*{_MILLION_UNIT}",
+        normalized,
+    )
+    if range_match:
+        low = float(range_match.group(1).replace(",", "."))
+        high = float(range_match.group(2).replace(",", "."))
+        return (low + high) / 2 * 1_000_000
+
+    # "1tr5" / "1 triệu rưỡi" / "1tr500" — the trailing part is a fraction of a
+    # million, not a separate number. Checked before the plain million pattern,
+    # which would otherwise stop at "1" and drop the half.
+    # Bare "tr" here, no trailing \b: in "1tr5" the unit is followed by a digit, so
+    # there is no word boundary to match. Requiring one drops exactly the no-space
+    # form this pattern exists for. Safe because what follows must be "ruoi" or
+    # digits, which "trong"/"trung" never are.
+    half_match = re.search(r"(\d+)\s*(?:trieu|tr)\s*(?:ruoi|(\d{1,3}))", normalized)
+    if half_match:
+        whole = float(half_match.group(1))
+        fraction_digits = half_match.group(2)
+        fraction = float(f"0.{fraction_digits}") if fraction_digits else 0.5
+        return (whole + fraction) * 1_000_000
+
     # No leading \b before "tr"/"k": a digit is itself a word character, so a
     # no-space form like "4tr"/"500k" has no boundary between the digit and the
     # unit letter — only the trailing \b (rejecting "trong", "trung", ...) is needed.
-    million_match = re.search(r"(\d+(?:[.,]\d+)?)\s*(?:trieu|tr\b)", normalized)
+    million_match = re.search(rf"(\d+(?:[.,]\d+)?)\s*{_MILLION_UNIT}", normalized)
     if million_match:
         return float(million_match.group(1).replace(",", ".")) * 1_000_000
     thousand_match = re.search(r"(\d+(?:[.,]\d+)?)\s*(?:nghin|ngan|k\b)", normalized)
@@ -449,8 +500,26 @@ class HotelPreferenceState:
             return format_guided_question(_BUDGET_QUESTION)
         return None
 
+    def suggestion_options(self) -> tuple[str, ...]:
+        """Labels of the menu currently on offer, for a UI to render as tappable
+        chips. Empty when no menu is pending — a caller must never infer chips by
+        scanning reply text for numbered lines, because the model's own prose is
+        full of numbered lists that are not menus."""
+        if self.stage == "pending_budget":
+            return tuple(option.label for option in _BUDGET_QUESTION.options)
+        return ()
+
     def with_message(self, message: str) -> "HotelPreferenceState":
         if self.stage == "pending_budget":
+            # "bao nhiêu cũng được" is an answer — accept it and move on with no price
+            # filter. Left to the parser it returns None, indistinguishable from
+            # gibberish, and the same question gets asked again.
+            if _is_no_budget_preference(message):
+                # Clear all three: "no preference" must leave the search unfiltered,
+                # so min/max have to go too, not just the ranking target.
+                return replace(
+                    self, stage="done", target_price=None, min_price=None, max_price=None
+                )
             resolved, values = resolve_guided_reply(_BUDGET_QUESTION, message)
             if not resolved:
                 return self

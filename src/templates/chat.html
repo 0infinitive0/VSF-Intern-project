@@ -226,42 +226,31 @@ const inputEl = document.getElementById("message-input");
 const sendBtn = document.getElementById("send-btn");
 const newChatBtn = document.getElementById("new-chat-btn");
 
-// Reply text sometimes carries a numbered menu ("1. Tiết kiệm (...)", used by both
-// the guided budget/amenity questions and the hotel list) — surfaced here as
-// clickable chips so the user doesn't have to type the number by hand. The reply
-// text itself is untouched and still fully understood if they type instead.
-function extractSuggestions(text) {
-    const suggestions = [];
-    for (const line of text.split("\n")) {
-        const match = line.match(/^(\d+)\.\s+(.+)$/);
-        if (match) {
-            suggestions.push({ number: match[1], label: match[2].split("|")[0].trim() });
-        }
-    }
-    return suggestions;
-}
-
-function addSuggestions(container, text) {
-    const suggestions = extractSuggestions(text);
-    if (suggestions.length === 0) return;
+// Chips come from the server's `suggestions` field, never from scanning the reply
+// for lines like "1. ...". The model writes numbered lists in ordinary prose
+// ("1. **Điểm đến** ... 2. **Thời gian** ..."), and a scanner turns those into
+// buttons that send a bare "1" into a turn that wanted free text — which is how
+// chips ended up answering questions nobody asked.
+function addSuggestions(container, suggestions) {
+    if (!suggestions || suggestions.length === 0) return;
 
     const wrap = document.createElement("div");
     wrap.className = "suggestions";
-    for (const { number, label } of suggestions) {
+    for (const { label, value } of suggestions) {
         const btn = document.createElement("button");
         btn.className = "suggestion-btn";
-        btn.textContent = `${number}. ${label}`;
+        btn.textContent = label;
         btn.addEventListener("click", () => {
             if (sendBtn.disabled) return;
             wrap.remove();
-            sendMessage(number);
+            sendMessage(value);
         });
         wrap.appendChild(btn);
     }
     container.appendChild(wrap);
 }
 
-function addBubble(role, text, extraClass, showSuggestions = true) {
+function addBubble(role, text, extraClass, suggestions) {
     const row = document.createElement("div");
     row.className = "bubble-row " + (role === "user" ? "user" : "ai");
 
@@ -273,8 +262,8 @@ function addBubble(role, text, extraClass, showSuggestions = true) {
     bubble.textContent = text;
     col.appendChild(bubble);
 
-    if (role === "ai" && !extraClass && showSuggestions) {
-        addSuggestions(col, text);
+    if (role === "ai" && !extraClass) {
+        addSuggestions(col, suggestions);
     }
 
     row.appendChild(col);
@@ -290,10 +279,11 @@ function renderHistory() {
         addBubble("ai", "Chào bạn! Bạn muốn đi đâu, trong bao lâu, và đi cùng bao nhiêu người?");
         return;
     }
-    // Only the most recent AI message is still "active" — older numbered menus
-    // (e.g. a budget question already answered) shouldn't stay clickable.
+    // Only the last AI turn's chips are still live — an already-answered menu must
+    // not stay clickable after a refresh.
     history.forEach((turn, index) => {
-        addBubble(turn.role, turn.text, undefined, index === history.length - 1);
+        const live = index === history.length - 1 ? turn.suggestions : undefined;
+        addBubble(turn.role, turn.text, undefined, live);
     });
 }
 
@@ -329,9 +319,9 @@ async function sendMessage(overrideText) {
             return;
         }
         const data = await response.json();
-        addBubble("ai", data.reply);
+        addBubble("ai", data.reply, undefined, data.suggestions);
         const updated = loadHistory(sessionId);
-        updated.push({ role: "ai", text: data.reply });
+        updated.push({ role: "ai", text: data.reply, suggestions: data.suggestions || [] });
         saveHistory(sessionId, updated);
     } catch (err) {
         typingRow.remove();

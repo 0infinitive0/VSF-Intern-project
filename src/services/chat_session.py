@@ -25,10 +25,20 @@ from src.cli.planner_tools import (
     recommend_hotels,
     select_hotel,
 )
-from src.cli.trip_builder_svc import CURRENT_TRIP_PLAN_FILE, PENDING_HOTEL_SELECTION_FILE, _get_destination_names
+from src.cli.trip_builder_svc import (
+    CURRENT_TRIP_PLAN_FILE,
+    PENDING_HOTEL_SELECTION_FILE,
+    _clear_pending_hotel_selection,
+    _get_destination_names,
+    _load_pending_hotel_selection,
+)
 from src.services.hotel_selection import HotelPreferenceState
 from src.services.trip_edit_planner import TripEditPlanError, plan_trip_edit
-from src.services.trip_intake import TripIntakeState
+from src.services.trip_intake import (
+    TripIntakeState,
+    _llm_extract_intake_facts,
+    _match_known_destination,
+)
 from src.services.trip_scheduler import TripChange, parse_day_scope
 
 logger = logging.getLogger(__name__)
@@ -55,6 +65,39 @@ def create_chat_session(thread_id: str) -> ChatSession:
         agent=create_planner_agent(),
         config={"configurable": {"thread_id": thread_id}},
     )
+
+
+def suggestions_for(session: ChatSession) -> list[dict[str, str]]:
+    """Tappable quick-reply chips for the state the conversation is now in, as
+    [{"label", "value"}] — `value` is what to send when tapped.
+
+    Declared here rather than inferred by the UI. A UI that scans the reply for
+    lines like "1. ..." cannot tell a real menu from the model's own prose, and
+    the model writes numbered lists constantly ("1. **Điểm đến** ... 2. **Thời
+    gian** ..."). Those became chips that sent a bare "1" into a turn expecting
+    free text — the answer then had nothing to do with what was asked.
+
+    Empty means the turn wants free text, which is the common case.
+    """
+    # A shown hotel list is awaiting a pick, and outranks everything else: the
+    # very next turn is routed to select_hotel regardless of session state.
+    if os.path.exists(PENDING_HOTEL_SELECTION_FILE):
+        pending = _load_pending_hotel_selection() or {}
+        chips: list[dict[str, str]] = []
+        for index, option in enumerate(pending.get("options") or [], start=1):
+            name = str(option.get("name") or "").strip()
+            if not name:
+                continue
+            chips.append({"label": f"{index}. {name}", "value": str(index)})
+        return chips
+
+    if session.initial_plan_complete or not session.intake_state.is_complete:
+        return []
+
+    return [
+        {"label": f"{index}. {label}", "value": str(index)}
+        for index, label in enumerate(session.hotel_pref_state.suggestion_options(), start=1)
+    ]
 
 
 def _saved_duration_days() -> int:
@@ -103,11 +146,74 @@ def _new_trip_signal(message: str) -> str | None:
     normalized = _normalize_intent_text(message)
     if re.search(r"\b(?:chuyen di|lich trinh|ke hoach)(?: du lich)? moi\b", normalized):
         return "strong"
-    if re.search(r"\b(?:doi|sua|thay|them|bo|xoa)\b|\bngay\s+\d+\b", normalized):
+    # "ngày N" marks an edit scope ("đổi khách sạn ngày 2"), but the same letters
+    # appear in every ordinary new-trip sentence: "3 ngày 2 người" normalizes to
+    # "3 ngay 2 nguoi", where the N is the head count. Without these guards the
+    # most common way to start a trip is read as editing day 2 of the saved plan.
+    # A duration reads as "<digit> ngày"; a scope reads as "ngày <digit>" with no
+    # digit before it and no unit word after it.
+    day_scope = r"(?<!\d\s)\bngay\s+\d+\b(?!\s*(?:nguoi|dem|tuan|thang))"
+    if re.search(r"\b(?:doi|sua|thay|them|bo|xoa)\b", normalized) or re.search(day_scope, normalized):
         return None
-    if re.search(r"\b(?:toi|minh|chung toi)?\s*muon\s+(?:di choi|di du lich|du lich)\b", normalized):
+    # Any ordinary "let's go somewhere" phrasing counts. This stays safe because it
+    # is only a *candidate*: _begin_new_trip_if_requested still refuses unless intake
+    # grounds a real destination, and the edit verbs / day scopes above already
+    # returned. Requiring the exact words "muốn đi du lịch" missed the most common
+    # opener of all — "đi Đà Nẵng 3 ngày 2 người".
+    if re.search(r"\b(?:di|du lich|len ke hoach|lap ke hoach|len lich trinh)\b", normalized):
         return "destination"
     return None
+
+
+def _unsupported_destination_reply(user_input: str) -> str | None:
+    """Reply to use when a message clearly asks for a new trip but names a place we
+    have no data for. Without this the message falls through to the saved-plan edit
+    planner, which answers "không thể hiểu yêu cầu chỉnh sửa" — the user asked to go
+    to Hội An and is told their edit was unclear, with no hint of the real reason.
+
+    Keys off the place the user actually NAMED, not merely off a failure to ground
+    one. An edit like "sau 20h tôi không muốn đi đâu nữa" names no place at all and
+    must stay on the edit path; only a named-but-unknown city belongs here.
+    """
+    if _new_trip_signal(user_input) is None:
+        return None
+    destination_names = _get_destination_names()
+    named = str(
+        (_llm_extract_intake_facts(user_input, {}, destination_names) or {}).get("destination") or ""
+    ).strip()
+    if not named or named.casefold() == "null":
+        return None
+    if _match_known_destination(named, destination_names):
+        return None
+    return TripIntakeState().next_question(destination_names)
+
+
+_OTHER_INTENT_WORDS = re.compile(
+    r"\b(?:doi|sua|thay|them|bo|xoa|chot|xac nhan|hoan tat|tai sao|vi sao|sao lai|the nao|gi vay)\b"
+)
+
+
+def _is_hotel_choice_attempt(user_input: str) -> bool:
+    """Whether a reply that failed to resolve was still *trying* to name a hotel.
+
+    True keeps the list up and re-asks (a typo'd name, an out-of-range number).
+    False means the user has moved on, and holding the list would trap them.
+    """
+    stripped = user_input.strip()
+    if not stripped:
+        return True
+    # A bare number is always an attempt, even out of range — never read "3" as a
+    # topic change just because the list is shorter than that.
+    if stripped.isdigit():
+        return True
+    if _is_finalization_request(user_input):
+        return False
+    normalized = _normalize_intent_text(user_input)
+    if _OTHER_INTENT_WORDS.search(normalized):
+        return False
+    if _new_trip_signal(user_input) is not None:
+        return False
+    return True
 
 
 def _begin_new_trip_if_requested(session: ChatSession, user_input: str) -> bool:
@@ -135,10 +241,25 @@ def process_chat_turn(session: ChatSession, user_input: str) -> str:
     if os.path.exists(PENDING_HOTEL_SELECTION_FILE):
         tool_response = select_hotel.invoke({"selection": user_input})
         logger.info("Hotel selection response: %s", tool_response)
-        session.initial_plan_complete = not str(tool_response).startswith("SYSTEM ERROR:")
-        if session.initial_plan_complete:
-            session.planning_new_trip = False
-        return tool_response
+        # select_hotel deletes the pending file once it resolves a hotel, so the
+        # file's survival — not the wording of the reply — is what says it failed.
+        picked = not os.path.exists(PENDING_HOTEL_SELECTION_FILE)
+        if picked:
+            session.initial_plan_complete = not str(tool_response).startswith("SYSTEM ERROR:")
+            if session.initial_plan_complete:
+                session.planning_new_trip = False
+            return tool_response
+
+        if _is_hotel_choice_attempt(user_input):
+            return tool_response
+
+        # Not a pick and not an attempt at one. Re-asking here is what trapped
+        # people: with a list pending, every later message was read as a choice,
+        # so "chốt lịch trình" and "thêm quán cà phê ngày 2" both came back as
+        # "mình chưa xác định được khách sạn", forever. Drop the list and let the
+        # message be handled for what it actually is.
+        logger.info("Reply is not a hotel choice; dropping the pending list")
+        _clear_pending_hotel_selection()
 
     if os.path.exists(CURRENT_TRIP_PLAN_FILE) and _is_finalization_request(user_input):
         tool_response = finalize_trip_plan.invoke({})
@@ -148,7 +269,11 @@ def process_chat_turn(session: ChatSession, user_input: str) -> str:
 
     has_saved_plan = os.path.exists(CURRENT_TRIP_PLAN_FILE)
     if has_saved_plan and not session.planning_new_trip:
-        _begin_new_trip_if_requested(session, user_input)
+        if not _begin_new_trip_if_requested(session, user_input):
+            unsupported_reply = _unsupported_destination_reply(user_input)
+            if unsupported_reply:
+                logger.info("New-trip request names an unsupported destination")
+                return unsupported_reply
 
     is_saved_plan_edit = has_saved_plan and not session.planning_new_trip
     if is_saved_plan_edit:
@@ -197,8 +322,9 @@ def process_chat_turn(session: ChatSession, user_input: str) -> str:
 
     if not session.initial_plan_complete and not is_saved_plan_edit:
         if not session.intake_state.is_complete:
-            session.intake_state = session.intake_state.with_message(user_input, _get_destination_names())
-            missing_question = session.intake_state.next_question()
+            destination_names = _get_destination_names()
+            session.intake_state = session.intake_state.with_message(user_input, destination_names)
+            missing_question = session.intake_state.next_question(destination_names)
             if missing_question:
                 logger.info("Deterministic intake response: %s", missing_question)
                 return missing_question

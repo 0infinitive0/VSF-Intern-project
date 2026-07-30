@@ -45,6 +45,9 @@ def test_process_chat_turn_routes_to_select_hotel_when_pending_file_exists(monke
 
     def _fake_invoke(args):
         captured["args"] = args
+        # The real select_hotel deletes the pending file once it resolves a hotel,
+        # and process_chat_turn keys off exactly that to tell success from failure.
+        os.remove(PENDING_HOTEL_SELECTION_FILE)
         return "picked"
 
     monkeypatch.setattr(
@@ -389,3 +392,132 @@ def test_agent_provider_error_is_returned_as_a_safe_reply():
 
     assert reply.startswith("SYSTEM ERROR:")
     assert "không thể xử lý" in reply.casefold()
+
+
+def test_unsupported_destination_is_named_not_sent_to_the_edit_planner(monkeypatch):
+    """With a saved plan on disk, "đi Hội An" used to fall through to the edit
+    planner and come back as "không thể hiểu yêu cầu chỉnh sửa" — telling the user
+    their edit was unclear when the real reason is that we have no Hội An data."""
+    with open(CURRENT_TRIP_PLAN_FILE, "w", encoding="utf-8") as f:
+        f.write('{"itineraries":[{"duration_days":3}]}')
+
+    monkeypatch.setattr(chat_session_module, "_get_destination_names", lambda: ("Đà Nẵng", "Huế"))
+    monkeypatch.setattr(
+        chat_session_module,
+        "_llm_extract_intake_facts",
+        lambda message, known, names, model=None: {"destination": "Hội An", "duration_days": 2},
+    )
+
+    class _NeverPlanner:
+        def __call__(self, *_args, **_kwargs):
+            raise AssertionError("an unsupported destination must not reach the edit planner")
+
+    monkeypatch.setattr(chat_session_module, "plan_trip_edit", _NeverPlanner())
+
+    reply = process_chat_turn(_session(), "đi Hội An 2 ngày 2 người")
+
+    assert "Đà Nẵng" in reply and "Huế" in reply
+    assert "chỉnh sửa" not in reply
+
+
+def test_edit_request_naming_no_place_still_reaches_the_edit_planner(monkeypatch):
+    """Guards the fix above from over-firing: "không muốn đi đâu nữa" contains the
+    travel word "đi" but names no place, so it is an edit and must stay one."""
+    with open(CURRENT_TRIP_PLAN_FILE, "w", encoding="utf-8") as f:
+        f.write('{"itineraries":[{"duration_days":3}]}')
+
+    monkeypatch.setattr(chat_session_module, "_get_destination_names", lambda: ("Đà Nẵng", "Huế"))
+    monkeypatch.setattr(
+        chat_session_module,
+        "_llm_extract_intake_facts",
+        lambda message, known, names, model=None: {"destination": None},
+    )
+    monkeypatch.setattr(
+        chat_session_module,
+        "plan_trip_edit",
+        lambda request, data: TripEditPlan(decision="apply", summary="ok", raw_request=request),
+    )
+    monkeypatch.setattr(
+        chat_session_module, "execute_trip_edit_request", lambda request, plan: "Đã áp dụng."
+    )
+
+    reply = process_chat_turn(_session(), "buổi tối sau 20h tôi không muốn đi đâu nữa")
+
+    assert reply == "Đã áp dụng."
+
+
+def test_unresolved_hotel_reply_that_is_another_intent_drops_the_pending_list(monkeypatch):
+    """A shown hotel list used to swallow every later message: with the file on
+    disk, "chốt lịch trình" came back as "mình chưa xác định được khách sạn" and
+    there was no way out short of picking a hotel."""
+    with open(PENDING_HOTEL_SELECTION_FILE, "w", encoding="utf-8") as f:
+        f.write('{"mode": "new_trip", "options": []}')
+    with open(CURRENT_TRIP_PLAN_FILE, "w", encoding="utf-8") as f:
+        f.write('{"itineraries":[{"duration_days":3}]}')
+
+    # Real select_hotel leaves the file in place when it cannot resolve a choice.
+    monkeypatch.setattr(
+        chat_session_module,
+        "select_hotel",
+        type("Fake", (), {"invoke": staticmethod(lambda args: "Mình chưa xác định được...")})(),
+    )
+    monkeypatch.setattr(chat_session_module, "_is_finalization_request", lambda text: True)
+    monkeypatch.setattr(
+        chat_session_module,
+        "finalize_trip_plan",
+        type("Fake", (), {"invoke": staticmethod(lambda args: "Đã chốt lịch trình.")})(),
+    )
+
+    reply = process_chat_turn(_session(), "chốt lịch trình này")
+
+    assert reply == "Đã chốt lịch trình."
+    assert not os.path.exists(PENDING_HOTEL_SELECTION_FILE)
+
+
+def test_unresolved_hotel_reply_that_is_a_number_keeps_asking(monkeypatch):
+    """Guards the fix from over-firing: a bare number is always a pick attempt, so
+    an out-of-range "9" must re-ask rather than silently abandon the list."""
+    with open(PENDING_HOTEL_SELECTION_FILE, "w", encoding="utf-8") as f:
+        f.write('{"mode": "new_trip", "options": []}')
+
+    monkeypatch.setattr(
+        chat_session_module,
+        "select_hotel",
+        type("Fake", (), {"invoke": staticmethod(lambda args: "Mình chưa xác định được...")})(),
+    )
+
+    reply = process_chat_turn(_session(), "9")
+
+    assert reply == "Mình chưa xác định được..."
+    assert os.path.exists(PENDING_HOTEL_SELECTION_FILE)
+
+
+def test_suggestions_are_declared_not_inferred_from_reply_text(monkeypatch):
+    """Chips must come from state. The model writes numbered prose constantly, and
+    scanning replies for "1. ..." turned that prose into buttons that sent a bare
+    "1" into turns wanting free text."""
+    session = _session(
+        intake_state=TripIntakeState(destination="Đà Nẵng", duration="3 ngày", people="2 người"),
+        hotel_pref_state=HotelPreferenceState(),
+    )
+
+    chips = chat_session_module.suggestions_for(session)
+
+    assert [chip["value"] for chip in chips] == ["1", "2", "3", "4"]
+    assert "Tiết kiệm" in chips[0]["label"]
+
+    # Once the plan is done the turn wants free text — no chips at all.
+    session.initial_plan_complete = True
+    assert chat_session_module.suggestions_for(session) == []
+
+
+def test_suggestions_list_hotels_while_a_choice_is_pending():
+    with open(PENDING_HOTEL_SELECTION_FILE, "w", encoding="utf-8") as f:
+        f.write('{"mode":"new_trip","options":[{"name":"Khách sạn A"},{"name":"Khách sạn B"}]}')
+
+    chips = chat_session_module.suggestions_for(_session())
+
+    assert chips == [
+        {"label": "1. Khách sạn A", "value": "1"},
+        {"label": "2. Khách sạn B", "value": "2"},
+    ]

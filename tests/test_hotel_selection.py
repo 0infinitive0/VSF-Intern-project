@@ -331,6 +331,42 @@ def test_parse_free_text_budget_unrelated_text_returns_none():
     assert _parse_free_text_budget("trời hôm nay đẹp quá") is None
 
 
+def test_parse_free_text_budget_half_million_shorthand():
+    """"1tr5" is 1.5 million, not 1 million — the trailing digits are a fraction."""
+    assert _parse_free_text_budget("1tr5") == (None, 1_500_000, 1_500_000)
+    assert _parse_free_text_budget("1 triệu rưỡi") == (None, 1_500_000, 1_500_000)
+    assert _parse_free_text_budget("2tr5") == (None, 2_500_000, 2_500_000)
+    assert _parse_free_text_budget("1tr500") == (None, 1_500_000, 1_500_000)
+
+
+def test_parse_free_text_budget_range_uses_midpoint():
+    """A range means the whole span; taking its last number pins the user to the top."""
+    assert _parse_free_text_budget("khoảng 2-3 triệu") == (None, 2_500_000, 2_500_000)
+    assert _parse_free_text_budget("từ 1 đến 2 triệu") == (None, 1_500_000, 1_500_000)
+
+
+def test_parse_free_text_budget_more_cheap_phrasings():
+    budget_tier = _parse_free_text_budget("tiết kiệm thôi")
+
+    assert _parse_free_text_budget("rẻ thôi") == budget_tier
+    assert _parse_free_text_budget("bình dân") == budget_tier
+    assert _parse_free_text_budget("càng rẻ càng tốt") == budget_tier
+
+
+def test_parse_free_text_budget_does_not_read_trong_trung_as_trieu():
+    """Guards the bare "tr" unit added for "1tr5": it must not swallow other words."""
+    assert _parse_free_text_budget("khách sạn trong trung tâm") is None
+
+
+def test_hotel_preference_state_treats_no_preference_as_an_answer():
+    """"bao nhiêu cũng được" is a real answer — re-asking reads as ignoring the user."""
+    for reply in ("bao nhiêu cũng được", "sao cũng được", "không quan tâm"):
+        state = HotelPreferenceState().with_message(reply)
+
+        assert state.is_complete, reply
+        assert state.target_price is None, reply
+
+
 # ---- HotelPreferenceState ---------------------------------------------------------------
 
 

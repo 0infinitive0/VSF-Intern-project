@@ -41,5 +41,17 @@ class PlannerChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=5000, description="Tin nhắn từ user")
 
 
+class ChatSuggestion(BaseModel):
+    label: str = Field(..., description="Chữ hiển thị trên nút gợi ý")
+    value: str = Field(..., description="Nội dung gửi đi khi bấm nút")
+
+
 class PlannerChatResponse(BaseModel):
     reply: str = Field(..., description="Phản hồi từ trip planner")
+    suggestions: list[ChatSuggestion] = Field(
+        default_factory=list,
+        description=(
+            "Các lựa chọn bấm nhanh cho lượt kế tiếp. Rỗng nghĩa là lượt này chờ "
+            "người dùng nhập tự do — UI không được tự suy ra nút từ nội dung trả lời."
+        ),
+    )

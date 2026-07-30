@@ -233,3 +233,33 @@ def test_destination_alias_schema_and_terminal_loader_contract() -> None:
     assert "aliases TEXT[] NOT NULL DEFAULT '{}'::TEXT[]" in schema
     assert '.select("name, aliases")' in planner
     assert "destination_options_from_rows(response.data or [])" in planner
+
+
+def test_next_question_lists_supported_destinations() -> None:
+    """A bare "Bạn muốn đi đâu?" deadlocks anyone who asked for an unsupported
+    city: grounding correctly refuses to guess, but nothing tells them why, so
+    they retype the same city forever."""
+    question = TripIntakeState().next_question(DESTINATIONS)
+
+    assert "Đà Nẵng" in question
+    assert "Hồ Chí Minh" in question
+    # Still answers the actual question, not just a list.
+    assert question.startswith("Bạn muốn đi đâu?")
+
+
+def test_next_question_without_destination_list_stays_unchanged() -> None:
+    assert TripIntakeState().next_question() == "Bạn muốn đi đâu?"
+
+
+def test_unsupported_destination_is_not_swapped_for_a_known_one(monkeypatch) -> None:
+    """The extraction prompt must return what the user said, never a nearby
+    substitute — a silent swap sends them to the wrong city. Grounding then
+    rejects it, so the destination stays unset and the question is re-asked."""
+    _mock_extraction(
+        monkeypatch,
+        {"mình muốn đi Hội An hai ngày": {"destination": "Hội An", "duration_days": 2}},
+    )
+    state = TripIntakeState().with_message("mình muốn đi Hội An hai ngày", DESTINATIONS)
+
+    assert state.destination is None
+    assert _match_known_destination("Hội An", DESTINATIONS) is None
