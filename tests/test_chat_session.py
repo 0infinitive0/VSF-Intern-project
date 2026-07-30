@@ -9,6 +9,7 @@ import src.services.trip_intake as trip_intake_module
 from src.cli.trip_builder_svc import CURRENT_TRIP_PLAN_FILE, PENDING_HOTEL_SELECTION_FILE, SESSION_DATA_DIR
 from src.services.chat_session import ChatSession, process_chat_turn
 from src.services.hotel_selection import HotelPreferenceState
+from src.services.trip_edit_planner import TripEditPlan, TripEditPlanError
 from src.services.trip_intake import TripIntakeState
 
 
@@ -155,3 +156,236 @@ def test_process_chat_turn_falls_back_to_agent_once_plan_complete():
     reply = process_chat_turn(session, "đổi khách sạn khác")
 
     assert reply == "Đã cập nhật lịch trình."
+
+
+def test_saved_plan_cutoff_asks_for_day_scope_then_bypasses_agent(monkeypatch):
+    with open(CURRENT_TRIP_PLAN_FILE, "w", encoding="utf-8") as f:
+        f.write('{"itineraries":[{"duration_days":3}]}')
+
+    captured = {}
+
+    def _plan(request, _data):
+        if "tất cả các ngày" not in request:
+            return TripEditPlan(
+                decision="clarify",
+                summary="Cần biết ngày áp dụng",
+                clarification_question="Bạn muốn áp dụng cho ngày nào?",
+                raw_request=request,
+            )
+        return TripEditPlan(decision="apply", summary="Áp dụng giới hạn", raw_request=request)
+
+    def _execute(request, plan):
+        captured["request"] = request
+        captured["plan"] = plan
+        return "Đã áp dụng giờ giới hạn."
+
+    monkeypatch.setattr(chat_session_module, "plan_trip_edit", _plan)
+    monkeypatch.setattr(chat_session_module, "execute_trip_edit_request", _execute)
+
+    class _NeverAgent:
+        def stream(self, *_args, **_kwargs):
+            raise AssertionError("recognized saved-plan edits must bypass the LLM agent")
+
+    session = _session(agent=_NeverAgent(), initial_plan_complete=True)
+
+    first_reply = process_chat_turn(session, "buổi tối sau 20h tôi không muốn đi đâu nữa")
+    second_reply = process_chat_turn(session, "tất cả các ngày")
+
+    assert "ngày nào" in first_reply.casefold()
+    assert second_reply == "Đã áp dụng giờ giới hạn."
+    assert "tất cả các ngày" in captured["request"]
+    assert session.pending_trip_change is None
+
+
+def test_textual_tool_call_json_is_never_returned_to_the_user():
+    class _FakeMessage:
+        def __init__(self, content):
+            self.type = "ai"
+            self.content = content
+            self.tool_calls = []
+            self.name = None
+
+    class _RetryingAgent:
+        def __init__(self):
+            self.calls = 0
+
+        def stream(self, *_args, **_kwargs):
+            self.calls += 1
+            content = (
+                '{"name":"modify_trip_plan","parameters":{"modification_request":"rác rác"}}'
+                if self.calls == 1
+                else "Mình chưa hiểu yêu cầu. Bạn mô tả lại giúp mình nhé."
+            )
+            yield {"messages": [_FakeMessage(content)]}
+
+    agent = _RetryingAgent()
+    session = _session(agent=agent, initial_plan_complete=True)
+
+    reply = process_chat_turn(session, "hãy giúp tôi")
+
+    assert agent.calls == 2
+    assert not reply.lstrip().startswith("{")
+    assert "mô tả lại" in reply.casefold()
+
+
+def test_saved_plan_self_selected_breakfast_bypasses_agent(monkeypatch):
+    with open(CURRENT_TRIP_PLAN_FILE, "w", encoding="utf-8") as f:
+        f.write('{"itineraries":[{"duration_days":3}]}')
+
+    captured = {}
+
+    def _execute(request, plan):
+        captured["args"] = {"modification_request": request, "plan": plan}
+        return "Đã để bạn tự chọn bữa sáng."
+
+    monkeypatch.setattr(
+        chat_session_module,
+        "plan_trip_edit",
+        lambda request, _data: TripEditPlan(decision="apply", summary="Tự chọn bữa sáng", raw_request=request),
+    )
+    monkeypatch.setattr(chat_session_module, "execute_trip_edit_request", _execute)
+
+    class _NeverAgent:
+        def stream(self, *_args, **_kwargs):
+            raise AssertionError("recognized saved-plan meal edits must bypass the agent")
+
+    session = _session(agent=_NeverAgent(), initial_plan_complete=True)
+
+    reply = process_chat_turn(session, "tôi muốn tự chọn chỗ ăn sáng")
+
+    assert reply == "Đã để bạn tự chọn bữa sáng."
+    assert captured["args"]["modification_request"] == "tôi muốn tự chọn chỗ ăn sáng"
+
+
+def test_saved_draft_messages_use_the_edit_planner_before_the_general_agent(monkeypatch):
+    with open(CURRENT_TRIP_PLAN_FILE, "w", encoding="utf-8") as f:
+        f.write('{"itineraries":[{"duration_days":1,"status":"Draft"}],"itinerary_items":[]}')
+
+    captured = {}
+    monkeypatch.setattr(
+        chat_session_module,
+        "plan_trip_edit",
+        lambda request, data: TripEditPlan(decision="apply", summary="Đổi bữa sáng", raw_request=request),
+    )
+    def _execute(request, plan):
+        captured["result"] = (request, plan)
+        return "updated"
+
+    monkeypatch.setattr(chat_session_module, "execute_trip_edit_request", _execute)
+
+    class _NeverAgent:
+        def stream(self, *_args, **_kwargs):
+            raise AssertionError("saved-plan edit planning must happen before the general agent")
+
+    reply = process_chat_turn(_session(agent=_NeverAgent(), initial_plan_complete=True), "đổi bữa sáng ngày 1")
+
+    assert reply == "updated"
+    assert captured["result"][0] == "đổi bữa sáng ngày 1"
+
+
+def test_saved_plan_not_edit_decision_falls_through_to_general_agent(monkeypatch):
+    with open(CURRENT_TRIP_PLAN_FILE, "w", encoding="utf-8") as f:
+        f.write('{"itineraries":[{"duration_days":1,"status":"Draft"}],"itinerary_items":[]}')
+
+    monkeypatch.setattr(
+        chat_session_module,
+        "plan_trip_edit",
+        lambda request, _data: TripEditPlan(decision="not_edit", summary="Câu hỏi chung", raw_request=request),
+    )
+
+    class _Message:
+        type = "ai"
+        tool_calls = []
+        content = "Đây là câu trả lời chung."
+
+    class _Agent:
+        def stream(self, *_args, **_kwargs):
+            yield {"messages": [_Message()]}
+
+    reply = process_chat_turn(_session(agent=_Agent(), initial_plan_complete=True), "gợi ý thêm cho tôi")
+
+    assert reply == "Đây là câu trả lời chung."
+
+
+def test_fresh_trip_request_bypasses_saved_draft_edit_planner_failure(monkeypatch):
+    with open(CURRENT_TRIP_PLAN_FILE, "w", encoding="utf-8") as f:
+        f.write('{"itineraries":[{"duration_days":1,"status":"Draft"}],"itinerary_items":[]}')
+
+    monkeypatch.setattr(
+        chat_session_module,
+        "plan_trip_edit",
+        lambda *_args: (_ for _ in ()).throw(TripEditPlanError("Unterminated string")),
+    )
+    monkeypatch.setattr(chat_session_module, "_get_destination_names", lambda: ("Hồ Chí Minh",))
+    _mock_intake_extraction(
+        monkeypatch,
+        {"tôi muốn đi chơi hcm": {"destination": "Hồ Chí Minh"}},
+    )
+
+    session = _session()
+    reply = process_chat_turn(session, "tôi muốn đi chơi hcm")
+
+    assert not reply.startswith("SYSTEM ERROR:")
+    assert "bao lâu" in reply.casefold()
+    assert session.intake_state.destination == "Hồ Chí Minh"
+
+
+def test_fresh_trip_intake_keeps_bypassing_the_old_draft_on_followup(monkeypatch):
+    with open(CURRENT_TRIP_PLAN_FILE, "w", encoding="utf-8") as f:
+        f.write('{"itineraries":[{"duration_days":1,"status":"Draft"}],"itinerary_items":[]}')
+
+    monkeypatch.setattr(
+        chat_session_module,
+        "plan_trip_edit",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("new-trip intake must not return to old-draft editing")),
+    )
+    monkeypatch.setattr(chat_session_module, "_get_destination_names", lambda: ("Hồ Chí Minh",))
+    _mock_intake_extraction(
+        monkeypatch,
+        {
+            "tôi muốn đi chơi hcm": {"destination": "Hồ Chí Minh"},
+            "3 ngày": {"duration_days": 3},
+        },
+    )
+
+    session = _session()
+    first_reply = process_chat_turn(session, "tôi muốn đi chơi hcm")
+    second_reply = process_chat_turn(session, "3 ngày")
+
+    assert "bao lâu" in first_reply.casefold()
+    assert "bao nhiêu người" in second_reply.casefold()
+    assert session.planning_new_trip is True
+    assert session.intake_state.duration == "3 ngày"
+
+
+def test_fresh_session_saved_plan_edit_with_destination_still_fails_closed(monkeypatch):
+    with open(CURRENT_TRIP_PLAN_FILE, "w", encoding="utf-8") as f:
+        f.write('{"itineraries":[{"duration_days":1,"status":"Draft"}],"itinerary_items":[]}')
+
+    monkeypatch.setattr(chat_session_module, "_get_destination_names", lambda: ("Hồ Chí Minh",))
+    _mock_intake_extraction(
+        monkeypatch,
+        {"thêm điểm ở hcm vào ngày 1": {"destination": "Hồ Chí Minh"}},
+    )
+    monkeypatch.setattr(
+        chat_session_module,
+        "plan_trip_edit",
+        lambda *_args: (_ for _ in ()).throw(TripEditPlanError("Unterminated string")),
+    )
+
+    reply = process_chat_turn(_session(), "thêm điểm ở hcm vào ngày 1")
+
+    assert reply.startswith("SYSTEM ERROR:")
+
+
+def test_agent_provider_error_is_returned_as_a_safe_reply():
+    class _FailingAgent:
+        def stream(self, *_args, **_kwargs):
+            raise RuntimeError("400: messages/0/content array not in string")
+
+    session = _session(agent=_FailingAgent(), initial_plan_complete=True)
+
+    reply = process_chat_turn(session, "hãy giúp tôi")
+
+    assert reply.startswith("SYSTEM ERROR:")
+    assert "không thể xử lý" in reply.casefold()

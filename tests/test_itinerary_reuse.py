@@ -75,6 +75,25 @@ def test_fingerprint_is_stable_for_reordered_preferences() -> None:
     assert "destination_id=destination-da-nang" in first.summary
 
 
+def test_reuse_fingerprint_and_candidate_include_planning_constraints() -> None:
+    constrained_query = ItineraryReuseQuery(
+        destination_id="destination-da-nang",
+        destination_name="Đà Nẵng",
+        duration_days=2,
+        hotel_id="hotel-1",
+        planning_constraints={"latest_outing_start_by_day": {"1": "20:00"}},
+    )
+
+    fingerprint = build_reuse_fingerprint(constrained_query)
+    decision = classify_reuse_candidate(
+        valid_template(planning_constraints={}), constrained_query, threshold=0.88
+    )
+
+    assert "latest_outing_start_by_day" in fingerprint.summary
+    assert decision.action == "miss"
+    assert decision.reason == "planning_constraints_mismatch"
+
+
 def test_summary_excludes_volatile_place_ids_and_times() -> None:
     summary = build_itinerary_summary(
         query(),

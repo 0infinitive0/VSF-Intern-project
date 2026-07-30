@@ -7,6 +7,7 @@ with the trip scheduler before presenting it to a traveller.
 
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
@@ -53,6 +54,12 @@ def _human_labels(values: Iterable[str]) -> tuple[str, ...]:
     return tuple(HUMAN_LABELS.get(value, value) for value in values)
 
 
+def _canonical_constraints(value: Mapping[str, Any] | None) -> str:
+    if not value:
+        return "none"
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
 @dataclass(frozen=True)
 class ItineraryReuseQuery:
     """Stable, explicit input for Tier 1 itinerary retrieval."""
@@ -65,6 +72,7 @@ class ItineraryReuseQuery:
     preferences: tuple[str, ...] = ()
     child_focused: bool = False
     hotel_id: str | None = None
+    planning_constraints: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -92,6 +100,7 @@ class ItineraryTemplate:
     reuse_root_id: str | None = None
     reuse_count: int = 0
     summary: str | None = None
+    planning_constraints: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -114,6 +123,7 @@ def build_reuse_fingerprint(query: ItineraryReuseQuery) -> ReuseFingerprint:
             f"children={int(query.number_of_children)}",
             f"child_focused={str(bool(query.child_focused)).lower()}",
             f"preferences={','.join(_normalized_terms(query.preferences)) or 'none'}",
+            f"planning_constraints={_canonical_constraints(query.planning_constraints)}",
         )
     )
     return ReuseFingerprint(summary=summary, content_hash=sha256(summary.encode("utf-8")).hexdigest())
@@ -143,6 +153,15 @@ def build_itinerary_summary(
         parts.append(f"Sở thích: {', '.join(preferences)}.")
     if query.child_focused:
         parts.append("Chuyến đi ưu tiên trải nghiệm phù hợp với trẻ em.")
+    cutoff_by_day = query.planning_constraints.get("latest_outing_start_by_day") or {}
+    if isinstance(cutoff_by_day, Mapping) and cutoff_by_day:
+        cutoff_text = ", ".join(
+            f"ngày {day}: {cutoff}"
+            for day, cutoff in sorted(
+                cutoff_by_day.items(), key=lambda value: int(value[0])
+            )
+        )
+        parts.append(f"Giờ bắt đầu điểm đi chơi muộn nhất: {cutoff_text}.")
 
     meals = _normalized_terms(_string_list(hotel.get("covered_meals")))
     star = _canonical_text(hotel.get("star_rating"))
@@ -228,6 +247,10 @@ def classify_reuse_candidate(
         return ReuseDecision("miss", "hotel_mismatch")
     if template.duration_days != query.duration_days:
         return ReuseDecision("miss", "duration_mismatch")
+    if _canonical_constraints(template.planning_constraints) != _canonical_constraints(
+        query.planning_constraints
+    ):
+        return ReuseDecision("miss", "planning_constraints_mismatch")
     if template.status != "Finalized":
         return ReuseDecision("miss", "not_finalized")
     if template.similarity < threshold:

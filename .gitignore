@@ -89,3 +89,4 @@ out/
 .ai-log/archive/
 CLAUDE.md
 plans/
+.agents/

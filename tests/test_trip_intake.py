@@ -205,6 +205,18 @@ def test_hcm_abbreviation_does_not_repeat_the_destination_question(monkeypatch) 
     assert state.next_question() == "Chuyến đi có bao nhiêu người?"
 
 
+def test_hcm_alias_is_grounded_when_intake_model_returns_invalid_output(monkeypatch) -> None:
+    destinations = destination_options_from_rows(
+        [{"name": "Hồ Chí Minh", "aliases": ["TP HCM", "TPHCM", "HCM", "Sài Gòn"]}]
+    )
+    monkeypatch.setattr(trip_intake_module, "_llm_extract_intake_facts", lambda *_args, **_kwargs: {})
+
+    state = TripIntakeState().with_message("tôi muốn đi chơi hcm", destinations)
+
+    assert state.destination == "Hồ Chí Minh"
+    assert state.next_question() == "Bạn dự định đi trong bao lâu?"
+
+
 def test_destination_alias_schema_and_terminal_loader_contract() -> None:
     root = Path(__file__).resolve().parents[1]
     migration = (

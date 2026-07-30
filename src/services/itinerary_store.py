@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import logging
-import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from json import JSONDecodeError
@@ -22,6 +21,40 @@ from src.services.itinerary_reuse import (
     ItineraryTemplate,
     build_itinerary_summary,
     build_reuse_fingerprint,
+)
+
+ITINERARY_RPC_FIELDS = frozenset(
+    {
+        "id",
+        "session_id",
+        "destination_id",
+        "hotel_id",
+        "duration_days",
+        "number_of_adults",
+        "number_of_children",
+        "budget",
+        "preferences",
+        "day_themes",
+        "planning_constraints",
+        "status",
+        "summary",
+        "parent_itinerary_id",
+        "reuse_root_id",
+    }
+)
+ITEM_RPC_FIELDS = frozenset(
+    {
+        "id",
+        "day_number",
+        "order_index",
+        "start_time",
+        "end_time",
+        "reference_type",
+        "reference_id",
+        "estimated_cost",
+        "item_kind",
+        "route_to_next",
+    }
 )
 
 
@@ -95,6 +128,11 @@ class ItineraryStore:
             reuse_root_id=str(row["reuse_root_id"]) if row.get("reuse_root_id") else None,
             reuse_count=int(row.get("reuse_count") or 0),
             summary=str(row["summary"]) if row.get("summary") else None,
+            planning_constraints=(
+                dict(row.get("planning_constraints") or {})
+                if isinstance(row.get("planning_constraints") or {}, Mapping)
+                else {}
+            ),
         )
 
     def search_reusable_itineraries(
@@ -115,6 +153,7 @@ class ItineraryStore:
             "filter_destination_id": query.destination_id,
             "filter_duration_days": int(query.duration_days),
             "filter_hotel_id": query.hotel_id,
+            "filter_planning_constraints": dict(query.planning_constraints),
         }
         try:
             response = self._client.rpc("match_itineraries", params).execute()
@@ -152,7 +191,7 @@ class ItineraryStore:
         itinerary = itineraries[0] if isinstance(itineraries, list) and itineraries else itineraries
         if not isinstance(itinerary, Mapping) or not itinerary.get("id"):
             raise ItineraryStoreError("Trip data has no itinerary record to persist.")
-        record = dict(itinerary)
+        record = {key: value for key, value in itinerary.items() if key in ITINERARY_RPC_FIELDS}
         hotel = trip_data.get("hotel") or {}
         if isinstance(hotel, Mapping):
             record.setdefault("hotel_id", hotel.get("id"))
@@ -163,13 +202,25 @@ class ItineraryStore:
 
     def persist_itinerary_bundle(self, trip_data: Mapping[str, Any]) -> str:
         itinerary = self._itinerary_record(trip_data)
-        items = []
+        routing_items = []
         for item in trip_data.get("itinerary_items") or []:
             if not isinstance(item, Mapping):
                 continue
             row = dict(item)
             row["item_kind"] = row.get("item_kind") or row.get("kind")
-            items.append(row)
+            routing_items.append(row)
+
+        # Recalculate routes using recalculate_itinerary_routes helper
+        mutable_trip_data = dict(trip_data)
+        mutable_trip_data["itinerary_items"] = routing_items
+        from src.services.routing import recalculate_itinerary_routes
+        recalculate_itinerary_routes(mutable_trip_data)
+
+        items = [
+            {key: value for key, value in row.items() if key in ITEM_RPC_FIELDS}
+            for row in routing_items
+        ]
+
         try:
             response = self._client.rpc(
                 "persist_itinerary_bundle",
@@ -177,32 +228,10 @@ class ItineraryStore:
             ).execute()
             return str(getattr(response, "data", None) or itinerary["id"])
         except Exception as exc:
-            try:
-                # Direct table fallback if RPC fails on remote DB
-                session_id = itinerary.get("session_id")
-                if session_id:
-                    try:
-                        self._client.table("sessions").upsert({"session_id": session_id}).execute()
-                    except Exception as session_exc:
-                        logger.warning("Could not pre-insert session %s: %s", session_id, session_exc)
-                self._client.table("itineraries").upsert(itinerary).execute()
-                if items:
-                    self._client.table("itinerary_items").delete().eq("itinerary_id", itinerary["id"]).execute()
-                    # Unlike the RPC (which reads only the jsonb keys it needs),
-                    # a raw table upsert is rejected by PostgREST for any key
-                    # that isn't an actual column (e.g. 'activity', 'kind').
-                    column_rows = []
-                    for item in items:
-                        row = {k: v for k, v in item.items() if k not in ("activity", "kind")}
-                        if not row.get("id"):
-                            row["id"] = str(uuid.uuid4())
-                        column_rows.append(row)
-                    self._client.table("itinerary_items").upsert(column_rows).execute()
-                return str(itinerary["id"])
-            except Exception as fallback_exc:
-                raise ItineraryStoreError(
-                    f"Itinerary bundle persistence failed: {exc} | Fallback failed: {fallback_exc}"
-                ) from exc
+            raise ItineraryStoreError(
+                "Unable to persist the atomic itinerary bundle; local JSON was retained. "
+                f"Supabase RPC error: {exc}"
+            ) from exc
 
     def finalize_trip_data(self, trip_data: Mapping[str, Any], query: ItineraryReuseQuery) -> Mapping[str, Any]:
         itinerary = self._itinerary_record(trip_data)

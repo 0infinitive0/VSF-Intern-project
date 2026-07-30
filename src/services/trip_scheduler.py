@@ -132,11 +132,21 @@ class ScheduledItem:
 
 @dataclass(frozen=True)
 class TripChange:
-    action: Literal["change_hotel", "replace_place", "reschedule", "add_place", "remove_place"]
+    action: Literal[
+        "change_hotel",
+        "replace_place",
+        "reschedule",
+        "add_place",
+        "remove_place",
+        "set_latest_outing_start",
+        "set_meal_self_selected",
+    ]
     day_number: int | None = None
+    day_numbers: tuple[int, ...] = ()
     order_index: int | None = None
     query: str | None = None
     requested_time: str | None = None
+    meal_kind: Literal["breakfast", "lunch", "dinner"] | None = None
 
 
 @dataclass
@@ -154,33 +164,153 @@ class ItinerarySchedule:
 
 def infer_trip_change(modification_request: str) -> TripChange | None:
     """Classify explicit edit language before consulting a probabilistic model."""
-    normalized = modification_request.casefold()
-    day_match = re.search(r"(?:ngày|day)\s*(\d+)", normalized)
-    order_match = re.search(r"(?:mục|hoạt động|item)\s*(\d+)", normalized)
+    normalized = _normalize(modification_request)
+    day_numbers = tuple(
+        dict.fromkeys(int(value) for value in re.findall(r"(?:ngay|day)\s*(\d+)", normalized))
+    )
+    order_match = re.search(r"(?:muc|hoat dong|item)\s*(\d+)", normalized)
     time_match = re.search(r"\b(\d{1,2})(?::|h)(\d{0,2})\b", normalized)
     requested_time = None
     if time_match:
         requested_time = f"{int(time_match.group(1)):02d}:{int(time_match.group(2) or 0):02d}"
 
-    if any(keyword in normalized for keyword in ("khách sạn", "hotel", "resort", "đổi phòng")):
+    meal_kind = next(
+        (
+            kind
+            for kind, aliases in (
+                ("breakfast", ("an sang", "bua sang", "breakfast")),
+                ("lunch", ("an trua", "bua trua", "lunch")),
+                ("dinner", ("an toi", "bua toi", "dinner")),
+            )
+            if any(alias in normalized for alias in aliases)
+        ),
+        None,
+    )
+    self_selected_meal = bool(
+        meal_kind
+        and any(
+            phrase in normalized
+            for phrase in (
+                "tu chon",
+                "tu tim",
+                "toi chon",
+                "de toi chon",
+                "chon sau",
+                "khong can goi y",
+                "khong goi y",
+                "khong can xep",
+                "khong xep",
+                "choose myself",
+                "choose my own",
+            )
+        )
+    )
+
+    cutoff_request = bool(
+        time_match
+        and any(
+            phrase in normalized
+            for phrase in (
+                "khong muon di",
+                "khong di choi",
+                "khong di dau",
+                "khong ra ngoai",
+                "dung di",
+                "ve khach san",
+                "no more outings",
+                "do not go out",
+                "not go out",
+            )
+        )
+    )
+
+    if self_selected_meal:
+        action = "set_meal_self_selected"
+    elif cutoff_request:
+        action = "set_latest_outing_start"
+    elif any(keyword in normalized for keyword in ("khach san", "hotel", "resort", "doi phong")):
         action = "change_hotel"
-    elif any(keyword in normalized for keyword in ("xóa", "bỏ", "remove")):
+    elif any(keyword in normalized for keyword in ("xoa", "bo", "remove")):
         action = "remove_place"
-    elif any(keyword in normalized for keyword in ("thêm", "add")):
+    elif any(keyword in normalized for keyword in ("them", "add")):
         action = "add_place"
     elif time_match:
         action = "reschedule"
-    elif any(keyword in normalized for keyword in ("thay", "đổi điểm", "replace", "swap")):
+    elif any(keyword in normalized for keyword in ("thay", "doi diem", "replace", "swap")):
         action = "replace_place"
     else:
         return None
     return TripChange(
         action=action,
-        day_number=int(day_match.group(1)) if day_match else None,
+        day_number=day_numbers[0] if len(day_numbers) == 1 else None,
+        day_numbers=day_numbers,
         order_index=int(order_match.group(1)) if order_match else None,
         query=modification_request,
         requested_time=requested_time,
+        meal_kind=meal_kind if self_selected_meal else None,
     )
+
+
+def parse_day_scope(message: str, duration_days: int) -> tuple[int, ...] | None:
+    """Resolve a clarification reply to explicit valid itinerary day numbers."""
+    if duration_days < 1:
+        return None
+    normalized = _normalize(message)
+    if any(
+        phrase in normalized
+        for phrase in ("tat ca", "moi ngay", "toan bo", "all days", "every day")
+    ):
+        return tuple(range(1, duration_days + 1))
+
+    range_match = re.search(r"(?:ngay\s*)?(\d+)\s*(?:den|toi|-)\s*(\d+)", normalized)
+    if range_match:
+        start, end = (int(range_match.group(1)), int(range_match.group(2)))
+        if 1 <= start <= end <= duration_days:
+            return tuple(range(start, end + 1))
+        return None
+
+    explicit = re.findall(r"(?:ngay|day)\s*(\d+)", normalized)
+    if not explicit and re.fullmatch(r"[\d\s,;&]+", normalized):
+        explicit = re.findall(r"\d+", normalized)
+    days = tuple(dict.fromkeys(int(value) for value in explicit))
+    if days and all(1 <= day <= duration_days for day in days):
+        return days
+    return None
+
+
+def apply_latest_outing_start(
+    items: Sequence[dict[str, Any]],
+    day_numbers: Sequence[int],
+    cutoff: str,
+) -> tuple[list[dict[str, Any]], tuple[str, ...]]:
+    """Remove non-hotel stops starting at or after a daily outing cutoff."""
+    cutoff_minutes = _time_to_minutes(cutoff)
+    selected_days = {int(day) for day in day_numbers}
+    kept: list[dict[str, Any]] = []
+    removed_ids: list[str] = []
+    for item in items:
+        row = dict(item)
+        day = int(row.get("day_number") or 0)
+        start_time = str(row.get("start_time") or "")
+        is_hotel = str(row.get("reference_type") or "").casefold() == "hotel"
+        should_remove = False
+        if day in selected_days and start_time and not is_hotel:
+            try:
+                should_remove = _time_to_minutes(start_time) >= cutoff_minutes
+            except (TypeError, ValueError):
+                should_remove = False
+        if should_remove:
+            removed_ids.append(str(row.get("id") or row.get("reference_id") or ""))
+        else:
+            kept.append(row)
+
+    for day in selected_days:
+        order_index = 1
+        for item in kept:
+            if int(item.get("day_number") or 0) == day:
+                item["order_index"] = order_index
+                order_index += 1
+    return kept, tuple(removed_ids)
 
 
 def parse_coordinates(value: str | tuple[float, float] | None) -> tuple[float, float] | None:
@@ -441,6 +571,7 @@ def build_itinerary(
                 start_time="07:00:00",
                 kind="breakfast",
                 policy=policy,
+                previous_coordinates=hotel.coordinate_pair,
             )
         if breakfast_covered:
             breakfast_item = _hotel_item(theme.day_number, 1, hotel, "breakfast", "07:00:00", 60)
@@ -471,6 +602,8 @@ def build_itinerary(
             playground_trip_count=playground_trip_count,
             playground_day_count=day_playgrounds,
             child_focused=child_focused,
+            previous_coordinates=breakfast_item.coordinates,
+            prior_coordinates=hotel.coordinate_pair,
         )
         if morning:
             morning_start = _next_start(breakfast_item, morning.coordinate_pair, morning_start, policy)
@@ -517,6 +650,9 @@ def build_itinerary(
                 start_time=_minutes_to_time(lunch_start),
                 kind="lunch",
                 policy=policy,
+                previous_coordinates=day_items[-1].coordinates,
+                prior_coordinates=breakfast_item.coordinates,
+                next_coordinates=hotel.coordinate_pair,
             )
         if lunch_candidate:
             lunch_start = _next_start(day_items[-1], lunch_candidate.coordinate_pair, lunch_start, policy)
@@ -569,6 +705,8 @@ def build_itinerary(
             playground_trip_count=playground_trip_count,
             playground_day_count=day_playgrounds,
             child_focused=child_focused,
+            previous_coordinates=rest_item.coordinates,
+            prior_coordinates=lunch_item.coordinates,
         )
         if afternoon:
             afternoon_start = _next_start(rest_item, afternoon.coordinate_pair, afternoon_start, policy)
@@ -602,6 +740,8 @@ def build_itinerary(
             start_time=_minutes_to_time(coffee_start),
             kind="coffee",
             policy=policy,
+            previous_coordinates=afternoon_item.coordinates,
+            prior_coordinates=rest_item.coordinates,
         )
         if coffee_candidate:
             coffee_start = _next_start(afternoon_item, coffee_candidate.coordinate_pair, coffee_start, policy)
@@ -640,6 +780,8 @@ def build_itinerary(
                 start_time=_minutes_to_time(dinner_start),
                 kind="dinner",
                 policy=policy,
+                previous_coordinates=coffee_item.coordinates,
+                prior_coordinates=afternoon_item.coordinates,
             )
         if dinner_candidate:
             dinner_start = _next_start(coffee_item, dinner_candidate.coordinate_pair, dinner_start, policy)
@@ -690,6 +832,8 @@ def build_itinerary(
             playground_trip_count=playground_trip_count,
             playground_day_count=day_playgrounds,
             child_focused=child_focused,
+            previous_coordinates=dinner_item.coordinates,
+            prior_coordinates=coffee_item.coordinates,
         )
         if evening and evening_start <= 20 * 60 + 30:
             duration = min(default_duration_minutes(evening, "evening"), 90)
@@ -927,6 +1071,9 @@ def _select_candidate(
     playground_trip_count: int = 0,
     playground_day_count: int = 0,
     child_focused: bool = False,
+    previous_coordinates: tuple[float, float] | None = None,
+    prior_coordinates: tuple[float, float] | None = None,
+    next_coordinates: tuple[float, float] | None = None,
 ) -> PlaceCandidate | None:
     eligible: list[PlaceCandidate] = []
     for candidate in candidates:
@@ -964,7 +1111,18 @@ def _select_candidate(
                 break
         if not clustered:
             return None
-    return max(eligible, key=lambda candidate: _candidate_score(candidate, hotel, anchor, policy))
+    return max(
+        eligible,
+        key=lambda candidate: _candidate_score(
+            candidate,
+            hotel,
+            anchor,
+            policy,
+            previous_coordinates=previous_coordinates,
+            prior_coordinates=prior_coordinates,
+            next_coordinates=next_coordinates,
+        ),
+    )
 
 
 def _candidate_score(
@@ -972,6 +1130,10 @@ def _candidate_score(
     hotel: PlaceCandidate,
     anchor: PlaceCandidate | None,
     policy: PlanningPolicy,
+    *,
+    previous_coordinates: tuple[float, float] | None = None,
+    prior_coordinates: tuple[float, float] | None = None,
+    next_coordinates: tuple[float, float] | None = None,
 ) -> float:
     hotel_distance = haversine_distance_km(hotel.coordinate_pair, candidate.coordinate_pair)
     hotel_score = _distance_score(hotel_distance, policy.distance_score_limit_km)
@@ -979,14 +1141,35 @@ def _candidate_score(
     similarity = max(0.0, min(candidate.similarity, 1.0))
     if anchor and anchor.coordinate_pair:
         anchor_distance = haversine_distance_km(anchor.coordinate_pair, candidate.coordinate_pair)
-        return (
+        score = (
             0.45 * similarity
             + 0.35 * _distance_score(anchor_distance, policy.cluster_radii_km[0])
             + 0.10 * hotel_score
             + 0.10 * rating_score
         )
-    hours_score = 1.0 if candidate.opening_time and candidate.closing_time else 0.0
-    return 0.60 * similarity + 0.25 * hotel_score + 0.10 * rating_score + 0.05 * hours_score
+    else:
+        hours_score = 1.0 if candidate.opening_time and candidate.closing_time else 0.0
+        score = 0.60 * similarity + 0.25 * hotel_score + 0.10 * rating_score + 0.05 * hours_score
+
+    if not previous_coordinates:
+        return score
+
+    route_limit = max(policy.cluster_radii_km[0], 0.1)
+    previous_distance = haversine_distance_km(previous_coordinates, candidate.coordinate_pair)
+    if next_coordinates:
+        direct_distance = haversine_distance_km(previous_coordinates, next_coordinates)
+        routed_distance = previous_distance + haversine_distance_km(candidate.coordinate_pair, next_coordinates)
+        detour = max(0.0, routed_distance - direct_distance)
+        return score - 0.55 * min(detour / route_limit, 1.0)
+
+    movement_penalty = 0.20 * min(previous_distance / route_limit, 1.0)
+    backtracking_penalty = 0.0
+    if prior_coordinates:
+        prior_to_previous = haversine_distance_km(prior_coordinates, previous_coordinates)
+        prior_to_candidate = haversine_distance_km(prior_coordinates, candidate.coordinate_pair)
+        reversal_distance = max(0.0, previous_distance + prior_to_previous - prior_to_candidate)
+        backtracking_penalty = 0.45 * min(reversal_distance / route_limit, 1.0)
+    return score - movement_penalty - backtracking_penalty
 
 
 def _distance_score(distance_km: float, limit_km: float) -> float:

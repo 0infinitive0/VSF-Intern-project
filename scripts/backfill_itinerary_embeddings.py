@@ -27,7 +27,7 @@ def backfill(*, limit: int, dry_run: bool) -> tuple[int, int]:
     store = ItineraryStore.from_default()
     response = (
         client.table("itineraries")
-        .select("id,destination_id,hotel_id,duration_days,number_of_adults,number_of_children,preferences,day_themes,budget")
+        .select("id,destination_id,hotel_id,duration_days,number_of_adults,number_of_children,preferences,day_themes,planning_constraints,budget")
         .eq("status", "Finalized")
         .is_("embedding", "null")
         .limit(limit)
@@ -56,6 +56,7 @@ def backfill(*, limit: int, dry_run: bool) -> tuple[int, int]:
             preferences=tuple(preferences),
             child_focused=_child_focused(preferences),
             hotel_id=str(row["hotel_id"]),
+            planning_constraints=dict(row.get("planning_constraints") or {}),
         )
         summary = build_itinerary_summary(
             query,

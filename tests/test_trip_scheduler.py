@@ -8,6 +8,7 @@ from src.services.trip_scheduler import (
     PlaceCandidate,
     PlanningPolicy,
     ScheduledItem,
+    apply_latest_outing_start,
     build_itinerary,
     build_itinerary_with_hotel_reselection,
     default_duration_minutes,
@@ -181,6 +182,76 @@ def test_same_day_places_prefer_five_kilometre_cluster_over_far_match() -> None:
     assert "anchor" in ids
     assert "nearby" in ids
     assert "far" not in ids
+
+
+def test_lunch_prefers_the_route_from_current_stop_back_to_hotel() -> None:
+    hotel = place("hotel", "Route Hotel", "Hotel", 16.000, 108.000)
+    theme = DayTheme(1, "Culture", "culture")
+    morning = place("morning", "Morning Museum", "Museums & culture", 16.000, 108.040, similarity=1.0)
+    afternoon = place("afternoon", "Afternoon Gallery", "Museums & culture", 16.001, 108.039, similarity=0.8)
+    away_from_hotel = place(
+        "lunch-away",
+        "Popular Away Restaurant",
+        "Restaurants & cafes",
+        16.000,
+        108.060,
+        similarity=0.99,
+    )
+    on_the_route = place(
+        "lunch-route",
+        "Route Restaurant",
+        "Restaurants & cafes",
+        16.000,
+        108.020,
+        similarity=0.78,
+    )
+
+    schedule = build_itinerary(
+        hotel,
+        [theme],
+        {1: [morning, afternoon]},
+        [away_from_hotel, on_the_route],
+        [],
+    )
+
+    lunch = next(item for item in schedule.items_for_day(1) if item.kind == "lunch")
+    assert lunch.reference_id == "lunch-route"
+
+
+def test_dinner_uses_current_coffee_position_instead_of_backtracking() -> None:
+    hotel = place("hotel", "Route Hotel", "Hotel", 16.000, 108.000)
+    theme = DayTheme(1, "Culture", "culture")
+    morning = place("morning", "Morning Museum", "Museums & culture", 16.000, 108.010, similarity=1.0)
+    afternoon = place("afternoon", "Afternoon Gallery", "Museums & culture", 16.000, 108.000, similarity=0.8)
+    coffee = place("coffee", "Forward Coffee", "Restaurants & cafes", 16.000, 108.010)
+    backtracking_dinner = place(
+        "dinner-backtrack",
+        "Famous Backtrack Restaurant",
+        "Restaurants & cafes",
+        16.000,
+        107.990,
+        similarity=0.99,
+    )
+    nearby_dinner = place(
+        "dinner-nearby",
+        "Coffee District Restaurant",
+        "Restaurants & cafes",
+        16.000,
+        108.0105,
+        similarity=0.90,
+    )
+
+    schedule = build_itinerary(
+        hotel,
+        [theme],
+        {1: [morning, afternoon]},
+        [],
+        [coffee],
+        dinners=[backtracking_dinner, nearby_dinner],
+    )
+
+    dinner = next(item for item in schedule.items_for_day(1) if item.kind == "dinner")
+    assert dinner.reference_id == "dinner-nearby"
 
 
 def test_reselects_hotel_when_primary_cannot_fill_core_attraction_slots() -> None:
@@ -481,3 +552,44 @@ def test_obvious_edit_intents_are_classified_without_llm_guessing() -> None:
     assert reschedule.day_number == 3
     assert reschedule.order_index == 2
     assert reschedule.requested_time == "14:30"
+
+
+def test_negative_evening_request_sets_a_persistent_outing_cutoff() -> None:
+    change = infer_trip_change("buổi tối sau 20h tôi không muốn đi đâu nữa")
+
+    assert change is not None
+    assert change.action == "set_latest_outing_start"
+    assert change.requested_time == "20:00"
+    assert change.day_numbers == ()
+
+
+def test_evening_cutoff_extracts_multiple_explicit_days() -> None:
+    change = infer_trip_change("ngày 1 và ngày 3 sau 20:00 không đi chơi nữa")
+
+    assert change is not None
+    assert change.action == "set_latest_outing_start"
+    assert change.day_numbers == (1, 3)
+
+
+def test_self_selected_breakfast_is_classified_as_a_trip_wide_meal_preference() -> None:
+    change = infer_trip_change("tôi muốn tự chọn chỗ ăn sáng")
+
+    assert change is not None
+    assert change.action == "set_meal_self_selected"
+    assert change.meal_kind == "breakfast"
+    assert change.day_numbers == ()
+
+
+def test_latest_outing_cutoff_removes_only_non_hotel_starts_at_or_after_cutoff() -> None:
+    items = [
+        {"id": "a", "day_number": 1, "order_index": 1, "start_time": "19:30:00", "reference_type": "Attraction"},
+        {"id": "b", "day_number": 1, "order_index": 2, "start_time": "20:00:00", "reference_type": "Attraction"},
+        {"id": "c", "day_number": 1, "order_index": 3, "start_time": "20:30:00", "reference_type": "Hotel"},
+        {"id": "d", "day_number": 2, "order_index": 1, "start_time": "21:00:00", "reference_type": "Attraction"},
+    ]
+
+    repaired, removed = apply_latest_outing_start(items, (1,), "20:00")
+
+    assert [item["id"] for item in repaired] == ["a", "c", "d"]
+    assert removed == ("b",)
+    assert [item["order_index"] for item in repaired if item["day_number"] == 1] == [1, 2]

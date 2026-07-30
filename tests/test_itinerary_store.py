@@ -5,6 +5,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
+import pytest
+
 from src.services.itinerary_reuse import ItineraryReuseQuery
 from src.services.itinerary_store import (
     ItineraryStore,
@@ -85,7 +87,14 @@ class FakeSupabase:
 
 
 def query() -> ItineraryReuseQuery:
-    return ItineraryReuseQuery("destination-1", "Đà Nẵng", 1, 2, hotel_id="hotel-1")
+    return ItineraryReuseQuery(
+        "destination-1",
+        "Đà Nẵng",
+        1,
+        2,
+        hotel_id="hotel-1",
+        planning_constraints={"latest_outing_start_by_day": {"1": "20:00"}},
+    )
 
 
 def test_search_passes_hard_filters_and_maps_templates() -> None:
@@ -100,6 +109,9 @@ def test_search_passes_hard_filters_and_maps_templates() -> None:
     assert params["filter_destination_id"] == "destination-1"
     assert params["filter_duration_days"] == 1
     assert params["filter_hotel_id"] == "hotel-1"
+    assert params["filter_planning_constraints"] == {
+        "latest_outing_start_by_day": {"1": "20:00"}
+    }
     assert "filter_embedding_version" not in params
     assert len(params["query_embedding"]) == 1024
 
@@ -143,6 +155,78 @@ def test_persist_replaces_bundle_with_item_kind_contract() -> None:
     assert params["p_itinerary"]["destination_id"] == "destination-1"
     assert params["p_itinerary"]["hotel_id"] == "hotel-1"
     assert params["p_items"][0]["item_kind"] == "coffee"
+
+
+def test_persist_whitelists_rpc_payload_and_keeps_route_metadata() -> None:
+    client = FakeSupabase()
+    store = ItineraryStore(client, lambda _: [0.1] * 1024)
+    trip_data = {
+        "hotel": {"id": "hotel-1", "destination_id": "destination-1"},
+        "itineraries": [
+            {
+                "id": "draft-1",
+                "duration_days": 1,
+                "day_themes": [],
+                "planning_constraints": {"latest_outing_start_by_day": {"1": "20:00"}},
+                "unexpected": "must-not-cross-boundary",
+            }
+        ],
+        "itinerary_items": [
+            {
+                "id": "item-1",
+                "kind": "coffee",
+                "activity": "Ghé quán cà phê",
+                "coordinates": [16.1, 108.2],
+                "reference_id": "place-1",
+                "route_to_next": {"distance_km": 1.2, "duration_mins": 4},
+                "unexpected": "must-not-cross-boundary",
+            }
+        ],
+    }
+
+    store.persist_itinerary_bundle(trip_data)
+
+    _, params = client.rpc_calls[0]
+    assert "unexpected" not in params["p_itinerary"]
+    assert params["p_itinerary"]["planning_constraints"]["latest_outing_start_by_day"]["1"] == "20:00"
+    assert set(params["p_items"][0]) <= {
+        "id",
+        "day_number",
+        "order_index",
+        "start_time",
+        "end_time",
+        "reference_type",
+        "reference_id",
+        "estimated_cost",
+        "item_kind",
+        "route_to_next",
+    }
+    assert params["p_items"][0]["route_to_next"]["distance_km"] == 1.2
+
+
+def test_persist_rpc_failure_never_falls_back_to_partial_table_writes() -> None:
+    class FailingSupabase(FakeSupabase):
+        def rpc(self, name, params):
+            self.rpc_calls.append((name, params))
+
+            class Failure:
+                def execute(self):
+                    raise RuntimeError("rpc unavailable")
+
+            return Failure()
+
+        def table(self, name):
+            raise AssertionError(f"non-atomic table fallback attempted: {name}")
+
+    store = ItineraryStore(FailingSupabase(), lambda _: [0.1] * 1024)
+    trip_data = {
+        "hotel": {"id": "hotel-1", "destination_id": "destination-1"},
+        "itineraries": [{"id": "draft-1", "duration_days": 1, "day_themes": []}],
+        "itinerary_items": [],
+    }
+
+    with pytest.raises(ItineraryStoreError, match="atomic itinerary bundle"):
+        store.persist_itinerary_bundle(trip_data)
 
 
 def test_push_current_trip_plan_file_persists_the_complete_bundle() -> None:
@@ -190,8 +274,10 @@ def test_persistence_migration_uses_builtin_uuid_generation() -> None:
         Path(__file__).parents[1] / "scripts/migrations/20260728_add_itinerary_reuse.sql"
     ).read_text(encoding="utf-8")
 
-    assert "gen_random_uuid()" in migration
+    assert "extensions.gen_random_uuid()" in migration
     assert "uuid_generate_v4()" not in migration
+    assert "planning_constraints" in migration
+    assert "route_to_next" in migration
 
 
 def test_load_bundle_keeps_hotel_and_all_item_rows() -> None:

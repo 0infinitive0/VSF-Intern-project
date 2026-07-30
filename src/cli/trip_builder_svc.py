@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import uuid
+from copy import deepcopy
 from dataclasses import replace
 from datetime import datetime
 from functools import lru_cache
@@ -31,11 +33,13 @@ from src.services.trip_intake import (
     DestinationOption,
     destination_options_from_rows,
 )
+from src.services.trip_edit_planner import EditOperation, NewItemRequirements, TripEditPlan
 from src.services.trip_scheduler import (
     DayTheme,
     PlaceCandidate,
     ScheduledItem,
     TripChange,
+    apply_latest_outing_start,
     build_itinerary_with_hotel_reselection,
     default_duration_minutes,
     detect_covered_hotel_meals,
@@ -301,6 +305,7 @@ def _serialize_schedule_item(
         "activity": item.activity,
         "kind": item.kind,
         "item_kind": item.kind,
+        "coordinates": item.coordinates,
     }
 
 
@@ -360,6 +365,7 @@ def _build_trip_data(
     hotel_query: str | None = None,
     themes_override: List[Dict[str, Any]] | None = None,
     preselected_hotel: Dict[str, Any] | None = None,
+    planning_constraints: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     destination_id = _get_destination_id(destination)
     if not destination_id:
@@ -397,6 +403,7 @@ def _build_trip_data(
         preferences=tuple(preferences),
         child_focused=child_focused,
         hotel_id=hotel_candidates[0].id,
+        planning_constraints=dict(planning_constraints or {}),
     )
     reusable_template = _find_reusable_template(reuse_query) if themes_override is None else None
 
@@ -487,6 +494,7 @@ def _build_trip_data(
         "budget": None,
         "preferences": [destination, *preferences],
         "day_themes": day_themes,
+        "planning_constraints": dict(planning_constraints or {}),
         "destination_id": destination_id,
         "hotel_id": hotel_data["id"],
         "parent_itinerary_id": reusable_template.id if reusable_template else None,
@@ -528,11 +536,13 @@ Actions:
 Request: {modification_request}
 Return raw JSON only with this schema:
 {{
-  "action": "change_hotel|replace_place|reschedule|add_place|remove_place",
+  "action": "change_hotel|replace_place|reschedule|add_place|remove_place|set_latest_outing_start|set_meal_self_selected",
   "day_number": 1,
+  "day_numbers": [1, 2],
   "order_index": 1,
   "query": "venue or hotel requirements",
-  "requested_time": "HH:MM"
+  "requested_time": "HH:MM",
+  "meal_kind": "breakfast|lunch|dinner"
 }}
 day_number/order_index apply only to replace_place, reschedule, add_place, remove_place — use null for both when action is change_hotel.
 Use null for fields that do not apply. Never return itinerary JSON."""
@@ -548,13 +558,30 @@ Use null for fields that do not apply. Never return itinerary JSON."""
         )
         raw = json.loads(_strip_json_fence(response.content))
         action = raw.get("action")
-        if action in {"change_hotel", "replace_place", "reschedule", "add_place", "remove_place"}:
+        if action in {
+            "change_hotel",
+            "replace_place",
+            "reschedule",
+            "add_place",
+            "remove_place",
+            "set_latest_outing_start",
+            "set_meal_self_selected",
+        }:
+            day_numbers = tuple(
+                int(value) for value in raw.get("day_numbers") or [] if str(value).isdigit()
+            )
             return TripChange(
                 action=action,
                 day_number=int(raw["day_number"]) if raw.get("day_number") else None,
+                day_numbers=day_numbers,
                 order_index=int(raw["order_index"]) if raw.get("order_index") else None,
                 query=str(raw.get("query") or modification_request),
                 requested_time=str(raw["requested_time"]) if raw.get("requested_time") else None,
+                meal_kind=(
+                    str(raw["meal_kind"])
+                    if raw.get("meal_kind") in {"breakfast", "lunch", "dinner"}
+                    else None
+                ),
             )
     except Exception as exc:
         logger.warning("Structured edit classification failed: %s", exc)
@@ -577,6 +604,585 @@ def _current_trip_parameters(current_data: Dict[str, Any]) -> tuple[str, str, st
     people = f"{int(itinerary.get('number_of_adults') or 1)} người"
     preference_text = ", ".join(str(value) for value in preferences[1:])
     return destination, duration, people, preference_text
+
+
+def _apply_latest_outing_constraint(
+    current_data: Dict[str, Any],
+    day_numbers: tuple[int, ...],
+    cutoff: str,
+) -> List[str]:
+    itinerary_rows = current_data.get("itineraries") or [{}]
+    itinerary = itinerary_rows[0] if isinstance(itinerary_rows, list) else itinerary_rows
+    if not isinstance(itinerary, dict):
+        raise ValueError("Kế hoạch hiện tại không có bản ghi lịch trình hợp lệ.")
+
+    repaired, removed_ids = apply_latest_outing_start(
+        current_data.get("itinerary_items") or [], day_numbers, cutoff
+    )
+    current_data["itinerary_items"] = repaired
+    constraints = dict(itinerary.get("planning_constraints") or {})
+    cutoff_by_day = dict(constraints.get("latest_outing_start_by_day") or {})
+    normalized_cutoff = cutoff[:5]
+    for day_number in day_numbers:
+        cutoff_by_day[str(day_number)] = normalized_cutoff
+    constraints["latest_outing_start_by_day"] = cutoff_by_day
+    itinerary["planning_constraints"] = constraints
+
+    day_label = ", ".join(str(day) for day in day_numbers)
+    adjustments = [
+        f"Đã lưu giới hạn: không bắt đầu điểm đi chơi mới từ {normalized_cutoff} ở ngày {day_label}."
+    ]
+    if removed_ids:
+        adjustments.append(
+            f"Đã bỏ {len(removed_ids)} điểm bắt đầu từ {normalized_cutoff} trở đi; hoạt động bắt đầu sớm hơn vẫn được giữ."
+        )
+    return adjustments
+
+
+def _reapply_planning_constraints(
+    current_data: Dict[str, Any],
+    *,
+    only_days: tuple[int, ...] | None = None,
+) -> List[str]:
+    itinerary_rows = current_data.get("itineraries") or [{}]
+    itinerary = itinerary_rows[0] if isinstance(itinerary_rows, list) else itinerary_rows
+    if not isinstance(itinerary, dict):
+        return []
+    planning_constraints = itinerary.get("planning_constraints") or {}
+    cutoff_by_day = planning_constraints.get(
+        "latest_outing_start_by_day"
+    ) or {}
+    selected_days = set(only_days or ())
+    grouped: Dict[str, List[int]] = {}
+    for day_text, cutoff in cutoff_by_day.items():
+        try:
+            day_number = int(day_text)
+        except (TypeError, ValueError):
+            continue
+        if selected_days and day_number not in selected_days:
+            continue
+        grouped.setdefault(str(cutoff), []).append(day_number)
+
+    adjustments: List[str] = []
+    for cutoff, days in grouped.items():
+        adjustments.extend(
+            _apply_latest_outing_constraint(current_data, tuple(sorted(days)), cutoff)
+        )
+    end_cutoff_by_day = planning_constraints.get("latest_outing_end_by_day") or {}
+    end_grouped: Dict[str, List[int]] = {}
+    for day_text, cutoff in end_cutoff_by_day.items():
+        try:
+            day_number = int(day_text)
+        except (TypeError, ValueError):
+            continue
+        if selected_days and day_number not in selected_days:
+            continue
+        end_grouped.setdefault(str(cutoff), []).append(day_number)
+    for cutoff, days in end_grouped.items():
+        adjustments.extend(
+            _apply_latest_outing_end_constraint(current_data, tuple(sorted(days)), cutoff)
+        )
+    meal_preferences = planning_constraints.get("meal_preferences") or {}
+    for meal_kind, preference in meal_preferences.items():
+        if preference == "self_selected" and meal_kind in {"breakfast", "lunch", "dinner"}:
+            adjustments.extend(
+                _apply_self_selected_meal_constraint(
+                    current_data,
+                    meal_kind,
+                    only_days=only_days,
+                )
+            )
+    day_meal_preferences = planning_constraints.get("meal_preferences_by_day") or {}
+    for day_text, preferences in day_meal_preferences.items():
+        try:
+            day_number = int(day_text)
+        except (TypeError, ValueError):
+            continue
+        if selected_days and day_number not in selected_days:
+            continue
+        if not isinstance(preferences, dict):
+            continue
+        for meal_kind, preference in preferences.items():
+            if preference == "self_selected" and meal_kind in {"breakfast", "lunch", "dinner"}:
+                adjustments.extend(
+                    _apply_self_selected_meal_constraint(
+                        current_data,
+                        meal_kind,
+                        only_days=(day_number,),
+                    )
+                )
+    return adjustments
+
+
+def _itinerary_record(current_data: Dict[str, Any]) -> Dict[str, Any]:
+    rows = current_data.get("itineraries") or [{}]
+    itinerary = rows[0] if isinstance(rows, list) else rows
+    if not isinstance(itinerary, dict):
+        raise ValueError("Kế hoạch hiện tại không có bản ghi lịch trình hợp lệ.")
+    return itinerary
+
+
+def _clock_minutes(value: str) -> int:
+    hour_text, minute_text, *_ = value.split(":")
+    return int(hour_text) * 60 + int(minute_text)
+
+
+def _renumber_items(current_data: Dict[str, Any], day_numbers: tuple[int, ...] | None = None) -> None:
+    selected_days = set(day_numbers or ())
+    items = sorted(
+        current_data.get("itinerary_items") or [],
+        key=lambda item: (int(item.get("day_number") or 0), str(item.get("start_time") or ""), int(item.get("order_index") or 0)),
+    )
+    counts: Dict[int, int] = {}
+    for item in items:
+        day = int(item.get("day_number") or 0)
+        if not selected_days or day in selected_days:
+            counts[day] = counts.get(day, 0) + 1
+            item["order_index"] = counts[day]
+    current_data["itinerary_items"] = items
+
+
+def _remove_item_by_id(current_data: Dict[str, Any], item_id: str) -> Dict[str, Any]:
+    items = current_data.get("itinerary_items") or []
+    removed = next((item for item in items if str(item.get("id")) == item_id), None)
+    if removed is None:
+        raise ValueError("Không tìm thấy hoạt động cần chỉnh sửa trong lịch trình hiện tại.")
+    current_data["itinerary_items"] = [item for item in items if str(item.get("id")) != item_id]
+    _renumber_items(current_data, (int(removed.get("day_number") or 0),))
+    return removed
+
+
+def _clock_text(minutes: int) -> str:
+    minutes = max(0, min(minutes, 23 * 60 + 59))
+    hour, minute = divmod(minutes, 60)
+    return f"{hour:02d}:{minute:02d}:00"
+
+
+def _close_gap_after_removal(current_data: Dict[str, Any], removed: Dict[str, Any]) -> None:
+    """Move following saved slots earlier, leaving final conflict repair to the scheduler."""
+    day_number = int(removed.get("day_number") or 0)
+    start_time = str(removed.get("start_time") or "")
+    end_time = str(removed.get("end_time") or "")
+    if not start_time or not end_time:
+        return
+    duration = _clock_minutes(end_time) - _clock_minutes(start_time)
+    if duration <= 0:
+        return
+    for item in current_data.get("itinerary_items") or []:
+        if int(item.get("day_number") or 0) != day_number:
+            continue
+        item_start = str(item.get("start_time") or "")
+        item_end = str(item.get("end_time") or "")
+        if item_start and item_end and _clock_minutes(item_start) >= _clock_minutes(end_time):
+            item["start_time"] = _clock_text(_clock_minutes(item_start) - duration)
+            item["end_time"] = _clock_text(_clock_minutes(item_end) - duration)
+
+
+def _set_meal_preference(
+    current_data: Dict[str, Any],
+    operation: EditOperation,
+) -> List[str]:
+    meal_kind = operation.meal_kind
+    preference = operation.meal_preference
+    if meal_kind not in {"breakfast", "lunch", "dinner"} or preference not in {"self_selected", "automatic"}:
+        raise ValueError("Thiếu thông tin bữa ăn cần cập nhật.")
+    itinerary = _itinerary_record(current_data)
+    selected_days = operation.day_numbers or ((operation.day_number,) if operation.day_number else ())
+    if preference == "self_selected":
+        kept = []
+        removed_count = 0
+        for item in current_data.get("itinerary_items") or []:
+            in_scope = not selected_days or int(item.get("day_number") or 0) in selected_days
+            if in_scope and _item_kind(item) == meal_kind:
+                removed_count += 1
+                continue
+            kept.append(item)
+        current_data["itinerary_items"] = kept
+        _renumber_items(current_data, selected_days or None)
+
+        constraints = dict(itinerary.get("planning_constraints") or {})
+        if selected_days:
+            by_day = dict(constraints.get("meal_preferences_by_day") or {})
+            for day in selected_days:
+                values = dict(by_day.get(str(day)) or {})
+                values[meal_kind] = "self_selected"
+                by_day[str(day)] = values
+            constraints["meal_preferences_by_day"] = by_day
+        else:
+            preferences = dict(constraints.get("meal_preferences") or {})
+            preferences[meal_kind] = "self_selected"
+            constraints["meal_preferences"] = preferences
+        itinerary["planning_constraints"] = constraints
+        labels = {"breakfast": "bữa sáng", "lunch": "bữa trưa", "dinner": "bữa tối"}
+        return [f"Đã để bạn tự chọn {labels[meal_kind]} và bỏ {removed_count} gợi ý tự động."]
+
+    constraints = dict(itinerary.get("planning_constraints") or {})
+    preferences = dict(constraints.get("meal_preferences") or {})
+    preferences.pop(meal_kind, None)
+    constraints["meal_preferences"] = preferences
+    itinerary["planning_constraints"] = constraints
+    return ["Đã bật lại gợi ý bữa ăn tự động cho các lần lập lịch sau."]
+
+
+def _apply_latest_outing_end_constraint(
+    current_data: Dict[str, Any],
+    day_numbers: tuple[int, ...],
+    cutoff: str,
+) -> List[str]:
+    cutoff_minutes = _clock_minutes(cutoff)
+    selected = set(day_numbers)
+    kept = []
+    removed = []
+    for item in current_data.get("itinerary_items") or []:
+        day = int(item.get("day_number") or 0)
+        is_hotel = str(item.get("reference_type") or "").casefold() == "hotel"
+        end_time = str(item.get("end_time") or "")
+        if day in selected and not is_hotel and end_time and _clock_minutes(end_time) > cutoff_minutes:
+            removed.append(item)
+        else:
+            kept.append(item)
+    current_data["itinerary_items"] = kept
+    _renumber_items(current_data, day_numbers)
+    if removed:
+        return [f"Đã bỏ {len(removed)} hoạt động kết thúc sau {cutoff}."]
+    return [f"Đã áp dụng giới hạn kết thúc hoạt động trước {cutoff}."]
+
+
+def _apply_schedule_policy(current_data: Dict[str, Any], operation: EditOperation) -> List[str]:
+    itinerary = _itinerary_record(current_data)
+    duration_days = int(itinerary.get("duration_days") or 1)
+    days = operation.day_numbers or ((operation.day_number,) if operation.day_number else tuple(range(1, duration_days + 1)))
+    constraints = dict(itinerary.get("planning_constraints") or {})
+    adjustments: List[str] = []
+    if operation.latest_start_time:
+        by_day = dict(constraints.get("latest_outing_start_by_day") or {})
+        for day in days:
+            by_day[str(day)] = operation.latest_start_time
+        constraints["latest_outing_start_by_day"] = by_day
+        for day in days:
+            adjustments.extend(_apply_latest_outing_constraint(current_data, (day,), operation.latest_start_time))
+    if operation.latest_end_time:
+        by_day = dict(constraints.get("latest_outing_end_by_day") or {})
+        for day in days:
+            by_day[str(day)] = operation.latest_end_time
+        constraints["latest_outing_end_by_day"] = by_day
+        adjustments.extend(_apply_latest_outing_end_constraint(current_data, tuple(days), operation.latest_end_time))
+    if not adjustments:
+        raise ValueError("Cần cung cấp giờ bắt đầu hoặc kết thúc hoạt động mới.")
+    itinerary["planning_constraints"] = constraints
+    return adjustments
+
+
+def _child_focused_trip(current_data: Dict[str, Any]) -> bool:
+    _, _, people, preferences = _current_trip_parameters(current_data)
+    text = f"{people} {preferences}".casefold()
+    return any(keyword in text for keyword in ("trẻ em", "tre em", "children", "child", "kids", "gia đình", "gia dinh"))
+
+
+def _replace_scheduled_day(current_data: Dict[str, Any], day_number: int, scheduled: List[ScheduledItem]) -> List[str]:
+    """Run the existing deterministic day repair and preserve matching item IDs."""
+    _existing, hotel = _scheduled_day_from_json(current_data, day_number)
+    child_focused = _child_focused_trip(current_data)
+    outside_playgrounds = sum(
+        1
+        for item in current_data.get("itinerary_items", [])
+        if int(item.get("day_number") or 0) != day_number
+        and any(keyword in str(item.get("activity") or "").casefold() for keyword in ("playground", "trẻ em", "khu vui chơi trẻ em"))
+    )
+    repaired, adjustments = validate_or_repair_day(
+        scheduled,
+        hotel,
+        child_focused=child_focused,
+        playground_allowance=1 if child_focused else max(0, 1 - outside_playgrounds),
+    )
+    repaired = [replace(item, order_index=index) for index, item in enumerate(repaired, start=1)]
+    _replace_day_in_json(current_data, day_number, repaired)
+    return adjustments
+
+
+def _candidate_text(candidate: PlaceCandidate) -> str:
+    return f"{candidate.name} {candidate.category} {candidate.description or ''}".casefold()
+
+
+def _candidate_matches_requirements(candidate: PlaceCandidate, requirements: NewItemRequirements) -> bool:
+    text = _candidate_text(candidate)
+    if requirements.included_categories and not any(value.casefold() in text for value in requirements.included_categories):
+        return False
+    if any(value.casefold() in text for value in requirements.excluded_categories):
+        return False
+    if requirements.item_kind in {"breakfast", "lunch", "dinner"}:
+        return any(term in text for term in ("restaurant", "cafe", "coffee", "food", "bakery", "quán", "nhà hàng"))
+    if requirements.item_kind == "coffee":
+        return any(term in text for term in ("cafe", "coffee", "quán cà phê"))
+    if requirements.item_kind in {"attraction", "evening"}:
+        return not any(term in text for term in ("restaurant", "cafe", "coffee", "food", "bakery"))
+    return True
+
+
+def _candidate_anchor(
+    scheduled: List[ScheduledItem],
+    hotel: PlaceCandidate,
+    target: ScheduledItem | None,
+    requirements: NewItemRequirements,
+) -> tuple[float, float] | None:
+    if requirements.near == "hotel":
+        return hotel.coordinate_pair
+    if requirements.near == "target" and target:
+        return target.coordinates or hotel.coordinate_pair
+    if requirements.near == "previous_item" and target:
+        index = scheduled.index(target)
+        return scheduled[index - 1].coordinates if index else hotel.coordinate_pair
+    if requirements.near == "next_item" and target:
+        index = scheduled.index(target)
+        return scheduled[index + 1].coordinates if index + 1 < len(scheduled) else hotel.coordinate_pair
+    attraction = next((item for item in scheduled if item.kind == "attraction" and item.coordinates), None)
+    return attraction.coordinates if attraction else hotel.coordinate_pair
+
+
+def _select_edit_candidate(
+    current_data: Dict[str, Any],
+    scheduled: List[ScheduledItem],
+    hotel: PlaceCandidate,
+    requirements: NewItemRequirements,
+    *,
+    target: ScheduledItem | None,
+    start_time: str,
+) -> PlaceCandidate:
+    destination_id = str((current_data.get("hotel") or {}).get("destination_id") or "")
+    if not destination_id:
+        destination_id = str(_itinerary_record(current_data).get("destination_id") or "")
+    if not destination_id:
+        raise ValueError("Thiếu mã điểm đến để tìm địa điểm mới.")
+    candidates = _search_attraction_candidates(requirements.semantic_query, destination_id, match_count=40)
+    used_ids = {item.reference_id for item in scheduled if item is not target}
+    anchor = _candidate_anchor(scheduled, hotel, target, requirements)
+    eligible = []
+    for candidate in candidates:
+        if not candidate.id or candidate.id in used_ids or not _candidate_matches_requirements(candidate, requirements):
+            continue
+        duration = requirements.duration_minutes or (target.duration_minutes if target and requirements.preserve_duration else default_duration_minutes(candidate, requirements.item_kind))
+        if not fits_opening_hours(candidate, start_time, duration):
+            continue
+        if anchor and not candidate.coordinate_pair:
+            continue
+        eligible.append(candidate)
+    if not eligible:
+        raise ValueError("Không tìm thấy địa điểm thật phù hợp với yêu cầu này.")
+
+    if anchor:
+        radii = (3.0, 5.0) if requirements.item_kind == "breakfast" else (5.0, 10.0, 15.0)
+        nearby: List[PlaceCandidate] = []
+        for radius in radii:
+            nearby = [candidate for candidate in eligible if haversine_distance_km(anchor, candidate.coordinate_pair) <= radius]
+            if nearby:
+                break
+        if not nearby:
+            label = "gần khách sạn" if requirements.item_kind == "breakfast" else "gần cụm hoạt động"
+            raise ValueError(f"Không tìm thấy địa điểm thật {label} trong phạm vi cho phép.")
+        eligible = nearby
+    return max(
+        eligible,
+        key=lambda candidate: (
+            candidate.similarity,
+            float(candidate.rating or 0.0),
+            -(haversine_distance_km(anchor, candidate.coordinate_pair) if anchor and candidate.coordinate_pair else 0.0),
+        ),
+    )
+
+
+def _scheduled_target(scheduled: List[ScheduledItem], target_id: str, current_data: Dict[str, Any]) -> tuple[int, ScheduledItem]:
+    raw = next((item for item in current_data.get("itinerary_items") or [] if str(item.get("id")) == target_id), None)
+    if raw is None:
+        raise ValueError("Không tìm thấy hoạt động cần chỉnh sửa.")
+    order_index = int(raw.get("order_index") or 0)
+    for index, item in enumerate(scheduled):
+        if item.order_index == order_index:
+            return index, item
+    raise ValueError("Không thể đọc hoạt động cần chỉnh sửa.")
+
+
+def _apply_replace_or_add(current_data: Dict[str, Any], operation: EditOperation) -> List[str]:
+    if not operation.requirements:
+        raise ValueError("Thiếu yêu cầu địa điểm mới.")
+    day_number = operation.day_number or (operation.target.day_number if operation.target else None)
+    if not day_number:
+        raise ValueError("Thiếu ngày cần chỉnh sửa.")
+    scheduled, hotel = _scheduled_day_from_json(current_data, day_number)
+    target = None
+    target_index = None
+    if operation.target and operation.target.item_id:
+        target_index, target = _scheduled_target(scheduled, operation.target.item_id, current_data)
+    if operation.operation == "replace_item" and target is None:
+        raise ValueError("Thiếu hoạt động cần thay thế.")
+    start_time = operation.requirements.preferred_start_time or (target.start_time if target else "09:00:00")
+    candidate = _select_edit_candidate(
+        current_data,
+        scheduled,
+        hotel,
+        operation.requirements,
+        target=target,
+        start_time=start_time,
+    )
+    duration = operation.requirements.duration_minutes or (target.duration_minutes if target and operation.requirements.preserve_duration else None)
+    kind = target.kind if target else operation.requirements.item_kind
+    replacement = ScheduledItem.from_candidate(
+        day_number,
+        target.order_index if target else len(scheduled) + 1,
+        candidate,
+        kind,
+        start_time,
+        duration,
+    )
+    if target_index is None:
+        scheduled.append(replacement)
+    else:
+        scheduled[target_index] = replacement
+    adjustments = _replace_scheduled_day(current_data, day_number, scheduled)
+    return [f"Đã chọn địa điểm thật {candidate.name}.", *adjustments]
+
+
+def _apply_time_update(current_data: Dict[str, Any], operation: EditOperation) -> List[str]:
+    if not operation.target or not operation.target.item_id:
+        raise ValueError("Thiếu hoạt động cần đổi giờ.")
+    day_number = operation.target.day_number
+    if not day_number:
+        raise ValueError("Thiếu ngày cần đổi giờ.")
+    scheduled, _hotel = _scheduled_day_from_json(current_data, day_number)
+    index, target = _scheduled_target(scheduled, operation.target.item_id, current_data)
+    original_start = _clock_minutes(target.start_time)
+    original_end = _clock_minutes(target.end_time)
+    if operation.shift_minutes is not None:
+        start_minutes = original_start + operation.shift_minutes
+        end_minutes = original_end + operation.shift_minutes
+    else:
+        start_minutes = _clock_minutes(operation.start_time) if operation.start_time else original_start
+        end_minutes = _clock_minutes(operation.end_time) if operation.end_time else start_minutes + target.duration_minutes
+    if end_minutes <= start_minutes:
+        raise ValueError("Giờ kết thúc phải sau giờ bắt đầu.")
+    updated = ScheduledItem.from_candidate(
+        target.day_number,
+        target.order_index,
+        PlaceCandidate(
+            id=target.reference_id,
+            name=target.place_name,
+            category=target.category,
+            coordinates=target.coordinates,
+            opening_time=target.opening_time,
+            closing_time=target.closing_time,
+            estimated_duration_minutes=end_minutes - start_minutes,
+        ),
+        target.kind,
+        f"{start_minutes // 60:02d}:{start_minutes % 60:02d}:00",
+        end_minutes - start_minutes,
+    )
+    scheduled[index] = updated
+    adjustments = _replace_scheduled_day(current_data, day_number, scheduled)
+    return [f"Đã đổi giờ {target.place_name}.", *adjustments]
+
+
+def _alternative_theme(current_data: Dict[str, Any], day_number: int) -> dict[str, str]:
+    itinerary = _itinerary_record(current_data)
+    used = {
+        str(theme.get("title") or "").casefold()
+        for theme in itinerary.get("day_themes") or []
+        if int(theme.get("day_number") or 0) != day_number
+    }
+    options = (
+        {"title": "Thiên nhiên và không gian xanh", "query": "nature parks gardens outdoor"},
+        {"title": "Ẩm thực và đời sống địa phương", "query": "local food markets neighbourhood life"},
+        {"title": "Văn hóa và di sản", "query": "museums culture heritage history"},
+        {"title": "Giải trí và khám phá thành phố", "query": "city entertainment landmarks"},
+    )
+    return next((option for option in options if option["title"].casefold() not in used), options[0])
+
+
+def _apply_day_replan(current_data: Dict[str, Any], operation: EditOperation) -> List[str]:
+    if not operation.day_number or not operation.theme:
+        raise ValueError("Thiếu ngày hoặc chủ đề cần lập lại.")
+    destination, duration, people, preferences = _current_trip_parameters(current_data)
+    itinerary = _itinerary_record(current_data)
+    theme = dict(operation.theme)
+    if theme.get("selection_mode") == "choose_alternative" and not theme.get("semantic_query"):
+        theme = {**theme, **_alternative_theme(current_data, operation.day_number)}
+    query = str(theme.get("semantic_query") or theme.get("query") or "").strip()
+    title = str(theme.get("title") or "").strip()
+    if not query:
+        raise ValueError("Chủ đề mới cần có truy vấn tìm kiếm.")
+    if not title:
+        title = "Khám phá điểm đến theo chủ đề mới"
+    if any(term in title.casefold() for term in ("ẩm thực", "food", "culinary")) and not any(
+        term in query.casefold() for term in ("market", "chợ", "culinary", "ẩm thực", "food")
+    ):
+        query = f"{query} local food markets culinary culture"
+    themes = [dict(value) for value in itinerary.get("day_themes") or []]
+    if not themes:
+        raise ValueError("Kế hoạch hiện tại không có chủ đề theo ngày.")
+    for value in themes:
+        if int(value.get("day_number") or 0) == operation.day_number:
+            value.update({"day_number": operation.day_number, "title": title, "query": query})
+    rebuilt = _build_trip_data(
+        destination,
+        duration,
+        people,
+        preferences,
+        themes_override=themes,
+        preselected_hotel=dict(current_data.get("hotel") or {}),
+        planning_constraints=dict(itinerary.get("planning_constraints") or {}),
+    )
+    rebuilt_scheduled, _hotel = _scheduled_day_from_json(rebuilt, operation.day_number)
+    _replace_day_in_json(current_data, operation.day_number, rebuilt_scheduled)
+    itinerary["day_themes"] = themes
+    _reapply_planning_constraints(current_data, only_days=(operation.day_number,))
+    return [f"Đã lập lại ngày {operation.day_number} theo chủ đề {title}."]
+
+
+def apply_trip_edit_plan(current_data: Dict[str, Any], plan: TripEditPlan) -> List[str]:
+    """Apply a validated edit plan atomically to an in-memory trip bundle."""
+    if plan.decision != "apply":
+        raise ValueError("Chỉ kế hoạch chỉnh sửa đã được phê duyệt mới có thể áp dụng.")
+    working = deepcopy(current_data)
+    adjustments: List[str] = []
+    for operation in plan.operations:
+        if operation.operation == "remove_item":
+            if not operation.target or not operation.target.item_id:
+                raise ValueError("Thiếu hoạt động cần bỏ.")
+            if operation.gap_policy == "replace":
+                replacement = replace(operation, operation="replace_item")
+                adjustments.extend(_apply_replace_or_add(working, replacement))
+                continue
+            removed = _remove_item_by_id(working, operation.target.item_id)
+            if operation.gap_policy == "close_gap":
+                _close_gap_after_removal(working, removed)
+                scheduled, _hotel = _scheduled_day_from_json(working, int(removed.get("day_number") or 0))
+                adjustments.extend(_replace_scheduled_day(working, int(removed.get("day_number") or 0), scheduled))
+            adjustments.append(f"Đã bỏ {removed.get('activity') or 'hoạt động'}.")
+            continue
+        if operation.operation == "set_meal_preference":
+            adjustments.extend(_set_meal_preference(working, operation))
+            continue
+        if operation.operation == "set_schedule_policy":
+            adjustments.extend(_apply_schedule_policy(working, operation))
+            continue
+        if operation.operation == "change_hotel":
+            raise ValueError("Đổi khách sạn cần chọn một khách sạn mới trước khi áp dụng.")
+        if operation.operation in {"replace_item", "add_item"}:
+            adjustments.extend(_apply_replace_or_add(working, operation))
+            continue
+        if operation.operation == "update_time":
+            adjustments.extend(_apply_time_update(working, operation))
+            continue
+        if operation.operation == "replan_day":
+            adjustments.extend(_apply_day_replan(working, operation))
+            continue
+        raise ValueError(f"Thao tác {operation.operation} chưa thể áp dụng.")
+
+    itinerary = _itinerary_record(working)
+    itinerary["status"] = "Draft"
+    itinerary["updated_at"] = datetime.now().isoformat()
+    itinerary.pop("summary", None)
+    current_data.clear()
+    current_data.update(working)
+    return adjustments
 
 
 def _item_kind(item: Dict[str, Any]) -> str:
@@ -607,6 +1213,64 @@ def _item_kind(item: Dict[str, Any]) -> str:
     return "attraction"
 
 
+def _apply_self_selected_meal_constraint(
+    current_data: Dict[str, Any],
+    meal_kind: str,
+    *,
+    only_days: tuple[int, ...] | None = None,
+) -> List[str]:
+    itinerary_rows = current_data.get("itineraries") or [{}]
+    itinerary = itinerary_rows[0] if isinstance(itinerary_rows, list) else itinerary_rows
+    if not isinstance(itinerary, dict):
+        raise ValueError("Kế hoạch hiện tại không có bản ghi lịch trình hợp lệ.")
+
+    selected_days = set(only_days or ())
+    kept_items = []
+    removed_count = 0
+    for item in current_data.get("itinerary_items") or []:
+        day_number = int(item.get("day_number") or 0)
+        in_scope = not selected_days or day_number in selected_days
+        if in_scope and _item_kind(item) == meal_kind:
+            removed_count += 1
+            continue
+        kept_items.append(item)
+
+    kept_items.sort(
+        key=lambda item: (
+            int(item.get("day_number") or 0),
+            int(item.get("order_index") or 0),
+        )
+    )
+    next_index_by_day: Dict[int, int] = {}
+    for item in kept_items:
+        day_number = int(item.get("day_number") or 0)
+        next_index_by_day[day_number] = next_index_by_day.get(day_number, 0) + 1
+        item["order_index"] = next_index_by_day[day_number]
+    current_data["itinerary_items"] = kept_items
+
+    constraints = dict(itinerary.get("planning_constraints") or {})
+    if selected_days:
+        by_day = dict(constraints.get("meal_preferences_by_day") or {})
+        for day_number in selected_days:
+            day_preferences = dict(by_day.get(str(day_number)) or {})
+            day_preferences[meal_kind] = "self_selected"
+            by_day[str(day_number)] = day_preferences
+        constraints["meal_preferences_by_day"] = by_day
+    else:
+        meal_preferences = dict(constraints.get("meal_preferences") or {})
+        meal_preferences[meal_kind] = "self_selected"
+        constraints["meal_preferences"] = meal_preferences
+    itinerary["planning_constraints"] = constraints
+
+    labels = {"breakfast": "bữa sáng", "lunch": "bữa trưa", "dinner": "bữa tối"}
+    meal_label = labels[meal_kind]
+    if removed_count:
+        return [
+            f"Đã để bạn tự chọn {meal_label} và bỏ {removed_count} gợi ý tự động; các hoạt động khác được giữ nguyên."
+        ]
+    return [f"Đã lưu lựa chọn để bạn tự chọn {meal_label}; không thêm địa điểm tự động."]
+
+
 def _scheduled_day_from_json(current_data: Dict[str, Any], day_number: int) -> tuple[List[ScheduledItem], PlaceCandidate]:
     hotel_data = current_data.get("hotel") or {}
     hotel = PlaceCandidate.from_mapping({**hotel_data, "category": "Hotel"})
@@ -620,7 +1284,9 @@ def _scheduled_day_from_json(current_data: Dict[str, Any], day_number: int) -> t
     attraction_ids = [
         str(item.get("reference_id"))
         for item in rows
-        if item.get("reference_type") == "Attraction" and item.get("reference_id")
+        if item.get("reference_type") == "Attraction"
+        and item.get("reference_id")
+        and re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", str(item.get("reference_id")))
     ]
     attraction_by_id: Dict[str, Dict[str, Any]] = {}
     if attraction_ids:
@@ -643,9 +1309,22 @@ def _scheduled_day_from_json(current_data: Dict[str, Any], day_number: int) -> t
             candidate = hotel
         else:
             candidate_row = attraction_by_id.get(reference_id)
-            if not candidate_row:
-                continue
-            candidate = PlaceCandidate.from_mapping(candidate_row)
+            if candidate_row:
+                candidate = PlaceCandidate.from_mapping(candidate_row)
+            else:
+                # Saved plans already carry the minimum scheduling fields.  A
+                # missing/deleted attraction must not make a local edit lose
+                # the rest of its day, and test fixtures must not need live DB IDs.
+                candidate = PlaceCandidate.from_mapping(
+                    {
+                        "id": reference_id,
+                        "name": row.get("place_name") or row.get("activity") or "Địa điểm đã lưu",
+                        "category": row.get("category") or "Other activities",
+                        "coordinates": row.get("coordinates"),
+                        "opening_time": row.get("opening_time"),
+                        "closing_time": row.get("closing_time"),
+                    }
+                )
         kind = _item_kind(row)
         start_time = str(row.get("start_time") or "08:00:00")
         if len(start_time) == 5:
@@ -709,6 +1388,21 @@ def _apply_local_trip_change(
     change: TripChange,
     modification_request: str,
 ) -> List[str]:
+    if change.action == "set_meal_self_selected":
+        if change.meal_kind not in {"breakfast", "lunch", "dinner"}:
+            raise ValueError("Hãy nêu rõ bạn muốn tự chọn bữa sáng, bữa trưa hay bữa tối.")
+        return _apply_self_selected_meal_constraint(current_data, change.meal_kind)
+
+    if change.action == "set_latest_outing_start":
+        day_numbers = change.day_numbers or (
+            (change.day_number,) if change.day_number is not None else ()
+        )
+        if not day_numbers:
+            raise ValueError("Hãy nêu rõ ngày cần áp dụng giới hạn giờ, hoặc chọn tất cả các ngày.")
+        if not change.requested_time:
+            raise ValueError("Hãy cung cấp giờ giới hạn theo dạng HH:MM.")
+        return _apply_latest_outing_constraint(current_data, day_numbers, change.requested_time)
+
     if not change.day_number:
         raise ValueError("Hãy nêu rõ ngày cần chỉnh sửa.")
     scheduled, hotel = _scheduled_day_from_json(current_data, change.day_number)
@@ -840,7 +1534,10 @@ def _apply_local_trip_change(
         adjustments.append(f"Đã bỏ {removed.activity} để giữ tối đa 8 điểm trong ngày.")
     repaired = [replace(item, order_index=index) for index, item in enumerate(repaired, start=1)]
     _replace_day_in_json(current_data, change.day_number, repaired)
-    return [*adjustments, *repair_adjustments]
+    constraint_adjustments = _reapply_planning_constraints(
+        current_data, only_days=(change.day_number,)
+    )
+    return [*adjustments, *repair_adjustments, *constraint_adjustments]
 
 
 def parse_duration_to_days(duration_str: str) -> int:

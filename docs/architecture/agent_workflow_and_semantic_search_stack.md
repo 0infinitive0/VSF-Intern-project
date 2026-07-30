@@ -34,9 +34,11 @@ flowchart TD
     D --> P["Save current_trip_plan.json<br/>and itinerary metadata"]
     P --> O["Show itinerary with<br/>times and day themes"]
 
-    U -->|"Edit saved plan"| C["Classify structured change"]
-    C -->|"Hotel change"| H
-    C -->|"Other change"| V["Repair only the affected day"]
+    U -->|"Draft-plan message"| E["Stateless LLM edit planner\nuses current item IDs only"]
+    E -->|"Clarify"| Q
+    E -->|"Not an edit"| G["General chat agent"]
+    E -->|"Hotel change"| H
+    E -->|"Validated edit plan"| V["Resolve real venues and\nrepair affected day(s)"]
     V --> P
 
     classDef reuse fill:#e8f3ff,stroke:#3572a5,stroke-width:1.5px,stroke-dasharray:5 5;
@@ -99,13 +101,18 @@ enforced by validation instead of by never letting the model touch the field.
 ### 2. Intent routing
 
 For a new trip, the terminal loop calls the planner directly once the three
-required facts are present. For a saved trip, a cheap deterministic check
-(`infer_trip_change`) first decides only whether the message looks like an
-edit to the already-saved plan at all (routing gate, not action
-classification). Once routed to the edit tool, `llama3.1` is the sole
+<!-- Incoming documentation superseded by the resolved current implementation. -->
+<!-- Historical remote design retained only for conflict traceability:
 classifier of which action it is — `change_hotel`, `replace_place`,
 `reschedule`, `add_place`, or `remove_place` — with a fixed safe default
 (`replace_place`) as the only fallback if the LLM call itself fails.
+-->
+required facts are present. For every message against a saved Draft, a
+stateless LLM edit planner receives a compact itinerary snapshot containing
+the hotel, themes, constraints, and saved item IDs. It returns `apply`,
+`clarify`, or `not_edit` plus typed operations. Deterministic code rejects
+unknown item IDs, resolves real replacement venues, and applies the entire
+edit atomically. Only `not_edit` messages continue to the general chat agent.
 
 ### 3. Hotel selection is a hard gate
 
@@ -157,8 +164,12 @@ so all daily clusters are based on the new hotel location.
 
 | Layer | Technology used now | How it is used | Why it is used |
 |---|---|---|---|
+<!-- Historical remote design retained only for conflict traceability:
 | Terminal orchestration | Python, LangGraph, LangChain tools | `create_react_agent` exposes only generate and modify tools; the grounded intake gate bypasses model routing until destination/duration/people are all confirmed. | Keeps conversational capability without placing factual venue selection in the model. |
 | Chat / constrained extraction | Ollama `llama3.1` (`llama3.1:latest` for search-filter extraction) | Produces daily semantic queries and structured edit intent; optionally extracts semantic text plus filters from general search queries. | Runs locally, supports Vietnamese interactions, and is limited to small structured tasks. |
+-->
+| Terminal orchestration | Python, LangGraph, LangChain tools | `create_react_agent` exposes only generate and modify tools; deterministic intake bypasses model routing for complete new-trip facts. | Keeps conversational capability without placing factual venue selection in the model. |
+| Chat / constrained extraction | Ollama `llama3.1` (`llama3.1:latest` for search-filter extraction) | Produces daily semantic queries and a stateless typed edit plan using only current itinerary IDs; optionally extracts semantic text plus filters from general search queries. | Runs locally, supports Vietnamese interactions, and is limited to small structured tasks. |
 | Embeddings | Ollama `bge-m3` through `OllamaEmbeddings` | Embeds the cleaned hotel or attraction query once per semantic search. | Multilingual embeddings suit Vietnamese and English travel queries and avoid a cloud embedding dependency. |
 | Semantic vector store | Supabase PostgreSQL RPC / pgvector deployment | Calls `match_attractions` and `match_hotels_with_rooms` with query embedding, threshold, count, and optional destination filter. | Keeps vector retrieval beside relational records and uses SQL/RPC filtering without a second active data store. |
 | Relational source of truth | Supabase PostgreSQL | Holds destinations, hotels, rooms, attractions, itineraries, and itinerary items; hydrates search results by UUID. | Schedules require factual fields and durable IDs, not vector snippets. |
@@ -170,7 +181,10 @@ so all daily clusters are based on the new hotel location.
 
 | Model | Responsibility | Not responsible for |
 |---|---|---|
+<!-- Historical remote design retained only for conflict traceability:
 | Ollama `llama3.1` | Trip-intake fact extraction (grounded before use), daily theme query generation, structured edit-action classification, optional query-filter extraction. | Selecting venue records, scheduling times, calculating distance, or fabricating facts. |
+-->
+| Ollama `llama3.1` | Trip-intake fact extraction (grounded before use), daily theme query generation, typed edit planning, optional query-filter extraction. | Selecting venue records, scheduling times, calculating distance, or fabricating facts. |
 | Ollama `bge-m3` | Turning a cleaned natural-language query into a vector used by Supabase retrieval. | Producing user-visible prose or deciding business rules. |
 | Ollama `llama3:latest` | Optional Airflow attraction-description enrichment, configured with `OLLAMA_DESCRIPTION_MODEL`. | Terminal planning and semantic search in this workflow. |
 

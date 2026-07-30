@@ -51,10 +51,12 @@ def _fake_build_trip_data(captured: dict):
         hotel_query=None,
         themes_override=None,
         preselected_hotel=None,
+        planning_constraints=None,
     ):
         captured["destination"] = destination
         captured["hotel_query"] = hotel_query
         captured["preselected_hotel"] = preselected_hotel
+        captured["planning_constraints"] = planning_constraints
         return {
             "hotel": preselected_hotel or {},
             "itineraries": [{"id": "itinerary-1", "status": "Draft"}],

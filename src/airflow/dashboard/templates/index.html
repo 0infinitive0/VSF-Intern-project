@@ -573,6 +573,7 @@
         let currentTripData = null;
         let selectedDay = 1;
         let savedItinerariesList = [];
+        window.currentTripSource = '';
 
         async function fetchItinerariesForPicker() {
             try {
@@ -591,8 +592,9 @@
             const selectEl = document.getElementById('itinerary-picker');
             if (!selectEl) return;
             const currentItinId = (currentTripData && currentTripData.itineraries && currentTripData.itineraries[0]) ? currentTripData.itineraries[0].id : null;
+            const isFromDB = window.currentTripSource && window.currentTripSource.includes('Supabase DB');
 
-            let html = `<option value="">📋 Local current_trip_plan.json</option>`;
+            let html = `<option value="" ${!isFromDB ? 'selected' : ''}>📋 Local current_trip_plan.json</option>`;
             savedItinerariesList.forEach(it => {
                 const prefList = it.preferences || [];
                 const pref = prefList.length ? prefList.join(', ') : 'Chuyến đi';
@@ -600,7 +602,7 @@
                 const days = it.duration_days || 1;
                 const adults = it.number_of_adults || 1;
                 const dateStr = it.created_at ? it.created_at.split('T')[0] : '';
-                const selected = (currentItinId && currentItinId === it.id) ? 'selected' : '';
+                const selected = (isFromDB && currentItinId && currentItinId === it.id) ? 'selected' : '';
                 html += `<option value="${it.id}" ${selected}>[${status}] ${pref} (${days}d, ${adults}p - ${dateStr})</option>`;
             });
             selectEl.innerHTML = html;
@@ -618,9 +620,11 @@
                 const result = await res.json();
                 if (result.status === 'success' && result.data) {
                     currentTripData = result.data;
+                    window.currentTripSource = result.source || '';
                     selectedDay = 1;
                     await fetchLocations();
                     renderTripPlanUI();
+                    populateItineraryPickerSelect();
                 } else {
                     alert("Failed to load selected itinerary: " + (result.message || 'Unknown error'));
                     loadTripPlan();
@@ -642,6 +646,7 @@
                 const result = await res.json();
                 if (result.status === 'success' && result.data) {
                     currentTripData = result.data;
+                    window.currentTripSource = result.source || '';
                     renderTripPlanUI();
                     fetchItinerariesForPicker();
                 } else {
@@ -761,6 +766,36 @@
             let prevCoord = hotelLatLng;
             let totalMeters = 0;
 
+            function decodePolyline(encoded) {
+                if (!encoded) return [];
+                var len = encoded.length;
+                var index = 0, lat = 0, lng = 0;
+                var array = [];
+                while (index < len) {
+                    var b, shift = 0, result = 0;
+                    do {
+                        b = encoded.charCodeAt(index++) - 63;
+                        result |= (b & 0x1f) << shift;
+                        shift += 5;
+                    } while (b >= 0x20);
+                    var dlat = ((result & 1) ? ~(result >> 1) : (result >> 1));
+                    lat += dlat;
+
+                    shift = 0;
+                    result = 0;
+                    do {
+                        b = encoded.charCodeAt(index++) - 63;
+                        result |= (b & 0x1f) << shift;
+                        shift += 5;
+                    } while (b >= 0x20);
+                    var dlng = ((result & 1) ? ~(result >> 1) : (result >> 1));
+                    lng += dlng;
+
+                    array.push([lat / 1e5, lng / 1e5]);
+                }
+                return array;
+            }
+
             dayItems.forEach((item, index) => {
                 let loc = getLocForItem(item, hotel);
 
@@ -770,7 +805,24 @@
                     bounds.extend(currCoord);
 
                     let distKm = 0;
-                    if (prevCoord) {
+                    let durationMins = 0;
+
+                    if (index === 0) {
+                        if (item.route_from_hotel) {
+                            distKm = item.route_from_hotel.distance_km || 0;
+                            durationMins = item.route_from_hotel.duration_mins || 0;
+                        }
+                    } else {
+                        const prevItem = dayItems[index - 1];
+                        if (prevItem && prevItem.route_to_next) {
+                            distKm = prevItem.route_to_next.distance_km || 0;
+                            durationMins = prevItem.route_to_next.duration_mins || 0;
+                        }
+                    }
+
+                    if (distKm > 0) {
+                        totalMeters += parseFloat(distKm) * 1000;
+                    } else if (prevCoord) {
                         const distMeters = L.latLng(prevCoord[0], prevCoord[1]).distanceTo(L.latLng(currCoord[0], currCoord[1]));
                         totalMeters += distMeters;
                         distKm = (distMeters / 1000).toFixed(1);
@@ -798,23 +850,83 @@
                         popupAnchor: [0, -13]
                     });
 
+                    const routeDetailStr = durationMins ? `~${distKm} km (${durationMins} mins)` : `~${distKm} km`;
                     const marker = L.marker(currCoord, { icon: stepIcon, zIndexOffset: 500 - index }).addTo(window.tripPlanLayerGroup);
-                    marker.bindPopup(`<b>Step #${stepNum}: ${item.activity || loc.name || 'Activity'}</b><br>Time: ${item.start_time || ''} - ${item.end_time || ''}<br>Distance from prev: ~${distKm} km`);
+                    marker.bindPopup(`<b>Step #${stepNum}: ${item.activity || loc.name || 'Activity'}</b><br>Time: ${item.start_time || ''} - ${item.end_time || ''}<br>Travel from prev: ${routeDetailStr}`);
                 } else {
                     stepDistances.push(0);
                     stepColors.push(routeColors[index % routeColors.length]);
                 }
             });
 
-            let fullRouteCoords = [];
-            if (hotelLatLng && routeCoords.length > 0) {
-                fullRouteCoords = [hotelLatLng, ...routeCoords, hotelLatLng];
-                if (prevCoord) {
-                    const returnMeters = L.latLng(prevCoord[0], prevCoord[1]).distanceTo(L.latLng(hotelLatLng[0], hotelLatLng[1]));
-                    totalMeters += returnMeters;
+            // Construct road segments
+            const segmentList = [];
+
+            // Segment 0: Hotel -> Item 0
+            if (hotelLatLng && dayItems.length > 0) {
+                const firstLoc = getLocForItem(dayItems[0], hotel);
+                if (firstLoc && firstLoc.lat && firstLoc.lng) {
+                    const firstCoord = [firstLoc.lat, firstLoc.lng];
+                    let pts = [];
+                    if (dayItems[0].route_from_hotel && dayItems[0].route_from_hotel.polyline) {
+                        pts = decodePolyline(dayItems[0].route_from_hotel.polyline);
+                    }
+                    if (!pts || pts.length < 2) {
+                        pts = [hotelLatLng, firstCoord];
+                    }
+                    segmentList.push({
+                        points: pts,
+                        color: routeColors[0 % routeColors.length],
+                        index: 0
+                    });
                 }
-            } else {
-                fullRouteCoords = routeCoords;
+            }
+
+            // Segments between items: Item i-1 -> Item i
+            for (let i = 0; i < dayItems.length - 1; i++) {
+                const item1 = dayItems[i];
+                const item2 = dayItems[i+1];
+                const loc1 = getLocForItem(item1, hotel);
+                const loc2 = getLocForItem(item2, hotel);
+
+                if (loc1 && loc1.lat && loc1.lng && loc2 && loc2.lat && loc2.lng) {
+                    const p1 = [loc1.lat, loc1.lng];
+                    const p2 = [loc2.lat, loc2.lng];
+                    let pts = [];
+                    if (item1.route_to_next && item1.route_to_next.polyline) {
+                        pts = decodePolyline(item1.route_to_next.polyline);
+                    }
+                    if (!pts || pts.length < 2) {
+                        pts = [p1, p2];
+                    }
+                    segmentList.push({
+                        points: pts,
+                        color: routeColors[(i + 1) % routeColors.length],
+                        index: i + 1
+                    });
+                }
+            }
+
+            // Return Segment: Last Item -> Hotel
+            if (hotelLatLng && dayItems.length > 0) {
+                const lastItem = dayItems[dayItems.length - 1];
+                const lastLoc = getLocForItem(lastItem, hotel);
+                if (lastLoc && lastLoc.lat && lastLoc.lng) {
+                    const lastCoord = [lastLoc.lat, lastLoc.lng];
+                    let pts = [];
+                    if (lastItem.route_to_next && lastItem.route_to_next.polyline) {
+                        pts = decodePolyline(lastItem.route_to_next.polyline);
+                        totalMeters += parseFloat(lastItem.route_to_next.distance_km || 0) * 1000;
+                    } else {
+                        pts = [lastCoord, hotelLatLng];
+                        totalMeters += L.latLng(lastCoord[0], lastCoord[1]).distanceTo(L.latLng(hotelLatLng[0], hotelLatLng[1]));
+                    }
+                    segmentList.push({
+                        points: pts,
+                        color: routeColors[(dayItems.length) % routeColors.length],
+                        index: dayItems.length
+                    });
+                }
             }
 
             window.routeSegmentLayers = {};
@@ -855,72 +967,70 @@
                 });
             };
 
-            if (fullRouteCoords.length > 1) {
-                for (let i = 0; i < fullRouteCoords.length - 1; i++) {
-                    const p1 = fullRouteCoords[i];
-                    const p2 = fullRouteCoords[i+1];
-                    const color = routeColors[i % routeColors.length];
+            segmentList.forEach(seg => {
+                const pts = seg.points;
+                if (!pts || pts.length < 2) return;
 
-                    const shadowLine = L.polyline([p1, p2], {
-                        color: '#0f172a',
-                        weight: 6,
-                        opacity: 0.3,
-                        lineJoin: 'round',
-                        lineCap: 'round'
-                    }).addTo(window.tripPlanLayerGroup);
+                pts.forEach(pt => bounds.extend(pt));
 
-                    const colorLine = L.polyline([p1, p2], {
-                        color: color,
-                        weight: 4,
-                        opacity: 0.45,
-                        lineJoin: 'round',
-                        lineCap: 'round'
-                    }).addTo(window.tripPlanLayerGroup);
+                const shadowLine = L.polyline(pts, {
+                    color: '#0f172a',
+                    weight: 6,
+                    opacity: 0.3,
+                    lineJoin: 'round',
+                    lineCap: 'round'
+                }).addTo(window.tripPlanLayerGroup);
 
-                    const arrows = [];
+                const colorLine = L.polyline(pts, {
+                    color: seg.color,
+                    weight: 4,
+                    opacity: 0.45,
+                    lineJoin: 'round',
+                    lineCap: 'round'
+                }).addTo(window.tripPlanLayerGroup);
+
+                const arrows = [];
+                const midIdx = Math.floor(pts.length / 2);
+                const p1 = pts[Math.max(0, midIdx - 1)];
+                const p2 = pts[midIdx];
+
+                if (p1 && p2) {
                     const lat1 = p1[0], lng1 = p1[1];
                     const lat2 = p2[0], lng2 = p2[1];
                     const dy = lat2 - lat1;
                     const dx = (lng2 - lng1) * Math.cos(lat1 * Math.PI / 180);
                     const dist = Math.hypot(dy, dx);
 
-                    if (dist > 0.0001) {
+                    if (dist > 0.00001) {
                         const angleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
-                        const fractions = dist > 0.03 ? [0.3, 0.7] : [0.5];
-
-                        fractions.forEach(frac => {
-                            const ptLat = lat1 + (lat2 - lat1) * frac;
-                            const ptLng = lng1 + (lng2 - lng1) * frac;
-
-                            const arrowIcon = L.divIcon({
-                                html: `<div style="transform: rotate(${-angleDeg}deg); display:flex; align-items:center; justify-content:center; width:22px; height:22px; filter: drop-shadow(0px 1px 3px rgba(0,0,0,0.8)); pointer-events:none;">
-                                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                           <path d="M5 4L19 12L5 20V4Z" fill="${color}" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>
-                                         </svg>
-                                       </div>`,
-                                className: '',
-                                iconSize: [22, 22],
-                                iconAnchor: [11, 11]
-                            });
-
-                            const marker = L.marker([ptLat, ptLng], { icon: arrowIcon, interactive: false, opacity: 0.5, zIndexOffset: 300 }).addTo(window.tripPlanLayerGroup);
-                            arrows.push(marker);
+                        const arrowIcon = L.divIcon({
+                            html: `<div style="transform: rotate(${-angleDeg}deg); display:flex; align-items:center; justify-content:center; width:22px; height:22px; filter: drop-shadow(0px 1px 3px rgba(0,0,0,0.8)); pointer-events:none;">
+                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                       <path d="M5 4L19 12L5 20V4Z" fill="${seg.color}" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>
+                                     </svg>
+                                   </div>`,
+                            className: '',
+                            iconSize: [22, 22],
+                            iconAnchor: [11, 11]
                         });
+
+                        const marker = L.marker(p2, { icon: arrowIcon, interactive: false, opacity: 0.5, zIndexOffset: 300 }).addTo(window.tripPlanLayerGroup);
+                        arrows.push(marker);
                     }
-
-                    window.routeSegmentLayers[i] = {
-                        shadowLine: shadowLine,
-                        colorLine: colorLine,
-                        arrows: arrows,
-                        color: color
-                    };
-
-                    colorLine.on('mouseover', () => window.highlightRouteSegment(i));
-                    colorLine.on('mouseout', () => window.resetRouteSegments());
-                    shadowLine.on('mouseover', () => window.highlightRouteSegment(i));
-                    shadowLine.on('mouseout', () => window.resetRouteSegments());
                 }
-            }
+
+                window.routeSegmentLayers[seg.index] = {
+                    shadowLine: shadowLine,
+                    colorLine: colorLine,
+                    arrows: arrows,
+                    color: seg.color
+                };
+
+                colorLine.on('mouseover', () => window.highlightRouteSegment(seg.index));
+                colorLine.on('mouseout', () => window.resetRouteSegments());
+                shadowLine.on('mouseover', () => window.highlightRouteSegment(seg.index));
+                shadowLine.on('mouseout', () => window.resetRouteSegments());
+            });
 
             if (bounds.isValid()) {
                 map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });

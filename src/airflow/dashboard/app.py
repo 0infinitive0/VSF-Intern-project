@@ -1,6 +1,15 @@
 import os
 import json
+import sys
 from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+ROOT_DIR = BASE_DIR.parent.parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+if Path("/project").exists() and "/project" not in sys.path:
+    sys.path.insert(0, "/project")
+
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -39,13 +48,15 @@ def get_locations():
 
         # 0. Extract reference_ids from current_trip_plan.json if present
         trip_item_ids = []
-        candidates = [
-            BASE_DIR.parent.parent.parent / "current_trip_plan.json", # local root repo dir
-            Path("/project/current_trip_plan.json"), # docker volume mount
-            Path("/opt/airflow/current_trip_plan.json"),
-            Path("current_trip_plan.json"),
+        candidate_paths = [
+            BASE_DIR.parent.parent.parent / "data" / "current_trip_plan.json",
+            Path("/project/data/current_trip_plan.json"),
+            Path("/opt/airflow/data/current_trip_plan.json"),
+            Path("data/current_trip_plan.json"),
+            BASE_DIR.parent.parent.parent / "current_trip_plan.json", # fallback
+            Path("/project/current_trip_plan.json"), # fallback
         ]
-        for p in candidates:
+        for p in candidate_paths:
             if p.exists():
                 try:
                     with open(p, "r", encoding="utf-8") as f:
@@ -285,7 +296,8 @@ def get_trip_plan(itinerary_id: str = None):
                     "activity": activity_name,
                     "coordinates": coords,
                     "kind": kind,
-                    "item_kind": kind
+                    "item_kind": kind,
+                    "route_to_next": item.get("route_to_next"),
                 })
 
             trip_bundle = {
@@ -294,22 +306,29 @@ def get_trip_plan(itinerary_id: str = None):
                 "itinerary_items": hydrated_items,
                 "adjustments": []
             }
+            from src.services.routing import recalculate_itinerary_routes
+            recalculate_itinerary_routes(trip_bundle)
+
             return {"status": "success", "data": trip_bundle, "source": f"Supabase DB (id={itinerary_id})"}
 
         except Exception as e:
             print(f"Error loading itinerary {itinerary_id} from Supabase: {e}")
 
-    candidates = [
-        BASE_DIR.parent.parent.parent / "current_trip_plan.json", # local root repo dir
-        Path("/project/current_trip_plan.json"), # docker volume mount
-        Path("/opt/airflow/current_trip_plan.json"),
-        Path("current_trip_plan.json"),
+    candidate_paths = [
+        BASE_DIR.parent.parent.parent / "data" / "current_trip_plan.json",
+        Path("/project/data/current_trip_plan.json"),
+        Path("/opt/airflow/data/current_trip_plan.json"),
+        Path("data/current_trip_plan.json"),
+        BASE_DIR.parent.parent.parent / "current_trip_plan.json", # fallback
+        Path("/project/current_trip_plan.json"), # fallback
     ]
-    for p in candidates:
+    for p in candidate_paths:
         if p.exists():
             try:
                 with open(p, "r", encoding="utf-8") as f:
                     data = json.load(f)
+                from src.services.routing import recalculate_itinerary_routes
+                recalculate_itinerary_routes(data)
                 return {"status": "success", "data": data, "source": str(p)}
             except Exception as e:
                 return {"status": "error", "message": f"Error reading {p}: {str(e)}"}

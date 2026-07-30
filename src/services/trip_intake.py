@@ -92,7 +92,15 @@ class TripIntakeState:
         raw = _llm_extract_intake_facts(message, known_facts, destination_names)
         grounded = _ground_extracted_facts(raw, destination_names)
 
-        destination = self.destination or grounded["destination"]
+        # Destination aliases are authoritative database data, so they remain
+        # safe to resolve when the extraction model returns malformed JSON.
+        # This keeps inputs such as "HCM" usable without guessing a place.
+        deterministic_destination = (
+            _match_known_destination(message, destination_names)
+            if not str(raw.get("destination") or "").strip()
+            else None
+        )
+        destination = self.destination or grounded["destination"] or deterministic_destination
         duration = self.duration or grounded["duration"]
         people = self.people or grounded["people"]
 

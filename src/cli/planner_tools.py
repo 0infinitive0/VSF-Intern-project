@@ -14,12 +14,14 @@ from langgraph.prebuilt import create_react_agent
 from src.cli.trip_builder_svc import (
     CURRENT_TRIP_PLAN_FILE,
     _apply_local_trip_change,
+    apply_trip_edit_plan,
     _build_trip_data,
     _clear_pending_hotel_selection,
     _current_trip_parameters,
     _get_destination_id,
     _load_pending_hotel_selection,
     _parse_trip_change,
+    _reapply_planning_constraints,
     _save_pending_hotel_selection,
     _save_trip_data,
     format_hotel_options,
@@ -36,6 +38,7 @@ from src.services.hotel_selection import (
 from src.services.itinerary_reuse import ItineraryReuseQuery
 from src.services.itinerary_store import ItineraryStore, ItineraryStoreError
 from src.services.llm import get_llm
+from src.services.trip_edit_planner import TripEditPlan, TripEditPlanError, plan_trip_edit
 from src.services.trip_scheduler import PlaceCandidate
 
 logger = logging.getLogger(__name__)
@@ -285,7 +288,12 @@ def select_hotel(selection: str) -> str:
 
         try:
             updated_data = _build_trip_data(
-                destination, duration, people, preferences, preselected_hotel=hotel_data
+                destination,
+                duration,
+                people,
+                preferences,
+                preselected_hotel=hotel_data,
+                planning_constraints=pending.get("planning_constraints") or {},
             )
         except Exception as exc:
             logger.exception("Hotel change failed")
@@ -298,6 +306,12 @@ def select_hotel(selection: str) -> str:
         if isinstance(updated_itinerary, dict):
             updated_itinerary["status"] = "Draft"
             updated_itinerary.pop("summary", None)
+            planning_constraints = pending.get("planning_constraints") or {}
+            if planning_constraints:
+                updated_itinerary["planning_constraints"] = planning_constraints
+                updated_data.setdefault("adjustments", []).extend(
+                    _reapply_planning_constraints(updated_data)
+                )
         _save_trip_data(updated_data)
         _clear_pending_hotel_selection()
         return format_trip_response_from_json(updated_data)
@@ -309,7 +323,7 @@ def select_hotel(selection: str) -> str:
 
 
 @tool
-def modify_trip_plan(modification_request: str) -> str:
+def _legacy_modify_trip_plan(modification_request: str) -> str:
     """
     Use this tool when the user wants to change, modify, or update an existing trip plan (e.g. change hotel, edit schedule, swap attractions).
     Pass the user's specific modification request string.
@@ -356,6 +370,12 @@ def modify_trip_plan(modification_request: str) -> str:
                     "people": people,
                     "preferences_text": preferences,
                     "hotel_query": hotel_query,
+                    "planning_constraints": dict(
+                        ((current_data.get("itineraries") or [{}])[0]).get(
+                            "planning_constraints"
+                        )
+                        or {}
+                    ),
                     "created_at": datetime.now().isoformat(),
                     "options": [data for data, _candidate in options],
                 }
@@ -376,6 +396,83 @@ def modify_trip_plan(modification_request: str) -> str:
         return f"SYSTEM ERROR: {exc}"
 
     return format_trip_response_from_json(updated_data)
+
+
+def execute_trip_edit_request(modification_request: str, plan: TripEditPlan) -> str | None:
+    """Execute an already validated LLM edit plan against the saved Draft."""
+    if not os.path.exists(CURRENT_TRIP_PLAN_FILE):
+        return "SYSTEM ERROR: Chưa có kế hoạch chuyến đi để chỉnh sửa."
+    try:
+        with open(CURRENT_TRIP_PLAN_FILE, "r", encoding="utf-8") as file_handle:
+            current_data = json.load(file_handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        return f"SYSTEM ERROR: Không thể đọc kế hoạch hiện tại: {exc}"
+
+    saved_itinerary = (current_data.get("itineraries") or [{}])[0]
+    if isinstance(saved_itinerary, dict) and str(saved_itinerary.get("status") or "").casefold() == "finalized":
+        return "Kế hoạch đã xác nhận không thể chỉnh sửa. Hãy tạo một kế hoạch mới nếu cần thay đổi."
+    if plan.decision == "clarify":
+        return plan.clarification_question or "Bạn muốn chỉnh sửa phần nào của lịch trình?"
+    if plan.decision == "not_edit":
+        return None
+
+    hotel_change = next((operation for operation in plan.operations if operation.operation == "change_hotel"), None)
+    if hotel_change:
+        try:
+            destination, duration, people, preferences = _current_trip_parameters(current_data)
+            destination_id = str(saved_itinerary.get("destination_id") or _get_destination_id(destination) or "")
+            if not destination or not destination_id:
+                raise ValueError("Kế hoạch hiện tại thiếu điểm đến để đổi khách sạn.")
+            hotel_query = hotel_change.hotel_query or modification_request
+            options = rank_hotel_candidates(
+                select_hotel_candidates(destination, destination_id, people, hotel_query=hotel_query)
+            )
+            if not options:
+                raise ValueError(f"Không tìm thấy khách sạn phù hợp tại {destination}.")
+            _save_pending_hotel_selection(
+                {
+                    "mode": "change_hotel",
+                    "destination": destination,
+                    "destination_id": destination_id,
+                    "duration": duration,
+                    "people": people,
+                    "preferences_text": preferences,
+                    "hotel_query": hotel_query,
+                    "planning_constraints": dict(saved_itinerary.get("planning_constraints") or {}),
+                    "created_at": datetime.now().isoformat(),
+                    "options": [data for data, _candidate in options],
+                }
+            )
+            return format_hotel_options(options)
+        except Exception as exc:
+            logger.exception("Failed to prepare hotel change")
+            return f"SYSTEM ERROR: {exc}"
+
+    try:
+        adjustments = apply_trip_edit_plan(current_data, plan)
+        current_data.setdefault("adjustments", []).extend(adjustments)
+        _save_trip_data(current_data)
+        logger.info("Applied LLM edit plan: %s", [operation.operation for operation in plan.operations])
+        return format_trip_response_from_json(current_data)
+    except Exception as exc:
+        logger.exception("Failed to apply LLM edit plan")
+        return f"SYSTEM ERROR: {exc}"
+
+
+@tool
+def modify_trip_plan(modification_request: str) -> str:
+    """Apply a constrained stateless LLM plan to an existing Draft itinerary."""
+    if not os.path.exists(CURRENT_TRIP_PLAN_FILE):
+        return "SYSTEM ERROR: Chưa có kế hoạch chuyến đi để chỉnh sửa."
+    try:
+        with open(CURRENT_TRIP_PLAN_FILE, "r", encoding="utf-8") as file_handle:
+            current_data = json.load(file_handle)
+        plan = plan_trip_edit(modification_request, current_data)
+    except (OSError, json.JSONDecodeError, TripEditPlanError) as exc:
+        logger.warning("Could not safely plan trip edit: %s", exc)
+        return "SYSTEM ERROR: Không thể hiểu an toàn yêu cầu chỉnh sửa này. Vui lòng diễn đạt cụ thể hơn."
+    result = execute_trip_edit_request(modification_request, plan)
+    return result or "Yêu cầu này không thay đổi lịch trình hiện tại."
 
 
 def _is_finalization_request(message: str) -> bool:
@@ -413,6 +510,7 @@ def finalize_trip_plan() -> str:
             preferences=tuple(part.strip() for part in preferences.split(",") if part.strip()),
             child_focused=child_focused,
             hotel_id=str(itinerary.get("hotel_id") or (trip_data.get("hotel") or {}).get("id") or ""),
+            planning_constraints=dict(itinerary.get("planning_constraints") or {}),
         )
         store = ItineraryStore.from_default()
         store.persist_itinerary_bundle(trip_data)

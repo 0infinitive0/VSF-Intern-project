@@ -207,6 +207,7 @@ CREATE TABLE itineraries (
     budget DECIMAL(12, 2), -- Ngân sách
     preferences TEXT[], -- Sở thích
     day_themes JSONB NOT NULL DEFAULT '[]'::jsonb, -- Chủ đề theo ngày: [{day_number, title, query}]
+    planning_constraints JSONB NOT NULL DEFAULT '{}'::jsonb, -- Ràng buộc người dùng cần giữ qua các lần chỉnh sửa
     status VARCHAR(50) DEFAULT 'Draft', -- Trạng thái (Draft, Finalized)
     destination_id UUID REFERENCES destinations(id) ON DELETE SET NULL, -- Lọc reuse chính xác theo điểm đến
     hotel_id UUID REFERENCES hotels(id) ON DELETE SET NULL, -- Khách sạn đã chọn để hydrate/revalidate
@@ -231,6 +232,7 @@ CREATE TABLE itinerary_items (
     reference_id UUID NOT NULL, -- ID trỏ đến bảng tương ứng
     estimated_cost DECIMAL(12, 2), -- Chi phí dự tính
     item_kind VARCHAR(20) CHECK (item_kind IN ('breakfast', 'attraction', 'lunch', 'rest', 'coffee', 'dinner', 'evening')),
+    route_to_next JSONB, -- Lưu tuyến đường đến điểm tiếp theo {"distance_km": float, "duration_mins": float, "polyline": string}
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

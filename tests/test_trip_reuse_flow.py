@@ -38,9 +38,12 @@ def test_reuse_migration_contains_atomic_bundle_and_finalization_contracts() -> 
     assert "CREATE OR REPLACE FUNCTION finalize_itinerary" in migration
     assert "CREATE OR REPLACE FUNCTION update_itinerary_embedding" in migration
     assert "filter_hotel_id uuid" in migration
+    assert "filter_planning_constraints jsonb" in migration
     assert "itinerary.hotel_id = filter_hotel_id" in migration
+    assert "itinerary.planning_constraints = filter_planning_constraints" in migration
     assert "ON itineraries(destination_id, duration_days, hotel_id, status)" in migration
     assert "COALESCE(item->>'item_kind', item->>'kind')" in migration
+    assert "Finalized itinerary % is immutable" in migration
     assert "is_embedded" not in migration
     for redundant_column in (
         "reuse_credit_applied_at",
@@ -80,3 +83,4 @@ def test_backfill_script_is_resumable_and_dry_run_safe() -> None:
     assert "--dry-run" in script
     assert "--limit" in script
     assert '.is_("embedding", "null")' in script
+    assert "planning_constraints" in script
