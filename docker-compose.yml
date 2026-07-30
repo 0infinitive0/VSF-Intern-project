@@ -39,6 +39,9 @@ services:
       - "11434:11434"
     volumes:
       - ./data/ollama:/root/.ollama
+    environment:
+      - OLLAMA_MAX_LOADED_MODELS=2
+      - OLLAMA_KEEP_ALIVE=30m
     restart: unless-stopped
 
   ollama-pull:

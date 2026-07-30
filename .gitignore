@@ -61,6 +61,10 @@ data/
 *.db
 *.sqlite3
 
+# Vector benchmark fixtures (large binary dumps, regenerable)
+eval/fixtures/
+eval/results/vector_bench/raw/
+
 # Logs
 logs/
 *.log
