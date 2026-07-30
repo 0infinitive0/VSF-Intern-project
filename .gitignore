@@ -21,6 +21,10 @@ venv.bak/
 .env.local
 .env.production
 
+# MCP server config — holds a personal LangSmith access token in plaintext.
+# Each dev needs their own key anyway, so this is not meant to be shared.
+.mcp.json
+
 # IDE
 .vscode/
 .idea/
