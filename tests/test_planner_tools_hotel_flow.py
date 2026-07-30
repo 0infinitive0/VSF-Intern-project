@@ -5,7 +5,7 @@ import os
 import pytest
 
 import src.cli.planner_tools as planner_tools_module
-from src.cli.trip_builder_svc import PENDING_HOTEL_SELECTION_FILE
+from src.cli.trip_builder_svc import PENDING_HOTEL_SELECTION_FILE, SESSION_DATA_DIR
 from src.services.trip_scheduler import PlaceCandidate
 
 
@@ -36,9 +36,10 @@ def _fake_option(id_: str, name: str, rank: int) -> tuple[dict, PlaceCandidate]:
 
 @pytest.fixture(autouse=True)
 def _isolate_cwd(tmp_path, monkeypatch):
-    """current_trip_plan.json / pending_hotel_selection.json are bare relative
-    filenames — sandbox them away from the repo root."""
+    """current_trip_plan.json / pending_hotel_selection.json live under data/,
+    relative to cwd — sandbox them away from the repo root."""
     monkeypatch.chdir(tmp_path)
+    os.makedirs(SESSION_DATA_DIR, exist_ok=True)
 
 
 def _fake_build_trip_data(captured: dict):

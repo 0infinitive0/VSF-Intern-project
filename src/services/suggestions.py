@@ -28,7 +28,7 @@ def generate_next_chat_suggestions(
     """
     action_lower = last_action.lower()
 
-    if "hotel_recommend" in action_lower or "pending_hotel" in action_lower:
+    if "recommend_hotel" in action_lower or "pending_hotel" in action_lower:
         return [
             "Chọn khách sạn số 1 và lập lịch trình",
             "Tìm thêm khách sạn gần biển hơn",

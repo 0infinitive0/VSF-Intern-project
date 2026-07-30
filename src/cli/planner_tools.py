@@ -419,7 +419,9 @@ def finalize_trip_plan() -> str:
         result = store.finalize_trip_data(trip_data, reuse_query)
         itinerary["status"] = "Finalized"
         itinerary["summary"] = result.get("summary")
-        _save_trip_data(trip_data)
+        # Already persisted + finalized above; re-persisting here would resend
+        # the bundle to a now-finalized (immutable) row and fail.
+        _save_trip_data(trip_data, persist=False)
         if not result.get("embedding_saved", result.get("has_embedding", False)):
             return "Đã xác nhận lịch trình. Phần tìm kiếm tái sử dụng sẽ tự thử lại sau."
         return "Đã xác nhận lịch trình và lưu làm mẫu có thể tái sử dụng."

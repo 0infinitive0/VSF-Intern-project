@@ -19,7 +19,7 @@ record.
 
 ```mermaid
 flowchart TD
-    U["User message"] --> I["Deterministic intake<br/>destination, duration, people"]
+    U["User message"] --> I["LLM intake, grounded<br/>destination, duration, people"]
     I -->|"Missing fact"| Q["Ask only the missing question"]
     Q --> U
     I -->|"Complete facts"| H["Search real hotels<br/>and show ranked options"]
@@ -83,20 +83,29 @@ replacement performs a new hotel-specific reuse search and rebuilds all days.
 
 ## Agent workflow
 
-### 1. Deterministic intake first
+### 1. LLM intake, deterministically grounded
 
-`TripIntakeState` reads the user’s message, matches a supplied canonical
-destination name, and extracts duration, party size, and preference terms. It
-asks a question only when destination, duration, or party size is missing. This
-avoids a general-purpose model losing or corrupting facts the user already gave.
+`TripIntakeState` sends the user's message to `llama3.1` to extract
+destination, duration, party size, and preference terms as structured JSON.
+The LLM's destination guess is never trusted directly: a pure grounding
+function (`_ground_extracted_facts` / `_match_known_destination` in
+`trip_intake.py`) accepts it only if it matches a real `destinations` row
+(name or alias); an unmatched or ambiguous guess is discarded, and the state
+field stays empty. It asks a question only when destination, duration, or
+party size is still missing after grounding — this is what avoids a
+general-purpose model losing or corrupting facts the user already gave, now
+enforced by validation instead of by never letting the model touch the field.
 
 ### 2. Intent routing
 
 For a new trip, the terminal loop calls the planner directly once the three
-required facts are present. For a saved trip, simple edit phrases are classified
-deterministically as `change_hotel`, `replace_place`, `reschedule`,
-`add_place`, or `remove_place`. The LLM is a structured-JSON fallback only
-when the rule classifier cannot identify the edit.
+required facts are present. For a saved trip, a cheap deterministic check
+(`infer_trip_change`) first decides only whether the message looks like an
+edit to the already-saved plan at all (routing gate, not action
+classification). Once routed to the edit tool, `llama3.1` is the sole
+classifier of which action it is — `change_hotel`, `replace_place`,
+`reschedule`, `add_place`, or `remove_place` — with a fixed safe default
+(`replace_place`) as the only fallback if the LLM call itself fails.
 
 ### 3. Hotel selection is a hard gate
 
@@ -148,20 +157,20 @@ so all daily clusters are based on the new hotel location.
 
 | Layer | Technology used now | How it is used | Why it is used |
 |---|---|---|---|
-| Terminal orchestration | Python, LangGraph, LangChain tools | `create_react_agent` exposes only generate and modify tools; deterministic intake bypasses model routing for complete new-trip facts. | Keeps conversational capability without placing factual venue selection in the model. |
+| Terminal orchestration | Python, LangGraph, LangChain tools | `create_react_agent` exposes only generate and modify tools; the grounded intake gate bypasses model routing until destination/duration/people are all confirmed. | Keeps conversational capability without placing factual venue selection in the model. |
 | Chat / constrained extraction | Ollama `llama3.1` (`llama3.1:latest` for search-filter extraction) | Produces daily semantic queries and structured edit intent; optionally extracts semantic text plus filters from general search queries. | Runs locally, supports Vietnamese interactions, and is limited to small structured tasks. |
 | Embeddings | Ollama `bge-m3` through `OllamaEmbeddings` | Embeds the cleaned hotel or attraction query once per semantic search. | Multilingual embeddings suit Vietnamese and English travel queries and avoid a cloud embedding dependency. |
 | Semantic vector store | Supabase PostgreSQL RPC / pgvector deployment | Calls `match_attractions` and `match_hotels_with_rooms` with query embedding, threshold, count, and optional destination filter. | Keeps vector retrieval beside relational records and uses SQL/RPC filtering without a second active data store. |
 | Relational source of truth | Supabase PostgreSQL | Holds destinations, hotels, rooms, attractions, itineraries, and itinerary items; hydrates search results by UUID. | Schedules require factual fields and durable IDs, not vector snippets. |
 | Deterministic planner | Pure Python scheduler | Scores candidates and creates/revalidates time blocks. | Makes geo/time safety reproducible and unit-testable. |
 | API surface | FastAPI | Preserves `/search_attractions` and `/search_hotels` response contracts. | Makes semantic search reusable without exposing internal scheduling details. |
-| Durable local plan | UTF-8 JSON | Writes `current_trip_plan.json`; daily themes are stored under `itineraries[0].day_themes`. | Simple terminal-session persistence and a stable edit target. |
+| Durable local plan | UTF-8 JSON | Writes `data/current_trip_plan.json`; daily themes are stored under `itineraries[0].day_themes`. | Simple terminal-session persistence and a stable edit target; `data/` is gitignored so session state never risks a commit. |
 
 ## Model responsibilities
 
 | Model | Responsibility | Not responsible for |
 |---|---|---|
-| Ollama `llama3.1` | Daily theme query generation, structured edit fallback, optional query-filter extraction. | Selecting venue records, scheduling times, calculating distance, or fabricating facts. |
+| Ollama `llama3.1` | Trip-intake fact extraction (grounded before use), daily theme query generation, structured edit-action classification, optional query-filter extraction. | Selecting venue records, scheduling times, calculating distance, or fabricating facts. |
 | Ollama `bge-m3` | Turning a cleaned natural-language query into a vector used by Supabase retrieval. | Producing user-visible prose or deciding business rules. |
 | Ollama `llama3:latest` | Optional Airflow attraction-description enrichment, configured with `OLLAMA_DESCRIPTION_MODEL`. | Terminal planning and semantic search in this workflow. |
 
@@ -317,8 +326,8 @@ limit.
 
 | Option | Strengths | Weaknesses | Decision |
 |---|---|---|---|
-| LangGraph with two narrow tools | Supports conversation, tool lifecycle, and future extension while limiting mutating actions. | Adds a framework dependency and is unnecessary for facts already deterministically extracted. | Used for chat and fallback paths. |
-| Fully deterministic command loop | Smallest runtime surface and easiest traceability. | Less flexible language interaction and edit interpretation. | Used for intake and first-pass edit intent, not the whole chat. |
+| LangGraph with two narrow tools | Supports conversation, tool lifecycle, and future extension while limiting mutating actions. | Adds a framework dependency and is unnecessary once the intake gate has already resolved and grounded the core facts. | Used for chat and fallback paths. |
+| Fully deterministic command loop | Smallest runtime surface and easiest traceability. | Less flexible language interaction and edit interpretation. | Not used — intake and edit-action classification are now LLM-based (grounded/gated, not rule-parsed); only the saved-plan routing gate stays a plain rule check. |
 | Multi-agent planner/writer/synthesizer | Clear conceptual separation at large scale. | More prompts, state handoffs, hallucination surface, and GPU/API load. | Older proposal; not the active terminal implementation. |
 
 ## Planned itinerary-reuse extension
@@ -359,7 +368,8 @@ service boundaries, phased tasks, tests, and rollout gates.
 
 - `scripts/poc_trip_planner.py` — terminal loop, constrained LLM roles,
   Supabase hydration, persistence, and edit application.
-- `src/services/trip_intake.py` — deterministic Vietnamese fact extraction.
+- `src/services/trip_intake.py` — LLM Vietnamese fact extraction, grounded
+  against real destinations and a closed preference-label set before use.
 - `src/services/trip_scheduler.py` — pure scoring, timing, validation,
   repair, and meal/playground policy.
 - `src/services/supabase_search.py` — Ollama embedding, optional filter

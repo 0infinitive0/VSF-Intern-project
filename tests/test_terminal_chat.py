@@ -6,12 +6,13 @@ import pytest
 
 import src.cli.terminal_chat as terminal_chat_module
 import src.services.chat_session as chat_session_module
-from src.cli.trip_builder_svc import PENDING_HOTEL_SELECTION_FILE
+from src.cli.trip_builder_svc import PENDING_HOTEL_SELECTION_FILE, SESSION_DATA_DIR
 
 
 @pytest.fixture(autouse=True)
 def _isolate_cwd(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    os.makedirs(SESSION_DATA_DIR, exist_ok=True)
 
 
 def test_run_terminal_chat_clears_stale_pending_selection_file_on_start(monkeypatch):

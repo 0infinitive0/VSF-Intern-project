@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import os
+
 import pytest
 
 import src.services.chat_session as chat_session_module
-from src.cli.trip_builder_svc import CURRENT_TRIP_PLAN_FILE, PENDING_HOTEL_SELECTION_FILE
+import src.services.trip_intake as trip_intake_module
+from src.cli.trip_builder_svc import CURRENT_TRIP_PLAN_FILE, PENDING_HOTEL_SELECTION_FILE, SESSION_DATA_DIR
 from src.services.chat_session import ChatSession, process_chat_turn
 from src.services.hotel_selection import HotelPreferenceState
 from src.services.trip_intake import TripIntakeState
@@ -12,12 +15,25 @@ from src.services.trip_intake import TripIntakeState
 @pytest.fixture(autouse=True)
 def _isolate_cwd(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    os.makedirs(SESSION_DATA_DIR, exist_ok=True)
 
 
 def _session(**overrides) -> ChatSession:
     defaults = dict(agent=object(), config={"configurable": {"thread_id": "test"}})
     defaults.update(overrides)
     return ChatSession(**defaults)
+
+
+def _mock_intake_extraction(monkeypatch, responses: dict[str, dict]) -> None:
+    """`TripIntakeState.with_message()` now calls the LLM. Monkeypatch the
+    thin extraction call (not `with_message` itself) so these chat_session
+    orchestration tests stay deterministic and make zero network calls,
+    exactly like the equivalent helper in tests/test_trip_intake.py."""
+
+    def fake(message, known_facts, destination_names, model=None):
+        return responses.get(message, {})
+
+    monkeypatch.setattr(trip_intake_module, "_llm_extract_intake_facts", fake)
 
 
 def test_process_chat_turn_routes_to_select_hotel_when_pending_file_exists(monkeypatch):
@@ -64,6 +80,7 @@ def test_process_chat_turn_routes_to_finalize_when_finalization_request(monkeypa
 
 def test_process_chat_turn_asks_missing_intake_question(monkeypatch):
     monkeypatch.setattr(chat_session_module, "_get_destination_names", lambda: ("Đà Nẵng",))
+    _mock_intake_extraction(monkeypatch, {"Tôi muốn đi Đà Nẵng": {"destination": "Đà Nẵng"}})
 
     session = _session()
     reply = process_chat_turn(session, "Tôi muốn đi Đà Nẵng")
@@ -74,6 +91,10 @@ def test_process_chat_turn_asks_missing_intake_question(monkeypatch):
 
 def test_process_chat_turn_asks_budget_question_right_after_intake_completes(monkeypatch):
     monkeypatch.setattr(chat_session_module, "_get_destination_names", lambda: ())
+    _mock_intake_extraction(
+        monkeypatch,
+        {"2 người": {"people_count": 2}, "không": {"skip_preferences": True}},
+    )
 
     session = _session(intake_state=TripIntakeState(destination="Đà Nẵng", duration="3 ngày"))
     reply = process_chat_turn(session, "2 người")

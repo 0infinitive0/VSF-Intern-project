@@ -41,7 +41,6 @@ from src.services.trip_scheduler import (
     detect_covered_hotel_meals,
     fits_opening_hours,
     haversine_distance_km,
-    infer_trip_change,
     normalize_day_themes,
     serialize_day_themes,
     validate_or_repair_day,
@@ -49,8 +48,9 @@ from src.services.trip_scheduler import (
 
 logger = logging.getLogger(__name__)
 
-CURRENT_TRIP_PLAN_FILE = "current_trip_plan.json"
-PENDING_HOTEL_SELECTION_FILE = "pending_hotel_selection.json"
+SESSION_DATA_DIR = "data"
+CURRENT_TRIP_PLAN_FILE = os.path.join(SESSION_DATA_DIR, "current_trip_plan.json")
+PENDING_HOTEL_SELECTION_FILE = os.path.join(SESSION_DATA_DIR, "pending_hotel_selection.json")
 ENABLE_ITINERARY_REUSE = os.getenv("ENABLE_ITINERARY_REUSE", "false").casefold() in {"1", "true", "yes"}
 ITINERARY_REUSE_TIER1_THRESHOLD = float(os.getenv("ITINERARY_REUSE_TIER1_THRESHOLD", "0.88"))
 
@@ -60,8 +60,9 @@ def clear_session_history() -> None:
     for filename in (
         CURRENT_TRIP_PLAN_FILE,
         PENDING_HOTEL_SELECTION_FILE,
-        os.path.join("data", CURRENT_TRIP_PLAN_FILE),
-        os.path.join("data", PENDING_HOTEL_SELECTION_FILE),
+        # Legacy bare-root paths from before these files moved under data/.
+        os.path.basename(CURRENT_TRIP_PLAN_FILE),
+        os.path.basename(PENDING_HOTEL_SELECTION_FILE),
     ):
         if os.path.exists(filename):
             try:
@@ -74,6 +75,7 @@ def clear_session_history() -> None:
 def _save_pending_hotel_selection(payload: Dict[str, Any]) -> None:
     """Persist the hotel options just shown to the user, so the next chat turn can
     resolve their reply (a rank number or a name) back to one of them."""
+    os.makedirs(SESSION_DATA_DIR, exist_ok=True)
     with open(PENDING_HOTEL_SELECTION_FILE, "w", encoding="utf-8") as file_handle:
         json.dump(payload, file_handle, ensure_ascii=False, indent=2)
 
@@ -505,17 +507,24 @@ def _build_trip_data(
     }
 
 
-def _save_trip_data(trip_data: Dict[str, Any]) -> None:
+def _save_trip_data(trip_data: Dict[str, Any], *, persist: bool = True) -> None:
+    os.makedirs(SESSION_DATA_DIR, exist_ok=True)
     with open(CURRENT_TRIP_PLAN_FILE, "w", encoding="utf-8") as file_handle:
         json.dump(trip_data, file_handle, ensure_ascii=False, indent=2)
-    _persist_itinerary_metadata(trip_data)
+    if persist:
+        _persist_itinerary_metadata(trip_data)
 
 
 def _parse_trip_change(modification_request: str) -> TripChange:
-    deterministic = infer_trip_change(modification_request)
-    if deterministic:
-        return deterministic
-    prompt = f"""Classify this Vietnamese trip-plan edit request into one deterministic change.
+    prompt = f"""Classify this Vietnamese trip-plan edit request into exactly one action.
+
+Actions:
+- change_hotel: user wants a different hotel/accommodation for the whole trip (mentions "khách sạn", "resort", "chỗ ở", "đổi phòng"). Applies to the whole trip, not one day.
+- replace_place: user wants to swap one specific attraction/restaurant/venue for another, keeping the same hotel.
+- reschedule: user wants to move an existing activity to a different time, without changing which venue it is.
+- add_place: user wants to add a new activity/venue that is not currently in the plan.
+- remove_place: user wants to delete an existing activity/venue from the plan.
+
 Request: {modification_request}
 Return raw JSON only with this schema:
 {{
@@ -525,6 +534,7 @@ Return raw JSON only with this schema:
   "query": "venue or hotel requirements",
   "requested_time": "HH:MM"
 }}
+day_number/order_index apply only to replace_place, reschedule, add_place, remove_place — use null for both when action is change_hotel.
 Use null for fields that do not apply. Never return itinerary JSON."""
     try:
         llm = get_llm(temperature=0.0)

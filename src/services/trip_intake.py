@@ -1,36 +1,69 @@
-"""Deterministic fact collection for the terminal trip-planning conversation."""
+"""LLM-based fact collection for the terminal trip-planning conversation.
+
+The LLM interprets free-form language; every fact it proposes is grounded
+before it becomes state:
+- `destination` is accepted only if it matches a real `destinations` row
+  (name or alias) — an unmatched guess is discarded, not stored.
+- `preference_labels` are accepted only if they are in the fixed closed set.
+- `duration`/`people` are stored as canonically formatted strings derived
+  from validated integers, never the model's raw text.
+
+This mirrors `normalize_day_themes()` in `trip_scheduler.py`: the LLM
+proposes, a pure function (`_ground_extracted_facts`) validates.
+"""
 
 from __future__ import annotations
 
+import json
+import logging
 import re
 import unicodedata
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
+from typing import Any
 
-_NUMBER_WORDS = {
-    "mot": 1,
-    "hai": 2,
-    "ba": 3,
-    "bon": 4,
-    "tu": 4,
-    "nam": 5,
-    "sau": 6,
-    "bay": 7,
-    "tam": 8,
-    "chin": 9,
-    "muoi": 10,
+from src.services.llm import get_llm
+
+logger = logging.getLogger(__name__)
+
+_PREFERENCE_LABELS = (
+    "biển",
+    "văn hóa",
+    "ẩm thực",
+    "thiên nhiên",
+    "lịch sử",
+    "mua sắm",
+    "cuộc sống về đêm",
+    "trẻ em",
+)
+
+# Safety net for when `_llm_extract_intake_facts` fails soft (returns `{}`,
+# so `skip_preferences` defaults to False): without this, a plain "không"
+# reply would be stored as a literal custom preference instead of being
+# skipped. Only consulted when extraction produced nothing (see
+# `with_message`'s `llm_unavailable` check) — a healthy LLM's
+# `skip_preferences` answer is trusted as-is, since this set's broader
+# substring forms ("khong can", "khong co") would otherwise also match — and
+# discard — a real preference like "không cần khách sạn sang trọng, thích biển".
+_NEGATIVE_RESPONSES = {
+    "khong", "khong can", "khong co", "no", "none", "skip", "n/a", "k", "ko",
+    "khong can dau", "khong co yeu cau gi", "khong co gi", "ko can",
 }
 
-_PREFERENCE_TERMS = (
-    ("biển", ("bien", "beach", "coast")),
-    ("văn hóa", ("van hoa", "culture", "heritage")),
-    ("ẩm thực", ("am thuc", "food", "cuisine")),
-    ("thiên nhiên", ("thien nhien", "nature", "outdoor")),
-    ("lịch sử", ("lich su", "history", "historical")),
-    ("mua sắm", ("mua sam", "shopping")),
-    ("cuộc sống về đêm", ("cuoc song ve dem", "nightlife")),
-    ("trẻ em", ("tre em", "children", "kids", "family")),
-)
+
+_DECLINE_TRAILING_PARTICLES = {"a"}  # normalized "ạ" (politeness particle)
+
+
+def _looks_like_decline(message: str) -> bool:
+    normalized = _normalize(message).strip(" .!,;")
+    tokens = normalized.split()
+    if tokens and tokens[-1] in _DECLINE_TRAILING_PARTICLES:
+        tokens = tokens[:-1]
+    normalized = " ".join(tokens)
+    return normalized in _NEGATIVE_RESPONSES or any(
+        neg in normalized for neg in ("khong can", "khong co", "ko can")
+    )
+
 
 @dataclass(frozen=True)
 class DestinationOption:
@@ -62,12 +95,6 @@ def destination_options_from_rows(
     return tuple(options)
 
 
-_NEGATIVE_RESPONSES = {
-    "khong", "khong can", "khong co", "no", "none", "skip", "n/a", "k", "ko",
-    "khong can dau", "khong co yeu cau gi", "khong co gi", "ko can"
-}
-
-
 @dataclass(frozen=True)
 class TripIntakeState:
     destination: str | None = None
@@ -85,24 +112,35 @@ class TripIntakeState:
         message: str,
         destination_names: Sequence[str | DestinationOption],
     ) -> TripIntakeState:
-        destination = self.destination or _extract_destination(message, destination_names)
-        duration = self.duration or _extract_duration(message)
-        people = self.people or _extract_people(message)
+        known_facts = {
+            "destination": self.destination,
+            "duration": self.duration,
+            "people": self.people,
+        }
+        raw = _llm_extract_intake_facts(message, known_facts, destination_names)
+        grounded = _ground_extracted_facts(raw, destination_names)
+
+        destination = self.destination or grounded["destination"]
+        duration = self.duration or grounded["duration"]
+        people = self.people or grounded["people"]
+
         preferences = list(self.preferences)
-        normalized = _normalize(message)
-        for label, aliases in _PREFERENCE_TERMS:
-            if label not in preferences and any(_contains_phrase(normalized, alias) for alias in aliases):
+        for label in grounded["preference_labels"]:
+            if label not in preferences:
                 preferences.append(label)
 
         asked_preferences = self.asked_preferences
         if self.destination and self.duration and self.people and not self.asked_preferences:
             asked_preferences = True
-            norm_msg = normalized.strip()
-            if (
-                norm_msg
-                and norm_msg not in _NEGATIVE_RESPONSES
-                and not any(neg in norm_msg for neg in ("khong can", "khong co", "ko can"))
-            ):
+            # The deterministic decline check only applies when extraction produced
+            # nothing at all (LLM/network failure) — when the LLM is healthy it owns
+            # the skip decision via `skip_preferences`. Applying this check
+            # unconditionally would let it override a working LLM and silently
+            # discard legitimate preference text that happens to start with "không"
+            # (e.g. "không cần khách sạn sang trọng, thích biển").
+            llm_unavailable = not raw
+            is_negative_response = llm_unavailable and _looks_like_decline(message)
+            if not grounded["skip_preferences"] and not is_negative_response:
                 clean_custom = message.strip()
                 if clean_custom and clean_custom not in preferences:
                     preferences.append(clean_custom)
@@ -164,69 +202,143 @@ class TripIntakeState:
         }
 
 
-def _extract_destination(
+def _llm_extract_intake_facts(
     message: str,
+    known_facts: Mapping[str, str | None],
+    destination_names: Sequence[str | DestinationOption],
+    model: str | None = None,
+) -> dict[str, Any]:
+    """Thin LLM call: extract raw trip facts from one message. Fails soft to
+    `{}` on any error so `with_message()` just re-asks the same question,
+    mirroring `extract_search_filters`'s fallback in `supabase_search.py`."""
+    destination_choices = ", ".join(
+        (option.name if isinstance(option, DestinationOption) else str(option))
+        for option in destination_names
+    )
+    known_parts = [f"{key}={value}" for key, value in known_facts.items() if value]
+    known_summary = "; ".join(known_parts) if known_parts else "none yet"
+    allowed_labels = ", ".join(_PREFERENCE_LABELS)
+
+    prompt = f"""You are extracting trip-planning facts from a Vietnamese chat message.
+Already confirmed this conversation: {known_summary}
+Known valid destinations (pick the closest match, or null if none fit): {destination_choices or "unknown"}
+
+Return ONLY valid JSON (no markdown fences) matching this schema:
+{{
+  "destination": "string or null - a destination name from the known list above, or the user's best-guess destination text if not yet confirmed",
+  "duration_days": "integer or null - trip length in days (convert weeks/months to days, e.g. '1 tuần' = 7)",
+  "people_count": "integer or null - number of travelers (e.g. 'vợ chồng tôi' = 2, 'một mình' = 1)",
+  "preference_labels": "array of zero or more of these exact strings only: {allowed_labels}",
+  "skip_preferences": "true only if the message explicitly declines to give extra preferences (e.g. 'không', 'khong can', 'skip')"
+}}
+
+Message: "{message}"
+"""
+    try:
+        llm = get_llm(model=model, temperature=0.0)
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        response = llm.invoke(
+            [
+                SystemMessage(content="You extract structured trip-planning facts and return valid JSON only."),
+                HumanMessage(content=prompt),
+            ]
+        )
+        content = str(response.content).strip()
+        if content.startswith("```json"):
+            content = content[7:]
+        if content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        parsed = json.loads(content.strip())
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        logger.warning("Intake fact extraction failed for message %r", message, exc_info=True)
+        return {}
+
+
+def _ground_extracted_facts(
+    raw: Mapping[str, Any],
+    destination_names: Sequence[str | DestinationOption],
+) -> dict[str, Any]:
+    """Pure validation/formatting layer: never trust `raw` directly. Unit
+    test this function with hand-built dicts, the same convention as
+    `normalize_day_themes()` in `trip_scheduler.py`."""
+    raw_labels = raw.get("preference_labels")
+    label_set = {str(item).strip() for item in raw_labels} if isinstance(raw_labels, list) else set()
+    return {
+        "destination": _match_known_destination(str(raw.get("destination") or "").strip(), destination_names),
+        "duration": _format_duration_days(raw.get("duration_days")),
+        "people": _format_people_count(raw.get("people_count")),
+        "preference_labels": tuple(label for label in _PREFERENCE_LABELS if label in label_set),
+        "skip_preferences": bool(raw.get("skip_preferences")),
+    }
+
+
+def _match_known_destination(
+    guess: str,
     destination_names: Sequence[str | DestinationOption],
 ) -> str | None:
-    normalized = _normalize(message)
-    matches = []
-    for destination in destination_names:
-        option = destination if isinstance(destination, DestinationOption) else DestinationOption(destination)
-        if not option.name:
-            continue
-        normalized_name = _normalize(option.name)
-        normalized_aliases = tuple(
-            normalized_alias
-            for alias in option.aliases
-            if (normalized_alias := _normalize(alias).strip())
-        )
-        phrases = (normalized_name, *normalized_aliases)
-        if any(_contains_phrase(normalized, phrase) for phrase in phrases):
-            matches.append(option.name)
-    return max(matches, key=len) if matches else None
+    if not guess:
+        return None
+    normalized_guess = _normalize(guess)
+    if not normalized_guess:
+        return None
 
-
-def _extract_duration(message: str) -> str | None:
-    match = re.search(
-        r"\b(\d+|một|mot|hai|ba|bốn|bon|tư|tu|năm|nam|sáu|sau|bảy|bay|tám|tam|chín|chin|mười|muoi)"
-        r"\s*(ngày|ngay|tuần|tuan|tháng|thang|day|days|week|weeks|month|months)\b",
-        message,
-        flags=re.IGNORECASE,
+    options = tuple(
+        destination if isinstance(destination, DestinationOption) else DestinationOption(destination)
+        for destination in destination_names
     )
-    return match.group(0).strip() if match else None
+    options = tuple(option for option in options if option.name)
 
-
-def _extract_people(message: str) -> str | None:
-    normalized = _normalize(message)
-    match = re.search(
-        r"\b(\d+|mot|hai|ba|bon|tu|nam|sau|bay|tam|chin|muoi)\s*"
-        r"(nguoi|people|persons?)\b",
-        normalized,
-    )
-    if match:
-        token = match.group(1)
-        count = int(token) if token.isdigit() else _NUMBER_WORDS[token]
-        return f"{count} người"
-    if any(
-        phrase in normalized
-        for phrase in ("mot minh", "minh toi", "chi minh", "just me", "by myself")
-    ):
-        return "1 người"
-    if any(
-        phrase in normalized
-        for phrase in (
-            "cung vo",
-            "voi vo",
-            "cung chong",
-            "voi chong",
-            "hai vo chong",
-            "couple",
-            "my wife",
-            "my husband",
+    def normalized_phrases(option: DestinationOption) -> tuple[str, ...]:
+        return tuple(
+            phrase
+            for phrase in (_normalize(option.name), *(_normalize(alias).strip() for alias in option.aliases))
+            if phrase
         )
-    ):
-        return "2 người"
-    return None
+
+    # An exact match (name or alias) is unambiguous by construction — short-circuit
+    # before the fuzzy containment pass below, which can otherwise collide on short
+    # guesses (e.g. "Đà" containing/contained-by both "Đà Nẵng" and "Đà Lạt").
+    for option in options:
+        if normalized_guess in normalized_phrases(option):
+            return option.name
+
+    # Reverse containment (a known name/alias contains the guess) is only trusted
+    # for multi-word guesses — a single truncated word ("Nông", "Nam") must not
+    # silently resolve to an arbitrary destination sharing that substring.
+    guess_is_multi_word = len(normalized_guess.split()) >= 2
+    matches: set[str] = set()
+    for option in options:
+        for phrase in normalized_phrases(option):
+            if _contains_phrase(normalized_guess, phrase):
+                matches.add(option.name)
+            elif guess_is_multi_word and _contains_phrase(phrase, normalized_guess):
+                matches.add(option.name)
+
+    return matches.pop() if len(matches) == 1 else None
+
+
+def _format_duration_days(value: Any) -> str | None:
+    try:
+        days = int(value)
+    except (TypeError, ValueError):
+        return None
+    if not 0 < days <= 90:
+        return None
+    return f"{days} ngày"
+
+
+def _format_people_count(value: Any) -> str | None:
+    try:
+        count = int(value)
+    except (TypeError, ValueError):
+        return None
+    if not 0 < count <= 50:
+        return None
+    return f"{count} người"
 
 
 def _contains_phrase(normalized_text: str, normalized_phrase: str) -> bool:

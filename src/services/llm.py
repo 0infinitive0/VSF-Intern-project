@@ -81,7 +81,6 @@ def get_llm(
         api_key
         or os.environ.get("LLM_API_KEY")
         or getattr(settings, "llm_api_key", "")
-        or getattr(settings, "openai_api_key", "")
     )
 
     target_base = (
@@ -100,13 +99,14 @@ def get_llm(
         return _get_local_llm(model=target_model, temperature=target_temp, base_url=target_base)
 
     if target_provider == "openai":
-        if not target_key:
+        openai_key = target_key or getattr(settings, "openai_api_key", "")
+        if not openai_key:
             logger.warning("OpenAI provider selected but no API key provided. Falling back to local Ollama LLM.")
             return _get_local_llm(temperature=target_temp)
         try:
             kwargs: dict[str, Any] = {
                 "model": target_model or "gpt-4o-mini",
-                "api_key": target_key,
+                "api_key": openai_key,
                 "temperature": target_temp,
             }
             if target_base:
@@ -237,13 +237,14 @@ def get_embeddings(
         or "bge-m3"
     )
 
+    # Only explicit args and the generic EMBEDDING_API_KEY belong here. Provider-specific
+    # keys (OpenRouter, Cloudflare, OpenAI) must stay inside their own branch below, or a
+    # key configured for one provider silently gets sent as the bearer token to another
+    # (e.g. OPENAI_API_KEY leaking into a Cloudflare Authorization header -> 401).
     target_key = (
         api_key
         or os.environ.get("EMBEDDING_API_KEY")
-        or os.environ.get("OPENROUTER_API_KEY")
         or getattr(settings, "embedding_api_key", "")
-        or getattr(settings, "openrouter_api_key", "")
-        or getattr(settings, "openai_api_key", "")
     )
 
     target_base = (
@@ -325,13 +326,18 @@ def get_embeddings(
             return _get_local_embeddings()
 
     if target_provider == "openai":
-        if not target_key:
+        openai_key = (
+            target_key
+            or os.environ.get("OPENAI_API_KEY")
+            or getattr(settings, "openai_api_key", "")
+        )
+        if not openai_key:
             logger.warning("OpenAI embedding provider selected but no API key provided. Falling back to local OllamaEmbeddings.")
             return _get_local_embeddings()
         try:
             kwargs: dict[str, Any] = {
                 "model": target_model or "text-embedding-3-small",
-                "api_key": target_key,
+                "api_key": openai_key,
                 # See the OpenRouter branch above: a custom base_url usually means a
                 # non-OpenAI-hosted endpoint that only accepts plain-text `input`.
                 "tiktoken_enabled": False,

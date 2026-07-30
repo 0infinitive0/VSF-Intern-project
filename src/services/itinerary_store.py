@@ -8,6 +8,8 @@ updates the terminal JSON file itself.
 from __future__ import annotations
 
 import json
+import logging
+import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from json import JSONDecodeError
@@ -21,6 +23,9 @@ from src.services.itinerary_reuse import (
     build_itinerary_summary,
     build_reuse_fingerprint,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class ItineraryStoreError(RuntimeError):
@@ -183,10 +188,16 @@ class ItineraryStore:
                 self._client.table("itineraries").upsert(itinerary).execute()
                 if items:
                     self._client.table("itinerary_items").delete().eq("itinerary_id", itinerary["id"]).execute()
+                    # Unlike the RPC (which reads only the jsonb keys it needs),
+                    # a raw table upsert is rejected by PostgREST for any key
+                    # that isn't an actual column (e.g. 'activity', 'kind').
+                    column_rows = []
                     for item in items:
-                        if not item.get("id"):
-                            item["id"] = str(uuid.uuid4())
-                    self._client.table("itinerary_items").upsert(items).execute()
+                        row = {k: v for k, v in item.items() if k not in ("activity", "kind")}
+                        if not row.get("id"):
+                            row["id"] = str(uuid.uuid4())
+                        column_rows.append(row)
+                    self._client.table("itinerary_items").upsert(column_rows).execute()
                 return str(itinerary["id"])
             except Exception as fallback_exc:
                 raise ItineraryStoreError(
