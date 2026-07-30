@@ -91,45 +91,23 @@ def test_process_chat_turn_asks_missing_intake_question(monkeypatch):
 
 def test_process_chat_turn_asks_budget_question_right_after_intake_completes(monkeypatch):
     monkeypatch.setattr(chat_session_module, "_get_destination_names", lambda: ())
-    _mock_intake_extraction(
-        monkeypatch,
-        {"2 người": {"people_count": 2}, "không": {"skip_preferences": True}},
-    )
+    _mock_intake_extraction(monkeypatch, {"2 người": {"people_count": 2}})
 
     session = _session(intake_state=TripIntakeState(destination="Đà Nẵng", duration="3 ngày"))
     reply = process_chat_turn(session, "2 người")
 
-    assert "yêu cầu hay lưu ý đặc biệt" in reply
-    assert not session.intake_state.is_complete
-
-    reply = process_chat_turn(session, "không")
-
-    # The preference reply completes trip intake and must not also be consumed as
-    # the hotel budget; the incoming guided hotel flow starts with its first question.
+    # Trip intake completes the moment destination/duration/people are all known —
+    # there is no dedicated preferences question — so the same turn immediately
+    # starts the guided hotel-preference flow.
     assert session.intake_state.is_complete
     assert session.hotel_pref_state.stage == "pending_budget"
     assert "1." in reply
 
 
-def test_process_chat_turn_asks_amenity_question_after_budget_resolved():
-    session = _session(
-        intake_state=TripIntakeState(
-            destination="Đà Nẵng",
-            duration="3 ngày",
-            people="2 người",
-            asked_preferences=True,
-        ),
-        hotel_pref_state=HotelPreferenceState(),
-    )
-
-    reply = process_chat_turn(session, "4 triệu")
-
-    assert session.hotel_pref_state.stage == "pending_amenities"
-    assert session.hotel_pref_state.target_price == 4_000_000
-    assert "tiện ích" in reply.lower() or "1." in reply
-
-
-def test_process_chat_turn_calls_recommend_hotels_once_both_states_complete(monkeypatch):
+def test_process_chat_turn_calls_recommend_hotels_right_after_budget_resolved(monkeypatch):
+    """The guided hotel-preference flow is budget-only now (no amenity question),
+    so a single resolved budget reply completes it and the same turn immediately
+    calls recommend_hotels."""
     captured = {}
 
     def _fake_invoke(args):
@@ -147,17 +125,17 @@ def test_process_chat_turn_calls_recommend_hotels_once_both_states_complete(monk
             destination="Đà Nẵng",
             duration="3 ngày",
             people="2 người",
-            asked_preferences=True,
         ),
-        hotel_pref_state=HotelPreferenceState(stage="pending_amenities", target_price=1_500_000),
+        hotel_pref_state=HotelPreferenceState(),
     )
 
-    reply = process_chat_turn(session, "2")
+    reply = process_chat_turn(session, "4 triệu")
 
     assert reply == "here is a list"
     assert session.hotel_pref_state.is_complete
+    assert session.hotel_pref_state.target_price == 4_000_000
     assert captured["args"]["destination"] == "Đà Nẵng"
-    assert captured["args"]["target_price"] == "1500000"
+    assert captured["args"]["target_price"] == "4000000.0"
 
 
 def test_process_chat_turn_falls_back_to_agent_once_plan_complete():

@@ -313,8 +313,10 @@ def fetch_hotel_by_id(
 
 
 # ---------------------------------------------------------------------------
-# Guided budget/amenity preference intake (shown before the hotel list) and
-# the sea-view lookup + amenity matching used to soft-boost ranking above.
+# Guided budget preference intake (shown before the hotel list) and the
+# sea-view lookup + amenity matching used to soft-boost ranking above (still
+# usable via rank_hotel_candidates(amenity_prefs=...), just no longer asked
+# for through a dedicated guided question here).
 # ---------------------------------------------------------------------------
 
 # Mirrors hotel_pipeline.py::compute_price_tier's thresholds (ETL-side, unused by
@@ -393,35 +395,17 @@ _BUDGET_QUESTION = GuidedQuestion(
     required=True,
 )
 
-_AMENITY_QUESTION = GuidedQuestion(
-    prompt=(
-        "Bạn có muốn thêm yêu cầu nào cho khách sạn không? (không bắt buộc — có thể "
-        "chọn nhiều số, cách nhau bằng dấu phẩy, ví dụ: 1,3)"
-    ),
-    options=(
-        GuidedOption("Phòng view biển", "sea_view"),
-        GuidedOption("Không hút thuốc", "non_smoking"),
-        GuidedOption("Hồ bơi", "pool"),
-        GuidedOption("Bao gồm bữa sáng", "breakfast"),
-        GuidedOption("Phù hợp gia đình / trẻ em", "family"),
-        GuidedOption("Bỏ qua, không cần thêm yêu cầu", None),
-    ),
-    free_text_parser=None,
-    required=False,
-)
-
-HotelPreferenceStage = Literal["pending_budget", "pending_amenities", "done"]
+HotelPreferenceStage = Literal["pending_budget", "done"]
 
 
 @dataclass(frozen=True)
 class HotelPreferenceState:
-    """Deterministic, in-memory (not persisted) sequencer over the two guided
-    questions above — mirrors TripIntakeState's is_complete/next_question/
+    """Deterministic, in-memory (not persisted) sequencer over the guided budget
+    question above — mirrors TripIntakeState's is_complete/next_question/
     with_message/tool_arguments shape, scoped to hotel preferences only."""
 
     stage: HotelPreferenceStage = "pending_budget"
     target_price: float | None = None
-    amenity_prefs: tuple[str, ...] = ()
 
     @property
     def is_complete(self) -> bool:
@@ -430,8 +414,6 @@ class HotelPreferenceState:
     def next_question(self) -> str | None:
         if self.stage == "pending_budget":
             return format_guided_question(_BUDGET_QUESTION)
-        if self.stage == "pending_amenities":
-            return format_guided_question(_AMENITY_QUESTION)
         return None
 
     def with_message(self, message: str) -> "HotelPreferenceState":
@@ -441,20 +423,16 @@ class HotelPreferenceState:
                 return self
             return replace(
                 self,
-                stage="pending_amenities",
+                stage="done",
                 target_price=values[0] if values else None,
             )
-        if self.stage == "pending_amenities":
-            _resolved, values = resolve_guided_reply(_AMENITY_QUESTION, message)
-            return replace(self, stage="done", amenity_prefs=tuple(values))
         return self
 
     def tool_arguments(self) -> dict[str, str]:
         if not self.is_complete:
-            raise ValueError("Budget and amenity preferences are not resolved yet.")
+            raise ValueError("Budget preference is not resolved yet.")
         return {
             "target_price": str(self.target_price) if self.target_price is not None else "",
-            "hotel_amenity_prefs": ",".join(self.amenity_prefs),
         }
 
 

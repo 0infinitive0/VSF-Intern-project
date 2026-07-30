@@ -21,6 +21,26 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
+class _CloudflareChatOpenAI(ChatOpenAI):
+    """ChatOpenAI variant for Cloudflare Workers AI's OpenAI-compatible endpoint.
+
+    Real OpenAI's API accepts `content: null` on an assistant message that only
+    carries `tool_calls` (and langchain-openai relies on that), but Cloudflare's
+    endpoint schema requires `content` to always be a string and rejects `null`
+    with a 400 (confirmed against the live endpoint). Empty string is accepted,
+    so it's substituted in just before the request is built.
+    """
+
+    def _get_request_payload(
+        self, input_: Any, *, stop: list[str] | None = None, **kwargs: Any
+    ) -> dict:
+        payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+        for message in payload.get("messages", []):
+            if message.get("content") is None:
+                message["content"] = ""
+        return payload
+
+
 def _get_local_llm(
     model: str | None = None,
     temperature: float | None = None,
@@ -197,7 +217,7 @@ def get_llm(
                 "base_url": cf_base,
                 "temperature": target_temp,
             }
-            return ChatOpenAI(**kwargs)
+            return _CloudflareChatOpenAI(**kwargs)
         except Exception as exc:
             logger.warning("Failed to initialize Cloudflare ChatOpenAI (%s). Falling back to local Ollama LLM.", exc)
             return _get_local_llm(temperature=target_temp)

@@ -306,7 +306,7 @@ def test_hotel_preference_state_accepts_free_text_price_without_reprompt():
 
     next_state = state.with_message("4 triệu")
 
-    assert next_state.stage == "pending_amenities"
+    assert next_state.is_complete
     assert next_state.target_price == 4_000_000
 
 
@@ -315,7 +315,7 @@ def test_hotel_preference_state_numbered_tier_pick():
 
     next_state = state.with_message("2")
 
-    assert next_state.stage == "pending_amenities"
+    assert next_state.is_complete
     assert next_state.target_price == 1_500_000
 
 
@@ -324,38 +324,16 @@ def test_hotel_preference_state_skip_budget():
 
     next_state = state.with_message("4")
 
-    assert next_state.stage == "pending_amenities"
+    assert next_state.is_complete
     assert next_state.target_price is None
-
-
-def test_hotel_preference_state_amenity_stage_always_resolves():
-    state = HotelPreferenceState(stage="pending_amenities", target_price=1_500_000)
-
-    next_state = state.with_message("blah blah no numbers here")
-
-    assert next_state.is_complete
-    assert next_state.amenity_prefs == ()
-
-
-def test_hotel_preference_state_amenity_multi_select():
-    state = HotelPreferenceState(stage="pending_amenities", target_price=None)
-
-    next_state = state.with_message("1,3")
-
-    assert next_state.is_complete
-    assert next_state.amenity_prefs == ("sea_view", "pool")
 
 
 def test_hotel_preference_state_full_walk_and_tool_arguments():
     state = HotelPreferenceState()
     state = state.with_message("4 triệu")
-    state = state.with_message("2,4")
 
     assert state.is_complete
-    assert state.tool_arguments() == {
-        "target_price": "4000000.0",
-        "hotel_amenity_prefs": "non_smoking,breakfast",
-    }
+    assert state.tool_arguments() == {"target_price": "4000000.0"}
 
 
 def test_hotel_preference_state_tool_arguments_raises_before_complete():

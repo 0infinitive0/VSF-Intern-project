@@ -38,7 +38,6 @@ def test_ground_extracted_facts_accepts_matched_destination_and_formats_facts() 
             "duration_days": 7,
             "people_count": 2,
             "preference_labels": ["biển", "made_up_label"],
-            "skip_preferences": False,
         },
         DESTINATIONS,
     )
@@ -46,7 +45,6 @@ def test_ground_extracted_facts_accepts_matched_destination_and_formats_facts() 
     assert grounded["duration"] == "7 ngày"
     assert grounded["people"] == "2 người"
     assert grounded["preference_labels"] == ("biển",)  # hallucinated label dropped
-    assert grounded["skip_preferences"] is False
 
 
 def test_ground_extracted_facts_rejects_ungrounded_destination() -> None:
@@ -95,8 +93,10 @@ def test_sequential_intake_uses_mocked_llm_facts_across_turns(monkeypatch) -> No
         {
             "tôi muốn đi chơi ở đà nẵng": {"destination": "Đà Nẵng"},
             "1 tuần": {"duration_days": 7},
-            "tôi đi cùng vợ của tôi": {"people_count": 2},
-            "tập trung tắm biển và du lịch lịch sử": {"preference_labels": ["biển", "lịch sử"]},
+            "tôi đi cùng vợ của tôi, tập trung tắm biển và du lịch lịch sử": {
+                "people_count": 2,
+                "preference_labels": ["biển", "lịch sử"],
+            },
         },
     )
     state = TripIntakeState()
@@ -109,21 +109,23 @@ def test_sequential_intake_uses_mocked_llm_facts_across_turns(monkeypatch) -> No
     assert state.duration == "7 ngày"
     assert state.next_question() == "Chuyến đi có bao nhiêu người?"
 
-    state = state.with_message("tôi đi cùng vợ của tôi", DESTINATIONS)
-    assert "Bạn có yêu cầu hay lưu ý đặc biệt nào cho chuyến đi" in state.next_question()
-
-    state = state.with_message("tập trung tắm biển và du lịch lịch sử", DESTINATIONS)
+    state = state.with_message(
+        "tôi đi cùng vợ của tôi, tập trung tắm biển và du lịch lịch sử", DESTINATIONS
+    )
     assert state.is_complete
     assert state.next_question() is None
     assert state.tool_arguments() == {
         "destination": "Đà Nẵng",
         "duration": "7 ngày",
         "people": "2 người",
-        "preferences": "biển, lịch sử, tập trung tắm biển và du lịch lịch sử",
+        "preferences": "biển, lịch sử",
     }
 
 
 def test_complete_single_message_preserves_optional_preferences_without_requiring_them(monkeypatch) -> None:
+    """Preferences are never asked for as a dedicated question — they're only
+    picked up opportunistically when the LLM extracts closed-set labels from
+    whatever message happens to complete destination/duration/people."""
     _mock_extraction(
         monkeypatch,
         {
@@ -133,60 +135,28 @@ def test_complete_single_message_preserves_optional_preferences_without_requirin
                 "people_count": 2,
                 "preference_labels": ["biển", "văn hóa"],
             },
-            "không": {"skip_preferences": True},
         },
     )
     state = TripIntakeState().with_message(
         "Hai người đi Đà Nẵng 3 ngày, thích biển và văn hóa", DESTINATIONS
     )
-    assert "Bạn có yêu cầu hay lưu ý đặc biệt" in state.next_question()
-
-    state = state.with_message("không", DESTINATIONS)
     assert state.is_complete
+    assert state.next_question() is None
     assert state.destination == "Đà Nẵng"
     assert state.duration == "3 ngày"
     assert state.people == "2 người"
     assert state.preferences == ("biển", "văn hóa")
 
 
-def test_negative_reply_is_not_stored_as_a_preference_even_if_llm_extraction_fails(monkeypatch) -> None:
-    """Regression guard for the skip_preferences fail-soft case: when the LLM
-    call fails/returns nothing, a plain 'không' must still be recognized as a
-    skip via the deterministic safety-net set, not stored as a literal
-    preference string."""
-    _mock_extraction(monkeypatch, {})  # every call fails soft to {}
+def test_intake_completes_without_preferences_when_none_are_extracted(monkeypatch) -> None:
+    _mock_extraction(monkeypatch, {"2 người": {"people_count": 2}})
 
-    state = TripIntakeState(destination="Đà Nẵng", duration="3 ngày", people="2 người")
-    state = state.with_message("không", DESTINATIONS)
+    state = TripIntakeState(destination="Đà Nẵng", duration="3 ngày")
+    state = state.with_message("2 người", DESTINATIONS)
+
     assert state.is_complete
+    assert state.next_question() is None
     assert state.preferences == ()
-
-
-def test_negative_response_safety_net_does_not_override_a_healthy_llm(monkeypatch) -> None:
-    """The deterministic decline check only applies when extraction produced
-    nothing (LLM/network failure). When the LLM is healthy and correctly says
-    skip_preferences=False for a real preference that happens to start with
-    'không cần', the safety net must not discard it."""
-    message = "không cần khách sạn sang trọng, chỉ thích tắm biển và ăn hải sản"
-    _mock_extraction(
-        monkeypatch,
-        {message: {"skip_preferences": False, "preference_labels": ["biển"]}},
-    )
-    state = TripIntakeState(destination="Đà Nẵng", duration="3 ngày", people="2 người")
-    state = state.with_message(message, DESTINATIONS)
-    assert message in state.preferences
-
-
-def test_negative_response_safety_net_handles_punctuation_and_particles(monkeypatch) -> None:
-    """Fail-soft path: common real-world decline phrasing (trailing period,
-    exclamation mark, or the 'ạ' politeness particle) must still be
-    recognized, not just the bare 'không'."""
-    _mock_extraction(monkeypatch, {})  # every call fails soft to {}
-
-    for message in ("Không.", "không!", "Không ạ"):
-        state = TripIntakeState(destination="Đà Nẵng", duration="3 ngày", people="2 người")
-        state = state.with_message(message, DESTINATIONS)
-        assert state.preferences == (), f"expected no preference stored for {message!r}"
 
 
 def test_destination_is_taken_from_grounded_facts_not_an_ungrounded_model_guess(monkeypatch) -> None:

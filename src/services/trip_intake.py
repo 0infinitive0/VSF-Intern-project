@@ -37,33 +37,6 @@ _PREFERENCE_LABELS = (
     "trẻ em",
 )
 
-# Safety net for when `_llm_extract_intake_facts` fails soft (returns `{}`,
-# so `skip_preferences` defaults to False): without this, a plain "không"
-# reply would be stored as a literal custom preference instead of being
-# skipped. Only consulted when extraction produced nothing (see
-# `with_message`'s `llm_unavailable` check) — a healthy LLM's
-# `skip_preferences` answer is trusted as-is, since this set's broader
-# substring forms ("khong can", "khong co") would otherwise also match — and
-# discard — a real preference like "không cần khách sạn sang trọng, thích biển".
-_NEGATIVE_RESPONSES = {
-    "khong", "khong can", "khong co", "no", "none", "skip", "n/a", "k", "ko",
-    "khong can dau", "khong co yeu cau gi", "khong co gi", "ko can",
-}
-
-
-_DECLINE_TRAILING_PARTICLES = {"a"}  # normalized "ạ" (politeness particle)
-
-
-def _looks_like_decline(message: str) -> bool:
-    normalized = _normalize(message).strip(" .!,;")
-    tokens = normalized.split()
-    if tokens and tokens[-1] in _DECLINE_TRAILING_PARTICLES:
-        tokens = tokens[:-1]
-    normalized = " ".join(tokens)
-    return normalized in _NEGATIVE_RESPONSES or any(
-        neg in normalized for neg in ("khong can", "khong co", "ko can")
-    )
-
 
 @dataclass(frozen=True)
 class DestinationOption:
@@ -101,11 +74,10 @@ class TripIntakeState:
     duration: str | None = None
     people: str | None = None
     preferences: tuple[str, ...] = ()
-    asked_preferences: bool = False
 
     @property
     def is_complete(self) -> bool:
-        return bool(self.destination and self.duration and self.people and self.asked_preferences)
+        return bool(self.destination and self.duration and self.people)
 
     def with_message(
         self,
@@ -129,66 +101,21 @@ class TripIntakeState:
             if label not in preferences:
                 preferences.append(label)
 
-        asked_preferences = self.asked_preferences
-        if self.destination and self.duration and self.people and not self.asked_preferences:
-            asked_preferences = True
-            # The deterministic decline check only applies when extraction produced
-            # nothing at all (LLM/network failure) — when the LLM is healthy it owns
-            # the skip decision via `skip_preferences`. Applying this check
-            # unconditionally would let it override a working LLM and silently
-            # discard legitimate preference text that happens to start with "không"
-            # (e.g. "không cần khách sạn sang trọng, thích biển").
-            llm_unavailable = not raw
-            is_negative_response = llm_unavailable and _looks_like_decline(message)
-            if not grounded["skip_preferences"] and not is_negative_response:
-                clean_custom = message.strip()
-                if clean_custom and clean_custom not in preferences:
-                    preferences.append(clean_custom)
-
         return replace(
             self,
             destination=destination,
             duration=duration,
             people=people,
             preferences=tuple(preferences),
-            asked_preferences=asked_preferences,
         )
 
-    def next_question(self, selected_hotel: str | None = None) -> str | None:
+    def next_question(self) -> str | None:
         if not self.destination:
             return "Bạn muốn đi đâu?"
         if not self.duration:
             return "Bạn dự định đi trong bao lâu?"
         if not self.people:
             return "Chuyến đi có bao nhiêu người?"
-        if not self.asked_preferences:
-            ctx_parts = []
-            if self.destination:
-                ctx_parts.append(f"tại {self.destination}")
-            if self.duration:
-                ctx_parts.append(f"{self.duration}")
-            if self.people:
-                ctx_parts.append(f"cho {self.people}")
-            if selected_hotel:
-                ctx_parts.append(f"ở {selected_hotel}")
-            ctx_str = f" ({', '.join(ctx_parts)})" if ctx_parts else ""
-
-            dest_lower = (self.destination or "").lower()
-            if "biển" in dest_lower or any(d in dest_lower for d in ("đà nẵng", "nha trang", "phú quốc", "vũng tàu", "quy nhơn")):
-                ex = "'tập trung tắm biển', 'thưởng thức hải sản', 'du lịch nghỉ dưỡng', 'dạo phố đêm'"
-            elif any(d in dest_lower for d in ("hà nội", "huế", "hội an")):
-                ex = "'du lịch lịch sử', 'khám phá ẩm thực dân tộc', 'dạo quanh phố cổ', 'check-in địa danh'"
-            elif any(d in dest_lower for d in ("hồ chí minh", "sài gòn")):
-                ex = "'dạo vòng quanh thành phố', 'du lịch lịch sử & bảo tàng', 'trải nghiệm ẩm thực', 'mua sắm & cà phê'"
-            elif "đà lạt" in dest_lower:
-                ex = "'săn mây & check-in', 'cà phê ngắm cảnh', 'tham quan vườn hoa', 'nghỉ dưỡng yên bình'"
-            else:
-                ex = "'du lịch lịch sử', 'tập trung tắm biển', 'dạo vòng quanh thành phố', 'thưởng thức ẩm thực địa phương'"
-
-            return (
-                f"Bạn có yêu cầu hay lưu ý đặc biệt nào cho chuyến đi{ctx_str} không?\n"
-                f"(Gợi ý ví dụ: {ex}... hoặc gõ 'không' để bỏ qua)"
-            )
         return None
 
     def tool_arguments(self) -> dict[str, str]:
@@ -228,8 +155,7 @@ Return ONLY valid JSON (no markdown fences) matching this schema:
   "destination": "string or null - a destination name from the known list above, or the user's best-guess destination text if not yet confirmed",
   "duration_days": "integer or null - trip length in days (convert weeks/months to days, e.g. '1 tuần' = 7)",
   "people_count": "integer or null - number of travelers (e.g. 'vợ chồng tôi' = 2, 'một mình' = 1)",
-  "preference_labels": "array of zero or more of these exact strings only: {allowed_labels}",
-  "skip_preferences": "true only if the message explicitly declines to give extra preferences (e.g. 'không', 'khong can', 'skip')"
+  "preference_labels": "array of zero or more of these exact strings only: {allowed_labels}"
 }}
 
 Message: "{message}"
@@ -272,7 +198,6 @@ def _ground_extracted_facts(
         "duration": _format_duration_days(raw.get("duration_days")),
         "people": _format_people_count(raw.get("people_count")),
         "preference_labels": tuple(label for label in _PREFERENCE_LABELS if label in label_set),
-        "skip_preferences": bool(raw.get("skip_preferences")),
     }
 
 
