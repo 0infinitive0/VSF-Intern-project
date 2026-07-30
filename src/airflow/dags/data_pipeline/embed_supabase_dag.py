@@ -86,14 +86,53 @@ def _require_supabase_creds():
     return supabase_url, supabase_key
 
 
-def _embed_text(base_url, model, text):
-    # Ollama's single-prompt embeddings endpoint — stable across Ollama
-    # versions, unlike the newer batch /api/embed endpoint.
-    request = Request(
-        f"{base_url}/api/embeddings",
-        data=json.dumps({"model": model, "prompt": text}).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-    )
+def _embed_text(text: str) -> list[float]:
+    provider = (
+        os.environ.get("EMBEDDING_PROVIDER")
+        or Variable.get("EMBEDDING_PROVIDER", default_var="openai")
+    ).strip().casefold()
+
+    model = (
+        os.environ.get("EMBEDDING_MODEL")
+        or Variable.get("EMBEDDING_MODEL", default_var="@cf/baai/bge-m3")
+    ).strip()
+
+    api_base = (
+        os.environ.get("EMBEDDING_API_BASE")
+        or Variable.get("EMBEDDING_API_BASE", default_var="")
+    ).strip().rstrip("/")
+
+    api_key = (
+        os.environ.get("EMBEDDING_API_KEY")
+        or os.environ.get("CLOUDFLARE_API_TOKEN")
+        or Variable.get("EMBEDDING_API_KEY", default_var="")
+    ).strip()
+
+    # Cloudflare Workers AI / OpenAI-compatible API
+    if provider in {"openai", "cloudflare", "cloudflare_workers", "cloudflare_ai"} or api_base:
+        if not api_base:
+            cf_account = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
+            if cf_account:
+                api_base = f"https://api.cloudflare.com/client/v4/accounts/{cf_account}/ai/v1"
+            else:
+                api_base = "https://api.cloudflare.com/client/v4/accounts/e8045479a2ef8992d1258b748ac5f4c0/ai/v1"
+
+        url = f"{api_base}/embeddings"
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        body = json.dumps({"model": model, "input": text}).encode("utf-8")
+        request = Request(url, data=body, headers=headers)
+        with urlopen(request, timeout=60) as response:
+            payload = json.load(response)
+        return payload["data"][0]["embedding"]
+
+    # Local Ollama fallback
+    ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://host.docker.internal:11434").rstrip("/")
+    url = f"{ollama_base_url}/api/embeddings"
+    body = json.dumps({"model": model, "prompt": text}).encode("utf-8")
+    request = Request(url, data=body, headers={"Content-Type": "application/json"})
     with urlopen(request, timeout=60) as response:
         payload = json.load(response)
     return payload["embedding"]
@@ -105,7 +144,7 @@ def fetch_pending_rows_task(table):
 
     supabase_url, supabase_key = _require_supabase_creds()
     only_null = Variable.get("embed_supabase_only_null", default_var="true").strip().lower() != "false"
-    batch_limit = int(Variable.get("embed_supabase_batch_limit", default_var="200"))
+    batch_limit = int(Variable.get("embed_supabase_batch_limit", default_var="1000"))
 
     headers = _supabase_headers(supabase_key)
     columns = TABLE_COLUMNS[table]
@@ -129,12 +168,10 @@ def embed_row_task(item):
     row_id = row.get("id")
 
     supabase_url, supabase_key = _require_supabase_creds()
-    ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://host.docker.internal:11434").rstrip("/")
-    embedding_model = os.environ.get("EMBEDDING_MODEL", "bge-m3")
 
     text = _build_text(table, row)
     try:
-        vector = _embed_text(ollama_base_url, embedding_model, text)
+        vector = _embed_text(text)
     except (URLError, HTTPError, KeyError, TimeoutError, json.JSONDecodeError) as exc:
         print(f"[{table}/{row_id}] embedding failed: {exc}")
         return None

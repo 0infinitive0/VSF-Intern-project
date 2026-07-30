@@ -8,3 +8,12 @@ hotel_nearby_pipeline.py
 osm_pipeline.py
 ota_pipeline.py
 pipeline_stages.py
+
+# Removed DAGs
+ota_dag.py
+hotel_dag.py
+clear_database_dag.py
+combined_dag.py
+google_maps_dag.py
+hotel_nearby_dag.py
+osm_dag.py

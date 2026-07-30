@@ -96,7 +96,7 @@ services:
     restart: always
     env_file: ../../.env
     ports:
-      - "8082:8082"
+      - "8085:8082"
     volumes:
       - ./dashboard:/app
       - ../..:/project:ro
@@ -138,7 +138,7 @@ services:
     <<: *airflow-common
     command: api-server
     ports:
-      - "8080:8080"
+      - "8088:8080"
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
       interval: 30s
