@@ -217,7 +217,7 @@ _CANONICAL_ROWS = [
 
 
 def test_select_hotel_candidates_filters_destination_and_hydrates(monkeypatch):
-    def fake_search_hotels_with_rooms(*, query, match_count, filter_destination_id):
+    def fake_search_hotels_with_rooms(*, query, match_count, filter_destination_id, min_price=None, max_price=None):
         assert filter_destination_id == "dest-1"
         return [{"id": "hotel-1", "similarity": 0.77}, {"id": "hotel-2", "similarity": 0.5}]
 
@@ -234,6 +234,54 @@ def test_select_hotel_candidates_filters_destination_and_hydrates(monkeypatch):
     assert data["review_score"] == 8.5
     assert data["lowest_price"] == 1_500_000
     assert candidate.coordinate_pair is not None
+
+
+def test_select_hotel_candidates_forwards_min_and_max_price_as_hard_filter(monkeypatch):
+    """A resolved budget range must reach the search's hard price filter, not just the
+    ranking bonus — this is the regression coverage for the "budget accepted but
+    ignored" bug (results spanning 206k-7.9M VND for a ~1 triệu target), plus the
+    follow-up gap where only max_price was wired through and a tier's floor (e.g.
+    "tầm trung" starting at 800k) was silently dropped."""
+    captured: dict = {}
+
+    def fake_search_hotels_with_rooms(*, query, match_count, filter_destination_id, min_price=None, max_price=None):
+        captured["min_price"] = min_price
+        captured["max_price"] = max_price
+        return []
+
+    monkeypatch.setattr(hotel_selection_module, "search_hotels_with_rooms", fake_search_hotels_with_rooms)
+
+    select_hotel_candidates("Đà Nẵng", "dest-1", "2 người", min_price=800_000.0, max_price=2_500_000.0)
+
+    assert captured["min_price"] == 800_000.0
+    assert captured["max_price"] == 2_500_000.0
+
+
+def test_select_hotel_candidates_trusts_search_results_price_filtering(monkeypatch):
+    """select_hotel_candidates does NOT re-filter by price itself — match_hotels_with_rooms
+    now filters by lowest_price directly in SQL (see
+    scripts/migrations/20260730_add_price_filter_to_match_hotels_with_rooms.sql), before its
+    own ORDER BY/LIMIT. So whatever search_hotels_with_rooms returns is trusted as already
+    in-range; select_hotel_candidates just hydrates and passes it through unfiltered."""
+    price_band_rows = [
+        {"id": "cheap", "destination_id": "dest-1", "name": "Cheap", "coordinates": "16.05,108.2", "lowest_price": 200_000},
+        {"id": "mid", "destination_id": "dest-1", "name": "Mid", "coordinates": "16.05,108.2", "lowest_price": 1_500_000},
+    ]
+
+    def fake_search_hotels_with_rooms(*, query, match_count, filter_destination_id, min_price=None, max_price=None):
+        # Only "mid" is returned — as if the RPC already filtered by price server-side.
+        return [{"id": "mid", "similarity": 0.7}]
+
+    monkeypatch.setattr(hotel_selection_module, "search_hotels_with_rooms", fake_search_hotels_with_rooms)
+    monkeypatch.setattr(
+        hotel_selection_module, "_get_supabase_client", lambda: _FakeSupabaseClient(price_band_rows)
+    )
+
+    options = select_hotel_candidates(
+        "Đà Nẵng", "dest-1", "2 người", min_price=800_000.0, max_price=2_500_000.0
+    )
+
+    assert [data["id"] for data, _candidate in options] == ["mid"]
 
 
 def test_fetch_hotel_by_id_respects_destination_filter(monkeypatch):
@@ -260,19 +308,23 @@ def test_fetch_hotel_by_id_returns_none_when_not_found(monkeypatch):
 
 
 def test_parse_free_text_budget_million_phrasing():
-    assert _parse_free_text_budget("4 triệu") == 4_000_000
-    assert _parse_free_text_budget("khoảng 4tr thôi") == 4_000_000
+    """A bare number has no natural range — resolves to an open-floor ceiling."""
+    assert _parse_free_text_budget("4 triệu") == (None, 4_000_000, 4_000_000)
+    assert _parse_free_text_budget("khoảng 4tr thôi") == (None, 4_000_000, 4_000_000)
 
 
 def test_parse_free_text_budget_thousand_phrasing():
-    assert _parse_free_text_budget("500 nghìn") == 500_000
-    assert _parse_free_text_budget("500k") == 500_000
+    assert _parse_free_text_budget("500 nghìn") == (None, 500_000, 500_000)
+    assert _parse_free_text_budget("500k") == (None, 500_000, 500_000)
 
 
 def test_parse_free_text_budget_qualitative_phrases():
-    assert _parse_free_text_budget("tôi muốn khách sạn sang trọng") == 3_500_000
-    assert _parse_free_text_budget("tiết kiệm thôi") == 500_000
-    assert _parse_free_text_budget("tầm trung là được") == 1_500_000
+    """A qualitative phrase resolves to its tier's real (min, max) bounds, not just a
+    single point — "sang trọng"/luxury has no ceiling, "tiết kiệm"/budget has no floor,
+    "tầm trung"/mid_range is the one closed range (800k-2.5tr)."""
+    assert _parse_free_text_budget("tôi muốn khách sạn sang trọng") == (2_500_000, None, 3_500_000)
+    assert _parse_free_text_budget("tiết kiệm thôi") == (None, 800_000, 500_000)
+    assert _parse_free_text_budget("tầm trung là được") == (800_000, 2_500_000, 1_500_000)
 
 
 def test_parse_free_text_budget_unrelated_text_returns_none():
@@ -301,22 +353,50 @@ def test_hotel_preference_state_rejects_unparseable_budget_and_reprompts():
 
 def test_hotel_preference_state_accepts_free_text_price_without_reprompt():
     """The concrete case reported: the menu suggests 3 tiers but the user just
-    types a custom amount — must resolve immediately, never re-ask."""
+    types a custom amount — must resolve immediately, never re-ask. A bare number
+    has no natural range, so only max_price (ceiling) is set, not min_price."""
     state = HotelPreferenceState()
 
     next_state = state.with_message("4 triệu")
 
     assert next_state.is_complete
     assert next_state.target_price == 4_000_000
+    assert next_state.min_price is None
+    assert next_state.max_price == 4_000_000
 
 
 def test_hotel_preference_state_numbered_tier_pick():
+    """Picking the "Tầm trung" tier (option 2) must resolve to its real 800k-2.5tr
+    range, not just the 1.5tr midpoint — this is the regression coverage for the
+    reported gap where the luxury/mid-range tiers had no floor enforced at all."""
     state = HotelPreferenceState()
 
     next_state = state.with_message("2")
 
     assert next_state.is_complete
     assert next_state.target_price == 1_500_000
+    assert next_state.min_price == 800_000
+    assert next_state.max_price == 2_500_000
+
+
+def test_hotel_preference_state_luxury_tier_has_floor_but_no_ceiling():
+    state = HotelPreferenceState()
+
+    next_state = state.with_message("3")
+
+    assert next_state.is_complete
+    assert next_state.min_price == 2_500_000
+    assert next_state.max_price is None
+
+
+def test_hotel_preference_state_budget_tier_has_ceiling_but_no_floor():
+    state = HotelPreferenceState()
+
+    next_state = state.with_message("1")
+
+    assert next_state.is_complete
+    assert next_state.min_price is None
+    assert next_state.max_price == 800_000
 
 
 def test_hotel_preference_state_skip_budget():
@@ -326,14 +406,20 @@ def test_hotel_preference_state_skip_budget():
 
     assert next_state.is_complete
     assert next_state.target_price is None
+    assert next_state.min_price is None
+    assert next_state.max_price is None
 
 
 def test_hotel_preference_state_full_walk_and_tool_arguments():
     state = HotelPreferenceState()
-    state = state.with_message("4 triệu")
+    state = state.with_message("2")
 
     assert state.is_complete
-    assert state.tool_arguments() == {"target_price": "4000000.0"}
+    assert state.tool_arguments() == {
+        "target_price": "1500000",
+        "min_price": "800000",
+        "max_price": "2500000",
+    }
 
 
 def test_hotel_preference_state_tool_arguments_raises_before_complete():

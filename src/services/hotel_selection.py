@@ -71,23 +71,32 @@ def select_hotel_candidates(
     people: str,
     hotel_query: str | None = None,
     match_count: int = 5,
+    min_price: float | None = None,
+    max_price: float | None = None,
 ) -> List[Tuple[Dict[str, Any], PlaceCandidate]]:
     """Search and return verified hotel options along with PlaceCandidate objects.
-    
+
     Each returned tuple contains:
     1. hotel_data (Dict): Structured hotel details (id, name, rating, coordinates, matched rooms, covered meals).
     2. candidate (PlaceCandidate): Geo-located candidate object used by the itinerary scheduler.
+
+    `min_price`/`max_price`, when given, are enforced directly by the search RPC (see
+    scripts/migrations/20260730_add_price_filter_to_match_hotels_with_rooms.sql) — no
+    app-side price filtering is needed here; `search_hotels_with_rooms` already returns
+    the best `match_count` results that are also in range.
     """
     query = hotel_query or f"Hotel in {destination} for {people} people"
     search_results = search_hotels_with_rooms(
         query=query,
         match_count=match_count,
         filter_destination_id=destination_id,
+        min_price=min_price,
+        max_price=max_price,
     ) or []
-    
+
     hydrated = _hydrate_hotel_records(search_results)
     options: List[Tuple[Dict[str, Any], PlaceCandidate]] = []
-    
+
     for hotel in hydrated:
         if str(hotel.get("destination_id")) != destination_id:
             continue
@@ -329,12 +338,30 @@ _BUDGET_TIER_TARGET_VND: dict[str, float] = {
     "mid_range": 1_500_000,
     "luxury": 3_500_000,
 }
+# The actual (min, max) bounds shown in each tier's label — "budget" has no floor
+# ("dưới 800k"), "luxury" has no ceiling ("trên 2.5tr"); only "mid_range" is a
+# closed range. Kept separate from _BUDGET_TIER_TARGET_VND because the target is a
+# single point used for the ranking-bonus closeness score, while these bounds are
+# used as the search's hard min/max price filter.
+_BUDGET_TIER_RANGE_VND: dict[str, tuple[float | None, float | None]] = {
+    "budget": (None, _BUDGET_TIER_MAX_VND),
+    "mid_range": (_BUDGET_TIER_MAX_VND, _MID_RANGE_TIER_MAX_VND),
+    "luxury": (_MID_RANGE_TIER_MAX_VND, None),
+}
 
 _QUALITATIVE_BUDGET_PHRASES: dict[str, tuple[str, ...]] = {
     "luxury": ("sang trong", "cao cap", "luxury", "5 sao"),
     "budget": ("tiet kiem", "gia re"),
     "mid_range": ("tam trung", "vua phai", "trung binh"),
 }
+
+
+def _tier_budget(tier: str) -> tuple[float | None, float | None, float | None]:
+    """(min_price, max_price, target_price) for a named budget tier — the first two
+    drive the search's hard filter, the third drives rank_hotel_candidates' soft
+    closeness bonus."""
+    min_price, max_price = _BUDGET_TIER_RANGE_VND[tier]
+    return min_price, max_price, _BUDGET_TIER_TARGET_VND[tier]
 
 
 def _parse_free_text_price(text: str) -> float | None:
@@ -357,17 +384,21 @@ def _parse_free_text_price(text: str) -> float | None:
     return None
 
 
-def _parse_free_text_budget(reply: str) -> float | None:
+def _parse_free_text_budget(reply: str) -> tuple[float | None, float | None, float | None] | None:
     """free_text_parser for the budget GuidedQuestion — used only when the reply
     doesn't match a numbered option, e.g. the user typed "4 triệu" instead of picking
-    from the suggested tiers, or a qualitative phrase like "khách sạn sang trọng"."""
+    from the suggested tiers, or a qualitative phrase like "khách sạn sang trọng".
+
+    Returns (min_price, max_price, target_price): an explicit number has no natural
+    range, so it becomes an open-floor ceiling (None, price, price); a qualitative
+    phrase resolves to its tier's real (min, max) bounds via _tier_budget."""
     price = _parse_free_text_price(reply)
     if price is not None:
-        return price
+        return None, price, price
     normalized = _normalize_for_match(reply)
     for tier, phrases in _QUALITATIVE_BUDGET_PHRASES.items():
         if any(phrase in normalized for phrase in phrases):
-            return _BUDGET_TIER_TARGET_VND[tier]
+            return _tier_budget(tier)
     return None
 
 
@@ -379,15 +410,15 @@ _BUDGET_QUESTION = GuidedQuestion(
     options=(
         GuidedOption(
             f"Tiết kiệm (dưới {_BUDGET_TIER_MAX_VND:,.0f} VND/đêm)",
-            _BUDGET_TIER_TARGET_VND["budget"],
+            _tier_budget("budget"),
         ),
         GuidedOption(
             f"Tầm trung ({_BUDGET_TIER_MAX_VND:,.0f} - {_MID_RANGE_TIER_MAX_VND:,.0f} VND/đêm)",
-            _BUDGET_TIER_TARGET_VND["mid_range"],
+            _tier_budget("mid_range"),
         ),
         GuidedOption(
             f"Cao cấp (trên {_MID_RANGE_TIER_MAX_VND:,.0f} VND/đêm)",
-            _BUDGET_TIER_TARGET_VND["luxury"],
+            _tier_budget("luxury"),
         ),
         GuidedOption("Bỏ qua, không cần lọc theo giá", None),
     ),
@@ -406,6 +437,8 @@ class HotelPreferenceState:
 
     stage: HotelPreferenceStage = "pending_budget"
     target_price: float | None = None
+    min_price: float | None = None
+    max_price: float | None = None
 
     @property
     def is_complete(self) -> bool:
@@ -421,10 +454,15 @@ class HotelPreferenceState:
             resolved, values = resolve_guided_reply(_BUDGET_QUESTION, message)
             if not resolved:
                 return self
+            min_price = max_price = target_price = None
+            if values:
+                min_price, max_price, target_price = values[0]
             return replace(
                 self,
                 stage="done",
-                target_price=values[0] if values else None,
+                target_price=target_price,
+                min_price=min_price,
+                max_price=max_price,
             )
         return self
 
@@ -433,6 +471,8 @@ class HotelPreferenceState:
             raise ValueError("Budget preference is not resolved yet.")
         return {
             "target_price": str(self.target_price) if self.target_price is not None else "",
+            "min_price": str(self.min_price) if self.min_price is not None else "",
+            "max_price": str(self.max_price) if self.max_price is not None else "",
         }
 
 

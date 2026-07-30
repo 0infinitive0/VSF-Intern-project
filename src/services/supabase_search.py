@@ -103,14 +103,25 @@ def search_hotels_with_rooms(
     filter_destination_id: Optional[str] = None,
     use_llm_filter: bool = True,
     model: Optional[str] = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None,
 ) -> List[Dict[str, Any]]:
-    """Tìm kiếm semantic hotels và rooms cùng nhau sử dụng Supabase RPC match_hotels_with_rooms và local Ollama LLM filtering."""
+    """Tìm kiếm semantic hotels và rooms cùng nhau sử dụng Supabase RPC match_hotels_with_rooms và local Ollama LLM filtering.
+
+    `min_price`/`max_price` are enforced directly by match_hotels_with_rooms itself (see
+    scripts/migrations/20260730_add_price_filter_to_match_hotels_with_rooms.sql) — the RPC
+    filters by lowest_price BEFORE its own `ORDER BY similarity LIMIT match_count`, so the
+    returned rows are already "best match_count results that are ALSO in range", not a
+    small similarity-only sample that then needs filtering (and might contain zero in-range
+    hits purely by bad luck, since price is uncorrelated with embedding similarity).
+    """
     supabase = get_supabase_client()
     embeddings = get_embeddings()
 
     search_query = query
     min_star_rating = None
-    max_price = None
+    resolved_min_price = min_price
+    resolved_max_price = max_price
 
     if use_llm_filter:
         filters = extract_search_filters(query, search_type="hotel", model=model)
@@ -119,11 +130,14 @@ def search_hotels_with_rooms(
         if filter_destination_id is None and filters.get("destination_name"):
             filter_destination_id = _get_destination_id_by_name(filters["destination_name"])
         min_star_rating = filters.get("min_star_rating")
-        max_price = filters.get("max_price")
+        if resolved_max_price is None:
+            resolved_max_price = filters.get("max_price")
 
     query_vector = embeddings.embed_query(search_query)
 
-    fetch_count = match_count * 3 if (min_star_rating or max_price) else match_count
+    # star_rating still isn't a param the RPC accepts, so it's still checked client-side
+    # below — keep a modest oversample just for that one filter.
+    fetch_count = match_count * 3 if min_star_rating else match_count
     params: Dict[str, Any] = {
         "query_embedding": query_vector,
         "match_threshold": match_threshold,
@@ -131,24 +145,26 @@ def search_hotels_with_rooms(
     }
     if filter_destination_id is not None:
         params["filter_destination_id"] = filter_destination_id
+    if resolved_min_price is not None:
+        params["filter_min_price"] = resolved_min_price
+    if resolved_max_price is not None:
+        params["filter_max_price"] = resolved_max_price
 
     res = supabase.rpc("match_hotels_with_rooms", params).execute()
     data = res.data or []
 
+    if not min_star_rating or min_star_rating <= 0:
+        return data[:match_count]
+
     filtered_data = []
     for h in data:
-        if min_star_rating is not None and min_star_rating > 0:
-            star = h.get("star_rating")
-            if star is not None and int(star) < int(min_star_rating):
-                continue
-        if max_price is not None and max_price > 0:
-            price = h.get("lowest_price")
-            if price is not None and float(price) > float(max_price):
-                continue
+        star = h.get("star_rating")
+        if star is not None and int(star) < int(min_star_rating):
+            continue
         filtered_data.append(h)
 
-    if not filtered_data and (min_star_rating or max_price) and len(data) > 0:
-        logger.info(f"No hotels met strict filters (star>={min_star_rating}, price<={max_price}). Returning semantic matches.")
+    if not filtered_data and len(data) > 0:
+        logger.info(f"No hotels met strict filters (star>={min_star_rating}). Returning semantic matches.")
         return data[:match_count]
 
     return filtered_data[:match_count]

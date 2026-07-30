@@ -29,6 +29,7 @@ from src.cli.trip_builder_svc import (
     parse_duration_to_days,
 )
 from src.services.hotel_selection import (
+    _parse_free_text_price,
     fetch_hotel_by_id,
     lookup_sea_view_hotel_ids,
     rank_hotel_candidates,
@@ -52,7 +53,7 @@ You are chatting with a user in Vietnamese. Your goal is to manage trip planning
    - Reply directly to the user in friendly, polite Vietnamese asking ONLY for the missing info.
    - Once all 3 are known, call `recommend_hotels` to show a ranked list of real hotels. NEVER call `generate_full_itinerary` yourself — the itinerary is only ever built after the user has picked a hotel from that list.
    - When calling `recommend_hotels`, pass the EXACT duration string provided by the user (e.g., duration="1 tuần" if the user said "1 tuần").
-   - If the user mentions interests or preferred themes, pass them in the optional `preferences` argument. If they mention hotel-specific wants (budget, star rating, view, amenities...), pass them in `hotel_preferences`. Do not add another required question when these are absent.
+   - If the user mentions interests or preferred themes, pass them in the optional `preferences` argument. If they mention hotel-specific wants (star rating, view, amenities...), pass them in `hotel_preferences`. If they state a budget/price, convert it to plain VND numbers and pass it in `target_price`/`min_price`/`max_price` — do not just describe it in `hotel_preferences`, since these are what actually filter results by price. A single ceiling (e.g. "khoảng 1 triệu", "dưới 500k") goes in `target_price` (e.g. "1000000", "500000"); an actual range (e.g. "1-2 triệu", "từ 800k đến 2 triệu rưỡi") goes in `min_price`/`max_price` instead (e.g. "1000000"/"2000000"). Do not add another required question when these are absent.
    - CRITICAL: DO NOT start your responses with "Xin lỗi" or "Tôi xin lỗi". Be direct, polite, and welcoming (e.g., "Để lập kế hoạch cho chuyến đi Nha Trang, bạn cho mình biết...").
 
 2. AFTER A HOTEL LIST HAS BEEN SHOWN:
@@ -176,14 +177,22 @@ def recommend_hotels(
     preferences: str = "",
     hotel_preferences: str = "",
     target_price: str = "",
+    min_price: str = "",
+    max_price: str = "",
     hotel_amenity_prefs: str = "",
 ) -> str:
     """
     CRITICAL: Use this tool ONCE destination, duration, and number of people are all known, to show
     a ranked list of real hotel options. This is the ONLY way to start planning a new trip — never
-    call `generate_full_itinerary` yourself. If the user mentioned specific hotel wants (budget, star
-    rating, view, amenities...), pass them in `hotel_preferences`. `target_price`/`hotel_amenity_prefs`
-    are typically pre-resolved by the guided budget/amenity intake in terminal_chat.py, not by you.
+    call `generate_full_itinerary` yourself. If the user mentioned specific hotel wants (star rating,
+    view, amenities...), pass them in `hotel_preferences`. `target_price`/`min_price`/`max_price`/
+    `hotel_amenity_prefs` are usually pre-resolved by the guided budget/amenity intake in
+    terminal_chat.py (a tier pick like "tầm trung" resolves to a real min/max range, e.g. 800000/
+    2500000) — but if you are handling trip planning yourself (e.g. a second trip request later in
+    the same conversation) and the user states a budget, convert it to a plain VND number yourself:
+    a single number (e.g. "1 triệu" -> target_price="1000000") is used as a ceiling only; if the user
+    gives an actual range (e.g. "1-2 triệu"), pass min_price/max_price instead. These matter more
+    than the qualitative wants in `hotel_preferences` since they actually filter results by price.
     After this returns, the user's next reply must be handled by `select_hotel`, not by calling this
     tool or generate_full_itinerary again.
     """
@@ -198,12 +207,25 @@ def recommend_hotels(
 
     hotel_query = hotel_preferences.strip() or None
     parsed_target_price = float(target_price) if target_price.strip() else None
+    parsed_min_price = float(min_price) if min_price.strip() else None
+    parsed_max_price = float(max_price) if max_price.strip() else None
+    if parsed_min_price is None and parsed_max_price is None and parsed_target_price is not None:
+        # No explicit range given (e.g. a caller that only knows the older single-number
+        # target_price) — fall back to treating it as a ceiling-only budget.
+        parsed_max_price = parsed_target_price
     amenity_pref_set = frozenset(
         tag.strip() for tag in hotel_amenity_prefs.split(",") if tag.strip()
     )
 
     try:
-        options = select_hotel_candidates(destination, destination_id, people, hotel_query=hotel_query)
+        options = select_hotel_candidates(
+            destination,
+            destination_id,
+            people,
+            hotel_query=hotel_query,
+            min_price=parsed_min_price,
+            max_price=parsed_max_price,
+        )
         sea_view_hotel_ids = (
             lookup_sea_view_hotel_ids([data["id"] for data, _candidate in options])
             if "sea_view" in amenity_pref_set
@@ -356,8 +378,17 @@ def _legacy_modify_trip_plan(modification_request: str) -> str:
             if not destination_id:
                 raise ValueError("Không xác định được điểm đến của kế hoạch hiện tại.")
             hotel_query = change.query or modification_request
+            # `change.query` only carries free-text venue wants (from the LLM edit
+            # classifier); it has no dedicated price field, so parse a budget number
+            # off the raw request with the same deterministic parser the guided
+            # budget question uses, rather than hoping the search's own LLM query
+            # parser re-discovers it downstream.
+            parsed_target_price = _parse_free_text_price(modification_request)
             options = rank_hotel_candidates(
-                select_hotel_candidates(destination, destination_id, people, hotel_query=hotel_query)
+                select_hotel_candidates(
+                    destination, destination_id, people, hotel_query=hotel_query, max_price=parsed_target_price
+                ),
+                target_price=parsed_target_price,
             )
             if not options:
                 raise ValueError(f"Không tìm thấy khách sạn phù hợp tại {destination}.")
