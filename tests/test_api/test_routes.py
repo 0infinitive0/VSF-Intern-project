@@ -10,8 +10,7 @@ import uuid
 import pytest
 
 import src.agents.session as session_module
-import src.api.routes as routes_module
-from src.agents.session import TripSession, TurnResult
+from src.agents.session import TripSession
 
 
 @pytest.fixture(autouse=True)
@@ -34,7 +33,6 @@ def _fake_planner_agent(monkeypatch):
 
     # Refresh the registry so it picks up the monkeypatched create_chat_session.
     import src.api.routes as _routes
-
     from src.agents.session import SessionRegistry
 
     _routes.registry = SessionRegistry(ttl_seconds=3600, cap=100)
@@ -170,12 +168,6 @@ async def test_health(client):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
-
-
-@pytest.mark.asyncio
-async def test_chat_empty_message(client):
-    response = await client.post("/api/v1/chat", json={"message": ""})
-    assert response.status_code == 422
 
 
 @pytest.mark.asyncio

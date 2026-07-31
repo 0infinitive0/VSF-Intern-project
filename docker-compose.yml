@@ -1,6 +1,14 @@
-version: "3.8"
+# ── Profiles ──────────────────────────────────────────────────────────────────
+# Default (no profile):   backend + frontend only — use cloud LLM (OpenAI/OpenRouter)
+# --profile local-llm:    + ollama + ollama-pull (pulls bge-m3 + llama3.1 ~4.7 GB)
+#
+# Examples:
+#   Cloud LLM (default):  docker compose up
+#   Local Ollama:         docker compose --profile local-llm up
 
 services:
+
+  # ── Backend (FastAPI) ────────────────────────────────────────────────────────
   backend:
     build:
       context: .
@@ -10,30 +18,31 @@ services:
     env_file:
       - .env
     environment:
+      # Only used when profile local-llm is active; ignored when LLM_PROVIDER != ollama
       - OLLAMA_URL=http://ollama:11434
     volumes:
       - ./data:/app/data
     restart: unless-stopped
-    depends_on:
-      - qdrant
-      - ollama
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
-      
 
-  qdrant:
-    image: qdrant/qdrant:latest
+  # ── Frontend (React + Vite → Nginx) ─────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - ./data/qdrant:/qdrant/storage
+      - "5173:5173"
+    depends_on:
+      - backend
     restart: unless-stopped
 
+  # ── Ollama (local LLM) — only with --profile local-llm ──────────────────────
   ollama:
+    profiles: [local-llm]
     image: ollama/ollama:latest
     ports:
       - "11434:11434"
@@ -44,15 +53,19 @@ services:
       - OLLAMA_KEEP_ALIVE=30m
     restart: unless-stopped
 
+  # Pulls bge-m3 (embeddings, ~550 MB) + llama3.1 (chat, ~4.7 GB)
   ollama-pull:
+    profiles: [local-llm]
     image: curlimages/curl:latest
     command: >
       sh -c "
-      echo 'Waiting for Ollama to be ready...' &&
+      echo 'Waiting for Ollama...' &&
       while ! curl -s http://ollama:11434/api/tags > /dev/null; do sleep 2; done &&
-      echo 'Pulling bge-m3 model...' &&
+      echo 'Pulling bge-m3 (embedding model, ~550 MB)...' &&
       curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"bge-m3\"}' &&
-      echo 'Model pulled successfully.'
+      echo 'Pulling llama3.1 (chat model, ~4.7 GB)...' &&
+      curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"llama3.1\"}' &&
+      echo 'All models pulled successfully.'
       "
     depends_on:
       - ollama
