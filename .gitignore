@@ -83,6 +83,8 @@ node_modules/
 .next/
 out/
 .nuxt/
+frontend/node_modules/
+frontend/dist/
 
 # Build
 *.pyc
