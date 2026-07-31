@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import os
-
-import pytest
-
-import src.cli.planner_tools as planner_tools_module
-from src.cli.trip_builder_svc import PENDING_HOTEL_SELECTION_FILE, SESSION_DATA_DIR
+import src.agents.tools.recommend_hotels as recommend_hotels_module
+import src.agents.tools.select_hotel as select_hotel_module
+import src.services.trip_planner as trip_planner_module
+from src.agents.tools.recommend_hotels import build_recommend_hotels_tool
+from src.agents.tools.select_hotel import build_select_hotel_tool
 from src.services.trip_scheduler import PlaceCandidate
 
 
@@ -34,12 +33,17 @@ def _fake_option(id_: str, name: str, rank: int) -> tuple[dict, PlaceCandidate]:
     return data, candidate
 
 
-@pytest.fixture(autouse=True)
-def _isolate_cwd(tmp_path, monkeypatch):
-    """current_trip_plan.json / pending_hotel_selection.json live under data/,
-    relative to cwd — sandbox them away from the repo root."""
-    monkeypatch.chdir(tmp_path)
-    os.makedirs(SESSION_DATA_DIR, exist_ok=True)
+class _Session:
+    """Minimal stand-in for TripSession — only the fields these tool factories
+    read/write."""
+
+    def __init__(self, **overrides):
+        self.session_id = overrides.pop("session_id", "test-session")
+        self.trip_data = overrides.pop("trip_data", None)
+        self.pending_hotel_selection = overrides.pop("pending_hotel_selection", None)
+        self.persist_hook = None
+        for key, value in overrides.items():
+            setattr(self, key, value)
 
 
 def _fake_build_trip_data(captured: dict):
@@ -52,11 +56,13 @@ def _fake_build_trip_data(captured: dict):
         themes_override=None,
         preselected_hotel=None,
         planning_constraints=None,
+        session_id="poc_trip_planner_1",
     ):
         captured["destination"] = destination
         captured["hotel_query"] = hotel_query
         captured["preselected_hotel"] = preselected_hotel
         captured["planning_constraints"] = planning_constraints
+        captured["session_id"] = session_id
         return {
             "hotel": preselected_hotel or {},
             "itineraries": [{"id": "itinerary-1", "status": "Draft"}],
@@ -67,13 +73,15 @@ def _fake_build_trip_data(captured: dict):
     return _build
 
 
-def test_recommend_hotels_writes_pending_file_and_lists_names(monkeypatch):
+def test_recommend_hotels_writes_pending_selection_and_lists_names(monkeypatch):
     options = [_fake_option("h1", "Khách sạn Một", 1), _fake_option("h2", "Khách sạn Hai", 2)]
-    monkeypatch.setattr(planner_tools_module, "_get_destination_id", lambda destination: "dest-1")
-    monkeypatch.setattr(planner_tools_module, "select_hotel_candidates", lambda *a, **k: options)
-    monkeypatch.setattr(planner_tools_module, "rank_hotel_candidates", lambda opts, **_kwargs: opts)
+    monkeypatch.setattr(recommend_hotels_module, "_get_destination_id", lambda destination: "dest-1")
+    monkeypatch.setattr(recommend_hotels_module, "select_hotel_candidates", lambda *a, **k: options)
+    monkeypatch.setattr(recommend_hotels_module, "rank_hotel_candidates", lambda opts, **_kwargs: opts)
 
-    result = planner_tools_module.recommend_hotels.invoke(
+    session = _Session()
+    recommend_hotels = build_recommend_hotels_tool(session)
+    result = recommend_hotels.invoke(
         {
             "destination": "Đà Nẵng",
             "duration": "3 ngày",
@@ -85,93 +93,97 @@ def test_recommend_hotels_writes_pending_file_and_lists_names(monkeypatch):
 
     assert "Khách sạn Một" in result
     assert "Khách sạn Hai" in result
-    assert os.path.exists(PENDING_HOTEL_SELECTION_FILE)
+    assert session.pending_hotel_selection is not None
 
 
 def test_recommend_hotels_missing_field_returns_system_error():
-    result = planner_tools_module.recommend_hotels.invoke(
+    session = _Session()
+    recommend_hotels = build_recommend_hotels_tool(session)
+    result = recommend_hotels.invoke(
         {"destination": "Đà Nẵng", "duration": "", "people": "2 người", "preferences": "", "hotel_preferences": ""}
     )
 
     assert result.startswith("SYSTEM ERROR:")
-    assert not os.path.exists(PENDING_HOTEL_SELECTION_FILE)
+    assert session.pending_hotel_selection is None
 
 
 def test_select_hotel_with_valid_rank_builds_itinerary_and_clears_pending(monkeypatch):
     options = [_fake_option("h1", "Khách sạn Một", 1), _fake_option("h2", "Khách sạn Hai", 2)]
-    monkeypatch.setattr(planner_tools_module, "_get_destination_id", lambda destination: "dest-1")
-    monkeypatch.setattr(planner_tools_module, "select_hotel_candidates", lambda *a, **k: options)
-    monkeypatch.setattr(planner_tools_module, "rank_hotel_candidates", lambda opts, **_kwargs: opts)
-    planner_tools_module.recommend_hotels.invoke(
-        {
+    session = _Session(
+        pending_hotel_selection={
+            "mode": "new_trip",
             "destination": "Đà Nẵng",
             "duration": "3 ngày",
             "people": "2 người",
-            "preferences": "",
-            "hotel_preferences": "",
+            "preferences_text": "",
+            "options": [data for data, _candidate in options],
         }
     )
-    assert os.path.exists(PENDING_HOTEL_SELECTION_FILE)
 
     captured: dict = {}
-    monkeypatch.setattr(planner_tools_module, "_build_trip_data", _fake_build_trip_data(captured))
-    monkeypatch.setattr(planner_tools_module, "_save_trip_data", lambda trip_data: None)
+    monkeypatch.setattr(select_hotel_module, "_build_trip_data", _fake_build_trip_data(captured))
+    monkeypatch.setattr(select_hotel_module, "_generate_and_save_itinerary", lambda *a, **k: _fake_generate_and_save(captured, k))
 
-    result = planner_tools_module.select_hotel.invoke({"selection": "2"})
+    select_hotel = build_select_hotel_tool(session)
+    result = select_hotel.invoke({"selection": "2"})
 
     assert captured["preselected_hotel"]["id"] == "h2"
-    assert not os.path.exists(PENDING_HOTEL_SELECTION_FILE)
+    assert session.pending_hotel_selection is None
     assert not result.startswith("SYSTEM ERROR:")
 
 
-def test_select_hotel_unresolved_selection_reshows_list_and_keeps_pending(monkeypatch):
+def _fake_generate_and_save(captured: dict, kwargs: dict) -> str:
+    captured["preselected_hotel"] = kwargs.get("preselected_hotel")
+    save = kwargs.get("save")
+    if save:
+        save({"hotel": kwargs.get("preselected_hotel") or {}, "itineraries": [{"status": "Draft"}]})
+    return "Hotel: ok"
+
+
+def test_select_hotel_unresolved_selection_reshows_list_and_keeps_pending():
     options = [_fake_option("h1", "Khách sạn Một", 1)]
-    monkeypatch.setattr(planner_tools_module, "_get_destination_id", lambda destination: "dest-1")
-    monkeypatch.setattr(planner_tools_module, "select_hotel_candidates", lambda *a, **k: options)
-    monkeypatch.setattr(planner_tools_module, "rank_hotel_candidates", lambda opts, **_kwargs: opts)
-    planner_tools_module.recommend_hotels.invoke(
-        {
+    session = _Session(
+        pending_hotel_selection={
+            "mode": "new_trip",
             "destination": "Đà Nẵng",
-            "duration": "3 ngày",
-            "people": "2 người",
-            "preferences": "",
-            "hotel_preferences": "",
+            "options": [data for data, _candidate in options],
         }
     )
 
-    result = planner_tools_module.select_hotel.invoke({"selection": "không tồn tại đâu"})
+    select_hotel = build_select_hotel_tool(session)
+    result = select_hotel.invoke({"selection": "không tồn tại đâu"})
 
     assert "Khách sạn Một" in result
-    assert os.path.exists(PENDING_HOTEL_SELECTION_FILE)
+    assert session.pending_hotel_selection is not None
 
 
-def test_select_hotel_without_pending_file_returns_system_error():
-    result = planner_tools_module.select_hotel.invoke({"selection": "1"})
+def test_select_hotel_without_pending_selection_returns_system_error():
+    session = _Session()
+    select_hotel = build_select_hotel_tool(session)
+    result = select_hotel.invoke({"selection": "1"})
 
     assert result.startswith("SYSTEM ERROR:")
 
 
 def test_generate_full_itinerary_with_hotel_id_skips_search(monkeypatch):
     hotel_data, _candidate = _fake_option("h9", "Khách sạn Chín", 1)
-    monkeypatch.setattr(planner_tools_module, "_get_destination_id", lambda destination: "dest-1")
+    monkeypatch.setattr(trip_planner_module, "_get_destination_id", lambda destination: "dest-1")
     monkeypatch.setattr(
-        planner_tools_module,
+        trip_planner_module,
         "fetch_hotel_by_id",
         lambda hotel_id, destination_id=None: (hotel_data, None),
     )
 
     captured: dict = {}
-    monkeypatch.setattr(planner_tools_module, "_build_trip_data", _fake_build_trip_data(captured))
-    monkeypatch.setattr(planner_tools_module, "_save_trip_data", lambda trip_data: None)
+    monkeypatch.setattr(trip_planner_module, "_build_trip_data", _fake_build_trip_data(captured))
 
-    result = planner_tools_module.generate_full_itinerary.invoke(
-        {
-            "destination": "Đà Nẵng",
-            "duration": "3 ngày",
-            "people": "2 người",
-            "preferences": "",
-            "hotel_id": "h9",
-        }
+    result = trip_planner_module.generate_full_itinerary(
+        "Đà Nẵng",
+        "3 ngày",
+        "2 người",
+        "",
+        hotel_id="h9",
+        save=lambda trip_data: None,
     )
 
     assert captured["preselected_hotel"]["id"] == "h9"
@@ -180,17 +192,15 @@ def test_generate_full_itinerary_with_hotel_id_skips_search(monkeypatch):
 
 def test_generate_full_itinerary_without_hotel_id_uses_legacy_path(monkeypatch):
     captured: dict = {}
-    monkeypatch.setattr(planner_tools_module, "_build_trip_data", _fake_build_trip_data(captured))
-    monkeypatch.setattr(planner_tools_module, "_save_trip_data", lambda trip_data: None)
+    monkeypatch.setattr(trip_planner_module, "_build_trip_data", _fake_build_trip_data(captured))
 
-    result = planner_tools_module.generate_full_itinerary.invoke(
-        {
-            "destination": "Đà Nẵng",
-            "duration": "3 ngày",
-            "people": "2 người",
-            "preferences": "",
-            "hotel_id": "",
-        }
+    result = trip_planner_module.generate_full_itinerary(
+        "Đà Nẵng",
+        "3 ngày",
+        "2 người",
+        "",
+        hotel_id="",
+        save=lambda trip_data: None,
     )
 
     assert captured["preselected_hotel"] is None
@@ -205,12 +215,14 @@ def test_recommend_hotels_threads_budget_and_amenity_prefs_into_ranking(monkeypa
         captured_rank_kwargs.update(kwargs)
         return opts
 
-    monkeypatch.setattr(planner_tools_module, "_get_destination_id", lambda destination: "dest-1")
-    monkeypatch.setattr(planner_tools_module, "select_hotel_candidates", lambda *a, **k: options)
-    monkeypatch.setattr(planner_tools_module, "rank_hotel_candidates", fake_rank_hotel_candidates)
-    monkeypatch.setattr(planner_tools_module, "lookup_sea_view_hotel_ids", lambda ids: frozenset())
+    monkeypatch.setattr(recommend_hotels_module, "_get_destination_id", lambda destination: "dest-1")
+    monkeypatch.setattr(recommend_hotels_module, "select_hotel_candidates", lambda *a, **k: options)
+    monkeypatch.setattr(recommend_hotels_module, "rank_hotel_candidates", fake_rank_hotel_candidates)
+    monkeypatch.setattr(recommend_hotels_module, "lookup_sea_view_hotel_ids", lambda ids: frozenset())
 
-    planner_tools_module.recommend_hotels.invoke(
+    session = _Session()
+    recommend_hotels = build_recommend_hotels_tool(session)
+    recommend_hotels.invoke(
         {
             "destination": "Đà Nẵng",
             "duration": "3 ngày",
@@ -230,11 +242,11 @@ def test_recommend_hotels_calls_sea_view_lookup_only_when_requested(monkeypatch)
     options = [_fake_option("h1", "Khách sạn Một", 1)]
     lookup_calls: list = []
 
-    monkeypatch.setattr(planner_tools_module, "_get_destination_id", lambda destination: "dest-1")
-    monkeypatch.setattr(planner_tools_module, "select_hotel_candidates", lambda *a, **k: options)
-    monkeypatch.setattr(planner_tools_module, "rank_hotel_candidates", lambda opts, **kwargs: opts)
+    monkeypatch.setattr(recommend_hotels_module, "_get_destination_id", lambda destination: "dest-1")
+    monkeypatch.setattr(recommend_hotels_module, "select_hotel_candidates", lambda *a, **k: options)
+    monkeypatch.setattr(recommend_hotels_module, "rank_hotel_candidates", lambda opts, **kwargs: opts)
     monkeypatch.setattr(
-        planner_tools_module,
+        recommend_hotels_module,
         "lookup_sea_view_hotel_ids",
         lambda ids: lookup_calls.append(ids) or frozenset(ids),
     )
@@ -248,10 +260,12 @@ def test_recommend_hotels_calls_sea_view_lookup_only_when_requested(monkeypatch)
         "target_price": "",
     }
 
-    planner_tools_module.recommend_hotels.invoke({**base_args, "hotel_amenity_prefs": "pool"})
+    recommend_hotels = build_recommend_hotels_tool(_Session())
+    recommend_hotels.invoke({**base_args, "hotel_amenity_prefs": "pool"})
     assert lookup_calls == []
 
-    planner_tools_module.recommend_hotels.invoke({**base_args, "hotel_amenity_prefs": "sea_view,pool"})
+    recommend_hotels = build_recommend_hotels_tool(_Session())
+    recommend_hotels.invoke({**base_args, "hotel_amenity_prefs": "sea_view,pool"})
     assert lookup_calls == [["h1"]]
 
 
@@ -268,11 +282,12 @@ def test_recommend_hotels_forwards_target_price_to_search(monkeypatch):
         captured_select_kwargs.update(kwargs)
         return options
 
-    monkeypatch.setattr(planner_tools_module, "_get_destination_id", lambda destination: "dest-1")
-    monkeypatch.setattr(planner_tools_module, "select_hotel_candidates", fake_select_hotel_candidates)
-    monkeypatch.setattr(planner_tools_module, "rank_hotel_candidates", lambda opts, **kwargs: opts)
+    monkeypatch.setattr(recommend_hotels_module, "_get_destination_id", lambda destination: "dest-1")
+    monkeypatch.setattr(recommend_hotels_module, "select_hotel_candidates", fake_select_hotel_candidates)
+    monkeypatch.setattr(recommend_hotels_module, "rank_hotel_candidates", lambda opts, **kwargs: opts)
 
-    planner_tools_module.recommend_hotels.invoke(
+    recommend_hotels = build_recommend_hotels_tool(_Session())
+    recommend_hotels.invoke(
         {
             "destination": "Đà Nẵng",
             "duration": "3 ngày",
@@ -298,11 +313,12 @@ def test_recommend_hotels_forwards_explicit_min_and_max_price_range(monkeypatch)
         captured_select_kwargs.update(kwargs)
         return options
 
-    monkeypatch.setattr(planner_tools_module, "_get_destination_id", lambda destination: "dest-1")
-    monkeypatch.setattr(planner_tools_module, "select_hotel_candidates", fake_select_hotel_candidates)
-    monkeypatch.setattr(planner_tools_module, "rank_hotel_candidates", lambda opts, **kwargs: opts)
+    monkeypatch.setattr(recommend_hotels_module, "_get_destination_id", lambda destination: "dest-1")
+    monkeypatch.setattr(recommend_hotels_module, "select_hotel_candidates", fake_select_hotel_candidates)
+    monkeypatch.setattr(recommend_hotels_module, "rank_hotel_candidates", lambda opts, **kwargs: opts)
 
-    planner_tools_module.recommend_hotels.invoke(
+    recommend_hotels = build_recommend_hotels_tool(_Session())
+    recommend_hotels.invoke(
         {
             "destination": "Đà Nẵng",
             "duration": "3 ngày",
@@ -328,26 +344,19 @@ def test_legacy_modify_trip_plan_change_hotel_forwards_parsed_budget(monkeypatch
     separate, concurrently-developed edit pipeline) whose own hotel_change branch
     does not yet forward any price param at all. That's a distinct, still-open gap
     in that newer pipeline, out of scope here."""
-    import json
-
-    from src.cli.trip_builder_svc import CURRENT_TRIP_PLAN_FILE
     from src.services.trip_scheduler import TripChange
 
-    with open(CURRENT_TRIP_PLAN_FILE, "w", encoding="utf-8") as f:
-        json.dump(
+    current_data = {
+        "itineraries": [
             {
-                "itineraries": [
-                    {
-                        "status": "Draft",
-                        "destination_id": "dest-1",
-                        "preferences": ["Đà Nẵng"],
-                        "duration_days": 3,
-                        "number_of_adults": 2,
-                    }
-                ]
-            },
-            f,
-        )
+                "status": "Draft",
+                "destination_id": "dest-1",
+                "preferences": ["Đà Nẵng"],
+                "duration_days": 3,
+                "number_of_adults": 2,
+            }
+        ]
+    }
 
     options = [_fake_option("h1", "Khách sạn Một", 1)]
     captured_select_kwargs: dict = {}
@@ -361,17 +370,17 @@ def test_legacy_modify_trip_plan_change_hotel_forwards_parsed_budget(monkeypatch
         captured_rank_kwargs.update(kwargs)
         return opts
 
-    monkeypatch.setattr(planner_tools_module, "_get_destination_id", lambda destination: "dest-1")
+    monkeypatch.setattr(trip_planner_module, "_get_destination_id", lambda destination: "dest-1")
     monkeypatch.setattr(
-        planner_tools_module,
+        trip_planner_module,
         "_parse_trip_change",
         lambda modification_request: TripChange(action="change_hotel", query="khách sạn gần biển"),
     )
-    monkeypatch.setattr(planner_tools_module, "select_hotel_candidates", fake_select_hotel_candidates)
-    monkeypatch.setattr(planner_tools_module, "rank_hotel_candidates", fake_rank_hotel_candidates)
+    monkeypatch.setattr(trip_planner_module, "select_hotel_candidates", fake_select_hotel_candidates)
+    monkeypatch.setattr(trip_planner_module, "rank_hotel_candidates", fake_rank_hotel_candidates)
 
-    planner_tools_module._legacy_modify_trip_plan.invoke(
-        {"modification_request": "Đổi khách sạn khác, giá tầm 1 triệu"}
+    trip_planner_module._legacy_modify_trip_plan(
+        current_data, "Đổi khách sạn khác, giá tầm 1 triệu"
     )
 
     assert captured_select_kwargs["max_price"] == 1_000_000.0

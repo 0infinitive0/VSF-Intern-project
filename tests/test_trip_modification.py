@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import src.cli.trip_builder_svc as trip_builder_svc
-from src.cli.trip_builder_svc import _apply_local_trip_change, _reapply_planning_constraints, apply_trip_edit_plan
+import src.services.trip_planner as trip_builder_svc
 from src.services.trip_edit_planner import parse_trip_edit_plan
+from src.services.trip_planner import _apply_local_trip_change, _reapply_planning_constraints, apply_trip_edit_plan
 from src.services.trip_scheduler import PlaceCandidate, TripChange
 
 

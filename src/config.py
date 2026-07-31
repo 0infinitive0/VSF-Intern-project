@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     app_port: int = Field(default=8000, ge=1, le=65535)
     app_host: str = "0.0.0.0"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
-    cors_origins: str = "http://localhost:3000,http://localhost:8082"
+    cors_origins: str = "http://localhost:3000,http://localhost:8082,http://localhost:5173"
 
     # Chat LLM & Providers
     openai_api_key: str = ""
@@ -47,6 +47,14 @@ class Settings(BaseSettings):
     ollama_url: str = "http://localhost:11434"
     supabase_url: str = ""
     supabase_service_key: str = ""
+
+    # Session registry (Phase 3)
+    session_ttl_seconds: int = Field(default=7200, ge=60, description="TTL per session in seconds (default 2h)")
+    max_sessions: int = Field(default=200, ge=1, description="Hard cap on concurrent in-memory sessions")
+    debug_trip_plan_file: bool = Field(
+        default=False,
+        description="If True, writes trip plan JSON to debug/{session_id}/ for debugging (never global paths)",
+    )
 
 
 @lru_cache

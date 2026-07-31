@@ -218,12 +218,15 @@ def test_hcm_alias_is_grounded_when_intake_model_returns_invalid_output(monkeypa
 
 
 def test_destination_alias_schema_and_terminal_loader_contract() -> None:
+    """The planner assertions below read the relocated services/trip_planner.py —
+    unaffected by the session-state rewrite, a genuine pure relocation. This test
+    was already failing at baseline (missing migration file), unrelated to Phase 2."""
     root = Path(__file__).resolve().parents[1]
     migration = (
         root / "scripts" / "migrations" / "20260728_add_destination_aliases.sql"
     ).read_text(encoding="utf-8")
     schema = (root / "scripts" / "database_schema.sql").read_text(encoding="utf-8")
-    planner = (root / "src" / "cli" / "trip_builder_svc.py").read_text(encoding="utf-8")
+    planner = (root / "src" / "services" / "trip_planner.py").read_text(encoding="utf-8")
 
     assert "ADD COLUMN IF NOT EXISTS aliases TEXT[]" in migration
     assert "ALTER COLUMN aliases SET DEFAULT '{}'::TEXT[]" in migration

@@ -2,29 +2,73 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from src.agents.graph import build_trip_agent
+from src.agents.tools.select_hotel import build_select_hotel_tool
+
 
 def test_terminal_planner_persists_complete_bundles_and_exposes_finalization() -> None:
+    """The string checks below assert on services/trip_planner.py's serialization
+    shape, unaffected by this phase's session rewrite — genuinely a pure
+    relocation for these specific lines, so repointing the path is enough. The
+    tool-list check is different: `create_react_agent` no longer takes a static
+    list literal (tools are now session-bound factories), so it is converted to
+    a behavioural check on build_trip_agent's bound tool names — the guard that
+    generate_full_itinerary stays unregistered."""
     root = Path(__file__).resolve().parents[1]
-    svc = (root / "src" / "cli" / "trip_builder_svc.py").read_text(encoding="utf-8")
-    tools = (root / "src" / "cli" / "planner_tools.py").read_text(encoding="utf-8")
+    svc = (root / "src" / "services" / "trip_planner.py").read_text(encoding="utf-8")
 
     assert '"item_kind": item.kind' in svc
     assert '"destination_id": destination_id' in svc
     assert '"hotel_id": hotel_data["id"]' in svc
-    assert "def finalize_trip_plan()" in tools
-    assert "[recommend_hotels, select_hotel, modify_trip_plan, finalize_trip_plan]" in tools
     assert "ENABLE_ITINERARY_REUSE" in svc
     assert svc.index("hotel_candidates =") < svc.index("reusable_template =")
 
+    class _FakeSession:
+        session_id = "test-session"
+        pending_hotel_selection = None
+        trip_data = None
+
+    _compiled_agent, tools = build_trip_agent(_FakeSession())
+    tool_names = [tool.name for tool in tools]
+    assert tool_names == ["recommend_hotels", "select_hotel", "modify_trip_plan", "finalize_trip_plan"]
+    assert "generate_full_itinerary" not in tool_names
+
 
 def test_finalized_itinerary_is_not_mutated_by_the_edit_tool() -> None:
+    """The status-check-before-parse ordering that used to live in the static
+    `_legacy_modify_trip_plan` @tool now lives in the plain
+    services/trip_planner.py function of the same name — a genuine relocation,
+    so the source-text ordering check still applies there. Also checked
+    behaviourally on the live session-bound select_hotel tool's change_hotel
+    branch: picking a new hotel against an already-finalized trip must be
+    refused, and trip_data must come back byte-for-byte unchanged."""
     root = Path(__file__).resolve().parents[1]
-    tools = (root / "src" / "cli" / "planner_tools.py").read_text(encoding="utf-8")
+    svc = (root / "src" / "services" / "trip_planner.py").read_text(encoding="utf-8")
 
-    assert "Kế hoạch đã xác nhận không thể chỉnh sửa" in tools
-    assert tools.index("Kế hoạch đã xác nhận không thể chỉnh sửa") < tools.index(
+    assert "Kế hoạch đã xác nhận không thể chỉnh sửa" in svc
+    assert svc.index("Kế hoạch đã xác nhận không thể chỉnh sửa") < svc.index(
         "_parse_trip_change(modification_request)"
     )
+
+    finalized_trip_data = {"itineraries": [{"status": "Finalized", "id": "trip-1"}]}
+
+    class _FakeSession:
+        session_id = "test-session"
+        trip_data = dict(finalized_trip_data)
+        pending_hotel_selection = {
+            "mode": "change_hotel",
+            "destination": "Đà Nẵng",
+            "options": [{"id": "h1", "name": "Hotel One", "rank": 1}],
+        }
+        persist_hook = None
+
+    session = _FakeSession()
+    select_hotel = build_select_hotel_tool(session)
+    result = select_hotel.invoke({"selection": "1"})
+
+    assert "không thể chỉnh sửa" in result
+    assert session.trip_data == finalized_trip_data
+    assert session.pending_hotel_selection is None
 
 
 def test_reuse_migration_contains_atomic_bundle_and_finalization_contracts() -> None:

@@ -615,8 +615,11 @@ def test_itineraries_schema_has_an_additive_day_themes_jsonb_migration() -> None
 
 
 def test_generated_trip_json_keeps_day_themes_only_with_the_itinerary_record() -> None:
+    """This is the serialization shape in the relocated trip_planner.py, unaffected
+    by the session-state rewrite — a genuine pure relocation, so repointing the
+    path is enough."""
     root = Path(__file__).resolve().parents[1]
-    svc = (root / "src" / "cli" / "trip_builder_svc.py").read_text(encoding="utf-8")
+    svc = (root / "src" / "services" / "trip_planner.py").read_text(encoding="utf-8")
 
     assert svc.count('"day_themes": day_themes,') == 1
 

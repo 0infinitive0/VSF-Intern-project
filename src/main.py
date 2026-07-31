@@ -7,7 +7,6 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from src.api.routes import router
-from src.cli.trip_builder_svc import _clear_pending_hotel_selection
 from src.config import get_settings
 
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
@@ -17,11 +16,9 @@ templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "tem
 async def lifespan(app: FastAPI):
     settings = get_settings()
     print(f"Starting {settings.app_name} in {settings.app_env} mode")
-    # A pending_hotel_selection.json left over from a previous run would make the
-    # first message of a new browser session get misread as a hotel choice reply —
-    # cleared once here (not per chat session, so one browser session starting
-    # doesn't wipe another session's in-progress hotel choice).
-    _clear_pending_hotel_selection()
+    # State is per-session now (TripSession.pending_hotel_selection), so there is
+    # no longer a process-global file whose leftover contents could poison the
+    # first message of a new browser session — nothing to clear here.
     yield
     print("Shutting down...")
 
