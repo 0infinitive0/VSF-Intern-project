@@ -929,7 +929,7 @@ def _select_edit_candidate(
     if not destination_id:
         raise ValueError("Thiếu mã điểm đến để tìm địa điểm mới.")
     candidates = _search_attraction_candidates(requirements.semantic_query, destination_id, match_count=40)
-    used_ids = {item.reference_id for item in scheduled if item is not target}
+    used_ids = {item.reference_id for item in scheduled}
     anchor = _candidate_anchor(scheduled, hotel, target, requirements)
     eligible = []
     for candidate in candidates:
