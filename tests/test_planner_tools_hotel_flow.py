@@ -376,3 +376,58 @@ def test_legacy_modify_trip_plan_change_hotel_forwards_parsed_budget(monkeypatch
 
     assert captured_select_kwargs["max_price"] == 1_000_000.0
     assert captured_rank_kwargs["target_price"] == 1_000_000.0
+
+
+import json
+
+
+def test_recommend_hotels_with_radius_filter_persists_pending_and_passes_to_search(monkeypatch):
+    captured: dict = {}
+
+    def fake_select(dest, dest_id, people, **kwargs):
+        captured.update(kwargs)
+        return [_fake_option("h1", "Hotel One", 1)]
+
+    monkeypatch.setattr(planner_tools_module, "_get_destination_id", lambda destination: "dest-1")
+    monkeypatch.setattr(planner_tools_module, "select_hotel_candidates", fake_select)
+    monkeypatch.setattr(planner_tools_module, "rank_hotel_candidates", lambda opts, **_kwargs: opts)
+
+    result = planner_tools_module.recommend_hotels.invoke(
+        {
+            "destination": "Đà Nẵng",
+            "duration": "3 ngày",
+            "people": "2 người",
+            "root_latitude": 10.7758,
+            "root_longitude": 106.7009,
+            "max_radius_km": 5.0,
+        }
+    )
+
+    assert not result.startswith("SYSTEM ERROR:")
+    assert captured["root_latitude"] == 10.7758
+    assert captured["root_longitude"] == 106.7009
+    assert captured["max_radius_km"] == 5.0
+
+    with open(PENDING_HOTEL_SELECTION_FILE, "r", encoding="utf-8") as f:
+        pending = json.load(f)
+
+    assert pending["radius_filter"]["max_radius_km"] == 5.0
+    assert pending["planning_constraints"]["semantic_search_radius_km"] == 5.0
+
+
+def test_recommend_hotels_partial_radius_returns_system_error(monkeypatch):
+    monkeypatch.setattr(planner_tools_module, "_get_destination_id", lambda destination: "dest-1")
+
+    result = planner_tools_module.recommend_hotels.invoke(
+        {
+            "destination": "Đà Nẵng",
+            "duration": "3 ngày",
+            "people": "2 người",
+            "root_latitude": 10.7758,
+            "max_radius_km": 5.0,
+        }
+    )
+
+    assert result.startswith("SYSTEM ERROR:")
+    assert "radius_filter_requires_latitude_longitude_and_radius" in result
+

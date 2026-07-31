@@ -423,9 +423,53 @@ def test_normalize_themes_deduplicates_invalid_llm_output_and_fills_days() -> No
     )
 
     assert [theme.day_number for theme in themes] == [1, 2, 3, 4]
-    assert themes[0].title == "Biển và thư giãn"
+    assert themes[0].title.startswith("Trải nghiệm ẩm thực")
     assert len({theme.title.casefold() for theme in themes}) == 4
-    assert any("ẩm thực" in f"{theme.title} {theme.query}".casefold() for theme in themes)
+    assert all("ẩm thực" in f"{theme.title} {theme.query}".casefold() for theme in themes)
+
+
+def test_user_theme_preference_constrains_every_day_theme() -> None:
+    themes = normalize_day_themes(
+        [
+            {"day_number": 1, "title": "Biển", "query": "beach coast relaxation"},
+            {"day_number": 2, "title": "Thiên nhiên", "query": "nature parks hiking"},
+            {"day_number": 3, "title": "Mua sắm", "query": "shopping markets city"},
+        ],
+        number_of_days=3,
+        preferences=["ẩm thực"],
+    )
+
+    assert len({theme.title.casefold() for theme in themes}) == 3
+    assert all("ẩm thực" in theme.title.casefold() for theme in themes)
+    assert all("ẩm thực" in theme.query.casefold() for theme in themes)
+    assert not any(
+        unrelated in theme.query.casefold()
+        for theme in themes
+        for unrelated in ("beach", "hiking", "shopping")
+    )
+
+
+def test_multiple_theme_preferences_are_applied_to_days_in_order() -> None:
+    themes = normalize_day_themes(
+        [
+            {"day_number": 1, "title": "Unrelated", "query": "shopping city"},
+            {"day_number": 2, "title": "Unrelated", "query": "beach coast"},
+            {"day_number": 3, "title": "Unrelated", "query": "nightlife entertainment"},
+            {"day_number": 4, "title": "Unrelated", "query": "food markets"},
+        ],
+        number_of_days=4,
+        preferences=["văn hóa", "thiên nhiên"],
+    )
+
+    expected_preferences = ["văn hóa", "thiên nhiên", "văn hóa", "thiên nhiên"]
+    assert [
+        next(preference for preference in expected_preferences if preference in theme.title.casefold())
+        for theme in themes
+    ] == expected_preferences
+    assert all(
+        preference in theme.query.casefold()
+        for preference, theme in zip(expected_preferences, themes, strict=True)
+    )
 
 
 def test_normalize_themes_replaces_malformed_llm_titles_but_keeps_valid_queries() -> None:
@@ -460,6 +504,80 @@ def test_normalize_themes_replaces_malformed_llm_titles_but_keeps_valid_queries(
         "Da Nang cultural experiences",
         "Da Nang food and drink experiences",
     ]
+
+
+def test_normalize_themes_applies_a_single_preference_to_every_day() -> None:
+    themes = normalize_day_themes(
+        [
+            {"day_number": 1, "title": "Beach day", "query": "beach coast relaxation"},
+            {"day_number": 2, "title": "Museum day", "query": "museums culture heritage"},
+            {"day_number": 3, "title": "Nature day", "query": "nature outdoor scenic"},
+            {"day_number": 4, "title": "City day", "query": "markets city nightlife"},
+        ],
+        number_of_days=4,
+        preferences=["street food"],
+    )
+
+    assert [theme.day_number for theme in themes] == [1, 2, 3, 4]
+    assert all("street food" in theme.title.casefold() for theme in themes)
+    assert all("street food" in theme.query.casefold() for theme in themes)
+    assert not any(
+        raw_query in theme.query.casefold()
+        for theme in themes
+        for raw_query in ("beach coast", "museums culture", "nature outdoor", "markets city")
+    )
+
+
+def test_normalize_themes_rotates_multiple_preferences_across_all_days() -> None:
+    themes = normalize_day_themes(
+        [
+            {"day_number": day, "title": f"Unrelated theme {day}", "query": "shopping nightlife"}
+            for day in range(1, 6)
+        ],
+        number_of_days=5,
+        preferences=["culture", "nature"],
+    )
+
+    expected_preferences = ["culture", "nature", "culture", "nature", "culture"]
+    for theme, preference in zip(themes, expected_preferences, strict=True):
+        assert preference in theme.title.casefold()
+        assert preference in theme.query.casefold()
+        assert "shopping nightlife" not in theme.query.casefold()
+
+
+def test_preference_based_day_themes_have_distinct_semantic_queries() -> None:
+    themes = normalize_day_themes(
+        [
+            {"day_number": day, "title": "Culture", "query": "culture sightseeing"}
+            for day in range(1, 4)
+        ],
+        number_of_days=3,
+        preferences=["culture"],
+    )
+
+    assert len({theme.title.casefold() for theme in themes}) == 3
+    assert len({theme.query.casefold() for theme in themes}) == 3
+    assert all("culture" in theme.query.casefold() for theme in themes)
+
+
+def test_normalize_themes_preserves_raw_semantic_queries_without_preferences() -> None:
+    raw_queries = [
+        "beach activities in Da Nang",
+        "Da Nang cultural experiences",
+        "Da Nang food and drink experiences",
+    ]
+    themes = normalize_day_themes(
+        [
+            {"day_number": day, "title": "Untrusted LLM title", "query": query}
+            for day, query in enumerate(raw_queries, start=1)
+        ],
+        number_of_days=3,
+        preferences=[],
+    )
+
+    assert [theme.query for theme in themes] == raw_queries
+    assert all(theme.title != "Untrusted LLM title" for theme in themes)
+    assert len({theme.title.casefold() for theme in themes}) == 3
 
 
 def test_day_themes_have_a_database_safe_json_payload() -> None:

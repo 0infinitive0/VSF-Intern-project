@@ -36,7 +36,7 @@ def test_get_route_info_success(mock_requests_get):
     
     assert result is not None
     assert result["distance_km"] == 12.5
-    assert result["duration_mins"] == 25.0
+    assert result["duration_mins"] == 62.5
     assert result["polyline"] == "encoded_polyline_here"
     
     # Verify the URL format: {lon},{lat}

@@ -113,3 +113,78 @@ def test_search_hotels_still_filters_by_star_rating(monkeypatch):
 
     assert [r["id"] for r in results] == ["high"]
     assert client.captured_params["match_count"] == 15
+
+
+import pytest
+
+
+def test_search_hotels_forwards_radius_params(monkeypatch):
+    client = _patch_client_and_embeddings(monkeypatch, data=[])
+
+    search_hotels_with_rooms(
+        "Hotel in Đà Nẵng",
+        match_count=5,
+        use_llm_filter=False,
+        root_latitude=10.7758,
+        root_longitude=106.7009,
+        max_radius_km=5.0,
+    )
+
+    assert client.captured_params is not None
+    assert client.captured_params["root_latitude"] == 10.7758
+    assert client.captured_params["root_longitude"] == 106.7009
+    assert client.captured_params["max_radius_km"] == 5.0
+
+
+def test_search_attractions_forwards_radius_params(monkeypatch):
+    client = _patch_client_and_embeddings(monkeypatch, data=[])
+
+    supabase_search_module.search_attractions(
+        "Biển đẹp",
+        match_count=5,
+        use_llm_filter=False,
+        root_latitude=10.7758,
+        root_longitude=106.7009,
+        max_radius_km=5.0,
+    )
+
+    assert client.captured_params is not None
+    assert client.captured_params["root_latitude"] == 10.7758
+    assert client.captured_params["root_longitude"] == 106.7009
+    assert client.captured_params["max_radius_km"] == 5.0
+
+
+def test_search_omits_radius_params_when_none(monkeypatch):
+    client = _patch_client_and_embeddings(monkeypatch, data=[])
+
+    supabase_search_module.search_attractions(
+        "Biển đẹp",
+        match_count=5,
+        use_llm_filter=False,
+    )
+
+    assert client.captured_params is not None
+    assert "root_latitude" not in client.captured_params
+    assert "root_longitude" not in client.captured_params
+    assert "max_radius_km" not in client.captured_params
+
+
+def test_radius_filter_validation_errors():
+    with pytest.raises(ValueError, match="radius_filter_requires_latitude_longitude_and_radius"):
+        supabase_search_module.validate_radius_filter(root_latitude=10.0, root_longitude=106.0)
+
+    with pytest.raises(ValueError, match="invalid_parameter_type_for_radius_filter"):
+        supabase_search_module.validate_radius_filter(root_latitude=True, root_longitude=106.0, max_radius_km=5.0)
+
+    with pytest.raises(ValueError, match="root_latitude_out_of_range"):
+        supabase_search_module.validate_radius_filter(root_latitude=95.0, root_longitude=106.0, max_radius_km=5.0)
+
+    with pytest.raises(ValueError, match="root_longitude_out_of_range"):
+        supabase_search_module.validate_radius_filter(root_latitude=10.0, root_longitude=190.0, max_radius_km=5.0)
+
+    with pytest.raises(ValueError, match="max_radius_km_must_be_finite_and_non_negative"):
+        supabase_search_module.validate_radius_filter(root_latitude=10.0, root_longitude=106.0, max_radius_km=-2.0)
+
+    with pytest.raises(ValueError, match="radius_filter_parameters_must_be_finite"):
+        supabase_search_module.validate_radius_filter(root_latitude=float("nan"), root_longitude=106.0, max_radius_km=5.0)
+

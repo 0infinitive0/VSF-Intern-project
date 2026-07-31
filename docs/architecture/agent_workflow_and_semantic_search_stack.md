@@ -171,7 +171,7 @@ so all daily clusters are based on the new hotel location.
 | Terminal orchestration | Python, LangGraph, LangChain tools | `create_react_agent` exposes only generate and modify tools; deterministic intake bypasses model routing for complete new-trip facts. | Keeps conversational capability without placing factual venue selection in the model. |
 | Chat / constrained extraction | Ollama `llama3.1` (`llama3.1:latest` for search-filter extraction) | Produces daily semantic queries and a stateless typed edit plan using only current itinerary IDs; optionally extracts semantic text plus filters from general search queries. | Runs locally, supports Vietnamese interactions, and is limited to small structured tasks. |
 | Embeddings | Ollama `bge-m3` through `OllamaEmbeddings` | Embeds the cleaned hotel or attraction query once per semantic search. | Multilingual embeddings suit Vietnamese and English travel queries and avoid a cloud embedding dependency. |
-| Semantic vector store | Supabase PostgreSQL RPC / pgvector deployment | Calls `match_attractions` and `match_hotels_with_rooms` with query embedding, threshold, count, and optional destination filter. | Keeps vector retrieval beside relational records and uses SQL/RPC filtering without a second active data store. |
+| Semantic vector store | Supabase PostgreSQL RPC / pgvector deployment | Calls `match_attractions` and `match_hotels_with_rooms` with query embedding, threshold, count, optional destination filter, and optional radius filter (`root_latitude`, `root_longitude`, `max_radius_km`). | Keeps vector retrieval beside relational records and uses SQL/RPC filtering without a second active data store. |
 | Relational source of truth | Supabase PostgreSQL | Holds destinations, hotels, rooms, attractions, itineraries, and itinerary items; hydrates search results by UUID. | Schedules require factual fields and durable IDs, not vector snippets. |
 | Deterministic planner | Pure Python scheduler | Scores candidates and creates/revalidates time blocks. | Makes geo/time safety reproducible and unit-testable. |
 | API surface | FastAPI | Preserves `/search_attractions` and `/search_hotels` response contracts. | Makes semantic search reusable without exposing internal scheduling details. |
@@ -205,15 +205,15 @@ sequenceDiagram
     participant RPC as Supabase RPC<br/>(pgvector similarity)
     participant Tbl as Supabase table<br/>(hotels / attractions)
 
-    U->>App: query text + optional destination_id
+    U->>App: query text + optional destination_id + optional radius
     opt use_llm_filter = true
         App->>LLM: extract filters from query text
         LLM-->>App: clean_query, destination_name,<br/>min_star_rating / category, max_price
     end
     App->>Emb: embed(clean_query)
     Emb-->>App: 1024-d query vector
-    App->>RPC: match_hotels_with_rooms /<br/>match_attractions(query_embedding,<br/>match_threshold, match_count, filter_destination_id)
-    RPC-->>App: rows ranked by similarity<br/>(compared against pre-computed embeddings)
+    App->>RPC: match_hotels_with_rooms /<br/>match_attractions(query_embedding,<br/>match_threshold, match_count, filter_destination_id, root_lat, root_lon, max_radius_km)
+    RPC-->>App: rows ranked by similarity & filtered by radius<br/>(compared against pre-computed embeddings)
     App->>App: apply extracted filters locally<br/>(star rating / price / category)
     App->>Tbl: select full columns<br/>where id in (matched ids)
     Tbl-->>App: hydrated rows
@@ -234,8 +234,8 @@ row hydrated in the last step.
    already resolved the destination and created a precise themed query.
 3. `bge-m3` embeds the semantic phrase locally through Ollama.
 4. The client calls the matching Supabase RPC with `query_embedding`,
-   `match_threshold`, `match_count`, and `filter_destination_id` when
-   known. Default thresholds are 0.40 for attractions and 0.35 for hotels.
+   `match_threshold`, `match_count`, `filter_destination_id`, and optional
+   `root_latitude`, `root_longitude`, `max_radius_km`. Default thresholds are 0.40 for attractions and 0.35 for hotels.
 5. The service applies exact metadata filters locally after retrieval. It
    over-fetches three times when a category, budget, star-rating, or price
    filter is active, then returns up to the requested count. If strict metadata
@@ -247,8 +247,7 @@ row hydrated in the last step.
 ### Search contracts
 
 The shared `search_attractions` and `search_hotels_with_rooms` interfaces
-stay unchanged because they also back FastAPI endpoints. The planner adds its
-own hydration step rather than widening API response shapes.
+stay unchanged for legacy positional callers, with new optional radius arguments added at the end.
 
 | Search | Active RPC | Planner-specific use |
 |---|---|---|
@@ -273,8 +272,8 @@ own hydration step rather than widening API response shapes.
 
 | Search Type | Function / RPC | Search Inputs |
 |---|---|---|
-| **Attraction Search** | `search_attractions` / `match_attractions` | • **Text Query (`query`)**: Theme phrase or meal query (e.g., `"{theme.query}. Destination: {destination}"`).<br>• **Query Embedding (`query_embedding`)**: 1024d dense vector from `bge-m3`.<br>• **Destination Filter (`filter_destination_id`)**: Supabase `destination_id` UUID.<br>• **Threshold & Count**: `match_threshold` (0.40), `match_count` (15–20).<br>• **LLM Filters** (optional): `category`, `max_price`. |
-| **Hotel Search** | `search_hotels_with_rooms` / `match_hotels_with_rooms` | • **Text Query (`query`)**: e.g., `"Hotel in {destination} for {people} people"`.<br>• **Query Embedding (`query_embedding`)**: 1024d dense vector from `bge-m3`.<br>• **Destination Filter (`filter_destination_id`)**: Supabase `destination_id` UUID.<br>• **Threshold & Count**: `match_threshold` (0.35), `match_count` (5–10).<br>• **LLM Filters** (optional): `min_star_rating`, `max_price`. |
+| **Attraction Search** | `search_attractions` / `match_attractions` | • **Text Query (`query`)**: Theme phrase or meal query (e.g., `"{theme.query}. Destination: {destination}"`).<br>• **Query Embedding (`query_embedding`)**: 1024d dense vector from `bge-m3`.<br>• **Destination Filter (`filter_destination_id`)**: Supabase `destination_id` UUID.<br>• **Threshold & Count**: `match_threshold` (0.40), `match_count` (15–20).<br>• **LLM Filters** (optional): `category`, `max_price`.<br>• **Radius Filters** (optional): `root_latitude`, `root_longitude`, `max_radius_km`. |
+| **Hotel Search** | `search_hotels_with_rooms` / `match_hotels_with_rooms` | • **Text Query (`query`)**: e.g., `"Hotel in {destination} for {people} people"`.<br>• **Query Embedding (`query_embedding`)**: 1024d dense vector from `bge-m3`.<br>• **Destination Filter (`filter_destination_id`)**: Supabase `destination_id` UUID.<br>• **Threshold & Count**: `match_threshold` (0.35), `match_count` (5–10).<br>• **LLM Filters** (optional): `min_star_rating`, `max_price`.<br>• **Radius Filters** (optional): `root_latitude`, `root_longitude`, `max_radius_km`. |
 | **Itinerary Reuse Search** | `search_reusable_itineraries` / `match_itineraries` | • **Reuse Fingerprint Query**: Text fingerprint string built from `ItineraryReuseQuery`.<br>• **Fingerprint Embedding**: 1024d dense vector from `bge-m3`.<br>• **Hard Filters**: exact `destination_id`, `duration_days`, and selected `hotel_id`.<br>• **Threshold**: Similarity threshold set to **0.88** (88% similarity match). |
 
 

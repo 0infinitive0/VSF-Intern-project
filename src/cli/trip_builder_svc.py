@@ -218,13 +218,26 @@ Every day_number from 1 through {number_of_days} must appear exactly once and ti
     return normalize_day_themes(raw_themes, number_of_days, preferences)
 
 
-def _search_attraction_candidates(query: str, destination_id: str, match_count: int = 20) -> List[PlaceCandidate]:
-    compact_results = rpc_search_attractions(
-        query=query,
-        match_count=match_count,
-        filter_destination_id=destination_id,
-        use_llm_filter=False,
-    ) or []
+def _search_attraction_candidates(
+    query: str,
+    destination_id: str,
+    match_count: int = 20,
+    root_latitude: float | None = None,
+    root_longitude: float | None = None,
+    max_radius_km: float | None = None,
+) -> List[PlaceCandidate]:
+    kwargs: Dict[str, Any] = {
+        "query": query,
+        "match_count": match_count,
+        "filter_destination_id": destination_id,
+        "use_llm_filter": False,
+    }
+    if root_latitude is not None or root_longitude is not None or max_radius_km is not None:
+        kwargs["root_latitude"] = root_latitude
+        kwargs["root_longitude"] = root_longitude
+        kwargs["max_radius_km"] = max_radius_km
+
+    compact_results = rpc_search_attractions(**kwargs) or []
     hydrated = _hydrate_records(
         "attractions",
         compact_results,
@@ -424,12 +437,24 @@ def _build_trip_data(
         categories = sorted({str(row.get("category")) for row in category_rows if row.get("category")})
         themes = _generate_day_themes(destination, number_of_days, categories, preferences)
 
+    active_radius_km = (dict(planning_constraints or {})).get("semantic_search_radius_km")
+    if active_radius_km is None:
+        active_radius_km = 15.0
+    active_radius_km = float(active_radius_km)
+
+    active_lat, active_lon = (None, None)
+    if hotel_candidates and hotel_candidates[0].coordinate_pair:
+        active_lat, active_lon = hotel_candidates[0].coordinate_pair
+
     themed_candidates: Dict[int, List[PlaceCandidate]] = {}
     for theme in themes:
         themed_candidates[theme.day_number] = _search_attraction_candidates(
             f"{theme.query}. Destination: {destination}",
             destination_id,
             match_count=20,
+            root_latitude=active_lat,
+            root_longitude=active_lon,
+            max_radius_km=active_radius_km,
         )
     pool_size = min(max(number_of_days * 3, 15), 50)
     restaurants = []
@@ -438,11 +463,17 @@ def _build_trip_data(
             f"local restaurant lunch Vietnamese food in {destination}",
             destination_id,
             match_count=pool_size,
+            root_latitude=active_lat,
+            root_longitude=active_lon,
+            max_radius_km=active_radius_km,
         )
     cafes = _search_attraction_candidates(
         f"coffee shop cafe relaxation in {destination}",
         destination_id,
         match_count=pool_size,
+        root_latitude=active_lat,
+        root_longitude=active_lon,
+        max_radius_km=active_radius_km,
     )
     breakfasts = []
     if any("breakfast" not in hotel.covered_meals for hotel in hotel_candidates):
@@ -450,6 +481,9 @@ def _build_trip_data(
             f"breakfast restaurant cafe morning food in {destination}",
             destination_id,
             match_count=pool_size,
+            root_latitude=active_lat,
+            root_longitude=active_lon,
+            max_radius_km=active_radius_km,
         )
     dinners = []
     if any("dinner" not in hotel.covered_meals for hotel in hotel_candidates):
@@ -457,6 +491,9 @@ def _build_trip_data(
             f"dinner restaurant evening dining in {destination}",
             destination_id,
             match_count=pool_size,
+            root_latitude=active_lat,
+            root_longitude=active_lon,
+            max_radius_km=active_radius_km,
         )
     hotel_candidate, schedule = build_itinerary_with_hotel_reselection(
         hotel_candidates,
@@ -953,7 +990,21 @@ def _select_edit_candidate(
         destination_id = str(_itinerary_record(current_data).get("destination_id") or "")
     if not destination_id:
         raise ValueError("Thiếu mã điểm đến để tìm địa điểm mới.")
-    candidates = _search_attraction_candidates(requirements.semantic_query, destination_id, match_count=40)
+    constraints = dict(_itinerary_record(current_data).get("planning_constraints") or current_data.get("planning_constraints") or {})
+    active_radius_km = constraints.get("semantic_search_radius_km")
+    active_lat, active_lon = (None, None)
+    if active_radius_km is not None and hotel and hotel.coordinate_pair:
+        active_lat, active_lon = hotel.coordinate_pair
+        active_radius_km = float(active_radius_km)
+
+    candidates = _search_attraction_candidates(
+        requirements.semantic_query,
+        destination_id,
+        match_count=40,
+        root_latitude=active_lat,
+        root_longitude=active_lon,
+        max_radius_km=active_radius_km,
+    )
     used_ids = {item.reference_id for item in scheduled if item is not target}
     anchor = _candidate_anchor(scheduled, hotel, target, requirements)
     eligible = []
@@ -1455,10 +1506,20 @@ def _apply_local_trip_change(
         destination_id = str(current_data.get("hotel", {}).get("destination_id") or "")
         if not destination_id:
             raise ValueError("Thiếu mã điểm đến để tìm địa điểm thay thế.")
+        constraints = dict(_itinerary_record(current_data).get("planning_constraints") or current_data.get("planning_constraints") or {})
+        active_radius_km = constraints.get("semantic_search_radius_km")
+        active_lat, active_lon = (None, None)
+        if active_radius_km is not None and hotel and hotel.coordinate_pair:
+            active_lat, active_lon = hotel.coordinate_pair
+            active_radius_km = float(active_radius_km)
+
         candidates = _search_attraction_candidates(
             change.query or modification_request,
             destination_id,
             match_count=15,
+            root_latitude=active_lat,
+            root_longitude=active_lon,
+            max_radius_km=active_radius_km,
         )
         used_ids = {item.reference_id for item in scheduled}
         target = scheduled[target_index]

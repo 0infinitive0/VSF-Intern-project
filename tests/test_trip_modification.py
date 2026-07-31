@@ -244,7 +244,7 @@ def test_replan_day_changes_only_the_requested_theme_and_day_items(monkeypatch) 
                 "id": "trip-1",
                 "duration_days": 2,
                 "number_of_adults": 1,
-                "preferences": ["Hồ Chí Minh"],
+                "preferences": ["Hồ Chí Minh", "văn hóa"],
                 "destination_id": "destination-1",
                 "day_themes": [
                     {"day_number": 1, "title": "Văn hóa", "query": "museum"},
@@ -267,6 +267,7 @@ def test_replan_day_changes_only_the_requested_theme_and_day_items(monkeypatch) 
     captured = {}
 
     def _build(*_args, **kwargs):
+        captured["preferences"] = _args[3]
         captured["themes"] = kwargs["themes_override"]
         return rebuilt
 
@@ -291,4 +292,5 @@ def test_replan_day_changes_only_the_requested_theme_and_day_items(monkeypatch) 
     assert any(item["id"] == "day-one" for item in trip_data["itinerary_items"])
     assert any(item["reference_id"] == "new-day-two" for item in trip_data["itinerary_items"])
     assert trip_data["itineraries"][0]["day_themes"][1]["title"] == "Ẩm thực"
+    assert captured["preferences"] == "văn hóa"
     assert "markets" in captured["themes"][1]["query"]

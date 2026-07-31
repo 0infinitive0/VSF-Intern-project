@@ -617,3 +617,24 @@ def test_rank_hotel_candidates_amenity_bonus_scales_with_match_count():
     scores = {data["id"]: data["recommendation_score"] for data, _c in ranked}
 
     assert round(scores["two"] - scores["zero"], 6) == round(2 * 0.03, 6)
+
+
+def test_select_hotel_candidates_forwards_radius_params(monkeypatch):
+    captured: dict = {}
+
+    def fake_search_hotels_with_rooms(
+        *, query, match_count, filter_destination_id, min_price=None, max_price=None, root_latitude=None, root_longitude=None, max_radius_km=None
+    ):
+        captured["root_latitude"] = root_latitude
+        captured["root_longitude"] = root_longitude
+        captured["max_radius_km"] = max_radius_km
+        return []
+
+    monkeypatch.setattr(hotel_selection_module, "search_hotels_with_rooms", fake_search_hotels_with_rooms)
+
+    select_hotel_candidates("Đà Nẵng", "dest-1", "2 người", root_latitude=10.7758, root_longitude=106.7009, max_radius_km=5.0)
+
+    assert captured["root_latitude"] == 10.7758
+    assert captured["root_longitude"] == 106.7009
+    assert captured["max_radius_km"] == 5.0
+

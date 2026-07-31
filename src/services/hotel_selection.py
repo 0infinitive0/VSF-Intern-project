@@ -73,6 +73,9 @@ def select_hotel_candidates(
     match_count: int = 5,
     min_price: float | None = None,
     max_price: float | None = None,
+    root_latitude: float | None = None,
+    root_longitude: float | None = None,
+    max_radius_km: float | None = None,
 ) -> List[Tuple[Dict[str, Any], PlaceCandidate]]:
     """Search and return verified hotel options along with PlaceCandidate objects.
 
@@ -86,13 +89,19 @@ def select_hotel_candidates(
     the best `match_count` results that are also in range.
     """
     query = hotel_query or f"Hotel in {destination} for {people} people"
-    search_results = search_hotels_with_rooms(
-        query=query,
-        match_count=match_count,
-        filter_destination_id=destination_id,
-        min_price=min_price,
-        max_price=max_price,
-    ) or []
+    kwargs: Dict[str, Any] = {
+        "query": query,
+        "match_count": match_count,
+        "filter_destination_id": destination_id,
+        "min_price": min_price,
+        "max_price": max_price,
+    }
+    if root_latitude is not None or root_longitude is not None or max_radius_km is not None:
+        kwargs["root_latitude"] = root_latitude
+        kwargs["root_longitude"] = root_longitude
+        kwargs["max_radius_km"] = max_radius_km
+
+    search_results = search_hotels_with_rooms(**kwargs) or []
 
     hydrated = _hydrate_hotel_records(search_results)
     options: List[Tuple[Dict[str, Any], PlaceCandidate]] = []

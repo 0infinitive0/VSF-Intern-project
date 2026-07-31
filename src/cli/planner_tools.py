@@ -39,6 +39,7 @@ from src.services.hotel_selection import (
 from src.services.itinerary_reuse import ItineraryReuseQuery
 from src.services.itinerary_store import ItineraryStore, ItineraryStoreError
 from src.services.llm import get_llm
+from src.services.supabase_search import validate_radius_filter
 from src.services.trip_edit_planner import TripEditPlan, TripEditPlanError, plan_trip_edit
 from src.services.trip_scheduler import PlaceCandidate
 
@@ -113,6 +114,7 @@ def _generate_and_save_itinerary(
     *,
     hotel_query: str | None = None,
     preselected_hotel: dict | None = None,
+    planning_constraints: dict | None = None,
 ) -> str:
     """Shared build/save/format sequence used by generate_full_itinerary and select_hotel."""
     try:
@@ -123,6 +125,7 @@ def _generate_and_save_itinerary(
             preferences,
             hotel_query=hotel_query,
             preselected_hotel=preselected_hotel,
+            planning_constraints=planning_constraints,
         )
         _save_trip_data(trip_data)
     except Exception as exc:
@@ -141,11 +144,10 @@ def generate_full_itinerary(
     hotel_id: str = "",
 ) -> str:
     """
-    CRITICAL: Direct/programmatic entry point that generates a trip plan in one shot. The
-    conversational flow should NOT call this tool directly — it goes through `recommend_hotels`
-    then `select_hotel` instead, so the user picks a hotel before the itinerary is built.
-    If `hotel_id` is given, that exact hotel is used (no search). If empty, a hotel is
-    auto-selected (legacy behavior, kept for direct/programmatic callers).
+    Do NOT call this tool directly during normal user interactions.
+    `recommend_hotels` must be called first so the user can choose a hotel; `select_hotel`
+    then handles calling this internal generation sequence automatically. Only use this
+    tool if `hotel_id` is already specified and validated.
     """
     destination, error = _validate_trip_basics(destination, duration, people)
     if error:
@@ -180,19 +182,23 @@ def recommend_hotels(
     min_price: str = "",
     max_price: str = "",
     hotel_amenity_prefs: str = "",
+    root_latitude: str | float | None = None,
+    root_longitude: str | float | None = None,
+    max_radius_km: str | float | None = None,
 ) -> str:
     """
     CRITICAL: Use this tool ONCE destination, duration, and number of people are all known, to show
     a ranked list of real hotel options. This is the ONLY way to start planning a new trip — never
     call `generate_full_itinerary` yourself. If the user mentioned specific hotel wants (star rating,
     view, amenities...), pass them in `hotel_preferences`. `target_price`/`min_price`/`max_price`/
-    `hotel_amenity_prefs` are usually pre-resolved by the guided budget/amenity intake in
-    terminal_chat.py (a tier pick like "tầm trung" resolves to a real min/max range, e.g. 800000/
-    2500000) — but if you are handling trip planning yourself (e.g. a second trip request later in
-    the same conversation) and the user states a budget, convert it to a plain VND number yourself:
-    a single number (e.g. "1 triệu" -> target_price="1000000") is used as a ceiling only; if the user
-    gives an actual range (e.g. "1-2 triệu"), pass min_price/max_price instead. These matter more
-    than the qualitative wants in `hotel_preferences` since they actually filter results by price.
+    `hotel_amenity_prefs` are usually pre-resolved by the guided budget/amenity intake.
+
+    OPTIONAL RADIUS FILTERING:
+    - If caller specifies an anchor coordinate and maximum radius (in km), pass `root_latitude`, `root_longitude`,
+      and `max_radius_km` together.
+    - All three parameters MUST be passed together if radius filtering is used.
+    - DO NOT invent coordinates or guess a location. Only pass coordinates if explicitly supplied by caller.
+    - DO NOT widen or remove the radius if no hotel is returned; let the system report zero results.
     After this returns, the user's next reply must be handled by `select_hotel`, not by calling this
     tool or generate_full_itinerary again.
     """
@@ -205,13 +211,20 @@ def recommend_hotels(
         return f"SYSTEM ERROR: Không tìm thấy dữ liệu điểm đến cho {destination}."
     destination_id = str(destination_id)
 
+    parsed_root_lat = float(root_latitude) if root_latitude is not None and str(root_latitude).strip() != "" else None
+    parsed_root_lon = float(root_longitude) if root_longitude is not None and str(root_longitude).strip() != "" else None
+    parsed_max_radius = float(max_radius_km) if max_radius_km is not None and str(max_radius_km).strip() != "" else None
+
+    try:
+        radius_obj = validate_radius_filter(parsed_root_lat, parsed_root_lon, parsed_max_radius)
+    except ValueError as val_err:
+        return f"SYSTEM ERROR: {val_err}"
+
     hotel_query = hotel_preferences.strip() or None
     parsed_target_price = float(target_price) if target_price.strip() else None
     parsed_min_price = float(min_price) if min_price.strip() else None
     parsed_max_price = float(max_price) if max_price.strip() else None
     if parsed_min_price is None and parsed_max_price is None and parsed_target_price is not None:
-        # No explicit range given (e.g. a caller that only knows the older single-number
-        # target_price) — fall back to treating it as a ceiling-only budget.
         parsed_max_price = parsed_target_price
     amenity_pref_set = frozenset(
         tag.strip() for tag in hotel_amenity_prefs.split(",") if tag.strip()
@@ -225,6 +238,9 @@ def recommend_hotels(
             hotel_query=hotel_query,
             min_price=parsed_min_price,
             max_price=parsed_max_price,
+            root_latitude=radius_obj.root_latitude if radius_obj else None,
+            root_longitude=radius_obj.root_longitude if radius_obj else None,
+            max_radius_km=radius_obj.max_radius_km if radius_obj else None,
         )
         sea_view_hotel_ids = (
             lookup_sea_view_hotel_ids([data["id"] for data, _candidate in options])
@@ -247,19 +263,40 @@ def recommend_hotels(
             "không thể gợi ý khách sạn."
         )
 
-    _save_pending_hotel_selection(
-        {
-            "mode": "new_trip",
-            "destination": destination,
-            "destination_id": destination_id,
-            "duration": duration,
-            "people": people,
-            "preferences_text": preferences,
-            "hotel_query": hotel_query,
-            "created_at": datetime.now().isoformat(),
-            "options": [data for data, _candidate in options],
+    pending_payload: dict[str, Any] = {
+        "mode": "new_trip",
+        "destination": destination,
+        "destination_id": destination_id,
+        "duration": duration,
+        "people": people,
+        "preferences_text": preferences,
+        "hotel_query": hotel_query,
+        "created_at": datetime.now().isoformat(),
+        "options": [data for data, _candidate in options],
+    }
+    planning_constraints = {}
+    if radius_obj and radius_obj.max_radius_km is not None:
+        planning_constraints["semantic_search_radius_km"] = radius_obj.max_radius_km
+    if parsed_target_price is not None:
+        planning_constraints["target_price"] = parsed_target_price
+    if parsed_min_price is not None:
+        planning_constraints["min_price"] = parsed_min_price
+    if parsed_max_price is not None:
+        planning_constraints["max_price"] = parsed_max_price
+    if amenity_pref_set:
+        planning_constraints["amenity_prefs"] = list(amenity_pref_set)
+    if hotel_query:
+        planning_constraints["hotel_query"] = hotel_query
+
+    if radius_obj:
+        pending_payload["radius_filter"] = {
+            "root_latitude": radius_obj.root_latitude,
+            "root_longitude": radius_obj.root_longitude,
+            "max_radius_km": radius_obj.max_radius_km,
         }
-    )
+    pending_payload["planning_constraints"] = planning_constraints
+
+    _save_pending_hotel_selection(pending_payload)
     return format_hotel_options(options)
 
 
@@ -293,6 +330,10 @@ def select_hotel(selection: str) -> str:
     people = pending.get("people", "")
     preferences = pending.get("preferences_text", "")
 
+    planning_constraints = dict(pending.get("planning_constraints") or {})
+    if "radius_filter" in pending and "semantic_search_radius_km" not in planning_constraints:
+        planning_constraints["semantic_search_radius_km"] = pending["radius_filter"]["max_radius_km"]
+
     if mode == "change_hotel":
         if not os.path.exists(CURRENT_TRIP_PLAN_FILE):
             _clear_pending_hotel_selection()
@@ -315,7 +356,7 @@ def select_hotel(selection: str) -> str:
                 people,
                 preferences,
                 preselected_hotel=hotel_data,
-                planning_constraints=pending.get("planning_constraints") or {},
+                planning_constraints=planning_constraints,
             )
         except Exception as exc:
             logger.exception("Hotel change failed")
@@ -328,7 +369,6 @@ def select_hotel(selection: str) -> str:
         if isinstance(updated_itinerary, dict):
             updated_itinerary["status"] = "Draft"
             updated_itinerary.pop("summary", None)
-            planning_constraints = pending.get("planning_constraints") or {}
             if planning_constraints:
                 updated_itinerary["planning_constraints"] = planning_constraints
                 updated_data.setdefault("adjustments", []).extend(
@@ -338,7 +378,14 @@ def select_hotel(selection: str) -> str:
         _clear_pending_hotel_selection()
         return format_trip_response_from_json(updated_data)
 
-    result = _generate_and_save_itinerary(destination, duration, people, preferences, preselected_hotel=hotel_data)
+    result = _generate_and_save_itinerary(
+        destination,
+        duration,
+        people,
+        preferences,
+        preselected_hotel=hotel_data,
+        planning_constraints=planning_constraints if planning_constraints else None,
+    )
     if not str(result).startswith("SYSTEM ERROR:"):
         _clear_pending_hotel_selection()
     return result
@@ -378,15 +425,30 @@ def _legacy_modify_trip_plan(modification_request: str) -> str:
             if not destination_id:
                 raise ValueError("Không xác định được điểm đến của kế hoạch hiện tại.")
             hotel_query = change.query or modification_request
-            # `change.query` only carries free-text venue wants (from the LLM edit
-            # classifier); it has no dedicated price field, so parse a budget number
-            # off the raw request with the same deterministic parser the guided
-            # budget question uses, rather than hoping the search's own LLM query
-            # parser re-discovers it downstream.
             parsed_target_price = _parse_free_text_price(modification_request)
+            planning_constraints = dict((current_data.get("itineraries") or [{}])[0].get("planning_constraints") or {})
+            max_radius_km = planning_constraints.get("semantic_search_radius_km")
+            root_lat, root_lon = (None, None)
+            current_hotel_coords = (current_data.get("hotel") or {}).get("coordinates")
+            if max_radius_km is not None and current_hotel_coords:
+                parts = [p.strip() for p in current_hotel_coords.split(",") if p.strip()]
+                if len(parts) == 2:
+                    try:
+                        root_lat, root_lon = float(parts[0]), float(parts[1])
+                        max_radius_km = float(max_radius_km)
+                    except ValueError:
+                        root_lat, root_lon, max_radius_km = (None, None, None)
+
             options = rank_hotel_candidates(
                 select_hotel_candidates(
-                    destination, destination_id, people, hotel_query=hotel_query, max_price=parsed_target_price
+                    destination,
+                    destination_id,
+                    people,
+                    hotel_query=hotel_query,
+                    max_price=parsed_target_price,
+                    root_latitude=root_lat,
+                    root_longitude=root_lon,
+                    max_radius_km=max_radius_km,
                 ),
                 target_price=parsed_target_price,
             )
@@ -401,12 +463,7 @@ def _legacy_modify_trip_plan(modification_request: str) -> str:
                     "people": people,
                     "preferences_text": preferences,
                     "hotel_query": hotel_query,
-                    "planning_constraints": dict(
-                        ((current_data.get("itineraries") or [{}])[0]).get(
-                            "planning_constraints"
-                        )
-                        or {}
-                    ),
+                    "planning_constraints": planning_constraints,
                     "created_at": datetime.now().isoformat(),
                     "options": [data for data, _candidate in options],
                 }
@@ -454,12 +511,65 @@ def execute_trip_edit_request(modification_request: str, plan: TripEditPlan) -> 
             destination_id = str(saved_itinerary.get("destination_id") or _get_destination_id(destination) or "")
             if not destination or not destination_id:
                 raise ValueError("Kế hoạch hiện tại thiếu điểm đến để đổi khách sạn.")
-            hotel_query = hotel_change.hotel_query or modification_request
+            planning_constraints = dict(saved_itinerary.get("planning_constraints") or {})
+            
+            old_min_price = planning_constraints.get("min_price")
+            old_max_price = planning_constraints.get("max_price")
+            old_target_price = planning_constraints.get("target_price")
+            old_amenity_prefs = planning_constraints.get("amenity_prefs") or []
+            old_hotel_query = planning_constraints.get("hotel_query")
+
+            hotel_query = hotel_change.hotel_query or old_hotel_query or modification_request
+            
+            parsed_target_price = _parse_free_text_price(modification_request)
+            if parsed_target_price is not None:
+                new_target_price = parsed_target_price
+                new_min_price = None
+                new_max_price = parsed_target_price
+            else:
+                new_target_price = old_target_price
+                new_min_price = old_min_price
+                new_max_price = old_max_price
+            
+            max_radius_km = planning_constraints.get("semantic_search_radius_km")
+            root_lat, root_lon = (None, None)
+            current_hotel_coords = (current_data.get("hotel") or {}).get("coordinates")
+            if max_radius_km is not None and current_hotel_coords:
+                parts = [p.strip() for p in current_hotel_coords.split(",") if p.strip()]
+                if len(parts) == 2:
+                    try:
+                        root_lat, root_lon = float(parts[0]), float(parts[1])
+                        max_radius_km = float(max_radius_km)
+                    except ValueError:
+                        root_lat, root_lon, max_radius_km = (None, None, None)
+
             options = rank_hotel_candidates(
-                select_hotel_candidates(destination, destination_id, people, hotel_query=hotel_query)
+                select_hotel_candidates(
+                    destination,
+                    destination_id,
+                    people,
+                    hotel_query=hotel_query,
+                    min_price=new_min_price,
+                    max_price=new_max_price,
+                    root_latitude=root_lat,
+                    root_longitude=root_lon,
+                    max_radius_km=max_radius_km,
+                ),
+                target_price=new_target_price,
+                amenity_prefs=frozenset(old_amenity_prefs),
             )
             if not options:
                 raise ValueError(f"Không tìm thấy khách sạn phù hợp tại {destination}.")
+                
+            if new_target_price is not None:
+                planning_constraints["target_price"] = new_target_price
+            if new_min_price is not None:
+                planning_constraints["min_price"] = new_min_price
+            if new_max_price is not None:
+                planning_constraints["max_price"] = new_max_price
+            if hotel_query:
+                planning_constraints["hotel_query"] = hotel_query
+
             _save_pending_hotel_selection(
                 {
                     "mode": "change_hotel",
@@ -469,7 +579,7 @@ def execute_trip_edit_request(modification_request: str, plan: TripEditPlan) -> 
                     "people": people,
                     "preferences_text": preferences,
                     "hotel_query": hotel_query,
-                    "planning_constraints": dict(saved_itinerary.get("planning_constraints") or {}),
+                    "planning_constraints": planning_constraints,
                     "created_at": datetime.now().isoformat(),
                     "options": [data for data, _candidate in options],
                 }

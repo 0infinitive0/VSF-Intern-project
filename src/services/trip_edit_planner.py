@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from src.services.llm import get_llm
+from src.services.trip_scheduler import parse_day_scope
 
 EditDecision = Literal["apply", "clarify", "not_edit"]
 EditOperationName = Literal[
@@ -103,13 +104,19 @@ class TripEditPlan:
     raw_request: str = ""
 
 
-def build_trip_edit_context(trip_data: dict[str, Any]) -> dict[str, Any]:
+def build_trip_edit_context(
+    trip_data: dict[str, Any],
+    modification_request: str = "",
+) -> dict[str, Any]:
     """Return the compact, authoritative plan snapshot shown to the model."""
     itineraries = trip_data.get("itineraries") or [{}]
     itinerary = itineraries[0] if isinstance(itineraries, list) else itineraries
     hotel = trip_data.get("hotel") or {}
+    requested_days = parse_day_scope(modification_request, _duration_days(trip_data))
     items = []
     for item in trip_data.get("itinerary_items") or []:
+        if requested_days and int(item.get("day_number") or 0) not in requested_days:
+            continue
         items.append(
             {
                 "item_id": str(item.get("id") or ""),
@@ -401,7 +408,11 @@ def parse_trip_edit_plan(payload: object, trip_data: dict[str, Any], *, raw_requ
 
 
 def _planner_prompt(modification_request: str, trip_data: dict[str, Any], repair_message: str | None = None) -> str:
-    context = json.dumps(build_trip_edit_context(trip_data), ensure_ascii=False, separators=(",", ":"))
+    context = json.dumps(
+        build_trip_edit_context(trip_data, modification_request),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
     repair = f"\nPrevious response was rejected: {repair_message}. Return corrected JSON only." if repair_message else ""
     return f"""You are a Vietnamese travel itinerary edit planner. Return one raw JSON object, no Markdown.
 The user request is: {modification_request}
@@ -415,8 +426,9 @@ For a targeted operation, use exactly {{"target":{{"item_id":"one context.items 
 replace_item/add_item requirements must contain item_kind and semantic_query; express desired categories, location, time and duration as requirements only.
 remove_item gap_policy is leave_blank, close_gap, or replace. A bare removal is leave_blank.
 For time changes use start_time, end_time, or shift_minutes and cascade_policy.
-For 'after 20h do not go out', use set_schedule_policy latest_end_time '20:00'.
-For full day replanning, use replan_day with day_number and theme {{"selection_mode":"user_specified|choose_alternative","title":"...","semantic_query":"..."}}.
+For time limits like 'after Xh do not go out' or 'do nothing after Xh' (e.g. không làm gì sau Xh), you MUST use set_schedule_policy. Example: {{"operation": "set_schedule_policy", "latest_end_time": "18:00"}}. NEVER use remove_item because it only removes one item.
+For ANY requests to change the theme/focus of an entire day (e.g. "ngày đầu đi thưởng thức ẩm thực", "hôm sau đi mua sắm"), ALWAYS use replan_day. Example: {{"operation": "replan_day", "day_number": 1, "theme": {{"selection_mode":"user_specified", "title":"...", "semantic_query":"..."}}}}.
+If the user wants to handle a meal/activity themselves (e.g. "tự ăn sáng", "tự túc ăn trưa"), ALWAYS use remove_item to delete it. Do NOT use replace_item.
 The semantic_query for a day theme must describe multiple attractions or experiences; do not use a single meal such as breakfast as the whole-day query.
 Use clarify only when the target or requested result is materially ambiguous. Use not_edit for ordinary questions that do not change this itinerary.{repair}"""
 

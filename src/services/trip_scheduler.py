@@ -461,11 +461,46 @@ def _theme_title_from_query(query: str) -> str:
     return "Khám phá điểm đến địa phương"
 
 
+_PREFERENCE_THEME_VARIATIONS = (
+    ("Điểm nổi bật", "điểm tham quan nổi bật"),
+    ("Góc nhìn địa phương", "trải nghiệm địa phương"),
+    ("Khám phá chuyên sâu", "khám phá chuyên sâu"),
+    ("Không gian thư giãn", "không gian thư giãn"),
+    ("Địa điểm ít người biết", "địa điểm ít người biết"),
+)
+
+
+def _preference_theme_for_day(
+    preferences: Sequence[str],
+    day_number: int,
+    raw_query: str = "",
+) -> tuple[str, str]:
+    preference = preferences[(day_number - 1) % len(preferences)]
+    variation_index = (day_number - 1) % len(_PREFERENCE_THEME_VARIATIONS)
+    variation_title, variation_query = _PREFERENCE_THEME_VARIATIONS[variation_index]
+    cycle = (day_number - 1) // len(_PREFERENCE_THEME_VARIATIONS)
+    title = f"Trải nghiệm {preference} - {variation_title}"
+    if cycle:
+        title = f"{title} - khu vực {cycle + 1}"
+
+    raw_query = raw_query.strip()
+    if raw_query and _normalize(preference) in _normalize(raw_query):
+        query = f"{raw_query} {variation_query}"
+    else:
+        query = f"{preference} {variation_query}"
+    if cycle:
+        query = f"{query} khu vực khác {cycle + 1}"
+    return title, query
+
+
 def normalize_day_themes(
     raw_themes: Sequence[dict[str, Any]],
     number_of_days: int,
     preferences: Sequence[str] | None = None,
 ) -> list[DayTheme]:
+    clean_preferences = tuple(
+        dict.fromkeys(str(preference).strip() for preference in preferences or [] if str(preference).strip())
+    )
     by_day: dict[int, DayTheme] = {}
     used: set[str] = set()
     for raw in raw_themes:
@@ -475,6 +510,8 @@ def normalize_day_themes(
             continue
         query = str(raw.get("query") or "").strip()
         title = _theme_title_from_query(query)
+        if clean_preferences and 1 <= day_number <= number_of_days:
+            title, query = _preference_theme_for_day(clean_preferences, day_number, query)
         key = title.casefold()
         if 1 <= day_number <= number_of_days and query:
             duplicate_count = sum(existing.title.startswith(title) for existing in by_day.values())
@@ -484,24 +521,22 @@ def normalize_day_themes(
             by_day[day_number] = DayTheme(day_number, title, query)
             used.add(key)
 
-    fallback_pairs: list[tuple[str, str]] = []
-    for preference in preferences or []:
-        clean = str(preference).strip()
-        if clean:
-            fallback_pairs.append((f"Trải nghiệm {clean}", clean))
-    fallback_pairs.extend(
-        [
-            ("Di sản và văn hóa", "museums culture heritage"),
-            ("Thiên nhiên và cảnh đẹp", "nature outdoor scenic"),
-            ("Biển và thư giãn", "beach coast relaxation"),
-            ("Ẩm thực và đời sống địa phương", "local food neighbourhood life"),
-            ("Giải trí và điểm đến nổi bật", "entertainment famous attractions"),
-            ("Chợ và nhịp sống thành phố", "markets city local life"),
-        ]
-    )
+    fallback_pairs = [
+        ("Di sản và văn hóa", "museums culture heritage"),
+        ("Thiên nhiên và cảnh đẹp", "nature outdoor scenic"),
+        ("Biển và thư giãn", "beach coast relaxation"),
+        ("Ẩm thực và đời sống địa phương", "local food neighbourhood life"),
+        ("Giải trí và điểm đến nổi bật", "entertainment famous attractions"),
+        ("Chợ và nhịp sống thành phố", "markets city local life"),
+    ]
     fallback_index = 0
     for day_number in range(1, number_of_days + 1):
         if day_number in by_day:
+            continue
+        if clean_preferences:
+            title, query = _preference_theme_for_day(clean_preferences, day_number)
+            by_day[day_number] = DayTheme(day_number, title, query)
+            used.add(title.casefold())
             continue
         while True:
             title, query = fallback_pairs[fallback_index % len(fallback_pairs)]

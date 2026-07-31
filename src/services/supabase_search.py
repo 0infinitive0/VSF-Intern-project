@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import os
 from functools import lru_cache
 from typing import Any, Dict, List, Optional
@@ -8,10 +9,51 @@ import requests
 from langchain_core.embeddings import Embeddings
 from langchain_ollama import OllamaEmbeddings
 from supabase import Client, create_client
+from langsmith import traceable
 
 from src.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+
+class RadiusFilter:
+    def __init__(self, root_latitude: float, root_longitude: float, max_radius_km: float):
+        self.root_latitude = root_latitude
+        self.root_longitude = root_longitude
+        self.max_radius_km = max_radius_km
+
+
+def validate_radius_filter(
+    root_latitude: Any = None,
+    root_longitude: Any = None,
+    max_radius_km: Any = None,
+) -> Optional[RadiusFilter]:
+    args = [root_latitude, root_longitude, max_radius_km]
+    non_nulls = [a for a in args if a is not None]
+    if len(non_nulls) == 0:
+        return None
+    if len(non_nulls) != 3:
+        raise ValueError("radius_filter_requires_latitude_longitude_and_radius")
+
+    for val in args:
+        if isinstance(val, bool) or not isinstance(val, (int, float)):
+            raise ValueError("invalid_parameter_type_for_radius_filter")
+
+    lat = float(root_latitude)
+    lon = float(root_longitude)
+    rad = float(max_radius_km)
+
+    if not (math.isfinite(lat) and math.isfinite(lon) and math.isfinite(rad)):
+        raise ValueError("radius_filter_parameters_must_be_finite")
+
+    if not (-90.0 <= lat <= 90.0):
+        raise ValueError("root_latitude_out_of_range")
+    if not (-180.0 <= lon <= 180.0):
+        raise ValueError("root_longitude_out_of_range")
+    if rad < 0.0:
+        raise ValueError("max_radius_km_must_be_finite_and_non_negative")
+
+    return RadiusFilter(lat, lon, rad)
 
 
 @lru_cache
@@ -22,6 +64,14 @@ def get_supabase_client() -> Client:
     if not url or not key:
         raise ValueError("Missing SUPABASE_URL or SUPABASE_SERVICE_KEY in environment or settings.")
     return create_client(url, key)
+
+
+@traceable(name="supabase_rpc", run_type="retriever")
+def _execute_rpc(rpc_name: str, params: dict) -> list:
+    """Wrapper function to log Supabase RPC calls via LangSmith."""
+    supabase = get_supabase_client()
+    res = supabase.rpc(rpc_name, params).execute()
+    return res.data or []
 
 
 from src.services.llm import get_embeddings as factory_get_embeddings, get_llm
@@ -105,16 +155,13 @@ def search_hotels_with_rooms(
     model: Optional[str] = None,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
+    root_latitude: Optional[float] = None,
+    root_longitude: Optional[float] = None,
+    max_radius_km: Optional[float] = None,
 ) -> List[Dict[str, Any]]:
-    """Tìm kiếm semantic hotels và rooms cùng nhau sử dụng Supabase RPC match_hotels_with_rooms và local Ollama LLM filtering.
+    """Tìm kiếm semantic hotels và rooms cùng nhau sử dụng Supabase RPC match_hotels_with_rooms và local Ollama LLM filtering."""
+    radius = validate_radius_filter(root_latitude, root_longitude, max_radius_km)
 
-    `min_price`/`max_price` are enforced directly by match_hotels_with_rooms itself (see
-    scripts/migrations/20260730_add_price_filter_to_match_hotels_with_rooms.sql) — the RPC
-    filters by lowest_price BEFORE its own `ORDER BY similarity LIMIT match_count`, so the
-    returned rows are already "best match_count results that are ALSO in range", not a
-    small similarity-only sample that then needs filtering (and might contain zero in-range
-    hits purely by bad luck, since price is uncorrelated with embedding similarity).
-    """
     supabase = get_supabase_client()
     embeddings = get_embeddings()
 
@@ -135,8 +182,6 @@ def search_hotels_with_rooms(
 
     query_vector = embeddings.embed_query(search_query)
 
-    # star_rating still isn't a param the RPC accepts, so it's still checked client-side
-    # below — keep a modest oversample just for that one filter.
     fetch_count = match_count * 3 if min_star_rating else match_count
     params: Dict[str, Any] = {
         "query_embedding": query_vector,
@@ -149,9 +194,12 @@ def search_hotels_with_rooms(
         params["filter_min_price"] = resolved_min_price
     if resolved_max_price is not None:
         params["filter_max_price"] = resolved_max_price
+    if radius is not None:
+        params["root_latitude"] = radius.root_latitude
+        params["root_longitude"] = radius.root_longitude
+        params["max_radius_km"] = radius.max_radius_km
 
-    res = supabase.rpc("match_hotels_with_rooms", params).execute()
-    data = res.data or []
+    data = _execute_rpc("match_hotels_with_rooms", params)
 
     if not min_star_rating or min_star_rating <= 0:
         return data[:match_count]
@@ -177,8 +225,13 @@ def search_attractions(
     filter_destination_id: Optional[str] = None,
     use_llm_filter: bool = True,
     model: Optional[str] = None,
+    root_latitude: Optional[float] = None,
+    root_longitude: Optional[float] = None,
+    max_radius_km: Optional[float] = None,
 ) -> List[Dict[str, Any]]:
     """Tìm kiếm semantic attractions sử dụng Supabase RPC match_attractions và local Ollama LLM filtering."""
+    radius = validate_radius_filter(root_latitude, root_longitude, max_radius_km)
+
     supabase = get_supabase_client()
     embeddings = get_embeddings()
 
@@ -205,9 +258,12 @@ def search_attractions(
     }
     if filter_destination_id is not None:
         params["filter_destination_id"] = filter_destination_id
+    if radius is not None:
+        params["root_latitude"] = radius.root_latitude
+        params["root_longitude"] = radius.root_longitude
+        params["max_radius_km"] = radius.max_radius_km
 
-    res = supabase.rpc("match_attractions", params).execute()
-    data = res.data or []
+    data = _execute_rpc("match_attractions", params)
 
     filtered_data = []
     for a in data:
@@ -223,3 +279,4 @@ def search_attractions(
         return data[:match_count]
 
     return filtered_data[:match_count]
+
