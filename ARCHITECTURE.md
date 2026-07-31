@@ -10,14 +10,14 @@ VSF Trip Planner là một hệ thống AI Agent thông minh phục vụ lập k
 graph TB
     subgraph Clients
         CLI[Terminal CLI / Interactive POC]
-        UI[React / Next.js Frontend]
+        UI[React + Vite Frontend<br/>localhost:5173]
     end
 
-    subgraph Backend[FastAPI & Agent Engine]
+    subgraph Backend[FastAPI & Agent Engine — localhost:8000]
         API[API Routes /routes.py]
         Agent[LangGraph Agent Orchestrator]
         State[AgentState Management]
-        LLM[LLM Service / Ollama Llama3.1]
+        LLM[LLM Service<br/>Ollama llama3.1 / OpenAI / OpenRouter]
         
         subgraph Nodes[LangGraph Execution Nodes]
             IntakeNode[Intake & Clarification Node]
@@ -41,7 +41,7 @@ graph TB
     end
 
     CLI -->|Python Direct / CLI| Agent
-    UI -->|HTTP / REST| API
+    UI -->|HTTP REST /api/v1<br/>Vite proxy in dev| API
     API --> Agent
     Agent --> State
     Agent --> Nodes
@@ -59,27 +59,57 @@ graph TB
 
 ## Components
 
-### 1. Frontend (CLI & Web UI)
-- **Purpose:** Cung cấp giao diện tương tác chat trực quan cho người dùng cuối (chạy CLI Terminal POC và giao diện Web).
+### 1. Frontend (React + Vite Web UI)
+
+- **Technology:** React 18 + Vite 6, served at `http://localhost:5173` in development.
+- **Purpose:** Full-featured chat UI for the trip planner — multi-turn conversation,
+  hotel selection cards, itinerary panel, and suggestion chips.
 - **Key Features:**
-  - Chat dạng Terminal linh hoạt (`python -m scripts.poc_trip_planner` hoặc `scripts/terminal_chat.py`).
-  - Hỗ trợ hiển thị Markdown, bảng lịch trình từng ngày và trạng thái Agent Flow theo thời gian thực.
-  - Phản hồi nhanh với streaming log.
+  - Single-page app (`src/App.jsx`) with split layout: `ChatPanel` + `ItineraryPanel`.
+  - `useChatSession` hook owns all state via `useReducer`; no component calls `fetch` directly.
+  - `chat-client.js` owns all four API calls: `createSession`, `sendMessage`, `getPlan`, `resetSession`.
+  - Session ID persisted in `sessionStorage`; server-restart detection silently re-creates the session.
+  - Vite dev-server proxies `/api → http://localhost:8000` — no CORS headers needed in dev.
+- **Running:**
+  ```bash
+  cd frontend
+  npm install
+  npm run dev        # → http://localhost:5173
+  ```
 
 ### 2. Backend (FastAPI)
-- **Purpose:** REST API Gateway phục vụ nhận request, validate dữ liệu đầu vào và kích hoạt LangGraph Agent.
-- **API Design:** RESTful Pydantic endpoints (`/chat`, `/status`, `/search_attractions`, `/search_hotels`).
+
+- **Purpose:** REST API Gateway — receives requests, validates with Pydantic, and dispatches to the LangGraph session.
+- **API Design:** Four endpoints defined in `docs/chat_api_contract.md`:
+  - `POST /api/v1/chat/session` — create session, returns `{session_id, created_at}`
+  - `POST /api/v1/planner_chat` — main chat turn, returns `PlannerChatResponse`
+  - `GET /api/v1/chat/{session_id}/plan` — fetch current trip plan
+  - `DELETE /api/v1/chat/{session_id}` — reset / end session
+- **Session registry:** `SessionRegistry` in `src/agents/session.py` holds in-memory `TripSession`
+  objects with per-session locks, configurable TTL (`SESSION_TTL_SECONDS`) and cap (`MAX_SESSIONS`).
 - **Authentication:** Environment variable API Keys & Supabase Service Role JWT.
+- **Running:**
+  ```bash
+  uvicorn src.main:app --reload --port 8000
+  # API docs → http://localhost:8000/docs
+  ```
 
 ### 3. AI Agent (LangGraph)
+
 - **Agent Type:** Stateful Multi-Node Agent Graph (`StateGraph`).
-- **State:** `AgentState` chứa `query`, `messages`, `intake_state`, `reuse_query`, `raw_candidates`, `scheduled_itinerary`, `response`, `error`.
+- **State:** `AgentState` contains `query`, `messages`, `intake_state`, `reuse_query`,
+  `raw_candidates`, `scheduled_itinerary`, `response`, `error`.
 - **Nodes:**
-  - `intake_node`: Trích xuất nhu cầu chuyến đi (Đi đâu, bao lâu, mấy người, sở thích) và hỏi câu hỏi làm rõ nếu thiếu.
-  - `retrieval_node`: Kiểm tra Tier 1 Reuse Cache & thực hiện RAG tìm kiếm địa điểm / khách sạn từ Supabase & Qdrant.
-  - `scheduler_node`: Gọi thuật toán deterministic `trip_scheduler.py` phân bổ thời gian, cụm khoảng cách (clustering radius) và khung giờ ăn/nghỉ.
-  - `respond_node`: Format dữ liệu lịch trình thành văn bản tư vấn và structured JSON payload.
-- **Control Flow Diagram:**
+  - `intake_node`: Extracts trip requirements (destination, duration, people, preferences)
+    and asks clarifying questions if incomplete.
+  - `retrieval_node`: Checks Tier 1 Reuse Cache and performs RAG search for
+    attractions/hotels via Supabase & Qdrant.
+  - `scheduler_node`: Calls deterministic `trip_scheduler.py` to allocate time slots,
+    cluster by distance radius, and set meal/rest windows.
+  - `respond_node`: Formats the itinerary into chat text and structured JSON payload.
+- **7-branch routing** in `process_chat_turn` (`src/services/chat_session.py`) — order is
+  load-bearing, documented in full in `docs/chat_api_contract.md`.
+- **Control Flow:**
 
 ```mermaid
 graph LR
@@ -92,31 +122,82 @@ graph LR
 ```
 
 ### 4. Database (Supabase PostgreSQL)
-- **Type:** PostgreSQL 15+ hỗ trợ Extension `pgvector`.
-- **Tables:** `destinations`, `hotels`, `rooms`, `room_prices`, `attractions`, `events`, `sessions`, `chat_messages`, `itineraries`, `itinerary_items`.
-- **Schema Management:** Quản lý tập trung trong [scripts/database_schema.sql](file:///d:/Git%20repo/vsf-project/scripts/database_schema.sql) và các bản migration trong [scripts/migrations/](file:///d:/Git%20repo/vsf-project/scripts/migrations/).
+
+- **Type:** PostgreSQL 15+ with `pgvector` extension.
+- **Tables:** `destinations`, `hotels`, `rooms`, `room_prices`, `attractions`, `events`,
+  `sessions`, `chat_messages`, `itineraries`, `itinerary_items`.
+- **Schema Management:** Centralised in `scripts/database_schema.sql` and migrations
+  in `scripts/migrations/`.
 
 ### 4.1. Data Pipelines
+
 - **Airflow Stack:** `src/airflow/docker-compose.yaml`.
-- **Attraction Producers:** Crawl & chuẩn hóa dữ liệu điểm tham quan từ OSM, OTA và Google Maps.
-- **Hotel Producer:** ETL pipeline chuẩn hóa dữ liệu khách sạn từ Agoda & Booking.com (`data/agoda.json`, `data/booking.json`).
+- **Attraction Producers:** Crawl & normalise attraction data from OSM, OTA, and Google Maps.
+- **Hotel Producer:** ETL pipeline normalising hotel data from Agoda & Booking.com
+  (`data/agoda.json`, `data/booking.json`).
 
 ### 5. Vector Store
+
 - **Type:** Qdrant Client + Supabase `pgvector`.
-- **Embeddings:** `bge-m3` (1024-dimensional dense vectors).
-- **Purpose:** RAG Semantic Search tìm kiếm địa điểm theo mô tả ngữ nghĩa và Tier 1 Itinerary Reuse Fingerprint match (> 88% similarity).
+- **Embeddings:** `bge-m3` (1024-dimensional dense vectors) — **model is locked**;
+  all stored vectors use this dimension. Switching embedding models breaks similarity search.
+- **Purpose:** RAG Semantic Search for attractions by semantic description, and
+  Tier 1 Itinerary Reuse Fingerprint match (>88% similarity).
+- **Embedding provider:** Ollama `bge-m3` is required in every environment (local and cloud).
+  Only the *chat* model (`llm_model`) is swappable via `LLM_PROVIDER`.
+
+---
+
+## Layer Architecture & Import Rules
+
+The codebase uses a strict **one-way import rule** to prevent circular dependencies:
+
+```
+api  →  agents  →  services  →  models
+         ↑               ↑
+       (session)      (config)
+```
+
+| Layer | Package | Role |
+|-------|---------|------|
+| `api` | `src/api/` | HTTP handlers — call `agents.session`, return Pydantic schemas |
+| `agents` | `src/agents/` | LangGraph graph, session registry, turn routing |
+| `services` | `src/services/` | Business logic — LLM, Supabase search, scheduler, intake |
+| `models` | `src/models/` | Pydantic schemas only — no imports from upper layers |
+| `config` | `src/config.py` | Settings — imported by any layer, imports nothing above it |
+
+**Never import upward** (e.g. `services` must not import from `api`).
+
+---
+
+## Environment Matrix
+
+| Setting | Local dev | Deployed (cloud) |
+|---------|-----------|-----------------|
+| `LLM_PROVIDER` | `ollama` | `openai` / `openrouter` |
+| `LLM_MODEL` | `llama3.1` | `gpt-4o-mini` or an OpenRouter id |
+| `EMBEDDING_PROVIDER` | `ollama` | `ollama` |
+| `EMBEDDING_MODEL` | `bge-m3` | `bge-m3` (locked — do not change) |
+| Frontend | Vite dev server + `/api` proxy | Built assets, host TBD |
+| Ollama required? | Yes | Yes (embeddings only; chat model is cloud) |
+
+> **Note:** Embeddings have no cloud fallback — `bge-m3` 1024-dim is locked into
+> both vector stores. Ollama must run everywhere; only the chat model is swappable.
 
 ---
 
 ## Data Flow
 
-1. Người dùng nhập tin nhắn chat từ CLI hoặc Web UI.
-2. FastAPI `/chat` hoặc CLI runner chuyển câu thoại vào LangGraph `AgentState`.
-3. `intake_node` phân tích xem đã đủ 3 tham số cốt lõi (`destination`, `duration`, `people`) hay chưa.
-4. Nếu đủ, `retrieval_node` tìm kiếm dữ liệu qua Supabase / Qdrant RAG.
-5. `scheduler_node` tính toán khoảng cách haversine, cụm bán kính (5km, 10km, 15km) và xếp lịch theo giờ mở/đóng cửa.
-6. `respond_node` tổng hợp lịch trình, format response và lưu bản thảo (`Finalized` / `Draft`).
-7. Trả về kết quả hoàn chỉnh cho người dùng.
+1. User types a message in the React frontend or CLI.
+2. React `useChatSession` sends `POST /api/v1/planner_chat` with `{session_id, message}`.
+3. FastAPI `planner_chat` handler acquires the per-session lock and calls `process_chat_turn`.
+4. `process_chat_turn` routes the message through 7 ordered branches (see `docs/chat_api_contract.md`).
+5. The chosen branch calls the appropriate tool (`select_hotel`, `recommend_hotels`, etc.)
+   or falls through to the ReAct agent (`session.agent.stream()`).
+6. `derive_stage()` derives the response `stage` from which tool actually ran.
+7. `PlannerChatResponse` (`session_id`, `reply`, `suggestions`, `stage`, `hotel_options`,
+   `trip_plan`, `intake`) is returned to the frontend.
+8. The React `useChatSession` reducer updates state; `ChatPanel` and `ItineraryPanel` re-render.
 
 ---
 
@@ -124,8 +205,11 @@ graph LR
 
 | Decision | Choice | Reason |
 |----------|--------|--------|
-| Framework | FastAPI | Bất đồng bộ (async), auto-docs Swagger, type-safe với Pydantic |
-| Agent Engine | LangGraph | Quản lý state phức tạp, hỗ trợ conditional routing & multi-node cleanly |
-| Database | Supabase (PostgreSQL + pgvector) | Database chuẩn production, tích hợp vector search & SQL RPC |
-| Vector Store | Qdrant + pgvector | Hiệu năng tìm kiếm tương đồng cao cho 1024d embeddings |
-| LLM | Ollama (Llama 3.1) / OpenAI API | Hỗ trợ suy luận tiếng Việt tốt và chạy mượt local/cloud |
+| Framework | FastAPI | Async, auto-docs Swagger, type-safe with Pydantic |
+| Agent Engine | LangGraph | Complex state management, conditional routing, multi-node cleanly |
+| Database | Supabase (PostgreSQL + pgvector) | Production-grade DB, integrated vector search & SQL RPC |
+| Vector Store | Qdrant + pgvector | High similarity-search performance for 1024d embeddings |
+| LLM | Ollama (llama3.1) / OpenAI / OpenRouter | Configurable provider; Vietnamese reasoning + local/cloud flexibility |
+| Frontend | React + Vite | Fast HMR, lightweight bundle, clean component model; no SSR needed for a chat SPA |
+| Session storage | In-memory `SessionRegistry` | Low latency for chat turns; TTL eviction prevents unbounded growth |
+| Import discipline | One-way layer rule | Prevents circular imports as the codebase grows |

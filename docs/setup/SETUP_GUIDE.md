@@ -1,128 +1,195 @@
-# VSF Project Setup Guide
+# VSF Trip Planner — Setup Guide
 
-This guide provides step-by-step instructions to host the VSF Real-Time Dashboard, the Database, and the Apache Airflow data pipelines on a local machine or server.
-
-## Prerequisites
-- **Git** (to clone the repository)
-- **Docker Desktop** or **Docker Engine & Docker Compose**
-- **Resources**: Make sure Docker is allocated at least **4GB RAM** and **2 CPUs**, as Airflow can be resource-intensive.
-
-## Step 1: Clone the Repository
-Clone the project repository to your local machine and navigate to the project directory:
-```bash
-git clone <repository_url>
-cd vsf-project
-```
-
-## Step 2: Start the Services
-The project uses Docker Compose to manage all of its services, including Airflow, Postgres, and the custom Dashboard.
-
-Navigate into the `src/airflow` directory. First, initialize the Airflow environment:
-```bash
-cd src/airflow
-docker compose up airflow-init
-```
-Wait for the initialization to complete (you should see a `exited with code 0` message).
-
-Next, build the custom dashboard image and start the entire stack:
-```bash
-docker compose build dashboard
-docker compose up -d
-```
-*(This starts Airflow Webserver, Scheduler, Worker, Triggerer, Redis, Postgres, Adminer, and the Dashboard in the background).*
-
-## Step 3: Initialize the Custom Database
-The Postgres container spins up with a default `airflow` database for Airflow's internal state. However, the custom dashboard expects a database named `vsf_database` populated with your data schema.
-
-You can initialize it by running these commands from the root `vsf-project` directory:
-
-1. **Create the `vsf_database`:**
-```bash
-docker exec airflow-postgres-1 psql -U airflow -c "CREATE DATABASE vsf_database;"
-```
-
-2. **Import the Database Schema (and any data):**
-```bash
-docker exec -i airflow-postgres-1 psql -U airflow -d vsf_database < scripts/database_schema.sql
-```
-
-## Step 4: Access the Applications
-Once all the containers are running and the database is populated, you can access the following services in your web browser:
-
-- 🗺️ **Real-Time Dashboard**: http://localhost:8082
-- 💾 **Database Manager (Adminer)**: http://localhost:8081
-  - **System**: PostgreSQL
-  - **Server**: postgres
-  - **Username**: airflow
-  - **Password**: airflow
-  - **Database**: vsf_database
-- 🌪️ **Apache Airflow UI**: http://localhost:8080
-  - **Username**: airflow
-  - **Password**: airflow
-
-## Step 5: Start the Terminal OTA Chat CLI
-
-The VSF Trip Planner provides an interactive, terminal-based AI Agent chat interface for creating, modifying, and finalizing trip itineraries.
-
-### 1. Prerequisites
-- **Environment**: Ensure `.env` is configured with `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`.
-- **Local Ollama**: Ensure Ollama is running and models are pulled:
-  ```bash
-  ollama pull llama3.1
-  ollama pull bge-m3
-  ```
-
-### 2. Launching the Terminal Chat
-Run the terminal interactive loop:
-```bash
-# Activate virtual environment first
-source .venv/bin/activate        # Linux/macOS
-# .\.venv\Scripts\activate       # Windows PowerShell
-
-python -m scripts.poc_trip_planner
-```
-
-### 3. Model Configuration Options (Optional)
-You can configure different LLM/Embedding providers via environment variables:
-```bash
-# Default: Local Ollama
-python -m scripts.poc_trip_planner
-
-# OpenAI Provider
-LLM_PROVIDER=openai LLM_MODEL=gpt-4o-mini LLM_API_KEY=sk-... python -m scripts.poc_trip_planner
-
-# Google Gemini Provider
-LLM_PROVIDER=google LLM_MODEL=gemini-1.5-flash LLM_API_KEY=AIzaSy... python -m scripts.poc_trip_planner
-```
-
-### 4. Conversation Workflow & Commands
-- **New Trip Intake**:
-  > *"Tôi muốn đi du lịch Hồ Chí Minh 3 ngày 2 người thích lịch sử và ẩm thực"*
-- **Fact Clarification**: If core facts (destination, duration, party size) are missing, the agent will prompt for clarification.
-- **Modifying Saved Plan**:
-  > *"Đổi khách sạn sang Caravelle Saigon"*
-  > *"Thay điểm tham quan ngày 2 bằng Bảo tàng Mỹ thuật"*
-- **Finalizing Itinerary**:
-  > *"Chốt lịch trình"* (Saves finalized state for Tier 1 template reuse).
-- **Exit**: Type `exit`, `quit`, or `q`.
+Complete setup guide for running the full VSF Trip Planner stack: FastAPI backend,
+React+Vite frontend, Qdrant vector store, and Ollama (local LLM).
 
 ---
 
-## Useful Commands & Troubleshooting
+## Prerequisites
 
-- **Checking logs**: 
-  If any service isn't working, check its logs. For example, for the dashboard or airflow webserver:
-  ```bash
-  docker logs airflow-dashboard-1
-  docker logs airflow-airflow-apiserver-1
-  ```
-- **Updating Dashboard Code**: 
-  If you modify `app.py` or `index.html` inside the `dashboard` folder, you must rebuild the image for changes to take effect:
-  ```bash
-  docker compose build dashboard && docker compose up -d dashboard
-  ```
-- **Adding Airflow DAGs**:
-  Place your Python DAG scripts inside the `dags/` folder. Airflow will automatically detect and load them. You may need to enable them in the Airflow UI at `http://localhost:8080`.
-- **Missing Data on Map**: 
-  If the map is blank, ensure that the `attractions`, `destinations`, and `hotels` tables in the `vsf_database` actually have rows containing valid `coordinates`.
+- **Git** (to clone the repository)
+- **Python 3.11+** with `pip`
+- **Node.js 20+** and `npm`
+- **Docker Desktop** (or Docker Engine + Docker Compose) — for Qdrant, Ollama, and the full stack
+- **Resources:** Allocate at least **8 GB RAM** to Docker (Ollama + llama3.1 model is ~4.7 GB).
+  On cloud deployments, set `LLM_PROVIDER=openai` to skip local LLM entirely.
 
+---
+
+## Quick Start (Recommended for Development)
+
+### Step 1 — Clone the repository
+
+```bash
+git clone https://github.com/0infinitive0/VSF-Intern-project.git
+cd VSF-Intern-project
+```
+
+### Step 2 — Configure environment variables
+
+```bash
+cp .env.example .env
+# Open .env and fill in:
+#   SUPABASE_URL and SUPABASE_SERVICE_KEY (required for hotel/attraction search)
+#   LLM_PROVIDER / LLM_MODEL / LLM_API_KEY (if using cloud LLM — see .env.example)
+#   AI_LOG_API_KEY (from BTC invite link)
+```
+
+### Step 3 — Start the backend
+
+```bash
+# Create and activate a Python virtual environment
+python3.11 -m venv .venv
+source .venv/bin/activate        # Linux / macOS
+# .\.venv\Scripts\activate       # Windows PowerShell
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Start the FastAPI backend
+uvicorn src.main:app --reload --port 8000
+# → API docs: http://localhost:8000/docs
+# → Health:   http://localhost:8000/health
+```
+
+### Step 4 — Start the React frontend
+
+Open a **new terminal** (the backend must keep running):
+
+```bash
+cd frontend
+npm install
+npm run dev
+# → Chat UI: http://localhost:5173
+```
+
+Vite automatically proxies `/api → http://localhost:8000` in development — no CORS
+configuration needed.
+
+### Step 5 — Start local Ollama (for local LLM)
+
+If `LLM_PROVIDER=ollama` (the default), Ollama must be running and the models pulled:
+
+```bash
+ollama pull bge-m3    # Embedding model (~550 MB) — required in all environments
+ollama pull llama3.1  # Chat model (~4.7 GB) — only needed for local LLM
+```
+
+> **Tip:** On low-RAM machines or cloud deployments, switch to a cloud provider:
+>
+> ```bash
+> # In .env:
+> LLM_PROVIDER=openai
+> LLM_MODEL=gpt-4o-mini
+> LLM_API_KEY=sk-proj-...
+> ```
+>
+> Embeddings always use local Ollama `bge-m3` regardless of `LLM_PROVIDER`.
+
+---
+
+## Full Stack via Docker Compose
+
+For a one-command start (backend + Qdrant + Ollama + model pull):
+
+```bash
+docker compose up
+# First run pulls llama3.1 (~4.7 GB) and bge-m3 (~550 MB) — this takes a while.
+# Subsequent starts reuse the cached models in ./data/ollama/.
+```
+
+The `frontend/` is **not** included in docker-compose — run it separately with
+`npm run dev` (Step 4 above) pointing at `http://localhost:8000`.
+
+Services exposed after `docker compose up`:
+
+| Service | URL |
+|---------|-----|
+| FastAPI backend | http://localhost:8000 |
+| Qdrant vector store | http://localhost:6333 |
+| Ollama API | http://localhost:11434 |
+
+---
+
+## Environment Matrix
+
+| Setting | Local dev | Deployed (cloud) |
+|---------|-----------|-----------------|
+| `LLM_PROVIDER` | `ollama` | `openai` / `openrouter` |
+| `LLM_MODEL` | `llama3.1` | `gpt-4o-mini` or an OpenRouter model id |
+| `EMBEDDING_PROVIDER` | `ollama` | `ollama` |
+| `EMBEDDING_MODEL` | `bge-m3` | `bge-m3` (⚠️ do **not** change — vectors are locked to 1024 dim) |
+| Frontend | `npm run dev` (Vite, port 5173) | Built assets — host TBD |
+| Ollama required? | Yes (both models) | Yes (bge-m3 only; chat model is cloud) |
+
+---
+
+## Proxy Timeout Note
+
+LLM calls (especially first-turn plan generation with llama3.1) can take up to **120 seconds**.
+If you put a reverse proxy (nginx, Railway, etc.) in front of the backend, raise its
+read/proxy timeout to at least 120 s, otherwise long turns will result in a gateway error.
+
+---
+
+## Session Settings
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SESSION_TTL_SECONDS` | `7200` | How long an idle session stays in memory (seconds) |
+| `MAX_SESSIONS` | `200` | Hard cap on concurrent in-memory sessions |
+| `DEBUG_TRIP_PLAN_FILE` | `false` | Write trip plan JSON to `debug/{session_id}/` (dev only) |
+
+---
+
+## Running Tests
+
+```bash
+# Full test suite (excluding live Qdrant schema tests)
+pytest tests -q --ignore=tests/test_qdrant_schema.py
+
+# API-layer tests only
+pytest tests/test_api/ -q
+
+# Lint on source files
+ruff check src/
+```
+
+---
+
+## Terminal CLI (Alternative to Web UI)
+
+```bash
+# With virtual environment active
+python -m scripts.poc_trip_planner
+```
+
+Conversation commands:
+- **New trip:** *"Tôi muốn đi Đà Nẵng 3 ngày 2 người thích lịch sử"*
+- **Modify plan:** *"Đổi khách sạn sang Caravelle Saigon"*
+- **Finalize:** *"Chốt lịch trình"*
+- **Exit:** `exit`, `quit`, or `q`
+
+---
+
+## Airflow Data Pipeline (Advanced)
+
+```bash
+cd src/airflow
+docker compose up airflow-init   # First-time init
+docker compose up -d
+```
+
+Access Airflow UI at http://localhost:8080 (user: `airflow`, password: `airflow`).
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| `POST /api/v1/chat/session` returns CORS error | Check `CORS_ORIGINS` in `.env` includes `http://localhost:5173` |
+| LLM call times out after ~30 s | Raise proxy timeout to 120 s; or switch to `LLM_PROVIDER=openai` |
+| `ollama pull` fails (disk full) | `llama3.1` needs ~4.7 GB free; use cloud LLM instead |
+| Qdrant connection refused | Run `docker compose up qdrant` or start Qdrant manually |
+| `pip install -r requirements.txt` fails | Ensure Python 3.11+ and a fresh venv |

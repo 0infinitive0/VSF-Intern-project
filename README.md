@@ -60,16 +60,35 @@ bash scripts/setup_hooks.sh
 
 Hooks tự động log mọi AI prompt khi dùng Claude Code, Cursor, Codex, Gemini CLI, Antigravity, hoặc GitHub Copilot. Không cần thao tác thủ công.
 
-### Bước 4: Chạy server & Terminal OTA Chat
+### Bước 4: Chạy backend & React frontend
 
 ```bash
-# 1. Chạy FastAPI backend API
+# Terminal 1 — FastAPI backend
 uvicorn src.main:app --reload --port 8000
-# Mở Swagger UI: http://localhost:8000/docs
+# API docs: http://localhost:8000/docs
 
-# 2. Chạy Terminal OTA Chat CLI
-python -m scripts.poc_trip_planner
+# Terminal 2 — React + Vite frontend
+cd frontend
+npm install
+npm run dev
+# Chat UI: http://localhost:5173
 ```
+
+Vite tự động proxy `/api → http://localhost:8000` — không cần cấu hình CORS trong dev.
+
+> **Local LLM (Ollama):** cần pull model trước khi chạy backend:
+> ```bash
+> ollama pull bge-m3    # ~550 MB — bắt buộc mọi môi trường
+> ollama pull llama3.1  # ~4.7 GB — chỉ cần khi LLM_PROVIDER=ollama
+> ```
+> Muốn dùng cloud LLM thay thế: set `LLM_PROVIDER=openai LLM_MODEL=gpt-4o-mini LLM_API_KEY=sk-...` trong `.env`.
+
+| Setting | Local dev | Deployed |
+|---------|-----------|---------|
+| `LLM_PROVIDER` | `ollama` | `openai` / `openrouter` |
+| `LLM_MODEL` | `llama3.1` | `gpt-4o-mini` hoặc OpenRouter model id |
+| `EMBEDDING_MODEL` | `bge-m3` | `bge-m3` (locked — không đổi) |
+| Frontend | Vite dev server (5173) | Build assets — host TBD |
 
 ### Bước 5: Đọc hướng dẫn & Setup Chi Tiết
 

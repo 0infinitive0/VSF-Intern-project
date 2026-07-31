@@ -25,8 +25,6 @@ from src.agents.session import (
 )
 from src.config import get_settings
 from src.models.schemas import (
-    ChatRequest,
-    ChatResponse,
     IntakeStatus,
     PlannerChatRequest,
     PlannerChatResponse,
@@ -155,29 +153,6 @@ def planner_chat(request: PlannerChatRequest) -> PlannerChatResponse:
         intake=intake,
     )
 
-
-# ---------------------------------------------------------------------------
-# Demo chat endpoint (unchanged — used by GET /chat page)
-# ---------------------------------------------------------------------------
-
-# Keep the demo /chat endpoint that was here before Phase 3.  The GET /chat
-# page depends on it and must not change (D10).
-
-from src.agents.graph import agent  # noqa: E402  (import after router definition for clarity)
-
-
-@router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest) -> ChatResponse:
-    """Chat với AI agent."""
-    try:
-        result = await agent.ainvoke({"query": request.message})
-        return ChatResponse(
-            response=result.get("response", ""),
-            analysis=result.get("analysis", ""),
-        )
-    except Exception:
-        logger.exception("Demo /chat agent error")
-        raise HTTPException(status_code=500, detail="Đã xảy ra lỗi máy chủ. Vui lòng thử lại.")
 
 
 # ---------------------------------------------------------------------------
