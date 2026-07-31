@@ -428,6 +428,8 @@ remove_item gap_policy is leave_blank, close_gap, or replace. A bare removal is 
 For time changes use start_time, end_time, or shift_minutes and cascade_policy.
 For time limits like 'after Xh do not go out' or 'do nothing after Xh' (e.g. không làm gì sau Xh), you MUST use set_schedule_policy. Example: {{"operation": "set_schedule_policy", "latest_end_time": "18:00"}}. NEVER use remove_item because it only removes one item.
 For ANY requests to change the theme/focus of an entire day (e.g. "ngày đầu đi thưởng thức ẩm thực", "hôm sau đi mua sắm"), ALWAYS use replan_day. Example: {{"operation": "replan_day", "day_number": 1, "theme": {{"selection_mode":"user_specified", "title":"...", "semantic_query":"..."}}}}.
+For adding a new item, use add_item. Example: {{"operation": "add_item", "day_number": 1, "requirements": {{"item_kind": "attraction", "semantic_query": "địa điểm vui chơi"}}, "latest_start_time": "20:00"}}.
+For replacing an item, use replace_item. Example: {{"operation": "replace_item", "target": {{"item_id": "1"}}, "requirements": {{"item_kind": "lunch", "semantic_query": "quán ăn trưa"}}}}.
 If the user wants to handle a meal/activity themselves (e.g. "tự ăn sáng", "tự túc ăn trưa"), ALWAYS use remove_item to delete it. Do NOT use replace_item.
 The semantic_query for a day theme must describe multiple attractions or experiences; do not use a single meal such as breakfast as the whole-day query.
 Use clarify only when the target or requested result is materially ambiguous. Use not_edit for ordinary questions that do not change this itinerary.{repair}"""
