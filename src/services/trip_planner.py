@@ -192,12 +192,22 @@ Every day_number from 1 through {number_of_days} must appear exactly once and ti
     return normalize_day_themes(raw_themes, number_of_days, preferences)
 
 
-def _search_attraction_candidates(query: str, destination_id: str, match_count: int = 20) -> list[PlaceCandidate]:
+def _search_attraction_candidates(
+    query: str, 
+    destination_id: str, 
+    match_count: int = 20,
+    root_latitude: float | None = None,
+    root_longitude: float | None = None,
+    max_radius_km: float | None = None,
+) -> list[PlaceCandidate]:
     compact_results = rpc_search_attractions(
         query=query,
         match_count=match_count,
         filter_destination_id=destination_id,
         use_llm_filter=False,
+        root_latitude=root_latitude,
+        root_longitude=root_longitude,
+        max_radius_km=max_radius_km,
     ) or []
     hydrated = _hydrate_records(
         "attractions",
@@ -928,9 +938,20 @@ def _select_edit_candidate(
         destination_id = str(_itinerary_record(current_data).get("destination_id") or "")
     if not destination_id:
         raise ValueError("Thiếu mã điểm đến để tìm địa điểm mới.")
-    candidates = _search_attraction_candidates(requirements.semantic_query, destination_id, match_count=40)
-    used_ids = {item.reference_id for item in scheduled}
+        
     anchor = _candidate_anchor(scheduled, hotel, target, requirements)
+    max_radius = 5.0 if requirements.item_kind == "breakfast" else 15.0
+    
+    candidates = _search_attraction_candidates(
+        requirements.semantic_query, 
+        destination_id, 
+        match_count=40,
+        root_latitude=anchor[0] if anchor else None,
+        root_longitude=anchor[1] if anchor else None,
+        max_radius_km=max_radius if anchor else None,
+    )
+    used_ids = {item.reference_id for item in scheduled}
+    
     eligible = []
     for candidate in candidates:
         if not candidate.id or candidate.id in used_ids or not _candidate_matches_requirements(candidate, requirements):
@@ -1430,14 +1451,17 @@ def _apply_local_trip_change(
         destination_id = str(current_data.get("hotel", {}).get("destination_id") or "")
         if not destination_id:
             raise ValueError("Thiếu mã điểm đến để tìm địa điểm thay thế.")
+        target = scheduled[target_index]
+        anchor_coordinates = target.coordinates or hotel.coordinate_pair
         candidates = _search_attraction_candidates(
             change.query or modification_request,
             destination_id,
             match_count=15,
+            root_latitude=anchor_coordinates[0] if anchor_coordinates else None,
+            root_longitude=anchor_coordinates[1] if anchor_coordinates else None,
+            max_radius_km=15.0 if anchor_coordinates else None,
         )
         used_ids = {item.reference_id for item in scheduled}
-        target = scheduled[target_index]
-        anchor_coordinates = target.coordinates or hotel.coordinate_pair
         candidates = [candidate for candidate in candidates if candidate.id not in used_ids]
         if not candidates:
             raise ValueError("Không tìm thấy địa điểm thật phù hợp để áp dụng thay đổi.")
