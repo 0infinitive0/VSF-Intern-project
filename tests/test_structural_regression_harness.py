@@ -18,6 +18,8 @@ run is deterministic and CI-safe — no live Ollama/Supabase calls.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 import src.agents.session as session_module
@@ -276,3 +278,17 @@ def test_full_session_structural_signature(monkeypatch):
 
     signature = _capture_signature(session, calls)
     assert signature == EXPECTED_SIGNATURE
+
+
+def test_create_react_agent_has_exactly_two_owners_in_src():
+    """Phase 1 deleted the CLI fork's own create_react_agent + MemorySaver
+    (src/cli/planner_tools.py:678) and the dead template graph
+    (src/agents/graph.py's old `agent`). A third call site reappearing means a
+    parallel agent-construction path has crept back in."""
+    src_root = Path(__file__).resolve().parents[1] / "src"
+    owners = sorted(
+        str(path.relative_to(src_root))
+        for path in src_root.rglob("*.py")
+        if "create_react_agent(" in path.read_text(encoding="utf-8")
+    )
+    assert owners == ["agents/graph.py", "agents/supervisor.py"]
