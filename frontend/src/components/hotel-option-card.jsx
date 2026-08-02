@@ -10,30 +10,36 @@ function HotelOptionCard({ hotel, onPick, disabled }) {
 
   return (
     <button
-      className="hotel-card"
+      className="w-full text-left bg-surface-background border border-border-subtle rounded-lg p-4 flex flex-col gap-2 shadow-sm hover:shadow-md hover:border-primary/40 transition-shadow disabled:opacity-60"
       disabled={disabled}
       onClick={() => onPick(String(hotel.index))}
       type="button"
     >
-      <div className="hotel-card__header">
-        <span className="hotel-card__index">{hotel.index}</span>
-        <span className="hotel-card__name">{hotel.name}</span>
+      <div className="flex items-center gap-2">
+        <span className="w-6 h-6 shrink-0 rounded-full bg-primary-container text-on-primary-container text-xs font-semibold flex items-center justify-center">
+          {hotel.index}
+        </span>
+        <span className="font-display font-semibold text-text-primary">{hotel.name}</span>
       </div>
-      <div className="hotel-card__stars">{stars}</div>
+      <div className="text-primary text-sm">{stars}</div>
       {hotel.description && (
-        <p className="hotel-card__desc">{hotel.description}</p>
+        <p className="text-sm text-text-secondary">{hotel.description}</p>
       )}
       {hotel.matched_rooms && hotel.matched_rooms.length > 0 && (
         <>
-          <div className="hotel-card__rooms-label">{S.hotelRooms}</div>
-          <div className="hotel-card__rooms">
+          <div className="text-xs font-medium text-text-secondary mt-1">{S.hotelRooms}</div>
+          <div className="flex flex-wrap gap-1.5">
             {hotel.matched_rooms.map((room, i) => (
-              <span key={i} className="hotel-card__room-tag">{room}</span>
+              <span key={i} className="px-2 py-0.5 bg-surface-muted text-text-secondary text-xs rounded-full">
+                {room}
+              </span>
             ))}
           </div>
         </>
       )}
-      <div className="hotel-card__pick-btn">{S.hotelPickBtn}</div>
+      <div className="mt-2 text-center text-sm font-medium text-primary border-t border-border-subtle pt-2">
+        {S.hotelPickBtn}
+      </div>
     </button>
   )
 }
@@ -47,7 +53,7 @@ export default function HotelOptionCards({ hotelOptions, onPick, disabled }) {
   if (!hotelOptions || hotelOptions.length === 0) return null
 
   return (
-    <div className="hotel-cards">
+    <div className="flex flex-col gap-3">
       {hotelOptions.map((hotel) => (
         <HotelOptionCard
           key={hotel.index}

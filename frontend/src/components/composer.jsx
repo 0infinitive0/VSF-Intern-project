@@ -36,12 +36,12 @@ export default function Composer({ onSend, disabled }) {
   }
 
   return (
-    <footer className="composer-footer">
-      <div className="composer">
+    <footer className="p-4 border-t border-border-subtle bg-surface-background shrink-0">
+      <div className="relative flex items-end">
         <textarea
           ref={textareaRef}
           id="message-input"
-          className="composer__textarea"
+          className="w-full bg-surface-muted border border-border-subtle rounded-full py-[10px] pl-4 pr-12 text-sm resize-none leading-normal focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all disabled:opacity-60"
           placeholder={S.composerPlaceholder}
           rows={1}
           disabled={disabled}
@@ -51,13 +51,13 @@ export default function Composer({ onSend, disabled }) {
         />
         <button
           id="send-btn"
-          className="composer__send-btn"
+          className="absolute right-2 bottom-[5px] w-8 h-8 bg-border-subtle hover:bg-primary hover:text-white disabled:opacity-60 disabled:hover:bg-border-subtle disabled:hover:text-inherit rounded-full flex items-center justify-center transition-colors text-text-secondary"
           disabled={disabled}
           onClick={handleSend}
           type="button"
           aria-label={S.sendBtn}
         >
-          {S.sendBtn}
+          <span className="material-symbols-outlined text-[16px]">send</span>
         </button>
       </div>
     </footer>

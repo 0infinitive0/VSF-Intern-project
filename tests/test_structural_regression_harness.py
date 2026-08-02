@@ -173,7 +173,10 @@ def _install_stubs(monkeypatch, session, calls: list[tuple[str, dict]]) -> None:
         return "Đã cập nhật lịch trình ngày 2."
 
     monkeypatch.setattr(session_module, "execute_trip_edit_request", _fake_execute_trip_edit_request)
-    monkeypatch.setattr(session_module, "is_finalization_request", lambda text: "chốt" in text.casefold())
+    monkeypatch.setattr(
+        "src.agents.routing_decision.is_finalization_request",
+        lambda text: "chốt" in text.casefold(),
+    )
 
 
 def _capture_signature(session, calls: list[tuple[str, dict]]) -> dict:
@@ -243,32 +246,32 @@ def test_full_session_structural_signature(monkeypatch):
     _install_stubs(monkeypatch, session, calls)
 
     reply = process_chat_turn(session, "Tôi muốn đi Đà Nẵng")
-    assert not reply.startswith("SYSTEM ERROR:")
+    assert not reply.text.startswith("SYSTEM ERROR:")
 
     reply = process_chat_turn(session, "3 ngày")
-    assert not reply.startswith("SYSTEM ERROR:")
+    assert not reply.text.startswith("SYSTEM ERROR:")
 
     reply = process_chat_turn(session, "2 người")
-    assert not reply.startswith("SYSTEM ERROR:")
+    assert not reply.text.startswith("SYSTEM ERROR:")
     # Trip facts complete -> guided hotel-budget question, no tool call yet.
     assert session.intake_state.is_complete
 
     reply = process_chat_turn(session, "bao nhiêu cũng được")
-    assert not reply.startswith("SYSTEM ERROR:")
+    assert not reply.text.startswith("SYSTEM ERROR:")
     assert session.hotel_pref_state.is_complete
     assert calls and calls[-1][0] == "recommend_hotels"
 
     reply = process_chat_turn(session, "1")
-    assert not reply.startswith("SYSTEM ERROR:")
+    assert not reply.text.startswith("SYSTEM ERROR:")
     assert session.initial_plan_complete is True
     assert calls[-1][0] == "select_hotel"
 
     reply = process_chat_turn(session, "đổi hoạt động ngày 2 sang buổi chiều")
-    assert not reply.startswith("SYSTEM ERROR:")
+    assert not reply.text.startswith("SYSTEM ERROR:")
     assert calls[-1][0] == "execute_trip_edit_request"
 
     reply = process_chat_turn(session, "chốt lịch trình")
-    assert not reply.startswith("SYSTEM ERROR:")
+    assert not reply.text.startswith("SYSTEM ERROR:")
     assert calls[-1][0] == "finalize_trip_plan"
 
     signature = _capture_signature(session, calls)

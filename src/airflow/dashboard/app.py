@@ -5,10 +5,15 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 ROOT_DIR = BASE_DIR.parent.parent.parent
+
+# Appended (not inserted at index 0): site-packages must be searched first,
+# or a same-named top-level dir here (e.g. the local Supabase CLI project's
+# "supabase/" folder) shadows the real pip-installed "supabase" package.
+# Needed so `from src.services.routing import ...` below can resolve.
 if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
+    sys.path.append(str(ROOT_DIR))
 if Path("/project").exists() and "/project" not in sys.path:
-    sys.path.insert(0, "/project")
+    sys.path.append("/project")
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse

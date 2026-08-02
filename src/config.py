@@ -56,6 +56,14 @@ class Settings(BaseSettings):
         description="If True, writes trip plan JSON to debug/{session_id}/ for debugging (never global paths)",
     )
 
+    # Supervisor router (Phase 3 of 260731-1508-supervisor-react-router-for-chat-turn)
+    trip_supervisor_router: bool = Field(
+        default=True,
+        description="If True, an LLM supervisor proposes the chat-turn route before the "
+        "deterministic regex fallback. Set to False to restore pure-regex routing without a "
+        "deploy — the operational rollback for R1/R2/R3 in that plan.",
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -5,18 +5,18 @@
  */
 export default function MessageBubble({ message }) {
   const { role, text, isError } = message
+  const isUser = role === 'user'
 
-  let bubbleClass = 'bubble'
-  if (role === 'user') bubbleClass += ' bubble--user'
-  else if (isError)    bubbleClass += ' bubble--ai bubble--error'
-  else                 bubbleClass += ' bubble--ai'
-
-  const rowClass = `bubble-row bubble-row--${role === 'user' ? 'user' : 'ai'}`
+  const bubbleClass = isUser
+    ? 'bg-surface-container text-on-surface rounded-lg rounded-tr-none'
+    : isError
+      ? 'bg-error-container text-on-error-container border border-error/30 rounded-lg'
+      : 'bg-surface-background border border-border-subtle rounded-lg shadow-sm'
 
   return (
-    <div className={rowClass}>
-      <div className="bubble-col">
-        <div className={bubbleClass}>{text}</div>
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+      <div className="max-w-[90%]">
+        <div className={`p-4 text-sm whitespace-pre-wrap ${bubbleClass}`}>{text}</div>
       </div>
     </div>
   )

@@ -14,7 +14,6 @@ import logging
 import re
 import threading
 import time
-import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -22,7 +21,18 @@ from pathlib import Path
 from typing import Any
 
 from src.agents.graph import build_trip_agent
-from src.agents.nodes.intake import is_finalization_request
+from src.agents.routing_decision import (
+    Route,
+    RouteContext,
+    _is_hotel_choice_attempt,
+    _new_trip_signal,
+    _VALID_ROUTES,
+    decide_route_by_rules,
+    route_context_from_session,
+    validate_route,
+)
+from src.agents.supervisor import decide_route_by_llm
+from src.config import get_settings
 from src.services.hotel_selection import (
     HotelPreferenceState,
     rank_hotel_candidates,
@@ -279,40 +289,6 @@ def _looks_like_textual_tool_call(content: object) -> bool:
     )
 
 
-def _normalize_intent_text(value: str) -> str:
-    decomposed = unicodedata.normalize("NFKD", value.replace("Đ", "D").replace("đ", "d"))
-    return "".join(character for character in decomposed if not unicodedata.combining(character)).casefold()
-
-
-def _new_trip_signal(message: str) -> str | None:
-    """Return a conservative signal for starting a separate trip.
-
-    A strong signal explicitly says the trip/plan is new. A destination
-    signal still requires intake to ground a real destination before the
-    saved Draft is bypassed.
-    """
-    normalized = _normalize_intent_text(message)
-    if re.search(r"\b(?:chuyen di|lich trinh|ke hoach)(?: du lich)? moi\b", normalized):
-        return "strong"
-    # "ngày N" marks an edit scope ("đổi khách sạn ngày 2"), but the same letters
-    # appear in every ordinary new-trip sentence: "3 ngày 2 người" normalizes to
-    # "3 ngay 2 nguoi", where the N is the head count. Without these guards the
-    # most common way to start a trip is read as editing day 2 of the saved plan.
-    # A duration reads as "<digit> ngày"; a scope reads as "ngày <digit>" with no
-    # digit before it and no unit word after it.
-    day_scope = r"(?<!\d\s)\bngay\s+\d+\b(?!\s*(?:nguoi|dem|tuan|thang))"
-    if re.search(r"\b(?:doi|sua|thay|them|bo|xoa)\b", normalized) or re.search(day_scope, normalized):
-        return None
-    # Any ordinary "let's go somewhere" phrasing counts. This stays safe because it
-    # is only a *candidate*: _begin_new_trip_if_requested still refuses unless intake
-    # grounds a real destination, and the edit verbs / day scopes above already
-    # returned. Requiring the exact words "muốn đi du lịch" missed the most common
-    # opener of all — "đi Đà Nẵng 3 ngày 2 người".
-    if re.search(r"\b(?:di|du lich|len ke hoach|lap ke hoach|len lich trinh)\b", normalized):
-        return "destination"
-    return None
-
-
 def _unsupported_destination_reply(user_input: str) -> str | None:
     """Reply to use when a message clearly asks for a new trip but names a place we
     have no data for. Without this the message falls through to the saved-plan edit
@@ -334,34 +310,6 @@ def _unsupported_destination_reply(user_input: str) -> str | None:
     if _match_known_destination(named, destination_names):
         return None
     return TripIntakeState().next_question(destination_names)
-
-
-_OTHER_INTENT_WORDS = re.compile(
-    r"\b(?:doi|sua|thay|them|bo|xoa|chot|xac nhan|hoan tat|tai sao|vi sao|sao lai|the nao|gi vay)\b"
-)
-
-
-def _is_hotel_choice_attempt(user_input: str) -> bool:
-    """Whether a reply that failed to resolve was still *trying* to name a hotel.
-
-    True keeps the list up and re-asks (a typo'd name, an out-of-range number).
-    False means the user has moved on, and holding the list would trap them.
-    """
-    stripped = user_input.strip()
-    if not stripped:
-        return True
-    # A bare number is always an attempt, even out of range — never read "3" as a
-    # topic change just because the list is shorter than that.
-    if stripped.isdigit():
-        return True
-    if is_finalization_request(user_input):
-        return False
-    normalized = _normalize_intent_text(user_input)
-    if _OTHER_INTENT_WORDS.search(normalized):
-        return False
-    if _new_trip_signal(user_input) is not None:
-        return False
-    return True
 
 
 def _begin_new_trip_if_requested(session: TripSession, user_input: str) -> bool:
@@ -441,6 +389,38 @@ def execute_trip_edit_request(session: TripSession, modification_request: str, p
         return f"SYSTEM ERROR: {exc}"
 
 
+def _decide_route(session: TripSession, context: RouteContext, user_input: str) -> Route:
+    """Supervisor proposes, `validate_route` checks, `decide_route_by_rules` is
+    the deterministic fallback (D3). Logs the final route and, when the
+    supervisor's proposal was not used, why — llm_failed | invalid_label |
+    impossible_route | flag_off — so Phase 4's measurements can tell wiring
+    bugs apart from model-quality issues."""
+    if not get_settings().trip_supervisor_router:
+        route = decide_route_by_rules(context, user_input)
+        logger.info("Route decided: %s (reason=flag_off)", route)
+        return route
+
+    proposed = decide_route_by_llm(session, user_input)
+    if proposed is None:
+        route = decide_route_by_rules(context, user_input)
+        logger.info("Route decided: %s (reason=llm_failed)", route)
+        return route
+
+    if proposed not in _VALID_ROUTES:
+        route = decide_route_by_rules(context, user_input)
+        logger.info("Route decided: %s (reason=invalid_label, proposed=%s)", route, proposed)
+        return route
+
+    validated = validate_route(proposed, context)
+    if validated is None:
+        route = decide_route_by_rules(context, user_input)
+        logger.info("Route decided: %s (reason=impossible_route, proposed=%s)", route, proposed)
+        return route
+
+    logger.info("Route decided: %s (reason=supervisor)", validated)
+    return validated
+
+
 def process_chat_turn(session: TripSession, user_input: str) -> TurnResult:
     """Handle exactly one chat turn and return a TurnResult. Mutates `session`
     in place. Callers own their own input loop / HTTP request cycle — this
@@ -453,96 +433,144 @@ def process_chat_turn(session: TripSession, user_input: str) -> TurnResult:
     logger.info("User Input: %s", user_input)
     session.last_seen_at = time.time()
 
-    if session.pending_hotel_selection is not None:
-        tool_response = session.tools.select_hotel.invoke({"selection": user_input})
-        logger.info("Hotel selection response: %s", tool_response)
-        # select_hotel clears the pending selection once it resolves a hotel, so
-        # that clearing — not the wording of the reply — is what says it failed.
-        picked = session.pending_hotel_selection is None
-        if picked:
-            session.initial_plan_complete = not str(tool_response).startswith("SYSTEM ERROR:")
-            if session.initial_plan_complete:
-                session.planning_new_trip = False
-            return TurnResult(text=str(tool_response), tool="select_hotel")
+    context = route_context_from_session(session)
+    route = _decide_route(session, context, user_input)
 
-        if _is_hotel_choice_attempt(user_input):
-            return TurnResult(text=str(tool_response), tool="select_hotel")
+    if route == "select_hotel":
+        result = _run_select_hotel(session, user_input)
+        if result is not None:
+            return result
+        # Pending list was dropped (not a pick, not an attempt at one) — the
+        # message must still be handled for what it actually is, so re-decide.
+        context = route_context_from_session(session)
+        route = _decide_route(session, context, user_input)
 
-        # Not a pick and not an attempt at one. Re-asking here is what trapped
-        # people: with a list pending, every later message was read as a choice,
-        # so "chốt lịch trình" and "thêm quán cà phê ngày 2" both came back as
-        # "mình chưa xác định được khách sạn", forever. Drop the list and let the
-        # message be handled for what it actually is.
-        logger.info("Reply is not a hotel choice; dropping the pending list")
-        _clear_pending_hotel_selection(session)
+    if route == "finalize":
+        return _run_finalize(session)
 
-    if session.trip_data is not None and is_finalization_request(user_input):
-        tool_response = session.tools.finalize_trip_plan.invoke({})
-        logger.info("Finalization response: %s", tool_response)
-        session.initial_plan_complete = not str(tool_response).startswith("SYSTEM ERROR:")
-        return TurnResult(text=str(tool_response), tool="finalize_trip_plan")
+    is_saved_plan_edit = False
+    if route in ("new_trip", "edit_draft"):
+        has_saved_plan = session.trip_data is not None
+        if has_saved_plan and not session.planning_new_trip:
+            if not _begin_new_trip_if_requested(session, user_input):
+                unsupported_reply = _unsupported_destination_reply(user_input)
+                if unsupported_reply:
+                    logger.info("New-trip request names an unsupported destination")
+                    return TurnResult(text=unsupported_reply, tool=None)
 
-    has_saved_plan = session.trip_data is not None
-    if has_saved_plan and not session.planning_new_trip:
-        if not _begin_new_trip_if_requested(session, user_input):
-            unsupported_reply = _unsupported_destination_reply(user_input)
-            if unsupported_reply:
-                logger.info("New-trip request names an unsupported destination")
-                return unsupported_reply
-
-    is_saved_plan_edit = has_saved_plan and not session.planning_new_trip
-    if is_saved_plan_edit:
-        try:
-            current_data = session.trip_data
-            planner_request = user_input
-            if session.pending_trip_edit_request:
-                planner_request = f"{session.pending_trip_edit_request}\nLàm rõ của người dùng: {user_input}"
-            edit_plan = plan_trip_edit(planner_request, current_data)
-        except TripEditPlanError as exc:
-            logger.warning("Saved-trip edit planner failed safely: %s", exc)
-            return "SYSTEM ERROR: Không thể hiểu an toàn yêu cầu chỉnh sửa này. Vui lòng diễn đạt cụ thể hơn."
-
-        if edit_plan.decision == "clarify":
-            session.pending_trip_edit_request = planner_request
-            return edit_plan.clarification_question or "Bạn muốn chỉnh sửa phần nào của lịch trình?"
-        session.pending_trip_edit_request = None
-        if edit_plan.decision == "apply":
-            tool_response = execute_trip_edit_request(session, user_input, edit_plan)
-            logger.info("LLM planned modification response: %s", tool_response)
-            reply_text = tool_response or "SYSTEM ERROR: Không thể áp dụng yêu cầu chỉnh sửa này."
-            return TurnResult(text=str(reply_text), tool="execute_trip_edit_request")
+        is_saved_plan_edit = has_saved_plan and not session.planning_new_trip
+        if is_saved_plan_edit:
+            result = _run_edit_draft(session, user_input)
+            if result is not None:
+                return result
+            # edit_plan.decision == "not_edit": the saved-plan edit path is done
+            # with this turn — go straight to the general agent, same as today.
+            return _run_chat_agent(session, user_input)
 
     if not session.initial_plan_complete and not is_saved_plan_edit:
-        if not session.intake_state.is_complete:
-            destination_names = _get_destination_names()
-            session.intake_state = session.intake_state.with_message(user_input, destination_names)
-            missing_question = session.intake_state.next_question(destination_names)
-            if missing_question:
-                logger.info("Deterministic intake response: %s", missing_question)
-                return TurnResult(text=str(missing_question), tool=None)
+        return _run_intake(session, user_input)
 
-            # Trip facts just became complete THIS turn (consumed by intake_state
-            # above) — ask the first hotel-preference question next turn, rather
-            # than also feeding this same input into hotel_pref_state right now.
-            logger.info("Trip intake complete; asking hotel budget preference")
-            return TurnResult(text=str(session.hotel_pref_state.next_question()), tool=None)
+    return _run_chat_agent(session, user_input)
 
-        if not session.hotel_pref_state.is_complete:
-            session.hotel_pref_state = session.hotel_pref_state.with_message(user_input)
-            missing_pref_question = session.hotel_pref_state.next_question()
-            if missing_pref_question:
-                logger.info("Guided hotel-preference response: %s", missing_pref_question)
-                return TurnResult(text=str(missing_pref_question), tool=None)
 
-        verified_arguments = {
-            **session.intake_state.tool_arguments(),
-            **session.hotel_pref_state.tool_arguments(),
-        }
-        logger.info("Deterministic intake complete: %s", verified_arguments)
-        tool_response = session.tools.recommend_hotels.invoke(verified_arguments)
-        logger.info("Final Tool Response Output:\n%s", tool_response)
-        return TurnResult(text=str(tool_response), tool="recommend_hotels")
+def _run_select_hotel(session: TripSession, user_input: str) -> TurnResult | None:
+    """Returns None when the pending list was dropped and the caller must
+    re-decide the route for the rest of this turn."""
+    tool_response = session.tools.select_hotel.invoke({"selection": user_input})
+    logger.info("Hotel selection response: %s", tool_response)
+    # select_hotel clears the pending selection once it resolves a hotel, so
+    # that clearing — not the wording of the reply — is what says it failed.
+    picked = session.pending_hotel_selection is None
+    if picked:
+        session.initial_plan_complete = not str(tool_response).startswith("SYSTEM ERROR:")
+        if session.initial_plan_complete:
+            session.planning_new_trip = False
+        return TurnResult(text=str(tool_response), tool="select_hotel")
 
+    if _is_hotel_choice_attempt(user_input):
+        return TurnResult(text=str(tool_response), tool="select_hotel")
+
+    # Not a pick and not an attempt at one. Re-asking here is what trapped
+    # people: with a list pending, every later message was read as a choice,
+    # so "chốt lịch trình" and "thêm quán cà phê ngày 2" both came back as
+    # "mình chưa xác định được khách sạn", forever. Drop the list and let the
+    # message be handled for what it actually is.
+    logger.info("Reply is not a hotel choice; dropping the pending list")
+    _clear_pending_hotel_selection(session)
+    return None
+
+
+def _run_finalize(session: TripSession) -> TurnResult:
+    tool_response = session.tools.finalize_trip_plan.invoke({})
+    logger.info("Finalization response: %s", tool_response)
+    session.initial_plan_complete = not str(tool_response).startswith("SYSTEM ERROR:")
+    return TurnResult(text=str(tool_response), tool="finalize_trip_plan")
+
+
+def _run_edit_draft(session: TripSession, user_input: str) -> TurnResult | None:
+    """Returns None when `plan_trip_edit` decides `not_edit` — the caller falls
+    through to the general chat agent, same as today."""
+    try:
+        current_data = session.trip_data
+        planner_request = user_input
+        if session.pending_trip_edit_request:
+            planner_request = f"{session.pending_trip_edit_request}\nLàm rõ của người dùng: {user_input}"
+        edit_plan = plan_trip_edit(planner_request, current_data)
+    except TripEditPlanError as exc:
+        logger.warning("Saved-trip edit planner failed safely: %s", exc)
+        return TurnResult(
+            text="SYSTEM ERROR: Không thể hiểu an toàn yêu cầu chỉnh sửa này. Vui lòng diễn đạt cụ thể hơn.",
+            tool=None,
+        )
+
+    if edit_plan.decision == "clarify":
+        session.pending_trip_edit_request = planner_request
+        return TurnResult(
+            text=edit_plan.clarification_question or "Bạn muốn chỉnh sửa phần nào của lịch trình?",
+            tool=None,
+        )
+    session.pending_trip_edit_request = None
+    if edit_plan.decision == "apply":
+        tool_response = execute_trip_edit_request(session, user_input, edit_plan)
+        logger.info("LLM planned modification response: %s", tool_response)
+        reply_text = tool_response or "SYSTEM ERROR: Không thể áp dụng yêu cầu chỉnh sửa này."
+        return TurnResult(text=str(reply_text), tool="execute_trip_edit_request")
+    return None
+
+
+def _run_intake(session: TripSession, user_input: str) -> TurnResult:
+    if not session.intake_state.is_complete:
+        destination_names = _get_destination_names()
+        session.intake_state = session.intake_state.with_message(user_input, destination_names)
+        missing_question = session.intake_state.next_question(destination_names)
+        if missing_question:
+            logger.info("Deterministic intake response: %s", missing_question)
+            return TurnResult(text=str(missing_question), tool=None)
+
+        # Trip facts just became complete THIS turn (consumed by intake_state
+        # above) — ask the first hotel-preference question next turn, rather
+        # than also feeding this same input into hotel_pref_state right now.
+        logger.info("Trip intake complete; asking hotel budget preference")
+        return TurnResult(text=str(session.hotel_pref_state.next_question()), tool=None)
+
+    if not session.hotel_pref_state.is_complete:
+        session.hotel_pref_state = session.hotel_pref_state.with_message(user_input)
+        missing_pref_question = session.hotel_pref_state.next_question()
+        if missing_pref_question:
+            logger.info("Guided hotel-preference response: %s", missing_pref_question)
+            return TurnResult(text=str(missing_pref_question), tool=None)
+
+    verified_arguments = {
+        **session.intake_state.tool_arguments(),
+        **session.hotel_pref_state.tool_arguments(),
+    }
+    logger.info("Deterministic intake complete: %s", verified_arguments)
+    tool_response = session.tools.recommend_hotels.invoke(verified_arguments)
+    logger.info("Final Tool Response Output:\n%s", tool_response)
+    return TurnResult(text=str(tool_response), tool="recommend_hotels")
+
+
+def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:
     for attempt in range(2):
         agent_input = user_input
         if attempt:

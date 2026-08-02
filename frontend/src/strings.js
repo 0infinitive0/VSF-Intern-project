@@ -45,4 +45,8 @@ export const S = {
 
   // Reset
   resetTitle: 'Tạo lại từ đầu',
+
+  // Map panel (placeholder — no map integration yet)
+  mapPlaceholderTitle: 'Bản đồ lộ trình',
+  mapPlaceholderBody: 'Tính năng bản đồ đang được phát triển.',
 }

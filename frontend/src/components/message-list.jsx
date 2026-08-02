@@ -33,11 +33,15 @@ export default function MessageList({
   })()
 
   return (
-    <div className="message-list" role="log" aria-live="polite">
+    <div
+      className="flex-1 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-4"
+      role="log"
+      aria-live="polite"
+    >
       {messages.length === 0 && !pending && (
-        <div className="bubble-row bubble-row--ai">
-          <div className="bubble-col">
-            <div className="bubble bubble--ai">{S.greeting}</div>
+        <div className="flex justify-start">
+          <div className="max-w-[90%] bg-surface-background border border-border-subtle rounded-lg shadow-sm p-4 text-sm text-text-primary">
+            {S.greeting}
           </div>
         </div>
       )}
@@ -47,13 +51,13 @@ export default function MessageList({
         const stage = msg.stage
 
         return (
-          <div key={msg.id}>
+          <div key={msg.id} className="flex flex-col gap-3">
             <MessageBubble message={msg} />
 
             {/* Show cards/chips only on the last AI turn */}
             {isLastAi && !pending && (
-              <div className="bubble-row bubble-row--ai">
-                <div className="bubble-col">
+              <div className="flex justify-start">
+                <div className="max-w-[90%] w-full">
                   {stage === 'hotel_options' && hotelOptions.length > 0 ? (
                     <HotelOptionCards
                       hotelOptions={hotelOptions}
@@ -75,10 +79,8 @@ export default function MessageList({
       })}
 
       {pending && (
-        <div className="bubble-row bubble-row--ai">
-          <div className="bubble-col">
-            <ElapsedSpinner elapsedMs={elapsedMs} />
-          </div>
+        <div className="flex justify-start">
+          <ElapsedSpinner elapsedMs={elapsedMs} />
         </div>
       )}
 

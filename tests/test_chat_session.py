@@ -1,11 +1,25 @@
 from __future__ import annotations
 
+import pytest
+
 import src.agents.session as session_module
 import src.services.trip_intake as trip_intake_module
-from src.agents.session import TripSession, process_chat_turn
+from src.agents.session import TripSession, TurnResult, process_chat_turn
 from src.services.hotel_selection import HotelPreferenceState
 from src.services.trip_edit_planner import TripEditPlan, TripEditPlanError
 from src.services.trip_intake import TripIntakeState
+
+
+@pytest.fixture(autouse=True)
+def _no_live_supervisor(monkeypatch):
+    """These are unit tests of the deterministic `decide_route_by_rules`
+    cascade, predating the LLM supervisor (Phase 3). Force every
+    `process_chat_turn` call here through the regex fallback, the same way
+    `TRIP_SUPERVISOR_ROUTER=0` would in production — otherwise, whenever a
+    real Ollama happens to be reachable, a live, unstubbed LLM would decide
+    routing non-deterministically for tests that were never written to
+    exercise it."""
+    monkeypatch.setattr(session_module, "decide_route_by_llm", lambda session, user_input: None)
 
 
 class _FakeTool:
@@ -71,7 +85,7 @@ def test_process_chat_turn_routes_to_select_hotel_when_pending_selection_exists(
 
     session.tools.select_hotel = _FakeTool(_fake_invoke)
 
-    reply = process_chat_turn(session, "1")
+    reply = process_chat_turn(session, "1").text
 
     assert reply == "picked"
     assert captured["args"] == {"selection": "1"}
@@ -81,10 +95,10 @@ def test_process_chat_turn_routes_to_select_hotel_when_pending_selection_exists(
 def test_process_chat_turn_routes_to_finalize_when_finalization_request(monkeypatch):
     session = _session(trip_data={})
 
-    monkeypatch.setattr(session_module, "is_finalization_request", lambda text: True)
+    monkeypatch.setattr("src.agents.routing_decision.is_finalization_request", lambda text: True)
     session.tools.finalize_trip_plan = _FakeTool(lambda args: "finalized")
 
-    reply = process_chat_turn(session, "chốt lịch trình")
+    reply = process_chat_turn(session, "chốt lịch trình").text
 
     assert reply == "finalized"
     assert session.initial_plan_complete is True
@@ -95,7 +109,7 @@ def test_process_chat_turn_asks_missing_intake_question(monkeypatch):
     _mock_intake_extraction(monkeypatch, {"Tôi muốn đi Đà Nẵng": {"destination": "Đà Nẵng"}})
 
     session = _session()
-    reply = process_chat_turn(session, "Tôi muốn đi Đà Nẵng")
+    reply = process_chat_turn(session, "Tôi muốn đi Đà Nẵng").text
 
     assert "bao lâu" in reply.lower()
     assert session.intake_state.destination == "Đà Nẵng"
@@ -106,7 +120,7 @@ def test_process_chat_turn_asks_budget_question_right_after_intake_completes(mon
     _mock_intake_extraction(monkeypatch, {"2 người": {"people_count": 2}})
 
     session = _session(intake_state=TripIntakeState(destination="Đà Nẵng", duration="3 ngày"))
-    reply = process_chat_turn(session, "2 người")
+    reply = process_chat_turn(session, "2 người").text
 
     # Trip intake completes the moment destination/duration/people are all known —
     # there is no dedicated preferences question — so the same turn immediately
@@ -136,7 +150,7 @@ def test_process_chat_turn_calls_recommend_hotels_right_after_budget_resolved():
     )
     session.tools.recommend_hotels = _FakeTool(_fake_invoke)
 
-    reply = process_chat_turn(session, "4 triệu")
+    reply = process_chat_turn(session, "4 triệu").text
 
     assert reply == "here is a list"
     assert session.hotel_pref_state.is_complete
@@ -159,7 +173,7 @@ def test_process_chat_turn_falls_back_to_agent_once_plan_complete():
             yield {"messages": [_FakeMessage("ai", content="Đã cập nhật lịch trình.")]}
 
     session = _session(agent=_FakeAgent(), initial_plan_complete=True)
-    reply = process_chat_turn(session, "đổi khách sạn khác")
+    reply = process_chat_turn(session, "đổi khách sạn khác").text
 
     assert reply == "Đã cập nhật lịch trình."
 
@@ -193,8 +207,8 @@ def test_saved_plan_cutoff_asks_for_day_scope_then_bypasses_agent(monkeypatch):
 
     session.agent = _NeverAgent()
 
-    first_reply = process_chat_turn(session, "buổi tối sau 20h tôi không muốn đi đâu nữa")
-    second_reply = process_chat_turn(session, "tất cả các ngày")
+    first_reply = process_chat_turn(session, "buổi tối sau 20h tôi không muốn đi đâu nữa").text
+    second_reply = process_chat_turn(session, "tất cả các ngày").text
 
     assert "ngày nào" in first_reply.casefold()
     assert second_reply == "Đã áp dụng giờ giới hạn."
@@ -225,7 +239,7 @@ def test_textual_tool_call_json_is_never_returned_to_the_user():
     agent = _RetryingAgent()
     session = _session(agent=agent, initial_plan_complete=True)
 
-    reply = process_chat_turn(session, "hãy giúp tôi")
+    reply = process_chat_turn(session, "hãy giúp tôi").text
 
     assert agent.calls == 2
     assert not reply.lstrip().startswith("{")
@@ -254,7 +268,7 @@ def test_saved_plan_self_selected_breakfast_bypasses_agent(monkeypatch):
 
     session.agent = _NeverAgent()
 
-    reply = process_chat_turn(session, "tôi muốn tự chọn chỗ ăn sáng")
+    reply = process_chat_turn(session, "tôi muốn tự chọn chỗ ăn sáng").text
 
     assert reply == "Đã để bạn tự chọn bữa sáng."
     assert captured["args"]["modification_request"] == "tôi muốn tự chọn chỗ ăn sáng"
@@ -285,7 +299,7 @@ def test_saved_draft_messages_use_the_edit_planner_before_the_general_agent(monk
 
     session.agent = _NeverAgent()
 
-    reply = process_chat_turn(session, "đổi bữa sáng ngày 1")
+    reply = process_chat_turn(session, "đổi bữa sáng ngày 1").text
 
     assert reply == "updated"
     assert captured["result"][0] == "đổi bữa sáng ngày 1"
@@ -313,7 +327,7 @@ def test_saved_plan_not_edit_decision_falls_through_to_general_agent(monkeypatch
             yield {"messages": [_Message()]}
 
     session.agent = _Agent()
-    reply = process_chat_turn(session, "gợi ý thêm cho tôi")
+    reply = process_chat_turn(session, "gợi ý thêm cho tôi").text
 
     assert reply == "Đây là câu trả lời chung."
 
@@ -334,7 +348,7 @@ def test_fresh_trip_request_bypasses_saved_draft_edit_planner_failure(monkeypatc
         {"tôi muốn đi chơi hcm": {"destination": "Hồ Chí Minh"}},
     )
 
-    reply = process_chat_turn(session, "tôi muốn đi chơi hcm")
+    reply = process_chat_turn(session, "tôi muốn đi chơi hcm").text
 
     assert not reply.startswith("SYSTEM ERROR:")
     assert "bao lâu" in reply.casefold()
@@ -360,8 +374,8 @@ def test_fresh_trip_intake_keeps_bypassing_the_old_draft_on_followup(monkeypatch
         },
     )
 
-    first_reply = process_chat_turn(session, "tôi muốn đi chơi hcm")
-    second_reply = process_chat_turn(session, "3 ngày")
+    first_reply = process_chat_turn(session, "tôi muốn đi chơi hcm").text
+    second_reply = process_chat_turn(session, "3 ngày").text
 
     assert "bao lâu" in first_reply.casefold()
     assert "bao nhiêu người" in second_reply.casefold()
@@ -385,7 +399,7 @@ def test_fresh_session_saved_plan_edit_with_destination_still_fails_closed(monke
         lambda *_args: (_ for _ in ()).throw(TripEditPlanError("Unterminated string")),
     )
 
-    reply = process_chat_turn(session, "thêm điểm ở hcm vào ngày 1")
+    reply = process_chat_turn(session, "thêm điểm ở hcm vào ngày 1").text
 
     assert reply.startswith("SYSTEM ERROR:")
 
@@ -397,7 +411,7 @@ def test_agent_provider_error_is_returned_as_a_safe_reply():
 
     session = _session(agent=_FailingAgent(), initial_plan_complete=True)
 
-    reply = process_chat_turn(session, "hãy giúp tôi")
+    reply = process_chat_turn(session, "hãy giúp tôi").text
 
     assert reply.startswith("SYSTEM ERROR:")
     assert "không thể xử lý" in reply.casefold()
@@ -422,7 +436,7 @@ def test_unsupported_destination_is_named_not_sent_to_the_edit_planner(monkeypat
 
     monkeypatch.setattr(session_module, "plan_trip_edit", _NeverPlanner())
 
-    reply = process_chat_turn(session, "đi Hội An 2 ngày 2 người")
+    reply = process_chat_turn(session, "đi Hội An 2 ngày 2 người").text
 
     assert "Đà Nẵng" in reply and "Huế" in reply
     assert "chỉnh sửa" not in reply
@@ -448,7 +462,7 @@ def test_edit_request_naming_no_place_still_reaches_the_edit_planner(monkeypatch
         session_module, "execute_trip_edit_request", lambda _session, request, plan: "Đã áp dụng."
     )
 
-    reply = process_chat_turn(session, "buổi tối sau 20h tôi không muốn đi đâu nữa")
+    reply = process_chat_turn(session, "buổi tối sau 20h tôi không muốn đi đâu nữa").text
 
     assert reply == "Đã áp dụng."
 
@@ -465,10 +479,10 @@ def test_unresolved_hotel_reply_that_is_another_intent_drops_the_pending_list(mo
     # Real select_hotel leaves pending_hotel_selection set when it cannot resolve
     # a choice.
     session.tools.select_hotel = _FakeTool(lambda args: "Mình chưa xác định được...")
-    monkeypatch.setattr(session_module, "is_finalization_request", lambda text: True)
+    monkeypatch.setattr("src.agents.routing_decision.is_finalization_request", lambda text: True)
     session.tools.finalize_trip_plan = _FakeTool(lambda args: "Đã chốt lịch trình.")
 
-    reply = process_chat_turn(session, "chốt lịch trình này")
+    reply = process_chat_turn(session, "chốt lịch trình này").text
 
     assert reply == "Đã chốt lịch trình."
     assert session.pending_hotel_selection is None
@@ -480,7 +494,7 @@ def test_unresolved_hotel_reply_that_is_a_number_keeps_asking():
     session = _session(pending_hotel_selection={"mode": "new_trip", "options": []})
     session.tools.select_hotel = _FakeTool(lambda args: "Mình chưa xác định được...")
 
-    reply = process_chat_turn(session, "9")
+    reply = process_chat_turn(session, "9").text
 
     assert reply == "Mình chưa xác định được..."
     assert session.pending_hotel_selection is not None
@@ -519,3 +533,65 @@ def test_suggestions_list_hotels_while_a_choice_is_pending():
         {"label": "1. Khách sạn A", "value": "1"},
         {"label": "2. Khách sạn B", "value": "2"},
     ]
+
+
+# --- Phase 1 contract fix: every return path must be a TurnResult, never a
+# bare str (session.py previously leaked str on these three paths). ---
+
+
+def test_unsupported_destination_reply_returns_turn_result(monkeypatch):
+    session = _session(trip_data={"itineraries": [{"duration_days": 3}]})
+
+    monkeypatch.setattr(session_module, "_get_destination_names", lambda: ("Đà Nẵng", "Huế"))
+    monkeypatch.setattr(
+        session_module,
+        "_llm_extract_intake_facts",
+        lambda message, known, names, model=None: {"destination": "Hội An"},
+    )
+
+    result = process_chat_turn(session, "đi Hội An 2 ngày 2 người")
+
+    assert isinstance(result, TurnResult)
+    assert result.tool is None
+    assert "Đà Nẵng" in result.text
+
+
+def test_saved_trip_edit_planner_failure_returns_turn_result(monkeypatch):
+    session = _session(
+        trip_data={"itineraries": [{"duration_days": 1, "status": "Draft"}], "itinerary_items": []},
+    )
+
+    monkeypatch.setattr(
+        session_module,
+        "plan_trip_edit",
+        lambda *_args: (_ for _ in ()).throw(TripEditPlanError("Unterminated string")),
+    )
+
+    result = process_chat_turn(session, "đổi bữa sáng ngày 1")
+
+    assert isinstance(result, TurnResult)
+    assert result.tool is None
+    assert result.text.startswith("SYSTEM ERROR:")
+
+
+def test_saved_trip_edit_clarification_returns_turn_result(monkeypatch):
+    session = _session(
+        trip_data={"itineraries": [{"duration_days": 3}]}, initial_plan_complete=True
+    )
+
+    monkeypatch.setattr(
+        session_module,
+        "plan_trip_edit",
+        lambda request, _data: TripEditPlan(
+            decision="clarify",
+            summary="Cần biết ngày áp dụng",
+            clarification_question="Bạn muốn áp dụng cho ngày nào?",
+            raw_request=request,
+        ),
+    )
+
+    result = process_chat_turn(session, "buổi tối sau 20h tôi không muốn đi đâu nữa")
+
+    assert isinstance(result, TurnResult)
+    assert result.tool is None
+    assert result.text == "Bạn muốn áp dụng cho ngày nào?"

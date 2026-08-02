@@ -11,8 +11,15 @@ export default function ElapsedSpinner({ elapsedMs }) {
   else if (seconds >= 3) copy = S.pendingSearchingHotels
 
   return (
-    <div className="elapsed-spinner" aria-live="polite" aria-busy="true">
-      <span className="elapsed-spinner__ring" aria-hidden="true" />
+    <div
+      className="flex items-center gap-2 text-sm text-text-secondary"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <span
+        className="elapsed-spinner__ring w-4 h-4 rounded-full border-2 border-border-subtle border-t-primary shrink-0"
+        aria-hidden="true"
+      />
       <span>
         {copy}
         {seconds > 0 && (
