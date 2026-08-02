@@ -149,6 +149,28 @@ class TripIntakeState:
             "preferences": ", ".join(self.preferences),
         }
 
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-safe representation for TripState. `asdict` at call sites would
+        work too, but a single method here is the one place to fix when a
+        field is added."""
+        return {
+            "destination": self.destination,
+            "duration": self.duration,
+            "people": self.people,
+            "preferences": list(self.preferences),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> TripIntakeState:
+        """Inverse of `to_dict`. JSON has no tuple type, so `preferences` comes
+        back as a list — coerced to a tuple here, the one place that matters."""
+        return cls(
+            destination=data.get("destination"),
+            duration=data.get("duration"),
+            people=data.get("people"),
+            preferences=tuple(data.get("preferences") or ()),
+        )
+
 
 def _llm_extract_intake_facts(
     message: str,

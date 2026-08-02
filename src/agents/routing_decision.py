@@ -22,11 +22,15 @@ import re
 import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Literal, get_args
+from typing import TYPE_CHECKING, Literal, get_args
 
 from src.agents.nodes.intake import is_finalization_request
+from src.services.hotel_selection import HotelPreferenceState
 from src.services.trip_intake import TripIntakeState
 from src.services.trip_planner import _get_destination_names
+
+if TYPE_CHECKING:
+    from src.agents.state import TripState
 
 Route = Literal["select_hotel", "finalize", "new_trip", "edit_draft", "intake", "chat"]
 _VALID_ROUTES = frozenset(get_args(Route))
@@ -47,19 +51,25 @@ class RouteContext:
     has_pending_edit_clarification: bool
 
 
-def route_context_from_session(session: Any) -> RouteContext:
-    trip_data = session.trip_data
+def route_context_from_state(state: TripState) -> RouteContext:
+    """Reads only the state dict — no session object, no runtime fields.
+    `intake`/`hotel_prefs` are reconstructed via `from_dict` to reuse
+    `is_complete`'s existing logic rather than duplicating that predicate
+    against the raw dict."""
+    trip_data = state["trip_data"]
     itineraries = (trip_data or {}).get("itineraries") or [{}]
     is_trip_finalized = itineraries[0].get("status") == "Finalized"
+    intake = TripIntakeState.from_dict(state["intake"])
+    hotel_prefs = HotelPreferenceState.from_dict(state["hotel_prefs"])
     return RouteContext(
-        has_pending_hotel_selection=session.pending_hotel_selection is not None,
+        has_pending_hotel_selection=state["pending_hotel_selection"] is not None,
         has_trip_data=trip_data is not None,
         is_trip_finalized=is_trip_finalized,
-        initial_plan_complete=session.initial_plan_complete,
-        planning_new_trip=session.planning_new_trip,
-        intake_complete=session.intake_state.is_complete,
-        hotel_prefs_complete=session.hotel_pref_state.is_complete,
-        has_pending_edit_clarification=session.pending_trip_edit_request is not None,
+        initial_plan_complete=state["initial_plan_complete"],
+        planning_new_trip=state["planning_new_trip"],
+        intake_complete=intake.is_complete,
+        hotel_prefs_complete=hotel_prefs.is_complete,
+        has_pending_edit_clarification=state["pending_trip_edit_request"] is not None,
     )
 
 

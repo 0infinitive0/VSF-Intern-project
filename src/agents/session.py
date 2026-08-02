@@ -15,7 +15,7 @@ import re
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -28,9 +28,10 @@ from src.agents.routing_decision import (
     _new_trip_signal,
     _VALID_ROUTES,
     decide_route_by_rules,
-    route_context_from_session,
+    route_context_from_state,
     validate_route,
 )
+from src.agents.state import TripState, initial_state
 from src.agents.supervisor import decide_route_by_llm
 from src.config import get_settings
 from src.services.hotel_selection import (
@@ -97,32 +98,127 @@ def derive_stage(result: TurnResult) -> str:
     return _STAGE_MAP.get(result.tool, "intake")
 
 
-@dataclass
 class TripSession:
-    """Per-conversation state — one instance per terminal run, or per web
-    session_id. Mutated in place by process_chat_turn as the conversation
-    progresses through intake -> hotel preferences -> recommend/select -> agent.
+    """Per-conversation runtime holder — one instance per terminal run, or per
+    web session_id. Wraps a serializable `TripState` (`self.state`): every
+    business fact (`intake_state`, `hotel_pref_state`, `trip_data`,
+    `pending_hotel_selection`, `initial_plan_complete`, `planning_new_trip`,
+    `pending_trip_edit_request`) lives in `self.state` and is exposed here
+    only as a property, so a checkpointer can eventually own `state` directly
+    (Phase 7) without this class changing shape.
 
-    Absorbs the former `ChatSession`; `trip_data` and `pending_hotel_selection`
-    replace the two module-level JSON files current_trip_plan.json and
-    pending_hotel_selection.json so two sessions never share state.
+    `agent`, `tools`, `persist_hook`, `lock`, `created_at`, `last_seen_at` are
+    process-local runtime fields — not serializable, not checkpointed, rebuilt
+    on every process start.
+
+    The seven business-fact properties, and this class's ability to accept
+    them as constructor keyword arguments, are a TRANSITIONAL compatibility
+    shim: existing call sites and tests keep working unchanged through phases
+    3-5. Phase 5 removes both the properties and the constructor kwargs once
+    the StateGraph itself owns `state` and nothing constructs a TripSession
+    with them directly.
     """
 
-    session_id: str
-    agent: Any
-    config: dict
-    tools: Any = None  # SessionTools — set by create_chat_session via build_trip_agent
-    intake_state: TripIntakeState = field(default_factory=TripIntakeState)
-    hotel_pref_state: HotelPreferenceState = field(default_factory=HotelPreferenceState)
-    initial_plan_complete: bool = False
-    planning_new_trip: bool = False
-    pending_trip_edit_request: str | None = None
-    trip_data: dict[str, Any] | None = None
-    pending_hotel_selection: dict[str, Any] | None = None
-    persist_hook: Callable[[TripSession], None] | None = None
-    created_at: float = field(default_factory=time.time)
-    last_seen_at: float = field(default_factory=time.time)
-    lock: threading.Lock = field(default_factory=threading.Lock)
+    def __init__(
+        self,
+        session_id: str,
+        agent: Any,
+        config: dict,
+        *,
+        tools: Any = None,  # SessionTools — set by create_chat_session via build_trip_agent
+        persist_hook: Callable[[TripSession], None] | None = None,
+        created_at: float | None = None,
+        last_seen_at: float | None = None,
+        lock: threading.Lock | None = None,
+        state: TripState | None = None,
+        intake_state: TripIntakeState | None = None,
+        hotel_pref_state: HotelPreferenceState | None = None,
+        initial_plan_complete: bool | None = None,
+        planning_new_trip: bool | None = None,
+        pending_trip_edit_request: str | None = None,
+        trip_data: dict[str, Any] | None = None,
+        pending_hotel_selection: dict[str, Any] | None = None,
+    ) -> None:
+        self.session_id = session_id
+        self.agent = agent
+        self.config = config
+        self.tools = tools
+        self.persist_hook = persist_hook
+        self.created_at = created_at if created_at is not None else time.time()
+        self.last_seen_at = last_seen_at if last_seen_at is not None else time.time()
+        self.lock = lock if lock is not None else threading.Lock()
+        self.state: TripState = state if state is not None else initial_state(session_id)
+
+        if intake_state is not None:
+            self.intake_state = intake_state
+        if hotel_pref_state is not None:
+            self.hotel_pref_state = hotel_pref_state
+        if initial_plan_complete is not None:
+            self.initial_plan_complete = initial_plan_complete
+        if planning_new_trip is not None:
+            self.planning_new_trip = planning_new_trip
+        if pending_trip_edit_request is not None:
+            self.pending_trip_edit_request = pending_trip_edit_request
+        if trip_data is not None:
+            self.trip_data = trip_data
+        if pending_hotel_selection is not None:
+            self.pending_hotel_selection = pending_hotel_selection
+
+    @property
+    def intake_state(self) -> TripIntakeState:
+        return TripIntakeState.from_dict(self.state["intake"])
+
+    @intake_state.setter
+    def intake_state(self, value: TripIntakeState) -> None:
+        self.state["intake"] = value.to_dict()
+
+    @property
+    def hotel_pref_state(self) -> HotelPreferenceState:
+        return HotelPreferenceState.from_dict(self.state["hotel_prefs"])
+
+    @hotel_pref_state.setter
+    def hotel_pref_state(self, value: HotelPreferenceState) -> None:
+        self.state["hotel_prefs"] = value.to_dict()
+
+    @property
+    def trip_data(self) -> dict[str, Any] | None:
+        return self.state["trip_data"]
+
+    @trip_data.setter
+    def trip_data(self, value: dict[str, Any] | None) -> None:
+        self.state["trip_data"] = value
+
+    @property
+    def pending_hotel_selection(self) -> dict[str, Any] | None:
+        return self.state["pending_hotel_selection"]
+
+    @pending_hotel_selection.setter
+    def pending_hotel_selection(self, value: dict[str, Any] | None) -> None:
+        self.state["pending_hotel_selection"] = value
+
+    @property
+    def initial_plan_complete(self) -> bool:
+        return self.state["initial_plan_complete"]
+
+    @initial_plan_complete.setter
+    def initial_plan_complete(self, value: bool) -> None:
+        self.state["initial_plan_complete"] = value
+
+    @property
+    def planning_new_trip(self) -> bool:
+        return self.state["planning_new_trip"]
+
+    @planning_new_trip.setter
+    def planning_new_trip(self, value: bool) -> None:
+        self.state["planning_new_trip"] = value
+
+    @property
+    def pending_trip_edit_request(self) -> str | None:
+        return self.state["pending_trip_edit_request"]
+
+    @pending_trip_edit_request.setter
+    def pending_trip_edit_request(self, value: str | None) -> None:
+        self.state["pending_trip_edit_request"] = value
 
 
 def create_chat_session(session_id: str, *, persist_hook: Callable[[TripSession], None] | None = None) -> TripSession:
@@ -433,7 +529,7 @@ def process_chat_turn(session: TripSession, user_input: str) -> TurnResult:
     logger.info("User Input: %s", user_input)
     session.last_seen_at = time.time()
 
-    context = route_context_from_session(session)
+    context = route_context_from_state(session.state)
     route = _decide_route(session, context, user_input)
 
     if route == "select_hotel":
@@ -442,7 +538,7 @@ def process_chat_turn(session: TripSession, user_input: str) -> TurnResult:
             return result
         # Pending list was dropped (not a pick, not an attempt at one) — the
         # message must still be handled for what it actually is, so re-decide.
-        context = route_context_from_session(session)
+        context = route_context_from_state(session.state)
         route = _decide_route(session, context, user_input)
 
     if route == "finalize":

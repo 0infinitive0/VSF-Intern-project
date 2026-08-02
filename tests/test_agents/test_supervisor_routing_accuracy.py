@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from src.agents.routing_decision import Route, decide_route_by_rules, route_context_from_session
+from src.agents.routing_decision import Route, decide_route_by_rules, route_context_from_state
 from src.agents.supervisor import decide_route_by_llm
 
 
@@ -43,6 +43,12 @@ class _FakeHotelPrefState:
 
 @dataclass
 class _FakeSession:
+    """Since Phase 3, route_context_from_state reads a TripState dict, not a
+    session object — `.state` translates this fake's legacy attributes into
+    that shape. `decide_route_by_llm` also reads `.pending_hotel_selection`
+    directly (a getattr on the session, unrelated to `.state`), so that
+    attribute stays as-is."""
+
     trip_data: dict | None = None
     pending_hotel_selection: dict | None = None
     initial_plan_complete: bool = False
@@ -50,6 +56,28 @@ class _FakeSession:
     pending_trip_edit_request: str | None = None
     intake_state: _FakeIntakeState = field(default_factory=_FakeIntakeState)
     hotel_pref_state: _FakeHotelPrefState = field(default_factory=_FakeHotelPrefState)
+
+    @property
+    def state(self) -> dict:
+        return {
+            "trip_data": self.trip_data,
+            "pending_hotel_selection": self.pending_hotel_selection,
+            "initial_plan_complete": self.initial_plan_complete,
+            "planning_new_trip": self.planning_new_trip,
+            "pending_trip_edit_request": self.pending_trip_edit_request,
+            "intake": {
+                "destination": "x" if self.intake_state.is_complete else None,
+                "duration": "x" if self.intake_state.is_complete else None,
+                "people": "x" if self.intake_state.is_complete else None,
+                "preferences": [],
+            },
+            "hotel_prefs": {
+                "stage": "done" if self.hotel_pref_state.is_complete else "pending_budget",
+                "target_price": None,
+                "min_price": None,
+                "max_price": None,
+            },
+        }
 
 
 _SAVED_DRAFT = {"itineraries": [{"duration_days": 3, "status": "Draft"}]}
@@ -143,7 +171,7 @@ def test_routing_accuracy_and_latency_report():
 
     for scenario in SCENARIOS:
         t0 = time.perf_counter()
-        context = route_context_from_session(scenario.session)
+        context = route_context_from_state(scenario.session.state)
         regex_label = decide_route_by_rules(context, scenario.message)
         regex_latencies.append(time.perf_counter() - t0)
 

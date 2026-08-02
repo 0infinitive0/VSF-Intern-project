@@ -553,6 +553,25 @@ class HotelPreferenceState:
             "max_price": str(self.max_price) if self.max_price is not None else "",
         }
 
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-safe representation for TripState. No tuple fields here, unlike
+        TripIntakeState — a plain field-for-field dict is enough."""
+        return {
+            "stage": self.stage,
+            "target_price": self.target_price,
+            "min_price": self.min_price,
+            "max_price": self.max_price,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> HotelPreferenceState:
+        return cls(
+            stage=data.get("stage", "pending_budget"),
+            target_price=data.get("target_price"),
+            min_price=data.get("min_price"),
+            max_price=data.get("max_price"),
+        )
+
 
 _AMENITY_KEYWORD_TAGS: dict[str, tuple[str, ...]] = {
     # Must require the negation phrase — a hotel whose only relevant amenity is

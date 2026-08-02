@@ -21,7 +21,7 @@ from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 
 from src.agents.prompts import SUPERVISOR_ROUTER_PROMPT
-from src.agents.routing_decision import route_context_from_session
+from src.agents.routing_decision import route_context_from_state
 from src.services.llm import get_llm
 
 logger = logging.getLogger(__name__)
@@ -85,7 +85,7 @@ def build_supervisor(session: Any) -> Any:
 def _state_summary(session: Any) -> str:
     """State the supervisor may look at: booleans and counts only — never
     destination/duration/people values or venue/hotel records (D1, D2)."""
-    context = route_context_from_session(session)
+    context = route_context_from_state(session.state)
     pending_hotels = "không có"
     if context.has_pending_hotel_selection:
         options = (getattr(session, "pending_hotel_selection", None) or {}).get("options") or []

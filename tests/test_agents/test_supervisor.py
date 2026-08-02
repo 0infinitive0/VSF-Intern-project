@@ -67,18 +67,12 @@ def test_unknown_label_is_rejected():
     assert validate_route("teleport_to_paris", context) is None
 
 
-class _FakeIntakeState:
-    is_complete = False
-
-
-class _FakeHotelPrefState:
-    is_complete = False
-
-
 class _FakeSession:
-    """Minimal stand-in with exactly the attributes route_context_from_session
-    reads — decide_route_by_llm builds a state summary from these before ever
-    touching the (stubbed) supervisor."""
+    """Minimal stand-in with exactly the shape decide_route_by_llm's
+    `_state_summary` reads: a `.state` TripState dict (route_context_from_state)
+    plus `.pending_hotel_selection` (a direct getattr read for the hotel-list
+    summary line) — mirrors what a real TripSession now exposes since Phase 3
+    moved these into `TripState`."""
 
     def __init__(self, **overrides):
         self.trip_data = None
@@ -86,9 +80,31 @@ class _FakeSession:
         self.initial_plan_complete = False
         self.planning_new_trip = False
         self.pending_trip_edit_request = None
-        self.intake_state = _FakeIntakeState()
-        self.hotel_pref_state = _FakeHotelPrefState()
+        self.intake_complete = False
+        self.hotel_prefs_complete = False
         self.__dict__.update(overrides)
+
+    @property
+    def state(self) -> dict:
+        return {
+            "trip_data": self.trip_data,
+            "pending_hotel_selection": self.pending_hotel_selection,
+            "initial_plan_complete": self.initial_plan_complete,
+            "planning_new_trip": self.planning_new_trip,
+            "pending_trip_edit_request": self.pending_trip_edit_request,
+            "intake": {
+                "destination": "x" if self.intake_complete else None,
+                "duration": "x" if self.intake_complete else None,
+                "people": "x" if self.intake_complete else None,
+                "preferences": [],
+            },
+            "hotel_prefs": {
+                "stage": "done" if self.hotel_prefs_complete else "pending_budget",
+                "target_price": None,
+                "min_price": None,
+                "max_price": None,
+            },
+        }
 
 
 class _FakeMessage:
