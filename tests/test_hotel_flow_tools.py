@@ -13,6 +13,14 @@ are NOT restored: they referenced `planner_tools_module` and
 `root_latitude`/`max_radius_km` radius-filter feature the current
 recommend_hotels tool does not implement — they were already failing before
 deletion.
+
+Updated for Phase 4 (same plan): recommend_hotels/select_hotel are now
+module-level `ToolRuntime`/`Command` tools with no session reference, driven
+here via `invoke_tool_directly` — the same adapter
+`process_chat_turn`'s deterministic cascade uses — against a plain
+`TripState` dict instead of a session double. `generate_full_itinerary` and
+`_legacy_modify_trip_plan` are untouched plain functions in trip_planner.py,
+unaffected by the tool rewrite, so their tests are unchanged.
 """
 
 from __future__ import annotations
@@ -20,8 +28,10 @@ from __future__ import annotations
 import src.agents.tools.recommend_hotels as recommend_hotels_module
 import src.agents.tools.select_hotel as select_hotel_module
 import src.services.trip_planner as trip_planner_module
-from src.agents.tools.recommend_hotels import build_recommend_hotels_tool
-from src.agents.tools.select_hotel import build_select_hotel_tool
+from src.agents.state import initial_state
+from src.agents.tools.direct_invoke import invoke_tool_directly
+from src.agents.tools.recommend_hotels import recommend_hotels
+from src.agents.tools.select_hotel import select_hotel
 from src.services.trip_scheduler import PlaceCandidate
 
 
@@ -48,19 +58,6 @@ def _fake_option(id_: str, name: str, rank: int) -> tuple[dict, PlaceCandidate]:
     }
     candidate = PlaceCandidate.from_mapping({**data, "category": "Hotel"})
     return data, candidate
-
-
-class _Session:
-    """Minimal stand-in for TripSession — only the fields these tool factories
-    read/write."""
-
-    def __init__(self, **overrides):
-        self.session_id = overrides.pop("session_id", "test-session")
-        self.trip_data = overrides.pop("trip_data", None)
-        self.pending_hotel_selection = overrides.pop("pending_hotel_selection", None)
-        self.persist_hook = None
-        for key, value in overrides.items():
-            setattr(self, key, value)
 
 
 def _fake_build_trip_data(captured: dict):
@@ -90,65 +87,6 @@ def _fake_build_trip_data(captured: dict):
     return _build
 
 
-def test_recommend_hotels_writes_pending_selection_and_lists_names(monkeypatch):
-    options = [_fake_option("h1", "Khách sạn Một", 1), _fake_option("h2", "Khách sạn Hai", 2)]
-    monkeypatch.setattr(recommend_hotels_module, "_get_destination_id", lambda destination: "dest-1")
-    monkeypatch.setattr(recommend_hotels_module, "select_hotel_candidates", lambda *a, **k: options)
-    monkeypatch.setattr(recommend_hotels_module, "rank_hotel_candidates", lambda opts, **_kwargs: opts)
-
-    session = _Session()
-    recommend_hotels = build_recommend_hotels_tool(session)
-    result = recommend_hotels.invoke(
-        {
-            "destination": "Đà Nẵng",
-            "duration": "3 ngày",
-            "people": "2 người",
-            "preferences": "",
-            "hotel_preferences": "",
-        }
-    )
-
-    assert "Khách sạn Một" in result
-    assert "Khách sạn Hai" in result
-    assert session.pending_hotel_selection is not None
-
-
-def test_recommend_hotels_missing_field_returns_system_error():
-    session = _Session()
-    recommend_hotels = build_recommend_hotels_tool(session)
-    result = recommend_hotels.invoke(
-        {"destination": "Đà Nẵng", "duration": "", "people": "2 người", "preferences": "", "hotel_preferences": ""}
-    )
-
-    assert result.startswith("SYSTEM ERROR:")
-    assert session.pending_hotel_selection is None
-
-
-def test_select_hotel_with_valid_rank_builds_itinerary_and_clears_pending(monkeypatch):
-    options = [_fake_option("h1", "Khách sạn Một", 1), _fake_option("h2", "Khách sạn Hai", 2)]
-    session = _Session(
-        pending_hotel_selection={
-            "mode": "new_trip",
-            "destination": "Đà Nẵng",
-            "duration": "3 ngày",
-            "people": "2 người",
-            "preferences_text": "",
-            "options": [data for data, _candidate in options],
-        }
-    )
-
-    captured: dict = {}
-    monkeypatch.setattr(select_hotel_module, "_build_trip_data", _fake_build_trip_data(captured))
-    monkeypatch.setattr(select_hotel_module, "_generate_and_save_itinerary", lambda *a, **k: _fake_generate_and_save(captured, k))
-
-    select_hotel = build_select_hotel_tool(session)
-    result = select_hotel.invoke({"selection": "2"})
-
-    assert captured["preselected_hotel"]["id"] == "h2"
-    assert session.pending_hotel_selection is None
-    assert not result.startswith("SYSTEM ERROR:")
-
-
 def _fake_generate_and_save(captured: dict, kwargs: dict) -> str:
     captured["preselected_hotel"] = kwargs.get("preselected_hotel")
     save = kwargs.get("save")
@@ -157,29 +95,93 @@ def _fake_generate_and_save(captured: dict, kwargs: dict) -> str:
     return "Hotel: ok"
 
 
-def test_select_hotel_unresolved_selection_reshows_list_and_keeps_pending():
-    options = [_fake_option("h1", "Khách sạn Một", 1)]
-    session = _Session(
-        pending_hotel_selection={
-            "mode": "new_trip",
-            "destination": "Đà Nẵng",
-            "options": [data for data, _candidate in options],
-        }
+def test_recommend_hotels_writes_pending_selection_and_lists_names(monkeypatch):
+    options = [_fake_option("h1", "Khách sạn Một", 1), _fake_option("h2", "Khách sạn Hai", 2)]
+    monkeypatch.setattr(recommend_hotels_module, "_get_destination_id", lambda destination: "dest-1")
+    monkeypatch.setattr(recommend_hotels_module, "select_hotel_candidates", lambda *a, **k: options)
+    monkeypatch.setattr(recommend_hotels_module, "rank_hotel_candidates", lambda opts, **_kwargs: opts)
+
+    state = initial_state("test-session")
+    reply, updates = invoke_tool_directly(
+        recommend_hotels,
+        state,
+        session_id="test-session",
+        destination="Đà Nẵng",
+        duration="3 ngày",
+        people="2 người",
+        preferences="",
+        hotel_preferences="",
     )
 
-    select_hotel = build_select_hotel_tool(session)
-    result = select_hotel.invoke({"selection": "không tồn tại đâu"})
+    assert "Khách sạn Một" in reply
+    assert "Khách sạn Hai" in reply
+    assert updates["pending_hotel_selection"] is not None
 
-    assert "Khách sạn Một" in result
-    assert session.pending_hotel_selection is not None
+
+def test_recommend_hotels_missing_field_returns_system_error():
+    state = initial_state("test-session")
+    reply, updates = invoke_tool_directly(
+        recommend_hotels,
+        state,
+        session_id="test-session",
+        destination="Đà Nẵng",
+        duration="",
+        people="2 người",
+        preferences="",
+        hotel_preferences="",
+    )
+
+    assert reply.startswith("SYSTEM ERROR:")
+    assert updates["pending_hotel_selection"] is None
+
+
+def test_select_hotel_with_valid_rank_builds_itinerary_and_clears_pending(monkeypatch):
+    options = [_fake_option("h1", "Khách sạn Một", 1), _fake_option("h2", "Khách sạn Hai", 2)]
+    state = initial_state("test-session")
+    state["pending_hotel_selection"] = {
+        "mode": "new_trip",
+        "destination": "Đà Nẵng",
+        "duration": "3 ngày",
+        "people": "2 người",
+        "preferences_text": "",
+        "options": [data for data, _candidate in options],
+    }
+
+    captured: dict = {}
+    monkeypatch.setattr(select_hotel_module, "_build_trip_data", _fake_build_trip_data(captured))
+    monkeypatch.setattr(
+        select_hotel_module, "_generate_and_save_itinerary", lambda *a, **k: _fake_generate_and_save(captured, k)
+    )
+
+    reply, updates = invoke_tool_directly(select_hotel, state, session_id="test-session", selection="2")
+
+    assert captured["preselected_hotel"]["id"] == "h2"
+    assert updates["pending_hotel_selection"] is None
+    assert not reply.startswith("SYSTEM ERROR:")
+
+
+def test_select_hotel_unresolved_selection_reshows_list_and_keeps_pending():
+    options = [_fake_option("h1", "Khách sạn Một", 1)]
+    state = initial_state("test-session")
+    state["pending_hotel_selection"] = {
+        "mode": "new_trip",
+        "destination": "Đà Nẵng",
+        "options": [data for data, _candidate in options],
+    }
+
+    reply, updates = invoke_tool_directly(
+        select_hotel, state, session_id="test-session", selection="không tồn tại đâu"
+    )
+
+    assert "Khách sạn Một" in reply
+    assert updates["pending_hotel_selection"] is not None
 
 
 def test_select_hotel_without_pending_selection_returns_system_error():
-    session = _Session()
-    select_hotel = build_select_hotel_tool(session)
-    result = select_hotel.invoke({"selection": "1"})
+    state = initial_state("test-session")
+    reply, _updates = invoke_tool_directly(select_hotel, state, session_id="test-session", selection="1")
 
-    assert result.startswith("SYSTEM ERROR:")
+    assert reply.startswith("SYSTEM ERROR:")
 
 
 def test_generate_full_itinerary_with_hotel_id_skips_search(monkeypatch):
@@ -237,18 +239,18 @@ def test_recommend_hotels_threads_budget_and_amenity_prefs_into_ranking(monkeypa
     monkeypatch.setattr(recommend_hotels_module, "rank_hotel_candidates", fake_rank_hotel_candidates)
     monkeypatch.setattr(recommend_hotels_module, "lookup_sea_view_hotel_ids", lambda ids: frozenset())
 
-    session = _Session()
-    recommend_hotels = build_recommend_hotels_tool(session)
-    recommend_hotels.invoke(
-        {
-            "destination": "Đà Nẵng",
-            "duration": "3 ngày",
-            "people": "2 người",
-            "preferences": "",
-            "hotel_preferences": "",
-            "target_price": "4000000",
-            "hotel_amenity_prefs": "sea_view,pool",
-        }
+    state = initial_state("test-session")
+    invoke_tool_directly(
+        recommend_hotels,
+        state,
+        session_id="test-session",
+        destination="Đà Nẵng",
+        duration="3 ngày",
+        people="2 người",
+        preferences="",
+        hotel_preferences="",
+        target_price="4000000",
+        hotel_amenity_prefs="sea_view,pool",
     )
 
     assert captured_rank_kwargs["target_price"] == 4_000_000.0
@@ -268,21 +270,23 @@ def test_recommend_hotels_calls_sea_view_lookup_only_when_requested(monkeypatch)
         lambda ids: lookup_calls.append(ids) or frozenset(ids),
     )
 
-    base_args = {
-        "destination": "Đà Nẵng",
-        "duration": "3 ngày",
-        "people": "2 người",
-        "preferences": "",
-        "hotel_preferences": "",
-        "target_price": "",
-    }
+    base_args = dict(
+        destination="Đà Nẵng",
+        duration="3 ngày",
+        people="2 người",
+        preferences="",
+        hotel_preferences="",
+        target_price="",
+    )
 
-    recommend_hotels = build_recommend_hotels_tool(_Session())
-    recommend_hotels.invoke({**base_args, "hotel_amenity_prefs": "pool"})
+    invoke_tool_directly(
+        recommend_hotels, initial_state("s1"), session_id="s1", **base_args, hotel_amenity_prefs="pool"
+    )
     assert lookup_calls == []
 
-    recommend_hotels = build_recommend_hotels_tool(_Session())
-    recommend_hotels.invoke({**base_args, "hotel_amenity_prefs": "sea_view,pool"})
+    invoke_tool_directly(
+        recommend_hotels, initial_state("s2"), session_id="s2", **base_args, hotel_amenity_prefs="sea_view,pool"
+    )
     assert lookup_calls == [["h1"]]
 
 
@@ -303,16 +307,16 @@ def test_recommend_hotels_forwards_target_price_to_search(monkeypatch):
     monkeypatch.setattr(recommend_hotels_module, "select_hotel_candidates", fake_select_hotel_candidates)
     monkeypatch.setattr(recommend_hotels_module, "rank_hotel_candidates", lambda opts, **kwargs: opts)
 
-    recommend_hotels = build_recommend_hotels_tool(_Session())
-    recommend_hotels.invoke(
-        {
-            "destination": "Đà Nẵng",
-            "duration": "3 ngày",
-            "people": "2 người",
-            "preferences": "",
-            "hotel_preferences": "",
-            "target_price": "1000000",
-        }
+    invoke_tool_directly(
+        recommend_hotels,
+        initial_state("test-session"),
+        session_id="test-session",
+        destination="Đà Nẵng",
+        duration="3 ngày",
+        people="2 người",
+        preferences="",
+        hotel_preferences="",
+        target_price="1000000",
     )
 
     assert captured_select_kwargs["min_price"] is None
@@ -334,18 +338,18 @@ def test_recommend_hotels_forwards_explicit_min_and_max_price_range(monkeypatch)
     monkeypatch.setattr(recommend_hotels_module, "select_hotel_candidates", fake_select_hotel_candidates)
     monkeypatch.setattr(recommend_hotels_module, "rank_hotel_candidates", lambda opts, **kwargs: opts)
 
-    recommend_hotels = build_recommend_hotels_tool(_Session())
-    recommend_hotels.invoke(
-        {
-            "destination": "Đà Nẵng",
-            "duration": "3 ngày",
-            "people": "2 người",
-            "preferences": "",
-            "hotel_preferences": "",
-            "target_price": "1500000",
-            "min_price": "800000",
-            "max_price": "2500000",
-        }
+    invoke_tool_directly(
+        recommend_hotels,
+        initial_state("test-session"),
+        session_id="test-session",
+        destination="Đà Nẵng",
+        duration="3 ngày",
+        people="2 người",
+        preferences="",
+        hotel_preferences="",
+        target_price="1500000",
+        min_price="800000",
+        max_price="2500000",
     )
 
     assert captured_select_kwargs["min_price"] == 800_000.0
@@ -357,7 +361,7 @@ def test_legacy_modify_trip_plan_change_hotel_forwards_parsed_budget(monkeypatch
     select_hotel_candidates and rank_hotel_candidates as a numeric target_price.
 
     Covers `_legacy_modify_trip_plan`, not the active `modify_trip_plan` — the
-    latter now routes through `plan_trip_edit`/`execute_trip_edit_request` (a
+    latter now routes through `plan_trip_edit`/`resolve_trip_edit_request` (a
     separate, concurrently-developed edit pipeline) whose own hotel_change branch
     does not yet forward any price param at all. That's a distinct, still-open gap
     in that newer pipeline, out of scope here."""

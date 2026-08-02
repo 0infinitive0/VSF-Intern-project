@@ -16,7 +16,6 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -34,24 +33,16 @@ from src.agents.routing_decision import (
 from src.agents.state import TripState, initial_state
 from src.agents.supervisor import decide_route_by_llm
 from src.config import get_settings
-from src.services.hotel_selection import (
-    HotelPreferenceState,
-    rank_hotel_candidates,
-    select_hotel_candidates,
-)
+from src.services.hotel_selection import HotelPreferenceState
 from src.services.trip_edit_planner import TripEditPlan, TripEditPlanError, plan_trip_edit
-from src.services.trip_formatter import format_hotel_options, format_trip_response_from_json
 from src.services.trip_intake import (
     TripIntakeState,
     _llm_extract_intake_facts,
     _match_known_destination,
 )
 from src.services.trip_planner import (
-    _current_trip_parameters,
-    _get_destination_id,
     _get_destination_names,
-    _persist_itinerary_metadata,
-    apply_trip_edit_plan,
+    resolve_trip_edit_request,
 )
 
 logger = logging.getLogger(__name__)
@@ -235,26 +226,6 @@ def create_chat_session(session_id: str, *, persist_hook: Callable[[TripSession]
     return session
 
 
-def _save_trip_data(session: TripSession, trip_data: dict[str, Any], *, persist_to_supabase: bool = True) -> None:
-    """Pure in-memory mutation of session.trip_data, plus the session's optional
-    persistence hook. `persist_to_supabase` controls the separate Supabase
-    itinerary-metadata upsert — unrelated to persist_hook, which is about the
-    two legacy JSON files the CLI still writes."""
-    session.trip_data = trip_data
-    if persist_to_supabase:
-        _persist_itinerary_metadata(trip_data)
-    if session.persist_hook:
-        session.persist_hook(session)
-
-
-def _save_pending_hotel_selection(session: TripSession, payload: dict[str, Any]) -> None:
-    """Persist the hotel options just shown to the user, so the next chat turn can
-    resolve their reply (a rank number or a name) back to one of them."""
-    session.pending_hotel_selection = payload
-    if session.persist_hook:
-        session.persist_hook(session)
-
-
 def _load_pending_hotel_selection(session: TripSession) -> dict[str, Any] | None:
     return session.pending_hotel_selection
 
@@ -424,65 +395,20 @@ def _begin_new_trip_if_requested(session: TripSession, user_input: str) -> bool:
 
 
 def execute_trip_edit_request(session: TripSession, modification_request: str, plan: TripEditPlan) -> str | None:
-    """Execute an already validated LLM edit plan against the saved Draft.
+    """Thin session-bound wrapper around trip_planner.resolve_trip_edit_request
+    (Phase 4, 260802-1437-langgraph-full-orchestration-and-durable-state).
 
-    Called directly from process_chat_turn, not by the LLM — that is why it
-    lives here rather than as an agent-visible @tool.
+    Called directly from process_chat_turn's _run_edit_draft, not by the LLM
+    — that is why it lives here rather than as an agent-visible @tool. Kept
+    at this exact name and signature because the modify_trip_plan tool now
+    calls resolve_trip_edit_request directly (it has no TripSession to pass
+    here — that dependency would recreate the circular import this phase
+    removes from the other three tools), and because many existing tests
+    monkeypatch `session_module.execute_trip_edit_request` directly.
     """
-    if session.trip_data is None:
-        return "SYSTEM ERROR: Chưa có kế hoạch chuyến đi để chỉnh sửa."
-    current_data = session.trip_data
-
-    saved_itinerary = (current_data.get("itineraries") or [{}])[0]
-    if isinstance(saved_itinerary, dict) and str(saved_itinerary.get("status") or "").casefold() == "finalized":
-        return "Kế hoạch đã xác nhận không thể chỉnh sửa. Hãy tạo một kế hoạch mới nếu cần thay đổi."
-    if plan.decision == "clarify":
-        return plan.clarification_question or "Bạn muốn chỉnh sửa phần nào của lịch trình?"
-    if plan.decision == "not_edit":
-        return None
-
-    hotel_change = next((operation for operation in plan.operations if operation.operation == "change_hotel"), None)
-    if hotel_change:
-        try:
-            destination, duration, people, preferences = _current_trip_parameters(current_data)
-            destination_id = str(saved_itinerary.get("destination_id") or _get_destination_id(destination) or "")
-            if not destination or not destination_id:
-                raise ValueError("Kế hoạch hiện tại thiếu điểm đến để đổi khách sạn.")
-            hotel_query = hotel_change.hotel_query or modification_request
-            options = rank_hotel_candidates(
-                select_hotel_candidates(destination, destination_id, people, hotel_query=hotel_query)
-            )
-            if not options:
-                raise ValueError(f"Không tìm thấy khách sạn phù hợp tại {destination}.")
-            _save_pending_hotel_selection(
-                session,
-                {
-                    "mode": "change_hotel",
-                    "destination": destination,
-                    "destination_id": destination_id,
-                    "duration": duration,
-                    "people": people,
-                    "preferences_text": preferences,
-                    "hotel_query": hotel_query,
-                    "planning_constraints": dict(saved_itinerary.get("planning_constraints") or {}),
-                    "created_at": datetime.now().isoformat(),
-                    "options": [data for data, _candidate in options],
-                },
-            )
-            return format_hotel_options(options)
-        except Exception as exc:
-            logger.exception("Failed to prepare hotel change")
-            return f"SYSTEM ERROR: {exc}"
-
-    try:
-        adjustments = apply_trip_edit_plan(current_data, plan)
-        current_data.setdefault("adjustments", []).extend(adjustments)
-        _save_trip_data(session, current_data)
-        logger.info("Applied LLM edit plan: %s", [operation.operation for operation in plan.operations])
-        return format_trip_response_from_json(current_data)
-    except Exception as exc:
-        logger.exception("Failed to apply LLM edit plan")
-        return f"SYSTEM ERROR: {exc}"
+    reply, updates = resolve_trip_edit_request(session.trip_data, modification_request, plan)
+    session.state.update(updates)
+    return reply
 
 
 def _decide_route(session: TripSession, context: RouteContext, user_input: str) -> Route:
@@ -675,17 +601,28 @@ def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:
                 "Trả lời người dùng bằng văn bản tiếng Việt. Không xuất JSON hoặc mô phỏng lời gọi công cụ."
             )
         try:
+            # Tools are now module-level and write TripState via Command
+            # (Phase 4) — the compiled agent's own checkpointer state is keyed
+            # by thread_id and is a SEPARATE store from session.state. Seed
+            # the input with the current session.state so a tool call this
+            # turn sees up-to-date trip_data/pending_hotel_selection/etc.,
+            # then sync the final event back afterward so session.state picks
+            # up whatever the tool actually changed. Verified empirically:
+            # without the seed, a fresh thread has no TripState keys at all
+            # and a tool reading runtime.state raises KeyError.
             events = session.agent.stream(
-                {"messages": [("user", agent_input)]},
+                {**session.state, "messages": [("user", agent_input)]},
                 config=session.config,
                 stream_mode="values",
             )
 
             final_ai_response = None
             tool_output_response = None
+            last_event = None
             for event in events:
                 if "messages" not in event:
                     continue
+                last_event = event
                 latest_message = event["messages"][-1]
 
                 if latest_message.type == "ai" and latest_message.tool_calls:
@@ -698,6 +635,9 @@ def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:
 
                 if latest_message.type == "ai" and not latest_message.tool_calls:
                     final_ai_response = latest_message.content
+
+            if last_event is not None:
+                session.state.update({key: value for key, value in last_event.items() if key != "messages"})
         except Exception:
             logger.exception("Agent provider request failed")
             return TurnResult(

@@ -1181,6 +1181,73 @@ def apply_trip_edit_plan(current_data: dict[str, Any], plan: TripEditPlan) -> li
     return adjustments
 
 
+def resolve_trip_edit_request(
+    trip_data: dict[str, Any] | None, modification_request: str, plan: TripEditPlan
+) -> tuple[str | None, dict[str, Any]]:
+    """Pure core of executing an already-validated LLM edit plan against a
+    saved Draft: reads only `trip_data`, returns `(reply_or_None, updates)`
+    instead of mutating a session in place.
+
+    Moved here (Phase 4, 260802-1437-langgraph-full-orchestration-and-
+    durable-state) from `src.agents.session.execute_trip_edit_request` so the
+    `modify_trip_plan` tool can call it without importing `TripSession` --
+    `src.agents.session` keeps a thin same-signature wrapper around this
+    function for `_run_edit_draft` and the many existing tests that
+    monkeypatch `session_module.execute_trip_edit_request` directly.
+    """
+    if trip_data is None:
+        return "SYSTEM ERROR: Chưa có kế hoạch chuyến đi để chỉnh sửa.", {}
+    current_data = trip_data
+
+    saved_itinerary = (current_data.get("itineraries") or [{}])[0]
+    if isinstance(saved_itinerary, dict) and str(saved_itinerary.get("status") or "").casefold() == "finalized":
+        return "Kế hoạch đã xác nhận không thể chỉnh sửa. Hãy tạo một kế hoạch mới nếu cần thay đổi.", {}
+    if plan.decision == "clarify":
+        return plan.clarification_question or "Bạn muốn chỉnh sửa phần nào của lịch trình?", {}
+    if plan.decision == "not_edit":
+        return None, {}
+
+    hotel_change = next((operation for operation in plan.operations if operation.operation == "change_hotel"), None)
+    if hotel_change:
+        try:
+            destination, duration, people, preferences = _current_trip_parameters(current_data)
+            destination_id = str(saved_itinerary.get("destination_id") or _get_destination_id(destination) or "")
+            if not destination or not destination_id:
+                raise ValueError("Kế hoạch hiện tại thiếu điểm đến để đổi khách sạn.")
+            hotel_query = hotel_change.hotel_query or modification_request
+            options = rank_hotel_candidates(
+                select_hotel_candidates(destination, destination_id, people, hotel_query=hotel_query)
+            )
+            if not options:
+                raise ValueError(f"Không tìm thấy khách sạn phù hợp tại {destination}.")
+            pending_payload = {
+                "mode": "change_hotel",
+                "destination": destination,
+                "destination_id": destination_id,
+                "duration": duration,
+                "people": people,
+                "preferences_text": preferences,
+                "hotel_query": hotel_query,
+                "planning_constraints": dict(saved_itinerary.get("planning_constraints") or {}),
+                "created_at": datetime.now().isoformat(),
+                "options": [data for data, _candidate in options],
+            }
+            return format_hotel_options(options), {"pending_hotel_selection": pending_payload}
+        except Exception as exc:
+            logger.exception("Failed to prepare hotel change")
+            return f"SYSTEM ERROR: {exc}", {}
+
+    try:
+        adjustments = apply_trip_edit_plan(current_data, plan)
+        current_data.setdefault("adjustments", []).extend(adjustments)
+        _persist_itinerary_metadata(current_data)
+        logger.info("Applied LLM edit plan: %s", [operation.operation for operation in plan.operations])
+        return format_trip_response_from_json(current_data), {"trip_data": current_data}
+    except Exception as exc:
+        logger.exception("Failed to apply LLM edit plan")
+        return f"SYSTEM ERROR: {exc}", {}
+
+
 def _item_kind(item: dict[str, Any]) -> str:
     explicit = item.get("item_kind") or item.get("kind")
     if explicit in {

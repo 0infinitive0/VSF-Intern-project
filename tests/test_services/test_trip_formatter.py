@@ -81,8 +81,8 @@ TRIP_PLAN_FIXTURE = {
     "adjustments": ["Đã dùng chủ đề từ lịch trình tương tự và lập lại lịch mới theo dữ liệu hiện tại."],
 }
 
-# Shape matches a real data/pending_hotel_selection.json bundle as written by
-# tools/recommend_hotels.py's _save_pending_hotel_selection.
+# Shape matches the pending_hotel_selection payload tools/recommend_hotels.py
+# returns via Command(update={"pending_hotel_selection": ...}).
 PENDING_HOTEL_SELECTION_FIXTURE = {
     "mode": "new_trip",
     "destination": "Đà Nẵng",
