@@ -154,6 +154,7 @@ def _install_stubs(monkeypatch, session, calls: list[tuple[str, dict]]) -> None:
         responses = {
             "Tôi muốn đi Đà Nẵng": {"destination": "Đà Nẵng"},
             "3 ngày": {"duration_days": 3},
+            "10/8/2026": {"start_date": "2026-08-10"},
             "2 người": {"people_count": 2},
         }
         return responses.get(message, {})
@@ -204,6 +205,8 @@ EXPECTED_SIGNATURE = {
             {
                 "destination": "Đà Nẵng",
                 "duration": "3 ngày",
+                "start_date": "2026-08-10",
+                "end_date": "2026-08-13",
                 "people": "2 người",
                 "preferences": "",
                 "target_price": "",
@@ -251,6 +254,9 @@ def test_full_session_structural_signature(monkeypatch):
     assert not reply.text.startswith("SYSTEM ERROR:")
 
     reply = process_chat_turn(session, "3 ngày")
+    assert not reply.text.startswith("SYSTEM ERROR:")
+
+    reply = process_chat_turn(session, "10/8/2026")
     assert not reply.text.startswith("SYSTEM ERROR:")
 
     reply = process_chat_turn(session, "2 người")

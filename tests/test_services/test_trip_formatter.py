@@ -163,6 +163,47 @@ def test_to_hotel_options_payload_empty_when_no_pending_selection():
     assert to_hotel_options_payload({}) == []
 
 
+def test_to_hotel_options_payload_includes_date_aware_price_fields():
+    payload = to_hotel_options_payload(
+        {
+            "options": [
+                {
+                    "id": "hotel-1",
+                    "name": "Beach Hotel",
+                    "average_nightly_price": 1_100_000,
+                    "total_stay_price": 2_200_000,
+                    "stay_night_count": 2,
+                    "currency": "VND",
+                }
+            ]
+        }
+    )
+
+    assert payload[0]["average_nightly_price"] == 1_100_000
+    assert payload[0]["total_stay_price"] == 2_200_000
+    assert payload[0]["stay_night_count"] == 2
+    assert payload[0]["currency"] == "VND"
+
+
+def test_format_hotel_options_shows_average_nightly_and_total_stay_price():
+    hotel = {
+        "id": "hotel-1",
+        "name": "Beach Hotel",
+        "coordinates": "16.05,108.2",
+        "rank": 1,
+        "average_nightly_price": 1_100_000,
+        "total_stay_price": 2_200_000,
+        "stay_night_count": 2,
+        "currency": "VND",
+    }
+    candidate = PlaceCandidate.from_mapping({**hotel, "category": "Hotel"})
+
+    text = format_hotel_options([(hotel, candidate)])
+
+    assert "1,100,000 VND/đêm" in text
+    assert "Tổng 2 đêm: 2,200,000 VND" in text
+
+
 def test_to_hotel_options_payload_shape_from_real_bundle():
     payload = to_hotel_options_payload(PENDING_HOTEL_SELECTION_FIXTURE)
 
@@ -198,8 +239,8 @@ def test_format_trip_response_from_json_still_renders_the_fixture():
     assert "Muong Thanh Grand Đà Nẵng" in text
     # Raw themes carry a "query", so format_trip_response_from_json re-derives the
     # title through normalize_day_themes rather than trusting the stored title verbatim.
-    assert "Day 1 - Biển và thư giãn:" in text
-    assert "Day 2 - Văn hóa và di sản:" in text
+    assert "Ngày 1 - Biển và thư giãn:" in text
+    assert "Ngày 2 - Văn hóa và di sản:" in text
     assert "Tham quan Bãi biển Mỹ Khê" in text
 
 

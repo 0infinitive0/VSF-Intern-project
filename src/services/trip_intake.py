@@ -20,6 +20,7 @@ import re
 import unicodedata
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
+from datetime import date, timedelta
 from typing import Any
 
 from src.services.llm import get_llm
@@ -42,6 +43,134 @@ _PREFERENCE_LABELS = (
 class DestinationOption:
     name: str
     aliases: tuple[str, ...] = ()
+
+
+class TripPreferenceUpdateError(ValueError):
+    """A requested whole-trip preference change is missing or unsafe."""
+
+
+@dataclass(frozen=True)
+class TripPreferenceUpdate:
+    """Validated, partial replacement of already-confirmed trip facts."""
+
+    changed_fields: frozenset[str]
+    destination: str | None = None
+    duration: str | None = None
+    start_date: str | None = None
+    people: str | None = None
+    preferences: tuple[str, ...] | None = None
+
+    @classmethod
+    def from_raw(cls, raw: Mapping[str, Any]) -> TripPreferenceUpdate:
+        if not isinstance(raw, Mapping):
+            raise TripPreferenceUpdateError("Không xác định được thay đổi sở thích chuyến đi.")
+
+        allowed_fields = {"destination", "duration", "start_date", "people", "preferences"}
+        raw_changed_fields = raw.get("changed_fields")
+        if isinstance(raw_changed_fields, list):
+            changed_fields = {
+                str(field).strip() for field in raw_changed_fields if str(field).strip() in allowed_fields
+            }
+        else:
+            changed_fields = set()
+            if str(raw.get("destination") or "").strip():
+                changed_fields.add("destination")
+            if raw.get("duration_days") is not None:
+                changed_fields.add("duration")
+            if raw.get("start_date") is not None:
+                changed_fields.add("start_date")
+            if raw.get("people_count") is not None:
+                changed_fields.add("people")
+            if isinstance(raw.get("preference_labels"), list) and raw.get("preference_labels"):
+                changed_fields.add("preferences")
+
+        if not changed_fields:
+            raise TripPreferenceUpdateError("Không xác định được thông tin chuyến đi cần thay đổi.")
+
+        destination = str(raw.get("destination") or "").strip() or None
+        duration = _format_duration_days(raw.get("duration_days"))
+        start_date = _format_start_date(raw.get("start_date"))
+        people = _format_people_count(raw.get("people_count"))
+
+        raw_labels = raw.get("preference_labels")
+        label_set = (
+            {str(item).strip() for item in raw_labels if str(item).strip()}
+            if isinstance(raw_labels, list)
+            else set()
+        )
+        preferences = (
+            tuple(label for label in _PREFERENCE_LABELS if label in label_set)
+            if "preferences" in changed_fields
+            else None
+        )
+
+        invalid_fields = []
+        if "destination" in changed_fields and destination is None:
+            invalid_fields.append("điểm đến")
+        if "duration" in changed_fields and duration is None:
+            invalid_fields.append("số ngày")
+        if "start_date" in changed_fields and start_date is None:
+            invalid_fields.append("ngày bắt đầu")
+        if "people" in changed_fields and people is None:
+            invalid_fields.append("số người")
+        if "preferences" in changed_fields and not preferences:
+            invalid_fields.append("sở thích")
+        if invalid_fields:
+            raise TripPreferenceUpdateError(
+                "Không thể xác nhận an toàn: " + ", ".join(invalid_fields) + "."
+            )
+
+        return cls(
+            changed_fields=frozenset(changed_fields),
+            destination=destination,
+            duration=duration,
+            start_date=start_date,
+            people=people,
+            preferences=preferences,
+        )
+
+    @classmethod
+    def from_message(
+        cls,
+        message: str,
+        current: TripIntakeState,
+        destination_names: Sequence[str | DestinationOption],
+    ) -> TripPreferenceUpdate:
+        raw = _llm_extract_intake_facts(
+            message,
+            {
+                "destination": current.destination,
+                "duration": current.duration,
+                "start_date": current.start_date,
+                "people": current.people,
+            },
+            destination_names,
+        )
+        return cls.from_raw(raw)
+
+    def apply_to(
+        self,
+        current: TripIntakeState,
+        destination_names: Sequence[str | DestinationOption],
+    ) -> TripIntakeState:
+        destination = current.destination
+        if "destination" in self.changed_fields:
+            destination = _match_known_destination(str(self.destination or ""), destination_names)
+            if destination is None:
+                raise TripPreferenceUpdateError("Không thể xác nhận điểm đến được hỗ trợ.")
+
+        return replace(
+            current,
+            destination=destination,
+            duration=self.duration if "duration" in self.changed_fields else current.duration,
+            start_date=self.start_date if "start_date" in self.changed_fields else current.start_date,
+            people=self.people if "people" in self.changed_fields else current.people,
+            preferences=(
+                tuple(self.preferences or ())
+                if "preferences" in self.changed_fields
+                else current.preferences
+            ),
+        )
 
 
 def destination_options_from_rows(
@@ -72,12 +201,24 @@ def destination_options_from_rows(
 class TripIntakeState:
     destination: str | None = None
     duration: str | None = None
+    start_date: str | None = None
     people: str | None = None
     preferences: tuple[str, ...] = ()
 
     @property
     def is_complete(self) -> bool:
-        return bool(self.destination and self.duration and self.people)
+        return bool(self.destination and self.duration and self.start_date and self.end_date and self.people)
+
+    @property
+    def end_date(self) -> str | None:
+        if not self.start_date or not self.duration:
+            return None
+        try:
+            start = date.fromisoformat(self.start_date)
+            duration_days = int(self.duration.split(maxsplit=1)[0])
+        except (TypeError, ValueError):
+            return None
+        return (start + timedelta(days=duration_days)).isoformat()
 
     def with_message(
         self,
@@ -87,6 +228,7 @@ class TripIntakeState:
         known_facts = {
             "destination": self.destination,
             "duration": self.duration,
+            "start_date": self.start_date,
             "people": self.people,
         }
         raw = _llm_extract_intake_facts(message, known_facts, destination_names)
@@ -102,6 +244,7 @@ class TripIntakeState:
         )
         destination = self.destination or grounded["destination"] or deterministic_destination
         duration = self.duration or grounded["duration"]
+        start_date = self.start_date or grounded["start_date"]
         people = self.people or grounded["people"]
 
         preferences = list(self.preferences)
@@ -113,6 +256,7 @@ class TripIntakeState:
             self,
             destination=destination,
             duration=duration,
+            start_date=start_date,
             people=people,
             preferences=tuple(preferences),
         )
@@ -135,16 +279,20 @@ class TripIntakeState:
             return "Bạn muốn đi đâu?"
         if not self.duration:
             return "Bạn dự định đi trong bao lâu?"
+        if not self.start_date:
+            return "Bạn dự định bắt đầu chuyến đi vào ngày nào?"
         if not self.people:
             return "Chuyến đi có bao nhiêu người?"
         return None
 
     def tool_arguments(self) -> dict[str, str]:
         if not self.is_complete:
-            raise ValueError("Destination, duration, and people are required.")
+            raise ValueError("Destination, duration, start date, and people are required.")
         return {
             "destination": str(self.destination),
             "duration": str(self.duration),
+            "start_date": str(self.start_date),
+            "end_date": str(self.end_date),
             "people": str(self.people),
             "preferences": ", ".join(self.preferences),
         }
@@ -156,6 +304,7 @@ class TripIntakeState:
         return {
             "destination": self.destination,
             "duration": self.duration,
+            "start_date": self.start_date,
             "people": self.people,
             "preferences": list(self.preferences),
         }
@@ -167,6 +316,7 @@ class TripIntakeState:
         return cls(
             destination=data.get("destination"),
             duration=data.get("duration"),
+            start_date=data.get("start_date"),
             people=data.get("people"),
             preferences=tuple(data.get("preferences") or ()),
         )
@@ -192,6 +342,7 @@ def _llm_extract_intake_facts(
     prompt = f"""You are extracting trip-planning facts from a Vietnamese chat message.
 Already confirmed this conversation: {known_summary}
 Destinations this system supports, for reference only: {destination_choices or "unknown"}
+Today's date in the planning timezone is {date.today().isoformat()}.
 
 Copy the destination the user actually named. Do NOT substitute a different city,
 even when the one they named is missing from the list above — "Hội An" must stay
@@ -203,9 +354,11 @@ trip to the wrong place.
 Return ONLY valid JSON (no markdown fences) matching this schema:
 {{
   "destination": "string or null - the destination the user named, copied verbatim",
+  "start_date": "YYYY-MM-DD or null - only when the user explicitly provided a trip start date; resolve relative dates using today's date above",
   "duration_days": "integer or null - trip length in days (convert weeks/months to days, e.g. '1 tuần' = 7)",
   "people_count": "integer or null - number of travelers (e.g. 'vợ chồng tôi' = 2, 'một mình' = 1)",
-  "preference_labels": "array of zero or more of these exact strings only: {allowed_labels}"
+  "preference_labels": "array of zero or more of these exact strings only: {allowed_labels}",
+  "changed_fields": "array containing only destination, duration, start_date, people, preferences when the user explicitly asks to replace that already-confirmed field"
 }}
 
 Message: "{message}"
@@ -246,6 +399,7 @@ def _ground_extracted_facts(
     return {
         "destination": _match_known_destination(str(raw.get("destination") or "").strip(), destination_names),
         "duration": _format_duration_days(raw.get("duration_days")),
+        "start_date": _format_start_date(raw.get("start_date")),
         "people": _format_people_count(raw.get("people_count")),
         "preference_labels": tuple(label for label in _PREFERENCE_LABELS if label in label_set),
     }
@@ -304,6 +458,16 @@ def _format_duration_days(value: Any) -> str | None:
     if not 0 < days <= 90:
         return None
     return f"{days} ngày"
+
+
+def _format_start_date(value: Any) -> str | None:
+    try:
+        parsed = date.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+    if parsed < date.today():
+        return None
+    return parsed.isoformat()
 
 
 def _format_people_count(value: Any) -> str | None:

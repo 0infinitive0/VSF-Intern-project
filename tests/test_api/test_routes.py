@@ -121,7 +121,7 @@ async def test_planner_chat_preserves_state_across_turns_with_same_session_id(cl
         json={"session_id": session_id, "message": "3 ngày"},
     )
     assert second.status_code == 200
-    assert "bao nhiêu người" in second.json()["reply"].lower()
+    assert "ngày nào" in second.json()["reply"].lower()
 
 
 @pytest.mark.asyncio

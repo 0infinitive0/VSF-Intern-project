@@ -61,7 +61,9 @@ def _hydrate_hotel_records(search_results: List[Dict[str, Any]]) -> List[Dict[st
     for result in search_results:
         canonical = canonical_by_id.get(str(result.get("id")))
         if canonical:
-            hydrated.append({**result, **canonical})
+            # Canonical rows supply stable hotel metadata, while the RPC is the
+            # authority for the requested stay's price and room selection.
+            hydrated.append({**canonical, **result})
     return hydrated
 
 
@@ -73,6 +75,8 @@ def select_hotel_candidates(
     match_count: int = 5,
     min_price: float | None = None,
     max_price: float | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
     root_latitude: float | None = None,
     root_longitude: float | None = None,
     max_radius_km: float | None = None,
@@ -96,6 +100,9 @@ def select_hotel_candidates(
         "min_price": min_price,
         "max_price": max_price,
     }
+    if start_date is not None or end_date is not None:
+        kwargs["start_date"] = start_date
+        kwargs["end_date"] = end_date
     if root_latitude is not None or root_longitude is not None or max_radius_km is not None:
         kwargs["root_latitude"] = root_latitude
         kwargs["root_longitude"] = root_longitude
@@ -137,6 +144,10 @@ def select_hotel_candidates(
             "address": hotel.get("address"),
             "area_name": hotel.get("area_name"),
             "lowest_price": hotel.get("lowest_price"),
+            "average_nightly_price": hotel.get("average_nightly_price"),
+            "total_stay_price": hotel.get("total_stay_price"),
+            "stay_night_count": hotel.get("stay_night_count"),
+            "priced_room_name": hotel.get("priced_room_name"),
             "currency": hotel.get("currency"),
             "image_url": hotel.get("image_url"),
             "similarity": hotel.get("similarity"),
@@ -171,7 +182,7 @@ def _budget_bonus(data: Dict[str, Any], target_price: float | None) -> float:
     """Continuous closeness bonus, not a binary tier match — a hotel priced right at
     target_price gets the full bonus, decaying linearly to 0 the further away it is.
     Never negative: missing price or no target both contribute exactly 0.0."""
-    price = data.get("lowest_price")
+    price = data.get("average_nightly_price", data.get("lowest_price"))
     if target_price is None or price is None or target_price <= 0:
         return 0.0
     diff_ratio = abs(float(price) - target_price) / target_price
@@ -213,14 +224,14 @@ def rank_hotel_candidates(
     amenity_prefs = tuple(amenity_prefs)
 
     prices = [
-        float(data["lowest_price"])
+        float(data.get("average_nightly_price", data.get("lowest_price")))
         for data, _ in options
-        if data.get("lowest_price") is not None
+        if data.get("average_nightly_price", data.get("lowest_price")) is not None
     ]
     min_price, max_price = (min(prices), max(prices)) if prices else (None, None)
 
     def _price_score(data: Dict[str, Any]) -> float:
-        price = data.get("lowest_price")
+        price = data.get("average_nightly_price", data.get("lowest_price"))
         if price is None or min_price is None or max_price is None:
             return 0.0
         if max_price == min_price:

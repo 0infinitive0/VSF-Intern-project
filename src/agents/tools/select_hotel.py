@@ -66,10 +66,15 @@ def select_hotel(selection: str, runtime: ToolRuntime[None, TripState]) -> Comma
     mode = pending.get("mode", "new_trip")
     destination = pending.get("destination", "")
     duration = pending.get("duration", "")
+    start_date = pending.get("start_date")
+    end_date = pending.get("end_date")
     people = pending.get("people", "")
     preferences = pending.get("preferences_text", "")
+    stay_kwargs: dict[str, str | None] = {}
+    if start_date is not None or end_date is not None:
+        stay_kwargs = {"start_date": start_date, "end_date": end_date}
 
-    if mode == "change_hotel":
+    if mode in {"change_hotel", "replace_trip_preferences"}:
         trip_data = runtime.state["trip_data"]
         if trip_data is None:
             return _reply(
@@ -86,6 +91,7 @@ def select_hotel(selection: str, runtime: ToolRuntime[None, TripState]) -> Comma
                 pending_hotel_selection=None,
             )
 
+        planning_constraints = pending.get("planning_constraints") or {} if mode == "change_hotel" else {}
         try:
             updated_data = _build_trip_data(
                 destination,
@@ -93,22 +99,25 @@ def select_hotel(selection: str, runtime: ToolRuntime[None, TripState]) -> Comma
                 people,
                 preferences,
                 preselected_hotel=hotel_data,
-                planning_constraints=pending.get("planning_constraints") or {},
+                planning_constraints=planning_constraints,
                 session_id=session_id,
+                **stay_kwargs,
             )
         except Exception as exc:
             logger.exception("Hotel change failed")
             return _reply(f"SYSTEM ERROR: {exc}", runtime.tool_call_id)
 
-        updated_data.setdefault("adjustments", []).append(
+        adjustment = (
             "Đã đổi khách sạn và lập lại toàn bộ các cụm địa điểm theo vị trí mới."
+            if mode == "change_hotel"
+            else "Đã cập nhật thông tin chuyến đi, chọn lại khách sạn và lập một lịch trình mới."
         )
+        updated_data.setdefault("adjustments", []).append(adjustment)
         updated_itinerary = (updated_data.get("itineraries") or [{}])[0]
         if isinstance(updated_itinerary, dict):
             updated_itinerary["status"] = "Draft"
             updated_itinerary.pop("summary", None)
-            planning_constraints = pending.get("planning_constraints") or {}
-            if planning_constraints:
+            if mode == "change_hotel" and planning_constraints:
                 updated_itinerary["planning_constraints"] = planning_constraints
                 updated_data.setdefault("adjustments", []).extend(_reapply_planning_constraints(updated_data))
         return _reply(
@@ -131,6 +140,7 @@ def select_hotel(selection: str, runtime: ToolRuntime[None, TripState]) -> Comma
         preselected_hotel=hotel_data,
         session_id=session_id,
         save=_capture_save,
+        **stay_kwargs,
     )
     if str(reply).startswith("SYSTEM ERROR:"):
         return _reply(str(reply), runtime.tool_call_id)

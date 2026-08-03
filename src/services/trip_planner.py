@@ -318,6 +318,8 @@ def _persist_itinerary_metadata(trip_data: dict[str, Any]) -> None:
             "session_id",
             "destination_id",
             "hotel_id",
+            "start_date",
+            "end_date",
             "duration_days",
             "number_of_adults",
             "number_of_children",
@@ -350,6 +352,8 @@ def _build_trip_data(
     themes_override: list[dict[str, Any]] | None = None,
     preselected_hotel: dict[str, Any] | None = None,
     planning_constraints: dict[str, Any] | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
     session_id: str = "poc_trip_planner_1",
 ) -> dict[str, Any]:
     destination_id = _get_destination_id(destination)
@@ -474,6 +478,8 @@ def _build_trip_data(
         "id": itinerary_id,
         "session_id": session_id,
         "duration_days": number_of_days,
+        "start_date": start_date,
+        "end_date": end_date,
         "number_of_adults": number_of_people,
         "number_of_children": 0,
         "budget": None,
@@ -1662,6 +1668,8 @@ def _generate_and_save_itinerary(
     *,
     hotel_query: str | None = None,
     preselected_hotel: dict[str, Any] | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
     session_id: str = "poc_trip_planner_1",
     save: Callable[[dict[str, Any]], None] | None = None,
 ) -> str:
@@ -1670,14 +1678,22 @@ def _generate_and_save_itinerary(
     _save_trip_data for direct/programmatic callers; a session-bound tool
     passes its own session-aware save callback instead."""
     try:
+        build_kwargs: dict[str, Any] = {
+            "hotel_query": hotel_query,
+            "preselected_hotel": preselected_hotel,
+            "session_id": session_id,
+        }
+        # Keep direct/legacy callers compatible while the guided date-aware
+        # flow always supplies the complete interval.
+        if start_date is not None or end_date is not None:
+            build_kwargs["start_date"] = start_date
+            build_kwargs["end_date"] = end_date
         trip_data = _build_trip_data(
             destination,
             duration,
             people,
             preferences,
-            hotel_query=hotel_query,
-            preselected_hotel=preselected_hotel,
-            session_id=session_id,
+            **build_kwargs,
         )
         (save or _save_trip_data)(trip_data)
     except Exception as exc:

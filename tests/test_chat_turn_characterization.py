@@ -179,7 +179,9 @@ def test_route_intake_tail_calls_recommend_hotels_and_reports_hotel_options_stag
     ('hotel_options') worth pinning separately from the plain question-asking
     intake turn above."""
     session = _session(
-        intake_state=TripIntakeState(destination="Đà Nẵng", duration="3 ngày", people="2 người"),
+        intake_state=TripIntakeState(
+            destination="Đà Nẵng", duration="3 ngày", start_date="2026-08-10", people="2 người"
+        ),
         hotel_pref_state=HotelPreferenceState(),
     )
     session.tools.recommend_hotels = _FakeTool(lambda args: "1. Khách sạn A\n2. Khách sạn B")
@@ -223,7 +225,9 @@ def _session_with_pending_hotel_list() -> TripSession:
     hotel list — pending_hotel_selection is set, trip_data is still None. This
     is the exact state the gate must hold from."""
     return _session(
-        intake_state=TripIntakeState(destination="Đà Nẵng", duration="3 ngày", people="2 người"),
+        intake_state=TripIntakeState(
+            destination="Đà Nẵng", duration="3 ngày", start_date="2026-08-10", people="2 người"
+        ),
         hotel_pref_state=HotelPreferenceState(stage="done"),
         pending_hotel_selection={
             "mode": "new_trip",

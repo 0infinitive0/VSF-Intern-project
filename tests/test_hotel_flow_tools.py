@@ -108,6 +108,8 @@ def test_recommend_hotels_writes_pending_selection_and_lists_names(monkeypatch):
         session_id="test-session",
         destination="Đà Nẵng",
         duration="3 ngày",
+        start_date="2026-08-10",
+        end_date="2026-08-13",
         people="2 người",
         preferences="",
         hotel_preferences="",
@@ -184,6 +186,55 @@ def test_select_hotel_without_pending_selection_returns_system_error():
     assert reply.startswith("SYSTEM ERROR:")
 
 
+def test_select_hotel_replacement_mode_builds_fresh_dated_draft(monkeypatch):
+    options = [_fake_option("h1", "Khách sạn Mới", 1)]
+    old_trip = {
+        "hotel": {"id": "hotel-old"},
+        "itineraries": [{"id": "trip-old", "status": "Draft"}],
+        "itinerary_items": [{"id": "old-item"}],
+    }
+    state = initial_state("test-session")
+    state["trip_data"] = old_trip
+    state["pending_hotel_selection"] = {
+        "mode": "replace_trip_preferences",
+        "destination": "Đà Nẵng",
+        "duration": "5 ngày",
+        "start_date": "2026-08-10",
+        "end_date": "2026-08-15",
+        "people": "4 người",
+        "preferences_text": "thiên nhiên",
+        "options": [data for data, _candidate in options],
+    }
+    captured = {}
+
+    def _build(destination, duration, people, preferences, **kwargs):
+        captured.update(
+            destination=destination,
+            duration=duration,
+            people=people,
+            preferences=preferences,
+            **kwargs,
+        )
+        return {
+            "hotel": kwargs["preselected_hotel"],
+            "itineraries": [{"id": "trip-new", "status": "Draft"}],
+            "itinerary_items": [{"id": "new-item"}],
+        }
+
+    monkeypatch.setattr(select_hotel_module, "_build_trip_data", _build)
+
+    reply, updates = invoke_tool_directly(select_hotel, state, session_id="test-session", selection="1")
+
+    assert not reply.startswith("SYSTEM ERROR:")
+    assert captured["start_date"] == "2026-08-10"
+    assert captured["end_date"] == "2026-08-15"
+    assert captured["people"] == "4 người"
+    assert captured["planning_constraints"] == {}
+    assert updates["trip_data"]["itineraries"][0]["id"] == "trip-new"
+    assert updates["trip_data"]["itinerary_items"] == [{"id": "new-item"}]
+    assert updates["pending_hotel_selection"] is None
+
+
 def test_generate_full_itinerary_with_hotel_id_skips_search(monkeypatch):
     hotel_data, _candidate = _fake_option("h9", "Khách sạn Chín", 1)
     monkeypatch.setattr(trip_planner_module, "_get_destination_id", lambda destination: "dest-1")
@@ -246,6 +297,8 @@ def test_recommend_hotels_threads_budget_and_amenity_prefs_into_ranking(monkeypa
         session_id="test-session",
         destination="Đà Nẵng",
         duration="3 ngày",
+        start_date="2026-08-10",
+        end_date="2026-08-13",
         people="2 người",
         preferences="",
         hotel_preferences="",
@@ -273,6 +326,8 @@ def test_recommend_hotels_calls_sea_view_lookup_only_when_requested(monkeypatch)
     base_args = dict(
         destination="Đà Nẵng",
         duration="3 ngày",
+        start_date="2026-08-10",
+        end_date="2026-08-13",
         people="2 người",
         preferences="",
         hotel_preferences="",
@@ -313,6 +368,8 @@ def test_recommend_hotels_forwards_target_price_to_search(monkeypatch):
         session_id="test-session",
         destination="Đà Nẵng",
         duration="3 ngày",
+        start_date="2026-08-10",
+        end_date="2026-08-13",
         people="2 người",
         preferences="",
         hotel_preferences="",
@@ -344,6 +401,8 @@ def test_recommend_hotels_forwards_explicit_min_and_max_price_range(monkeypatch)
         session_id="test-session",
         destination="Đà Nẵng",
         duration="3 ngày",
+        start_date="2026-08-10",
+        end_date="2026-08-13",
         people="2 người",
         preferences="",
         hotel_preferences="",

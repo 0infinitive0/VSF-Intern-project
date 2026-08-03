@@ -12,7 +12,7 @@ cycle entirely: this module has no reason to import anything from
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import date, datetime
 
 from langchain.tools import ToolRuntime, tool
 from langchain_core.messages import ToolMessage
@@ -35,6 +35,8 @@ logger = logging.getLogger(__name__)
 def recommend_hotels(
     destination: str = "",
     duration: str = "",
+    start_date: str = "",
+    end_date: str = "",
     people: str = "",
     preferences: str = "",
     hotel_preferences: str = "",
@@ -63,6 +65,15 @@ def recommend_hotels(
     clean_destination, error = validate_trip_basics(destination, duration, people)
     if error:
         return Command(update={"messages": [ToolMessage(error, tool_call_id=runtime.tool_call_id)]})
+    try:
+        parsed_start_date = date.fromisoformat(start_date)
+        parsed_end_date = date.fromisoformat(end_date)
+    except ValueError:
+        reply = "SYSTEM ERROR: Cần có ngày bắt đầu và ngày kết thúc hợp lệ (YYYY-MM-DD) để tìm khách sạn."
+        return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
+    if parsed_end_date <= parsed_start_date:
+        reply = "SYSTEM ERROR: Ngày kết thúc phải sau ngày bắt đầu."
+        return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
 
     destination_id = _get_destination_id(clean_destination)
     if not destination_id:
@@ -88,6 +99,8 @@ def recommend_hotels(
             hotel_query=hotel_query,
             min_price=parsed_min_price,
             max_price=parsed_max_price,
+            start_date=start_date,
+            end_date=end_date,
         )
         sea_view_hotel_ids = (
             lookup_sea_view_hotel_ids([data["id"] for data, _candidate in options])
@@ -116,6 +129,8 @@ def recommend_hotels(
         "destination": clean_destination,
         "destination_id": destination_id,
         "duration": duration,
+        "start_date": start_date,
+        "end_date": end_date,
         "people": people,
         "preferences_text": preferences,
         "hotel_query": hotel_query,

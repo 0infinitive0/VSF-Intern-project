@@ -151,7 +151,7 @@ def format_trip_response_from_json(trip_data: dict[str, Any]) -> str:
 
     for day_num in range(1, max_days + 1):
         theme_suffix = f" - {day_themes[day_num]}" if day_num in day_themes else ""
-        output.append(f"Day {day_num}{theme_suffix}:")
+        output.append(f"Ngày {day_num}{theme_suffix}:")
 
         day_items = sorted(items_by_day.get(day_num, []), key=lambda x: x.get("order_index", 1))
         if day_items:
@@ -195,9 +195,20 @@ def format_hotel_options(options: list[tuple[dict[str, Any], PlaceCandidate]]) -
             if review_count:
                 review_str += f" ({review_count} lượt)"
 
+        average_nightly_price = data.get("average_nightly_price")
+        total_stay_price = data.get("total_stay_price")
+        stay_night_count = data.get("stay_night_count")
         lowest_price = data.get("lowest_price")
         price_str = ""
-        if lowest_price is not None:
+        if average_nightly_price is not None:
+            currency = data.get("currency") or "VND"
+            try:
+                price_str = f" | {float(average_nightly_price):,.0f} {currency}/đêm"
+                if total_stay_price is not None and stay_night_count:
+                    price_str += f" · Tổng {int(stay_night_count)} đêm: {float(total_stay_price):,.0f} {currency}"
+            except (TypeError, ValueError):
+                price_str = f" | {average_nightly_price} {currency}/đêm"
+        elif lowest_price is not None:
             currency = data.get("currency") or "VND"
             try:
                 price_str = f" | Giá từ: {float(lowest_price):,.0f} {currency}"
@@ -281,6 +292,8 @@ def to_trip_plan_payload(trip_data: dict[str, Any] | None) -> dict[str, Any] | N
         "status": itinerary.get("status") or "Draft",
         "destination": (itinerary.get("preferences") or [None])[0],
         "duration_days": duration_days,
+        "start_date": itinerary.get("start_date"),
+        "end_date": itinerary.get("end_date"),
         "number_of_adults": itinerary.get("number_of_adults"),
         "hotel": {
             "id": hotel.get("id"),
@@ -307,14 +320,21 @@ def to_hotel_options_payload(
     for index, option in enumerate(pending_hotel_selection.get("options") or [], start=1):
         if not isinstance(option, dict):
             continue
-        options.append(
-            {
-                "index": index,
-                "id": option.get("id"),
-                "name": option.get("name"),
-                "star_rating": option.get("star_rating"),
-                "description": option.get("description"),
-                "matched_rooms": option.get("matched_rooms") or [],
-            }
-        )
+        payload = {
+            "index": index,
+            "id": option.get("id"),
+            "name": option.get("name"),
+            "star_rating": option.get("star_rating"),
+            "description": option.get("description"),
+            "matched_rooms": option.get("matched_rooms") or option.get("matched_room_names") or [],
+        }
+        for price_field in (
+            "average_nightly_price",
+            "total_stay_price",
+            "stay_night_count",
+            "currency",
+        ):
+            if option.get(price_field) is not None:
+                payload[price_field] = option[price_field]
+        options.append(payload)
     return options

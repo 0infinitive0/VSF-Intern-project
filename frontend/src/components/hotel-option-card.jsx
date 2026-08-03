@@ -7,6 +7,9 @@ import { S } from '../strings.js'
  */
 function HotelOptionCard({ hotel, onPick, disabled }) {
   const stars = '★'.repeat(hotel.star_rating || 0) + '☆'.repeat(Math.max(0, 5 - (hotel.star_rating || 0)))
+  const currency = hotel.currency || 'VND'
+  const formatPrice = (value) => new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(value)
+  const hasStayPrice = Number.isFinite(Number(hotel.average_nightly_price))
 
   return (
     <button
@@ -22,6 +25,21 @@ function HotelOptionCard({ hotel, onPick, disabled }) {
         <span className="font-display font-semibold text-text-primary">{hotel.name}</span>
       </div>
       <div className="text-primary text-sm">{stars}</div>
+      {hasStayPrice && (
+        <div
+          className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm text-text-primary"
+          aria-label={S.hotelAverageNightly(formatPrice(hotel.average_nightly_price), currency)}
+        >
+          <strong className="text-primary font-semibold">
+            {S.hotelAverageNightly(formatPrice(hotel.average_nightly_price), currency)}
+          </strong>
+          {Number.isFinite(Number(hotel.total_stay_price)) && hotel.stay_night_count > 0 && (
+            <span className="text-xs text-text-secondary">
+              {S.hotelTotalStay(hotel.stay_night_count, formatPrice(hotel.total_stay_price), currency)}
+            </span>
+          )}
+        </div>
+      )}
       {hotel.description && (
         <p className="text-sm text-text-secondary">{hotel.description}</p>
       )}

@@ -2,16 +2,97 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 import src.services.trip_intake as trip_intake_module
 from src.services.trip_intake import (
     DestinationOption,
     TripIntakeState,
+    TripPreferenceUpdate,
+    TripPreferenceUpdateError,
     _ground_extracted_facts,
     _match_known_destination,
     destination_options_from_rows,
 )
 
 DESTINATIONS = ["Đà Nẵng", "Hồ Chí Minh", "Đắk Nông"]
+
+
+def test_preference_update_replaces_confirmed_facts_and_recalculates_end_date() -> None:
+    state = TripIntakeState(
+        destination="Đà Nẵng",
+        duration="3 ngày",
+        start_date="2026-08-10",
+        people="2 người",
+        preferences=("biển",),
+    )
+    update = TripPreferenceUpdate.from_raw(
+        {
+            "changed_fields": ["duration", "people", "preferences"],
+            "duration_days": 5,
+            "people_count": 4,
+            "preference_labels": ["thiên nhiên", "ẩm thực"],
+        }
+    )
+
+    updated = update.apply_to(state, DESTINATIONS)
+
+    assert updated.duration == "5 ngày"
+    assert updated.people == "4 người"
+    assert updated.preferences == ("ẩm thực", "thiên nhiên")
+    assert updated.start_date == "2026-08-10"
+    assert updated.end_date == "2026-08-15"
+
+
+def test_preference_update_rejects_an_unsupported_vibe_without_changing_state() -> None:
+    state = TripIntakeState(
+        destination="Đà Nẵng",
+        duration="3 ngày",
+        start_date="2026-08-10",
+        people="2 người",
+        preferences=("biển",),
+    )
+
+    with pytest.raises(TripPreferenceUpdateError, match="sở thích"):
+        TripPreferenceUpdate.from_raw(
+            {
+                "changed_fields": ["preferences"],
+                "preference_labels": [],
+            }
+        ).apply_to(state, DESTINATIONS)
+
+    assert state.preferences == ("biển",)
+
+
+def test_preference_update_rejects_an_ungrounded_destination() -> None:
+    state = TripIntakeState(
+        destination="Đà Nẵng",
+        duration="3 ngày",
+        start_date="2026-08-10",
+        people="2 người",
+    )
+
+    with pytest.raises(TripPreferenceUpdateError, match="điểm đến"):
+        TripPreferenceUpdate.from_raw(
+            {"changed_fields": ["destination"], "destination": "Atlantis"}
+        ).apply_to(state, DESTINATIONS)
+
+
+def test_preference_update_replaces_start_date_and_recalculates_end_date() -> None:
+    state = TripIntakeState(
+        destination="Đà Nẵng",
+        duration="3 ngày",
+        start_date="2026-08-10",
+        people="2 người",
+    )
+    update = TripPreferenceUpdate.from_raw(
+        {"changed_fields": ["start_date"], "start_date": "2026-09-01"}
+    )
+
+    updated = update.apply_to(state, DESTINATIONS)
+
+    assert updated.start_date == "2026-09-01"
+    assert updated.end_date == "2026-09-04"
 
 
 def _mock_extraction(monkeypatch, responses: dict[str, dict]) -> None:
@@ -66,6 +147,32 @@ def test_ground_extracted_facts_handles_missing_and_out_of_range_numbers() -> No
     assert grounded["preference_labels"] == ()
 
 
+def test_intake_requires_start_date_and_derives_exclusive_end_date(monkeypatch) -> None:
+    _mock_extraction(
+        monkeypatch,
+        {
+            "Tôi đi Đà Nẵng 2 ngày với 2 người": {
+                "destination": "Đà Nẵng",
+                "duration_days": 2,
+                "people_count": 2,
+            },
+            "10/08/2026": {"start_date": "2026-08-10"},
+        },
+    )
+
+    state = TripIntakeState().with_message("Tôi đi Đà Nẵng 2 ngày với 2 người", DESTINATIONS)
+
+    assert not state.is_complete
+    assert state.next_question() == "Bạn dự định bắt đầu chuyến đi vào ngày nào?"
+
+    state = state.with_message("10/08/2026", DESTINATIONS)
+
+    assert state.is_complete
+    assert state.start_date == "2026-08-10"
+    assert state.end_date == "2026-08-12"
+    assert state.tool_arguments()["end_date"] == "2026-08-12"
+
+
 def test_match_known_destination_exact_and_alias_match() -> None:
     destinations = destination_options_from_rows(
         [{"name": "Hồ Chí Minh", "aliases": ["TP HCM", "TPHCM", "HCM", "Sài Gòn"]}]
@@ -93,6 +200,7 @@ def test_sequential_intake_uses_mocked_llm_facts_across_turns(monkeypatch) -> No
         {
             "tôi muốn đi chơi ở đà nẵng": {"destination": "Đà Nẵng"},
             "1 tuần": {"duration_days": 7},
+            "10/08/2026": {"start_date": "2026-08-10"},
             "tôi đi cùng vợ của tôi, tập trung tắm biển và du lịch lịch sử": {
                 "people_count": 2,
                 "preference_labels": ["biển", "lịch sử"],
@@ -107,6 +215,10 @@ def test_sequential_intake_uses_mocked_llm_facts_across_turns(monkeypatch) -> No
 
     state = state.with_message("1 tuần", DESTINATIONS)
     assert state.duration == "7 ngày"
+    assert state.next_question() == "Bạn dự định bắt đầu chuyến đi vào ngày nào?"
+
+    state = state.with_message("10/08/2026", DESTINATIONS)
+    assert state.start_date == "2026-08-10"
     assert state.next_question() == "Chuyến đi có bao nhiêu người?"
 
     state = state.with_message(
@@ -117,6 +229,8 @@ def test_sequential_intake_uses_mocked_llm_facts_across_turns(monkeypatch) -> No
     assert state.tool_arguments() == {
         "destination": "Đà Nẵng",
         "duration": "7 ngày",
+        "start_date": "2026-08-10",
+        "end_date": "2026-08-17",
         "people": "2 người",
         "preferences": "biển, lịch sử",
     }
@@ -129,16 +243,17 @@ def test_complete_single_message_preserves_optional_preferences_without_requirin
     _mock_extraction(
         monkeypatch,
         {
-            "Hai người đi Đà Nẵng 3 ngày, thích biển và văn hóa": {
+            "Hai người đi Đà Nẵng 3 ngày từ 10/08/2026, thích biển và văn hóa": {
                 "destination": "Đà Nẵng",
                 "duration_days": 3,
+                "start_date": "2026-08-10",
                 "people_count": 2,
                 "preference_labels": ["biển", "văn hóa"],
             },
         },
     )
     state = TripIntakeState().with_message(
-        "Hai người đi Đà Nẵng 3 ngày, thích biển và văn hóa", DESTINATIONS
+        "Hai người đi Đà Nẵng 3 ngày từ 10/08/2026, thích biển và văn hóa", DESTINATIONS
     )
     assert state.is_complete
     assert state.next_question() is None
@@ -151,7 +266,7 @@ def test_complete_single_message_preserves_optional_preferences_without_requirin
 def test_intake_completes_without_preferences_when_none_are_extracted(monkeypatch) -> None:
     _mock_extraction(monkeypatch, {"2 người": {"people_count": 2}})
 
-    state = TripIntakeState(destination="Đà Nẵng", duration="3 ngày")
+    state = TripIntakeState(destination="Đà Nẵng", duration="3 ngày", start_date="2026-08-10")
     state = state.with_message("2 người", DESTINATIONS)
 
     assert state.is_complete
@@ -202,7 +317,7 @@ def test_hcm_abbreviation_does_not_repeat_the_destination_question(monkeypatch) 
 
     assert state.destination == "Hồ Chí Minh"
     assert state.duration == "3 ngày"
-    assert state.next_question() == "Chuyến đi có bao nhiêu người?"
+    assert state.next_question() == "Bạn dự định bắt đầu chuyến đi vào ngày nào?"
 
 
 def test_hcm_alias_is_grounded_when_intake_model_returns_invalid_output(monkeypatch) -> None:
