@@ -63,6 +63,52 @@ export const S = {
   tripParamsGuestsLabel: 'Số khách',
   tripParamsAdultsSuffix: 'người lớn',
 
+  // Trip Parameters Intake Form — fixed Vietnamese chip options. These mirror the
+  // backend closed sets (source of truth — if a label changes there, update here):
+  //   src/services/trip_intake.py:30-64 (_PREFERENCE_LABELS / _COMPANION_LABELS /
+  //     _PACE_LABELS / _DAY_RHYTHM_LABELS)
+  //   src/services/hotel_selection.py:509-531 (_BUDGET_QUESTION labels, exposed via
+  //     budget_option_labels())
+  intakeDestinationLabel: 'Điểm đến',
+  intakeDestinationPlaceholder: 'Chọn điểm đến',
+  intakeDatesLabel: 'Ngày đi & thời lượng',
+  intakeStartDateLabel: 'Ngày bắt đầu',
+  intakeEndDateLabel: 'Ngày kết thúc',
+  intakeDatePlaceholder: 'dd/mm/yyyy',
+  intakeGuestsLabel: 'Số khách',
+  intakeBudgetLabel: 'Ngân sách khách sạn',
+  intakeOtherOptionsLabel: 'Tùy chọn khác',
+  intakePreferencesLabel: 'Sở thích du lịch',
+  intakeCompanionsLabel: 'Đi cùng',
+  intakePaceLabel: 'Nhịp độ',
+  intakeDayRhythmLabel: 'Nhịp sinh hoạt',
+  intakeNotesLabel: 'Nhu cầu khác',
+  intakeNotesPlaceholder: 'Ví dụ: cần phòng view biển, ăn chay...',
+  intakeNotesCounter: (n: number) => `${n}/1000`,
+  intakeSubmit: 'Gửi thông tin',
+  intakeRequiredHint: 'Điểm đến, ngày đi và số khách là bắt buộc',
+  intakePreferenceOptions: [
+    'biển',
+    'văn hóa',
+    'ẩm thực',
+    'thiên nhiên',
+    'lịch sử',
+    'mua sắm',
+    'cuộc sống về đêm',
+    'trẻ em',
+    'cổ điển',
+    'cảnh đô thị',
+  ],
+  intakeCompanionOptions: [
+    'đi một mình',
+    'đi cùng gia đình',
+    'đi cùng người yêu hoặc vợ chồng',
+    'đi cùng bạn bè',
+    'có người lớn tuổi trong đoàn',
+  ],
+  intakePaceOptions: ['dày đặc', 'vừa phải', 'thư thái'],
+  intakeDayRhythmOptions: ['bắt đầu sớm', 'về khuya'],
+
   // Hotel card
   hotelRooms: 'Phòng gợi ý',
   hotelAverageNightly: (price: string, currency: string) => `${price} ${currency}/đêm`,

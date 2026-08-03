@@ -36,6 +36,31 @@ _PREFERENCE_LABELS = (
     "mua sắm",
     "cuộc sống về đêm",
     "trẻ em",
+    "cổ điển",
+    "cảnh đô thị",
+)
+
+# Fixed closed sets for the travel-style taxonomy added by the Trip Parameters
+# Intake Form plan (260803-1713). These mirror the UI's fixed chip options
+# (frontend/src/strings.ts) — the backend is the source of truth for grounding;
+# if a label ever changes here, update that file too.
+_COMPANION_LABELS = (
+    "đi một mình",
+    "đi cùng gia đình",
+    "đi cùng người yêu hoặc vợ chồng",
+    "đi cùng bạn bè",
+    "có người lớn tuổi trong đoàn",
+)
+
+_PACE_LABELS = (
+    "dày đặc",
+    "vừa phải",
+    "thư thái",
+)
+
+_DAY_RHYTHM_LABELS = (
+    "bắt đầu sớm",
+    "về khuya",
 )
 
 
@@ -204,6 +229,10 @@ class TripIntakeState:
     start_date: str | None = None
     people: str | None = None
     preferences: tuple[str, ...] = ()
+    companions: str | None = None
+    pace: str | None = None
+    day_rhythm: tuple[str, ...] = ()
+    notes: str = ""
 
     @property
     def is_complete(self) -> bool:
@@ -252,6 +281,18 @@ class TripIntakeState:
             if label not in preferences:
                 preferences.append(label)
 
+        # companions/pace: first non-null wins (a later blank must not erase an
+        # already-confirmed fact). day_rhythm: union of selections. notes: last
+        # non-empty wins — one coherent block per form submission, never
+        # concatenated across messages.
+        companions = self.companions or grounded["companions"]
+        pace = self.pace or grounded["pace"]
+        day_rhythm = list(self.day_rhythm)
+        for label in grounded["day_rhythm"]:
+            if label not in day_rhythm:
+                day_rhythm.append(label)
+        notes = grounded["notes"] or self.notes
+
         return replace(
             self,
             destination=destination,
@@ -259,6 +300,10 @@ class TripIntakeState:
             start_date=start_date,
             people=people,
             preferences=tuple(preferences),
+            companions=companions,
+            pace=pace,
+            day_rhythm=tuple(day_rhythm),
+            notes=notes,
         )
 
     def next_question(
@@ -307,18 +352,27 @@ class TripIntakeState:
             "start_date": self.start_date,
             "people": self.people,
             "preferences": list(self.preferences),
+            "companions": self.companions,
+            "pace": self.pace,
+            "day_rhythm": list(self.day_rhythm),
+            "notes": self.notes,
         }
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> TripIntakeState:
-        """Inverse of `to_dict`. JSON has no tuple type, so `preferences` comes
-        back as a list — coerced to a tuple here, the one place that matters."""
+        """Inverse of `to_dict`. JSON has no tuple type, so `preferences`/
+        `day_rhythm` come back as lists — coerced to tuples here, the one
+        place that matters."""
         return cls(
             destination=data.get("destination"),
             duration=data.get("duration"),
             start_date=data.get("start_date"),
             people=data.get("people"),
             preferences=tuple(data.get("preferences") or ()),
+            companions=data.get("companions"),
+            pace=data.get("pace"),
+            day_rhythm=tuple(data.get("day_rhythm") or ()),
+            notes=data.get("notes") or "",
         )
 
 
@@ -338,6 +392,9 @@ def _llm_extract_intake_facts(
     known_parts = [f"{key}={value}" for key, value in known_facts.items() if value]
     known_summary = "; ".join(known_parts) if known_parts else "none yet"
     allowed_labels = ", ".join(_PREFERENCE_LABELS)
+    allowed_companions = ", ".join(_COMPANION_LABELS)
+    allowed_paces = ", ".join(_PACE_LABELS)
+    allowed_day_rhythms = ", ".join(_DAY_RHYTHM_LABELS)
 
     prompt = f"""You are extracting trip-planning facts from a Vietnamese chat message.
 Already confirmed this conversation: {known_summary}
@@ -358,6 +415,10 @@ Return ONLY valid JSON (no markdown fences) matching this schema:
   "duration_days": "integer or null - trip length in days (convert weeks/months to days, e.g. '1 tuần' = 7)",
   "people_count": "integer or null - number of travelers (e.g. 'vợ chồng tôi' = 2, 'một mình' = 1)",
   "preference_labels": "array of zero or more of these exact strings only: {allowed_labels}",
+  "companions": "string or null - exactly one of these exact strings: {allowed_companions} (or null when none is stated)",
+  "pace": "string or null - exactly one of these exact strings: {allowed_paces} (or null when none is stated)",
+  "day_rhythm": "array of zero or more of these exact strings only: {allowed_day_rhythms}",
+  "notes": "string or empty string - the user's free-text other needs / requests, copied verbatim (truncate to 1000 characters)",
   "changed_fields": "array containing only destination, duration, start_date, people, preferences when the user explicitly asks to replace that already-confirmed field"
 }}
 
@@ -396,12 +457,28 @@ def _ground_extracted_facts(
     `normalize_day_themes()` in `trip_scheduler.py`."""
     raw_labels = raw.get("preference_labels")
     label_set = {str(item).strip() for item in raw_labels} if isinstance(raw_labels, list) else set()
+
+    def _closed_singleton(allowed: Sequence[str], value: Any) -> str | None:
+        if value is None:
+            return None
+        candidate = str(value).strip()
+        return candidate if candidate in allowed else None
+
+    raw_rhythms = raw.get("day_rhythm")
+    rhythm_set = {str(item).strip() for item in raw_rhythms} if isinstance(raw_rhythms, list) else set()
+    raw_notes = raw.get("notes")
+    notes = str(raw_notes).strip()[:1000] if raw_notes is not None else ""
+
     return {
         "destination": _match_known_destination(str(raw.get("destination") or "").strip(), destination_names),
         "duration": _format_duration_days(raw.get("duration_days")),
         "start_date": _format_start_date(raw.get("start_date")),
         "people": _format_people_count(raw.get("people_count")),
         "preference_labels": tuple(label for label in _PREFERENCE_LABELS if label in label_set),
+        "companions": _closed_singleton(_COMPANION_LABELS, raw.get("companions")),
+        "pace": _closed_singleton(_PACE_LABELS, raw.get("pace")),
+        "day_rhythm": tuple(label for label in _DAY_RHYTHM_LABELS if label in rhythm_set),
+        "notes": notes,
     }
 
 

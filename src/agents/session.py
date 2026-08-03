@@ -34,7 +34,7 @@ from src.agents.routing_decision import (
 from src.agents.state import TripState, initial_state
 from src.agents.supervisor import decide_route_by_llm
 from src.config import get_settings
-from src.services.hotel_selection import HotelPreferenceState
+from src.services.hotel_selection import HotelPreferenceState, _has_budget_signal
 from src.services.trip_edit_planner import TripEditPlan, TripEditPlanError, plan_trip_edit
 from src.services.trip_intake import (
     TripIntakeState,
@@ -583,11 +583,28 @@ def process_chat_turn(session: TripSession, user_input: str) -> TurnResult:
 
     # A trip-preference change is handled before routing, regardless of what
     # the supervisor/rules would otherwise pick — it can arrive mid-hotel-list
-    # or mid-intake and always takes priority.
+    # or once intake+budget are both already resolved (but before a trip is
+    # built), and always takes priority. Also requires the deterministic
+    # pipeline to have ALREADY finished once — plain "no trip_data yet" is
+    # true for the entire intake window including its very first turn, and
+    # the intake form's composed message always opens with "Tôi muốn đi ...
+    # trong N ngày ... cho N người", which itself satisfies
+    # `_looks_like_trip_preference_change` (muốn + ngày/người). Without the
+    # extra check, that hijacked every fresh-session first turn into this
+    # "change an already-confirmed fact" flow instead of the deterministic
+    # one, silently dropping anything TripPreferenceUpdate doesn't know about
+    # (budget, companions, pace, day_rhythm, notes). `trip_data is None` is
+    # kept as the outer bound so this never fires once a trip is built —
+    # `_run_edit_draft` owns edits to an already-built itinerary.
+    intake_pipeline_already_resolved = (
+        session.trip_data is None
+        and session.intake_state.is_complete
+        and session.hotel_pref_state.is_complete
+    )
     direct_preference_update = bool(
         session.pending_trip_preference_request
         or (
-            (session.pending_hotel_selection is not None or session.trip_data is None)
+            (session.pending_hotel_selection is not None or intake_pipeline_already_resolved)
             and _looks_like_trip_preference_change(user_input)
         )
     )
@@ -733,6 +750,53 @@ def _run_edit_draft(session: TripSession, user_input: str) -> TurnResult | None:
     return None
 
 
+def _build_hotel_preferences(intake_state: TripIntakeState) -> str:
+    """Compose the `hotel_preferences` free-text for the recommend_hotels call
+    from the taxonomy fields that map to accommodation wants. companions passes
+    verbatim — the labels already contain the phrase the amenity tagger matches
+    (e.g. "đi cùng gia đình" contains "gia đình"). notes append verbatim (they
+    were sanitized/capped in trip_intake grounding)."""
+    parts: list[str] = []
+    if intake_state.companions:
+        parts.append(intake_state.companions)
+    if intake_state.notes:
+        parts.append(intake_state.notes)
+    return ", ".join(parts).strip()
+
+
+def _build_intake_context(intake_state: TripIntakeState) -> str:
+    """Compose the travel-style context threaded into itinerary day-theme
+    generation. Pace/day rhythm/notes only — companions and preferences already
+    flow through their own existing params and must not be duplicated."""
+    parts: list[str] = []
+    if intake_state.pace:
+        parts.append(f"nhịp độ: {intake_state.pace}")
+    if intake_state.day_rhythm:
+        parts.append("nhịp sinh hoạt: " + ", ".join(intake_state.day_rhythm))
+    if intake_state.notes:
+        parts.append(intake_state.notes)
+    return "; ".join(parts).strip()
+
+
+def _run_recommend_hotels(session: TripSession) -> TurnResult:
+    verified_arguments = {
+        **session.intake_state.tool_arguments(),
+        **session.hotel_pref_state.tool_arguments(),
+    }
+    # Merge, don't overwrite: if anything ever populates these keys first, keep
+    # the existing value (same shape as the dict-merge philosophy above).
+    hotel_preferences = _build_hotel_preferences(session.intake_state)
+    if hotel_preferences:
+        verified_arguments.setdefault("hotel_preferences", hotel_preferences)
+    intake_context = _build_intake_context(session.intake_state)
+    if intake_context:
+        verified_arguments.setdefault("intake_context", intake_context)
+    logger.info("Deterministic intake complete: %s", verified_arguments)
+    tool_response = session.tools.recommend_hotels.invoke(verified_arguments)
+    logger.info("Final Tool Response Output:\n%s", tool_response)
+    return TurnResult(text=str(tool_response), tool="recommend_hotels")
+
+
 def _run_intake(session: TripSession, user_input: str) -> TurnResult:
     if not session.intake_state.is_complete:
         destination_names = _get_destination_names()
@@ -742,27 +806,37 @@ def _run_intake(session: TripSession, user_input: str) -> TurnResult:
             logger.info("Deterministic intake response: %s", missing_question)
             return TurnResult(text=str(missing_question), tool=None)
 
-        # Trip facts just became complete THIS turn (consumed by intake_state
-        # above) — ask the first hotel-preference question next turn, rather
-        # than also feeding this same input into hotel_pref_state right now.
+        # Trip facts just became complete THIS turn. A single form submission
+        # carries BOTH the trip facts and the budget tier in one message, so
+        # try the same message against the budget question immediately rather
+        # than deferring it to next turn. Gated on a credible budget signal so
+        # a facts-only message (whose date year like "2026" must not be read as
+        # a price) still falls back to asking the budget question next turn —
+        # no regression for a plain-chat user who answers one fact per message.
+        if not session.hotel_pref_state.is_complete:
+            if _has_budget_signal(user_input):
+                session.hotel_pref_state = session.hotel_pref_state.with_message(user_input)
+        if session.hotel_pref_state.is_complete:
+            return _run_recommend_hotels(session)
         logger.info("Trip intake complete; asking hotel budget preference")
         return TurnResult(text=str(session.hotel_pref_state.next_question()), tool=None)
 
     if not session.hotel_pref_state.is_complete:
+        # Trip facts (destination/duration/start_date/people) are already locked in
+        # by this point, but the optional taxonomy fields (companions/pace/day_rhythm/
+        # notes) may still be unset if the form's first submission left them blank —
+        # the pre-filled form lets a user add them alongside the budget answer on
+        # this turn. Re-run intake extraction so that addition isn't silently
+        # dropped; with_message's own merge rules keep the already-locked required
+        # facts untouched (grounded values for an already-set field never win).
+        session.intake_state = session.intake_state.with_message(user_input, _get_destination_names())
         session.hotel_pref_state = session.hotel_pref_state.with_message(user_input)
         missing_pref_question = session.hotel_pref_state.next_question()
         if missing_pref_question:
             logger.info("Guided hotel-preference response: %s", missing_pref_question)
             return TurnResult(text=str(missing_pref_question), tool=None)
 
-    verified_arguments = {
-        **session.intake_state.tool_arguments(),
-        **session.hotel_pref_state.tool_arguments(),
-    }
-    logger.info("Deterministic intake complete: %s", verified_arguments)
-    tool_response = session.tools.recommend_hotels.invoke(verified_arguments)
-    logger.info("Final Tool Response Output:\n%s", tool_response)
-    return TurnResult(text=str(tool_response), tool="recommend_hotels")
+    return _run_recommend_hotels(session)
 
 
 def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:

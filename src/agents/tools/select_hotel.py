@@ -70,6 +70,7 @@ def select_hotel(selection: str, runtime: ToolRuntime[None, TripState]) -> Comma
     end_date = pending.get("end_date")
     people = pending.get("people", "")
     preferences = pending.get("preferences_text", "")
+    intake_context = pending.get("intake_context", "") or ""
     stay_kwargs: dict[str, str | None] = {}
     if start_date is not None or end_date is not None:
         stay_kwargs = {"start_date": start_date, "end_date": end_date}
@@ -101,6 +102,7 @@ def select_hotel(selection: str, runtime: ToolRuntime[None, TripState]) -> Comma
                 preselected_hotel=hotel_data,
                 planning_constraints=planning_constraints,
                 session_id=session_id,
+                intake_context=intake_context,
                 **stay_kwargs,
             )
         except Exception as exc:
@@ -140,6 +142,7 @@ def select_hotel(selection: str, runtime: ToolRuntime[None, TripState]) -> Comma
         preselected_hotel=hotel_data,
         session_id=session_id,
         save=_capture_save,
+        intake_context=intake_context,
         **stay_kwargs,
     )
     if str(reply).startswith("SYSTEM ERROR:"):

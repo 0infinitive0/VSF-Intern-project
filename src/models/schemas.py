@@ -15,10 +15,13 @@ Phase 3 additions:
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Basic chat models (pre-Phase 3, unchanged)
@@ -132,6 +135,19 @@ class IntakeStatus(BaseModel):
     start_date: str | None = None
     end_date: str | None = None
     people: str | None = None
+    preferences: list[str] = Field(default_factory=list, description="Travel-style labels")
+    companions: str | None = None
+    pace: str | None = None
+    day_rhythm: list[str] = Field(default_factory=list)
+    notes: str = Field(default="", description="Free-text other needs")
+    available_destinations: list[str] = Field(
+        default_factory=list,
+        description="Real destinations the intake picker may choose from",
+    )
+    budget_options: list[str] = Field(
+        default_factory=list,
+        description="Real budget/accommodation tier labels from hotel_selection",
+    )
     missing: list[str] = Field(
         default_factory=list,
         description="Names of fields still needed: 'destination', 'duration', 'start_date', 'people'",
@@ -155,12 +171,24 @@ class IntakeStatus(BaseModel):
             ]
             if not value
         ]
+        preferences = list(getattr(intake_state, "preferences", ()) or ())
+        companions = getattr(intake_state, "companions", None)
+        pace = getattr(intake_state, "pace", None)
+        day_rhythm = list(getattr(intake_state, "day_rhythm", ()) or ())
+        notes = getattr(intake_state, "notes", "") or ""
         return cls(
             destination=destination,
             duration=duration,
             start_date=start_date,
             end_date=end_date,
             people=people,
+            preferences=preferences,
+            companions=companions,
+            pace=pace,
+            day_rhythm=day_rhythm,
+            notes=notes,
+            available_destinations=_available_destination_names(),
+            budget_options=_budget_tier_labels(),
             missing=missing,
         )
 
@@ -216,16 +244,49 @@ class PlannerChatResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _available_destination_names() -> list[str]:
+    """Real, current destination list reused from the intake grounding source."""
+    try:
+        from src.services.trip_planner import _get_destination_names
+
+        return [option.name for option in _get_destination_names() if option.name]
+    except Exception:
+        return []
+
+
+def _budget_tier_labels() -> list[str]:
+    """Real budget/accommodation tier labels, never a hardcoded copy."""
+    try:
+        from src.services.hotel_selection import budget_option_labels
+
+        return list(budget_option_labels())
+    except Exception:
+        return []
+
+
 _GENERIC_ERROR_MSG = "Đã xảy ra lỗi phía máy chủ. Vui lòng thử lại."
 
 # Raw exception text must never reach the browser.  Any SYSTEM ERROR: string
 # that is not one of the hand-written Vietnamese messages below is sanitised.
+# Every entry here must be a static template (at most a validated, known-safe
+# value like a destination name interpolated in) — never one that embeds a raw
+# exception's `str(exc)`, which can carry Supabase table/column/connection info.
 _SAFE_ERROR_PREFIXES = (
     "SYSTEM ERROR: Chưa có kế hoạch",
     "SYSTEM ERROR: Không thể hiểu",
     "SYSTEM ERROR: Mô hình hội thoại",
     "SYSTEM ERROR: Không nhận được",
     "SYSTEM ERROR: Không thể áp dụng",
+    "SYSTEM ERROR: Cần có ngày bắt đầu",
+    "SYSTEM ERROR: Ngày kết thúc phải sau",
+    "SYSTEM ERROR: Không tìm thấy dữ liệu điểm đến",
+    "SYSTEM ERROR: Không tìm thấy khách sạn có tọa độ hợp lệ",
+    "SYSTEM ERROR: Không tìm thấy khách sạn với id",
+    "SYSTEM ERROR: Chưa có danh sách khách sạn",
+    "SYSTEM ERROR: Không còn kế hoạch chuyến đi",
+    "SYSTEM ERROR: Thông tin thay đổi chuyến đi chưa đầy đủ",
+    "SYSTEM ERROR: Không thể lưu danh sách khách sạn mới",
+    "SYSTEM ERROR: Yêu cầu thay đổi thông tin chuyến đi không hợp lệ",
 )
 
 
@@ -235,15 +296,16 @@ def sanitize_system_error(text: str, *, session_id: str | None = None) -> str:
     If the message matches one of the hand-written Vietnamese strings it is
     returned as-is (it contains no internal detail).  Any other SYSTEM ERROR:
     string — which may carry Supabase table names, column names, or connection
-    strings — is replaced with a generic Vietnamese message.  The original
-    text is NOT logged here; callers that have a session_id should log it
-    themselves before calling this function.
+    strings — is replaced with a generic Vietnamese message, and the original
+    is logged at error level here (keyed by session_id) so a sanitised reply
+    is still debuggable from logs instead of requiring a live repro.
     """
     if not text.startswith("SYSTEM ERROR:"):
         return text
     for prefix in _SAFE_ERROR_PREFIXES:
         if text.startswith(prefix):
             return text
+    logger.error("Sanitizing SYSTEM ERROR for session %s: %s", session_id, text)
     return f"SYSTEM ERROR: {_GENERIC_ERROR_MSG}"
 
 

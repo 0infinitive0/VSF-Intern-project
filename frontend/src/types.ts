@@ -73,7 +73,7 @@ export interface ChatMessage {
   isError?: boolean
 }
 
-// Snapshot of what the intake gate has collected so far (src/models/schemas.py:127-138).
+// Snapshot of what the intake gate has collected so far (src/models/schemas.py:127-190).
 // Populated during `intake`/`hotel_options` stages, before `trip_plan` exists (a hotel
 // must be picked before the backend builds `trip_data` — see trip_planner.py's
 // _generate_and_save_itinerary, only called from the select_hotel tool).
@@ -83,6 +83,13 @@ export interface IntakeStatus {
   start_date: string | null
   end_date: string | null
   people: string | null // formatted string, e.g. "2 người" — not a bare count
+  preferences: string[] // travel-style labels (mirrors _PREFERENCE_LABELS)
+  companions: string | null
+  pace: string | null
+  day_rhythm: string[]
+  notes: string
+  available_destinations: string[] // real destinations the intake picker may choose from
+  budget_options: string[] // real budget/accommodation tier labels from hotel_selection
   missing: string[]
 }
 

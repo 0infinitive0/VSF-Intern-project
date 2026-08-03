@@ -25,6 +25,8 @@ unaffected by the tool rewrite, so their tests are unchanged.
 
 from __future__ import annotations
 
+import json
+
 import src.agents.tools.recommend_hotels as recommend_hotels_module
 import src.agents.tools.select_hotel as select_hotel_module
 import src.services.trip_planner as trip_planner_module
@@ -71,12 +73,14 @@ def _fake_build_trip_data(captured: dict):
         preselected_hotel=None,
         planning_constraints=None,
         session_id="poc_trip_planner_1",
+        intake_context="",
     ):
         captured["destination"] = destination
         captured["hotel_query"] = hotel_query
         captured["preselected_hotel"] = preselected_hotel
         captured["planning_constraints"] = planning_constraints
         captured["session_id"] = session_id
+        captured["intake_context"] = intake_context
         return {
             "hotel": preselected_hotel or {},
             "itineraries": [{"id": "itinerary-1", "status": "Draft"}],
@@ -465,3 +469,48 @@ def test_legacy_modify_trip_plan_change_hotel_forwards_parsed_budget(monkeypatch
 
     assert captured_select_kwargs["max_price"] == 1_000_000.0
     assert captured_rank_kwargs["target_price"] == 1_000_000.0
+
+
+class _FakeThemeResponse:
+    def __init__(self, content: str) -> None:
+        self.content = content
+
+
+class _FakeThemeLLM:
+    def __init__(self) -> None:
+        self.captured_prompts: list[str] = []
+
+    def invoke(self, messages):
+        self.captured_prompts.append(messages[1].content)
+        content = json.dumps(
+            {
+                "themes": [
+                    {"day_number": 1, "title": "Khám phá bãi biển", "query": "bãi biển"},
+                    {"day_number": 2, "title": "Ẩm thực địa phương", "query": "món ngon"},
+                ]
+            },
+            ensure_ascii=False,
+        )
+        return _FakeThemeResponse(content)
+
+
+def test_generate_day_themes_prompt_includes_intake_context(monkeypatch) -> None:
+    """Phase 3/6: the day-theme generation prompt must carry the advisory
+    travel-style context (pace/day rhythm/notes) when set, and cleanly omit
+    the context line when unset."""
+    fake_llm = _FakeThemeLLM()
+    monkeypatch.setattr(trip_planner_module, "get_llm", lambda **kwargs: fake_llm)
+
+    categories = ["bãi biển", "ẩm thực"]
+    context = "nhịp độ: vừa phải; nhịp sinh hoạt: bắt đầu sớm; ăn chay"
+
+    themes = trip_planner_module._generate_day_themes(
+        "Đà Nẵng", 2, categories, ["biển"], context=context
+    )
+    assert len(themes) == 2
+    assert context in fake_llm.captured_prompts[0]
+
+    # Unset context → the whole context line is omitted, not emitted empty.
+    fake_llm.captured_prompts.clear()
+    trip_planner_module._generate_day_themes("Đà Nẵng", 2, categories, ["biển"], context="")
+    assert "Additional user context" not in fake_llm.captured_prompts[0]

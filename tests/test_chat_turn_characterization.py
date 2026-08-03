@@ -328,20 +328,31 @@ def test_out_of_range_number_keeps_the_pending_list_instead_of_dropping_it():
 def test_trip_intake_state_json_round_trip_requires_explicit_tuple_coercion():
     """The one known serialization wrinkle Phase 3 depends on handling: JSON
     has no tuple type, so a naive `TripIntakeState(**json.loads(...))`
-    reconstruction silently turns `preferences` into a list and breaks
-    equality. This test pins that the wrinkle exists AND that explicit
-    coercion fixes it."""
+    reconstruction silently turns tuple fields (`preferences`, `day_rhythm`)
+    into lists and breaks equality. This test pins that the wrinkle exists AND
+    that explicit coercion fixes it."""
     state = TripIntakeState(
-        destination="Đà Nẵng", duration="3 ngày", people="2 người", preferences=("biển", "ẩm thực")
+        destination="Đà Nẵng",
+        duration="3 ngày",
+        people="2 người",
+        preferences=("biển", "ẩm thực"),
+        day_rhythm=("bắt đầu sớm",),
     )
 
     payload = json.loads(json.dumps(asdict(state)))
     assert payload["preferences"] == ["biển", "ẩm thực"]
+    assert payload["day_rhythm"] == ["bắt đầu sớm"]
 
     naive_reconstruction = TripIntakeState(**payload)
     assert naive_reconstruction != state  # list != tuple -> dataclass equality fails
 
-    corrected = TripIntakeState(**{**payload, "preferences": tuple(payload["preferences"])})
+    corrected = TripIntakeState(
+        **{
+            **payload,
+            "preferences": tuple(payload["preferences"]),
+            "day_rhythm": tuple(payload["day_rhythm"]),
+        }
+    )
     assert corrected == state
 
 

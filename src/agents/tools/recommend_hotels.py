@@ -44,6 +44,7 @@ def recommend_hotels(
     min_price: str = "",
     max_price: str = "",
     hotel_amenity_prefs: str = "",
+    intake_context: str = "",
     *,
     runtime: ToolRuntime[None, TripState],
 ) -> Command:
@@ -59,6 +60,8 @@ def recommend_hotels(
     a single number (e.g. "1 triệu" -> target_price="1000000") is used as a ceiling only; if the user
     gives an actual range (e.g. "1-2 triệu"), pass min_price/max_price instead. These matter more
     than the qualitative wants in `hotel_preferences` since they actually filter results by price.
+    `intake_context` is extra free-text travel-style context (pace, day rhythm, free-text notes) from
+    the intake form, carried through to itinerary theme generation; leave it empty when unset.
     After this returns, the user's next reply must be handled by `select_hotel`, not by calling this
     tool or generate_full_itinerary again.
     """
@@ -134,6 +137,7 @@ def recommend_hotels(
         "people": people,
         "preferences_text": preferences,
         "hotel_query": hotel_query,
+        "intake_context": intake_context,
         "created_at": datetime.now().isoformat(),
         "options": [data for data, _candidate in options],
     }

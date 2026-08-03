@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -145,6 +146,77 @@ def test_ground_extracted_facts_handles_missing_and_out_of_range_numbers() -> No
     assert grounded["duration"] is None
     assert grounded["people"] is None
     assert grounded["preference_labels"] == ()
+
+
+def test_ground_extracted_facts_rejects_out_of_set_taxonomy_values() -> None:
+    """Out-of-set companions/pace/day_rhythm values are rejected the same way
+    hallucinated preference labels are — grounding never stores a label the
+    closed set does not know."""
+    grounded = _ground_extracted_facts(
+        {
+            "companions": "đi cùng gia đình",
+            "pace": "thư thái",
+            "day_rhythm": ["bắt đầu sớm", "về khuya"],
+        },
+        DESTINATIONS,
+    )
+    assert grounded["companions"] == "đi cùng gia đình"
+    assert grounded["pace"] == "thư thái"
+    assert grounded["day_rhythm"] == ("bắt đầu sớm", "về khuya")
+
+    grounded = _ground_extracted_facts(
+        {
+            "companions": "đi cùng thú cưng",
+            "pace": "cực gấp",
+            "day_rhythm": ["thức trắng đêm"],
+            "notes": "   thích ăn hải sản và ngắm hoàng hôn    ",
+        },
+        DESTINATIONS,
+    )
+    assert grounded["companions"] is None
+    assert grounded["pace"] is None
+    assert grounded["day_rhythm"] == ()
+    # notes is free text: kept as-is, trimmed, capped at 1000 chars.
+    assert grounded["notes"] == "thích ăn hải sản và ngắm hoàng hôn"
+
+
+def test_ground_extracted_facts_truncates_notes_to_1000_chars() -> None:
+    grounded = _ground_extracted_facts({"notes": "x" * 2500}, DESTINATIONS)
+    assert len(grounded["notes"]) == 1000
+
+
+def test_trip_intake_state_round_trips_all_eight_fields() -> None:
+    state = TripIntakeState(
+        destination="Đà Nẵng",
+        duration="3 ngày",
+        start_date="2026-08-10",
+        people="2 người",
+        preferences=("biển", "ẩm thực"),
+        companions="đi cùng gia đình",
+        pace="vừa phải",
+        day_rhythm=("bắt đầu sớm",),
+        notes="Ưu tiên nhà hàng gần biển",
+    )
+    restored = TripIntakeState.from_dict(state.to_dict())
+
+    assert restored == state
+    assert restored.day_rhythm == ("bắt đầu sớm",)
+    assert restored.notes == "Ưu tiên nhà hàng gần biển"
+
+
+def test_trip_intake_state_round_trip_with_optional_fields_unset() -> None:
+    state = TripIntakeState(
+        destination="Đà Nẵng",
+        duration="3 ngày",
+        start_date="2026-08-10",
+        people="2 người",
+    )
+    restored = TripIntakeState.from_dict(state.to_dict())
+    assert restored == state
+    assert restored.companions is None
+    assert restored.pace is None
+    assert restored.day_rhythm == ()
+    assert restored.notes == ""
 
 
 def test_intake_requires_start_date_and_derives_exclusive_end_date(monkeypatch) -> None:
@@ -381,3 +453,106 @@ def test_unsupported_destination_is_not_swapped_for_a_known_one(monkeypatch) -> 
 
     assert state.destination is None
     assert _match_known_destination("Hội An", DESTINATIONS) is None
+
+
+class _FakeResponse:
+    def __init__(self, content: str) -> None:
+        self.content = content
+
+
+class _FakeLLM:
+    def __init__(self, payload: dict) -> None:
+        self.payload = payload
+        self.captured_prompts: list[str] = []
+
+    def invoke(self, messages) -> _FakeResponse:
+        self.captured_prompts.append(messages[1].content)
+        return _FakeResponse(json.dumps(self.payload, ensure_ascii=False))
+
+
+def test_composed_message_round_trips_through_extraction_and_grounding(monkeypatch) -> None:
+    """Phase 6: a `composeIntakeMessage()`-shaped Vietnamese sentence (the
+    exact template from frontend/src/lib/compose-intake-message.ts) must
+    survive `_llm_extract_intake_facts` → `_ground_extracted_facts` with every
+    field intact. This is the one test that catches a frontend/backend
+    sentence-format or closed-set-label mismatch before production."""
+    sentence = (
+        "Tôi muốn đi Đà Nẵng trong 3 ngày từ 2026-10-12 cho 2 người. "
+        "Ngân sách khách sạn: tầm trung. "
+        "Sở thích: biển, ẩm thực. "
+        "Đi cùng: đi cùng gia đình. "
+        "Nhịp độ: vừa phải. "
+        "Nhịp sinh hoạt: bắt đầu sớm. "
+        "Ghi chú: cần phòng view biển."
+    )
+    fake_llm = _FakeLLM(
+        {
+            "destination": "Đà Nẵng",
+            "start_date": "2026-10-12",
+            "duration_days": 3,
+            "people_count": 2,
+            "preference_labels": ["biển", "ẩm thực"],
+            "companions": "đi cùng gia đình",
+            "pace": "vừa phải",
+            "day_rhythm": ["bắt đầu sớm"],
+            "notes": "cần phòng view biển",
+        }
+    )
+    monkeypatch.setattr(trip_intake_module, "get_llm", lambda **kwargs: fake_llm)
+
+    raw = trip_intake_module._llm_extract_intake_facts(sentence, {}, DESTINATIONS)
+    grounded = _ground_extracted_facts(raw, DESTINATIONS)
+
+    assert grounded["destination"] == "Đà Nẵng"
+    assert grounded["duration"] == "3 ngày"
+    assert grounded["start_date"] == "2026-10-12"
+    assert grounded["people"] == "2 người"
+    assert grounded["preference_labels"] == ("biển", "ẩm thực")
+    assert grounded["companions"] == "đi cùng gia đình"
+    assert grounded["pace"] == "vừa phải"
+    assert grounded["day_rhythm"] == ("bắt đầu sớm",)
+    assert grounded["notes"] == "cần phòng view biển"
+
+    # The backend prompt literally received the frontend's composed sentence.
+    assert sentence in fake_llm.captured_prompts[0]
+
+
+def test_frontend_label_constants_all_survive_grounding() -> None:
+    """Phase 6 drift guard: every label the frontend hardcodes in strings.ts
+    (mirroring the backend closed sets) must be accepted verbatim by grounding
+    — catches a composeIntakeMessage/backend label mismatch before it ships."""
+    frontend_preferences = [
+        "biển",
+        "văn hóa",
+        "ẩm thực",
+        "thiên nhiên",
+        "lịch sử",
+        "mua sắm",
+        "cuộc sống về đêm",
+        "trẻ em",
+        "cổ điển",
+        "cảnh đô thị",
+    ]
+    frontend_companions = [
+        "đi một mình",
+        "đi cùng gia đình",
+        "đi cùng người yêu hoặc vợ chồng",
+        "đi cùng bạn bè",
+        "có người lớn tuổi trong đoàn",
+    ]
+    frontend_paces = ["dày đặc", "vừa phải", "thư thái"]
+    frontend_rhythms = ["bắt đầu sớm", "về khuya"]
+
+    grounded = _ground_extracted_facts(
+        {
+            "preference_labels": frontend_preferences,
+            "companions": frontend_companions[1],
+            "pace": frontend_paces[1],
+            "day_rhythm": frontend_rhythms,
+        },
+        DESTINATIONS,
+    )
+    assert grounded["preference_labels"] == tuple(frontend_preferences)
+    assert grounded["companions"] == frontend_companions[1]
+    assert grounded["pace"] == frontend_paces[1]
+    assert grounded["day_rhythm"] == tuple(frontend_rhythms)

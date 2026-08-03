@@ -4,6 +4,7 @@ import MessageBubble from './message-bubble'
 import SuggestionChips from './suggestion-chips'
 import HotelOptionCards from './hotel-option-card'
 import TripParametersCard from './trip-parameters-card'
+import IntakeParametersForm from './intake-parameters-form'
 import ElapsedSpinner from './elapsed-spinner'
 import type { ChatMessage, HotelOption, IntakeStatus, Suggestion, TripPlan } from '../types'
 
@@ -87,14 +88,24 @@ export default function MessageList({
                     </>
                   ) : (
                     <>
-                      {stage === 'intake' && (
-                        <TripParametersCard tripPlan={tripPlan} intake={intake} />
+                      {stage === 'intake' && intake ? (
+                        <IntakeParametersForm
+                          intake={intake}
+                          onSubmit={onSelect}
+                          disabled={pending}
+                        />
+                      ) : (
+                        <>
+                          {stage === 'intake' && (
+                            <TripParametersCard tripPlan={tripPlan} intake={intake} />
+                          )}
+                          <SuggestionChips
+                            suggestions={suggestions}
+                            onSelect={onSelect}
+                            disabled={false}
+                          />
+                        </>
                       )}
-                      <SuggestionChips
-                        suggestions={suggestions}
-                        onSelect={onSelect}
-                        disabled={false}
-                      />
                     </>
                   )}
                 </div>

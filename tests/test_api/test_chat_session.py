@@ -130,6 +130,31 @@ class TestSanitizeSystemError:
         result = sanitize_system_error(msg)
         assert result.startswith("SYSTEM ERROR:")
 
+    def test_no_hotel_results_message_passes_through_unsanitized(self):
+        """Regression: 'no hotels found for these dates/destination' is a
+        legitimate, safe business-logic outcome (recommend_hotels.py's
+        `if not options:` branch) — it must reach the user as-is, not get
+        swept into the generic 'server error' message. Before this fix it
+        wasn't in _SAFE_ERROR_PREFIXES, so a plain out-of-range-date search
+        looked identical to an actual server crash."""
+        msg = (
+            "SYSTEM ERROR: Không tìm thấy khách sạn có tọa độ hợp lệ tại Đà Nẵng; "
+            "không thể gợi ý khách sạn."
+        )
+        assert sanitize_system_error(msg) == msg
+
+    def test_sanitizing_an_unsafe_error_logs_the_original(self, caplog):
+        """The generic replacement must not be a dead end for debugging — the
+        original text is logged at error level, keyed by session_id, so a
+        sanitized reply doesn't require a live repro to diagnose."""
+        msg = "SYSTEM ERROR: psycopg2.InterfaceError: connection already closed"
+        with caplog.at_level("ERROR"):
+            sanitize_system_error(msg, session_id="sess-123")
+        assert any(
+            "sess-123" in record.getMessage() and "psycopg2" in record.getMessage()
+            for record in caplog.records
+        )
+
 
 # ---------------------------------------------------------------------------
 # to_hotel_options_payload

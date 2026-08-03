@@ -125,13 +125,9 @@ def planner_chat(request: PlannerChatRequest) -> PlannerChatResponse:
             raise HTTPException(status_code=500, detail="Đã xảy ra lỗi máy chủ. Vui lòng thử lại.")
 
     # Sanitize any SYSTEM ERROR: text that might carry internal detail before
-    # it reaches the browser.
+    # it reaches the browser. sanitize_system_error() logs the original at
+    # error level (keyed by session_id) whenever it replaces the text.
     safe_reply = sanitize_system_error(result.text, session_id=session_id)
-    if safe_reply != result.text:
-        logger.warning(
-            "Sanitized SYSTEM ERROR reply for session %s (original logged at error level above)",
-            session_id,
-        )
 
     stage = derive_stage(result)
 

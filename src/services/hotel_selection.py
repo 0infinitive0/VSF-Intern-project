@@ -460,17 +460,50 @@ def _parse_free_text_budget(reply: str) -> tuple[float | None, float | None, flo
     doesn't match a numbered option, e.g. the user typed "4 triệu" instead of picking
     from the suggested tiers, or a qualitative phrase like "khách sạn sang trọng".
 
-    Returns (min_price, max_price, target_price): an explicit number has no natural
-    range, so it becomes an open-floor ceiling (None, price, price); a qualitative
-    phrase resolves to its tier's real (min, max) bounds via _tier_budget."""
-    price = _parse_free_text_price(reply)
-    if price is not None:
-        return None, price, price
+    Returns (min_price, max_price, target_price): a qualitative phrase resolves to
+    its tier's real (min, max) bounds via _tier_budget; an explicit number has no
+    natural range, so it becomes an open-floor ceiling (None, price, price).
+
+    The tier phrase is checked FIRST: it is a stronger signal than a bare number,
+    and the bare-number branch of _parse_free_text_price otherwise lets a date
+    year like "2026" win over "tầm trung" in a combined message."""
     normalized = _normalize_for_match(reply)
     for tier, phrases in _QUALITATIVE_BUDGET_PHRASES.items():
         if any(phrase in normalized for phrase in phrases):
             return _tier_budget(tier)
+    price = _parse_free_text_price(reply)
+    if price is not None:
+        return None, price, price
     return None
+
+
+# The unit-bearing price shapes _parse_free_text_price accepts, WITHOUT its
+# bare-4+digit fallback (a date year like "01/09/2026" must not count).
+_BUDGET_SIGNAL_UNIT = re.compile(
+    rf"(\d+(?:[.,]\d+)?)\s*(?:-|den|toi|đen)\s*(\d+(?:[.,]\d+)?)\s*{_MILLION_UNIT}"
+    rf"|(\d+)\s*(?:trieu|tr)\s*(?:ruoi|\d{{1,3}})"
+    rf"|(\d+(?:[.,]\d+)?)\s*{_MILLION_UNIT}"
+    rf"|(\d+(?:[.,]\d+)?)\s*(?:nghin|ngan|k\b)"
+)
+
+
+def _has_budget_signal(text: str) -> bool:
+    """True when the text plausibly answers the guided budget question — a skip
+    phrase, a qualitative tier phrase, or an explicit money amount WITH a unit
+    ("4 triệu", "500k", "2-3 triệu"). Used to gate the same-turn carry-through:
+    the intake turn only attempts budget resolution when the message actually
+    carries a budget signal, so a facts-only message (dates included) still
+    defers the budget question to its own turn."""
+    if _is_no_budget_preference(text):
+        return True
+    normalized = _normalize_for_match(text)
+    if any(
+        phrase in normalized
+        for phrases in _QUALITATIVE_BUDGET_PHRASES.values()
+        for phrase in phrases
+    ):
+        return True
+    return _BUDGET_SIGNAL_UNIT.search(normalized) is not None
 
 
 _BUDGET_QUESTION = GuidedQuestion(
@@ -498,6 +531,14 @@ _BUDGET_QUESTION = GuidedQuestion(
 )
 
 HotelPreferenceStage = Literal["pending_budget", "done"]
+
+
+def budget_option_labels() -> tuple[str, ...]:
+    """The exact option-label strings from `_BUDGET_QUESTION`, exposed for the
+    frontend's budget/accommodation selector. The source of truth is the guided
+    question constant — callers must read through this helper, never reach into
+    the private constant or re-derive the tier thresholds."""
+    return tuple(option.label for option in _BUDGET_QUESTION.options)
 
 
 @dataclass(frozen=True)

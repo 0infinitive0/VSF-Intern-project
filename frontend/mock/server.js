@@ -108,6 +108,30 @@ const HOTEL_OPTIONS = [
   },
 ]
 
+// Intake snapshot served on the intake turns so the IntakeParametersForm has
+// real lists to render (available_destinations / budget_options mirror the
+// backend's Phase 2 schema).
+const INTAKE_EMPTY = {
+  destination: null,
+  duration: null,
+  start_date: null,
+  end_date: null,
+  people: null,
+  preferences: [],
+  companions: null,
+  pace: null,
+  day_rhythm: [],
+  notes: '',
+  available_destinations: ['Đà Nẵng', 'Nha Trang', 'Hội An'],
+  budget_options: [
+    'Tiết kiệm (dưới 800,000 VND/đêm)',
+    'Tầm trung (800,000 - 2,500,000 VND/đêm)',
+    'Cao cấp (trên 2,500,000 VND/đêm)',
+    'Bỏ qua, không cần lọc theo giá',
+  ],
+  missing: ['destination', 'duration', 'start_date', 'people'],
+}
+
 // Scripted conversation turns (keyed by turn index 1-based)
 const TURNS = {
   1: {
@@ -120,6 +144,7 @@ const TURNS = {
     stage: 'intake',
     hotel_options: null,
     trip_plan: null,
+    intake: INTAKE_EMPTY,
   },
   2: {
     reply: 'Thông tin tuyệt vời! 3 ngày 2 người là lý tưởng để khám phá Đà Nẵng — Hội An và Bà Nà Hills.\n\nBạn có ưu tiên phong cách lưu trú nào không?',
@@ -131,6 +156,11 @@ const TURNS = {
     stage: 'intake',
     hotel_options: null,
     trip_plan: null,
+    intake: {
+      ...INTAKE_EMPTY,
+      destination: 'Đà Nẵng',
+      missing: ['duration', 'start_date', 'people'],
+    },
   },
   3: {
     reply: 'Dựa trên sở thích của bạn, tôi tìm được 3 khách sạn phù hợp tại Đà Nẵng:\n\nHãy chọn khách sạn bạn muốn và tôi sẽ lên lịch trình chi tiết ngay!',
