@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from src.services.llm import get_llm
+from src.services.trip_intake import TripPreferenceUpdate, TripPreferenceUpdateError
 from src.services.trip_scheduler import parse_day_scope
 
 EditDecision = Literal["apply", "clarify", "not_edit"]
@@ -25,6 +26,7 @@ EditOperationName = Literal[
     "set_meal_preference",
     "change_hotel",
     "replan_day",
+    "update_trip_preferences",
 ]
 ItemKind = Literal["breakfast", "attraction", "lunch", "rest", "coffee", "dinner", "evening"]
 
@@ -38,6 +40,7 @@ _OPERATIONS = frozenset(
         "set_meal_preference",
         "change_hotel",
         "replan_day",
+        "update_trip_preferences",
     }
 )
 _TARGETED_OPERATIONS = frozenset({"replace_item", "remove_item", "update_time"})
@@ -92,6 +95,7 @@ class EditOperation:
     theme: dict[str, Any] | None = None
     hotel_query: str | None = None
     placement: dict[str, Any] | None = None
+    trip_preferences: TripPreferenceUpdate | None = None
 
 
 @dataclass(frozen=True)
@@ -347,6 +351,12 @@ def _parse_operation(value: object, trip_data: dict[str, Any]) -> EditOperation:
         raise TripEditPlanError("set_meal_preference requires meal_kind and meal_preference")
     if operation == "replan_day" and not isinstance(value.get("theme"), dict):
         raise TripEditPlanError("replan_day requires theme")
+    trip_preferences = None
+    if operation == "update_trip_preferences":
+        try:
+            trip_preferences = TripPreferenceUpdate.from_raw(value.get("trip_preferences"))
+        except TripPreferenceUpdateError as exc:
+            raise TripEditPlanError(str(exc)) from exc
     return EditOperation(
         operation=operation,
         target=target,
@@ -365,6 +375,7 @@ def _parse_operation(value: object, trip_data: dict[str, Any]) -> EditOperation:
         theme=dict(value["theme"]) if isinstance(value.get("theme"), dict) else None,
         hotel_query=str(value.get("hotel_query") or "").strip() or None,
         placement=dict(value["placement"]) if isinstance(value.get("placement"), dict) else None,
+        trip_preferences=trip_preferences,
     )
 
 
@@ -395,8 +406,9 @@ def parse_trip_edit_plan(payload: object, trip_data: dict[str, Any], *, raw_requ
         raise TripEditPlanError("clarify requires clarification_question")
     if decision != "apply" and operations:
         raise TripEditPlanError("only apply may include operations")
-    if any(operation.operation == "change_hotel" for operation in operations) and len(operations) != 1:
-        raise TripEditPlanError("change_hotel must be the only operation")
+    exclusive_operations = {"change_hotel", "update_trip_preferences"}
+    if any(operation.operation in exclusive_operations for operation in operations) and len(operations) != 1:
+        raise TripEditPlanError("change_hotel or update_trip_preferences must be the only operation")
     return TripEditPlan(
         decision=decision,
         summary=summary,
@@ -421,7 +433,7 @@ Current authoritative itinerary context: {context}
 Return this schema:
 {{"decision":"apply|clarify|not_edit","summary":"Vietnamese summary","confidence":0.0,"clarification_question":null,"operations":[]}}
 
-Operations are replace_item, remove_item, update_time, add_item, set_schedule_policy, set_meal_preference, change_hotel, replan_day.
+Operations are replace_item, remove_item, update_time, add_item, set_schedule_policy, set_meal_preference, change_hotel, replan_day, update_trip_preferences.
 For a targeted operation, use exactly {{"target":{{"item_id":"one context.items item_id"}}}}. Never invent an item_id, venue UUID, venue name, hours, coordinates, or availability.
 replace_item/add_item requirements must contain item_kind and semantic_query; express desired categories, location, time and duration as requirements only.
 remove_item gap_policy is leave_blank, close_gap, or replace. A bare removal is leave_blank.
@@ -430,6 +442,7 @@ For time limits like 'after Xh do not go out' or 'do nothing after Xh' (e.g. kh�
 For ANY requests to change the theme/focus of an entire day (e.g. "ngày đầu đi thưởng thức ẩm thực", "hôm sau đi mua sắm"), ALWAYS use replan_day. Example: {{"operation": "replan_day", "day_number": 1, "theme": {{"selection_mode":"user_specified", "title":"...", "semantic_query":"..."}}}}.
 For adding a new item, use add_item. Example: {{"operation": "add_item", "day_number": 1, "requirements": {{"item_kind": "attraction", "semantic_query": "địa điểm vui chơi"}}, "latest_start_time": "20:00"}}.
 For replacing an item, use replace_item. Example: {{"operation": "replace_item", "target": {{"item_id": "1"}}, "requirements": {{"item_kind": "lunch", "semantic_query": "quán ăn trưa"}}}}.
+For changes to the whole trip's destination, duration, start date, traveler count, or vibe/preferences, use update_trip_preferences as the only operation. Include trip_preferences with changed_fields and only the values explicitly changed: destination, duration_days, start_date, people_count, preference_labels. Vibe labels must be one or more of: biển, văn hóa, ẩm thực, thiên nhiên, lịch sử, mua sắm, cuộc sống về đêm, trẻ em. Example: {{"operation":"update_trip_preferences","trip_preferences":{{"changed_fields":["duration","people"],"duration_days":5,"people_count":4}}}}.
 If the user wants to handle a meal/activity themselves (e.g. "tự ăn sáng", "tự túc ăn trưa"), ALWAYS use remove_item to delete it. Do NOT use replace_item.
 The semantic_query for a day theme must describe multiple attractions or experiences; do not use a single meal such as breakfast as the whole-day query.
 Use clarify only when the target or requested result is materially ambiguous. Use not_edit for ordinary questions that do not change this itinerary.{repair}"""

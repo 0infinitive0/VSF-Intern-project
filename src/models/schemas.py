@@ -79,6 +79,10 @@ class HotelOption(BaseModel):
     star_rating: float | None = Field(default=None, description="Hạng sao")
     description: str | None = Field(default=None, description="Mô tả ngắn")
     matched_rooms: list[str] = Field(default_factory=list, description="Tên phòng phù hợp")
+    average_nightly_price: float | None = Field(default=None, description="Giá trung bình mỗi đêm theo ngày ở")
+    total_stay_price: float | None = Field(default=None, description="Tổng giá cho toàn bộ số đêm")
+    stay_night_count: int | None = Field(default=None, description="Số đêm đã báo giá")
+    currency: str | None = Field(default=None, description="Đơn vị tiền tệ của báo giá")
 
 
 class ItineraryItem(BaseModel):
@@ -112,6 +116,8 @@ class TripPlanPayload(BaseModel):
     status: str | None = Field(default=None, description="Draft | Finalized")
     destination: str | None = None
     duration_days: int | None = None
+    start_date: str | None = None
+    end_date: str | None = None
     number_of_adults: int | None = None
     hotel: TripPlanHotel | None = None
     days: list[DayPlan] = Field(default_factory=list)
@@ -123,10 +129,12 @@ class IntakeStatus(BaseModel):
 
     destination: str | None = None
     duration: str | None = None
+    start_date: str | None = None
+    end_date: str | None = None
     people: str | None = None
     missing: list[str] = Field(
         default_factory=list,
-        description="Names of fields still needed: 'destination', 'duration', 'people'",
+        description="Names of fields still needed: 'destination', 'duration', 'start_date', 'people'",
     )
 
     @classmethod
@@ -134,12 +142,15 @@ class IntakeStatus(BaseModel):
         """Build from a TripIntakeState without importing it here."""
         destination = getattr(intake_state, "destination", None)
         duration = getattr(intake_state, "duration", None)
+        start_date = getattr(intake_state, "start_date", None)
+        end_date = getattr(intake_state, "end_date", None)
         people = getattr(intake_state, "people", None)
         missing = [
             field
             for field, value in [
                 ("destination", destination),
                 ("duration", duration),
+                ("start_date", start_date),
                 ("people", people),
             ]
             if not value
@@ -147,6 +158,8 @@ class IntakeStatus(BaseModel):
         return cls(
             destination=destination,
             duration=duration,
+            start_date=start_date,
+            end_date=end_date,
             people=people,
             missing=missing,
         )
@@ -254,7 +267,11 @@ def to_hotel_options_payload(pending: dict[str, Any] | None) -> list[HotelOption
                 name=name,
                 star_rating=option.get("star_rating"),
                 description=option.get("description"),
-                matched_rooms=list(option.get("matched_room_names") or []),
+                matched_rooms=list(option.get("matched_rooms") or option.get("matched_room_names") or []),
+                average_nightly_price=option.get("average_nightly_price"),
+                total_stay_price=option.get("total_stay_price"),
+                stay_night_count=option.get("stay_night_count"),
+                currency=option.get("currency"),
             )
         )
     return options
@@ -336,6 +353,8 @@ def to_trip_plan_payload(trip_data: dict[str, Any] | None) -> TripPlanPayload | 
         number_of_adults = None
 
     status = (isinstance(itinerary, dict) and itinerary.get("status")) or trip_data.get("status")
+    start_date = (isinstance(itinerary, dict) and itinerary.get("start_date")) or trip_data.get("start_date")
+    end_date = (isinstance(itinerary, dict) and itinerary.get("end_date")) or trip_data.get("end_date")
 
     adjustments_raw = trip_data.get("adjustments") or []
     adjustments = [str(a) for a in adjustments_raw if a]
@@ -344,6 +363,8 @@ def to_trip_plan_payload(trip_data: dict[str, Any] | None) -> TripPlanPayload | 
         status=str(status) if status else None,
         destination=str(destination) if destination else None,
         duration_days=duration_days,
+        start_date=str(start_date) if start_date else None,
+        end_date=str(end_date) if end_date else None,
         number_of_adults=number_of_adults,
         hotel=hotel,
         days=days,

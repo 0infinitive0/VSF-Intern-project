@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from langchain_core.tools import BaseTool, tool
@@ -28,6 +28,8 @@ def build_recommend_hotels_tool(session: TripSession) -> BaseTool:
     def recommend_hotels(
         destination: str = "",
         duration: str = "",
+        start_date: str = "",
+        end_date: str = "",
         people: str = "",
         preferences: str = "",
         hotel_preferences: str = "",
@@ -56,6 +58,13 @@ def build_recommend_hotels_tool(session: TripSession) -> BaseTool:
         clean_destination, error = validate_trip_basics(destination, duration, people)
         if error:
             return error
+        try:
+            parsed_start_date = date.fromisoformat(start_date)
+            parsed_end_date = date.fromisoformat(end_date)
+        except ValueError:
+            return "SYSTEM ERROR: Cần có ngày bắt đầu và ngày kết thúc hợp lệ (YYYY-MM-DD) để tìm khách sạn."
+        if parsed_end_date <= parsed_start_date:
+            return "SYSTEM ERROR: Ngày kết thúc phải sau ngày bắt đầu."
 
         destination_id = _get_destination_id(clean_destination)
         if not destination_id:
@@ -82,6 +91,8 @@ def build_recommend_hotels_tool(session: TripSession) -> BaseTool:
                 hotel_query=hotel_query,
                 min_price=parsed_min_price,
                 max_price=parsed_max_price,
+                start_date=start_date,
+                end_date=end_date,
             )
             sea_view_hotel_ids = (
                 lookup_sea_view_hotel_ids([data["id"] for data, _candidate in options])
@@ -111,6 +122,8 @@ def build_recommend_hotels_tool(session: TripSession) -> BaseTool:
                 "destination": clean_destination,
                 "destination_id": destination_id,
                 "duration": duration,
+                "start_date": start_date,
+                "end_date": end_date,
                 "people": people,
                 "preferences_text": preferences,
                 "hotel_query": hotel_query,

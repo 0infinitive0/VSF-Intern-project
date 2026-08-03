@@ -114,6 +114,57 @@ def test_hallucinated_item_id_is_rejected_before_execution() -> None:
         parse_trip_edit_plan(payload, _trip_data())
 
 
+def test_preference_update_operation_parses_validated_trip_fields() -> None:
+    payload = {
+        "decision": "apply",
+        "summary": "Đổi chuyến đi thành 5 ngày cho 4 người",
+        "operations": [
+            {
+                "operation": "update_trip_preferences",
+                "trip_preferences": {
+                    "changed_fields": ["duration", "people", "preferences"],
+                    "duration_days": 5,
+                    "people_count": 4,
+                    "preference_labels": ["thiên nhiên"],
+                },
+            }
+        ],
+    }
+
+    plan = parse_trip_edit_plan(payload, _trip_data())
+
+    operation = plan.operations[0]
+    assert operation.operation == "update_trip_preferences"
+    assert operation.trip_preferences is not None
+    assert operation.trip_preferences.duration == "5 ngày"
+    assert operation.trip_preferences.people == "4 người"
+    assert operation.trip_preferences.preferences == ("thiên nhiên",)
+
+
+def test_preference_update_cannot_be_mixed_with_item_edits() -> None:
+    payload = {
+        "decision": "apply",
+        "summary": "Đổi số ngày và quán ăn",
+        "operations": [
+            {
+                "operation": "update_trip_preferences",
+                "trip_preferences": {
+                    "changed_fields": ["duration"],
+                    "duration_days": 5,
+                },
+            },
+            {
+                "operation": "replace_item",
+                "target": {"item_id": "breakfast-1"},
+                "requirements": {"item_kind": "breakfast", "semantic_query": "bữa sáng"},
+            },
+        ],
+    }
+
+    with pytest.raises(TripEditPlanError, match="only operation"):
+        parse_trip_edit_plan(payload, _trip_data())
+
+
 def test_flat_item_id_from_the_configured_model_is_normalized_to_target() -> None:
     payload = {
         "decision": "apply",

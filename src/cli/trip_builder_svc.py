@@ -1729,7 +1729,7 @@ def format_trip_response_from_json(trip_data: Dict[str, Any]) -> str:
     
     for day_num in range(1, max_days + 1):
         theme_suffix = f" - {day_themes[day_num]}" if day_num in day_themes else ""
-        output.append(f"Day {day_num}{theme_suffix}:")
+        output.append(f"Ngày {day_num}{theme_suffix}:")
         
         day_items = sorted(items_by_day.get(day_num, []), key=lambda x: x.get("order_index", 1))
         if day_items:

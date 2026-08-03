@@ -334,6 +334,26 @@ body {
   margin-bottom: 4px;
 }
 
+.hotel-card__price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 7px 0 8px;
+  color: var(--on-surface);
+  font-size: 13px;
+}
+
+.hotel-card__price strong {
+  color: var(--primary);
+  font-size: 14px;
+}
+
+.hotel-card__price span {
+  color: var(--on-surface-variant);
+  font-size: 12px;
+}
+
 .hotel-card__desc {
   font-size: 13px;
   color: var(--on-surface-variant);

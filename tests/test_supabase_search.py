@@ -72,6 +72,34 @@ def test_search_hotels_omits_price_params_when_not_given(monkeypatch):
     assert "filter_max_price" not in client.captured_params
 
 
+def test_search_hotels_forwards_complete_stay_dates_as_rpc_params(monkeypatch):
+    client = _patch_client_and_embeddings(monkeypatch, data=[])
+
+    search_hotels_with_rooms(
+        "Hotel in Đà Nẵng for 2 people",
+        match_count=5,
+        use_llm_filter=False,
+        start_date="2026-08-10",
+        end_date="2026-08-12",
+    )
+
+    assert client.captured_params is not None
+    assert client.captured_params["filter_start_date"] == "2026-08-10"
+    assert client.captured_params["filter_end_date"] == "2026-08-12"
+
+
+def test_search_hotels_rejects_incomplete_or_non_positive_stay_dates(monkeypatch):
+    _patch_client_and_embeddings(monkeypatch, data=[])
+
+    with pytest.raises(ValueError, match="stay_dates_must_be_provided_together"):
+        search_hotels_with_rooms("Hotel", use_llm_filter=False, start_date="2026-08-10")
+
+    with pytest.raises(ValueError, match="end_date_must_be_after_start_date"):
+        search_hotels_with_rooms(
+            "Hotel", use_llm_filter=False, start_date="2026-08-10", end_date="2026-08-10"
+        )
+
+
 def test_search_hotels_returns_rpc_rows_as_is_when_no_star_filter(monkeypatch):
     """Price is enforced by the RPC itself now, so with no star_rating filter active,
     search_hotels_with_rooms should return exactly what the RPC gave back — no

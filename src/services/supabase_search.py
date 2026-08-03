@@ -2,6 +2,7 @@ import json
 import logging
 import math
 import os
+from datetime import date
 from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
@@ -54,6 +55,25 @@ def validate_radius_filter(
         raise ValueError("max_radius_km_must_be_finite_and_non_negative")
 
     return RadiusFilter(lat, lon, rad)
+
+
+def validate_stay_dates(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> tuple[str, str] | None:
+    """Validate an exclusive hotel checkout interval before it reaches the RPC."""
+    if start_date is None and end_date is None:
+        return None
+    if not start_date or not end_date:
+        raise ValueError("stay_dates_must_be_provided_together")
+    try:
+        parsed_start = date.fromisoformat(start_date)
+        parsed_end = date.fromisoformat(end_date)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("stay_dates_must_use_iso_format") from exc
+    if parsed_end <= parsed_start:
+        raise ValueError("end_date_must_be_after_start_date")
+    return parsed_start.isoformat(), parsed_end.isoformat()
 
 
 @lru_cache
@@ -155,12 +175,15 @@ def search_hotels_with_rooms(
     model: Optional[str] = None,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     root_latitude: Optional[float] = None,
     root_longitude: Optional[float] = None,
     max_radius_km: Optional[float] = None,
 ) -> List[Dict[str, Any]]:
     """Tìm kiếm semantic hotels và rooms cùng nhau sử dụng Supabase RPC match_hotels_with_rooms và local Ollama LLM filtering."""
     radius = validate_radius_filter(root_latitude, root_longitude, max_radius_km)
+    stay_dates = validate_stay_dates(start_date, end_date)
 
     supabase = get_supabase_client()
     embeddings = get_embeddings()
@@ -194,6 +217,8 @@ def search_hotels_with_rooms(
         params["filter_min_price"] = resolved_min_price
     if resolved_max_price is not None:
         params["filter_max_price"] = resolved_max_price
+    if stay_dates is not None:
+        params["filter_start_date"], params["filter_end_date"] = stay_dates
     if radius is not None:
         params["root_latitude"] = radius.root_latitude
         params["root_longitude"] = radius.root_longitude

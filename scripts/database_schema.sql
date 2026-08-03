@@ -201,6 +201,8 @@ CREATE TABLE chat_messages (
 CREATE TABLE itineraries (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     session_id VARCHAR(255) REFERENCES sessions(session_id) ON DELETE SET NULL,
+    start_date DATE, -- Ngày nhận phòng / bắt đầu chuyến đi
+    end_date DATE, -- Ngày trả phòng (exclusive), được tính từ start_date + duration_days
     duration_days SMALLINT, -- Số ngày của lịch trình
     number_of_adults SMALLINT DEFAULT 1, -- Số lượng người lớn
     number_of_children SMALLINT DEFAULT 0, -- Số lượng trẻ em

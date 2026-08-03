@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import src.agents.session as session_module
 import src.agents.tools.recommend_hotels as recommend_hotels_module
 import src.agents.tools.select_hotel as select_hotel_module
 import src.services.trip_planner as trip_planner_module
@@ -85,6 +86,8 @@ def test_recommend_hotels_writes_pending_selection_and_lists_names(monkeypatch):
         {
             "destination": "Đà Nẵng",
             "duration": "3 ngày",
+            "start_date": "2026-08-10",
+            "end_date": "2026-08-13",
             "people": "2 người",
             "preferences": "",
             "hotel_preferences": "",
@@ -105,6 +108,35 @@ def test_recommend_hotels_missing_field_returns_system_error():
 
     assert result.startswith("SYSTEM ERROR:")
     assert session.pending_hotel_selection is None
+
+
+def test_recommend_hotels_threads_stay_dates_to_search_and_pending_selection(monkeypatch):
+    captured: dict = {}
+    monkeypatch.setattr(recommend_hotels_module, "_get_destination_id", lambda destination: "dest-1")
+
+    def fake_select(*args, **kwargs):
+        captured.update(kwargs)
+        return [_fake_option("h1", "Khách sạn Một", 1)]
+
+    monkeypatch.setattr(recommend_hotels_module, "select_hotel_candidates", fake_select)
+    monkeypatch.setattr(recommend_hotels_module, "rank_hotel_candidates", lambda options, **_kwargs: options)
+
+    session = _Session()
+    result = build_recommend_hotels_tool(session).invoke(
+        {
+            "destination": "Đà Nẵng",
+            "duration": "2 ngày",
+            "start_date": "2026-08-10",
+            "end_date": "2026-08-12",
+            "people": "2 người",
+        }
+    )
+
+    assert "Khách sạn Một" in result
+    assert captured["start_date"] == "2026-08-10"
+    assert captured["end_date"] == "2026-08-12"
+    assert session.pending_hotel_selection["start_date"] == "2026-08-10"
+    assert session.pending_hotel_selection["end_date"] == "2026-08-12"
 
 
 def test_select_hotel_with_valid_rank_builds_itinerary_and_clears_pending(monkeypatch):
@@ -163,6 +195,57 @@ def test_select_hotel_without_pending_selection_returns_system_error():
     result = select_hotel.invoke({"selection": "1"})
 
     assert result.startswith("SYSTEM ERROR:")
+
+
+def test_select_hotel_replacement_mode_builds_fresh_dated_draft(monkeypatch):
+    options = [_fake_option("h1", "Khách sạn Mới", 1)]
+    old_trip = {
+        "hotel": {"id": "hotel-old"},
+        "itineraries": [{"id": "trip-old", "status": "Draft"}],
+        "itinerary_items": [{"id": "old-item"}],
+    }
+    session = _Session(
+        trip_data=old_trip,
+        pending_hotel_selection={
+            "mode": "replace_trip_preferences",
+            "destination": "Đà Nẵng",
+            "duration": "5 ngày",
+            "start_date": "2026-08-10",
+            "end_date": "2026-08-15",
+            "people": "4 người",
+            "preferences_text": "thiên nhiên",
+            "options": [data for data, _candidate in options],
+        },
+    )
+    captured = {}
+
+    def _build(destination, duration, people, preferences, **kwargs):
+        captured.update(
+            destination=destination,
+            duration=duration,
+            people=people,
+            preferences=preferences,
+            **kwargs,
+        )
+        return {
+            "hotel": kwargs["preselected_hotel"],
+            "itineraries": [{"id": "trip-new", "status": "Draft"}],
+            "itinerary_items": [{"id": "new-item"}],
+        }
+
+    monkeypatch.setattr(select_hotel_module, "_build_trip_data", _build)
+    monkeypatch.setattr(session_module, "_persist_itinerary_metadata", lambda data: None)
+
+    result = build_select_hotel_tool(session).invoke({"selection": "1"})
+
+    assert not result.startswith("SYSTEM ERROR:")
+    assert captured["start_date"] == "2026-08-10"
+    assert captured["end_date"] == "2026-08-15"
+    assert captured["people"] == "4 người"
+    assert captured["planning_constraints"] == {}
+    assert session.trip_data["itineraries"][0]["id"] == "trip-new"
+    assert session.trip_data["itinerary_items"] == [{"id": "new-item"}]
+    assert session.pending_hotel_selection is None
 
 
 def test_generate_full_itinerary_with_hotel_id_skips_search(monkeypatch):
@@ -226,6 +309,8 @@ def test_recommend_hotels_threads_budget_and_amenity_prefs_into_ranking(monkeypa
         {
             "destination": "Đà Nẵng",
             "duration": "3 ngày",
+            "start_date": "2026-08-10",
+            "end_date": "2026-08-13",
             "people": "2 người",
             "preferences": "",
             "hotel_preferences": "",
@@ -254,6 +339,8 @@ def test_recommend_hotels_calls_sea_view_lookup_only_when_requested(monkeypatch)
     base_args = {
         "destination": "Đà Nẵng",
         "duration": "3 ngày",
+        "start_date": "2026-08-10",
+        "end_date": "2026-08-13",
         "people": "2 người",
         "preferences": "",
         "hotel_preferences": "",
@@ -291,6 +378,8 @@ def test_recommend_hotels_forwards_target_price_to_search(monkeypatch):
         {
             "destination": "Đà Nẵng",
             "duration": "3 ngày",
+            "start_date": "2026-08-10",
+            "end_date": "2026-08-13",
             "people": "2 người",
             "preferences": "",
             "hotel_preferences": "",
@@ -320,9 +409,11 @@ def test_recommend_hotels_forwards_explicit_min_and_max_price_range(monkeypatch)
     recommend_hotels = build_recommend_hotels_tool(_Session())
     recommend_hotels.invoke(
         {
-            "destination": "Đà Nẵng",
-            "duration": "3 ngày",
-            "people": "2 người",
+        "destination": "Đà Nẵng",
+        "duration": "3 ngày",
+        "start_date": "2026-08-10",
+        "end_date": "2026-08-13",
+        "people": "2 người",
             "preferences": "",
             "hotel_preferences": "",
             "target_price": "1500000",
@@ -405,6 +496,8 @@ def test_recommend_hotels_with_radius_filter_persists_pending_and_passes_to_sear
         {
             "destination": "Đà Nẵng",
             "duration": "3 ngày",
+            "start_date": "2026-08-10",
+            "end_date": "2026-08-13",
             "people": "2 người",
             "root_latitude": 10.7758,
             "root_longitude": 106.7009,
@@ -431,6 +524,8 @@ def test_recommend_hotels_partial_radius_returns_system_error(monkeypatch):
         {
             "destination": "Đà Nẵng",
             "duration": "3 ngày",
+            "start_date": "2026-08-10",
+            "end_date": "2026-08-13",
             "people": "2 người",
             "root_latitude": 10.7758,
             "max_radius_km": 5.0,

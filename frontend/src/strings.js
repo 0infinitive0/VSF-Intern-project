@@ -36,6 +36,8 @@ export const S = {
 
   // Hotel card
   hotelRooms: 'Phòng gợi ý',
+  hotelAverageNightly: (price, currency) => `${price} ${currency}/đêm`,
+  hotelTotalStay: (nights, price, currency) => `Tổng ${nights} đêm: ${price} ${currency}`,
   hotelPickBtn: 'Chọn khách sạn này',
 
   // Errors

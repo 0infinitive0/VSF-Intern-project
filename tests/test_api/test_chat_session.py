@@ -202,6 +202,8 @@ class TestToTripPlanPayload:
                     "status": "Draft",
                     "destination": "Đà Nẵng",
                     "duration_days": 3,
+                    "start_date": "2026-08-10",
+                    "end_date": "2026-08-13",
                     "number_of_adults": 2,
                     "hotel": {
                         "id": "h-uuid",
@@ -215,6 +217,8 @@ class TestToTripPlanPayload:
         result = to_trip_plan_payload(trip_data)
         assert result.destination == "Đà Nẵng"
         assert result.duration_days == 3
+        assert result.start_date == "2026-08-10"
+        assert result.end_date == "2026-08-13"
         assert result.number_of_adults == 2
         assert result.status == "Draft"
         assert result.hotel is not None
@@ -232,14 +236,14 @@ class TestIntakeStatus:
 
         state = TripIntakeState()
         status = IntakeStatus.from_state(state)
-        assert set(status.missing) == {"destination", "duration", "people"}
+        assert set(status.missing) == {"destination", "duration", "start_date", "people"}
 
     def test_missing_people_only(self):
         from dataclasses import replace
 
         from src.services.trip_intake import TripIntakeState
 
-        state = replace(TripIntakeState(), destination="Đà Nẵng", duration="3 ngày")
+        state = replace(TripIntakeState(), destination="Đà Nẵng", duration="3 ngày", start_date="2026-08-10")
         status = IntakeStatus.from_state(state)
         assert status.missing == ["people"]
         assert status.destination == "Đà Nẵng"
@@ -249,9 +253,24 @@ class TestIntakeStatus:
 
         from src.services.trip_intake import TripIntakeState
 
-        state = replace(TripIntakeState(), destination="Đà Nẵng", duration="3 ngày", people="2 người")
+        state = replace(TripIntakeState(), destination="Đà Nẵng", duration="3 ngày", start_date="2026-08-10", people="2 người")
         status = IntakeStatus.from_state(state)
         assert status.missing == []
+
+    def test_includes_start_and_derived_end_dates(self):
+        from src.services.trip_intake import TripIntakeState
+
+        status = IntakeStatus.from_state(
+            TripIntakeState(
+                destination="Đà Nẵng",
+                duration="3 ngày",
+                start_date="2026-08-10",
+                people="2 người",
+            )
+        )
+
+        assert status.start_date == "2026-08-10"
+        assert status.end_date == "2026-08-13"
 
 
 # ---------------------------------------------------------------------------

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import src.agents.session as session_module
 import src.services.trip_intake as trip_intake_module
-from src.agents.session import TripSession, process_chat_turn
+from src.agents.session import TripSession, execute_trip_edit_request, process_chat_turn
 from src.services.hotel_selection import HotelPreferenceState
-from src.services.trip_edit_planner import TripEditPlan, TripEditPlanError
-from src.services.trip_intake import TripIntakeState
+from src.services.trip_edit_planner import EditOperation, TripEditPlan, TripEditPlanError
+from src.services.trip_intake import TripIntakeState, TripPreferenceUpdate
 
 
 class _FakeTool:
@@ -484,6 +484,238 @@ def test_unresolved_hotel_reply_that_is_a_number_keeps_asking():
 
     assert reply == "Mình chưa xác định được..."
     assert session.pending_hotel_selection is not None
+
+
+def test_preference_change_replaces_pending_hotel_list_before_selection(monkeypatch):
+    message = "đổi thành 5 ngày, 4 người"
+    session = _session(
+        intake_state=TripIntakeState(
+            destination="Đà Nẵng",
+            duration="3 ngày",
+            start_date="2026-08-10",
+            people="2 người",
+            preferences=("biển",),
+        ),
+        hotel_pref_state=HotelPreferenceState(stage="done", min_price=800_000, max_price=2_500_000),
+        pending_hotel_selection={"mode": "new_trip", "options": [{"name": "Khách sạn cũ"}]},
+    )
+    monkeypatch.setattr(session_module, "_get_destination_names", lambda: ("Đà Nẵng",))
+    _mock_intake_extraction(
+        monkeypatch,
+        {
+            message: {
+                "changed_fields": ["duration", "people"],
+                "duration_days": 5,
+                "people_count": 4,
+            }
+        },
+    )
+    captured = {}
+
+    def _recommend(args):
+        captured.update(args)
+        session.pending_hotel_selection = {
+            "mode": "new_trip",
+            "duration": args["duration"],
+            "start_date": args["start_date"],
+            "end_date": args["end_date"],
+            "people": args["people"],
+            "options": [{"name": "Khách sạn mới"}],
+        }
+        return "Khách sạn mới"
+
+    session.tools.recommend_hotels = _FakeTool(_recommend)
+    session.tools.select_hotel = _never_called("select_hotel")
+
+    reply = process_chat_turn(session, message)
+
+    assert reply.text == "Khách sạn mới"
+    assert captured["duration"] == "5 ngày"
+    assert captured["people"] == "4 người"
+    assert captured["start_date"] == "2026-08-10"
+    assert captured["end_date"] == "2026-08-15"
+    assert captured["min_price"] == "800000"
+    assert captured["max_price"] == "2500000"
+    assert session.trip_data is None
+
+
+def test_invalid_vibe_change_clears_stale_list_and_resumes_after_clarification(monkeypatch):
+    message = "đổi vibe thành chill không giới hạn"
+    clarification = "thiên nhiên"
+    combined = f"{message}\nLàm rõ của người dùng: {clarification}"
+    pending = {"mode": "new_trip", "options": [{"name": "Khách sạn hiện tại"}]}
+    session = _session(
+        intake_state=TripIntakeState(
+            destination="Đà Nẵng",
+            duration="3 ngày",
+            start_date="2026-08-10",
+            people="2 người",
+            preferences=("biển",),
+        ),
+        hotel_pref_state=HotelPreferenceState(stage="done"),
+        pending_hotel_selection=pending,
+    )
+    monkeypatch.setattr(session_module, "_get_destination_names", lambda: ("Đà Nẵng",))
+    _mock_intake_extraction(
+        monkeypatch,
+        {
+            message: {
+                "changed_fields": ["preferences"],
+                "preference_labels": [],
+            },
+            combined: {
+                "changed_fields": ["preferences"],
+                "preference_labels": ["thiên nhiên"],
+            },
+        },
+    )
+    session.tools.select_hotel = _never_called("select_hotel")
+    session.tools.recommend_hotels = _FakeTool(
+        lambda args: (
+            setattr(
+                session,
+                "pending_hotel_selection",
+                {"mode": "new_trip", "preferences_text": args["preferences"], "options": []},
+            )
+            or "Danh sách mới"
+        )
+    )
+
+    first_reply = process_chat_turn(session, message)
+
+    assert session.pending_hotel_selection is None
+
+    second_reply = process_chat_turn(session, clarification)
+
+    assert "sở thích" in first_reply.text.casefold()
+    assert second_reply.text == "Danh sách mới"
+    assert session.pending_hotel_selection["preferences_text"] == "thiên nhiên"
+    assert session.pending_trip_preference_request is None
+
+
+def test_saved_draft_preference_change_prepares_replacement_without_mutating_draft(monkeypatch):
+    original = {
+        "hotel": {"id": "hotel-old"},
+        "itineraries": [
+            {
+                "id": "trip-old",
+                "status": "Draft",
+                "destination_id": "dest-1",
+                "duration_days": 3,
+                "start_date": "2026-08-10",
+                "end_date": "2026-08-13",
+                "number_of_adults": 2,
+                "preferences": ["Đà Nẵng", "biển"],
+            }
+        ],
+        "itinerary_items": [{"id": "old-item"}],
+    }
+    update = TripPreferenceUpdate.from_raw(
+        {
+            "changed_fields": ["duration", "people", "preferences"],
+            "duration_days": 5,
+            "people_count": 4,
+            "preference_labels": ["thiên nhiên"],
+        }
+    )
+    session = _session(
+        trip_data=original,
+        initial_plan_complete=True,
+        hotel_pref_state=HotelPreferenceState(stage="done", max_price=3_000_000),
+    )
+    monkeypatch.setattr(session_module, "_get_destination_names", lambda: ("Đà Nẵng",))
+    monkeypatch.setattr(
+        session_module,
+        "plan_trip_edit",
+        lambda request, data: TripEditPlan(
+            decision="apply",
+            summary="Đổi sở thích chuyến đi",
+            operations=(EditOperation(operation="update_trip_preferences", trip_preferences=update),),
+            raw_request=request,
+        ),
+    )
+    captured = {}
+
+    def _recommend(args):
+        captured.update(args)
+        session.pending_hotel_selection = {
+            "mode": "new_trip",
+            "destination": args["destination"],
+            "duration": args["duration"],
+            "start_date": args["start_date"],
+            "end_date": args["end_date"],
+            "people": args["people"],
+            "preferences_text": args["preferences"],
+            "options": [{"name": "Khách sạn mới"}],
+        }
+        return "Khách sạn mới"
+
+    session.tools.recommend_hotels = _FakeTool(_recommend)
+
+    reply = process_chat_turn(session, "đổi thành 5 ngày, 4 người, thích thiên nhiên")
+
+    assert reply.text == "Khách sạn mới"
+    assert session.trip_data is original
+    assert original["itinerary_items"] == [{"id": "old-item"}]
+    assert captured["end_date"] == "2026-08-15"
+    assert captured["people"] == "4 người"
+    assert captured["preferences"] == "thiên nhiên"
+    assert session.pending_hotel_selection["mode"] == "replace_trip_preferences"
+
+
+def test_preference_replacement_resumes_after_required_budget_question(monkeypatch):
+    message = "đổi thành 5 ngày"
+    session = _session(
+        intake_state=TripIntakeState(
+            destination="Đà Nẵng",
+            duration="3 ngày",
+            start_date="2026-08-10",
+            people="2 người",
+        ),
+        hotel_pref_state=HotelPreferenceState(),
+        pending_hotel_selection={"mode": "new_trip", "options": [{"name": "Khách sạn cũ"}]},
+    )
+    monkeypatch.setattr(session_module, "_get_destination_names", lambda: ("Đà Nẵng",))
+    _mock_intake_extraction(
+        monkeypatch,
+        {message: {"changed_fields": ["duration"], "duration_days": 5}},
+    )
+    captured = {}
+
+    def _recommend(args):
+        captured.update(args)
+        session.pending_hotel_selection = {"mode": "new_trip", "options": [{"name": "Khách sạn mới"}]}
+        return "Khách sạn mới"
+
+    session.tools.recommend_hotels = _FakeTool(_recommend)
+    session.tools.select_hotel = _never_called("select_hotel")
+
+    first_reply = process_chat_turn(session, message)
+    second_reply = process_chat_turn(session, "4 triệu")
+
+    assert "mức giá khách sạn" in first_reply.text.casefold()
+    assert second_reply.text == "Khách sạn mới"
+    assert captured["end_date"] == "2026-08-15"
+    assert captured["max_price"] == "4000000.0"
+
+
+def test_finalized_trip_rejects_preference_update_before_hotel_search() -> None:
+    update = TripPreferenceUpdate.from_raw(
+        {"changed_fields": ["duration"], "duration_days": 5}
+    )
+    session = _session(
+        trip_data={"itineraries": [{"status": "Finalized", "duration_days": 3}]},
+    )
+    plan = TripEditPlan(
+        decision="apply",
+        summary="Đổi số ngày",
+        operations=(EditOperation(operation="update_trip_preferences", trip_preferences=update),),
+    )
+
+    reply = execute_trip_edit_request(session, "đổi thành 5 ngày", plan)
+
+    assert "không thể chỉnh sửa" in str(reply).casefold()
+    assert session.pending_hotel_selection is None
 
 
 def test_suggestions_are_declared_not_inferred_from_reply_text():

@@ -157,6 +157,30 @@ def test_persist_replaces_bundle_with_item_kind_contract() -> None:
     assert params["p_items"][0]["item_kind"] == "coffee"
 
 
+def test_persist_includes_derived_stay_dates_in_atomic_payload() -> None:
+    client = FakeSupabase()
+    store = ItineraryStore(client, lambda _: [0.1] * 1024)
+    trip_data = {
+        "hotel": {"id": "hotel-1", "destination_id": "destination-1"},
+        "itineraries": [
+            {
+                "id": "draft-1",
+                "duration_days": 2,
+                "start_date": "2026-08-10",
+                "end_date": "2026-08-12",
+                "day_themes": [],
+            }
+        ],
+        "itinerary_items": [],
+    }
+
+    store.persist_itinerary_bundle(trip_data)
+
+    _, params = client.rpc_calls[0]
+    assert params["p_itinerary"]["start_date"] == "2026-08-10"
+    assert params["p_itinerary"]["end_date"] == "2026-08-12"
+
+
 def test_persist_whitelists_rpc_payload_and_keeps_route_metadata() -> None:
     client = FakeSupabase()
     store = ItineraryStore(client, lambda _: [0.1] * 1024)

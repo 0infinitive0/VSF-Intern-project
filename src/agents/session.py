@@ -32,6 +32,8 @@ from src.services.trip_edit_planner import TripEditPlan, TripEditPlanError, plan
 from src.services.trip_formatter import format_hotel_options, format_trip_response_from_json
 from src.services.trip_intake import (
     TripIntakeState,
+    TripPreferenceUpdate,
+    TripPreferenceUpdateError,
     _llm_extract_intake_facts,
     _match_known_destination,
 )
@@ -107,6 +109,8 @@ class TripSession:
     initial_plan_complete: bool = False
     planning_new_trip: bool = False
     pending_trip_edit_request: str | None = None
+    pending_trip_preference_request: str | None = None
+    preference_replacement_state: TripIntakeState | None = None
     trip_data: dict[str, Any] | None = None
     pending_hotel_selection: dict[str, Any] | None = None
     persist_hook: Callable[[TripSession], None] | None = None
@@ -171,6 +175,8 @@ def clear_session_history(session: TripSession) -> None:
     session.initial_plan_complete = False
     session.planning_new_trip = False
     session.pending_trip_edit_request = None
+    session.pending_trip_preference_request = None
+    session.preference_replacement_state = None
     if session.persist_hook:
         session.persist_hook(session)
 
@@ -379,6 +385,81 @@ def _begin_new_trip_if_requested(session: TripSession, user_input: str) -> bool:
     return True
 
 
+_TRIP_PREFERENCE_CHANGE_WORDS = re.compile(
+    r"\b(?:doi|sua|thay|cap nhat|chuyen|change|update|prefer)\b"
+)
+_TRIP_PREFERENCE_FIELD_WORDS = re.compile(
+    r"\b(?:ngay|so ngay|thoi gian|nguoi|so nguoi|bat dau|khoi hanh|diem den|"
+    r"destination|days?|people|travelers?|start date|vibe|phong cach|so thich|uu tien)\b"
+)
+_SUPPORTED_VIBE_WORDS = re.compile(
+    r"\b(?:bien|van hoa|am thuc|thien nhien|lich su|mua sam|cuoc song ve dem|tre em)\b"
+)
+
+
+def _looks_like_trip_preference_change(user_input: str) -> bool:
+    normalized = _normalize_intent_text(user_input)
+    if _TRIP_PREFERENCE_CHANGE_WORDS.search(normalized) and _TRIP_PREFERENCE_FIELD_WORDS.search(normalized):
+        return True
+    return bool(
+        re.search(r"\b(?:muon|thich|uu tien|prefer)\b", normalized)
+        and (_TRIP_PREFERENCE_FIELD_WORDS.search(normalized) or _SUPPORTED_VIBE_WORDS.search(normalized))
+    )
+
+
+def _preference_state_from_session(session: TripSession) -> TripIntakeState:
+    if session.trip_data is None:
+        return session.intake_state
+    itinerary_rows = session.trip_data.get("itineraries") or [{}]
+    itinerary = itinerary_rows[0] if isinstance(itinerary_rows, list) else itinerary_rows
+    if not isinstance(itinerary, dict):
+        return session.intake_state
+    preferences = [str(value) for value in itinerary.get("preferences") or [] if str(value).strip()]
+    return TripIntakeState(
+        destination=preferences[0] if preferences else session.intake_state.destination,
+        duration=f"{int(itinerary.get('duration_days') or 1)} ngày",
+        start_date=str(itinerary.get("start_date") or "").strip() or session.intake_state.start_date,
+        people=f"{int(itinerary.get('number_of_adults') or 1)} người",
+        preferences=tuple(preferences[1:]),
+    )
+
+
+def _recommend_preference_replacement(session: TripSession) -> str:
+    state = session.preference_replacement_state
+    if state is None or not state.is_complete:
+        return "SYSTEM ERROR: Thông tin thay đổi chuyến đi chưa đầy đủ."
+    if not session.hotel_pref_state.is_complete:
+        return session.hotel_pref_state.next_question() or "Bạn muốn ngân sách khách sạn khoảng bao nhiêu?"
+
+    arguments = {**state.tool_arguments(), **session.hotel_pref_state.tool_arguments()}
+    response = str(session.tools.recommend_hotels.invoke(arguments))
+    if response.startswith("SYSTEM ERROR:"):
+        return response
+    if session.pending_hotel_selection is None:
+        return "SYSTEM ERROR: Không thể lưu danh sách khách sạn mới."
+
+    if session.trip_data is not None:
+        replacement = dict(session.pending_hotel_selection)
+        replacement["mode"] = "replace_trip_preferences"
+        _save_pending_hotel_selection(session, replacement)
+    session.intake_state = state
+    session.preference_replacement_state = None
+    return response
+
+
+def _start_trip_preference_update(session: TripSession, update: TripPreferenceUpdate) -> str:
+    updated = update.apply_to(_preference_state_from_session(session), _get_destination_names())
+    session.intake_state = updated
+    session.preference_replacement_state = updated
+    session.pending_trip_preference_request = None
+    _clear_pending_hotel_selection(session)
+    if not updated.is_complete:
+        return updated.next_question(_get_destination_names()) or "Vui lòng bổ sung thông tin chuyến đi."
+    if not session.hotel_pref_state.is_complete:
+        return session.hotel_pref_state.next_question() or "Bạn muốn ngân sách khách sạn khoảng bao nhiêu?"
+    return _recommend_preference_replacement(session)
+
+
 def execute_trip_edit_request(session: TripSession, modification_request: str, plan: TripEditPlan) -> str | None:
     """Execute an already validated LLM edit plan against the saved Draft.
 
@@ -396,6 +477,18 @@ def execute_trip_edit_request(session: TripSession, modification_request: str, p
         return plan.clarification_question or "Bạn muốn chỉnh sửa phần nào của lịch trình?"
     if plan.decision == "not_edit":
         return None
+
+    preference_update = next(
+        (operation for operation in plan.operations if operation.operation == "update_trip_preferences"),
+        None,
+    )
+    if preference_update:
+        if preference_update.trip_preferences is None:
+            return "SYSTEM ERROR: Yêu cầu thay đổi thông tin chuyến đi không hợp lệ."
+        try:
+            return _start_trip_preference_update(session, preference_update.trip_preferences)
+        except TripPreferenceUpdateError as exc:
+            return f"Mình chưa thể xác nhận thay đổi {exc} Bạn vui lòng nói rõ lại nhé."
 
     hotel_change = next((operation for operation in plan.operations if operation.operation == "change_hotel"), None)
     if hotel_change:
@@ -452,6 +545,44 @@ def process_chat_turn(session: TripSession, user_input: str) -> TurnResult:
     """
     logger.info("User Input: %s", user_input)
     session.last_seen_at = time.time()
+
+    direct_preference_update = bool(
+        session.pending_trip_preference_request
+        or (
+            (session.pending_hotel_selection is not None or session.trip_data is None)
+            and _looks_like_trip_preference_change(user_input)
+        )
+    )
+    if direct_preference_update:
+        request = user_input
+        if session.pending_trip_preference_request:
+            request = f"{session.pending_trip_preference_request}\nLàm rõ của người dùng: {user_input}"
+        try:
+            update = TripPreferenceUpdate.from_message(
+                request,
+                _preference_state_from_session(session),
+                _get_destination_names(),
+            )
+            response = _start_trip_preference_update(session, update)
+        except TripPreferenceUpdateError as exc:
+            session.pending_trip_preference_request = request
+            _clear_pending_hotel_selection(session)
+            return TurnResult(
+                text=f"Mình chưa thể xác nhận {exc} Hãy chọn một sở thích được hỗ trợ hoặc nói rõ thông tin muốn đổi.",
+                tool=None,
+            )
+        tool = "recommend_hotels" if session.pending_hotel_selection is not None else None
+        return TurnResult(text=response, tool=tool)
+
+    if session.preference_replacement_state is not None:
+        if not session.hotel_pref_state.is_complete:
+            session.hotel_pref_state = session.hotel_pref_state.with_message(user_input)
+            question = session.hotel_pref_state.next_question()
+            if question:
+                return TurnResult(text=question, tool=None)
+        response = _recommend_preference_replacement(session)
+        tool = "recommend_hotels" if session.pending_hotel_selection is not None else None
+        return TurnResult(text=response, tool=tool)
 
     if session.pending_hotel_selection is not None:
         tool_response = session.tools.select_hotel.invoke({"selection": user_input})
@@ -510,7 +641,13 @@ def process_chat_turn(session: TripSession, user_input: str) -> TurnResult:
             tool_response = execute_trip_edit_request(session, user_input, edit_plan)
             logger.info("LLM planned modification response: %s", tool_response)
             reply_text = tool_response or "SYSTEM ERROR: Không thể áp dụng yêu cầu chỉnh sửa này."
-            return TurnResult(text=str(reply_text), tool="execute_trip_edit_request")
+            tool_name = (
+                "recommend_hotels"
+                if session.pending_hotel_selection
+                and session.pending_hotel_selection.get("mode") == "replace_trip_preferences"
+                else "execute_trip_edit_request"
+            )
+            return TurnResult(text=str(reply_text), tool=tool_name)
 
     if not session.initial_plan_complete and not is_saved_plan_edit:
         if not session.intake_state.is_complete:

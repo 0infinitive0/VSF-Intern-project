@@ -257,6 +257,40 @@ def test_select_hotel_candidates_forwards_min_and_max_price_as_hard_filter(monke
     assert captured["max_price"] == 2_500_000.0
 
 
+def test_select_hotel_candidates_keeps_date_aware_prices_after_hydration(monkeypatch):
+    captured: dict = {}
+
+    def fake_search_hotels_with_rooms(**kwargs):
+        captured.update(kwargs)
+        return [
+            {
+                "id": "hotel-1",
+                "similarity": 0.7,
+                "average_nightly_price": 1_100_000,
+                "total_stay_price": 2_200_000,
+                "stay_night_count": 2,
+                "currency": "VND",
+                "priced_room_name": "Deluxe Sea View",
+            }
+        ]
+
+    monkeypatch.setattr(hotel_selection_module, "search_hotels_with_rooms", fake_search_hotels_with_rooms)
+    monkeypatch.setattr(
+        hotel_selection_module, "_get_supabase_client", lambda: _FakeSupabaseClient(_CANONICAL_ROWS)
+    )
+
+    options = select_hotel_candidates(
+        "Đà Nẵng", "dest-1", "2 người", start_date="2026-08-10", end_date="2026-08-12"
+    )
+
+    assert captured["start_date"] == "2026-08-10"
+    assert captured["end_date"] == "2026-08-12"
+    assert options[0][0]["average_nightly_price"] == 1_100_000
+    assert options[0][0]["total_stay_price"] == 2_200_000
+    assert options[0][0]["stay_night_count"] == 2
+    assert options[0][0]["priced_room_name"] == "Deluxe Sea View"
+
+
 def test_select_hotel_candidates_trusts_search_results_price_filtering(monkeypatch):
     """select_hotel_candidates does NOT re-filter by price itself — match_hotels_with_rooms
     now filters by lowest_price directly in SQL (see

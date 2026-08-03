@@ -7,6 +7,9 @@ import { S } from '../strings.js'
  */
 function HotelOptionCard({ hotel, onPick, disabled }) {
   const stars = '★'.repeat(hotel.star_rating || 0) + '☆'.repeat(Math.max(0, 5 - (hotel.star_rating || 0)))
+  const currency = hotel.currency || 'VND'
+  const formatPrice = (value) => new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(value)
+  const hasStayPrice = Number.isFinite(Number(hotel.average_nightly_price))
 
   return (
     <button
@@ -20,6 +23,14 @@ function HotelOptionCard({ hotel, onPick, disabled }) {
         <span className="hotel-card__name">{hotel.name}</span>
       </div>
       <div className="hotel-card__stars">{stars}</div>
+      {hasStayPrice && (
+        <div className="hotel-card__price" aria-label={S.hotelAverageNightly(formatPrice(hotel.average_nightly_price), currency)}>
+          <strong>{S.hotelAverageNightly(formatPrice(hotel.average_nightly_price), currency)}</strong>
+          {Number.isFinite(Number(hotel.total_stay_price)) && hotel.stay_night_count > 0 && (
+            <span>{S.hotelTotalStay(hotel.stay_night_count, formatPrice(hotel.total_stay_price), currency)}</span>
+          )}
+        </div>
+      )}
       {hotel.description && (
         <p className="hotel-card__desc">{hotel.description}</p>
       )}
