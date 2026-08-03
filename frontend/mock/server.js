@@ -30,6 +30,8 @@ const TRIP_PLAN = {
   status: 'Draft',
   destination: 'Đà Nẵng',
   duration_days: 3,
+  start_date: '2026-10-12T00:00:00',
+  end_date: '2026-10-14T00:00:00',
   number_of_adults: 2,
   hotel: {
     id: 'hotel-1',
@@ -45,7 +47,7 @@ const TRIP_PLAN = {
       theme: 'Khám phá bãi biển Mỹ Khê',
       items: [
         { order_index: 1, start_time: '08:00', end_time: '09:30', activity: 'Ăn sáng tại nhà hàng khách sạn', kind: 'breakfast' },
-        { order_index: 2, start_time: '10:00', end_time: '12:00', activity: 'Tắm biển Mỹ Khê', kind: 'beach' },
+        { order_index: 2, start_time: '10:00', end_time: '12:00', activity: 'Tắm biển Mỹ Khê', kind: 'attraction' },
         { order_index: 3, start_time: '12:30', end_time: '13:30', activity: 'Ăn trưa hải sản tươi Bến Thành Đà Nẵng', kind: 'lunch' },
         { order_index: 4, start_time: '15:00', end_time: '17:30', activity: 'Tham quan Bảo tàng Điêu khắc Chăm', kind: 'attraction' },
         { order_index: 5, start_time: '19:00', end_time: '21:00', activity: 'Dạo cầu Rồng, ngắm phun lửa cuối tuần', kind: 'evening' },
@@ -68,7 +70,7 @@ const TRIP_PLAN = {
       items: [
         { order_index: 1, start_time: '08:00', end_time: '09:00', activity: 'Ăn sáng, trả phòng', kind: 'breakfast' },
         { order_index: 2, start_time: '09:30', end_time: '15:30', activity: 'Cáp treo Bà Nà Hills, Cầu Vàng, Fantasy Park', kind: 'attraction' },
-        { order_index: 3, start_time: '16:00', end_time: '17:00', activity: 'Mua quà lưu niệm, chụp ảnh cầu Sông Hàn', kind: 'shopping' },
+        { order_index: 3, start_time: '16:00', end_time: '17:00', activity: 'Mua quà lưu niệm, chụp ảnh cầu Sông Hàn', kind: 'attraction' },
         { order_index: 4, start_time: '18:00', end_time: '19:30', activity: 'Ăn tối chia tay, đặc sản bánh mì Đà Nẵng', kind: 'dinner' },
       ],
     },

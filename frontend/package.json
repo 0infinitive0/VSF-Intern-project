@@ -9,6 +9,7 @@
     "mock": "node mock/server.js",
     "build": "vite build",
     "lint": "oxlint",
+    "typecheck": "tsc --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -22,6 +23,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
     "oxlint": "^1.75.0",
+    "typescript": "^7.0.2",
     "vite": "^8.2.0"
   }
 }

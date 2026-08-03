@@ -1,3 +1,5 @@
+import type { Suggestion } from '../types'
+
 /**
  * SuggestionChips — renders suggestions[] from any turn as tappable chips.
  *
@@ -10,7 +12,15 @@
  * This component is generic — it renders on ANY turn that returns suggestions[],
  * not only hotel_options turns.
  */
-export default function SuggestionChips({ suggestions, onSelect, disabled }) {
+export default function SuggestionChips({
+  suggestions,
+  onSelect,
+  disabled,
+}: {
+  suggestions: Suggestion[]
+  onSelect: (value: string) => void
+  disabled: boolean
+}) {
   if (!suggestions || suggestions.length === 0) return null
 
   return (
@@ -18,7 +28,7 @@ export default function SuggestionChips({ suggestions, onSelect, disabled }) {
       {suggestions.map((s, i) => (
         <button
           key={i}
-          className="px-3 py-1.5 bg-surface-background border border-border-subtle text-text-secondary hover:bg-surface-muted hover:text-text-primary rounded-full text-xs font-medium whitespace-nowrap transition-colors disabled:opacity-60"
+          className="px-3 py-1.5 bg-surface-background border border-outline-variant text-secondary hover:bg-surface-muted hover:text-on-surface rounded-full text-xs font-medium whitespace-nowrap transition-colors disabled:opacity-60"
           disabled={disabled}
           onClick={() => onSelect(s.value)}
           type="button"

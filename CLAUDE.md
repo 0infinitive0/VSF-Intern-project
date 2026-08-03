@@ -41,3 +41,7 @@ This project is indexed by GitNexus as **VSF-Intern-project** (3574 symbols, 687
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+## Browser Automation
+
+- NEVER call `claude-in-chrome` tools (navigate, screenshot, click, etc.) unless the user explicitly asks for a browser check. Verify UI changes by reading code/CSS instead of opening a browser by default.

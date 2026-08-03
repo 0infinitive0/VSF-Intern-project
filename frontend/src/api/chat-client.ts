@@ -1,15 +1,17 @@
 /**
- * chat-client.js — owns all fetch calls, JSON parsing and error normalisation.
+ * chat-client.ts — owns all fetch calls, JSON parsing and error normalisation.
  * No component calls fetch directly.
  *
  * Base URL: /api/v1 in dev (proxied by Vite to localhost:8000).
  * VITE_API_BASE allows pointing at a remote backend.
  */
 
+import type { PlannerChatResponse, TripPlan } from '../types'
+
 const BASE = (import.meta.env.VITE_API_BASE || '') + '/api/v1'
 
-async function request(method, path, body) {
-  const opts = {
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const opts: RequestInit = {
     method,
     headers: { 'Content-Type': 'application/json' },
   }
@@ -19,10 +21,10 @@ async function request(method, path, body) {
 
   const res = await fetch(BASE + path, opts)
 
-  if (res.status === 204) return null
+  if (res.status === 204) return null as T
 
   const text = await res.text()
-  let data
+  let data: unknown
   try {
     data = JSON.parse(text)
   } catch {
@@ -30,35 +32,43 @@ async function request(method, path, body) {
   }
 
   if (!res.ok) {
-    const detail = data?.detail || text
+    const detail =
+      (data && typeof data === 'object' && 'detail' in data
+        ? (data as { detail?: string }).detail
+        : undefined) || text
     throw new Error(detail)
   }
 
-  return data
+  return data as T
+}
+
+export interface CreateSessionResponse {
+  session_id: string
+  created_at: string
 }
 
 /**
  * Create a new chat session on the server.
- * Returns { session_id, created_at }.
  */
-export async function createSession() {
+export async function createSession(): Promise<CreateSessionResponse> {
   return request('POST', '/chat/session')
 }
 
 /**
  * Send a chat message.
- * Returns PlannerChatResponse: { session_id, reply, suggestions, stage,
- *   hotel_options, trip_plan, intake }
  */
-export async function sendMessage(sessionId, message) {
+export async function sendMessage(
+  sessionId: string,
+  message: string,
+): Promise<PlannerChatResponse> {
   return request('POST', '/planner_chat', { session_id: sessionId, message })
 }
 
 /**
  * Fetch the current trip plan for a session.
- * Returns { trip_plan } or throws on 404.
+ * Throws on 404.
  */
-export async function getPlan(sessionId) {
+export async function getPlan(sessionId: string): Promise<{ trip_plan: TripPlan | null }> {
   return request('GET', `/chat/${encodeURIComponent(sessionId)}/plan`)
 }
 
@@ -66,6 +76,6 @@ export async function getPlan(sessionId) {
  * Delete / reset a session on the server.
  * Returns null on 204.
  */
-export async function resetSession(sessionId) {
+export async function resetSession(sessionId: string): Promise<null> {
   return request('DELETE', `/chat/${encodeURIComponent(sessionId)}`)
 }

@@ -30,6 +30,16 @@
   --color-on-error: #ffffff;
   --color-error-container: #ffdad6;
   --color-on-error-container: #93000a;
+
+  /* New Stitch tokens — consistent across all 4 assets/*.html exports */
+  --color-secondary: #585e6d;
+  --color-secondary-container: #dadff0;
+  --color-on-secondary-container: #5d6371;
+  --color-outline: #737687;
+  --color-outline-variant: #c3c5d8;
+  --color-surface-container-low: #f1f3ff;
+  --color-surface-container-high: #e2e8fc;
+  --color-surface-container-highest: #dde2f6;
 }
 
 .material-symbols-outlined {
@@ -49,6 +59,25 @@
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background-color: var(--color-primary-fixed);
   border-radius: 20px;
+}
+
+.composer-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+.composer-scrollbar::-webkit-scrollbar-track {
+  background: var(--color-border-subtle);
+  border-radius: 20px;
+  margin-block: 4px;
+}
+.composer-scrollbar::-webkit-scrollbar-thumb {
+  background-color: var(--color-outline-variant);
+  border-radius: 20px;
+  border: 2px solid var(--color-border-subtle);
+  background-clip: padding-box;
+}
+.composer-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-outline-variant) var(--color-surface-muted);;
 }
 
 @keyframes spin {
