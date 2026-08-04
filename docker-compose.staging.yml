@@ -31,7 +31,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:5173/"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:5173/ || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
