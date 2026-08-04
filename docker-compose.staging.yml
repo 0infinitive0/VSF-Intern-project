@@ -17,6 +17,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 30s
 
   # ── Frontend (React + Vite → Nginx) ─────────────────────────────────────────
   frontend:
@@ -26,8 +27,15 @@ services:
     ports:
       - "5173:5173"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:5173/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # ── Caddy (reverse proxy + auto HTTPS) ──────────────────────────────────────
   caddy:
@@ -43,7 +51,8 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - frontend
+      frontend:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
