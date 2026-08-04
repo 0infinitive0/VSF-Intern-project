@@ -45,6 +45,7 @@ def recommend_hotels(
     max_price: str = "",
     hotel_amenity_prefs: str = "",
     intake_context: str = "",
+    exclude_hotel_ids: list[str] | None = None,
     *,
     runtime: ToolRuntime[None, TripState],
 ) -> Command:
@@ -94,16 +95,29 @@ def recommend_hotels(
         parsed_max_price = parsed_target_price
     amenity_pref_set = frozenset(tag.strip() for tag in hotel_amenity_prefs.split(",") if tag.strip())
 
+    # A follow-up search must start beyond the hotels already shown to the user.
+    # Keep an explicit list too so callers that already know prior IDs can use the
+    # same contract without depending on session state.
+    existing_options = (runtime.state.get("pending_hotel_selection") or {}).get("options", [])
+    existing_ids = [str(option.get("id", "")).strip() for option in existing_options if option.get("id")]
+    requested_ids = [str(hotel_id).strip() for hotel_id in (exclude_hotel_ids or []) if str(hotel_id).strip()]
+    excluded_ids = list(dict.fromkeys([*existing_ids, *requested_ids]))
+
     try:
+        selection_kwargs = {
+            "hotel_query": hotel_query,
+            "min_price": parsed_min_price,
+            "max_price": parsed_max_price,
+            "start_date": start_date,
+            "end_date": end_date,
+        }
+        if excluded_ids:
+            selection_kwargs["exclude_hotel_ids"] = excluded_ids
         options = select_hotel_candidates(
             clean_destination,
             destination_id,
             people,
-            hotel_query=hotel_query,
-            min_price=parsed_min_price,
-            max_price=parsed_max_price,
-            start_date=start_date,
-            end_date=end_date,
+            **selection_kwargs,
         )
         sea_view_hotel_ids = (
             lookup_sea_view_hotel_ids([data["id"] for data, _candidate in options])
@@ -127,13 +141,10 @@ def recommend_hotels(
         )
         return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
 
-    # Append to existing options if available
-    existing_options = []
-    if runtime.state.get("pending_hotel_selection"):
-        existing_options = runtime.state["pending_hotel_selection"].get("options", [])
-    
-    existing_ids = {str(opt.get("id", "")) for opt in existing_options}
-    new_options = [data for data, _candidate in options if str(data.get("id", "")) not in existing_ids]
+    # Keep the old options visible and defensively remove any duplicate returned
+    # by an out-of-date database function.
+    existing_id_set = set(existing_ids)
+    new_options = [data for data, _candidate in options if str(data.get("id", "")) not in existing_id_set]
     
     combined_options = existing_options + new_options
     for idx, opt in enumerate(combined_options, start=1):

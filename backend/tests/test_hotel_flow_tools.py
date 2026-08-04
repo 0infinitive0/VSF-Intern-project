@@ -119,9 +119,50 @@ def test_recommend_hotels_writes_pending_selection_and_lists_names(monkeypatch):
         hotel_preferences="",
     )
 
-    assert "Khách sạn Một" in reply
-    assert "Khách sạn Hai" in reply
+    assert reply == (
+        "Mình đã tìm được danh sách khách sạn phù hợp. Bạn xem và chọn trực tiếp "
+        "khách sạn mong muốn trong tab Khách sạn để tạo lịch trình nhé!"
+    )
     assert updates["pending_hotel_selection"] is not None
+    assert [option["id"] for option in updates["pending_hotel_selection"]["options"]] == ["h1", "h2"]
+
+
+def test_recommend_hotels_excludes_hotels_already_shown_when_searching_more(monkeypatch):
+    captured_select_kwargs: dict = {}
+    existing_option = _fake_option("shown-hotel", "Khách sạn Đã Hiển Thị", 1)[0]
+    new_options = [_fake_option("new-hotel", "Khách sạn Mới", 1)]
+
+    def fake_select_hotel_candidates(*args, **kwargs):
+        captured_select_kwargs.update(kwargs)
+        return new_options
+
+    monkeypatch.setattr(recommend_hotels_module, "_get_destination_id", lambda destination: "dest-1")
+    monkeypatch.setattr(recommend_hotels_module, "select_hotel_candidates", fake_select_hotel_candidates)
+    monkeypatch.setattr(recommend_hotels_module, "rank_hotel_candidates", lambda options, **_kwargs: options)
+
+    state = initial_state("test-session")
+    state["pending_hotel_selection"] = {"options": [existing_option]}
+    reply, updates = invoke_tool_directly(
+        recommend_hotels,
+        state,
+        session_id="test-session",
+        destination="Đà Nẵng",
+        duration="3 ngày",
+        start_date="2026-08-10",
+        end_date="2026-08-13",
+        people="2 người",
+        exclude_hotel_ids=["explicit-exclude"],
+    )
+
+    assert captured_select_kwargs["exclude_hotel_ids"] == ["shown-hotel", "explicit-exclude"]
+    assert reply == (
+        "Mình đã tìm được danh sách khách sạn phù hợp. Bạn xem và chọn trực tiếp "
+        "khách sạn mong muốn trong tab Khách sạn để tạo lịch trình nhé!"
+    )
+    assert [option["id"] for option in updates["pending_hotel_selection"]["options"]] == [
+        "shown-hotel",
+        "new-hotel",
+    ]
 
 
 def test_recommend_hotels_missing_field_returns_system_error():

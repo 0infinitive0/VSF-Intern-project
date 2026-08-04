@@ -72,6 +72,21 @@ def test_search_hotels_omits_price_params_when_not_given(monkeypatch):
     assert "filter_max_price" not in client.captured_params
 
 
+def test_search_hotels_forwards_excluded_hotel_ids_as_rpc_param(monkeypatch):
+    client = _patch_client_and_embeddings(monkeypatch, data=[])
+    excluded_ids = ["9a6c6e89-328f-4d49-b171-2f1beef7ea01", "d1227682-d9f3-42c1-8848-9bd592a7b781"]
+
+    search_hotels_with_rooms(
+        "Hotel in Đà Nẵng for 2 people",
+        match_count=5,
+        use_llm_filter=False,
+        exclude_hotel_ids=excluded_ids,
+    )
+
+    assert client.captured_params is not None
+    assert client.captured_params["filter_exclude_hotel_ids"] == excluded_ids
+
+
 def test_search_hotels_forwards_complete_stay_dates_as_rpc_params(monkeypatch):
     client = _patch_client_and_embeddings(monkeypatch, data=[])
 

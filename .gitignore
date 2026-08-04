@@ -43,13 +43,13 @@ Thumbs.db
 
 # Airflow
 airflow/logs/
-src/airflow/logs/
+backend/src/airflow/logs/
 airflow/airflow.cfg
-src/airflow/config/airflow.cfg
+backend/src/airflow/config/airflow.cfg
 airflow/webserver_config.py
-src/airflow/webserver_config.py
+backend/src/airflow/webserver_config.py
 airflow/airflow.db
-src/airflow/airflow.db
+backend/src/airflow/airflow.db
 
 # Docker
 .docker/

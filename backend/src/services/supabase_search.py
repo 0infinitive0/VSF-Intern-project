@@ -5,7 +5,8 @@ import math
 import os
 from datetime import date
 from functools import lru_cache
-from typing import Any, Dict, List, Optional
+from typing import Any, Collection, Dict, List, Optional
+from uuid import UUID
 
 import requests
 from langchain_core.embeddings import Embeddings
@@ -177,6 +178,7 @@ def search_hotels_with_rooms(
     model: Optional[str] = None,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
+    exclude_hotel_ids: Collection[str] | None = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     root_latitude: Optional[float] = None,
@@ -219,6 +221,18 @@ def search_hotels_with_rooms(
         params["filter_min_price"] = resolved_min_price
     if resolved_max_price is not None:
         params["filter_max_price"] = resolved_max_price
+    if exclude_hotel_ids:
+        valid_excluded_ids: list[str] = []
+        for hotel_id in exclude_hotel_ids:
+            try:
+                normalized_id = str(UUID(str(hotel_id)))
+            except (TypeError, ValueError, AttributeError):
+                logger.warning("Ignoring invalid hotel exclusion ID: %r", hotel_id)
+                continue
+            if normalized_id not in valid_excluded_ids:
+                valid_excluded_ids.append(normalized_id)
+        if valid_excluded_ids:
+            params["filter_exclude_hotel_ids"] = valid_excluded_ids
     if stay_dates is not None:
         params["filter_start_date"], params["filter_end_date"] = stay_dates
     if radius is not None:

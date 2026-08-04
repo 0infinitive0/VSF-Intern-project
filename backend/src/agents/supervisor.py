@@ -114,6 +114,7 @@ def decide_route_by_llm(session: Any, user_input: str) -> str | None:
             {"messages": [("user", message)]},
             stream_mode="values",
         )
+        selected_route = None
         for event in events:
             messages = event.get("messages") if isinstance(event, dict) else None
             if not messages:
@@ -122,9 +123,12 @@ def decide_route_by_llm(session: Any, user_input: str) -> str | None:
             tool_calls = getattr(latest, "tool_calls", None)
             if getattr(latest, "type", None) == "ai" and tool_calls:
                 # Take the first call only — the prompt forbids more than one,
-                # and this guards against a model that ignores that anyway.
-                return _TOOL_NAME_TO_ROUTE.get(tool_calls[0]["name"])
-        return None
+                # and this guards against a model that ignores that anyway. Do
+                # not return here: closing a LangGraph stream mid-output makes
+                # Pregel surface GeneratorExit during its cleanup.
+                if selected_route is None:
+                    selected_route = _TOOL_NAME_TO_ROUTE.get(tool_calls[0]["name"])
+        return selected_route
     except Exception:
         logger.exception("Supervisor router failed; falling back to regex routing")
         return None

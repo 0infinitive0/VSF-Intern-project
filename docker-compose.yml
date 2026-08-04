@@ -11,17 +11,17 @@ services:
   # ── Backend (FastAPI) ────────────────────────────────────────────────────────
   backend:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
     env_file:
-      - .env
+      - ./backend/.env
     environment:
       # Only used when profile local-llm is active; ignored when LLM_PROVIDER != ollama
       - OLLAMA_URL=http://ollama:11434
     volumes:
-      - ./data:/app/data
+      - ./backend/data:/app/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
@@ -58,7 +58,7 @@ services:
     ports:
       - "11434:11434"
     volumes:
-      - ./data/ollama:/root/.ollama
+      - ./backend/data/ollama:/root/.ollama
     environment:
       - OLLAMA_MAX_LOADED_MODELS=2
       - OLLAMA_KEEP_ALIVE=30m

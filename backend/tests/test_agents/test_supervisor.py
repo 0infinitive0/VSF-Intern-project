@@ -134,6 +134,22 @@ def test_decide_route_by_llm_extracts_the_first_tool_call(monkeypatch):
     assert decide_route_by_llm(session=_FakeSession(), user_input="1") == "select_hotel"
 
 
+def test_decide_route_by_llm_drains_the_langgraph_stream_before_returning(monkeypatch):
+    """Returning from the first event must not close LangGraph mid-output."""
+    stream_drained = False
+
+    def events():
+        nonlocal stream_drained
+        yield {"messages": [_FakeMessage("ai", tool_calls=[{"name": "route_intake"}])]}
+        stream_drained = True
+        yield {"messages": []}
+
+    _stub_supervisor(monkeypatch, events())
+
+    assert decide_route_by_llm(session=_FakeSession(), user_input="1") == "intake"
+    assert stream_drained
+
+
 def test_decide_route_by_llm_takes_only_the_first_call_when_the_model_emits_two(monkeypatch):
     events = [
         {

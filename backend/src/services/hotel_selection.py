@@ -75,6 +75,7 @@ def select_hotel_candidates(
     match_count: int = 5,
     min_price: float | None = None,
     max_price: float | None = None,
+    exclude_hotel_ids: Collection[str] | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
     root_latitude: float | None = None,
@@ -103,6 +104,8 @@ def select_hotel_candidates(
     if start_date is not None or end_date is not None:
         kwargs["start_date"] = start_date
         kwargs["end_date"] = end_date
+    if exclude_hotel_ids:
+        kwargs["exclude_hotel_ids"] = list(exclude_hotel_ids)
     if root_latitude is not None or root_longitude is not None or max_radius_km is not None:
         kwargs["root_latitude"] = root_latitude
         kwargs["root_longitude"] = root_longitude

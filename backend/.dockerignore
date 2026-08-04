@@ -10,14 +10,11 @@ __pycache__
 data/
 logs/
 .ai-log/
-docs/
-presentation/
-eval/
 *.md
 !requirements.txt
 .dockerignore
 Dockerfile
-docker-compose.yml
 src/airflow/logs/
 venv/
-data/
+tests/
+scripts/
