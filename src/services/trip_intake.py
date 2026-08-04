@@ -6,7 +6,8 @@ before it becomes state:
   (name or alias) — an unmatched guess is discarded, not stored.
 - `preference_labels` are accepted only if they are in the fixed closed set.
 - `duration`/`people` are stored as canonically formatted strings derived
-  from validated integers, never the model's raw text.
+  from validated integers, never the model's raw text. The duration is the
+  number of nights calculated from the confirmed start and exclusive end date.
 
 This mirrors `normalize_day_themes()` in `trip_scheduler.py`: the LLM
 proposes, a pure function (`_ground_extracted_facts`) validates.
@@ -189,6 +190,11 @@ class TripPreferenceUpdate:
             destination=destination,
             duration=self.duration if "duration" in self.changed_fields else current.duration,
             start_date=self.start_date if "start_date" in self.changed_fields else current.start_date,
+            stay_end_date=(
+                None
+                if {"duration", "start_date"}.intersection(self.changed_fields)
+                else current.stay_end_date
+            ),
             people=self.people if "people" in self.changed_fields else current.people,
             preferences=(
                 tuple(self.preferences or ())
@@ -227,6 +233,7 @@ class TripIntakeState:
     destination: str | None = None
     duration: str | None = None
     start_date: str | None = None
+    stay_end_date: str | None = None
     people: str | None = None
     preferences: tuple[str, ...] = ()
     companions: str | None = None
@@ -240,6 +247,8 @@ class TripIntakeState:
 
     @property
     def end_date(self) -> str | None:
+        if self.stay_end_date:
+            return self.stay_end_date
         if not self.start_date or not self.duration:
             return None
         try:
@@ -248,6 +257,16 @@ class TripIntakeState:
         except (TypeError, ValueError):
             return None
         return (start + timedelta(days=duration_days)).isoformat()
+
+    @property
+    def has_explicit_stay_dates(self) -> bool:
+        """Whether the user supplied a valid check-in and exclusive checkout.
+
+        Legacy callers can still construct a state from duration + start date,
+        but guided intake must wait for a real end date so it never converts a
+        duration answer into a hidden checkout date.
+        """
+        return bool(_duration_from_stay_dates(self.start_date, self.stay_end_date))
 
     def with_message(
         self,
@@ -258,6 +277,7 @@ class TripIntakeState:
             "destination": self.destination,
             "duration": self.duration,
             "start_date": self.start_date,
+            "end_date": self.end_date,
             "people": self.people,
         }
         raw = _llm_extract_intake_facts(message, known_facts, destination_names)
@@ -272,8 +292,13 @@ class TripIntakeState:
             else None
         )
         destination = self.destination or grounded["destination"] or deterministic_destination
-        duration = self.duration or grounded["duration"]
         start_date = self.start_date or grounded["start_date"]
+        stay_end_date = self.stay_end_date or grounded["end_date"]
+        duration = (
+            _duration_from_stay_dates(start_date, stay_end_date)
+            or self.duration
+            or grounded["duration"]
+        )
         people = self.people or grounded["people"]
 
         preferences = list(self.preferences)
@@ -298,12 +323,27 @@ class TripIntakeState:
             destination=destination,
             duration=duration,
             start_date=start_date,
+            stay_end_date=stay_end_date,
             people=people,
             preferences=tuple(preferences),
             companions=companions,
             pace=pace,
             day_rhythm=tuple(day_rhythm),
             notes=notes,
+        )
+
+    def with_stay_dates(self, start_date: str, end_date: str) -> TripIntakeState:
+        """Apply the frontend's date-range input after validating both edges."""
+        clean_start_date = _format_start_date(start_date)
+        clean_end_date = _format_start_date(end_date)
+        duration = _duration_from_stay_dates(clean_start_date, clean_end_date)
+        if not clean_start_date or not clean_end_date or not duration:
+            raise ValueError("Ngày kết thúc phải sau ngày bắt đầu và thời gian lưu trú không quá 90 đêm.")
+        return replace(
+            self,
+            start_date=clean_start_date,
+            stay_end_date=clean_end_date,
+            duration=duration,
         )
 
     def next_question(
@@ -322,17 +362,17 @@ class TripIntakeState:
             if choices:
                 return f"Bạn muốn đi đâu? Hiện mình có dữ liệu cho: {choices}."
             return "Bạn muốn đi đâu?"
-        if not self.duration:
-            return "Bạn dự định đi trong bao lâu?"
-        if not self.start_date:
-            return "Bạn dự định bắt đầu chuyến đi vào ngày nào?"
         if not self.people:
             return "Chuyến đi có bao nhiêu người?"
+        if not self.start_date:
+            return "Bạn dự định bắt đầu chuyến đi vào ngày nào?"
+        if not self.has_explicit_stay_dates:
+            return "Bạn dự định kết thúc chuyến đi vào ngày nào?"
         return None
 
     def tool_arguments(self) -> dict[str, str]:
         if not self.is_complete:
-            raise ValueError("Destination, duration, start date, and people are required.")
+            raise ValueError("Destination, people, start date, and end date are required.")
         return {
             "destination": str(self.destination),
             "duration": str(self.duration),
@@ -350,6 +390,7 @@ class TripIntakeState:
             "destination": self.destination,
             "duration": self.duration,
             "start_date": self.start_date,
+            "stay_end_date": self.stay_end_date,
             "people": self.people,
             "preferences": list(self.preferences),
             "companions": self.companions,
@@ -367,6 +408,7 @@ class TripIntakeState:
             destination=data.get("destination"),
             duration=data.get("duration"),
             start_date=data.get("start_date"),
+            stay_end_date=data.get("stay_end_date"),
             people=data.get("people"),
             preferences=tuple(data.get("preferences") or ()),
             companions=data.get("companions"),
@@ -412,6 +454,7 @@ Return ONLY valid JSON (no markdown fences) matching this schema:
 {{
   "destination": "string or null - the destination the user named, copied verbatim",
   "start_date": "YYYY-MM-DD or null - only when the user explicitly provided a trip start date; resolve relative dates using today's date above",
+  "end_date": "YYYY-MM-DD or null - only when the user explicitly provided the exclusive trip end/check-out date; it must be after start_date",
   "duration_days": "integer or null - trip length in days (convert weeks/months to days, e.g. '1 tuần' = 7)",
   "people_count": "integer or null - number of travelers (e.g. 'vợ chồng tôi' = 2, 'một mình' = 1)",
   "preference_labels": "array of zero or more of these exact strings only: {allowed_labels}",
@@ -473,6 +516,7 @@ def _ground_extracted_facts(
         "destination": _match_known_destination(str(raw.get("destination") or "").strip(), destination_names),
         "duration": _format_duration_days(raw.get("duration_days")),
         "start_date": _format_start_date(raw.get("start_date")),
+        "end_date": _format_start_date(raw.get("end_date")),
         "people": _format_people_count(raw.get("people_count")),
         "preference_labels": tuple(label for label in _PREFERENCE_LABELS if label in label_set),
         "companions": _closed_singleton(_COMPANION_LABELS, raw.get("companions")),
@@ -542,8 +586,6 @@ def _format_start_date(value: Any) -> str | None:
         parsed = date.fromisoformat(str(value))
     except (TypeError, ValueError):
         return None
-    if parsed < date.today():
-        return None
     return parsed.isoformat()
 
 
@@ -555,6 +597,15 @@ def _format_people_count(value: Any) -> str | None:
     if not 0 < count <= 50:
         return None
     return f"{count} người"
+
+
+def _duration_from_stay_dates(start_date: str | None, end_date: str | None) -> str | None:
+    """Return the number of nights for an exclusive check-out date."""
+    try:
+        nights = (date.fromisoformat(str(end_date)) - date.fromisoformat(str(start_date))).days
+    except (TypeError, ValueError):
+        return None
+    return _format_duration_days(nights)
 
 
 def _contains_phrase(normalized_text: str, normalized_phrase: str) -> bool:

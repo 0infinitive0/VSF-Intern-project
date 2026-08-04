@@ -40,6 +40,17 @@ services:
       - backend
     restart: unless-stopped
 
+  # ── Frontend Ver Test (pre-pull snapshot → Nginx on :5174) ──────────────────
+  frontend-ver-test:
+    build:
+      context: ../vsf-project-frontend-ver-test
+      dockerfile: Dockerfile
+    ports:
+      - "5174:5174"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
   # ── Ollama (local LLM) — only with --profile local-llm ──────────────────────
   ollama:
     profiles: [local-llm]

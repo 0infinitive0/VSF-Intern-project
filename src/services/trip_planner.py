@@ -1,6 +1,7 @@
 """Service module for data hydration, candidate retrieval, theme generation, and trip plan mutations."""
 
 from __future__ import annotations
+import unicodedata
 
 import json
 import logging
@@ -88,6 +89,7 @@ def _get_destination_id(destination_name: str) -> str | None:
     try:
         supabase = get_supabase_client()
         clean_name = destination_name.lower().replace("đi ", "").replace("du lịch ", "").strip()
+        clean_name = unicodedata.normalize('NFC', clean_name)
         response = supabase.table("destinations").select("id").ilike("name", f"%{clean_name}%").limit(1).execute()
         data = response.data
         if data:

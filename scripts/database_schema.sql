@@ -101,19 +101,17 @@ CREATE TABLE room_prices (
     review_score DECIMAL(4, 2), -- Review điểm theo phòng, chỉ có ở Agoda
     review_text VARCHAR(100),
     source_url TEXT, -- Link affiliate/gốc trang đặt phòng; fallback dùng hotels.source_url nếu không có link riêng
-    package_details TEXT, -- VD: 'Bao gồm bữa sáng, Không hoàn tiền' — 2 nguồn hiện tại chưa cung cấp field này
     crawled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Expression unique index (không dùng UNIQUE(...) thường trong CREATE TABLE) vì source_url/
--- package_details có thể NULL — Postgres coi mỗi NULL là khác nhau nên UNIQUE thường sẽ không
+-- Expression unique index (không dùng UNIQUE(...) thường trong CREATE TABLE) vì source_url
+-- có thể NULL — Postgres coi mỗi NULL là khác nhau nên UNIQUE thường sẽ không
 -- dedupe đúng lúc UPSERT. COALESCE về '' để NULL so khớp được với nhau.
 CREATE UNIQUE INDEX ux_room_prices_natural_key ON room_prices (
     room_id,
     check_in_date,
     check_out_date,
-    COALESCE(source_url, ''),
-    COALESCE(package_details, '')
+    COALESCE(source_url, '')
 );
 
 -- Bảng 4a: Nhóm khách sạn vật lý trùng lặp liên-OTA (cross-OTA physical-hotel identity groups)

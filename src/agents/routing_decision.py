@@ -32,7 +32,7 @@ from src.services.trip_planner import _get_destination_names
 if TYPE_CHECKING:
     from src.agents.state import TripState
 
-Route = Literal["select_hotel", "finalize", "new_trip", "edit_draft", "intake", "chat"]
+Route = Literal["finalize", "new_trip", "edit_draft", "intake", "chat"]
 _VALID_ROUTES = frozenset(get_args(Route))
 
 
@@ -156,8 +156,6 @@ def decide_route_by_rules(context: RouteContext, user_input: str) -> Route:
     intake/hotel-prefs gate > chat fallback (matches `session.py:456-546`
     pre-refactor).
     """
-    if context.has_pending_hotel_selection:
-        return "select_hotel"
 
     if context.has_trip_data and is_finalization_request(user_input):
         return "finalize"
@@ -176,7 +174,6 @@ def decide_route_by_rules(context: RouteContext, user_input: str) -> Route:
 _IMPOSSIBLE: dict[Route, Callable[[RouteContext], bool]] = {
     "edit_draft": lambda ctx: not ctx.has_trip_data,
     "finalize": lambda ctx: not ctx.has_trip_data or ctx.is_trip_finalized,
-    "select_hotel": lambda ctx: not ctx.has_pending_hotel_selection,
 }
 
 

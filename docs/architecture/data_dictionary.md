@@ -87,10 +87,9 @@ Lưu trữ giá phòng. Bảng này được thiết kế theo cơ chế UPSERT 
 | `sold_out` | BOOLEAN | | Cờ hết phòng (thay cho `available_rooms` cũ — không nguồn nào có số phòng trống thực tế) |
 | `crossed_out` | BOOLEAN | | Cờ hiển thị giá gạch ngang (khuyến mãi), chỉ có ở Agoda |
 | `source_url` | TEXT | UK | Link chuyển hướng (Affiliate/gốc) trang đặt phòng; fallback dùng `hotels.source_url` nếu không có link riêng |
-| `package_details`| TEXT | UK | Gói đi kèm (VD: 'Bữa sáng miễn phí', 'Không hoàn tiền') |
 | `crawled_at` | TIMESTAMP | | Thời điểm hệ thống lấy được giá này |
 
-*(Lưu ý: Khóa Unique là expression index trên tổ hợp `room_id`, `check_in_date`, `check_out_date`, `COALESCE(source_url, '')`, `COALESCE(package_details, '')` để UPSERT chính xác giá mới nhất — dùng `COALESCE` vì Postgres coi mỗi NULL là khác nhau, một `UNIQUE` thường sẽ không dedupe đúng khi các cột này NULL.)*
+*(Lưu ý: Khóa Unique là expression index trên tổ hợp `room_id`, `check_in_date`, `check_out_date`, `COALESCE(source_url, '')` để UPSERT chính xác giá mới nhất — dùng `COALESCE` vì Postgres coi mỗi NULL là khác nhau, một `UNIQUE` thường sẽ không dedupe đúng khi cột này NULL.)*
 
 ### 1.4a/1.4b. Bảng `hotel_identity_groups` / `hotel_identity_members` (Nhóm khách sạn vật lý trùng lặp liên-OTA)
 Nhóm các dòng `hotels` cùng 1 khách sạn vật lý (VD: cùng khách sạn trên cả Agoda và Booking) để AI/RAG không đề xuất trùng lặp — **không gộp dòng `hotels`**, cả hai dòng OTA luôn được giữ nguyên. `review_status` = `'pending_review'` (điểm match `0.72-0.86`) chặn nhóm dùng cho AI/vector cho tới khi duyệt thủ công; chỉ nhóm điểm `>= 0.86` mới `'auto_approved'` ngay. Xem `hotel_pipeline.group_physical_hotels()`/`assign_physical_hotel_groups()` cho thuật toán tính điểm và `plans/260724-0925-hotel-normalize-dedupe-for-vector-rag/phase-03-dedupe-canonical-identity.md` cho thiết kế đầy đủ. Nhóm được **tính trong pipeline** (in-memory) mỗi lần chạy; việc ghi persist vào 2 bảng này chưa gắn vào `load_hotels_to_db()` ở M1/M2.

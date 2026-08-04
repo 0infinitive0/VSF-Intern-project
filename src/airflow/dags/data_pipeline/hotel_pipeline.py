@@ -286,7 +286,6 @@ def normalize_room(
         "review_score": raw_room.get("review_score"),
         "review_text": raw_room.get("review_text"),
         "source_url": hotel_source_url,
-        "package_details": None,
         "crawled_at": hotel_scraped_at,
     }
 
@@ -665,7 +664,6 @@ def _dedupe_prices(prices: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], 
             price["check_in_date"],
             price["check_out_date"],
             price["source_url"] or "",
-            price["package_details"] or "",
         )
         existing = by_key.get(key)
         if existing is None:
@@ -1021,8 +1019,7 @@ _ROOM_UPDATE_COLUMNS = [c for c in _ROOM_COLUMNS if c not in ("hotel_id", "sourc
 
 _PRICE_COLUMNS = [
     "room_id", "price", "currency", "check_in_date", "check_out_date", "sold_out",
-    "crossed_out", "review_score", "review_text", "source_url", "package_details",
-    "crawled_at",
+    "crossed_out", "review_score", "review_text", "source_url", "crawled_at",
 ]
 
 _PRICE_UPDATE_COLUMNS = [
@@ -1085,7 +1082,7 @@ def _upsert_price(cursor, price: Dict[str, Any], room_id: str) -> None:
     query = f"""
         INSERT INTO room_prices ({", ".join(columns)})
         VALUES ({placeholders})
-        ON CONFLICT (room_id, check_in_date, check_out_date, COALESCE(source_url, ''), COALESCE(package_details, ''))
+        ON CONFLICT (room_id, check_in_date, check_out_date, COALESCE(source_url, ''))
         DO UPDATE SET {update_clause};
     """
     cursor.execute(query, values)

@@ -130,6 +130,36 @@ def test_process_chat_turn_asks_budget_question_right_after_intake_completes(mon
     assert "1." in reply
 
 
+def test_process_chat_turn_collects_dates_from_frontend_after_hotel_price(monkeypatch):
+    monkeypatch.setattr(session_module, "_get_destination_names", lambda: ("Đà Nẵng",))
+    _mock_intake_extraction(
+        monkeypatch,
+        {
+            "Đà Nẵng": {"destination": "Đà Nẵng"},
+            "2 người": {"people_count": 2},
+        },
+    )
+    captured = {}
+    session = _session()
+
+    def recommend(args):
+        captured["arguments"] = args
+        return "hotel options"
+
+    session.tools.recommend_hotels = _FakeTool(recommend)
+
+    assert "bao nhiêu người" in process_chat_turn(session, "Đà Nẵng").text.casefold()
+    assert "1." in process_chat_turn(session, "2 người").text
+    assert "biểu mẫu" in process_chat_turn(session, "4 triệu").text.casefold()
+
+    reply = process_chat_turn(session, "", stay_dates=("2026-08-10", "2026-08-13"))
+
+    assert reply.text == "hotel options"
+    assert captured["arguments"]["start_date"] == "2026-08-10"
+    assert captured["arguments"]["end_date"] == "2026-08-13"
+    assert captured["arguments"]["duration"] == "3 ngày"
+
+
 def test_process_chat_turn_calls_recommend_hotels_right_after_budget_resolved():
     """The guided hotel-preference flow is budget-only now (no amenity question),
     so a single resolved budget reply completes it and the same turn immediately

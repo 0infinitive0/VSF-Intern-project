@@ -28,6 +28,7 @@ from src.models.schemas import (
     IntakeStatus,
     PlannerChatRequest,
     PlannerChatResponse,
+    SelectHotelRequest,
     sanitize_system_error,
     to_hotel_options_payload,
     to_trip_plan_payload,
@@ -59,11 +60,7 @@ registry = SessionRegistry(
 
 @router.post("/chat/session")
 def create_session() -> dict:
-    """Tạo một phiên chat mới và trả về session_id do server cấp.
-
-    Đây là cách duy nhất để tạo session — planner_chat không còn tự tạo session
-    nữa, để đảm bảo rằng một session_id chưa được cấp sẽ nhận 404.
-    """
+    """Tạo một phiên chat mới và trả về session_id do server cấp."""
     session = registry.create()
     from datetime import datetime
 
@@ -93,22 +90,52 @@ def delete_session(session_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+
+@router.post("/chat/select_hotel", response_model=PlannerChatResponse)
+def select_hotel(request: SelectHotelRequest) -> PlannerChatResponse:
+    session_id = str(request.session_id)
+    registry.evict_expired()
+    session = registry.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
+        
+    with session.lock:
+        try:
+            from src.agents.session import handle_frontend_hotel_selection, derive_stage, suggestions_for
+            
+            result = handle_frontend_hotel_selection(session, request.hotel_id)
+            
+            safe_reply = sanitize_system_error(result.text, session_id=session_id)
+            suggestions = suggestions_for(derive_stage(session, result.tool))
+            hotel_options = to_hotel_options_payload(session.pending_hotel_selection)
+            trip_plan = to_trip_plan_payload(session.trip_data)
+            intake = IntakeStatus.from_state(session.intake_state, session.hotel_pref_state)
+            
+            requires_stay_dates = bool(
+                session.intake_state.destination
+                and session.intake_state.people
+                and session.hotel_pref_state.is_complete
+                and not session.intake_state.has_explicit_stay_dates
+            )
+
+            return PlannerChatResponse(
+                session_id=session_id,
+                reply=safe_reply,
+                suggestions=suggestions,
+                stage=derive_stage(session, result.tool),
+                hotel_options=hotel_options,
+                trip_plan=trip_plan,
+                intake=intake,
+                requires_stay_dates=requires_stay_dates,
+            )
+        except Exception as exc:
+            logger.exception("Chat error for session %s", session_id)
+            raise HTTPException(status_code=500, detail="Lỗi xử lý yêu cầu.") from exc
+
+
 @router.post("/planner_chat", response_model=PlannerChatResponse)
 def planner_chat(request: PlannerChatRequest) -> PlannerChatResponse:
-    """Chat với trip planner thật.
-
-    A plain `def` (not `async def`) so FastAPI runs it in its worker thread
-    pool — process_chat_turn calls synchronous LangChain `.invoke()`s that
-    would otherwise block the event loop.
-
-    Phase 3 changes vs the Phase 2 handler:
-    - session_id is now a UUID (RT-6); malformed ids get 422 from pydantic.
-    - registry.get() → 404 for an unknown id; never auto-creates a session.
-    - per-session lock serialises same-session concurrent requests.
-    - evict_expired() runs before the lock, skipping locked sessions.
-    - response fields (stage, hotel_options, trip_plan, intake) assembled once.
-    - raw exception text never reaches the response body.
-    """
+    """Chat với trip planner thật."""
     session_id = str(request.session_id)
 
     registry.evict_expired()
@@ -118,7 +145,21 @@ def planner_chat(request: PlannerChatRequest) -> PlannerChatResponse:
 
     with session.lock:
         try:
-            result = process_chat_turn(session, request.message)
+            if request.min_price is not None or request.max_price is not None:
+                from src.services.hotel_selection import HotelPreferenceState
+                session.hotel_pref_state = HotelPreferenceState(
+                    stage="done",
+                    min_price=request.min_price,
+                    max_price=request.max_price,
+                    target_price=request.max_price or request.min_price,
+                )
+
+            stay_dates = (
+                (request.stay_dates.start_date.isoformat(), request.stay_dates.end_date.isoformat())
+                if request.stay_dates is not None
+                else None
+            )
+            result = process_chat_turn(session, request.message or "", stay_dates=stay_dates)
             suggestions_raw = suggestions_for(session)
         except Exception:
             logger.exception("Unexpected error in planner_chat for session %s", session_id)
@@ -131,13 +172,17 @@ def planner_chat(request: PlannerChatRequest) -> PlannerChatResponse:
 
     stage = derive_stage(result)
 
-    # Build both hotel_options and suggestions from the SAME source so they
-    # can never disagree on the pending list (asserted in tests).
     hotel_options = to_hotel_options_payload(session.pending_hotel_selection)
     suggestions = [{"label": s["label"], "value": s["value"]} for s in suggestions_raw]
 
     trip_plan = to_trip_plan_payload(session.trip_data)
-    intake = IntakeStatus.from_state(session.intake_state)
+    intake = IntakeStatus.from_state(session.intake_state, session.hotel_pref_state)
+    requires_stay_dates = bool(
+        session.intake_state.destination
+        and session.intake_state.people
+        and session.hotel_pref_state.is_complete
+        and not session.intake_state.has_explicit_stay_dates
+    )
 
     return PlannerChatResponse(
         session_id=session_id,
@@ -147,12 +192,12 @@ def planner_chat(request: PlannerChatRequest) -> PlannerChatResponse:
         hotel_options=hotel_options,
         trip_plan=trip_plan,
         intake=intake,
+        requires_stay_dates=requires_stay_dates,
     )
 
 
-
 # ---------------------------------------------------------------------------
-# Utility endpoints (unchanged)
+# Utility endpoints
 # ---------------------------------------------------------------------------
 
 

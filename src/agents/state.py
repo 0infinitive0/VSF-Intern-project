@@ -56,6 +56,7 @@ class TripState(TypedDict):
     pending_trip_edit_request: str | None
     pending_trip_preference_request: str | None
     preference_replacement_state: dict[str, Any] | None
+    pending_parameter_confirmation: bool
     route: str | None
     reroute_count: int
     reply: str
@@ -77,6 +78,7 @@ def initial_state(session_id: str) -> TripState:
         pending_trip_edit_request=None,
         pending_trip_preference_request=None,
         preference_replacement_state=None,
+        pending_parameter_confirmation=False,
         route=None,
         reroute_count=0,
         reply="",

@@ -15,11 +15,12 @@ Phase 3 additions:
 
 from __future__ import annotations
 
+from datetime import date
 import logging
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,7 @@ class HotelOption(BaseModel):
     total_stay_price: float | None = Field(default=None, description="Tổng giá cho toàn bộ số đêm")
     stay_night_count: int | None = Field(default=None, description="Số đêm đã báo giá")
     currency: str | None = Field(default=None, description="Đơn vị tiền tệ của báo giá")
+    coordinates: str | None = Field(default=None, description="Tọa độ lat,lng của khách sạn")
 
 
 class ItineraryItem(BaseModel):
@@ -96,6 +98,7 @@ class ItineraryItem(BaseModel):
     kind: str | None = None
     reference_type: str | None = None
     reference_id: str | None = None
+    coordinates: str | None = None
 
 
 class DayPlan(BaseModel):
@@ -114,9 +117,9 @@ class TripPlanHotel(BaseModel):
 
 
 class TripPlanPayload(BaseModel):
-    """Structured trip plan for the React UI.  Null until a hotel is picked."""
+    """Phase 3 payload for the trip plan right panel."""
 
-    status: str | None = Field(default=None, description="Draft | Finalized")
+    status: str | None = None
     destination: str | None = None
     duration_days: int | None = None
     start_date: str | None = None
@@ -148,14 +151,16 @@ class IntakeStatus(BaseModel):
         default_factory=list,
         description="Real budget/accommodation tier labels from hotel_selection",
     )
+    min_price: float | None = None
+    max_price: float | None = None
     missing: list[str] = Field(
         default_factory=list,
-        description="Names of fields still needed: 'destination', 'duration', 'start_date', 'people'",
+        description="Names of fields still needed: 'destination', 'people', 'start_date', 'end_date'",
     )
 
     @classmethod
-    def from_state(cls, intake_state: Any) -> IntakeStatus:
-        """Build from a TripIntakeState without importing it here."""
+    def from_state(cls, intake_state: Any, hotel_pref_state: Any = None) -> IntakeStatus:
+        """Build from a TripIntakeState and optional HotelPreferenceState."""
         destination = getattr(intake_state, "destination", None)
         duration = getattr(intake_state, "duration", None)
         start_date = getattr(intake_state, "start_date", None)
@@ -176,6 +181,8 @@ class IntakeStatus(BaseModel):
         pace = getattr(intake_state, "pace", None)
         day_rhythm = list(getattr(intake_state, "day_rhythm", ()) or ())
         notes = getattr(intake_state, "notes", "") or ""
+        min_price = getattr(hotel_pref_state, "min_price", None) if hotel_pref_state else None
+        max_price = getattr(hotel_pref_state, "max_price", None) if hotel_pref_state else None
         return cls(
             destination=destination,
             duration=duration,
@@ -189,58 +196,72 @@ class IntakeStatus(BaseModel):
             notes=notes,
             available_destinations=_available_destination_names(),
             budget_options=_budget_tier_labels(),
+            min_price=min_price,
+            max_price=max_price,
             missing=missing,
         )
 
 
-# ---------------------------------------------------------------------------
-# Planner chat models (Phase 3 extended)
-# ---------------------------------------------------------------------------
-
-
-class ChatSuggestion(BaseModel):
+class SuggestionPayload(BaseModel):
     label: str = Field(..., description="Chữ hiển thị trên nút gợi ý")
     value: str = Field(..., description="Nội dung gửi đi khi bấm nút")
 
 
+class StayDatesInput(BaseModel):
+    """Date-range data emitted by the frontend control."""
+
+    start_date: date
+    end_date: date
+
+    @model_validator(mode="after")
+    def end_date_must_follow_start_date(self) -> StayDatesInput:
+        if self.end_date <= self.start_date:
+            raise ValueError("end_date must be after start_date")
+        return self
+
+
+ChatStage = Literal["intake", "hotel_options", "planned", "modified", "finalized", "error"]
+
+
 class PlannerChatRequest(BaseModel):
-    # session_id typed as UUID so malformed ids are rejected at the pydantic
-    # boundary (422) rather than silently treated as valid. Safe for GET /chat
-    # which generates ids with crypto.randomUUID() (RT-6).
-    session_id: UUID = Field(..., description="UUID phiên chat do trình duyệt tự sinh")
-    message: str = Field(..., min_length=1, max_length=5000, description="Tin nhắn từ user")
+    session_id: UUID
+    message: str | None = None
+    stay_dates: StayDatesInput | None = None
+    min_price: float | None = None
+    max_price: float | None = None
+
+    @model_validator(mode="after")
+    def includes_message_or_stay_dates(self) -> PlannerChatRequest:
+        if (
+            not self.message
+            and self.stay_dates is None
+            and self.min_price is None
+            and self.max_price is None
+        ):
+            raise ValueError(
+                "Must specify at least one of message, stay_dates, min_price, or max_price."
+            )
+        return self
+
+
+class SelectHotelRequest(BaseModel):
+    session_id: UUID
+    hotel_id: str
 
 
 class PlannerChatResponse(BaseModel):
-    session_id: str = Field(..., description="UUID phiên đang hoạt động")
-    reply: str = Field(..., description="Phản hồi từ trip planner")
-    suggestions: list[ChatSuggestion] = Field(
-        default_factory=list,
-        description=(
-            "Các lựa chọn bấm nhanh cho lượt kế tiếp. Rỗng nghĩa là lượt này chờ "
-            "người dùng nhập tự do — UI không được tự suy ra nút từ nội dung trả lời."
-        ),
-    )
-    stage: str = Field(
-        default="intake",
-        description="intake | hotel_options | planned | modified | finalized | error",
-    )
-    hotel_options: list[HotelOption] = Field(
-        default_factory=list,
-        description="Danh sách khách sạn khi stage=hotel_options; rỗng ở các stage khác",
-    )
-    trip_plan: TripPlanPayload | None = Field(
-        default=None,
-        description="Kế hoạch chuyến đi có cấu trúc; null cho đến khi chọn xong khách sạn",
-    )
-    intake: IntakeStatus | None = Field(
-        default=None,
-        description="Trạng thái thu thập thông tin; null sau khi intake hoàn thành",
-    )
+    session_id: str
+    reply: str
+    suggestions: list[SuggestionPayload] = Field(default_factory=list)
+    stage: ChatStage
+    hotel_options: list[HotelOption] = Field(default_factory=list)
+    trip_plan: TripPlanPayload | None = None
+    intake: IntakeStatus | None = None
+    requires_stay_dates: bool = False
 
 
 # ---------------------------------------------------------------------------
-# Converter helpers  (called from routes.py, not re-implemented per branch)
+# Converters & Sanitizers
 # ---------------------------------------------------------------------------
 
 
@@ -310,18 +331,17 @@ def sanitize_system_error(text: str, *, session_id: str | None = None) -> str:
 
 
 def to_hotel_options_payload(pending: dict[str, Any] | None) -> list[HotelOption]:
-    """Convert session.pending_hotel_selection to a list of HotelOption.
-
-    Must produce indices that agree with suggestions_for() — both are derived
-    from pending["options"] in the same 1-based order.  A test asserts this.
-    """
-    if not pending:
+    """Convert session.pending_hotel_selection to a list of HotelOption."""
+    if not pending or not isinstance(pending, dict):
         return []
     options = []
     for index, option in enumerate(pending.get("options") or [], start=1):
         name = str(option.get("name") or "").strip()
         if not name:
             continue
+        coords = option.get("coordinates")
+        if not coords and option.get("latitude") and option.get("longitude"):
+            coords = f"{option.get('latitude')},{option.get('longitude')}"
         options.append(
             HotelOption(
                 index=index,
@@ -334,6 +354,7 @@ def to_hotel_options_payload(pending: dict[str, Any] | None) -> list[HotelOption
                 total_stay_price=option.get("total_stay_price"),
                 stay_night_count=option.get("stay_night_count"),
                 currency=option.get("currency"),
+                coordinates=str(coords) if coords else None,
             )
         )
     return options
@@ -341,94 +362,10 @@ def to_hotel_options_payload(pending: dict[str, Any] | None) -> list[HotelOption
 
 def to_trip_plan_payload(trip_data: dict[str, Any] | None) -> TripPlanPayload | None:
     """Convert session.trip_data to a TripPlanPayload, or None if absent."""
-    if trip_data is None:
+    if not trip_data or not isinstance(trip_data, dict):
         return None
-    if not isinstance(trip_data, dict):
+    from src.services.trip_formatter import to_trip_plan_payload as format_trip_plan
+    dict_payload = format_trip_plan(trip_data)
+    if not dict_payload:
         return None
-
-    itinerary = (trip_data.get("itineraries") or [{}])[0] if trip_data.get("itineraries") else {}
-    hotel_raw = itinerary.get("hotel") if isinstance(itinerary, dict) else None
-
-    hotel = None
-    if isinstance(hotel_raw, dict):
-        hotel = TripPlanHotel(
-            id=str(hotel_raw.get("id") or ""),
-            name=str(hotel_raw.get("name") or ""),
-            star_rating=hotel_raw.get("star_rating"),
-            description=hotel_raw.get("description"),
-            matched_rooms=list(hotel_raw.get("matched_room_names") or []),
-            coordinates=hotel_raw.get("coordinates"),
-        )
-
-    days_raw = itinerary.get("days") or [] if isinstance(itinerary, dict) else []
-    days = []
-    for day_raw in days_raw:
-        if not isinstance(day_raw, dict):
-            continue
-        items = []
-        for item_raw in day_raw.get("items") or []:
-            if not isinstance(item_raw, dict):
-                continue
-            items.append(
-                ItineraryItem(
-                    order_index=item_raw.get("order_index"),
-                    start_time=item_raw.get("start_time"),
-                    end_time=item_raw.get("end_time"),
-                    activity=item_raw.get("activity"),
-                    kind=item_raw.get("kind"),
-                    reference_type=item_raw.get("reference_type"),
-                    reference_id=str(item_raw.get("reference_id") or ""),
-                )
-            )
-        days.append(
-            DayPlan(
-                day_number=day_raw.get("day_number"),
-                theme=day_raw.get("theme"),
-                items=items,
-            )
-        )
-
-    # Top-level fields may be on the itinerary or on trip_data directly
-    destination = (
-        (isinstance(itinerary, dict) and itinerary.get("destination"))
-        or trip_data.get("destination")
-        or None
-    )
-    duration_days_raw = (
-        (isinstance(itinerary, dict) and itinerary.get("duration_days"))
-        or trip_data.get("duration_days")
-        or None
-    )
-    try:
-        duration_days = int(duration_days_raw) if duration_days_raw is not None else None
-    except (TypeError, ValueError):
-        duration_days = None
-
-    number_of_adults_raw = (
-        (isinstance(itinerary, dict) and itinerary.get("number_of_adults"))
-        or trip_data.get("number_of_adults")
-        or None
-    )
-    try:
-        number_of_adults = int(number_of_adults_raw) if number_of_adults_raw is not None else None
-    except (TypeError, ValueError):
-        number_of_adults = None
-
-    status = (isinstance(itinerary, dict) and itinerary.get("status")) or trip_data.get("status")
-    start_date = (isinstance(itinerary, dict) and itinerary.get("start_date")) or trip_data.get("start_date")
-    end_date = (isinstance(itinerary, dict) and itinerary.get("end_date")) or trip_data.get("end_date")
-
-    adjustments_raw = trip_data.get("adjustments") or []
-    adjustments = [str(a) for a in adjustments_raw if a]
-
-    return TripPlanPayload(
-        status=str(status) if status else None,
-        destination=str(destination) if destination else None,
-        duration_days=duration_days,
-        start_date=str(start_date) if start_date else None,
-        end_date=str(end_date) if end_date else None,
-        number_of_adults=number_of_adults,
-        hotel=hotel,
-        days=days,
-        adjustments=adjustments,
-    )
+    return TripPlanPayload.model_validate(dict_payload)

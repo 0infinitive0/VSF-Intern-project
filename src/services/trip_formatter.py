@@ -180,7 +180,7 @@ def format_hotel_options(options: list[tuple[dict[str, Any], PlaceCandidate]]) -
     if not options:
         return "Không tìm thấy khách sạn phù hợp. Bạn thử mô tả khác hoặc đổi điểm đến xem sao."
 
-    lines = ["Mình tìm được vài khách sạn phù hợp, bạn chọn giúp mình nhé:", "------"]
+    lines = ["Mình đã tìm được danh sách khách sạn phù hợp. Bạn xem và chọn trực tiếp khách sạn mong muốn trong tab Khách sạn để tạo lịch trình nhé!", "------"]
     for data, _candidate in options:
         rank = data.get("rank", "?")
         name = data.get("name") or "Khách sạn chưa xác định"
@@ -231,7 +231,7 @@ def format_hotel_options(options: list[tuple[dict[str, Any], PlaceCandidate]]) -
 
         lines.append("------")
 
-    lines.append("Trả lời bằng số thứ tự hoặc tên khách sạn để chọn.")
+    lines.append("Bạn hãy nhấn nút 'Chọn khách sạn này' ở tab Khách sạn để tiếp tục tạo lịch trình.")
     return "\n".join(lines)
 
 
@@ -282,6 +282,11 @@ def to_trip_plan_payload(trip_data: dict[str, Any] | None) -> dict[str, Any] | N
                         "kind": item.get("item_kind") or item.get("kind"),
                         "reference_type": item.get("reference_type"),
                         "reference_id": item.get("reference_id"),
+                        "coordinates": (
+                            f"{item.get('coordinates')[0]},{item.get('coordinates')[1]}"
+                            if isinstance(item.get("coordinates"), (list, tuple)) and len(item.get("coordinates")) == 2
+                            else str(item.get("coordinates")) if item.get("coordinates") else None
+                        ),
                     }
                     for item in day_items
                 ],

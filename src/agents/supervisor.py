@@ -27,10 +27,7 @@ from src.services.llm import get_llm
 logger = logging.getLogger(__name__)
 
 
-@tool
-def route_select_hotel() -> str:
-    """The user is picking a hotel from a list that was just shown (a number or a hotel name)."""
-    return "select_hotel"
+
 
 
 @tool
@@ -64,7 +61,6 @@ def route_chat() -> str:
 
 
 _ROUTE_TOOLS = [
-    route_select_hotel,
     route_finalize,
     route_new_trip,
     route_edit_draft,

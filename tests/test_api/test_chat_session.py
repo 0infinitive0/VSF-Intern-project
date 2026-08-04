@@ -22,6 +22,7 @@ from src.agents.session import (
 )
 from src.models.schemas import (
     IntakeStatus,
+    PlannerChatRequest,
     sanitize_system_error,
     to_hotel_options_payload,
     to_trip_plan_payload,
@@ -261,7 +262,7 @@ class TestIntakeStatus:
 
         state = TripIntakeState()
         status = IntakeStatus.from_state(state)
-        assert set(status.missing) == {"destination", "duration", "start_date", "people"}
+        assert set(status.missing) == {"destination", "people", "start_date", "end_date"}
 
     def test_missing_people_only(self):
         from dataclasses import replace
@@ -296,6 +297,25 @@ class TestIntakeStatus:
 
         assert status.start_date == "2026-08-10"
         assert status.end_date == "2026-08-13"
+
+
+class TestPlannerChatStayDates:
+    def test_accepts_frontend_dates_without_a_chat_message(self):
+        request = PlannerChatRequest(
+            session_id=uuid.uuid4(),
+            stay_dates={"start_date": "2026-08-10", "end_date": "2026-08-13"},
+        )
+
+        assert request.message is None
+        assert request.stay_dates is not None
+        assert request.stay_dates.start_date.isoformat() == "2026-08-10"
+
+    def test_rejects_a_checkout_date_not_after_checkin(self):
+        with pytest.raises(ValueError, match="end_date must be after start_date"):
+            PlannerChatRequest(
+                session_id=uuid.uuid4(),
+                stay_dates={"start_date": "2026-08-10", "end_date": "2026-08-10"},
+            )
 
 
 # ---------------------------------------------------------------------------

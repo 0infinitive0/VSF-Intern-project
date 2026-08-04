@@ -20,13 +20,12 @@ from src.agents.tools.direct_invoke import invoke_tool_directly
 from src.agents.tools.finalize_itinerary import finalize_trip_plan
 from src.agents.tools.modify_itinerary import modify_trip_plan
 from src.agents.tools.recommend_hotels import recommend_hotels
-from src.agents.tools.select_hotel import select_hotel
 from src.services.llm import get_llm
 
 if TYPE_CHECKING:
     from src.agents.session import TripSession
 
-_AGENT_TOOLS = [recommend_hotels, select_hotel, modify_trip_plan, finalize_trip_plan]
+_AGENT_TOOLS = [recommend_hotels, modify_trip_plan, finalize_trip_plan]
 
 
 class _ToolAdapter:
@@ -67,7 +66,6 @@ class SessionTools(NamedTuple):
     module docstring."""
 
     recommend_hotels: object
-    select_hotel: object
     modify_trip_plan: object
     finalize_trip_plan: object
 
@@ -80,7 +78,6 @@ def build_trip_agent(session: TripSession, *, temperature: float = 0.3):
     TripSession."""
     tools = SessionTools(
         recommend_hotels=_ToolAdapter(recommend_hotels, session),
-        select_hotel=_ToolAdapter(select_hotel, session),
         modify_trip_plan=_ToolAdapter(modify_trip_plan, session),
         finalize_trip_plan=_ToolAdapter(finalize_trip_plan, session),
     )

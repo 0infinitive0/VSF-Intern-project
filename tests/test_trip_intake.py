@@ -245,6 +245,28 @@ def test_intake_requires_start_date_and_derives_exclusive_end_date(monkeypatch) 
     assert state.tool_arguments()["end_date"] == "2026-08-12"
 
 
+def test_intake_calculates_nights_from_explicit_start_and_end_dates(monkeypatch) -> None:
+    _mock_extraction(
+        monkeypatch,
+        {
+            "10/08/2026": {"start_date": "2026-08-10"},
+            "13/08/2026": {"end_date": "2026-08-13"},
+        },
+    )
+    state = TripIntakeState(destination="Đà Nẵng", people="2 người")
+
+    state = state.with_message("10/08/2026", DESTINATIONS)
+    assert state.next_question() == "Bạn dự định kết thúc chuyến đi vào ngày nào?"
+
+    state = state.with_message("13/08/2026", DESTINATIONS)
+
+    assert state.is_complete
+    assert state.start_date == "2026-08-10"
+    assert state.end_date == "2026-08-13"
+    assert state.duration == "3 ngày"
+    assert state.tool_arguments()["duration"] == "3 ngày"
+
+
 def test_match_known_destination_exact_and_alias_match() -> None:
     destinations = destination_options_from_rows(
         [{"name": "Hồ Chí Minh", "aliases": ["TP HCM", "TPHCM", "HCM", "Sài Gòn"]}]

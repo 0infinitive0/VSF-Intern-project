@@ -1,3 +1,4 @@
+import unicodedata
 import json
 import logging
 import math
@@ -158,6 +159,7 @@ def _get_destination_id_by_name(destination_name: str) -> Optional[str]:
         return None
     try:
         supabase = get_supabase_client()
+        destination_name = unicodedata.normalize('NFC', destination_name)
         res = supabase.table("destinations").select("id").ilike("name", f"%{destination_name}%").limit(1).execute()
         if res.data and len(res.data) > 0:
             return res.data[0]["id"]

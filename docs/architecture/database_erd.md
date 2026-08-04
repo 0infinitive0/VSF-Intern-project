@@ -90,7 +90,6 @@ erDiagram
         DECIMAL review_score
         VARCHAR review_text
         TEXT source_url
-        TEXT package_details
         TIMESTAMP crawled_at
     }
     

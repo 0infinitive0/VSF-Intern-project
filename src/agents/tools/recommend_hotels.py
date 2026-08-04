@@ -127,6 +127,18 @@ def recommend_hotels(
         )
         return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
 
+    # Append to existing options if available
+    existing_options = []
+    if runtime.state.get("pending_hotel_selection"):
+        existing_options = runtime.state["pending_hotel_selection"].get("options", [])
+    
+    existing_ids = {str(opt.get("id", "")) for opt in existing_options}
+    new_options = [data for data, _candidate in options if str(data.get("id", "")) not in existing_ids]
+    
+    combined_options = existing_options + new_options
+    for idx, opt in enumerate(combined_options, start=1):
+        opt["rank"] = idx
+
     pending_payload = {
         "mode": "new_trip",
         "destination": clean_destination,
@@ -139,9 +151,9 @@ def recommend_hotels(
         "hotel_query": hotel_query,
         "intake_context": intake_context,
         "created_at": datetime.now().isoformat(),
-        "options": [data for data, _candidate in options],
+        "options": combined_options,
     }
-    reply = format_hotel_options(options)
+    reply = "Mình đã tìm được danh sách khách sạn phù hợp. Bạn xem và chọn trực tiếp khách sạn mong muốn trong tab Khách sạn để tạo lịch trình nhé!"
     return Command(
         update={
             "pending_hotel_selection": pending_payload,
