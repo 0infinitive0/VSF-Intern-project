@@ -174,11 +174,10 @@ def recommend_hotels(
         "created_at": datetime.now().isoformat(),
         "options": combined_options,
     }
-<<<<<<< Updated upstream:backend/src/agents/tools/recommend_hotels.py
-    reply = "Mình đã tìm được danh sách khách sạn phù hợp. Bạn xem và chọn trực tiếp khách sạn mong muốn trong tab Khách sạn để tạo lịch trình nhé!"
-=======
-    reply = format_hotel_options(options, language)
->>>>>>> Stashed changes:src/agents/tools/recommend_hotels.py
+    reply = t(
+        "Mình đã tìm được danh sách khách sạn phù hợp. Bạn xem và chọn trực tiếp khách sạn mong muốn trong tab Khách sạn để tạo lịch trình nhé!",
+        language,
+    )
     return Command(
         update={
             "pending_hotel_selection": pending_payload,

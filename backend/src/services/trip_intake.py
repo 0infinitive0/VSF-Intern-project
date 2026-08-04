@@ -25,7 +25,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from src.i18n import t
-from src.services.llm import get_llm
+from src.services.llm import get_reasoning_llm as get_llm
 
 logger = logging.getLogger(__name__)
 
@@ -362,29 +362,18 @@ class TripIntakeState:
                 for option in destination_names
             )
             if choices:
-<<<<<<< Updated upstream:backend/src/services/trip_intake.py
-                return f"Bạn muốn đi đâu? Hiện mình có dữ liệu cho: {choices}."
-            return "Bạn muốn đi đâu?"
-        if not self.people:
-            return "Chuyến đi có bao nhiêu người?"
-        if not self.start_date:
-            return "Bạn dự định bắt đầu chuyến đi vào ngày nào?"
-        if not self.has_explicit_stay_dates:
-            return "Bạn dự định kết thúc chuyến đi vào ngày nào?"
-=======
                 return t(
                     "Bạn muốn đi đâu? Hiện mình có dữ liệu cho: {choices}.",
                     language,
                     choices=choices,
                 )
             return t("Bạn muốn đi đâu?", language)
-        if not self.duration:
-            return t("Bạn dự định đi trong bao lâu?", language)
-        if not self.start_date:
-            return t("Bạn dự định bắt đầu chuyến đi vào ngày nào?", language)
         if not self.people:
             return t("Chuyến đi có bao nhiêu người?", language)
->>>>>>> Stashed changes:src/services/trip_intake.py
+        if not self.start_date:
+            return t("Bạn dự định bắt đầu chuyến đi vào ngày nào?", language)
+        if not self.has_explicit_stay_dates:
+            return t("Bạn dự định kết thúc chuyến đi vào ngày nào?", language)
         return None
 
     def tool_arguments(self) -> dict[str, str]:

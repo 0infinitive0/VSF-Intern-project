@@ -145,7 +145,6 @@ def planner_chat(request: PlannerChatRequest) -> PlannerChatResponse:
 
     with session.lock:
         try:
-<<<<<<< Updated upstream:backend/src/api/routes.py
             if request.min_price is not None or request.max_price is not None:
                 from src.services.hotel_selection import HotelPreferenceState
                 session.hotel_pref_state = HotelPreferenceState(
@@ -160,10 +159,12 @@ def planner_chat(request: PlannerChatRequest) -> PlannerChatResponse:
                 if request.stay_dates is not None
                 else None
             )
-            result = process_chat_turn(session, request.message or "", stay_dates=stay_dates)
-=======
-            result = process_chat_turn(session, request.message, language=request.language)
->>>>>>> Stashed changes:src/api/routes.py
+            result = process_chat_turn(
+                session,
+                request.message or "",
+                stay_dates=stay_dates,
+                language=request.language,
+            )
             suggestions_raw = suggestions_for(session)
         except Exception:
             logger.exception("Unexpected error in planner_chat for session %s", session_id)

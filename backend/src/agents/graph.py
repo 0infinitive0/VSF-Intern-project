@@ -20,7 +20,7 @@ from src.agents.tools.direct_invoke import invoke_tool_directly
 from src.agents.tools.finalize_itinerary import finalize_trip_plan
 from src.agents.tools.modify_itinerary import modify_trip_plan
 from src.agents.tools.recommend_hotels import recommend_hotels
-from src.services.llm import get_llm
+from src.services.llm import get_reasoning_llm as get_llm
 
 if TYPE_CHECKING:
     from src.agents.session import TripSession

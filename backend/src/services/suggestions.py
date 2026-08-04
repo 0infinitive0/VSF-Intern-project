@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any, List
 
-from src.services.llm import get_llm
+from src.services.llm import get_fast_llm as get_llm
 
 logger = logging.getLogger(__name__)
 

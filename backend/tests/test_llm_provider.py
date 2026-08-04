@@ -8,7 +8,7 @@ from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from src.config import Settings, get_settings
-from src.services.llm import get_embeddings, get_llm
+from src.services.llm import get_embeddings, get_fast_llm, get_llm, get_reasoning_llm
 
 _PROVIDER_ENV_PREFIXES = ("LLM_", "EMBEDDING_")
 _PROVIDER_ENV_KEYS = ("OPENAI_API_KEY", "OPENROUTER_API_KEY")
@@ -39,6 +39,28 @@ def test_get_llm_default_ollama():
     llm = get_llm(provider="ollama")
     assert isinstance(llm, ChatOllama)
     assert llm.model == "llama3.1"
+
+
+def test_role_specific_llms_use_their_configured_models(monkeypatch):
+    """The fast path must not accidentally consume the reasoning-model budget."""
+    monkeypatch.setenv("LLM_REASONING_MODEL", "reasoning-model")
+    monkeypatch.setenv("LLM_FAST_MODEL", "fast-model")
+
+    with patch("src.services.llm.get_llm") as factory:
+        get_reasoning_llm(temperature=0.0)
+        get_fast_llm(temperature=0.7)
+
+    assert factory.call_args_list[0].kwargs == {"model": "reasoning-model", "temperature": 0.0}
+    assert factory.call_args_list[1].kwargs == {"model": "fast-model", "temperature": 0.7}
+
+
+def test_role_specific_llm_allows_an_explicit_model_override(monkeypatch):
+    monkeypatch.setenv("LLM_FAST_MODEL", "fast-model")
+
+    with patch("src.services.llm.get_llm") as factory:
+        get_fast_llm(model="test-model")
+
+    assert factory.call_args.kwargs["model"] == "test-model"
 
 
 def test_get_llm_openai_without_key_falls_back():

@@ -22,7 +22,7 @@ from langgraph.prebuilt import create_react_agent
 
 from src.agents.prompts import SUPERVISOR_ROUTER_PROMPT
 from src.agents.routing_decision import route_context_from_state
-from src.services.llm import get_llm
+from src.services.llm import get_reasoning_llm as get_llm
 
 logger = logging.getLogger(__name__)
 

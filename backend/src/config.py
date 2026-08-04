@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     llm_temperature: float = Field(default=0.3, ge=0.0, le=2.0)
     llm_provider: str = "ollama"
     llm_model: str = "llama3.1"
+    llm_reasoning_model: str = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+    llm_fast_model: str = "@cf/meta/llama-3.1-8b-instruct-fast"
     llm_api_key: str = ""
     llm_api_base: str = ""
 

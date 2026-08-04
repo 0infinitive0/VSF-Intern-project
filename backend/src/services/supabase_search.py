@@ -96,7 +96,7 @@ def _execute_rpc(rpc_name: str, params: dict) -> list:
     return res.data or []
 
 
-from src.services.llm import get_embeddings as factory_get_embeddings, get_llm
+from src.services.llm import get_embeddings as factory_get_embeddings, get_reasoning_llm as get_llm
 
 
 @lru_cache
@@ -221,8 +221,8 @@ def search_hotels_with_rooms(
         params["filter_min_price"] = resolved_min_price
     if resolved_max_price is not None:
         params["filter_max_price"] = resolved_max_price
+    valid_excluded_ids: list[str] = []
     if exclude_hotel_ids:
-        valid_excluded_ids: list[str] = []
         for hotel_id in exclude_hotel_ids:
             try:
                 normalized_id = str(UUID(str(hotel_id)))
@@ -240,7 +240,25 @@ def search_hotels_with_rooms(
         params["root_longitude"] = radius.root_longitude
         params["max_radius_km"] = radius.max_radius_km
 
-    data = _execute_rpc("match_hotels_with_rooms", params)
+    try:
+        data = _execute_rpc("match_hotels_with_rooms", params)
+    except Exception as exc:
+        # Deploying the exclusion-aware RPC can lag behind the backend. Keep the
+        # hotel search available against the prior date/radius-aware signature
+        # while filtering already-presented hotels locally.
+        if not valid_excluded_ids or not _is_missing_exclusion_rpc_signature(exc):
+            raise
+        fallback_params = params.copy()
+        fallback_params.pop("filter_exclude_hotel_ids", None)
+        fallback_params["match_count"] = fetch_count + len(valid_excluded_ids)
+        logger.warning(
+            "match_hotels_with_rooms lacks filter_exclude_hotel_ids; using local exclusion fallback"
+        )
+        data = _execute_rpc("match_hotels_with_rooms", fallback_params)
+
+    if valid_excluded_ids:
+        excluded_id_set = set(valid_excluded_ids)
+        data = [hotel for hotel in data if str(hotel.get("id")) not in excluded_id_set]
 
     if not min_star_rating or min_star_rating <= 0:
         return data[:match_count]
@@ -257,6 +275,12 @@ def search_hotels_with_rooms(
         return data[:match_count]
 
     return filtered_data[:match_count]
+
+
+def _is_missing_exclusion_rpc_signature(exc: Exception) -> bool:
+    """Return whether PostgREST rejected only the newly added exclusion parameter."""
+    error_text = str(exc)
+    return "PGRST202" in error_text and "filter_exclude_hotel_ids" in error_text
 
 
 def search_attractions(

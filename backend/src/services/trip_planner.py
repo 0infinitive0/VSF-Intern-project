@@ -30,7 +30,7 @@ from src.services.itinerary_reuse import (
     validate_template_bundle,
 )
 from src.services.itinerary_store import ItineraryStore, ItineraryStoreError
-from src.services.llm import get_llm
+from src.services.llm import get_reasoning_llm as get_llm
 from src.services.supabase_search import (
     search_attractions as rpc_search_attractions,
 )

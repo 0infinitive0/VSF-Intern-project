@@ -87,6 +87,33 @@ def test_search_hotels_forwards_excluded_hotel_ids_as_rpc_param(monkeypatch):
     assert client.captured_params["filter_exclude_hotel_ids"] == excluded_ids
 
 
+def test_search_hotels_falls_back_when_live_rpc_lacks_exclusion_parameter(monkeypatch):
+    excluded_id = "9a6c6e89-328f-4d49-b171-2f1beef7ea01"
+    fresh_id = "d1227682-d9f3-42c1-8848-9bd592a7b781"
+    rpc_calls = []
+
+    def fake_execute_rpc(_name, params):
+        rpc_calls.append(params.copy())
+        if len(rpc_calls) == 1:
+            raise RuntimeError("PGRST202: missing filter_exclude_hotel_ids")
+        return [{"id": excluded_id}, {"id": fresh_id}]
+
+    _patch_client_and_embeddings(monkeypatch, data=[])
+    monkeypatch.setattr(supabase_search_module, "_execute_rpc", fake_execute_rpc)
+
+    results = search_hotels_with_rooms(
+        "Hotel in Da Nang",
+        match_count=1,
+        use_llm_filter=False,
+        exclude_hotel_ids=[excluded_id],
+    )
+
+    assert [hotel["id"] for hotel in results] == [fresh_id]
+    assert rpc_calls[0]["filter_exclude_hotel_ids"] == [excluded_id]
+    assert "filter_exclude_hotel_ids" not in rpc_calls[1]
+    assert rpc_calls[1]["match_count"] == 2
+
+
 def test_search_hotels_forwards_complete_stay_dates_as_rpc_params(monkeypatch):
     client = _patch_client_and_embeddings(monkeypatch, data=[])
 

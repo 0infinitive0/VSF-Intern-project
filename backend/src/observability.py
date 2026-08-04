@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import os
+from contextvars import ContextVar
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from time import perf_counter
@@ -15,6 +16,8 @@ from fastapi import FastAPI, Request
 _DEFAULT_LOG_DIR = Path(__file__).resolve().parents[1] / "logs"
 _MAX_LOG_BYTES = 5 * 1024 * 1024
 _BACKUP_COUNT = 5
+_REQUEST_CONTEXT: ContextVar[dict[str, str] | None] = ContextVar("api_error_request_context", default=None)
+_ACTIVE_ERROR_LOGGER: ContextVar[logging.Logger | None] = ContextVar("active_api_error_logger", default=None)
 
 
 def _error_logger(log_dir: Path | None = None) -> logging.Logger:
@@ -52,30 +55,41 @@ def install_api_error_logging(app: FastAPI, log_dir: Path | None = None) -> None
     async def log_api_error(request: Request, call_next):
         request_id = uuid4().hex
         started_at = perf_counter()
-
+        context_token = _REQUEST_CONTEXT.set(
+            {
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+            }
+        )
+        logger_token = _ACTIVE_ERROR_LOGGER.set(logger)
         try:
-            response = await call_next(request)
-        except Exception as exc:
-            _write_api_error(
-                logger=logger,
-                request_id=request_id,
-                request=request,
-                status_code=500,
-                duration_ms=(perf_counter() - started_at) * 1000,
-                exception_type=type(exc).__name__,
-            )
-            raise
+            try:
+                response = await call_next(request)
+            except Exception as exc:
+                _write_api_error(
+                    logger=logger,
+                    request_id=request_id,
+                    request=request,
+                    status_code=500,
+                    duration_ms=(perf_counter() - started_at) * 1000,
+                    exception_type=type(exc).__name__,
+                )
+                raise
 
-        response.headers["X-Request-ID"] = request_id
-        if response.status_code >= 500:
-            _write_api_error(
-                logger=logger,
-                request_id=request_id,
-                request=request,
-                status_code=response.status_code,
-                duration_ms=(perf_counter() - started_at) * 1000,
-            )
-        return response
+            response.headers["X-Request-ID"] = request_id
+            if response.status_code >= 500:
+                _write_api_error(
+                    logger=logger,
+                    request_id=request_id,
+                    request=request,
+                    status_code=response.status_code,
+                    duration_ms=(perf_counter() - started_at) * 1000,
+                )
+            return response
+        finally:
+            _ACTIVE_ERROR_LOGGER.reset(logger_token)
+            _REQUEST_CONTEXT.reset(context_token)
 
 
 def _write_api_error(
@@ -98,4 +112,20 @@ def _write_api_error(
     }
     if exception_type:
         record["exception_type"] = exception_type
+    logger.error(json.dumps(record, ensure_ascii=False, separators=(",", ":")))
+
+
+def log_sanitized_system_error(*, session_id: str | None, raw_text: str) -> None:
+    """Record a sanitized agent error without persisting its potentially sensitive text."""
+    record: dict[str, str | int] = {
+        "event": "sanitized_system_error",
+        "error_fingerprint": hashlib.sha256(raw_text.encode("utf-8")).hexdigest(),
+        "error_length": len(raw_text),
+    }
+    if session_id:
+        record["session_id"] = session_id
+    if request_context := _REQUEST_CONTEXT.get():
+        record.update(request_context)
+
+    logger = _ACTIVE_ERROR_LOGGER.get() or _error_logger()
     logger.error(json.dumps(record, ensure_ascii=False, separators=(",", ":")))

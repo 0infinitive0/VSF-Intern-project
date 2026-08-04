@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from src.services.llm import get_llm
+from src.services.llm import get_reasoning_llm as get_llm
 from src.services.trip_intake import TripPreferenceUpdate, TripPreferenceUpdateError
 from src.services.trip_scheduler import parse_day_scope
 

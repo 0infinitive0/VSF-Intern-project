@@ -226,6 +226,58 @@ def get_llm(
     return _get_local_llm(temperature=target_temp)
 
 
+def _get_role_model(
+    *,
+    explicit_model: str | None,
+    environment_key: str,
+    settings_key: str,
+) -> str:
+    """Resolve a role-specific model while retaining ``LLM_MODEL`` compatibility."""
+    if explicit_model:
+        return explicit_model
+
+    settings = get_settings()
+    return (
+        os.environ.get(environment_key)
+        or getattr(settings, settings_key, "")
+        or os.environ.get("LLM_MODEL")
+        or getattr(settings, "llm_model", "llama3.1")
+        or "llama3.1"
+    )
+
+
+def get_reasoning_llm(
+    *,
+    model: str | None = None,
+    temperature: float | None = None,
+) -> BaseChatModel:
+    """Return the primary model for NLU, extraction, and itinerary decisions."""
+    return get_llm(
+        model=_get_role_model(
+            explicit_model=model,
+            environment_key="LLM_REASONING_MODEL",
+            settings_key="llm_reasoning_model",
+        ),
+        temperature=temperature,
+    )
+
+
+def get_fast_llm(
+    *,
+    model: str | None = None,
+    temperature: float | None = None,
+) -> BaseChatModel:
+    """Return the economical model for short Q&A and summarization work."""
+    return get_llm(
+        model=_get_role_model(
+            explicit_model=model,
+            environment_key="LLM_FAST_MODEL",
+            settings_key="llm_fast_model",
+        ),
+        temperature=temperature,
+    )
+
+
 @lru_cache
 def get_embeddings(
     provider: str | None = None,

@@ -16,15 +16,13 @@ Phase 3 additions:
 from __future__ import annotations
 
 from datetime import date
-import logging
 from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
 from src.i18n import t, DEFAULT_LANGUAGE
-
-logger = logging.getLogger(__name__)
+from src.observability import log_sanitized_system_error
 
 # ---------------------------------------------------------------------------
 # Basic chat models (pre-Phase 3, unchanged)
@@ -226,12 +224,14 @@ ChatStage = Literal["intake", "hotel_options", "planned", "modified", "finalized
 
 
 class PlannerChatRequest(BaseModel):
-<<<<<<< Updated upstream:backend/src/models/schemas.py
     session_id: UUID
     message: str | None = None
     stay_dates: StayDatesInput | None = None
     min_price: float | None = None
     max_price: float | None = None
+    language: Literal["vi", "en"] = Field(
+        DEFAULT_LANGUAGE, description="UI language for this turn's reply (vi | en)"
+    )
 
     @model_validator(mode="after")
     def includes_message_or_stay_dates(self) -> PlannerChatRequest:
@@ -250,16 +250,6 @@ class PlannerChatRequest(BaseModel):
 class SelectHotelRequest(BaseModel):
     session_id: UUID
     hotel_id: str
-=======
-    # session_id typed as UUID so malformed ids are rejected at the pydantic
-    # boundary (422) rather than silently treated as valid. Safe for GET /chat
-    # which generates ids with crypto.randomUUID() (RT-6).
-    session_id: UUID = Field(..., description="UUID phiên chat do trình duyệt tự sinh")
-    message: str = Field(..., min_length=1, max_length=5000, description="Tin nhắn từ user")
-    language: Literal["vi", "en"] = Field(
-        DEFAULT_LANGUAGE, description="UI language for this turn's reply (vi | en)"
-    )
->>>>>>> Stashed changes:src/models/schemas.py
 
 
 class PlannerChatResponse(BaseModel):
@@ -370,7 +360,7 @@ def sanitize_system_error(text: str, *, session_id: str | None = None, language:
     for prefix in prefixes:
         if text.startswith(prefix):
             return text
-    logger.error("Sanitizing SYSTEM ERROR for session %s: %s", session_id, text)
+    log_sanitized_system_error(session_id=session_id, raw_text=text)
     return f"SYSTEM ERROR: {t(_GENERIC_ERROR_MSG, language)}"
 
 def to_hotel_options_payload(pending: dict[str, Any] | None) -> list[HotelOption]:

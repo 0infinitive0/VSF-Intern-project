@@ -144,17 +144,19 @@ class TestSanitizeSystemError:
         )
         assert sanitize_system_error(msg) == msg
 
-    def test_sanitizing_an_unsafe_error_logs_the_original(self, caplog):
+    def test_sanitizing_an_unsafe_error_logs_the_original(self, monkeypatch):
         """The generic replacement must not be a dead end for debugging — the
         original text is logged at error level, keyed by session_id, so a
         sanitized reply doesn't require a live repro to diagnose."""
         msg = "SYSTEM ERROR: psycopg2.InterfaceError: connection already closed"
-        with caplog.at_level("ERROR"):
-            sanitize_system_error(msg, session_id="sess-123")
-        assert any(
-            "sess-123" in record.getMessage() and "psycopg2" in record.getMessage()
-            for record in caplog.records
-        )
+        captured = {}
+
+        def capture(**kwargs):
+            captured.update(kwargs)
+
+        monkeypatch.setattr("src.models.schemas.log_sanitized_system_error", capture)
+        sanitize_system_error(msg, session_id="sess-123")
+        assert captured == {"session_id": "sess-123", "raw_text": msg}
 
 
 # ---------------------------------------------------------------------------
