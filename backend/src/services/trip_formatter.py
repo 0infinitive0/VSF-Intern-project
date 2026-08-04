@@ -186,14 +186,10 @@ def format_hotel_options(options: list[tuple[dict[str, Any], PlaceCandidate]], l
             language,
         )
 
-<<<<<<< Updated upstream:backend/src/services/trip_formatter.py
-    lines = ["Mình đã tìm được danh sách khách sạn phù hợp. Bạn xem và chọn trực tiếp khách sạn mong muốn trong tab Khách sạn để tạo lịch trình nhé!", "------"]
-=======
     lines = [
         t("Mình tìm được vài khách sạn phù hợp, bạn chọn giúp mình nhé:", language),
         "------",
     ]
->>>>>>> Stashed changes:src/services/trip_formatter.py
     for data, _candidate in options:
         rank = data.get("rank", "?")
         name = data.get("name") or t("Khách sạn chưa xác định", language)
@@ -270,11 +266,7 @@ def format_hotel_options(options: list[tuple[dict[str, Any], PlaceCandidate]], l
 
         lines.append("------")
 
-<<<<<<< Updated upstream:backend/src/services/trip_formatter.py
-    lines.append("Bạn hãy nhấn nút 'Chọn khách sạn này' ở tab Khách sạn để tiếp tục tạo lịch trình.")
-=======
     lines.append(t("Trả lời bằng số thứ tự hoặc tên khách sạn để chọn.", language))
->>>>>>> Stashed changes:src/services/trip_formatter.py
     return "\n".join(lines)
 
 

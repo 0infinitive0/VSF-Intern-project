@@ -226,12 +226,14 @@ ChatStage = Literal["intake", "hotel_options", "planned", "modified", "finalized
 
 
 class PlannerChatRequest(BaseModel):
-<<<<<<< Updated upstream:backend/src/models/schemas.py
     session_id: UUID
     message: str | None = None
     stay_dates: StayDatesInput | None = None
     min_price: float | None = None
     max_price: float | None = None
+    language: Literal["vi", "en"] = Field(
+        DEFAULT_LANGUAGE, description="UI language for this turn's reply (vi | en)"
+    )
 
     @model_validator(mode="after")
     def includes_message_or_stay_dates(self) -> PlannerChatRequest:
@@ -250,16 +252,6 @@ class PlannerChatRequest(BaseModel):
 class SelectHotelRequest(BaseModel):
     session_id: UUID
     hotel_id: str
-=======
-    # session_id typed as UUID so malformed ids are rejected at the pydantic
-    # boundary (422) rather than silently treated as valid. Safe for GET /chat
-    # which generates ids with crypto.randomUUID() (RT-6).
-    session_id: UUID = Field(..., description="UUID phiên chat do trình duyệt tự sinh")
-    message: str = Field(..., min_length=1, max_length=5000, description="Tin nhắn từ user")
-    language: Literal["vi", "en"] = Field(
-        DEFAULT_LANGUAGE, description="UI language for this turn's reply (vi | en)"
-    )
->>>>>>> Stashed changes:src/models/schemas.py
 
 
 class PlannerChatResponse(BaseModel):

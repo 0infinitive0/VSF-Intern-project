@@ -1,0 +1,74 @@
+name: Deploy Staging (main)
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Test
+        run: pytest tests/ -v
+
+  deploy-staging:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Deploy to staging EC2 (build on box)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            cd /home/ubuntu/app
+            git fetch origin main
+            git checkout main
+            git pull --ff-only
+            docker compose -f docker-compose.staging.yml build
+            docker compose -f docker-compose.staging.yml up -d
+            docker image prune -f
+
+      - name: Health check backend + frontend
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          set -e
+          ok=0
+          for i in $(seq 1 12); do
+            if curl -sf "http://${EC2_HOST}:8000/health" >/dev/null && curl -sf "http://${EC2_HOST}/" >/dev/null; then
+              echo "Health check OK on ${EC2_HOST} after attempt ${i}"
+              ok=1
+              break
+            fi
+            sleep 5
+          done
+          if [ "$ok" != "1" ]; then
+            echo "Health check FAILED for ${EC2_HOST}"
+            curl -sS "http://${EC2_HOST}:8000/health" || true
+            exit 1
+          fi

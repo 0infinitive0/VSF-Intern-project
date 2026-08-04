@@ -362,16 +362,6 @@ class TripIntakeState:
                 for option in destination_names
             )
             if choices:
-<<<<<<< Updated upstream:backend/src/services/trip_intake.py
-                return f"Bạn muốn đi đâu? Hiện mình có dữ liệu cho: {choices}."
-            return "Bạn muốn đi đâu?"
-        if not self.people:
-            return "Chuyến đi có bao nhiêu người?"
-        if not self.start_date:
-            return "Bạn dự định bắt đầu chuyến đi vào ngày nào?"
-        if not self.has_explicit_stay_dates:
-            return "Bạn dự định kết thúc chuyến đi vào ngày nào?"
-=======
                 return t(
                     "Bạn muốn đi đâu? Hiện mình có dữ liệu cho: {choices}.",
                     language,
@@ -384,7 +374,6 @@ class TripIntakeState:
             return t("Bạn dự định bắt đầu chuyến đi vào ngày nào?", language)
         if not self.people:
             return t("Chuyến đi có bao nhiêu người?", language)
->>>>>>> Stashed changes:src/services/trip_intake.py
         return None
 
     def tool_arguments(self) -> dict[str, str]:

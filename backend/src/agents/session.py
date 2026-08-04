@@ -593,15 +593,12 @@ def _decide_route(session: TripSession, context: RouteContext, user_input: str) 
     return validated
 
 
-<<<<<<< Updated upstream:backend/src/agents/session.py
 def process_chat_turn(
     session: TripSession,
     user_input: str,
     stay_dates: tuple[str, str] | None = None,
+    language: str = "vi",
 ) -> TurnResult:
-=======
-def process_chat_turn(session: TripSession, user_input: str, language: str = "vi") -> TurnResult:
->>>>>>> Stashed changes:src/agents/session.py
     """Handle exactly one chat turn and return a TurnResult. Mutates `session`
     in place. Callers own their own input loop / HTTP request cycle — this
     function never blocks on input() and never prints.
@@ -675,15 +672,11 @@ def process_chat_turn(session: TripSession, user_input: str, language: str = "vi
             session.pending_trip_preference_request = request
             _clear_pending_hotel_selection(session)
             return TurnResult(
-<<<<<<< Updated upstream:backend/src/agents/session.py
-                text=f"Mình chưa thể xác nhận {exc} Hãy chọn một số thích được hỗ trợ hoặc nói rõ thông tin muốn đổi.",
-=======
                 text=t(
                     "Mình chưa thể xác nhận {exc} Hãy chọn một sở thích được hỗ trợ hoặc nói rõ thông tin muốn đổi.",
                     session.language,
                     exc=exc,
                 ),
->>>>>>> Stashed changes:src/agents/session.py
                 tool=None,
             )
         tool = "recommend_hotels" if session.pending_hotel_selection is not None else None
@@ -948,26 +941,14 @@ def _run_recommend_hotels(session: TripSession) -> TurnResult:
 
 
 def _run_intake(session: TripSession, user_input: str) -> TurnResult:
-<<<<<<< Updated upstream:backend/src/agents/session.py
-    destination_names = _get_destination_names()
-    session.intake_state = session.intake_state.with_message(user_input, destination_names)
-
-    # 1. Ask for destination and people first
-    if not session.intake_state.destination or not session.intake_state.people:
-        missing_question = session.intake_state.next_question(destination_names)
-=======
     if not session.intake_state.is_complete:
         destination_names = _get_destination_names()
         session.intake_state = session.intake_state.with_message(user_input, destination_names)
         missing_question = session.intake_state.next_question(destination_names, session.language)
->>>>>>> Stashed changes:src/agents/session.py
         if missing_question:
             logger.info("Deterministic intake response: %s", missing_question)
             return TurnResult(text=str(missing_question), tool=None)
 
-<<<<<<< Updated upstream:backend/src/agents/session.py
-    # 2. Ask for hotel budget BEFORE asking for dates
-=======
         # Trip facts just became complete THIS turn. A single form submission
         # carries BOTH the trip facts and the budget tier in one message, so
         # try the same message against the budget question immediately rather
@@ -983,7 +964,6 @@ def _run_intake(session: TripSession, user_input: str) -> TurnResult:
         logger.info("Trip intake complete; asking hotel budget preference")
         return TurnResult(text=str(session.hotel_pref_state.next_question(session.language)), tool=None)
 
->>>>>>> Stashed changes:src/agents/session.py
     if not session.hotel_pref_state.is_complete:
         # Trip facts (destination/duration/start_date/people) are already locked in
         # by this point, but the optional taxonomy fields (companions/pace/day_rhythm/
@@ -1001,7 +981,7 @@ def _run_intake(session: TripSession, user_input: str) -> TurnResult:
 
     # 3. Ask for dates if missing (this turn will also pop up the Date Picker via requires_stay_dates)
     if not session.intake_state.is_complete:
-        missing_question = session.intake_state.next_question(destination_names)
+        missing_question = session.intake_state.next_question(_get_destination_names(), session.language)
         if missing_question:
             logger.info("Deterministic intake response (dates): %s", missing_question)
             return TurnResult(text=str(missing_question), tool=None)
