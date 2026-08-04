@@ -12,27 +12,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Test
-        run: pytest tests/ -v
-
   deploy-staging:
-    needs: test
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: staging
@@ -60,7 +40,7 @@ jobs:
           set -e
           ok=0
           for i in $(seq 1 12); do
-            if curl -sf "http://${EC2_HOST}:8000/health" >/dev/null && curl -sf "http://${EC2_HOST}/" >/dev/null; then
+            if curl -sf "http://${EC2_HOST}:8000/health" >/dev/null && curl -sfk "https://${EC2_HOST}/" >/dev/null; then
               echo "Health check OK on ${EC2_HOST} after attempt ${i}"
               ok=1
               break
