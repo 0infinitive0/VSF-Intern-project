@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.routes import router
 from src.config import get_settings
+from src.observability import install_api_error_logging
 
 
 @asynccontextmanager
@@ -35,6 +36,7 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api/v1")
+install_api_error_logging(app)
 
 
 @app.get("/health")

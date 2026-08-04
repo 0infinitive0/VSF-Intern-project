@@ -71,6 +71,7 @@ eval/results/vector_bench/raw/
 
 # Logs
 logs/
+backend/logs/
 *.log
 
 # Test coverage
