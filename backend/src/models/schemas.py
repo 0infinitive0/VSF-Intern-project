@@ -22,6 +22,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
+from src.i18n import t, DEFAULT_LANGUAGE
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -224,6 +226,7 @@ ChatStage = Literal["intake", "hotel_options", "planned", "modified", "finalized
 
 
 class PlannerChatRequest(BaseModel):
+<<<<<<< Updated upstream:backend/src/models/schemas.py
     session_id: UUID
     message: str | None = None
     stay_dates: StayDatesInput | None = None
@@ -247,6 +250,16 @@ class PlannerChatRequest(BaseModel):
 class SelectHotelRequest(BaseModel):
     session_id: UUID
     hotel_id: str
+=======
+    # session_id typed as UUID so malformed ids are rejected at the pydantic
+    # boundary (422) rather than silently treated as valid. Safe for GET /chat
+    # which generates ids with crypto.randomUUID() (RT-6).
+    session_id: UUID = Field(..., description="UUID phiên chat do trình duyệt tự sinh")
+    message: str = Field(..., min_length=1, max_length=5000, description="Tin nhắn từ user")
+    language: Literal["vi", "en"] = Field(
+        DEFAULT_LANGUAGE, description="UI language for this turn's reply (vi | en)"
+    )
+>>>>>>> Stashed changes:src/models/schemas.py
 
 
 class PlannerChatResponse(BaseModel):
@@ -311,24 +324,54 @@ _SAFE_ERROR_PREFIXES = (
 )
 
 
-def sanitize_system_error(text: str, *, session_id: str | None = None) -> str:
+# English mirrors of the safe prefixes, so an "en" reply is matched (and
+# passed through) in the language it was produced in. Each entry is a prefix
+# of the corresponding English `t()` output for the same deterministic
+# message — authoring both together keeps matching reliable.
+_SAFE_ERROR_PREFIXES_EN = (
+    "SYSTEM ERROR: There is no trip plan",
+    "SYSTEM ERROR: There is no plan",
+    "SYSTEM ERROR: Could not safely understand",
+    "SYSTEM ERROR: The conversation model",
+    "SYSTEM ERROR: No response was received",
+    "SYSTEM ERROR: Could not apply",
+    "SYSTEM ERROR: Valid start and end dates",
+    "SYSTEM ERROR: The end date must be after",
+    "SYSTEM ERROR: No destination data found",
+    "SYSTEM ERROR: No hotel with valid coordinates",
+    "SYSTEM ERROR: No hotel found with the given id",
+    "SYSTEM ERROR: There is no hotel list",
+    "SYSTEM ERROR: There is no longer a trip plan",
+    "SYSTEM ERROR: Trip change information is incomplete",
+    "SYSTEM ERROR: Could not save the new hotel list",
+    "SYSTEM ERROR: The trip information change request is invalid",
+)
+
+_SAFE_ERROR_PREFIXES_BY_LANG: dict[str, tuple[str, ...]] = {
+    "vi": _SAFE_ERROR_PREFIXES,
+    "en": _SAFE_ERROR_PREFIXES_EN,
+}
+
+
+def sanitize_system_error(text: str, *, session_id: str | None = None, language: str = "vi") -> str:
     """Return a safe user-facing string for a SYSTEM ERROR: prefixed reply.
 
-    If the message matches one of the hand-written Vietnamese strings it is
-    returned as-is (it contains no internal detail).  Any other SYSTEM ERROR:
-    string — which may carry Supabase table names, column names, or connection
-    strings — is replaced with a generic Vietnamese message, and the original
-    is logged at error level here (keyed by session_id) so a sanitised reply
-    is still debuggable from logs instead of requiring a live repro.
+    If the message matches one of the hand-written strings (in the language it
+    was produced in) it is returned as-is (it contains no internal detail).
+    Any other SYSTEM ERROR: string — which may carry Supabase table names,
+    column names, or connection strings — is replaced with a generic message
+    localized to `language`, and the original is logged at error level here
+    (keyed by session_id) so a sanitised reply is still debuggable from logs
+    instead of requiring a live repro.
     """
     if not text.startswith("SYSTEM ERROR:"):
         return text
-    for prefix in _SAFE_ERROR_PREFIXES:
+    prefixes = _SAFE_ERROR_PREFIXES_BY_LANG.get(language, _SAFE_ERROR_PREFIXES)
+    for prefix in prefixes:
         if text.startswith(prefix):
             return text
     logger.error("Sanitizing SYSTEM ERROR for session %s: %s", session_id, text)
-    return f"SYSTEM ERROR: {_GENERIC_ERROR_MSG}"
-
+    return f"SYSTEM ERROR: {t(_GENERIC_ERROR_MSG, language)}"
 
 def to_hotel_options_payload(pending: dict[str, Any] | None) -> list[HotelOption]:
     """Convert session.pending_hotel_selection to a list of HotelOption."""

@@ -27,3 +27,6 @@ ruff>=0.8.0
 pytest>=8.0.0
 pytest-asyncio>=0.24.0
 httpx>=0.28.0
+
+# i18n (gettext catalogs, pybabel tooling)
+Babel>=2.15.0

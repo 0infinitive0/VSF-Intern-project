@@ -1,9 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
-import { S } from '../strings'
+import { useTranslation } from 'react-i18next'
 import {
   composeIntakeMessage,
   type IntakeFormState,
 } from '../lib/compose-intake-message'
+import {
+  COMPANION_KEYS,
+  DAY_RHYTHM_KEYS,
+  PACE_KEYS,
+  PREFERENCE_KEYS,
+  companionKeyFromWireValueVi,
+  dayRhythmKeyFromWireValueVi,
+  paceKeyFromWireValueVi,
+  preferenceKeyFromWireValueVi,
+  type DayRhythmKey,
+  type PreferenceKey,
+} from '../lib/intake-options'
 import type { IntakeStatus } from '../types'
 import DateField from './date-field'
 
@@ -67,6 +79,7 @@ export default function IntakeParametersForm({
   onSubmit: (message: string) => void
   disabled: boolean
 }) {
+  const { t } = useTranslation()
   const [form, setForm] = useState<IntakeFormState>({
     destination: '',
     startDate: '',
@@ -82,7 +95,9 @@ export default function IntakeParametersForm({
   const seededRef = useRef(false)
 
   // Pre-fill from the intake snapshot once (null → non-null first time), never
-  // on every render — re-seeding would clobber in-progress edits.
+  // on every render — re-seeding would clobber in-progress edits. The snapshot's
+  // closed-set fields arrive as Vietnamese wire strings; map them back through
+  // the canonical-key lookups so the canonical-key state round-trips.
   useEffect(() => {
     if (!intake || seededRef.current) return
     seededRef.current = true
@@ -96,12 +111,17 @@ export default function IntakeParametersForm({
       preferences:
         (intake.preferences?.length ?? 0) > 0
           ? intake.preferences
+              .map(preferenceKeyFromWireValueVi)
+              .filter((key): key is PreferenceKey => key !== null)
           : prev.preferences,
-      companions: intake.companions || prev.companions,
-      pace: intake.pace || prev.pace,
+      companions:
+        companionKeyFromWireValueVi(intake.companions || '') || prev.companions,
+      pace: paceKeyFromWireValueVi(intake.pace || '') || prev.pace,
       dayRhythm:
         (intake.day_rhythm?.length ?? 0) > 0
           ? intake.day_rhythm
+              .map(dayRhythmKeyFromWireValueVi)
+              .filter((key): key is DayRhythmKey => key !== null)
           : prev.dayRhythm,
       notes: intake.notes || prev.notes,
     }))
@@ -119,21 +139,21 @@ export default function IntakeParametersForm({
   )
   const canSubmit = requiredOk && !disabled
 
-  const togglePreference = (label: string) => {
+  const togglePreference = (key: PreferenceKey) => {
     setForm((prev) => ({
       ...prev,
-      preferences: prev.preferences.includes(label)
-        ? prev.preferences.filter((p) => p !== label)
-        : [...prev.preferences, label],
+      preferences: prev.preferences.includes(key)
+        ? prev.preferences.filter((p) => p !== key)
+        : [...prev.preferences, key],
     }))
   }
 
-  const toggleDayRhythm = (label: string) => {
+  const toggleDayRhythm = (key: DayRhythmKey) => {
     setForm((prev) => ({
       ...prev,
-      dayRhythm: prev.dayRhythm.includes(label)
-        ? prev.dayRhythm.filter((r) => r !== label)
-        : [...prev.dayRhythm, label],
+      dayRhythm: prev.dayRhythm.includes(key)
+        ? prev.dayRhythm.filter((r) => r !== key)
+        : [...prev.dayRhythm, key],
     }))
   }
 
@@ -152,19 +172,19 @@ export default function IntakeParametersForm({
         <span className="material-symbols-outlined text-primary text-sm" aria-hidden="true">
           tune
         </span>
-        {S.tripParamsTitle}
+        {t('tripParamsTitle')}
       </h3>
 
       {/* Destination */}
       <div className="mb-4">
-        <FieldLabel text={S.intakeDestinationLabel} />
+        <FieldLabel text={t('intakeDestinationLabel')} />
         <select
           value={form.destination}
           onChange={(e) => setForm({ ...form, destination: e.target.value })}
           disabled={disabled}
           className="w-full bg-surface-muted p-2 rounded-lg text-sm text-on-surface focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
         >
-          <option value="">{S.intakeDestinationPlaceholder}</option>
+          <option value="">{t('intakeDestinationPlaceholder')}</option>
           {destinations.map((name) => (
             <option key={name} value={name}>
               {name}
@@ -176,7 +196,7 @@ export default function IntakeParametersForm({
       {/* Dates & guests */}
       <div className="grid grid-cols-3 gap-3 mb-4">
         <div className="col-span-1">
-          <FieldLabel text={S.intakeStartDateLabel} />
+          <FieldLabel text={t('intakeStartDateLabel')} />
           <DateField
             value={form.startDate}
             onChange={(startDate) =>
@@ -188,28 +208,28 @@ export default function IntakeParametersForm({
               }))
             }
             disabled={disabled}
-            placeholder={S.intakeDatePlaceholder}
+            placeholder={t('intakeDatePlaceholder')}
           />
         </div>
         <div>
-          <FieldLabel text={S.intakeEndDateLabel} />
+          <FieldLabel text={t('intakeEndDateLabel')} />
           <DateField
             value={form.endDate}
             onChange={(endDate) => setForm({ ...form, endDate })}
             disabled={disabled}
-            placeholder={S.intakeDatePlaceholder}
+            placeholder={t('intakeDatePlaceholder')}
             minDate={form.startDate}
           />
         </div>
         <div>
-          <FieldLabel text={S.intakeGuestsLabel} />
+          <FieldLabel text={t('intakeGuestsLabel')} />
           <div className="flex items-center gap-2 bg-surface-muted p-1.5 rounded-lg">
             <button
               type="button"
               disabled={disabled || form.guests <= 1}
               onClick={() => setForm({ ...form, guests: form.guests - 1 })}
               className="w-7 h-7 flex items-center justify-center rounded-md bg-surface-background border border-outline-variant text-on-surface hover:bg-surface-container disabled:opacity-40"
-              aria-label="Giảm số khách"
+              aria-label={t('intakeDecreaseGuests')}
             >
               −
             </button>
@@ -221,7 +241,7 @@ export default function IntakeParametersForm({
               disabled={disabled || form.guests >= 20}
               onClick={() => setForm({ ...form, guests: form.guests + 1 })}
               className="w-7 h-7 flex items-center justify-center rounded-md bg-surface-background border border-outline-variant text-on-surface hover:bg-surface-container disabled:opacity-40"
-              aria-label="Tăng số khách"
+              aria-label={t('intakeIncreaseGuests')}
             >
               +
             </button>
@@ -231,7 +251,7 @@ export default function IntakeParametersForm({
 
       {/* Budget & accommodation */}
       <div className="mb-4">
-        <FieldLabel text={S.intakeBudgetLabel} />
+        <FieldLabel text={t('intakeBudgetLabel')} />
         {budgetOptions.length > 0 ? (
           <div className="flex flex-wrap gap-2" role="group">
             {budgetOptions.map((label) => (
@@ -246,7 +266,7 @@ export default function IntakeParametersForm({
           </div>
         ) : (
           <p className="text-xs text-on-surface-variant">
-            Không có tùy chọn ngân sách.
+            {t('intakeNoBudgetOptions')}
           </p>
         )}
       </div>
@@ -258,7 +278,7 @@ export default function IntakeParametersForm({
           <span className="material-symbols-outlined text-primary text-sm" aria-hidden="true">
             favorite
           </span>
-          {S.intakeOtherOptionsLabel}
+          {t('intakeOtherOptionsLabel')}
           <span
             className="material-symbols-outlined text-on-surface-variant text-sm ml-auto transition-transform group-open:rotate-180"
             aria-hidden="true"
@@ -270,14 +290,14 @@ export default function IntakeParametersForm({
         <div className="mt-3 space-y-4">
           {/* Preferences */}
           <div>
-            <FieldLabel text={S.intakePreferencesLabel} />
+            <FieldLabel text={t('intakePreferencesLabel')} />
             <div className="flex flex-wrap gap-2" role="group">
-              {S.intakePreferenceOptions.map((label) => (
+              {PREFERENCE_KEYS.map((key) => (
                 <Chip
-                  key={label}
-                  label={label}
-                  selected={form.preferences.includes(label)}
-                  onClick={() => togglePreference(label)}
+                  key={key}
+                  label={t(`intake.preferenceOptions.${key}`)}
+                  selected={form.preferences.includes(key)}
+                  onClick={() => togglePreference(key)}
                   disabled={disabled}
                 />
               ))}
@@ -286,14 +306,14 @@ export default function IntakeParametersForm({
 
           {/* Companions */}
           <div>
-            <FieldLabel text={S.intakeCompanionsLabel} />
+            <FieldLabel text={t('intakeCompanionsLabel')} />
             <div className="flex flex-wrap gap-2" role="group">
-              {S.intakeCompanionOptions.map((label) => (
+              {COMPANION_KEYS.map((key) => (
                 <Chip
-                  key={label}
-                  label={label}
-                  selected={form.companions === label}
-                  onClick={() => setForm({ ...form, companions: label })}
+                  key={key}
+                  label={t(`intake.companionOptions.${key}`)}
+                  selected={form.companions === key}
+                  onClick={() => setForm({ ...form, companions: key })}
                   disabled={disabled}
                 />
               ))}
@@ -302,14 +322,14 @@ export default function IntakeParametersForm({
 
           {/* Pace */}
           <div>
-            <FieldLabel text={S.intakePaceLabel} />
+            <FieldLabel text={t('intakePaceLabel')} />
             <div className="flex flex-wrap gap-2" role="group">
-              {S.intakePaceOptions.map((label) => (
+              {PACE_KEYS.map((key) => (
                 <Chip
-                  key={label}
-                  label={label}
-                  selected={form.pace === label}
-                  onClick={() => setForm({ ...form, pace: label })}
+                  key={key}
+                  label={t(`intake.paceOptions.${key}`)}
+                  selected={form.pace === key}
+                  onClick={() => setForm({ ...form, pace: key })}
                   disabled={disabled}
                 />
               ))}
@@ -318,14 +338,14 @@ export default function IntakeParametersForm({
 
           {/* Day's rhythm */}
           <div>
-            <FieldLabel text={S.intakeDayRhythmLabel} />
+            <FieldLabel text={t('intakeDayRhythmLabel')} />
             <div className="flex flex-wrap gap-2" role="group">
-              {S.intakeDayRhythmOptions.map((label) => (
+              {DAY_RHYTHM_KEYS.map((key) => (
                 <Chip
-                  key={label}
-                  label={label}
-                  selected={form.dayRhythm.includes(label)}
-                  onClick={() => toggleDayRhythm(label)}
+                  key={key}
+                  label={t(`intake.dayRhythmOptions.${key}`)}
+                  selected={form.dayRhythm.includes(key)}
+                  onClick={() => toggleDayRhythm(key)}
                   disabled={disabled}
                 />
               ))}
@@ -334,31 +354,31 @@ export default function IntakeParametersForm({
 
           {/* Notes */}
           <div>
-            <FieldLabel text={S.intakeNotesLabel} />
+            <FieldLabel text={t('intakeNotesLabel')} />
             <textarea
               value={form.notes}
               maxLength={NOTES_LIMIT}
               rows={2}
-              placeholder={S.intakeNotesPlaceholder}
+              placeholder={t('intakeNotesPlaceholder')}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
               disabled={disabled}
               className="w-full bg-surface-muted p-2 rounded-lg text-sm text-on-surface focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
             />
             <p className="text-right text-[10px] text-on-surface-variant mt-1">
-              {S.intakeNotesCounter(form.notes.length)}
+              {t('intakeNotesCounter', { n: form.notes.length })}
             </p>
           </div>
         </div>
       </details>
 
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[10px] text-on-surface-variant">{S.intakeRequiredHint}</p>
+        <p className="text-[10px] text-on-surface-variant">{t('intakeRequiredHint')}</p>
         <button
           type="submit"
           disabled={!canSubmit}
           className="px-4 py-2 rounded-full bg-primary text-on-primary text-sm font-medium hover:bg-primary-container disabled:opacity-50 transition-colors"
         >
-          {S.intakeSubmit}
+          {t('intakeSubmit')}
         </button>
       </div>
     </form>

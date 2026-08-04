@@ -1,0 +1,227 @@
+# VSF Intern — trip planner UI
+msgid ""
+msgstr ""
+"Project-Id-Version: PROJECT VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-08-04 10:31+0700\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: vi\n"
+"Language-Team: vi <LL@li.org>\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+msgid "SYSTEM ERROR: Thông tin thay đổi chuyến đi chưa đầy đủ."
+msgstr ""
+
+msgid "Bạn muốn ngân sách khách sạn khoảng bao nhiêu?"
+msgstr ""
+
+msgid "SYSTEM ERROR: Không thể lưu danh sách khách sạn mới."
+msgstr ""
+
+msgid "Vui lòng bổ sung thông tin chuyến đi."
+msgstr ""
+
+msgid "Kế hoạch đã xác nhận không thể chỉnh sửa. Hãy tạo một kế hoạch mới nếu cần thay đổi."
+msgstr ""
+
+msgid "SYSTEM ERROR: Yêu cầu thay đổi thông tin chuyến đi không hợp lệ."
+msgstr ""
+
+#, python-brace-format
+msgid "Mình chưa thể xác nhận thay đổi {exc} Bạn vui lòng nói rõ lại nhé."
+msgstr ""
+
+#, python-brace-format
+msgid ""
+"Mình chưa thể xác nhận {exc} Hãy chọn một sở thích được hỗ trợ hoặc nói rõ thông tin "
+"muốn đổi."
+msgstr ""
+
+msgid ""
+"SYSTEM ERROR: Không thể hiểu an toàn yêu cầu chỉnh sửa này. Vui lòng diễn đạt cụ thể "
+"hơn."
+msgstr ""
+
+msgid "Bạn muốn chỉnh sửa phần nào của lịch trình?"
+msgstr ""
+
+msgid "SYSTEM ERROR: Không thể áp dụng yêu cầu chỉnh sửa này."
+msgstr ""
+
+msgid "SYSTEM ERROR: Chưa có kế hoạch để xác nhận. Hãy tạo kế hoạch trước."
+msgstr ""
+
+msgid "Bạn cần chọn khách sạn trước khi xác nhận lịch trình."
+msgstr ""
+
+msgid "Đã xác nhận lịch trình. Phần tìm kiếm tái sử dụng sẽ tự thử lại sau."
+msgstr ""
+
+msgid "Đã xác nhận lịch trình và lưu làm mẫu có thể tái sử dụng."
+msgstr ""
+
+msgid "SYSTEM ERROR: Chưa có kế hoạch chuyến đi để chỉnh sửa."
+msgstr ""
+
+msgid "Bạn cần chọn khách sạn trước khi chỉnh sửa lịch trình."
+msgstr ""
+
+msgid "Yêu cầu này không thay đổi lịch trình hiện tại."
+msgstr ""
+
+msgid ""
+"SYSTEM ERROR: Cần có ngày bắt đầu và ngày kết thúc hợp lệ (YYYY-MM-DD) để tìm khách "
+"sạn."
+msgstr ""
+
+msgid "SYSTEM ERROR: Ngày kết thúc phải sau ngày bắt đầu."
+msgstr ""
+
+#, python-brace-format
+msgid "SYSTEM ERROR: Không tìm thấy dữ liệu điểm đến cho {dest}."
+msgstr ""
+
+#, python-brace-format
+msgid ""
+"SYSTEM ERROR: Không tìm thấy khách sạn có tọa độ hợp lệ tại {dest}; không thể gợi ý "
+"khách sạn."
+msgstr ""
+
+msgid "SYSTEM ERROR: Chưa có danh sách khách sạn nào để chọn. Hãy tạo gợi ý khách sạn trước."
+msgstr ""
+
+#, python-brace-format
+msgid ""
+"Mình chưa xác định được đúng khách sạn bạn muốn chọn, bạn trả lời rõ hơn giúp mình "
+"nhé (số thứ tự hoặc tên khách sạn).\n"
+"------\n"
+"{options}"
+msgstr ""
+
+msgid "SYSTEM ERROR: Không còn kế hoạch chuyến đi để đổi khách sạn."
+msgstr ""
+
+msgid "Đã đổi khách sạn và lập lại toàn bộ các cụm địa điểm theo vị trí mới."
+msgstr ""
+
+msgid "Đã cập nhật thông tin chuyến đi, chọn lại khách sạn và lập một lịch trình mới."
+msgstr ""
+
+msgid "Khách sạn chưa xác định"
+msgstr ""
+
+#, python-brace-format
+msgid " ({star_rating} sao)"
+msgstr ""
+
+#, python-brace-format
+msgid " | Phòng gợi ý: {rooms}"
+msgstr ""
+
+#, python-brace-format
+msgid "Tóm tắt: {description}"
+msgstr ""
+
+#, python-brace-format
+msgid "Ngày {day_num}{theme_suffix}:"
+msgstr ""
+
+msgid "Tham quan điểm du lịch"
+msgstr ""
+
+msgid "Chưa có hoạt động hợp lệ cho ngày này."
+msgstr ""
+
+msgid "Điều chỉnh tự động:"
+msgstr ""
+
+msgid "Không tìm thấy khách sạn phù hợp. Bạn thử mô tả khác hoặc đổi điểm đến xem sao."
+msgstr ""
+
+msgid "Mình tìm được vài khách sạn phù hợp, bạn chọn giúp mình nhé:"
+msgstr ""
+
+#, python-brace-format
+msgid " | Đánh giá: {review_score}/10"
+msgstr ""
+
+#, python-brace-format
+msgid " ({review_count} lượt)"
+msgstr ""
+
+#, python-brace-format
+msgid " | {price:,.0f} {currency}/đêm"
+msgstr ""
+
+#, python-brace-format
+msgid " · Tổng {nights} đêm: {total:,.0f} {currency}"
+msgstr ""
+
+#, python-brace-format
+msgid " | {price} {currency}/đêm"
+msgstr ""
+
+#, python-brace-format
+msgid " | Giá từ: {price:,.0f} {currency}"
+msgstr ""
+
+#, python-brace-format
+msgid " | Giá từ: {price} {currency}"
+msgstr ""
+
+#, python-brace-format
+msgid "   Phòng gợi ý: {rooms}"
+msgstr ""
+
+#, python-brace-format
+msgid "   Bữa ăn đã bao gồm: {meals}"
+msgstr ""
+
+msgid "Trả lời bằng số thứ tự hoặc tên khách sạn để chọn."
+msgstr ""
+
+#, python-brace-format
+msgid "Bạn muốn đi đâu? Hiện mình có dữ liệu cho: {choices}."
+msgstr ""
+
+msgid "Bạn muốn đi đâu?"
+msgstr ""
+
+msgid "Bạn dự định đi trong bao lâu?"
+msgstr ""
+
+msgid "Bạn dự định bắt đầu chuyến đi vào ngày nào?"
+msgstr ""
+
+msgid "Chuyến đi có bao nhiêu người?"
+msgstr ""
+
+#, python-brace-format
+msgid "Không tìm thấy dữ liệu điểm đến cho {destination}."
+msgstr ""
+
+msgid "Khách sạn đã chọn thiếu tọa độ hợp lệ; không thể lập lịch trình."
+msgstr ""
+
+#, python-brace-format
+msgid ""
+"Không tìm thấy khách sạn có tọa độ hợp lệ tại {destination}; không thể lập lịch trình"
+" theo vị trí khách sạn."
+msgstr ""
+
+msgid "SYSTEM ERROR: Không tìm thấy khách sạn với id đã cho tại điểm đến này."
+msgstr ""
+
+msgid "Đã xảy ra lỗi phía máy chủ. Vui lòng thử lại."
+msgstr ""
+
+msgid ""
+"Bạn muốn mức giá khách sạn khoảng nào? Trả lời bằng số gợi ý bên dưới, hoặc cứ nói "
+"thẳng mức giá bạn muốn (vd \"4 triệu\"):"
+msgstr ""
+

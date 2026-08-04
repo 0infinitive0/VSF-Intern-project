@@ -6,11 +6,26 @@
  *
  * Field phrasing mirrors what the backend actually matches:
  *   - trip facts:        `_llm_extract_intake_facts()` (trip_intake.py:379)
+ * Field phrasing mirrors what the backend actually matches:
+ *   - trip facts:        `_llm_extract_intake_facts()` (trip_intake.py:379)
  *   - preferences/companions/pace/day_rhythm: the closed-set labels verbatim
+ *                        (stored as canonical keys, mapped to wire strings via
+ *                        lib/intake-options.ts)
  *   - budget tier:       `_parse_free_text_budget()` qualitative phrases
- *                        (hotel_selection.py:372-378) via budgetPhraseFromLabel
+ *                        (hotel_selection.py:320-378) via budgetPhraseFromLabel
  *   - budget skip:       `_NO_BUDGET_PREFERENCE_PHRASES` (hotel_selection.py:383)
  */
+
+import {
+  type CompanionKey,
+  type DayRhythmKey,
+  type PaceKey,
+  type PreferenceKey,
+  COMPANION_WIRE_VALUE_VI,
+  DAY_RHYTHM_WIRE_VALUE_VI,
+  PACE_WIRE_VALUE_VI,
+  PREFERENCE_WIRE_VALUE_VI,
+} from './intake-options'
 
 export interface IntakeFormState {
   destination: string
@@ -18,10 +33,10 @@ export interface IntakeFormState {
   endDate: string // YYYY-MM-DD (native date input format)
   guests: number
   budget: string // one of IntakeStatus.budget_options, '' = unset
-  preferences: string[]
-  companions: string
-  pace: string
-  dayRhythm: string[]
+  preferences: PreferenceKey[]
+  companions: CompanionKey | ''
+  pace: PaceKey | ''
+  dayRhythm: DayRhythmKey[]
   notes: string
 }
 
@@ -69,16 +84,18 @@ export function composeIntakeMessage(form: IntakeFormState): string {
   if (budget) sentences.push(`Ngân sách khách sạn: ${budget}.`)
 
   if (form.preferences.length > 0) {
-    sentences.push(`Sở thích: ${form.preferences.join(', ')}.`)
+    const labels = form.preferences.map((key) => PREFERENCE_WIRE_VALUE_VI[key])
+    sentences.push(`Sở thích: ${labels.join(', ')}.`)
   }
   if (form.companions) {
-    sentences.push(`Đi cùng: ${form.companions}.`)
+    sentences.push(`Đi cùng: ${COMPANION_WIRE_VALUE_VI[form.companions]}.`)
   }
   if (form.pace) {
-    sentences.push(`Nhịp độ: ${form.pace}.`)
+    sentences.push(`Nhịp độ: ${PACE_WIRE_VALUE_VI[form.pace]}.`)
   }
   if (form.dayRhythm.length > 0) {
-    sentences.push(`Nhịp sinh hoạt: ${form.dayRhythm.join(', ')}.`)
+    const labels = form.dayRhythm.map((key) => DAY_RHYTHM_WIRE_VALUE_VI[key])
+    sentences.push(`Nhịp sinh hoạt: ${labels.join(', ')}.`)
   }
   const notes = form.notes.trim()
   if (notes) {

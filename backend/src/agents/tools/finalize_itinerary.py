@@ -17,6 +17,7 @@ from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
 from src.agents.state import TripState
+from src.i18n import t
 from src.services.itinerary_reuse import ItineraryReuseQuery
 from src.services.itinerary_store import ItineraryStore, ItineraryStoreError
 from src.services.trip_formatter import parse_duration_to_days
@@ -29,12 +30,13 @@ logger = logging.getLogger(__name__)
 def finalize_trip_plan(runtime: ToolRuntime[None, TripState]) -> Command:
     """Finalize the saved draft only after the user explicitly confirms it."""
     trip_data = runtime.state["trip_data"]
+    language = str(runtime.state.get("language") or "vi")
     if trip_data is None:
-        reply = "SYSTEM ERROR: Chưa có kế hoạch để xác nhận. Hãy tạo kế hoạch trước."
+        reply = t("SYSTEM ERROR: Chưa có kế hoạch để xác nhận. Hãy tạo kế hoạch trước.", language)
         return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
 
     if runtime.state["pending_hotel_selection"] is not None:
-        reply = "Bạn cần chọn khách sạn trước khi xác nhận lịch trình."
+        reply = t("Bạn cần chọn khách sạn trước khi xác nhận lịch trình.", language)
         return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
 
     try:
@@ -67,9 +69,9 @@ def finalize_trip_plan(runtime: ToolRuntime[None, TripState]) -> Command:
         # Already persisted + finalized above via ItineraryStore — updating
         # trip_data in state is enough; no separate Supabase upsert here.
         if not result.get("embedding_saved", result.get("has_embedding", False)):
-            reply = "Đã xác nhận lịch trình. Phần tìm kiếm tái sử dụng sẽ tự thử lại sau."
+            reply = t("Đã xác nhận lịch trình. Phần tìm kiếm tái sử dụng sẽ tự thử lại sau.", language)
         else:
-            reply = "Đã xác nhận lịch trình và lưu làm mẫu có thể tái sử dụng."
+            reply = t("Đã xác nhận lịch trình và lưu làm mẫu có thể tái sử dụng.", language)
         return Command(
             update={"trip_data": trip_data, "messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]}
         )

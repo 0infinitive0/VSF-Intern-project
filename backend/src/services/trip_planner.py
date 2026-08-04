@@ -16,6 +16,7 @@ from functools import lru_cache
 from typing import Any
 
 from src.config import get_settings
+from src.i18n import t
 from src.services.hotel_selection import (
     _parse_free_text_price,
     fetch_hotel_by_id,
@@ -366,10 +367,11 @@ def _build_trip_data(
     end_date: str | None = None,
     session_id: str = "poc_trip_planner_1",
     intake_context: str = "",
+    language: str = "vi",
 ) -> dict[str, Any]:
     destination_id = _get_destination_id(destination)
     if not destination_id:
-        raise ValueError(f"Không tìm thấy dữ liệu điểm đến cho {destination}.")
+        raise ValueError(t("Không tìm thấy dữ liệu điểm đến cho {destination}.", language, destination=destination))
     destination_id = str(destination_id)
     number_of_days = parse_duration_to_days(duration)
     try:
@@ -386,13 +388,17 @@ def _build_trip_data(
     if preselected_hotel is not None:
         preselected_candidate = PlaceCandidate.from_mapping({**preselected_hotel, "category": "Hotel"})
         if not preselected_candidate.id or not preselected_candidate.coordinate_pair:
-            raise ValueError("Khách sạn đã chọn thiếu tọa độ hợp lệ; không thể lập lịch trình.")
+            raise ValueError(t("Khách sạn đã chọn thiếu tọa độ hợp lệ; không thể lập lịch trình.", language))
         hotel_options = [(preselected_hotel, preselected_candidate)]
     else:
         hotel_options = _select_real_hotel(destination, destination_id, people, hotel_query)
         if not hotel_options:
             raise ValueError(
-                f"Không tìm thấy khách sạn có tọa độ hợp lệ tại {destination}; không thể lập lịch trình theo vị trí khách sạn."
+                t(
+                    "Không tìm thấy khách sạn có tọa độ hợp lệ tại {destination}; không thể lập lịch trình theo vị trí khách sạn.",
+                    language,
+                    destination=destination,
+                )
             )
     hotel_candidates = [candidate for _, candidate in hotel_options]
     reuse_query = ItineraryReuseQuery(
@@ -1199,7 +1205,10 @@ def apply_trip_edit_plan(current_data: dict[str, Any], plan: TripEditPlan) -> li
 
 
 def resolve_trip_edit_request(
-    trip_data: dict[str, Any] | None, modification_request: str, plan: TripEditPlan
+    trip_data: dict[str, Any] | None,
+    modification_request: str,
+    plan: TripEditPlan,
+    language: str = "vi",
 ) -> tuple[str | None, dict[str, Any]]:
     """Pure core of executing an already-validated LLM edit plan against a
     saved Draft: reads only `trip_data`, returns `(reply_or_None, updates)`
@@ -1213,14 +1222,17 @@ def resolve_trip_edit_request(
     monkeypatch `session_module.execute_trip_edit_request` directly.
     """
     if trip_data is None:
-        return "SYSTEM ERROR: Chưa có kế hoạch chuyến đi để chỉnh sửa.", {}
+        return t("SYSTEM ERROR: Chưa có kế hoạch chuyến đi để chỉnh sửa.", language), {}
     current_data = trip_data
 
     saved_itinerary = (current_data.get("itineraries") or [{}])[0]
     if isinstance(saved_itinerary, dict) and str(saved_itinerary.get("status") or "").casefold() == "finalized":
-        return "Kế hoạch đã xác nhận không thể chỉnh sửa. Hãy tạo một kế hoạch mới nếu cần thay đổi.", {}
+        return (
+            t("Kế hoạch đã xác nhận không thể chỉnh sửa. Hãy tạo một kế hoạch mới nếu cần thay đổi.", language),
+            {},
+        )
     if plan.decision == "clarify":
-        return plan.clarification_question or "Bạn muốn chỉnh sửa phần nào của lịch trình?", {}
+        return plan.clarification_question or t("Bạn muốn chỉnh sửa phần nào của lịch trình?", language), {}
     if plan.decision == "not_edit":
         return None, {}
 
@@ -1249,7 +1261,7 @@ def resolve_trip_edit_request(
                 "created_at": datetime.now().isoformat(),
                 "options": [data for data, _candidate in options],
             }
-            return format_hotel_options(options), {"pending_hotel_selection": pending_payload}
+            return format_hotel_options(options, language), {"pending_hotel_selection": pending_payload}
         except Exception as exc:
             logger.exception("Failed to prepare hotel change")
             return f"SYSTEM ERROR: {exc}", {}
@@ -1259,7 +1271,7 @@ def resolve_trip_edit_request(
         current_data.setdefault("adjustments", []).extend(adjustments)
         _persist_itinerary_metadata(current_data)
         logger.info("Applied LLM edit plan: %s", [operation.operation for operation in plan.operations])
-        return format_trip_response_from_json(current_data), {"trip_data": current_data}
+        return format_trip_response_from_json(current_data, language), {"trip_data": current_data}
     except Exception as exc:
         logger.exception("Failed to apply LLM edit plan")
         return f"SYSTEM ERROR: {exc}", {}
@@ -1632,6 +1644,7 @@ def generate_full_itinerary(
     hotel_id: str = "",
     session_id: str = "poc_trip_planner_1",
     save: Callable[[dict[str, Any]], None] | None = None,
+    language: str = "vi",
 ) -> str:
     """Direct/programmatic entry point that generates a trip plan in one shot.
 
@@ -1650,7 +1663,7 @@ def generate_full_itinerary(
         destination_id = _get_destination_id(destination)
         resolved = fetch_hotel_by_id(hotel_id, str(destination_id) if destination_id else None)
         if not resolved:
-            return "SYSTEM ERROR: Không tìm thấy khách sạn với id đã cho tại điểm đến này."
+            return t("SYSTEM ERROR: Không tìm thấy khách sạn với id đã cho tại điểm đến này.", language)
         preselected_hotel, _candidate = resolved
 
     logger.info(
@@ -1668,6 +1681,7 @@ def generate_full_itinerary(
         preselected_hotel=preselected_hotel,
         session_id=session_id,
         save=save,
+        language=language,
     )
 
 
@@ -1684,6 +1698,7 @@ def _generate_and_save_itinerary(
     session_id: str = "poc_trip_planner_1",
     intake_context: str = "",
     save: Callable[[dict[str, Any]], None] | None = None,
+    language: str = "vi",
 ) -> str:
     """Shared build/save/format sequence used by generate_full_itinerary and
     the select_hotel tool. `save` defaults to the module's own file-backed
@@ -1695,6 +1710,7 @@ def _generate_and_save_itinerary(
             "preselected_hotel": preselected_hotel,
             "session_id": session_id,
             "intake_context": intake_context,
+            "language": language,
         }
         # Keep direct/legacy callers compatible while the guided date-aware
         # flow always supplies the complete interval.
@@ -1713,7 +1729,7 @@ def _generate_and_save_itinerary(
         logger.exception("Itinerary generation failed")
         return f"SYSTEM ERROR: {exc}"
 
-    return format_trip_response_from_json(trip_data)
+    return format_trip_response_from_json(trip_data, language)
 
 
 def _legacy_modify_trip_plan(
@@ -1722,6 +1738,7 @@ def _legacy_modify_trip_plan(
     *,
     save: Callable[[dict[str, Any]], None] | None = None,
     save_pending_hotel_selection: Callable[[dict[str, Any]], None] | None = None,
+    language: str = "vi",
 ) -> str:
     """Use this when the user wants to change, modify, or update an existing trip
     plan (e.g. change hotel, edit schedule, swap attractions). Superseded in the
@@ -1735,7 +1752,7 @@ def _legacy_modify_trip_plan(
     """
     saved_itinerary = (current_data.get("itineraries") or [{}])[0]
     if isinstance(saved_itinerary, dict) and str(saved_itinerary.get("status") or "").casefold() == "finalized":
-        return "Kế hoạch đã xác nhận không thể chỉnh sửa. Hãy tạo một kế hoạch mới nếu cần thay đổi."
+        return t("Kế hoạch đã xác nhận không thể chỉnh sửa. Hãy tạo một kế hoạch mới nếu cần thay đổi.", language)
 
     logger.info(f"Modifying trip plan based on request: {modification_request}")
     save = save or _save_trip_data
@@ -1787,7 +1804,7 @@ def _legacy_modify_trip_plan(
                     "options": [data for data, _candidate in options],
                 }
             )
-            return format_hotel_options(options)
+            return format_hotel_options(options, language)
 
         updated_data = current_data
         adjustments = _apply_local_trip_change(updated_data, change, modification_request)
@@ -1802,5 +1819,5 @@ def _legacy_modify_trip_plan(
         logger.exception("Failed to apply structured trip modification")
         return f"SYSTEM ERROR: {exc}"
 
-    return format_trip_response_from_json(updated_data)
+    return format_trip_response_from_json(updated_data, language)
 

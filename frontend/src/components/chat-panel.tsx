@@ -1,4 +1,4 @@
-import { S } from '../strings'
+import { useTranslation } from 'react-i18next'
 import MessageList from './message-list'
 import Composer from './composer'
 import type { ChatState } from '../types'
@@ -18,26 +18,27 @@ export default function ChatPanel({
   width: number
 }) {
   const { messages, suggestions, hotelOptions, tripPlan, intake, pending, elapsedMs } = state
+  const { t } = useTranslation()
 
   return (
     <section
       className="bg-surface-background border-r border-border-subtle flex flex-col shrink-0"
       style={{ width }}
-      aria-label={S.chatPanelTitle}
+      aria-label={t('chatPanelTitle')}
     >
       <div className="px-6 py-5 flex justify-between items-center bg-surface-background border-b border-border-subtle shrink-0">
         <div className="flex items-center gap-2">
           <span className="material-symbols-outlined text-primary text-[22px]" aria-hidden="true">
             auto_awesome
           </span>
-          <h2 className="font-display text-lg font-bold text-on-surface">{S.chatPanelTitle}</h2>
+          <h2 className="font-display text-lg font-bold text-on-surface">{t('chatPanelTitle')}</h2>
         </div>
         <div className="flex gap-1">
           <button
             type="button"
             className="p-1.5 text-on-surface-variant opacity-60 cursor-not-allowed rounded-md"
             disabled
-            title={S.chatPanelMoreHint}
+            title={t('chatPanelMoreHint')}
           >
             <span className="material-symbols-outlined text-[18px]" aria-hidden="true">
               more_horiz
@@ -47,7 +48,7 @@ export default function ChatPanel({
             type="button"
             className="p-1.5 text-on-surface-variant opacity-60 cursor-not-allowed rounded-md"
             disabled
-            title={S.chatPanelExpandHint}
+            title={t('chatPanelExpandHint')}
           >
             <span className="material-symbols-outlined text-[18px]" aria-hidden="true">
               open_in_full

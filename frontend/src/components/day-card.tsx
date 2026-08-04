@@ -1,27 +1,37 @@
 import { forwardRef } from 'react'
-import { S } from '../strings'
+import { useTranslation } from 'react-i18next'
 import type { Day, DayItem } from '../types'
 
 // Accent color cycled per day, matching the Trip.com-style route markers.
 const DAY_ACCENTS = ['#0047dd', '#00a6ed', '#00d084', '#9575cd', '#ff8a65']
 
-// The 7 real ItemKind values (src/services/trip_edit_planner.py:31) → icon + label.
-// Anything outside this set (null, unknown, future backend additions) gets no
-// badge — never a guessed default.
-const KIND_MAP: Record<string, { icon: string; label: string }> = {
-  breakfast: { icon: 'egg_alt', label: S.kindBreakfast },
-  lunch: { icon: 'lunch_dining', label: S.kindLunch },
-  dinner: { icon: 'dinner_dining', label: S.kindDinner },
-  coffee: { icon: 'coffee', label: S.kindCoffee },
-  attraction: { icon: 'attractions', label: S.kindAttraction },
-  rest: { icon: 'hotel', label: S.kindRest },
-  evening: { icon: 'nightlife', label: S.kindEvening },
+// The 7 real ItemKind values (src/services/trip_edit_planner.py:31) → icon.
+// Labels resolve through the i18n catalog at render time.
+const KIND_ICON_MAP: Record<string, string> = {
+  breakfast: 'egg_alt',
+  lunch: 'lunch_dining',
+  dinner: 'dinner_dining',
+  coffee: 'coffee',
+  attraction: 'attractions',
+  rest: 'hotel',
+  evening: 'nightlife',
+}
+
+const KIND_LABEL_KEY: Record<string, string> = {
+  breakfast: 'kindBreakfast',
+  lunch: 'kindLunch',
+  dinner: 'kindDinner',
+  coffee: 'kindCoffee',
+  attraction: 'kindAttraction',
+  rest: 'kindRest',
+  evening: 'kindEvening',
 }
 
 /**
  * DayCard — one day of the trip plan with a timeline of activities.
  */
 const DayCard = forwardRef<HTMLDivElement, { day: Day }>(function DayCard({ day }, ref) {
+  const { t } = useTranslation()
   const accent = DAY_ACCENTS[(day.day_number - 1) % DAY_ACCENTS.length]
 
   return (
@@ -36,7 +46,7 @@ const DayCard = forwardRef<HTMLDivElement, { day: Day }>(function DayCard({ day 
       />
       <div className="mb-3">
         <div className="font-display font-semibold text-on-surface">
-          {S.dayLabel(day.day_number)}
+          {t('dayLabel', { n: day.day_number })}
         </div>
         {day.theme && <div className="text-sm text-on-surface-variant mt-0.5">{day.theme}</div>}
       </div>
@@ -50,13 +60,15 @@ const DayCard = forwardRef<HTMLDivElement, { day: Day }>(function DayCard({ day 
 })
 
 function ActivityRow({ item }: { item: DayItem }) {
-  const kind = item.kind && KIND_MAP[item.kind] ? KIND_MAP[item.kind] : null
+  const { t } = useTranslation()
+  const icon = item.kind ? KIND_ICON_MAP[item.kind] : null
+  const labelKey = item.kind ? KIND_LABEL_KEY[item.kind] : null
 
   return (
     <div className="flex gap-3">
       <div className="w-20 h-20 rounded-lg bg-surface-muted shrink-0 flex items-center justify-center">
         <span className="material-symbols-outlined text-on-surface-variant" aria-hidden="true">
-          {kind?.icon ?? 'place'}
+          {icon ?? 'place'}
         </span>
       </div>
       <div className="flex-1 min-w-0">
@@ -65,9 +77,9 @@ function ActivityRow({ item }: { item: DayItem }) {
           {item.end_time && item.end_time !== item.start_time && ` – ${item.end_time}`}
         </span>
         <h4 className="text-sm text-on-surface mt-1 font-medium">{item.activity}</h4>
-        {kind && (
+        {labelKey && (
           <span className="inline-block mt-1.5 bg-surface-container-high text-on-surface-variant text-[11px] px-2.5 py-1 rounded-md">
-            {kind.label}
+            {t(labelKey)}
           </span>
         )}
       </div>

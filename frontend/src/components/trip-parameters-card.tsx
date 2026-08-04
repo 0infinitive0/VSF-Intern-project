@@ -1,4 +1,4 @@
-import { S } from '../strings'
+import { useTranslation } from 'react-i18next'
 import { formatTripDateRange } from '../lib/format-trip-dates'
 import type { IntakeStatus, TripPlan } from '../types'
 
@@ -32,6 +32,7 @@ export default function TripParametersCard({
     formatTripDateRange(intake?.start_date, intake?.end_date)
 
   const adults = tripPlan?.number_of_adults ?? parseLeadingCount(intake?.people)
+  const { t } = useTranslation()
 
   if (!dateRange && !adults) return null
 
@@ -41,12 +42,12 @@ export default function TripParametersCard({
         <span className="material-symbols-outlined text-primary text-sm" aria-hidden="true">
           tune
         </span>
-        {S.tripParamsTitle}
+        {t('tripParamsTitle')}
       </h3>
       {dateRange && (
         <div className="mb-2">
           <label className="text-xs text-on-surface-variant block mb-1">
-            {S.tripParamsDatesLabel}
+            {t('tripParamsDatesLabel')}
           </label>
           <div className="flex items-center gap-2 bg-surface-muted p-2 rounded-lg">
             <span className="material-symbols-outlined text-on-surface-variant text-sm" aria-hidden="true">
@@ -59,14 +60,14 @@ export default function TripParametersCard({
       {adults != null && (
         <div>
           <label className="text-xs text-on-surface-variant block mb-1">
-            {S.tripParamsGuestsLabel}
+            {t('tripParamsGuestsLabel')}
           </label>
           <div className="flex items-center gap-2 bg-surface-muted p-2 rounded-lg">
             <span className="material-symbols-outlined text-on-surface-variant text-sm" aria-hidden="true">
               group
             </span>
             <span className="text-sm text-on-surface">
-              {adults} {S.tripParamsAdultsSuffix}
+              {adults} {t('tripParamsAdultsSuffix')}
             </span>
           </div>
         </div>

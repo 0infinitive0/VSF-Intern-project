@@ -1,0 +1,125 @@
+{
+  "navBrand": "V-OTA AI",
+  "navExplorer": "Explorer",
+  "navTrips": "Trips",
+  "navConcierge": "Concierge",
+  "navNotifications": "Notifications",
+  "navHelp": "Help",
+
+  "chatPanelTitle": "AI Assistant",
+  "chatPanelMoreHint": "Options (not yet supported)",
+  "chatPanelExpandHint": "Fullscreen (not yet supported)",
+
+  "composerPlaceholder": "Type a message...",
+  "sendBtn": "Send",
+  "newChatBtn": "+ New chat",
+  "newChatConfirm": "Start a new chat? The current conversation will be deleted.",
+
+  "greeting": "Hello! Where would you like to go, for how long, and with how many people?",
+  "itineraryEmptyTitle": "Your itinerary",
+  "itineraryEmptyBody": "Your itinerary will appear here once you pick a hotel.",
+
+  "pendingDefault": "Processing...",
+  "pendingSearchingHotels": "Looking for matching hotels...",
+  "pendingBuildingPlan": "Building your itinerary — this usually takes 30–60 seconds...",
+  "elapsedSuffix": "seconds",
+
+  "itineraryTitle": "Planned itinerary",
+  "hotelLabel": "Hotel",
+  "dayLabel": "Day {{n}}",
+  "adjustmentsLabel": "Adjustments",
+  "statusLabel": "Status: {{s}}",
+  "itineraryTabLabel": "Itinerary",
+  "ideasTabLabel": "Ideas",
+  "bookingsTabLabel": "Bookings",
+  "addDayLabel": "Add day (not yet supported)",
+  "guestsAdultsSuffix": "adults",
+  "itineraryExpandHint": "Fullscreen (not yet supported)",
+  "itineraryEditHint": "Edit (not yet supported)",
+  "itineraryShareHint": "Share (not yet supported)",
+
+  "kindBreakfast": "Breakfast",
+  "kindLunch": "Lunch",
+  "kindDinner": "Dinner",
+  "kindCoffee": "Coffee",
+  "kindAttraction": "Sightseeing",
+  "kindRest": "Rest",
+  "kindEvening": "Evening",
+
+  "tripParamsTitle": "Trip parameters",
+  "tripParamsDatesLabel": "Dates",
+  "tripParamsGuestsLabel": "Guests",
+  "tripParamsAdultsSuffix": "adults",
+
+  "intakeDestinationLabel": "Destination",
+  "intakeDestinationPlaceholder": "Choose a destination",
+  "intakeDatesLabel": "Dates & duration",
+  "intakeStartDateLabel": "Start date",
+  "intakeEndDateLabel": "End date",
+  "intakeDatePlaceholder": "dd/mm/yyyy",
+  "intakeGuestsLabel": "Guests",
+  "intakeBudgetLabel": "Hotel budget",
+  "intakeOtherOptionsLabel": "Other options",
+  "intakePreferencesLabel": "Travel preferences",
+  "intakeCompanionsLabel": "Who you're traveling with",
+  "intakePaceLabel": "Pace",
+  "intakeDayRhythmLabel": "Daily rhythm",
+  "intakeNotesLabel": "Other needs",
+  "intakeNotesPlaceholder": "e.g. need an ocean-view room, vegetarian...",
+  "intakeNotesCounter": "{{n}}/1000",
+  "intakeSubmit": "Submit",
+  "intakeRequiredHint": "Destination, dates, and guests are required",
+  "intakeDecreaseGuests": "Decrease guests",
+  "intakeIncreaseGuests": "Increase guests",
+  "intakeNoBudgetOptions": "No budget options available.",
+  "intake": {
+    "preferenceOptions": {
+      "beach": "Beach",
+      "culture": "Culture",
+      "food": "Food",
+      "nature": "Nature",
+      "history": "History",
+      "shopping": "Shopping",
+      "nightlife": "Nightlife",
+      "kids": "Kids",
+      "classic": "Classic",
+      "cityscape": "Cityscape"
+    },
+    "companionOptions": {
+      "solo": "Traveling alone",
+      "family": "Traveling with family",
+      "partner": "Traveling with partner or spouse",
+      "friends": "Traveling with friends",
+      "elderly": "Traveling with older adults"
+    },
+    "paceOptions": {
+      "packed": "Packed",
+      "moderate": "Moderate",
+      "relaxed": "Relaxed"
+    },
+    "dayRhythmOptions": {
+      "earlyStart": "Early start",
+      "lateNight": "Late nights"
+    }
+  },
+
+  "hotelRooms": "Suggested rooms",
+  "hotelAverageNightly": "{{price}} {{currency}}/night",
+  "hotelTotalStay": "{{nights}} night(s) total: {{price}} {{currency}}",
+  "hotelPickBtn": "Pick this hotel",
+
+  "errorPrefix": "Error: ",
+  "errorNetwork": "Connection error: {{msg}}",
+  "errorStage": "SYSTEM ERROR",
+
+  "resetTitle": "Start over",
+
+  "mapPlaceholderTitle": "Route map",
+  "mapPlaceholderBody": "The map feature is under development.",
+  "mapControlDisabledHint": "The map feature is under development",
+  "mapFilterAttractions": "Sightseeing",
+  "mapFilterProperties": "Hotels",
+  "mapFilterFood": "Food",
+  "mapFilterShopping": "Shopping",
+  "mapSearchPlaceholder": "Search area..."
+}

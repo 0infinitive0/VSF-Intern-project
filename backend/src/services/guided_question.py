@@ -12,6 +12,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from src.i18n import t
+
 
 @dataclass(frozen=True)
 class GuidedOption:
@@ -27,8 +29,15 @@ class GuidedQuestion:
     required: bool = True
 
 
-def format_guided_question(question: GuidedQuestion) -> str:
-    lines = [question.prompt]
+def format_guided_question(question: GuidedQuestion, language: str = "vi") -> str:
+    """Render a guided question as a numbered menu.
+
+    The `prompt` is localized via `t(..., language)`; the option `label`s are
+    deliberately NOT translated — they are the wire values `resolve_guided_reply`
+    and the frontend budget selector match on, and must stay byte-identical
+    regardless of the display language.
+    """
+    lines = [t(question.prompt, language)]
     for index, option in enumerate(question.options, start=1):
         lines.append(f"{index}. {option.label}")
     return "\n".join(lines)

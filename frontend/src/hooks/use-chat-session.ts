@@ -12,7 +12,7 @@
 
 import { useReducer, useEffect, useRef, useCallback } from 'react'
 import { createSession, sendMessage, resetSession } from '../api/chat-client'
-import { S } from '../strings'
+import i18n from '../i18n'
 import type { ChatState, PlannerChatResponse } from '../types'
 
 const SESSION_KEY = 'vsf_trip_planner_session_id'
@@ -190,13 +190,13 @@ export function useChatSession() {
       dispatch({ type: 'SEND_START', id, text: trimmed })
 
       try {
-        const data = await sendMessage(state.sessionId, trimmed)
+        const data = await sendMessage(state.sessionId, trimmed, i18n.language)
         dispatch({ type: 'SEND_SUCCESS', id, data })
       } catch (err) {
         dispatch({
           type: 'SEND_ERROR',
           id,
-          error: S.errorNetwork(err instanceof Error ? err.message : String(err)),
+          error: i18n.t('errorNetwork', { msg: err instanceof Error ? err.message : String(err) }),
         })
       }
     },

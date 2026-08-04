@@ -34,6 +34,7 @@ from src.agents.routing_decision import (
 from src.agents.state import TripState, initial_state
 from src.agents.supervisor import decide_route_by_llm
 from src.config import get_settings
+from src.i18n import SUPPORTED_LANGUAGES, t
 from src.services.hotel_selection import HotelPreferenceState, _has_budget_signal
 from src.services.trip_edit_planner import TripEditPlan, TripEditPlanError, plan_trip_edit
 from src.services.trip_intake import (
@@ -195,6 +196,14 @@ class TripSession:
     @pending_hotel_selection.setter
     def pending_hotel_selection(self, value: dict[str, Any] | None) -> None:
         self.state["pending_hotel_selection"] = value
+
+    @property
+    def language(self) -> str:
+        return str(self.state.get("language") or "vi")
+
+    @language.setter
+    def language(self, value: str) -> None:
+        self.state["language"] = value if value in SUPPORTED_LANGUAGES else "vi"
 
     @property
     def initial_plan_complete(self) -> bool:
@@ -464,16 +473,18 @@ def _preference_state_from_session(session: TripSession) -> TripIntakeState:
 def _recommend_preference_replacement(session: TripSession) -> str:
     state = session.preference_replacement_state
     if state is None or not state.is_complete:
-        return "SYSTEM ERROR: Thông tin thay đổi chuyến đi chưa đầy đủ."
+        return t("SYSTEM ERROR: Thông tin thay đổi chuyến đi chưa đầy đủ.", session.language)
     if not session.hotel_pref_state.is_complete:
-        return session.hotel_pref_state.next_question() or "Bạn muốn ngân sách khách sạn khoảng bao nhiêu?"
+        return session.hotel_pref_state.next_question(session.language) or t(
+            "Bạn muốn ngân sách khách sạn khoảng bao nhiêu?", session.language
+        )
 
     arguments = {**state.tool_arguments(), **session.hotel_pref_state.tool_arguments()}
     response = str(session.tools.recommend_hotels.invoke(arguments))
     if response.startswith("SYSTEM ERROR:"):
         return response
     if session.pending_hotel_selection is None:
-        return "SYSTEM ERROR: Không thể lưu danh sách khách sạn mới."
+        return t("SYSTEM ERROR: Không thể lưu danh sách khách sạn mới.", session.language)
 
     if session.trip_data is not None:
         replacement = dict(session.pending_hotel_selection)
@@ -493,9 +504,13 @@ def _start_trip_preference_update(session: TripSession, update: TripPreferenceUp
     session.pending_trip_preference_request = None
     _clear_pending_hotel_selection(session)
     if not updated.is_complete:
-        return updated.next_question(_get_destination_names()) or "Vui lòng bổ sung thông tin chuyến đi."
+        return updated.next_question(_get_destination_names(), session.language) or t(
+            "Vui lòng bổ sung thông tin chuyến đi.", session.language
+        )
     if not session.hotel_pref_state.is_complete:
-        return session.hotel_pref_state.next_question() or "Bạn muốn ngân sách khách sạn khoảng bao nhiêu?"
+        return session.hotel_pref_state.next_question(session.language) or t(
+            "Bạn muốn ngân sách khách sạn khoảng bao nhiêu?", session.language
+        )
     return _recommend_preference_replacement(session)
 
 
@@ -524,15 +539,24 @@ def execute_trip_edit_request(session: TripSession, modification_request: str, p
     if preference_update:
         saved_itinerary = ((session.trip_data or {}).get("itineraries") or [{}])[0]
         if isinstance(saved_itinerary, dict) and str(saved_itinerary.get("status") or "").casefold() == "finalized":
-            return "Kế hoạch đã xác nhận không thể chỉnh sửa. Hãy tạo một kế hoạch mới nếu cần thay đổi."
+            return t(
+                "Kế hoạch đã xác nhận không thể chỉnh sửa. Hãy tạo một kế hoạch mới nếu cần thay đổi.",
+                session.language,
+            )
         if preference_update.trip_preferences is None:
-            return "SYSTEM ERROR: Yêu cầu thay đổi thông tin chuyến đi không hợp lệ."
+            return t("SYSTEM ERROR: Yêu cầu thay đổi thông tin chuyến đi không hợp lệ.", session.language)
         try:
             return _start_trip_preference_update(session, preference_update.trip_preferences)
         except TripPreferenceUpdateError as exc:
-            return f"Mình chưa thể xác nhận thay đổi {exc} Bạn vui lòng nói rõ lại nhé."
+            return t(
+                "Mình chưa thể xác nhận thay đổi {exc} Bạn vui lòng nói rõ lại nhé.",
+                session.language,
+                exc=exc,
+            )
 
-    reply, updates = resolve_trip_edit_request(session.trip_data, modification_request, plan)
+    reply, updates = resolve_trip_edit_request(
+        session.trip_data, modification_request, plan, language=session.language
+    )
     session.state.update(updates)
     return reply
 
@@ -569,11 +593,15 @@ def _decide_route(session: TripSession, context: RouteContext, user_input: str) 
     return validated
 
 
+<<<<<<< Updated upstream:backend/src/agents/session.py
 def process_chat_turn(
     session: TripSession,
     user_input: str,
     stay_dates: tuple[str, str] | None = None,
 ) -> TurnResult:
+=======
+def process_chat_turn(session: TripSession, user_input: str, language: str = "vi") -> TurnResult:
+>>>>>>> Stashed changes:src/agents/session.py
     """Handle exactly one chat turn and return a TurnResult. Mutates `session`
     in place. Callers own their own input loop / HTTP request cycle — this
     function never blocks on input() and never prints.
@@ -581,9 +609,14 @@ def process_chat_turn(
     The returned TurnResult.tool records which tool actually ran so that the
     HTTP layer can derive `stage` without re-implementing routing logic. The
     CLI caller uses .text directly.
+
+    `language` ("vi" | "en") is stored on `session.state["language"]` and
+    drives every deterministic (non-LLM) reply via `t(..., language)`. An
+    unrecognized value falls back to "vi" through the setter.
     """
     logger.info("User Input: %s", user_input)
     session.last_seen_at = time.time()
+    session.language = language
 
     if stay_dates:
         try:
@@ -642,7 +675,15 @@ def process_chat_turn(
             session.pending_trip_preference_request = request
             _clear_pending_hotel_selection(session)
             return TurnResult(
+<<<<<<< Updated upstream:backend/src/agents/session.py
                 text=f"Mình chưa thể xác nhận {exc} Hãy chọn một số thích được hỗ trợ hoặc nói rõ thông tin muốn đổi.",
+=======
+                text=t(
+                    "Mình chưa thể xác nhận {exc} Hãy chọn một sở thích được hỗ trợ hoặc nói rõ thông tin muốn đổi.",
+                    session.language,
+                    exc=exc,
+                ),
+>>>>>>> Stashed changes:src/agents/session.py
                 tool=None,
             )
         tool = "recommend_hotels" if session.pending_hotel_selection is not None else None
@@ -651,7 +692,7 @@ def process_chat_turn(
     if session.preference_replacement_state is not None:
         if not session.hotel_pref_state.is_complete:
             session.hotel_pref_state = session.hotel_pref_state.with_message(user_input)
-            question = session.hotel_pref_state.next_question()
+            question = session.hotel_pref_state.next_question(session.language)
             if question:
                 return TurnResult(text=question, tool=None)
         response = _recommend_preference_replacement(session)
@@ -831,21 +872,24 @@ def _run_edit_draft(session: TripSession, user_input: str) -> TurnResult | None:
     except TripEditPlanError as exc:
         logger.warning("Saved-trip edit planner failed safely: %s", exc)
         return TurnResult(
-            text="SYSTEM ERROR: Không thể hiểu an toàn yêu cầu chỉnh sửa này. Vui lòng diễn đạt cụ thể hơn.",
+            text=t(
+                "SYSTEM ERROR: Không thể hiểu an toàn yêu cầu chỉnh sửa này. Vui lòng diễn đạt cụ thể hơn.",
+                session.language,
+            ),
             tool=None,
         )
 
     if edit_plan.decision == "clarify":
         session.pending_trip_edit_request = planner_request
         return TurnResult(
-            text=edit_plan.clarification_question or "Bạn muốn chỉnh sửa phần nào của lịch trình?",
+            text=edit_plan.clarification_question or t("Bạn muốn chỉnh sửa phần nào của lịch trình?", session.language),
             tool=None,
         )
     session.pending_trip_edit_request = None
     if edit_plan.decision == "apply":
         tool_response = execute_trip_edit_request(session, user_input, edit_plan)
         logger.info("LLM planned modification response: %s", tool_response)
-        reply_text = tool_response or "SYSTEM ERROR: Không thể áp dụng yêu cầu chỉnh sửa này."
+        reply_text = tool_response or t("SYSTEM ERROR: Không thể áp dụng yêu cầu chỉnh sửa này.", session.language)
         tool_name = (
             "recommend_hotels"
             if session.pending_hotel_selection
@@ -904,17 +948,42 @@ def _run_recommend_hotels(session: TripSession) -> TurnResult:
 
 
 def _run_intake(session: TripSession, user_input: str) -> TurnResult:
+<<<<<<< Updated upstream:backend/src/agents/session.py
     destination_names = _get_destination_names()
     session.intake_state = session.intake_state.with_message(user_input, destination_names)
 
     # 1. Ask for destination and people first
     if not session.intake_state.destination or not session.intake_state.people:
         missing_question = session.intake_state.next_question(destination_names)
+=======
+    if not session.intake_state.is_complete:
+        destination_names = _get_destination_names()
+        session.intake_state = session.intake_state.with_message(user_input, destination_names)
+        missing_question = session.intake_state.next_question(destination_names, session.language)
+>>>>>>> Stashed changes:src/agents/session.py
         if missing_question:
             logger.info("Deterministic intake response: %s", missing_question)
             return TurnResult(text=str(missing_question), tool=None)
 
+<<<<<<< Updated upstream:backend/src/agents/session.py
     # 2. Ask for hotel budget BEFORE asking for dates
+=======
+        # Trip facts just became complete THIS turn. A single form submission
+        # carries BOTH the trip facts and the budget tier in one message, so
+        # try the same message against the budget question immediately rather
+        # than deferring it to next turn. Gated on a credible budget signal so
+        # a facts-only message (whose date year like "2026" must not be read as
+        # a price) still falls back to asking the budget question next turn —
+        # no regression for a plain-chat user who answers one fact per message.
+        if not session.hotel_pref_state.is_complete:
+            if _has_budget_signal(user_input):
+                session.hotel_pref_state = session.hotel_pref_state.with_message(user_input)
+        if session.hotel_pref_state.is_complete:
+            return _run_recommend_hotels(session)
+        logger.info("Trip intake complete; asking hotel budget preference")
+        return TurnResult(text=str(session.hotel_pref_state.next_question(session.language)), tool=None)
+
+>>>>>>> Stashed changes:src/agents/session.py
     if not session.hotel_pref_state.is_complete:
         # Trip facts (destination/duration/start_date/people) are already locked in
         # by this point, but the optional taxonomy fields (companions/pace/day_rhythm/
@@ -925,7 +994,7 @@ def _run_intake(session: TripSession, user_input: str) -> TurnResult:
         # facts untouched (grounded values for an already-set field never win).
         session.intake_state = session.intake_state.with_message(user_input, _get_destination_names())
         session.hotel_pref_state = session.hotel_pref_state.with_message(user_input)
-        missing_pref_question = session.hotel_pref_state.next_question()
+        missing_pref_question = session.hotel_pref_state.next_question(session.language)
         if missing_pref_question:
             logger.info("Guided hotel-preference response: %s", missing_pref_question)
             return TurnResult(text=str(missing_pref_question), tool=None)

@@ -1,5 +1,5 @@
 import { useRef, useEffect, type KeyboardEvent } from 'react'
-import { S } from '../strings'
+import { useTranslation } from 'react-i18next'
 
 /**
  * Composer — textarea + send button.
@@ -14,6 +14,7 @@ export default function Composer({
   disabled: boolean
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const { t } = useTranslation()
 
   useEffect(() => {
     if (!disabled) textareaRef.current?.focus()
@@ -50,12 +51,12 @@ export default function Composer({
             ref={textareaRef}
             id="message-input"
             className="composer-scrollbar w-full bg-transparent border-none rounded-none text-sm resize-none leading-normal focus:outline-none disabled:opacity-60 placeholder:text-on-surface-variant"
-            placeholder={S.composerPlaceholder}
+placeholder={t('composerPlaceholder')}
             rows={1}
             disabled={disabled}
             onKeyDown={handleKeyDown}
             onInput={handleInput}
-            aria-label={S.composerPlaceholder}
+            aria-label={t('composerPlaceholder')}
           />
         </div>
         <button
@@ -64,7 +65,7 @@ export default function Composer({
           disabled={disabled}
           onClick={handleSend}
           type="button"
-          aria-label={S.sendBtn}
+          aria-label={t('sendBtn')}
         >
           <span className="material-symbols-outlined text-[18px]">send</span>
         </button>

@@ -61,11 +61,17 @@ class TripState(TypedDict):
     reroute_count: int
     reply: str
     tool_ran: str | None
+    language: str
     remaining_steps: NotRequired[Annotated[int, RemainingStepsManager]]
 
 
-def initial_state(session_id: str) -> TripState:
-    """Fresh TripState for a brand-new conversation."""
+def initial_state(session_id: str, language: str = "vi") -> TripState:
+    """Fresh TripState for a brand-new conversation.
+
+    `language` is the reply-language for deterministic content
+    ("vi" | "en"); it mirrors the frontend's manual EN/VI toggle and is
+    threaded into every reply-producing helper via `t(..., language)`.
+    """
     logger.debug("Initializing TripState for session %s", session_id)
     return TripState(
         messages=[],
@@ -83,4 +89,5 @@ def initial_state(session_id: str) -> TripState:
         reroute_count=0,
         reply="",
         tool_ran=None,
+        language=language,
     )

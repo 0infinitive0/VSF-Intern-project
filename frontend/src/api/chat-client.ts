@@ -56,12 +56,20 @@ export async function createSession(): Promise<CreateSessionResponse> {
 
 /**
  * Send a chat message.
+ * `language` is the UI language of the current turn ("vi" | "en"); the backend
+ * uses it to localize the reply and LLM prompt. Wireless value default here to
+ * "vi" so existing callers sending only (sessionId, message) keep working.
  */
 export async function sendMessage(
   sessionId: string,
   message: string,
+  language: string = 'vi',
 ): Promise<PlannerChatResponse> {
-  return request('POST', '/planner_chat', { session_id: sessionId, message })
+  return request('POST', '/planner_chat', {
+    session_id: sessionId,
+    message,
+    language,
+  })
 }
 
 /**

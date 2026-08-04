@@ -1,14 +1,15 @@
-import { S } from '../strings'
+import { useTranslation } from 'react-i18next'
 
 /**
  * ElapsedSpinner — shows while a request is in-flight.
  * Displays a rotating ring + copy that changes after 10s.
  */
 export default function ElapsedSpinner({ elapsedMs }: { elapsedMs: number }) {
+  const { t } = useTranslation()
   const seconds = Math.floor(elapsedMs / 1000)
-  let copy = S.pendingDefault
-  if (seconds >= 10) copy = S.pendingBuildingPlan
-  else if (seconds >= 3) copy = S.pendingSearchingHotels
+  let copy = t('pendingDefault')
+  if (seconds >= 10) copy = t('pendingBuildingPlan')
+  else if (seconds >= 3) copy = t('pendingSearchingHotels')
 
   return (
     <div
@@ -25,7 +26,7 @@ export default function ElapsedSpinner({ elapsedMs }: { elapsedMs: number }) {
         {seconds > 0 && (
           <>
             {' '}
-            ({seconds} {S.elapsedSuffix})
+            ({seconds} {t('elapsedSuffix')})
           </>
         )}
       </span>

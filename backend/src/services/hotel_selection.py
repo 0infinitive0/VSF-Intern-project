@@ -559,9 +559,9 @@ class HotelPreferenceState:
     def is_complete(self) -> bool:
         return self.stage == "done"
 
-    def next_question(self) -> str | None:
+    def next_question(self, language: str = "vi") -> str | None:
         if self.stage == "pending_budget":
-            return format_guided_question(_BUDGET_QUESTION)
+            return format_guided_question(_BUDGET_QUESTION, language=language)
         return None
 
     def suggestion_options(self) -> tuple[str, ...]:

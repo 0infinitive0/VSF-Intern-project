@@ -26,6 +26,7 @@ from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
 from src.agents.state import TripState
+from src.i18n import t
 from src.services.trip_edit_planner import TripEditPlanError, plan_trip_edit
 from src.services.trip_planner import resolve_trip_edit_request
 
@@ -36,21 +37,25 @@ logger = logging.getLogger(__name__)
 def modify_trip_plan(modification_request: str, runtime: ToolRuntime[None, TripState]) -> Command:
     """Apply a constrained stateless LLM plan to an existing Draft itinerary."""
     trip_data = runtime.state["trip_data"]
+    language = str(runtime.state.get("language") or "vi")
     if trip_data is None:
-        reply = "SYSTEM ERROR: Chưa có kế hoạch chuyến đi để chỉnh sửa."
+        reply = t("SYSTEM ERROR: Chưa có kế hoạch chuyến đi để chỉnh sửa.", language)
         return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
 
     if runtime.state["pending_hotel_selection"] is not None:
-        reply = "Bạn cần chọn khách sạn trước khi chỉnh sửa lịch trình."
+        reply = t("Bạn cần chọn khách sạn trước khi chỉnh sửa lịch trình.", language)
         return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
 
     try:
         plan = plan_trip_edit(modification_request, trip_data)
     except TripEditPlanError as exc:
         logger.warning("Could not safely plan trip edit: %s", exc)
-        reply = "SYSTEM ERROR: Không thể hiểu an toàn yêu cầu chỉnh sửa này. Vui lòng diễn đạt cụ thể hơn."
+        reply = t(
+            "SYSTEM ERROR: Không thể hiểu an toàn yêu cầu chỉnh sửa này. Vui lòng diễn đạt cụ thể hơn.",
+            language,
+        )
         return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
 
-    reply, updates = resolve_trip_edit_request(trip_data, modification_request, plan)
-    reply = reply or "Yêu cầu này không thay đổi lịch trình hiện tại."
+    reply, updates = resolve_trip_edit_request(trip_data, modification_request, plan, language=language)
+    reply = reply or t("Yêu cầu này không thay đổi lịch trình hiện tại.", language)
     return Command(update={**updates, "messages": [ToolMessage(str(reply), tool_call_id=runtime.tool_call_id)]})

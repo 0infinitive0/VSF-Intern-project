@@ -20,6 +20,7 @@ from langgraph.types import Command
 
 from src.agents.nodes.intake import validate_trip_basics
 from src.agents.state import TripState
+from src.i18n import t
 from src.services.hotel_selection import (
     lookup_sea_view_hotel_ids,
     rank_hotel_candidates,
@@ -69,19 +70,27 @@ def recommend_hotels(
     clean_destination, error = validate_trip_basics(destination, duration, people)
     if error:
         return Command(update={"messages": [ToolMessage(error, tool_call_id=runtime.tool_call_id)]})
+    language = str(runtime.state.get("language") or "vi")
     try:
         parsed_start_date = date.fromisoformat(start_date)
         parsed_end_date = date.fromisoformat(end_date)
     except ValueError:
-        reply = "SYSTEM ERROR: Cần có ngày bắt đầu và ngày kết thúc hợp lệ (YYYY-MM-DD) để tìm khách sạn."
+        reply = t(
+            "SYSTEM ERROR: Cần có ngày bắt đầu và ngày kết thúc hợp lệ (YYYY-MM-DD) để tìm khách sạn.",
+            language,
+        )
         return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
     if parsed_end_date <= parsed_start_date:
-        reply = "SYSTEM ERROR: Ngày kết thúc phải sau ngày bắt đầu."
+        reply = t("SYSTEM ERROR: Ngày kết thúc phải sau ngày bắt đầu.", language)
         return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
 
     destination_id = _get_destination_id(clean_destination)
     if not destination_id:
-        reply = f"SYSTEM ERROR: Không tìm thấy dữ liệu điểm đến cho {clean_destination}."
+        reply = t(
+            "SYSTEM ERROR: Không tìm thấy dữ liệu điểm đến cho {dest}.",
+            language,
+            dest=clean_destination,
+        )
         return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
     destination_id = str(destination_id)
 
@@ -135,9 +144,10 @@ def recommend_hotels(
         return Command(update={"messages": [ToolMessage(f"SYSTEM ERROR: {exc}", tool_call_id=runtime.tool_call_id)]})
 
     if not options:
-        reply = (
-            f"SYSTEM ERROR: Không tìm thấy khách sạn có tọa độ hợp lệ tại {clean_destination}; "
-            "không thể gợi ý khách sạn."
+        reply = t(
+            "SYSTEM ERROR: Không tìm thấy khách sạn có tọa độ hợp lệ tại {dest}; không thể gợi ý khách sạn.",
+            language,
+            dest=clean_destination,
         )
         return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
 
@@ -164,7 +174,11 @@ def recommend_hotels(
         "created_at": datetime.now().isoformat(),
         "options": combined_options,
     }
+<<<<<<< Updated upstream:backend/src/agents/tools/recommend_hotels.py
     reply = "Mình đã tìm được danh sách khách sạn phù hợp. Bạn xem và chọn trực tiếp khách sạn mong muốn trong tab Khách sạn để tạo lịch trình nhé!"
+=======
+    reply = format_hotel_options(options, language)
+>>>>>>> Stashed changes:src/agents/tools/recommend_hotels.py
     return Command(
         update={
             "pending_hotel_selection": pending_payload,

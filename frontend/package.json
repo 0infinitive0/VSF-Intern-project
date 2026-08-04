@@ -16,8 +16,10 @@
     "@daypicker/react": "^10.0.1",
     "@tailwindcss/vite": "^4.3.3",
     "date-fns": "^4.4.0",
+    "i18next": "^26.3.6",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "react-i18next": "^17.0.11",
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {

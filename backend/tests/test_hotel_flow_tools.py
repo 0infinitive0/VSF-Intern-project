@@ -74,6 +74,7 @@ def _fake_build_trip_data(captured: dict):
         planning_constraints=None,
         session_id="poc_trip_planner_1",
         intake_context="",
+        language="vi",
     ):
         captured["destination"] = destination
         captured["hotel_query"] = hotel_query

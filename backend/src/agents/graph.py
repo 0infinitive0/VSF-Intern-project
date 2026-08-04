@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 
-from src.agents.prompts import SUPERVISOR_PROMPT
+from src.agents.prompts import SUPERVISOR_PROMPT, SUPERVISOR_PROMPT_EN
 from src.agents.state import TripState
 from src.agents.tools.direct_invoke import invoke_tool_directly
 from src.agents.tools.finalize_itinerary import finalize_trip_plan
@@ -88,6 +88,6 @@ def build_trip_agent(session: TripSession, *, temperature: float = 0.3):
         _AGENT_TOOLS,
         state_schema=TripState,
         checkpointer=memory,
-        prompt=SUPERVISOR_PROMPT,
+        prompt=SUPERVISOR_PROMPT_EN if session.language == "en" else SUPERVISOR_PROMPT,
     )
     return compiled_agent, tools

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { S } from '../strings'
+import { useTranslation } from 'react-i18next'
 import type { HotelOption } from '../types'
 
 /**
@@ -18,6 +18,7 @@ function HotelOptionCard({
   disabled: boolean
   selected: boolean
 }) {
+  const { t } = useTranslation()
   const stars =
     '★'.repeat(hotel.star_rating || 0) + '☆'.repeat(Math.max(0, 5 - (hotel.star_rating || 0)))
   const currency = hotel.currency || 'VND'
@@ -58,12 +59,22 @@ function HotelOptionCard({
           {hasStayPrice && (
             <div
               className="text-sm text-on-surface mt-1"
-              aria-label={S.hotelAverageNightly(formatPrice(hotel.average_nightly_price!), currency)}
+              aria-label={t('hotelAverageNightly', {
+                price: formatPrice(hotel.average_nightly_price!),
+                currency,
+              })}
             >
-              {S.hotelAverageNightly(formatPrice(hotel.average_nightly_price!), currency)}
+              {t('hotelAverageNightly', {
+                price: formatPrice(hotel.average_nightly_price!),
+                currency,
+              })}
               {Number.isFinite(Number(hotel.total_stay_price)) && (hotel.stay_night_count ?? 0) > 0 && (
                 <span className="text-xs text-on-surface-variant ml-1">
-                  ({S.hotelTotalStay(hotel.stay_night_count!, formatPrice(hotel.total_stay_price!), currency)})
+                  ({t('hotelTotalStay', {
+                    nights: hotel.stay_night_count!,
+                    price: formatPrice(hotel.total_stay_price!),
+                    currency,
+                  })})
                 </span>
               )}
             </div>
@@ -86,7 +97,7 @@ function HotelOptionCard({
             onClick={() => onPick(String(hotel.index))}
             type="button"
           >
-            {S.hotelPickBtn}
+            {t('hotelPickBtn')}
           </button>
         </div>
       </div>

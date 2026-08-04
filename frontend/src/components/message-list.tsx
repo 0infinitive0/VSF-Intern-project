@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { S } from '../strings'
+import { useTranslation } from 'react-i18next'
 import MessageBubble from './message-bubble'
 import SuggestionChips from './suggestion-chips'
 import HotelOptionCards from './hotel-option-card'
@@ -33,6 +33,7 @@ export default function MessageList({
   onSelect: (value: string) => void
 }) {
   const bottomRef = useRef<HTMLDivElement>(null)
+  const { t } = useTranslation()
 
   // Auto-scroll to bottom whenever messages/pending change
   useEffect(() => {
@@ -60,7 +61,7 @@ export default function MessageList({
             </span>
           </div>
           <div className="bg-surface-container-low text-on-surface rounded-2xl rounded-tl-sm px-4 py-3 max-w-[90%] text-sm">
-            {S.greeting}
+            {t('greeting')}
           </div>
         </div>
       )}

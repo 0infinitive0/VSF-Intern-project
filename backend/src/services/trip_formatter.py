@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.i18n import t
 from src.services.trip_scheduler import PlaceCandidate, normalize_day_themes
 
 
@@ -84,7 +85,7 @@ def build_natural_activity_string(name: str, category: str = "") -> str:
         return f"Tham quan {s}"
 
 
-def format_trip_response_from_json(trip_data: dict[str, Any]) -> str:
+def format_trip_response_from_json(trip_data: dict[str, Any], language: str = "vi") -> str:
     """Format structured trip JSON into concise user text response."""
     hotel = trip_data.get("hotel", {})
     itineraries = trip_data.get("itineraries", [])
@@ -94,17 +95,19 @@ def format_trip_response_from_json(trip_data: dict[str, Any]) -> str:
 
     output = []
 
-    hotel_name = hotel.get("name", "Khách sạn chưa xác định")
+    hotel_name = hotel.get("name", t("Khách sạn chưa xác định", language))
     star_rating = hotel.get("star_rating")
-    stars_str = f" ({star_rating} sao)" if star_rating else ""
+    stars_str = t(" ({star_rating} sao)", language, star_rating=star_rating) if star_rating else ""
     description = hotel.get("description", "")
 
     matched_rooms = (hotel.get("matched_rooms") or hotel.get("matched_room_names") or [])[:2]
-    rooms_str = f" | Phòng gợi ý: {', '.join(matched_rooms)}" if matched_rooms else ""
+    rooms_str = (
+        t(" | Phòng gợi ý: {rooms}", language, rooms=", ".join(matched_rooms)) if matched_rooms else ""
+    )
 
     output.append(f"Hotel: {hotel_name}{stars_str}{rooms_str}")
     if description:
-        output.append(f"Tóm tắt: {description}")
+        output.append(t("Tóm tắt: {description}", language, description=description))
     output.append("------")
 
     day_themes: dict[int, str] = {}
@@ -151,7 +154,7 @@ def format_trip_response_from_json(trip_data: dict[str, Any]) -> str:
 
     for day_num in range(1, max_days + 1):
         theme_suffix = f" - {day_themes[day_num]}" if day_num in day_themes else ""
-        output.append(f"Ngày {day_num}{theme_suffix}:")
+        output.append(t("Ngày {day_num}{theme_suffix}:", language, day_num=day_num, theme_suffix=theme_suffix))
 
         day_items = sorted(items_by_day.get(day_num, []), key=lambda x: x.get("order_index", 1))
         if day_items:
@@ -161,39 +164,49 @@ def format_trip_response_from_json(trip_data: dict[str, Any]) -> str:
                 start_text = start_time[:5] if len(start_time) >= 5 else start_time
                 end_text = end_time[:5] if isinstance(end_time, str) and len(end_time) >= 5 else None
                 time_str = f"{start_text}-{end_text}" if end_text else start_text
-                activity = item.get("activity") or item.get("name") or "Tham quan điểm du lịch"
+                activity = item.get("activity") or item.get("name") or t("Tham quan điểm du lịch", language)
                 output.append(f"{time_str} - {activity}")
         else:
-            output.append("Chưa có hoạt động hợp lệ cho ngày này.")
+            output.append(t("Chưa có hoạt động hợp lệ cho ngày này.", language))
         output.append("------")
 
     adjustments = [str(value) for value in trip_data.get("adjustments", []) if value]
     if adjustments:
-        output.append("Điều chỉnh tự động:")
+        output.append(t("Điều chỉnh tự động:", language))
         output.extend(f"- {adjustment}" for adjustment in adjustments)
 
     return "\n".join(output)
 
 
-def format_hotel_options(options: list[tuple[dict[str, Any], PlaceCandidate]]) -> str:
+def format_hotel_options(options: list[tuple[dict[str, Any], PlaceCandidate]], language: str = "vi") -> str:
     """Render a ranked hotel candidate list as numbered Vietnamese chat text."""
     if not options:
-        return "Không tìm thấy khách sạn phù hợp. Bạn thử mô tả khác hoặc đổi điểm đến xem sao."
+        return t(
+            "Không tìm thấy khách sạn phù hợp. Bạn thử mô tả khác hoặc đổi điểm đến xem sao.",
+            language,
+        )
 
+<<<<<<< Updated upstream:backend/src/services/trip_formatter.py
     lines = ["Mình đã tìm được danh sách khách sạn phù hợp. Bạn xem và chọn trực tiếp khách sạn mong muốn trong tab Khách sạn để tạo lịch trình nhé!", "------"]
+=======
+    lines = [
+        t("Mình tìm được vài khách sạn phù hợp, bạn chọn giúp mình nhé:", language),
+        "------",
+    ]
+>>>>>>> Stashed changes:src/services/trip_formatter.py
     for data, _candidate in options:
         rank = data.get("rank", "?")
-        name = data.get("name") or "Khách sạn chưa xác định"
+        name = data.get("name") or t("Khách sạn chưa xác định", language)
         star_rating = data.get("star_rating")
-        stars_str = f" ({star_rating} sao)" if star_rating else ""
+        stars_str = t(" ({star_rating} sao)", language, star_rating=star_rating) if star_rating else ""
 
         review_score = data.get("review_score")
         review_count = data.get("review_count")
         review_str = ""
         if review_score:
-            review_str = f" | Đánh giá: {review_score}/10"
+            review_str = t(" | Đánh giá: {review_score}/10", language, review_score=review_score)
             if review_count:
-                review_str += f" ({review_count} lượt)"
+                review_str += t(" ({review_count} lượt)", language, review_count=review_count)
 
         average_nightly_price = data.get("average_nightly_price")
         total_stay_price = data.get("total_stay_price")
@@ -203,17 +216,43 @@ def format_hotel_options(options: list[tuple[dict[str, Any], PlaceCandidate]]) -
         if average_nightly_price is not None:
             currency = data.get("currency") or "VND"
             try:
-                price_str = f" | {float(average_nightly_price):,.0f} {currency}/đêm"
+                price_str = t(
+                    " | {price:,.0f} {currency}/đêm",
+                    language,
+                    price=float(average_nightly_price),
+                    currency=currency,
+                )
                 if total_stay_price is not None and stay_night_count:
-                    price_str += f" · Tổng {int(stay_night_count)} đêm: {float(total_stay_price):,.0f} {currency}"
+                    price_str += t(
+                        " · Tổng {nights} đêm: {total:,.0f} {currency}",
+                        language,
+                        nights=int(stay_night_count),
+                        total=float(total_stay_price),
+                        currency=currency,
+                    )
             except (TypeError, ValueError):
-                price_str = f" | {average_nightly_price} {currency}/đêm"
+                price_str = t(
+                    " | {price} {currency}/đêm",
+                    language,
+                    price=average_nightly_price,
+                    currency=currency,
+                )
         elif lowest_price is not None:
             currency = data.get("currency") or "VND"
             try:
-                price_str = f" | Giá từ: {float(lowest_price):,.0f} {currency}"
+                price_str = t(
+                    " | Giá từ: {price:,.0f} {currency}",
+                    language,
+                    price=float(lowest_price),
+                    currency=currency,
+                )
             except (TypeError, ValueError):
-                price_str = f" | Giá từ: {lowest_price} {currency}"
+                price_str = t(
+                    " | Giá từ: {price} {currency}",
+                    language,
+                    price=lowest_price,
+                    currency=currency,
+                )
 
         lines.append(f"{rank}. {name}{stars_str}{review_str}{price_str}")
 
@@ -223,15 +262,19 @@ def format_hotel_options(options: list[tuple[dict[str, Any], PlaceCandidate]]) -
 
         matched_rooms = (data.get("matched_rooms") or [])[:2]
         if matched_rooms:
-            lines.append(f"   Phòng gợi ý: {', '.join(matched_rooms)}")
+            lines.append(t("   Phòng gợi ý: {rooms}", language, rooms=", ".join(matched_rooms)))
 
         covered_meals = data.get("covered_meals") or []
         if covered_meals:
-            lines.append(f"   Bữa ăn đã bao gồm: {', '.join(covered_meals)}")
+            lines.append(t("   Bữa ăn đã bao gồm: {meals}", language, meals=", ".join(covered_meals)))
 
         lines.append("------")
 
+<<<<<<< Updated upstream:backend/src/services/trip_formatter.py
     lines.append("Bạn hãy nhấn nút 'Chọn khách sạn này' ở tab Khách sạn để tiếp tục tạo lịch trình.")
+=======
+    lines.append(t("Trả lời bằng số thứ tự hoặc tên khách sạn để chọn.", language))
+>>>>>>> Stashed changes:src/services/trip_formatter.py
     return "\n".join(lines)
 
 

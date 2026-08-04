@@ -1,4 +1,4 @@
-import { S } from '../strings'
+import { useTranslation } from 'react-i18next'
 
 /**
  * MapPanel — right-side column, static placeholder.
@@ -8,6 +8,7 @@ import { S } from '../strings'
  * no map library, no tiles, no pins.
  */
 export default function MapPanel() {
+  const { t } = useTranslation()
   return (
     <section className="flex-1 relative bg-surface-muted overflow-hidden flex items-center justify-center">
       <div
@@ -24,29 +25,29 @@ export default function MapPanel() {
         <input
           type="text"
           className="w-full max-w-xs bg-surface-background border border-outline-variant px-3 py-2 rounded-lg text-sm opacity-60 cursor-not-allowed"
-          placeholder={S.mapSearchPlaceholder}
+          placeholder={t('mapSearchPlaceholder')}
           disabled
-          title={S.mapControlDisabledHint}
-          aria-label={S.mapSearchPlaceholder}
+          title={t('mapControlDisabledHint')}
+          aria-label={t('mapSearchPlaceholder')}
         />
         <div className="flex gap-2 flex-wrap">
           {[
-            { icon: 'attractions', label: S.mapFilterAttractions },
-            { icon: 'hotel', label: S.mapFilterProperties },
-            { icon: 'restaurant', label: S.mapFilterFood },
-            { icon: 'shopping_bag', label: S.mapFilterShopping },
+            { icon: 'attractions', labelKey: 'mapFilterAttractions' },
+            { icon: 'hotel', labelKey: 'mapFilterProperties' },
+            { icon: 'restaurant', labelKey: 'mapFilterFood' },
+            { icon: 'shopping_bag', labelKey: 'mapFilterShopping' },
           ].map((filter) => (
             <button
-              key={filter.label}
+              key={filter.labelKey}
               type="button"
               disabled
               className="bg-surface-background border border-outline-variant px-3 py-2 rounded-lg flex items-center gap-2 text-sm opacity-60 cursor-not-allowed"
-              title={S.mapControlDisabledHint}
+              title={t('mapControlDisabledHint')}
             >
               <span className="material-symbols-outlined text-sm" aria-hidden="true">
                 {filter.icon}
               </span>
-              {filter.label}
+              {t(filter.labelKey)}
             </button>
           ))}
         </div>
@@ -58,7 +59,7 @@ export default function MapPanel() {
           type="button"
           disabled
           className="w-10 h-10 bg-surface-background rounded-lg border border-outline-variant flex items-center justify-center opacity-60 cursor-not-allowed"
-          title={S.mapControlDisabledHint}
+          title={t('mapControlDisabledHint')}
         >
           <span className="material-symbols-outlined text-sm" aria-hidden="true">
             layers
@@ -68,7 +69,7 @@ export default function MapPanel() {
           type="button"
           disabled
           className="w-10 h-10 bg-surface-background rounded-lg border border-outline-variant flex items-center justify-center opacity-60 cursor-not-allowed"
-          title={S.mapControlDisabledHint}
+          title={t('mapControlDisabledHint')}
         >
           <span className="material-symbols-outlined text-sm" aria-hidden="true">
             my_location
@@ -79,7 +80,7 @@ export default function MapPanel() {
             type="button"
             disabled
             className="w-10 h-10 flex items-center justify-center opacity-60 cursor-not-allowed"
-            title={S.mapControlDisabledHint}
+            title={t('mapControlDisabledHint')}
           >
             +
           </button>
@@ -87,7 +88,7 @@ export default function MapPanel() {
             type="button"
             disabled
             className="w-10 h-10 flex items-center justify-center opacity-60 cursor-not-allowed"
-            title={S.mapControlDisabledHint}
+            title={t('mapControlDisabledHint')}
           >
             −
           </button>
@@ -98,8 +99,8 @@ export default function MapPanel() {
         <span className="material-symbols-outlined text-4xl" aria-hidden="true">
           map
         </span>
-        <div className="font-medium text-on-surface mt-2">{S.mapPlaceholderTitle}</div>
-        <div className="text-sm mt-1">{S.mapPlaceholderBody}</div>
+        <div className="font-medium text-on-surface mt-2">{t('mapPlaceholderTitle')}</div>
+        <div className="text-sm mt-1">{t('mapPlaceholderBody')}</div>
       </div>
     </section>
   )

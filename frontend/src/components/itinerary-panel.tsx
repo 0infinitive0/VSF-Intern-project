@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { S } from '../strings'
+import { useTranslation } from 'react-i18next'
 import DayCard from './day-card'
 import { formatTripDateRange } from '../lib/format-trip-dates'
 import type { TripPlan } from '../types'
@@ -17,6 +17,7 @@ export default function ItineraryPanel({
   width: number
 }) {
   const dayRefs = useRef<Record<number, HTMLDivElement | null>>({})
+  const { t } = useTranslation()
 
   function scrollToDay(dayNumber: number) {
     dayRefs.current[dayNumber]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -26,30 +27,30 @@ export default function ItineraryPanel({
     <div className="flex items-center justify-between px-4 pt-3 border-b border-border-subtle shrink-0">
       <div className="flex gap-6">
         <span className="text-sm font-semibold text-on-surface border-b-2 border-primary pb-2">
-          {S.itineraryTabLabel}
+          {t('itineraryTabLabel')}
         </span>
         <button
           type="button"
           className="text-sm text-on-surface-variant pb-2 opacity-60 cursor-not-allowed"
           disabled
-          title={S.ideasTabLabel}
+          title={t('ideasTabLabel')}
         >
-          {S.ideasTabLabel}
+          {t('ideasTabLabel')}
         </button>
         <button
           type="button"
           className="text-sm text-on-surface-variant pb-2 opacity-60 cursor-not-allowed"
           disabled
-          title={S.bookingsTabLabel}
+          title={t('bookingsTabLabel')}
         >
-          {S.bookingsTabLabel}
+          {t('bookingsTabLabel')}
         </button>
       </div>
       <button
         type="button"
         className="p-1 text-on-surface-variant opacity-60 cursor-not-allowed"
         disabled
-        title="Toàn màn hình (chưa hỗ trợ)"
+        title={t('itineraryExpandHint')}
       >
         <span className="material-symbols-outlined text-[18px]" aria-hidden="true">
           open_in_full
@@ -63,7 +64,7 @@ export default function ItineraryPanel({
       <aside
         className="bg-surface-background border-r border-border-subtle flex flex-col shrink-0"
         style={{ width }}
-        aria-label={S.itineraryEmptyTitle}
+        aria-label={t('itineraryEmptyTitle')}
       >
         {tabs}
         <div className="flex-1 overflow-y-auto custom-scrollbar p-4 flex items-center justify-center">
@@ -71,8 +72,8 @@ export default function ItineraryPanel({
             <span className="material-symbols-outlined text-4xl" aria-hidden="true">
               explore
             </span>
-            <div className="font-medium text-on-surface mt-2">{S.itineraryEmptyTitle}</div>
-            <div className="text-sm mt-1">{S.itineraryEmptyBody}</div>
+            <div className="font-medium text-on-surface mt-2">{t('itineraryEmptyTitle')}</div>
+            <div className="text-sm mt-1">{t('itineraryEmptyBody')}</div>
           </div>
         </div>
       </aside>
@@ -87,14 +88,14 @@ export default function ItineraryPanel({
     <aside
       className="bg-surface-background border-r border-border-subtle flex flex-col shrink-0"
       style={{ width }}
-      aria-label={S.itineraryTitle}
+      aria-label={t('itineraryTitle')}
     >
       {tabs}
 
       <div className="px-4 pt-4">
         <div className="flex items-center justify-between gap-2">
           <h1 className="font-display text-xl font-bold text-on-surface truncate">
-            {destination || S.itineraryTitle}
+            {destination || t('itineraryTitle')}
           </h1>
           <div className="flex items-center gap-2 shrink-0">
             {status && (
@@ -106,7 +107,7 @@ export default function ItineraryPanel({
               type="button"
               className="p-1 text-on-surface-variant opacity-60 cursor-not-allowed"
               disabled
-              title="Chỉnh sửa (chưa hỗ trợ)"
+              title={t('itineraryEditHint')}
             >
               <span className="material-symbols-outlined text-[18px]" aria-hidden="true">
                 edit
@@ -116,7 +117,7 @@ export default function ItineraryPanel({
               type="button"
               className="p-1 text-on-surface-variant opacity-60 cursor-not-allowed"
               disabled
-              title="Chia sẻ (chưa hỗ trợ)"
+              title={t('itineraryShareHint')}
             >
               <span className="material-symbols-outlined text-[18px]" aria-hidden="true">
                 share
@@ -140,7 +141,7 @@ export default function ItineraryPanel({
                 <span className="material-symbols-outlined text-[18px]" aria-hidden="true">
                   group
                 </span>
-                {number_of_adults} {S.guestsAdultsSuffix}
+                {number_of_adults} {t('guestsAdultsSuffix')}
               </span>
             )}
           </div>
@@ -157,15 +158,15 @@ export default function ItineraryPanel({
               onClick={() => scrollToDay(day.day_number)}
               className="px-3 py-1 bg-surface-background border border-outline-variant text-secondary hover:bg-surface-muted rounded-full text-xs font-medium whitespace-nowrap transition-colors"
             >
-              {S.dayLabel(day.day_number)}
+              {t('dayLabel', { n: day.day_number })}
             </button>
           ))}
           <button
             type="button"
             className="px-3 py-1 border border-outline-variant text-on-surface-variant rounded-full text-xs font-medium opacity-60 cursor-not-allowed"
             disabled
-            title={S.addDayLabel}
-            aria-label={S.addDayLabel}
+            title={t('addDayLabel')}
+            aria-label={t('addDayLabel')}
           >
             +
           </button>
@@ -176,7 +177,7 @@ export default function ItineraryPanel({
         {/* Hotel summary */}
         {hotel && (
           <div className="bg-surface-muted rounded-lg p-4">
-            <div className="text-xs font-medium text-on-surface-variant">{S.hotelLabel}</div>
+            <div className="text-xs font-medium text-on-surface-variant">{t('hotelLabel')}</div>
             <div className="font-display font-semibold text-on-surface mt-0.5">{hotel.name}</div>
             {hotel.star_rating && (
               <div className="text-primary text-sm mt-0.5">{'★'.repeat(hotel.star_rating)}</div>
@@ -202,7 +203,7 @@ export default function ItineraryPanel({
         {adjustments.length > 0 && (
           <div className="bg-surface-muted rounded-lg p-4">
             <div className="text-xs font-medium text-on-surface-variant mb-2">
-              {S.adjustmentsLabel}
+              {t('adjustmentsLabel')}
             </div>
             <ul className="flex flex-col gap-1.5">
               {adjustments.map((adj, i) => (
