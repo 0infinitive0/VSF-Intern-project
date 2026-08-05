@@ -28,7 +28,7 @@ jobs:
             cd /home/ubuntu/app
             git fetch origin main
             git checkout main
-            git pull --ff-only
+            git reset --hard origin/main
             docker compose -f docker-compose.staging.yml build
             docker compose -f docker-compose.staging.yml up -d --wait --wait-timeout 300
             docker image prune -f
