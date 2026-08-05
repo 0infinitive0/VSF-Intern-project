@@ -1,0 +1,1640 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+<!--
+  Plain global-scope scripts (window.VOTA.*), loaded here in the real
+  document head — deliberately NOT inside the x-dc helmet block below.
+  (Careful editing this comment: dc-runtime's boot() re-fetches this raw
+  file and locates the template by string-searching for the literal
+  opening/closing x-dc tags, so writing those tag names inside angle
+  brackets anywhere before the real tag — including in a comment — breaks
+  that parse and blanks the whole page. Spelled without brackets here on
+  purpose.)
+  Root Logic's constructor reads these scripts synchronously (e.g.
+  this.hotels = window.VOTA.MockData.hotels). Content placed in the helmet
+  block only reaches the real head during React's render pass, which runs
+  *after* the constructor — too late for anything the constructor depends
+  on. See README.
+-->
+<script src="scripts/constants/config.js"></script>
+<script src="scripts/constants/env.js"></script>
+<script src="scripts/constants/i18n.js"></script>
+<script src="scripts/constants/mock-data.js"></script>
+<script src="scripts/utils/formatters.js"></script>
+<script src="scripts/utils/geo.js"></script>
+<script src="scripts/api/http-client.js"></script>
+<script src="scripts/services/chat.service.js"></script>
+<script src="scripts/services/map.service.js"></script>
+<script src="scripts/services/hotel.service.js"></script>
+<script src="scripts/services/destination.service.js"></script>
+<script src="scripts/services/itinerary.service.js"></script>
+<script src="scripts/services/history.service.js"></script>
+<script src="scripts/store/app-store.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics="">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@200;300;400;500;600;700&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="styles/variables.css">
+<link rel="stylesheet" href="styles/theme.css">
+<link rel="stylesheet" href="styles/global.css">
+<link rel="stylesheet" href="styles/typography.css">
+<link rel="stylesheet" href="styles/layout.css">
+<link rel="stylesheet" href="styles/animation.css">
+</helmet>
+
+<div style="position:fixed;inset:0;overflow-x:auto;overflow-y:hidden;display:flex;background:var(--page)">
+
+  <div style="position:absolute;top:-14%;left:-6%;width:46vw;height:46vw;border-radius:50%;background:radial-gradient(circle at 35% 35%,rgba(58,115,222,.34),rgba(58,115,222,0) 68%);filter:blur(20px);animation:vFloat 22s ease-in-out infinite"></div>
+  <div style="position:absolute;bottom:-22%;right:-8%;width:52vw;height:52vw;border-radius:50%;background:radial-gradient(circle at 50% 50%,rgba(200,128,47,.26),rgba(200,128,47,0) 66%);filter:blur(24px);animation:vFloat 28s ease-in-out infinite reverse"></div>
+  <div style="position:absolute;top:22%;right:18%;width:26vw;height:26vw;border-radius:50%;background:radial-gradient(circle at 50% 50%,rgba(42,145,135,.22),rgba(42,145,135,0) 68%);filter:blur(20px);animation:vFloat 19s ease-in-out infinite"></div>
+
+  <dc-import name="Sidebar"
+    sidebarWidth="{{ sidebarWidth }}" sbPad="{{ sbPad }}" sbHeadDir="{{ sbHeadDir }}" sbLabelDisplay="{{ sbLabelDisplay }}"
+    toggleSidebar="{{ toggleSidebar }}" sbToggleIcon="{{ sbToggleIcon }}"
+    newTrip="{{ newTrip }}" sbBtnPad="{{ sbBtnPad }}" sbBtnFont="{{ sbBtnFont }}" sbBtnJustify="{{ sbBtnJustify }}" newTripLabel="{{ newTripLabel }}"
+    convoRows="{{ convoRows }}" langs="{{ langs }}"
+    toggleTheme="{{ toggleTheme }}" themeLabel="{{ themeLabel }}"
+    dict="{{ L }}">
+  </dc-import>
+
+  <dc-import name="ChatPanel"
+    chatW="{{ chatW }}" chatM="{{ chatM }}" chatO="{{ chatO }}" chatT="{{ chatT }}" chatF="{{ chatF }}" chatPE="{{ chatPE }}"
+    tripTitle="{{ tripTitle }}" stepLabel="{{ stepLabel }}" progressDots="{{ progressDots }}" steps3="{{ steps3 }}"
+    chatRef="{{ chatRef }}" messages="{{ messages }}"
+    pending="{{ pending }}" pendingFields="{{ pendingFields }}" pendingAffected="{{ pendingAffected }}" pendingNote="{{ pendingNote }}" applyPending="{{ applyPending }}" keepPending="{{ keepPending }}"
+    thinking="{{ thinking }}"
+    showDest="{{ showDest }}" destOptions="{{ destOptions }}"
+    showPeople="{{ showPeople }}" peopleOptions="{{ peopleOptions }}" confirmPeople="{{ confirmPeople }}"
+    showDates="{{ showDates }}" prevYear="{{ prevYear }}" prevMonth="{{ prevMonth }}" nextMonth="{{ nextMonth }}" nextYear="{{ nextYear }}" calMonthLabel="{{ calMonthLabel }}" calYearLabel="{{ calYearLabel }}" calKey="{{ calKey }}" calendar="{{ calendar }}" goDateStart="{{ goDateStart }}" goDateEnd="{{ goDateEnd }}" confirmDates="{{ confirmDates }}" datesBtnBg="{{ datesBtnBg }}" datesBtnFg="{{ datesBtnFg }}"
+    showBudget="{{ showBudget }}" bMinLabel="{{ bMinLabel }}" bMaxLabel="{{ bMaxLabel }}" trackRef="{{ trackRef }}" budgetDrag="{{ budgetDrag }}" bFillLeft="{{ bFillLeft }}" bFillWidth="{{ bFillWidth }}" bMinPct="{{ bMinPct }}" bMaxPct="{{ bMaxPct }}" confirmBudget="{{ confirmBudget }}"
+    showInterests="{{ showInterests }}" interestOptions="{{ interestOptions }}" confirmInterests="{{ confirmInterests }}" interestBtnBg="{{ interestBtnBg }}" interestBtnFg="{{ interestBtnFg }}"
+    showQuick="{{ showQuick }}" quickActions="{{ quickActions }}"
+    draft="{{ draft }}" onDraft="{{ onDraft }}" onKey="{{ onKey }}" send="{{ send }}"
+    dict="{{ L }}">
+  </dc-import>
+
+  <div style="position:relative;z-index:1;flex:1;min-width:560px">
+
+  <sc-if value="{{ isIntake }}" hint-placeholder-val="{{ true }}">
+  <div style="position:absolute;inset:0;overflow-y:auto;display:flex;padding:34px">
+    <div style="margin:auto;width:min(640px,100%);display:flex;flex-direction:column;gap:22px;animation:vRise .75s cubic-bezier(.22,1,.36,1) both">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="font-size:10px;font-weight:590;letter-spacing:.1em;text-transform:uppercase;color:var(--t3)">{{ L.tagline }}</div>
+        <div style="font-size:42px;font-weight:590;letter-spacing:-1.9px;line-height:1.06;color:var(--t1);text-wrap:pretty">{{ L.heroA }} <span style="font-weight:530;background:linear-gradient(100deg,#3A73DE,#2A9187,#C8802F,#3A73DE);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:vHue 12s ease-in-out infinite">{{ L.heroB }}</span></div>
+        <div style="font-size:14.5px;font-weight:400;line-height:1.62;color:var(--t2);max-width:520px;text-wrap:pretty">{{ L.heroSub }}</div>
+      </div>
+
+      <div style="padding:20px;border-radius:28px;background:var(--g1);backdrop-filter:blur(30px) saturate(1.7);-webkit-backdrop-filter:blur(30px) saturate(1.7);border:1px solid var(--edge);box-shadow:0 24px 56px -30px rgba(var(--sh),.35),inset 0 1px 0 var(--gloss)">
+        <div style="font-size:10px;font-weight:590;letter-spacing:.1em;text-transform:uppercase;color:var(--t3);margin-bottom:14px">{{ L.collecting }}</div>
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <sc-for list="{{ collectedRows }}" as="r" hint-placeholder-count="5">
+            <div onClick="{{ r.onPick }}" style="display:flex;align-items:center;gap:12px;padding:10px;margin:0 -8px;border-radius:13px;border-bottom:1px solid var(--line);cursor:{{ r.cursor }};transition:background .22s ease" style-hover="background:var(--g1)">
+              <div style="width:18px;height:18px;flex:none;border-radius:50%;border:1.5px solid {{ r.dotBorder }};background:{{ r.dotBg }};color:var(--on-acc);font-size:10px;display:flex;align-items:center;justify-content:center;transition:all .35s cubic-bezier(.34,1.4,.64,1)">{{ r.mark }}</div>
+              <div style="flex:none;width:104px;font-size:12.5px;font-weight:400;color:var(--t3)">{{ r.label }}</div>
+              <div style="flex:1;font-size:13.5px;font-weight:400;color:{{ r.fg }};transition:color .3s">{{ r.value }}</div>
+              <div style="flex:none;font-size:11px;font-weight:530;color:#3A73DE">{{ r.editLabel }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+        <div style="padding:14px;border-radius:20px;background:var(--g1);border:1px solid var(--edge)">
+          <div style="font-size:10px;font-weight:590;color:#3A73DE;letter-spacing:.06em">{{ L.step1 }}</div>
+          <div style="font-size:13px;font-weight:590;letter-spacing:-.12px;margin-top:5px">{{ L.step1t }}</div>
+          <div style="font-size:11.5px;font-weight:450;letter-spacing:.005em;color:var(--t3);margin-top:3px;line-height:1.4">{{ L.step1d }}</div>
+        </div>
+        <div style="padding:14px;border-radius:20px;background:var(--g1);border:1px solid var(--edge)">
+          <div style="font-size:10px;font-weight:590;color:var(--t4);letter-spacing:.06em">{{ L.step2 }}</div>
+          <div style="font-size:13px;font-weight:590;letter-spacing:-.12px;margin-top:5px">{{ L.step2t }}</div>
+          <div style="font-size:11.5px;font-weight:450;letter-spacing:.005em;color:var(--t3);margin-top:3px;line-height:1.4">{{ L.step2d }}</div>
+        </div>
+        <div style="padding:14px;border-radius:20px;background:var(--g1);border:1px solid var(--edge)">
+          <div style="font-size:10px;font-weight:590;color:var(--t4);letter-spacing:.06em">{{ L.step3 }}</div>
+          <div style="font-size:13px;font-weight:590;letter-spacing:-.12px;margin-top:5px">{{ L.step3t }}</div>
+          <div style="font-size:11.5px;font-weight:450;letter-spacing:.005em;color:var(--t3);margin-top:3px;line-height:1.4">{{ L.step3d }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ isGenerating }}" hint-placeholder-val="{{ false }}">
+  <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:36px">
+    <div style="width:min(560px,94vw);padding:32px;border-radius:32px;background:var(--g1);backdrop-filter:blur(36px) saturate(1.7);-webkit-backdrop-filter:blur(36px) saturate(1.7);border:1px solid var(--edge);box-shadow:0 34px 80px -28px rgba(var(--sh),.34);animation:vRise .6s cubic-bezier(.22,1,.36,1) both">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px">
+        <div style="width:34px;height:34px;border-radius:12px;background:linear-gradient(145deg,#5C93EE,#2C5FC9);display:flex;align-items:center;justify-content:center;color:var(--on-acc);font-weight:590;animation:vPulse 1.8s infinite">V</div>
+        <div>
+          <div style="font-size:15px;font-weight:530;letter-spacing:-.2px">{{ progressTitle }}</div>
+          <div style="font-size:12.5px;color:var(--t3);font-weight:400">{{ progressSub }}</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <sc-for list="{{ genSteps }}" as="g" hint-placeholder-count="4">
+          <div style="display:flex;align-items:center;gap:12px;opacity:{{ g.opacity }};transition:opacity .5s ease">
+            <div style="width:20px;height:20px;flex:none;border-radius:50%;border:2px solid {{ g.ring }};border-top-color:{{ g.top }};background:{{ g.fill }};display:flex;align-items:center;justify-content:center;color:var(--on-acc);font-size:11px;animation:{{ g.anim }}">{{ g.mark }}</div>
+            <div style="font-size:13.5px;font-weight:400;color:var(--t2)">{{ g.label }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="margin-top:24px;display:flex;flex-direction:column;gap:10px">
+        <sc-for list="{{ skeletons }}" as="s" hint-placeholder-count="3">
+          <div style="height:{{ s.h }};border-radius:14px;background:linear-gradient(100deg,var(--fill) 30%,var(--g3) 50%,var(--fill) 70%);background-size:900px 100%;animation:vShimmer 1.5s infinite linear;width:{{ s.w }}"></div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ isHotels }}" hint-placeholder-val="{{ false }}">
+  <div style="position:absolute;inset:0;display:flex;flex-direction:column;animation:vRise .7s cubic-bezier(.22,1,.36,1) both">
+    <div style="flex:none;display:flex;align-items:center;gap:14px;margin:14px 14px 0;padding:13px 18px;border-radius:26px;border:1px solid var(--edge);box-shadow:0 20px 50px -30px rgba(var(--sh),.32),inset 0 1px 0 var(--gloss);background:var(--g1);backdrop-filter:blur(30px) saturate(1.7);-webkit-backdrop-filter:blur(30px) saturate(1.7)">
+      <div style="width:30px;height:30px;border-radius:10px;background:linear-gradient(145deg,#5C93EE,#2C5FC9);box-shadow:0 6px 16px -5px rgba(44,95,201,.6);display:flex;align-items:center;justify-content:center;color:var(--on-acc);font-weight:590;font-size:14px">V</div>
+      <div style="display:flex;flex-direction:column">
+        <div style="font-size:15px;font-weight:590;letter-spacing:-.3px">{{ L.hotelHead }}</div>
+        <div style="font-size:11.5px;color:var(--t3);font-weight:400">{{ L.hotelHeadSub }}</div>
+      </div>
+      <div style="flex:1"></div>
+      <div style="font-size:11.5px;color:var(--t3);font-weight:400">{{ hotelBadge }}</div>
+      <button onClick="{{ confirmHotel }}" style="padding:10px 18px;border-radius:13px;border:none;background:{{ confirmHotelBg }};color:{{ confirmHotelFg }};font-size:13px;font-weight:590;letter-spacing:-.12px;cursor:pointer;transition:all .25s" style-hover="transform:translateY(-1px)" style-active="transform:scale(.97)">{{ L.buildFromHotel }}</button>
+    </div>
+
+    <div style="flex:1;display:flex;gap:14px;padding:14px;min-height:0;overflow-x:auto">
+      <div ref="{{ hotelListRef }}" style="flex:0 0 {{ hListW }};max-width:100%;transition:flex-basis .62s cubic-bezier(.22,1,.36,1);overflow-y:auto;min-height:0;display:flex;flex-direction:column;gap:12px;padding-right:2px">
+        <sc-for list="{{ hotelCards }}" as="h" hint-placeholder-count="4">
+          <dc-import name="HotelCard" h="{{ h }}" dict="{{ L }}"></dc-import>
+        </sc-for>
+      </div>
+
+      <div style="flex:{{ hMapFlex }};min-width:{{ hMapMinW }};opacity:{{ hMapO }};transform:{{ hMapT }};filter:{{ hMapF }};pointer-events:{{ hMapPE }};transition:flex .62s cubic-bezier(.22,1,.36,1),opacity .36s ease,transform .55s cubic-bezier(.22,1,.36,1),filter .36s ease">
+      <div style="position:relative;height:100%;border-radius:26px;overflow:hidden;border:1px solid var(--edge);box-shadow:0 20px 50px -26px rgba(var(--sh),.3);min-height:0">
+        <div ref="{{ hotelMapRef }}" style="position:absolute;inset:0"></div>
+        <div style="position:absolute;top:14px;left:14px;z-index:500;padding:11px 14px;border-radius:18px;background:var(--g2);backdrop-filter:blur(20px) saturate(1.6);-webkit-backdrop-filter:blur(20px) saturate(1.6);border:1px solid var(--edge);box-shadow:0 10px 26px -14px rgba(var(--sh),.4);max-width:280px">
+          <div style="font-size:10px;font-weight:590;letter-spacing:.1em;text-transform:uppercase;color:var(--t3);margin-bottom:6px">{{ L.hotelsCount }}</div>
+          <div style="font-size:11.5px;font-weight:400;color:var(--t2);line-height:1.45;text-wrap:pretty">{{ L.hotelMapHint }}</div>
+        </div>
+      </div>
+      </div>
+
+      <div style="flex:{{ hDetFlex }};min-width:{{ hDetMinW }};opacity:{{ hDetO }};transform:{{ hDetT }};filter:{{ hDetF }};pointer-events:{{ hDetPE }};transition:flex .62s cubic-bezier(.22,1,.36,1),opacity .42s ease .06s,transform .62s cubic-bezier(.22,1,.36,1),filter .42s ease">
+        <sc-if value="{{ hasHotelDetail }}" hint-placeholder-val="{{ false }}">
+        <dc-import name="HotelDetail" hDet="{{ hDet }}" dict="{{ L }}" closeHotelDetail="{{ closeHotelDetail }}" style="height:100%"></dc-import>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ isWorkspace }}" hint-placeholder-val="{{ false }}">
+  <div style="position:absolute;inset:0;display:flex;flex-direction:column;animation:vRise .75s cubic-bezier(.22,1,.36,1) both">
+
+    <div style="flex:none;display:flex;align-items:center;gap:14px;margin:14px 14px 0;padding:13px 18px;border-radius:26px;border:1px solid var(--edge);box-shadow:0 20px 50px -30px rgba(var(--sh),.32),inset 0 1px 0 var(--gloss);background:var(--g1);backdrop-filter:blur(30px) saturate(1.7);-webkit-backdrop-filter:blur(30px) saturate(1.7)">
+      <div style="width:30px;height:30px;border-radius:10px;background:linear-gradient(145deg,#5C93EE,#2C5FC9);box-shadow:0 6px 16px -5px rgba(44,95,201,.6);display:flex;align-items:center;justify-content:center;color:var(--on-acc);font-weight:590;font-size:14px">V</div>
+      <div style="display:flex;flex-direction:column">
+        <div style="font-size:15px;font-weight:590;letter-spacing:-.3px">{{ wsTitle }}</div>
+        <div style="font-size:11.5px;color:var(--t3);font-weight:400">{{ wsMeta }}</div>
+      </div>
+      <div style="flex:1"></div>
+      <button onClick="{{ regenerate }}" style="padding:9px 16px;border-radius:12px;border:1px solid var(--stroke);background:var(--g2);font-size:13px;font-weight:400;cursor:pointer;color:var(--t1);transition:all .2s" style-hover="background:#fff;transform:translateY(-1px)">{{ L.regenerate }}</button>
+      <button style="padding:9px 16px;border-radius:12px;border:none;background:var(--btn);color:var(--btn-fg);font-size:13px;font-weight:590;letter-spacing:-.12px;cursor:pointer;transition:transform .2s" style-hover="transform:translateY(-1px)">{{ L.share }}</button>
+    </div>
+
+    <div style="flex:1;display:flex;gap:14px;padding:14px;min-height:0;overflow-x:auto">
+
+      <div style="flex:0 0 {{ itinW }};max-width:100%;transition:flex-basis .62s cubic-bezier(.22,1,.36,1);display:flex;flex-direction:column;min-height:0;border-radius:26px;background:var(--g1);backdrop-filter:blur(30px) saturate(1.7);-webkit-backdrop-filter:blur(30px) saturate(1.7);border:1px solid var(--edge);box-shadow:0 20px 50px -26px rgba(var(--sh),.3);overflow:hidden">
+        <div style="padding:12px;border-bottom:1px solid var(--line)">
+          <div style="display:flex;gap:3px;padding:3px;border-radius:15px;background:var(--fill)">
+            <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="5">
+              <button onClick="{{ t.onPick }}" style="flex:{{ t.flex }};padding:8px 10px;border-radius:12px;border:none;cursor:pointer;font-size:12.5px;font-weight:{{ t.weight }};background:{{ t.bg }};color:{{ t.fg }};box-shadow:{{ t.shadow }};transition:all .32s cubic-bezier(.34,1.4,.64,1);white-space:nowrap" style-hover="color:var(--t1)" style-active="transform:scale(.96)">{{ t.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+
+        <div ref="{{ itinRef }}" style="flex:1;overflow-y:auto;padding:16px;min-height:0">
+
+          <sc-if value="{{ isOverview }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:14px;animation:vRise .5s cubic-bezier(.22,1,.36,1) both">
+              <div style="border-radius:22px;overflow:hidden;border:1px solid var(--edge);box-shadow:0 14px 34px -20px rgba(var(--sh),.4)">
+                <div style="position:relative;overflow:hidden;height:130px;background:repeating-linear-gradient(115deg,rgba(58,115,222,.14) 0 10px,rgba(58,115,222,.05) 10px 20px);display:flex;align-items:center;justify-content:center;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--t3)">{{ L.coverPhoto }}
+                  <div style="position:absolute;top:0;bottom:0;width:34%;background:linear-gradient(90deg,transparent,var(--sheen),transparent);animation:vSheen 7s 1s ease-in-out infinite"></div>
+                </div>
+                <div style="padding:14px 16px;background:var(--g2)">
+                  <div style="font-size:19px;font-weight:590;letter-spacing:-.5px;line-height:1.2">{{ L.tripTheme }}</div>
+                  <div style="font-size:12.5px;color:var(--t3);font-weight:400;margin-top:3px;text-wrap:pretty">{{ L.tripThemeSub }}</div>
+                </div>
+              </div>
+
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+                <sc-for list="{{ stats }}" as="s" hint-placeholder-count="4">
+                  <div style="padding:13px 12px;border-radius:18px;background:var(--g2);border:1px solid var(--edge);box-shadow:0 8px 20px -16px rgba(var(--sh),.5);animation:vFade .5s {{ s.delay }} cubic-bezier(.22,1,.36,1) both;transition:transform .3s cubic-bezier(.34,1.4,.64,1)" style-hover="transform:translateY(-3px)">
+                    <div style="font-size:20px;font-weight:400;letter-spacing:-.7px">{{ s.value }}</div>
+                    <div style="font-size:10.5px;font-weight:450;letter-spacing:.01em;color:var(--t3);margin-top:2px">{{ s.label }}</div>
+                  </div>
+                </sc-for>
+              </div>
+
+              <div style="padding:14px;border-radius:20px;background:var(--g2);border:1px solid var(--edge);display:flex;gap:13px;align-items:center">
+                <div style="width:62px;height:62px;flex:none;border-radius:16px;background:repeating-linear-gradient(115deg,rgba(42,145,135,.18) 0 8px,rgba(42,145,135,.06) 8px 16px)"></div>
+                <div style="flex:1">
+                  <div style="font-size:10px;font-weight:590;letter-spacing:.1em;text-transform:uppercase;color:var(--t3)">{{ L.stayLabel }}</div>
+                  <div style="font-size:15px;font-weight:590;letter-spacing:-.3px;margin-top:2px">{{ hotelName }}</div>
+                  <div style="font-size:12px;color:var(--t3);font-weight:400;margin-top:2px">{{ hotelArea }} · phòng đôi hướng {{ hotelView }} · {{ hotelTotal }}</div>
+                </div>
+              </div>
+
+              <div>
+                <div style="font-size:10px;font-weight:590;letter-spacing:.1em;text-transform:uppercase;color:var(--t3);margin-bottom:9px">{{ L.routeByDay }}</div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <sc-for list="{{ dayRows }}" as="d" hint-placeholder-count="4">
+                    <dc-import name="DayCard" d="{{ d }}"></dc-import>
+                  </sc-for>
+                </div>
+              </div>
+
+              <div style="padding:15px;border-radius:20px;background:var(--g2);border:1px solid var(--edge)">
+                <div style="font-size:10px;font-weight:590;letter-spacing:.1em;text-transform:uppercase;color:var(--t3);margin-bottom:12px">{{ L.budgetSplit }}</div>
+                <div style="display:flex;flex-direction:column;gap:11px">
+                  <sc-for list="{{ budgetRows }}" as="b" hint-placeholder-count="4">
+                    <div>
+                      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:5px">
+                        <span style="font-weight:400">{{ b.label }}</span>
+                        <span style="color:var(--t3);font-weight:400">{{ b.amount }}</span>
+                      </div>
+                      <div style="height:6px;border-radius:99px;background:var(--fill2);overflow:hidden">
+                        <div style="height:100%;border-radius:99px;width:{{ b.pct }};background:{{ b.color }};transition:width .7s cubic-bezier(.22,1,.36,1)"></div>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isDay }}" hint-placeholder-val="{{ false }}">
+            <div style="animation:vRise .45s cubic-bezier(.22,1,.36,1) both">
+              <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:14px">
+                <div style="font-size:22px;font-weight:590;letter-spacing:-.7px;line-height:1.15">{{ dayTitle }}</div>
+                <div style="font-size:12px;color:var(--t3);font-weight:400">{{ daySub }}</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:0">
+                <sc-for list="{{ dayItems }}" as="it" hint-placeholder-count="5">
+                  <dc-import name="TimelineItem" it="{{ it }}"></dc-import>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+
+      <div style="flex:{{ mapFlex }};min-width:{{ mapMinW }};opacity:{{ mapO }};transform:{{ mapT }};filter:{{ mapF }};pointer-events:{{ mapPE }};transition:flex .62s cubic-bezier(.22,1,.36,1),opacity .36s ease,transform .55s cubic-bezier(.22,1,.36,1),filter .36s ease">
+      <div style="position:relative;height:100%;border-radius:26px;overflow:hidden;border:1px solid var(--edge);box-shadow:0 20px 50px -26px rgba(var(--sh),.3);min-height:0">
+        <div ref="{{ mapRef }}" style="position:absolute;inset:0"></div>
+        <div style="position:absolute;top:14px;left:14px;z-index:500;padding:12px 14px;border-radius:18px;background:var(--g2);backdrop-filter:blur(20px) saturate(1.6);-webkit-backdrop-filter:blur(20px) saturate(1.6);border:1px solid var(--edge);box-shadow:0 10px 26px -14px rgba(var(--sh),.4)">
+          <div style="font-size:10px;font-weight:590;letter-spacing:.1em;text-transform:uppercase;color:var(--t3);margin-bottom:8px">{{ mapMode }}</div>
+          <sc-if value="{{ isOverview }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <sc-for list="{{ legend }}" as="l" hint-placeholder-count="4">
+              <div style="display:flex;align-items:center;gap:8px;opacity:{{ l.opacity }};transition:opacity .3s">
+                <div style="width:16px;height:3px;border-radius:2px;background:{{ l.color }}"></div>
+                <div style="font-size:11.5px;font-weight:400;color:var(--t2)">{{ l.label }}</div>
+              </div>
+            </sc-for>
+          </div>
+          </sc-if>
+          <sc-if value="{{ isDay }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <sc-for list="{{ legLegend }}" as="l" hint-placeholder-count="4">
+              <div onMouseEnter="{{ l.onEnter }}" onMouseLeave="{{ l.onLeave }}" style="display:flex;align-items:center;gap:8px;padding:2px 4px;border-radius:8px;cursor:default;background:{{ l.bg }};transition:background .25s">
+                <div style="width:16px;height:3px;border-radius:2px;flex:none;background:{{ l.color }}"></div>
+                <div style="font-size:11px;font-weight:530;color:var(--t2);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";flex:none">{{ l.hop }}</div>
+                <div style="font-size:11px;font-weight:400;color:var(--t2);white-space:nowrap">{{ l.label }}</div>
+              </div>
+            </sc-for>
+          </div>
+          </sc-if>
+          <div style="margin-top:10px;padding-top:9px;border-top:1px solid var(--stroke);display:flex;flex-direction:column;gap:5px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:16px;height:3px;border-radius:2px;background:linear-gradient(90deg,var(--t2) 0 60%,transparent 60%),var(--t4)"></div>
+              <div style="font-size:10.5px;font-weight:450;letter-spacing:.01em;color:var(--t3)">{{ L.modeCar }}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:16px;height:3px;border-radius:2px;background:repeating-linear-gradient(90deg,var(--t2) 0 2px,transparent 2px 5px)"></div>
+              <div style="font-size:10.5px;font-weight:450;letter-spacing:.01em;color:var(--t3)">{{ L.modeWalk }}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:16px;height:3px;border-radius:2px;background:repeating-linear-gradient(90deg,var(--t2) 0 6px,transparent 6px 11px)"></div>
+              <div style="font-size:10.5px;font-weight:450;letter-spacing:.01em;color:var(--t3)">{{ L.modeCable }}</div>
+            </div>
+          </div>
+        </div>
+        <sc-if value="{{ selectedName }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;bottom:16px;left:14px;right:14px;z-index:500;padding:13px 16px;border-radius:20px;background:var(--g2);backdrop-filter:blur(24px) saturate(1.6);-webkit-backdrop-filter:blur(24px) saturate(1.6);border:1px solid var(--edge);box-shadow:0 16px 40px -18px rgba(var(--sh),.5);display:flex;align-items:center;gap:12px;animation:vPop .45s cubic-bezier(.22,1,.36,1) both">
+            <div style="width:44px;height:44px;flex:none;border-radius:13px;background:repeating-linear-gradient(115deg,var(--fill2) 0 8px,transparent 8px 16px)"></div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13.5px;font-weight:590;letter-spacing:-.16px">{{ selectedName }}</div>
+              <div style="font-size:11.5px;color:var(--t3);font-weight:400">{{ selectedMeta }}</div>
+            </div>
+            <button onClick="{{ clearSelected }}" style="width:28px;height:28px;border-radius:50%;border:none;background:var(--fill);color:var(--t2);cursor:pointer;font-size:13px">✕</button>
+          </div>
+        </sc-if>
+      </div>
+      </div>
+
+      <div style="flex:{{ detFlex }};min-width:{{ detMinW }};opacity:{{ detO }};transform:{{ detT }};filter:{{ detF }};pointer-events:{{ detPE }};transition:flex .62s cubic-bezier(.22,1,.36,1),opacity .42s ease .06s,transform .62s cubic-bezier(.22,1,.36,1),filter .42s ease">
+        <sc-if value="{{ hasDetail }}" hint-placeholder-val="{{ false }}">
+        <dc-import name="PlaceDetail" det="{{ det }}" dict="{{ L }}" closeDetail="{{ closeDetail }}" style="height:100%"></dc-import>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+</div>
+
+</div></x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;startInWorkspace&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Demo&quot;},&quot;typingSpeed&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:16,&quot;min&quot;:4,&quot;max&quot;:60,&quot;step&quot;:2,&quot;unit&quot;:&quot;ms/ký tự&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Demo&quot;},&quot;compactCards&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Lịch trình&quot;}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    // i18n lives in scripts/constants/ (loaded as plain global scripts from
+    // the real <head> — see the comment there for why). Everything else
+    // below reads through scripts/services/*.js — the sole data-access
+    // boundary (see BACKEND_INTEGRATION.md) — instead of touching
+    // window.VOTA.MockData directly, so swapping mock for a real backend
+    // later only means editing those service files. Kept as `this.x` here
+    // so every method below (unchanged) keeps working exactly as before.
+    this.C = window.VOTA.Config.DAY_COLORS;
+    this.LEG = window.VOTA.Config.LEG_COLORS;
+    this.hotels = window.VOTA.Services.hotel.getHotels();
+    this.landmarks = window.VOTA.Services.destination.getLandmarks();
+    this.dayHooks = window.VOTA.Services.itinerary.getDayHooks();
+    this.convos = window.VOTA.Services.history.getConversations();
+    this.convoChat = window.VOTA.Services.history.getConversationMessages();
+    this.searchLabels = window.VOTA.Services.hotel.getSearchLabels();
+    this.optLabels = window.VOTA.Services.itinerary.getOptimizationLabels();
+    this.days = window.VOTA.Services.itinerary.getDays();
+    this.EN = window.VOTA.I18N.mockContentEN;
+    this.dests = window.VOTA.Services.destination.getDestinationOptions();
+    this.interests = window.VOTA.Services.destination.getInterestOptions();
+    this.genLabels = window.VOTA.Services.itinerary.getGenLabels();
+    const ws = props.startInWorkspace === true;
+    this.state = {
+      phase: ws ? 'workspace' : 'intake',
+      messages: ws ? [{ id: 'm0', role: 'ai', text: this.m('ready') }] : [],
+      thinking: false, step: 0, draft: '', destQuery: '', people: 2, budget: 25,
+      start: null, end: null, picked: [], tab: 'overview', hovered: null, selected: null, genStep: 0,
+      hotel: ws ? 'h1' : null, hoverHotel: null, focus: null, hFocus: null, rooms: {}, roomOpen: null, pending: null, progress: 0, progressKind: 'search',
+      convo: 'c1', collapsed: false, hoverConvo: null,
+      lang: window.VOTA.Store.app.getLang(),
+      convLang: window.VOTA.Store.app.getLang(),
+      theme: window.VOTA.Store.app.getTheme(), editing: false,
+      calY: 2026, calM: 8, dStart: null, dEnd: null, bMin: 3000000, bMax: 25000000
+    };
+    this.trackRef = el => { this.trackEl = el; };
+    this._snaps = {};
+    this.hotelMapRef = el => {
+      if (!el) {
+        if (this.hmap) { this.hmap.remove(); this.hmap = null; this.hLayer = null; this.hMarkers = {}; }
+        this._hKey = null; this.hMapEl = null; return;
+      }
+      this.hMapEl = el; this.ensureHotelMap();
+    };
+    this.hotelListRef = el => { this.hListEl = el; };
+    this.chatRef = el => { this.chatEl = el; };
+    this.chatRef2 = el => { this.chatEl2 = el; };
+    this.itinRef = el => { this.itinEl = el; };
+    this.mapRef = el => {
+      if (!el) {
+        if (this.map) { this.map.remove(); this.map = null; this.layer = null; this.legLayer = null; this.allLines = []; }
+        this._lastKey = null; this.mapEl = null; return;
+      }
+      this.mapEl = el; this.ensureMap();
+    };
+  }
+
+  componentDidMount() {
+    this.applyTheme(this.state.theme);
+    this._esc = e => { if (e.key !== 'Escape') return; if (this.state.focus) this.closeDetail(); else if (this.state.hFocus) this.closeHotelDetail(); };
+    window.addEventListener('keydown', this._esc);
+    if (this.state.phase === 'intake') setTimeout(() => this.ask(0), 500);
+    this._onResize = () => { if (this.map) this.map.invalidateSize(); };
+    window.addEventListener('resize', this._onResize);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this._esc); clearTimeout(this._t); clearTimeout(this._s); clearTimeout(this._g); window.removeEventListener('resize', this._onResize); }
+
+  componentDidUpdate() {
+    [this.chatEl, this.chatEl2].forEach(el => { if (el) el.scrollTop = el.scrollHeight; });
+    if (this.state.phase === 'workspace') { this.ensureMap(); this.syncMap(); }
+    if (this.state.phase === 'hotels') { this.ensureHotelMap(); this.syncHotelMap(); }
+  }
+
+  // ---------- conversation ----------
+  // Scripted AI conversation lines now live in scripts/constants/i18n.js
+  // (window.VOTA.I18N.messages) — see the comment there.
+  aiMsgs() { return window.VOTA.I18N.messages; }
+
+  mlang() { return this.state.convLang || this.state.lang || 'vi'; }
+  m(key, vars) {
+    const bankL = this.aiMsgs()[this.mlang()] || this.aiMsgs().vi;
+    let s = bankL[key] || key;
+    if (vars) Object.keys(vars).forEach(k => { s = s.split('{' + k + '}').join(vars[k]); });
+    return s;
+  }
+
+  prompts() {
+    return [
+      this.m('p0'), this.m('p1'), this.m('p2'), this.m('p3'), this.m('p4')
+    ];
+  }
+  ask(step) {
+    const text = this.prompts()[step];
+    if (!text) return;
+    this.finishStream();
+    this.setState({ thinking: true, step });
+    clearTimeout(this._t);
+    this._t = setTimeout(() => {
+      this.setState(s => ({ thinking: false, messages: [...s.messages, { id: 'ai' + step + s.messages.length, role: 'ai', text: '', at: this.clock() }] }));
+      this.stream(text);
+    }, 650);
+  }
+  finishStream() {
+    clearTimeout(this._s);
+    clearTimeout(this._fail);
+    this._s = null;
+    const t = this._target;
+    if (!t) { if (this.state.streaming) this.setState({ streaming: false }); return; }
+    this._target = null;
+    this.setState(s => {
+      const ms = s.messages.slice();
+      const idx = ms.findIndex(m => m.id === t.id);
+      if (idx < 0) return null;
+      ms[idx] = Object.assign({}, ms[idx], { text: t.full });
+      return { messages: ms, streaming: false };
+    });
+  }
+
+  stream(full) {
+    this.finishStream();
+    const speed = this.props.typingSpeed ?? 16;
+    const id = this.state.messages[this.state.messages.length - 1].id;
+    const token = (this._token = (this._token || 0) + 1);
+    this._target = { id: id, full: full };
+    this.setState({ streaming: true });
+    const chars = Array.from(full);
+    let i = 0;
+    clearTimeout(this._fail);
+    this._fail = setTimeout(() => this.finishStream(), speed * chars.length + 4000);
+    const tick = () => {
+      if (token !== this._token) return;
+      i = Math.min(chars.length, i + 2);
+      const shown = chars.slice(0, i).join('');
+      this.setState(s => {
+        const ms = s.messages.slice();
+        const idx = ms.findIndex(m => m.id === id);
+        if (idx < 0) return null;
+        ms[idx] = Object.assign({}, ms[idx], { text: shown });
+        return { messages: ms };
+      });
+      if (i < chars.length) this._s = setTimeout(tick, speed);
+      else { clearTimeout(this._fail); this._s = null; this._target = null; this.setState({ streaming: false }); }
+    };
+    tick();
+  }
+  // ---------- i18n ----------
+  // UI chrome copy now lives in scripts/constants/i18n.js
+  // (window.VOTA.I18N.ui) — see the comment there.
+  dict() { return window.VOTA.I18N.ui; }
+
+  // content translation: exact match first, then unit/number normalisation
+  tx(s) {
+    if (!s || !this.isEn()) return s;
+    if (this.EN[s]) return this.EN[s];
+    let out = s;
+    Object.keys(this.EN).forEach(k => { if (k.length > 6 && out.indexOf(k) >= 0) out = out.split(k).join(this.EN[k]); });
+    return this.trUnits(out);
+  }
+
+  convoDate(d) {
+    if (!this.isEn()) return d;
+    if (d === 'Hôm nay') return 'Today';
+    const p = d.split('/');
+    if (p.length !== 3) return d;
+    return new Date(+p[2], +p[1] - 1, +p[0]).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  // already-streamed AI lines follow the language switch
+  trMsg(text) {
+    const b = this.aiMsgs(), from = this.mlang() === 'en' ? b.vi : b.en, to = this.aiMsgs()[this.mlang()];
+    let hit = null;
+    Object.keys(from).forEach(k => { if (from[k] === text) hit = k; });
+    if (hit) return to[hit];
+    const fc = from.confirmed.split('{hotel}'), tc = to.confirmed.split('{hotel}');
+    if (fc[0] && text.indexOf(fc[0]) === 0) return tc[0] + text.slice(fc[0].length).replace(fc[1] || '', '') + (tc[1] || '');
+    return text;
+  }
+
+  num1(n) { return window.VOTA.Utils.formatters.num1(n, this.isEn()); }
+
+  L() { return this.dict()[this.state.lang] || this.dict().vi; }
+  t(k) { return this.L()[k] || k; }
+  cl() { return this.state.convLang || 'vi'; }
+  isEn() { return this.state.lang === 'en'; }
+
+  // Mock "AI understanding" now lives in scripts/services/chat.service.js.
+  detectLang(txt) { return window.VOTA.Services.chat.detectLang(txt, this.cl()); }
+
+  setLang = lang => { this.setState({ lang: lang, convLang: lang }); this._dk = null; window.VOTA.Store.app.setLang(lang); };
+
+  // numbers, dates, units
+  // Formatting now lives in scripts/utils/formatters.js — kept as
+  // this.mny()/etc. wrappers so every call site elsewhere is unchanged.
+  mny(mil) { return window.VOTA.Utils.formatters.mny(mil, this.isEn()); }
+  mnyShort(mil) { return window.VOTA.Utils.formatters.mnyShort(mil, this.isEn()); }
+  fmtDate(d) { return window.VOTA.Utils.formatters.fmtDate(d, this.isEn()); }
+  fmtNights(a, b) { return window.VOTA.Utils.formatters.fmtNights(a, b, this.isEn()); }
+  trUnits(s) {
+    if (!s || !this.isEn()) return s;
+    const map = [['Ô tô riêng', 'Private car'], ['Cáp treo + ô tô', 'Cable car + car'], ['Cáp treo', 'Cable car'],
+      ['Ô tô', 'Car'], ['Taxi', 'Taxi'], ['Đi bộ', 'Walk'], ['Máy bay', 'Flight'],
+      ['miễn phí', 'free'], ['Miễn phí', 'Free'], ['đã bao gồm', 'included'], ['Đã bao gồm', 'Included'],
+      ['phút', 'mins'], ['giờ', 'hrs'], ['ngày', 'days'], ['đêm', 'nights'], ['người', 'pax'],
+      ['vé', 'ticket'], ['trả phòng', 'check-out'], ['nghỉ đêm', 'overnight']];
+    let out = s;
+    map.forEach(([a, b]) => { out = out.split(a).join(b); });
+    out = out.replace(/([\d,\.]+)tr ₫/g, (m, n) => 'VND ' + Math.round(parseFloat(n.replace(',', '.')) * 1000000).toLocaleString('en-US'));
+    out = out.replace(/([\d]+)k ₫/g, (m, n) => 'VND ' + (parseInt(n, 10) * 1000).toLocaleString('en-US'));
+    out = out.replace(/(\d+),(\d)(?= )/g, '$1.$2');
+    out = out.replace(/\b1 hrs\b/g, '1 hr').replace(/\b1 mins\b/g, '1 min').replace(/\b1 nights\b/g, '1 night').replace(/\b1 days\b/g, '1 day');
+    return out;
+  }
+  trKind(k) {
+    if (!this.isEn()) return k;
+    return ({ 'Tham quan': 'Sightseeing', 'Ăn uống': 'Food', 'Khách sạn': 'Hotel', 'Di chuyển': 'Transfer' })[k] || k;
+  }
+  trView(v) {
+    if (!this.isEn()) return v;
+    return ({ 'biển': 'sea', 'sông Hàn': 'Hàn River', 'thành phố': 'city', 'vịnh': 'bay' })[v] || v;
+  }
+
+  clock() {
+    const d = new Date();
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+
+  applyTheme(t) {
+    document.body.setAttribute('data-theme', t);
+    window.VOTA.Store.app.setTheme(t);
+  }
+
+  toggleTheme = () => {
+    const t = this.state.theme === 'dark' ? 'light' : 'dark';
+    this.setState({ theme: t });
+    this.applyTheme(t);
+  };
+
+  pushUser(text) { this.setState(s => ({ messages: [...s.messages, { id: 'u' + s.messages.length, role: 'user', text, at: this.clock() }] })); }
+
+  answer(text, patch) {
+    this.finishStream();
+    this.pushUser(text);
+    const cur = this.state.step;
+    const editing = this.state.editing;
+    this.setState(Object.assign({ draft: '' }, patch || {}));
+    if (editing) {
+      const scopes = ['both', 'both', 'itinerary', 'hotels', 'places'];
+      const fields = ['Điểm đến', 'Số người', 'Ngày đi – về', 'Ngân sách', 'Sở thích'];
+      const scope = scopes[cur] || 'itinerary';
+      this.setState({ step: 5, editing: false });
+      setTimeout(() => {
+        this.setState({ pending: { fields: [fields[cur]], affected: this.affectedOf(scope), scope: scope } });
+        this.aiSay(this.m('changed'));
+      }, 300);
+      return;
+    }
+    const next = cur + 1;
+    if (next < 5) setTimeout(() => this.ask(next), 260);
+    else { this.setState({ step: 5 }); setTimeout(() => this.generate(), 400); }
+  }
+
+  editField(i) {
+    this.finishStream();
+    this.setState({ phase: 'intake', step: i, editing: true, pending: null });
+    this.aiSay(this.m('e' + i));
+  }
+
+  goStep(key) {
+    const s = this.state;
+    if (key === s.phase) return;
+    if (key === 'hotels' && s.step < 5) { this.aiSay(this.m('needInfo')); return; }
+    if (key === 'workspace' && !s.hotel) { this.aiSay(this.m('needHotel')); return; }
+    this.finishStream();
+    clearTimeout(this._g);
+    (this._pt || []).forEach(clearTimeout);
+    this.setState({ phase: key, editing: false, pending: null, thinking: false, streaming: false });
+    if (key === 'hotels') { this._hKey = null; setTimeout(() => this.syncHotelMap(true), 200); }
+    if (key === 'workspace') { this._lastKey = null; setTimeout(() => this.syncMap(true), 200); }
+    if (key === 'hotels') this.aiSay(this.m('backHotels'));
+    if (key === 'intake') this.aiSay(this.m('backIntake'));
+  }
+
+  aiSay(text) {
+    this.setState(s => ({ thinking: false, messages: [...s.messages, { id: 'ai' + s.messages.length + '_' + Date.now(), role: 'ai', text: '', at: this.clock() }] }), () => this.stream(text));
+  }
+
+  runProgress(kind, done) {
+    const labels = kind === 'search' ? this.searchLabels : this.optLabels;
+    clearTimeout(this._g);
+    this._pt = (this._pt || []);
+    this._pt.forEach(clearTimeout);
+    this._pt = [];
+    this.setState({ phase: kind === 'search' ? 'searching' : 'optimizing', progressKind: kind, progress: 0, pending: null });
+    labels.forEach((l, i) => { this._pt.push(setTimeout(() => this.setState({ progress: i + 1 }), 560 * (i + 1))); });
+    this._g = setTimeout(done, 560 * labels.length + 650);
+  }
+
+  generate() {
+    this.runProgress('search', () => {
+      this.setState({ phase: 'hotels' });
+      this.aiSay(this.m('hotelsReady'));
+    });
+  }
+
+  buildItinerary(msg) {
+    this.runProgress('opt', () => {
+      this._dk = null;
+      this.setState({ phase: 'workspace', tab: 'overview', selected: null });
+      this._lastKey = null;
+      this.aiSay(msg);
+    });
+  }
+
+  chooseHotel(id) {
+    this.setState({ hotel: id, selected: null });
+    if (this.hmap) { const h = this.hotels.find(x => x.id === id); this.hmap.flyTo([h.lat, h.lng], 14, { duration: .8 }); }
+  }
+
+  confirmHotel = () => {
+    const h = this.hotels.find(x => x.id === this.state.hotel);
+    if (!h) return;
+    this.pushUser((this.mlang() === 'en' ? 'I will take ' : 'Mình chọn ') + h.name);
+    this.buildItinerary(this.m('confirmed', { hotel: h.name }));
+  };
+
+  // NOTE: this method was previously duplicated (a `nights(a, b)` here and a
+  // no-arg `nights()` further down) — in JS class bodies the later
+  // definition silently wins, so this one was dead code (its distinct "no
+  // +1" formula was never actually reachable). Removed; see nights() below,
+  // now the single definition, wrapping scripts/utils/formatters.js.
+
+  detectChange(t) { return window.VOTA.Services.chat.detectChange(t); }
+  affectedOf(scope) { return window.VOTA.Services.chat.affectedOf(scope); }
+
+  applyPending = () => {
+    const p = this.state.pending;
+    if (!p) return;
+    this.setState({ pending: null });
+    if (p.scope === 'hotels' || p.scope === 'both') {
+      this.runProgress('search', () => {
+        this.setState({ phase: 'hotels' });
+        this.aiSay(this.m('researched'));
+      });
+    } else if (p.scope === 'places') {
+      this.buildItinerary(this.m('placesOnly'));
+    } else {
+      this.buildItinerary(this.m('itinOnly'));
+    }
+  };
+
+  keepPending = () => {
+    this.setState({ pending: null });
+    this.aiSay(this.m('kept'));
+  };
+
+  send = () => {
+    const t = this.state.draft.trim();
+    if (!t) return;
+    const dl = this.detectLang(t);
+    if (dl && dl !== this.state.convLang) this.setState({ convLang: dl });
+    if (this.state.phase === 'workspace' || this.state.phase === 'hotels') {
+      this.pushUser(t);
+      this.setState({ draft: '', thinking: true });
+      const ch = this.detectChange(t);
+      clearTimeout(this._t);
+      this._t = setTimeout(() => {
+        if (ch.length) {
+          const scope = ch.some(c => c.scope === 'both') ? 'both' : (ch.find(c => c.scope === 'hotels') ? 'hotels' : (ch.every(c => c.scope === 'places') ? 'places' : 'itinerary'));
+          this.setState({ pending: { fields: ch.map(c => c.f), affected: this.affectedOf(scope), scope: scope } });
+          this.aiSay(this.m('detected'));
+        } else {
+          this.aiSay(this.m('noted'));
+        }
+      }, 700);
+      return;
+    }
+    const st = this.state.step;
+    if (st === 0) this.answer(t, { destQuery: t });
+    else if (st === 1) { const n = parseInt(t.replace(/\D/g, ''), 10); this.answer(t, { people: n > 0 ? Math.min(9, n) : 2 }); }
+    else if (st === 2) {
+      const m = t.match(/(\d{1,2})\s*[\/.-]\s*(\d{1,2})(?:\s*[\/.-]\s*(\d{4}))?[^\d]+(\d{1,2})\s*[\/.-]\s*(\d{1,2})(?:\s*[\/.-]\s*(\d{4}))?/);
+      if (m) {
+        const y1 = m[3] ? +m[3] : this.state.calY, y2 = m[6] ? +m[6] : y1;
+        this.answer(t, { dStart: this.iso(y1, +m[2] - 1, +m[1]), dEnd: this.iso(y2, +m[5] - 1, +m[4]), calY: y1, calM: +m[2] - 1 });
+      } else this.answer(t);
+    }
+    else if (st === 3) {
+      const nums = (t.match(/[\d.,]+/g) || []).map(x => {
+        let v = parseFloat(x.replace(/[.,]/g, ''));
+        if (/tri[eệ]u|tr\b|củ/i.test(t) && v < 1000) v = v * 1000000;
+        else if (v < 1000) v = v * 1000000;
+        else if (v < 1000000) v = v * 1000;
+        return v;
+      }).filter(v => v >= 500000);
+      if (nums.length >= 2) this.answer(t, { bMin: Math.min(nums[0], nums[1]), bMax: Math.max(nums[0], nums[1]) });
+      else if (nums.length === 1) this.answer(t, { bMin: Math.max(500000, Math.round(nums[0] * 0.7 / 500000) * 500000), bMax: Math.min(50000000, nums[0]) });
+      else this.answer(t);
+    }
+    else if (st === 4) this.answer(t, { picked: t.split(/[,;]/).map(x => x.trim()).filter(Boolean) });
+    else this.answer(t);
+  };
+
+  regenerate = () => {
+    this.pushUser(this.mlang() === 'en' ? 'Please regenerate the itinerary' : 'Tạo lại lịch trình giúp mình');
+    this.setState({ thinking: true });
+    clearTimeout(this._t);
+    this._t = setTimeout(() => {
+      this.setState(s => ({ thinking: false, messages: [...s.messages, { id: 'rg' + s.messages.length, role: 'ai', text: '', at: this.clock() }] }));
+      this.stream(this.m('regen'));
+    }, 700);
+  };
+
+  // ---------- conversation history ----------
+  openConvo(id) {
+    const s = this.state;
+    if (id === s.convo) return;
+    this.finishStream();
+    clearTimeout(this._t); clearTimeout(this._g);
+    (this._pt || []).forEach(clearTimeout);
+    this._snaps[s.convo] = { phase: s.phase, hotel: s.hotel, tab: s.tab, messages: s.messages, step: s.step, pending: s.pending };
+    const c = this.convos.find(x => x.id === id);
+    const saved = this._snaps[id];
+    const base = saved || Object.assign({ step: 5, pending: null,
+      messages: (this.convoChat[id] || [['ai', 'Đây là bản nháp của chuyến đi này. Bạn muốn mình tiếp tục từ đâu?']]).map((m, i) => ({ id: id + i, role: m[0], text: m[1], at: '09:1' + i, sample: true }))
+    }, c.snap || { phase: 'intake', hotel: null, tab: 'overview' });
+    this._dk = null; this._lastKey = null; this._hKey = null;
+    if (this.map) { this.map.remove(); this.map = null; this.layer = null; this.legLayer = null; this.allLines = []; }
+    if (this.hmap) { this.hmap.remove(); this.hmap = null; this.hLayer = null; }
+    this.setState({ convo: id, phase: base.phase, hotel: base.hotel, tab: base.tab, messages: base.messages, step: base.step, pending: base.pending || null, thinking: false, streaming: false, selected: null, hovered: null, hoverHotel: null, draft: '' });
+  }
+
+  deleteConvo(id) {
+    const rest = this.convos.filter(c => c.id !== id);
+    delete this._snaps[id];
+    if (!rest.length) { this.convos = rest; this.newTrip(); return; }
+    this.convos = rest;
+    if (this.state.convo === id) {
+      this.setState({ convo: null }, () => this.openConvo(rest[0].id));
+    } else this.forceUpdate();
+  }
+
+  newTrip = () => {
+    this.finishStream();
+    const id = 'c' + Date.now();
+    this.convos = [{ id: id, title: 'Chuyến đi mới', date: 'Hôm nay', status: 'Draft' }].concat(this.convos);
+    if (this.map) { this.map.remove(); this.map = null; this.layer = null; this.legLayer = null; this.allLines = []; }
+    if (this.hmap) { this.hmap.remove(); this.hmap = null; this.hLayer = null; }
+    this._dk = null; this._lastKey = null; this._hKey = null;
+    this.setState({ convo: id, phase: 'intake', messages: [], step: 0, hotel: null, pending: null, thinking: false, streaming: false, draft: '', destQuery: '', picked: [], start: null, end: null, tab: 'overview' }, () => setTimeout(() => this.ask(0), 350));
+  };
+
+  convoObj() { return this.convos.find(x => x.id === this.state.convo) || this.convos[0]; }
+
+  // ---------- hotel detail (focus mode) ----------
+  roomsOf(h) {
+    const base = parseFloat(String(h.price).replace(',', '.'));
+    const defs = [
+      { id: 'superior', name: 'Superior Room', f: .82, size: '26 m²', cap: this.isEn() ? '2 guests' : '2 khách', bed: this.isEn() ? '1 double bed' : '1 giường đôi', view: 'thành phố', avail: this.isEn() ? '4 rooms left' : 'Còn 4 phòng',
+        amen: ['Máy lạnh', 'Bàn làm việc', 'Minibar', 'Wi-Fi'], cancel: 'Miễn phí huỷ trước 3 ngày', pay: 'Thanh toán khi nhận phòng',
+        desc: this.isEn() ? 'A compact room — right if you are out all day and only come back to sleep.' : 'Phòng gọn gàng, phù hợp nếu bạn chủ yếu ra ngoài cả ngày và chỉ về nghỉ đêm.' },
+      { id: 'deluxe', name: 'Deluxe Room', f: 1, size: '32 m²', cap: this.isEn() ? '2 guests' : '2 khách', bed: this.isEn() ? '1 King bed' : '1 giường King', view: h.view, avail: this.isEn() ? '2 rooms left' : 'Còn 2 phòng',
+        amen: ['Ban công riêng', 'Bồn tắm', 'Máy pha cà phê', 'Ăn sáng cho 2'], cancel: 'Miễn phí huỷ trước 2 ngày', pay: 'Thanh toán khi nhận phòng',
+        desc: this.isEn() ? 'The most balanced choice: roomy, a balcony facing the ' + this.trView(h.view) + ', breakfast for two included.' : 'Lựa chọn cân bằng nhất: rộng rãi, có ban công hướng ' + h.view + ' và đã gồm ăn sáng cho 2 người.' },
+      { id: 'family', name: 'Family Room', f: 1.34, size: '44 m²', cap: this.isEn() ? '4 guests' : '4 khách', bed: this.isEn() ? '1 King + 1 double' : '1 King + 1 đôi', view: h.view, avail: this.isEn() ? '3 rooms left' : 'Còn 3 phòng',
+        amen: ['2 phòng ngủ', 'Bồn tắm', 'Ăn sáng cho 4', 'Đồ dùng trẻ em'], cancel: 'Miễn phí huỷ trước 5 ngày', pay: 'Thanh toán khi nhận phòng',
+        desc: this.isEn() ? 'For groups of three or four, with two separated sleeping areas and kid-friendly extras.' : 'Dành cho nhóm 3–4 người, có vách ngăn hai khu ngủ và tiện nghi cho trẻ nhỏ.' },
+      { id: 'suite', name: 'Panorama Suite', f: 1.85, size: '58 m²', cap: this.isEn() ? '2 guests' : '2 khách', bed: this.isEn() ? '1 King bed' : '1 giường King', view: h.view + (this.isEn() ? ' panorama' : ' toàn cảnh'), avail: this.isEn() ? '1 room left' : 'Còn 1 phòng',
+        amen: ['Phòng khách riêng', 'Bồn tắm view', 'Lounge access', 'Đưa đón sân bay'], cancel: 'Không hoàn huỷ', pay: 'Trả trước 100%',
+        desc: this.isEn() ? 'High floor, floor-to-ceiling glass and a separate living room — good if you plan to spend time in.' : 'Tầng cao, cửa kính toàn cảnh và phòng khách riêng — phù hợp nếu bạn muốn dành thêm thời gian trong phòng.' }
+    ];
+    return defs.map(r => {
+      const p = base * r.f;
+      return Object.assign({}, r, {
+        hotel: h.id,
+        priceNum: p,
+        price: this.mnyShort(p),
+        total: this.mnyShort(p * 3) + (this.isEn() ? ' / 3 nights' : ' / 3 đêm')
+      });
+    });
+  }
+
+  roomFor(hid) {
+    const h = this.hotels.find(x => x.id === hid) || this.hotels[0];
+    return (this.state.rooms || {})[hid] || 'deluxe';
+  }
+
+  pickRoom(hid, rid) {
+    this.setState(s => ({ rooms: Object.assign({}, s.rooms, { [hid]: rid }) }));
+  }
+
+  hotelDetailData(id) {
+    const h = this.hotels.find(x => x.id === id);
+    if (!h) return null;
+    const rooms = this.roomsOf(h);
+    const sel = this.roomFor(id);
+    const room = rooms.find(r => r.id === sel) || rooms[1];
+    return {
+      id: h.id, name: h.name, heroAlt: this.t('imgOf').replace('{name}', h.name), area: this.tx(h.area), view: this.trView(h.view), center: this.trUnits(h.center),
+      rate: this.num1(h.rate), reviewCount: h.reviews + (this.isEn() ? ' reviews' : ' đánh giá'),
+      stars: '★'.repeat(h.stars) + '☆'.repeat(5 - h.stars),
+      match: h.match + '%', matchDeg: Math.round(h.match * 3.6) + 'deg',
+      matchColor: h.match >= 90 ? 'var(--ok)' : h.match >= 80 ? 'var(--warn)' : 'var(--err)',
+      priceFrom: rooms[0].price, roomName: room.name, roomTotal: room.total,
+      amen: h.amen.map(a => ({ key: a, label: this.tx(a) })),
+      why: h.why.map(w => ({ key: w, label: this.tx(w) })),
+      gallery: ['galleryLobby', 'galleryRoom', 'galleryPool', 'galleryView'].map((g, i) => ({ key: g, label: this.t(g), delay: (i * 70 + 120) + 'ms' })),
+      dist: this.landmarks.map(lm => ({
+        key: lm.name, name: this.tx(lm.name),
+        km: this.num1(this.kmFrom(h, lm)) + ' km',
+        mins: Math.max(4, Math.round(this.kmFrom(h, lm) * 2.6)) + ' ' + this.t('minsWord')
+      })),
+      policy: [
+        { key: 'a', label: this.t('checkIn'), value: this.t('fromTime') },
+        { key: 'b', label: this.t('checkOut'), value: this.t('beforeTime') },
+        { key: 'c', label: this.t('children'), value: this.t('kidsFree') }
+      ],
+      contact: [
+        { key: 'a', label: this.t('phone'), value: '0236 3' + (7000 + h.reviews % 900) },
+        { key: 'b', label: this.t('email'), value: 'booking@' + h.id + '-stay.vn' }
+      ],
+      reviews: [
+        { key: 'r1', who: 'Thu Hà', when: this.tx('tháng 6/2026'), score: this.num1(h.rate - .2), text: this.tx('Vị trí thuận tiện đúng như V-OTA nói, đi bộ ra biển rất gần. Nhân viên nhớ tên khách.') },
+        { key: 'r2', who: 'Đức Anh', when: this.tx('tháng 5/2026'), score: this.num1(h.rate - .6), text: this.tx('Phòng sạch, ăn sáng đủ món. Buổi tối khu vực này khá yên tĩnh nên ngủ ngon.') }
+      ],
+      rooms: rooms.map((r, i) => {
+        const on = r.id === sel;
+        const open = this.state.roomOpen === h.id + ':' + r.id;
+        return {
+          key: r.id, id: r.id, name: r.name, price: r.price, total: r.total, size: r.size, cap: r.cap,
+          bed: r.bed, view: this.trView(r.view), avail: r.avail, cancel: this.tx(r.cancel), pay: this.tx(r.pay), desc: r.desc,
+          amen: r.amen.map(a => ({ key: a, label: this.tx(a) })),
+          gallery: [1, 2, 3].map((n, k) => ({ key: n, label: this.t('photoN').replace('{n}', n), delay: (k * 70) + 'ms' })),
+          delay: (i * 70) + 'ms',
+          open: open, chevron: open ? '▴' : '▾',
+          bg: on ? 'var(--g3)' : 'var(--g2)',
+          border: on ? 'var(--acc)' : 'var(--edge)',
+          shadow: on ? '0 18px 38px -20px rgba(var(--sh),.55),0 0 0 3px var(--acc-soft)' : '0 8px 20px -18px rgba(var(--sh),.6)',
+          btnBg: on ? 'var(--btn)' : 'var(--fill)',
+          btnFg: on ? 'var(--btn-fg)' : 'var(--t2)',
+          btnLabel: on ? this.t('roomPicked') : this.t('pickRoom'),
+          onPick: () => this.pickRoom(h.id, r.id),
+          onToggle: () => this.setState(s => ({ roomOpen: s.roomOpen === h.id + ':' + r.id ? null : h.id + ':' + r.id }))
+        };
+      })
+    };
+  }
+
+  openHotelDetail(id) {
+    this.setState({ hFocus: id, hotel: id, hoverHotel: null });
+    if (this.hmap) { const h = this.hotels.find(x => x.id === id); if (h) this.hmap.setView([h.lat, h.lng], 14, { animate: false }); }
+  }
+
+  closeHotelDetail = () => {
+    this.setState({ hFocus: null }, () => {
+      setTimeout(() => { if (this.hmap) this.hmap.invalidateSize({ animate: true }); }, 400);
+      setTimeout(() => { if (this.hmap) this.hmap.invalidateSize(); }, 700);
+    });
+  };
+
+  // ---------- place detail (focus mode) ----------
+  // Geo math now lives in scripts/utils/geo.js.
+  hash(s) { return window.VOTA.Utils.geo.hash(s); }
+  kmFrom(a, b) { return window.VOTA.Utils.geo.kmFrom(a, b); }
+
+  detailData(id) {
+    const days = this.getDays();
+    let item = null, day = null, idx = -1;
+    days.forEach(d => d.items.forEach((it, i) => { if (it.id === id) { item = it; day = d; idx = i; } }));
+    if (!item) return null;
+    const h = this.hash(id);
+    const hotel = this.hotelObj();
+    const km = this.kmFrom(hotel, item);
+    const mins = Math.max(4, Math.round(km * 2.6));
+    const kindColor = { 'Khách sạn': '#2A9187', 'Tham quan': '#3A73DE', 'Ăn uống': '#C8802F', 'Di chuyển': '#8E6BC4' }[item.kind] || '#3A73DE';
+    const amen = {
+      'Tham quan': ['Bãi đỗ xe', 'Hướng dẫn viên', 'Khu vực chụp ảnh', 'Nhà vệ sinh', 'Quầy nước'],
+      'Ăn uống': ['Máy lạnh', 'Chỗ ngồi ngoài trời', 'Nhận thẻ', 'Món chay', 'Giao hàng'],
+      'Khách sạn': ['Lễ tân 24h', 'Gửi hành lý', 'Hồ bơi', 'Ăn sáng', 'Wi-Fi'],
+      'Di chuyển': ['Xe đón riêng', 'Ghế trẻ em', 'Nước suối miễn phí']
+    }[item.kind] || ['Wi-Fi', 'Bãi đỗ xe'];
+    const openHours = item.kind === 'Ăn uống' ? '06:30 – 22:00' : item.kind === 'Khách sạn' ? 'Cả ngày' : '07:00 – 18:30';
+    const dur = (item.meta.match(/[\d,]+\s*(giờ|phút)/) || ['1,5 giờ'])[0];
+    const price = /miễn phí|bao gồm/i.test(item.meta) ? (/(miễn phí)/i.test(item.meta) ? 'Miễn phí' : 'Đã bao gồm') : (item.meta.match(/[\d.,]+k?\s*₫[^·]*/) || ['—'])[0].trim();
+    const legMode = item.leg ? item.leg.split('·')[0].trim() : 'Ô tô';
+    const nb = day.items.filter(x => x.id !== id).slice(idx, idx + 3).concat(day.items.filter(x => x.id !== id).slice(0, 2)).slice(0, 3);
+    return {
+      id: id, name: this.tx(item.name), heroAlt: this.t('imgOf').replace('{name}', this.tx(item.name)), kind: this.trKind(item.kind), kindColor: kindColor, dayN: day.n, time: item.time,
+      rate: (7.9 + (h % 16) / 10).toFixed(1).replace('.', ','),
+      stars: '★★★★' + ((h % 3) ? '★' : '☆'),
+      reviewCount: (220 + h % 1600) + (this.isEn() ? ' reviews' : ' đánh giá'),
+      facts: [
+        { key: 'a', label: this.t('openHours'), value: this.trUnits(this.tx(openHours)) },
+        { key: 'b', label: this.t('priceWord'), value: this.trUnits(this.tx(price)) },
+        { key: 'c', label: this.t('shouldSpend'), value: this.trUnits(dur) }
+      ],
+      desc: this.tx(item.note) + ' ' + (this.isEn()
+        ? (item.kind === 'Ăn uống' ? 'Locals eat here regularly; portions are moderate and prices are clearly listed.'
+          : item.kind === 'Khách sạn' ? 'This is where each day starts and ends, handy for a break between legs.'
+          : 'There is plenty of room, it is easy to reach in the slot planned, and you can linger longer if you like.')
+        : (item.kind === 'Ăn uống' ? 'Quán được người địa phương lui tới thường xuyên, phần ăn vừa phải và giá niêm yết rõ ràng.'
+          : item.kind === 'Khách sạn' ? 'Là điểm bắt đầu và kết thúc mỗi ngày trong lịch trình, thuận tiện để nghỉ giữa các chặng.'
+          : 'Không gian rộng, dễ đi trong khung giờ đã xếp và phù hợp để dừng lại lâu hơn nếu bạn muốn.')),
+      why: this.isEn() ? [
+        { key: 1, label: 'Matches the interests you picked' + (this.state.picked.length ? ': ' + this.state.picked.slice(0, 2).map(x => this.tx(x)).join(', ') : ' for this trip') },
+        { key: 2, label: 'Only about ' + km.toFixed(1) + ' km from ' + hotel.name + ' — a ' + mins + '-minute ride' },
+        { key: 3, label: 'Pairs with ' + (nb[0] ? this.tx(nb[0].name) : 'the next stops') + ' in the same half-day, which saves driving' },
+        { key: 4, label: 'The ' + this.trUnits(dur) + ' needed fits the ' + item.time + ' slot on day ' + day.n }
+      ] : [
+        { key: 1, label: 'Khớp với sở thích bạn đã chọn' + (this.state.picked.length ? ': ' + this.state.picked.slice(0, 2).join(', ') : ' cho chuyến đi này') },
+        { key: 2, label: 'Chỉ cách ' + hotel.name + ' khoảng ' + km.toFixed(1).replace('.', ',') + ' km — ' + mins + ' phút di chuyển' },
+        { key: 3, label: 'Ghép được với ' + (nb[0] ? nb[0].name : 'các điểm kế tiếp') + ' trong cùng buổi nên tiết kiệm quãng đường' },
+        { key: 4, label: 'Thời gian tham quan ' + dur + ' vừa với khung ' + item.time + ' của ngày ' + day.n }
+      ],
+      route: [
+        { key: 'a', label: this.t('fromHotel'), value: (this.isEn() ? km.toFixed(1) : km.toFixed(1).replace('.', ',')) + ' km' },
+        { key: 'b', label: this.t('duration'), value: mins + ' ' + this.t('minsWord') },
+        { key: 'c', label: this.t('transport'), value: this.trUnits(legMode) }
+      ],
+      amen: amen.map(a => ({ key: a, label: this.tx(a) })),
+      gallery: [1, 2, 3].map((n, i) => ({ key: n, label: this.t('photoN').replace('{n}', n), delay: (i * 80 + 120) + 'ms' })),
+      reviews: [
+        { key: 'r1', who: 'Minh Trang', when: this.tx('tháng 6/2026'), score: this.num1(8.6 + (h % 9) / 10), text: this.tx('Đến đúng khung giờ V-OTA gợi ý nên khá vắng, chụp ảnh thoải mái. Nhân viên hỗ trợ nhiệt tình.') },
+        { key: 'r2', who: 'Hoàng Nam', when: this.tx('tháng 5/2026'), score: this.num1(8.0 + (h % 12) / 10), text: this.tx('Đáng dành trọn buổi. Nên mang theo nước và mũ nếu đi vào giữa trưa.') }
+      ],
+      nearby: nb.map(x => ({ key: x.id, name: this.tx(x.name), meta: this.trKind(x.kind) + ' · ' + x.time + ' · ' + this.num1(this.kmFrom(item, x)) + ' km', onPick: () => this.openDetail(x.id, day.n) }))
+    };
+  }
+
+  openDetail(id, dayN) {
+    const patch = { selected: id, focus: id };
+    if (this.state.tab === 'overview' && dayN) patch.tab = 'day' + dayN;
+    this.setState(patch, () => {
+      const it = this.findItem(id);
+      if (it && this.map) this.map.setView([it.lat, it.lng], 15, { animate: false });
+      setTimeout(() => this.scrollToCard(id), 260);
+    });
+  }
+
+  closeDetail = () => {
+    this.setState({ focus: null }, () => {
+      setTimeout(() => { if (this.map) this.map.invalidateSize({ animate: true }); }, 400);
+      setTimeout(() => { if (this.map) this.map.invalidateSize(); }, 700);
+    });
+  };
+
+  hotelObj() { return this.hotels.find(x => x.id === this.state.hotel) || this.hotels[0]; }
+
+  // Itinerary is rebuilt around the chosen hotel: it is the start and end of every day.
+  getDays() {
+    const h = this.hotelObj();
+    const ck = h.id + ':' + this.state.lang;
+    if (this._dk === ck && this._dv) return this._dv;
+    const out = this.days.map(d => {
+      let items = d.items.map(it => Object.assign({}, it));
+      if (d.n > 1) items = items.filter(it => it.name.indexOf('Khởi hành') !== 0);
+      items.forEach(it => {
+        if (it.kind === 'Khách sạn') {
+          it.name = (this.isEn() ? 'Check in · ' : 'Nhận phòng · ') + h.name;
+          it.note = this.isEn() ? 'A double room facing the ' + this.trView(h.view) + '; rest for an hour before heading out.' : 'Phòng đôi hướng ' + h.view + ', nghỉ ngơi 1 tiếng trước khi ra ngoài.';
+          it.meta = (this.isEn() ? '3 nights · ' : '3 đêm · ') + h.total; it.lat = h.lat; it.lng = h.lng;
+        }
+      });
+      const k = this.dayHooks[d.n];
+      if (k) {
+        items.unshift({ id: 'd' + d.n + 's', time: k.st, kind: 'Khách sạn', name: (this.isEn() ? 'Set off from ' : 'Khởi hành từ ') + h.name,
+          note: this.isEn() ? (d.n === 4 ? 'Check out, leave the bags at reception and head off.' : 'Breakfast at the hotel, then start the day.') : (d.n === 4 ? 'Trả phòng, gửi hành lý tại lễ tân rồi lên đường.' : 'Ăn sáng tại khách sạn rồi bắt đầu ngày mới.'),
+          meta: this.isEn() ? (d.n === 4 ? 'check-out 12:00 PM' : '45 mins · included') : (d.n === 4 ? 'trả phòng 12:00' : '45 phút · đã bao gồm'), lat: h.lat, lng: h.lng, leg: k.sl });
+        if (k.el) {
+          items[items.length - 1] = Object.assign({}, items[items.length - 1], { leg: k.el });
+          items.push({ id: 'd' + d.n + 'e', time: k.et, kind: 'Khách sạn', name: (this.isEn() ? 'Back to ' : 'Về ') + h.name, note: this.isEn() ? 'End of the day — overnight at the hotel.' : 'Kết thúc ngày, nghỉ đêm tại khách sạn.', meta: this.isEn() ? 'overnight' : 'nghỉ đêm', lat: h.lat, lng: h.lng, leg: null });
+        }
+      }
+      return Object.assign({}, d, { items: items });
+    });
+    this._dk = ck; this._dv = out;
+    return out;
+  }
+
+  // ---------- hotel map ----------
+  ensureHotelMap() {
+    if (this.hmap || !this.hMapEl) return;
+    if (!window.L) { clearTimeout(this._hm); this._hm = setTimeout(() => this.ensureHotelMap(), 200); return; }
+    const L = window.L;
+    this.hmap = window.VOTA.Services.map.createBaseMap(this.hMapEl, [16.045, 108.24], 12);
+    this.hLayer = L.layerGroup().addTo(this.hmap);
+    this._hKey = null;
+    setTimeout(() => { if (this.hmap) { this.hmap.invalidateSize(); this.syncHotelMap(true); } }, 120);
+  }
+
+  syncHotelMap(force) {
+    if (!this.hmap || !window.L) return;
+    const L = window.L;
+    const key = String(this.state.hotel);
+    if (force || key !== this._hKey) {
+      this._hKey = key;
+      this.hLayer.clearLayers();
+      this.hMarkers = {};
+      const pts = [];
+      this.hotels.forEach((h, i) => {
+        const on = this.state.hotel === h.id;
+        const color = on ? '#0e1319' : '#3A73DE';
+        const icon = L.divIcon({ className: '', iconSize: null, iconAnchor: [0, 0], html: '<div data-hk="' + h.id + '" style="transform:translate(-50%,-120%);display:flex;align-items:center;gap:6px;white-space:nowrap;padding:5px 10px;border-radius:99px;background:' + color + ';color:var(--on-acc);font:500 11.5px/1.2 \'Be Vietnam Pro\',sans-serif;border:2px solid #fff;box-shadow:0 8px 18px -6px rgba(0,0,0,.5);transition:transform .28s cubic-bezier(.34,1.5,.64,1)"><b style="font-weight:590">' + h.price + '</b><span style="opacity:.75">' + h.match + '%</span></div>' });
+        const mk = L.marker([h.lat, h.lng], { icon: icon }).addTo(this.hLayer);
+        mk.on('mouseover', () => this.setState({ hoverHotel: h.id }));
+        mk.on('mouseout', () => this.setState({ hoverHotel: null }));
+        mk.on('click', () => { this.openHotelDetail(h.id); this.scrollToHotel(h.id); });
+        this.hMarkers[h.id] = mk;
+        pts.push([h.lat, h.lng]);
+      });
+      const sel = this.hotels.find(x => x.id === this.state.hotel);
+      if (sel) {
+        this.landmarks.forEach(lm => {
+          L.polyline([[sel.lat, sel.lng], [lm.lat, lm.lng]], { color: '#0e1319', weight: 1.6, opacity: .45, dashArray: '3 7', interactive: false }).addTo(this.hLayer);
+          const d = this.hmap.distance([sel.lat, sel.lng], [lm.lat, lm.lng]) / 1000;
+          const mid = [(sel.lat + lm.lat) / 2, (sel.lng + lm.lng) / 2];
+          L.marker(mid, { interactive: false, icon: L.divIcon({ className: '', iconSize: null, html: '<div style="transform:translate(-50%,-50%);white-space:nowrap;padding:2px 8px;border-radius:99px;background:rgba(255,255,255,.85);border:1px solid var(--edge);box-shadow:0 4px 10px -6px rgba(var(--sh),.6);font:400 10px/1.3 \'Be Vietnam Pro\',sans-serif;color:var(--t1)">' + lm.name + ' · ' + d.toFixed(1).replace('.', ',') + ' km</div>' }) }).addTo(this.hLayer);
+          pts.push([lm.lat, lm.lng]);
+        });
+        L.circleMarker([sel.lat, sel.lng], { radius: 26, color: '#0e1319', weight: 1.4, opacity: .5, fillColor: '#0e1319', fillOpacity: .07, interactive: false }).addTo(this.hLayer);
+      }
+      if (pts.length) this.hmap.fitBounds(L.latLngBounds(pts).pad(0.2), { animate: true });
+    }
+    const act = this.state.hoverHotel;
+    Object.keys(this.hMarkers || {}).forEach(id => {
+      const el = this.hMarkers[id]._icon && this.hMarkers[id]._icon.firstChild;
+      if (el) el.style.transform = 'translate(-50%,-120%) scale(' + (id === act ? 1.18 : 1) + ')';
+    });
+  }
+
+  scrollToHotel(id) {
+    if (!this.hListEl) return;
+    const el = this.hListEl.querySelector('[data-hcard="' + id + '"]');
+    if (el) this.hListEl.scrollTo({ top: el.offsetTop - 12, behavior: 'smooth' });
+  }
+
+  // ---------- map ----------
+  ensureMap() {
+    if (this.map || !this.mapEl) return;
+    if (!window.L) { clearTimeout(this._m); this._m = setTimeout(() => this.ensureMap(), 200); return; }
+    const L = window.L;
+    this.map = window.VOTA.Services.map.createBaseMap(this.mapEl, [15.98, 108.25], 11, { scrollWheelZoom: true });
+    this.layer = L.layerGroup().addTo(this.map);
+    this.legLayer = L.layerGroup().addTo(this.map);
+    this.allLines = [];
+    this._lastKey = null;
+    setTimeout(() => { if (this.map) this.map.invalidateSize(); this.syncMap(true); }, 120);
+  }
+
+  legMode(leg) {
+    if (!leg) return null;
+    const l = leg.toLowerCase();
+    if (l.indexOf('đi bộ') === 0) return 'foot';
+    if (l.indexOf('cáp treo') === 0) return 'air';
+    return 'drive';
+  }
+
+  curve(a, b) { return window.VOTA.Utils.geo.curve(a, b); }
+
+  // Fetch real road geometry (OSRM) once per leg; fall back to a smooth curve offline.
+  routeLeg(a, b, mode, cb) {
+    const key = mode + a[0].toFixed(4) + a[1].toFixed(4) + b[0].toFixed(4) + b[1].toFixed(4);
+    this._routes = this._routes || {};
+    if (this._routes[key]) { cb(this._routes[key]); return; }
+    if (mode === 'air') { this._routes[key] = this.curve(a, b); cb(this._routes[key]); return; }
+    window.VOTA.Services.map.fetchRouteGeometry(a, b, mode).then(pts => {
+      this._routes[key] = pts || this.curve(a, b);
+      cb(this._routes[key]);
+    });
+  }
+
+  drawLeg(day, i) {
+    const L = window.L;
+    const it = day.items[i], nx = day.items[i + 1];
+    if (!it || !nx || !it.leg) return;
+    const mode = this.legMode(it.leg);
+    const perDay = this._lastKey !== 'overview';
+    const color = perDay ? this.LEG[i % this.LEG.length] : this.C[day.n - 1];
+    const a = [it.lat, it.lng], b = [nx.lat, nx.lng];
+    const gen = this._lastKey;
+    const paint = pts => {
+      if (!this.map || this._lastKey !== gen) return;
+      const cls = mode === 'foot' ? 'v-walk' : mode === 'air' ? 'v-air' : '';
+      let casing = null;
+      if (mode === 'drive') casing = L.polyline(pts, { color: '#fff', weight: 7, opacity: .75, lineJoin: 'round', lineCap: 'round', interactive: false }).addTo(this.legLayer);
+      const line = L.polyline(pts, { color: color, weight: mode === 'drive' ? 4 : 3, opacity: mode === 'drive' ? .92 : .8, lineJoin: 'round', className: cls, interactive: false }).addTo(this.legLayer);
+      let flow = null;
+      if (mode === 'drive') flow = L.polyline(pts, { color: '#fff', weight: 2.4, opacity: .95, className: 'v-flow', interactive: false }).addTo(this.legLayer);
+      line.bringToFront();
+      if (flow) flow.bringToFront();
+      (this.allLines = this.allLines || []).push({ ids: [it.id, nx.id], line: line, casing: casing, flow: flow, w: mode === 'drive' ? 4 : 3, o: mode === 'drive' ? .92 : .8 });
+      if (mode === 'drive' && line._path && line._path.getTotalLength) {
+        const len = line._path.getTotalLength();
+        line._path.style.transition = 'none';
+        line._path.style.strokeDasharray = len + ' ' + len;
+        line._path.style.strokeDashoffset = len;
+        requestAnimationFrame(() => { if (!line._path) return; line._path.style.transition = 'stroke-dashoffset .9s cubic-bezier(.22,1,.36,1)'; line._path.style.strokeDashoffset = '0'; });
+      }
+      if (this._lastKey !== 'overview') {
+        const mid = pts[Math.floor(pts.length / 2)];
+        const label = L.divIcon({ className: '', iconSize: null, iconAnchor: [0, 10], html: '<div style="transform:translate(-50%,-50%);display:flex;align-items:center;gap:6px;white-space:nowrap;padding:3px 9px 3px 7px;border-radius:99px;background:rgba(255,255,255,.85);backdrop-filter:blur(10px);border:1px solid ' + color + '55;box-shadow:0 4px 12px -6px rgba(var(--sh),.6);font:400 10.5px/1.3 \'Be Vietnam Pro\',sans-serif;color:var(--t1)"><span style="width:7px;height:7px;border-radius:50%;background:' + color + '"></span><span><b style="font-weight:590">' + (i + 1) + '→' + (i + 2) + '</b> · ' + it.leg + '</span></div>' });
+        L.marker(mid, { icon: label, interactive: false, keyboard: false }).addTo(this.legLayer);
+      }
+    };
+    this.routeLeg(a, b, mode, paint);
+  }
+
+  syncMap(force) {
+    if (!this.map || !window.L) return;
+    const L = window.L;
+    const tab = this.state.tab;
+    if (force || tab !== this._lastKey) {
+      this._lastKey = tab;
+      this.layer.clearLayers();
+      if (this.legLayer) this.legLayer.clearLayers(); else this.legLayer = L.layerGroup().addTo(this.map);
+      this.markers = {};
+      this.allLines = [];
+      const src = this.getDays();
+      const days = tab === 'overview' ? src : src.filter(d => 'day' + d.n === tab);
+      const all = [];
+      days.forEach(d => {
+        const color = this.C[d.n - 1];
+        d.items.forEach((it, i) => this.drawLeg(d, i));
+        d.items.forEach((it, i) => {
+          const icon = L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13], html: '<div data-mk="' + it.id + '" style="width:26px;height:26px;border-radius:50%;background:' + color + ';color:var(--on-acc);font:600 12px/26px \'Be Vietnam Pro\',sans-serif;text-align:center;border:2px solid #fff;box-shadow:0 4px 12px -3px rgba(0,0,0,.45);transition:transform .25s cubic-bezier(.34,1.5,.64,1),box-shadow .25s ease;animation:vPinIn .6s ' + (i * 80 + 120) + 'ms cubic-bezier(.34,1.4,.64,1) backwards">' + (i + 1) + '</div>' });
+          const mk = L.marker([it.lat, it.lng], { icon: icon }).addTo(this.layer);
+          mk.on('mouseover', () => this.setState({ hovered: it.id }));
+          mk.on('mouseout', () => this.setState({ hovered: null }));
+          mk.on('click', () => this.openDetail(it.id, d.n));
+          this.markers[it.id] = mk;
+          all.push([it.lat, it.lng]);
+        });
+        if (tab !== 'overview') {
+          [[d.items[0], 'Xuất phát'], [d.items[d.items.length - 1], 'Kết thúc']].forEach(pair => {
+            const it = pair[0];
+            L.marker([it.lat, it.lng], { interactive: false, zIndexOffset: -100, icon: L.divIcon({ className: '', iconSize: null, iconAnchor: [0, -18], html: '<div style="transform:translate(-50%,0);white-space:nowrap;padding:2px 8px;border-radius:99px;background:var(--btn);color:var(--btn-fg);font:600 9.5px/1.4 \'Be Vietnam Pro\',sans-serif;letter-spacing:.04em;text-transform:uppercase;box-shadow:0 6px 14px -6px rgba(0,0,0,.6)">' + pair[1] + '</div>' }) }).addTo(this.layer);
+          });
+        }
+      });
+      if (all.length) this.map.fitBounds(L.latLngBounds(all).pad(0.22), { animate: true, duration: .8 });
+    }
+    const act = this.state.hovered || this.state.selected;
+    Object.keys(this.markers || {}).forEach(id => {
+      const el = this.markers[id]._icon && this.markers[id]._icon.firstChild;
+      if (!el) return;
+      const on = id === act;
+      el.style.transform = on ? 'scale(1.45)' : 'scale(1)';
+      el.style.zIndex = on ? '900' : '';
+      el.style.boxShadow = on ? '0 8px 20px -4px rgba(0,0,0,.5),0 0 0 6px rgba(255,255,255,.55)' : '0 4px 12px -3px rgba(0,0,0,.45)';
+    });
+    (this.allLines || []).forEach(r => {
+      const rel = act && r.ids.indexOf(act) >= 0;
+      const dim = act && !rel;
+      r.line.setStyle({ opacity: dim ? .18 : (rel ? 1 : r.o), weight: rel ? r.w + 2 : r.w });
+      if (r.casing) r.casing.setStyle({ opacity: dim ? .1 : .75, weight: rel ? 9 : 7 });
+      if (r.flow) r.flow.setStyle({ opacity: dim ? .1 : .95 });
+    });
+  }
+
+  pickItem(id, dayN, fromCard) {
+    const patch = { selected: id };
+    if (this.state.tab === 'overview' && dayN) patch.tab = 'day' + dayN;
+    this.setState(patch, () => {
+      const it = this.findItem(id);
+      if (it && this.map) this.map.flyTo([it.lat, it.lng], 15, { duration: .9 });
+      if (!fromCard) setTimeout(() => this.scrollToCard(id), 220);
+    });
+  }
+  scrollToCard(id) {
+    if (!this.itinEl) return;
+    const el = this.itinEl.querySelector('[data-card="' + id + '"]');
+    if (el) this.itinEl.scrollTo({ top: el.offsetTop - 14, behavior: 'smooth' });
+  }
+  findItem(id) { let f = null; this.getDays().forEach(d => d.items.forEach(it => { if (it.id === id) f = it; })); return f; }
+
+  // ---------- derived ----------
+  vnd(n) { return window.VOTA.Utils.formatters.vnd(n, this.isEn()); }
+  fmtBudget() { return this.vnd(this.state.bMin) + ' – ' + this.vnd(this.state.bMax); }
+  iso(y, m, d) { return window.VOTA.Utils.formatters.iso(y, m, d); }
+  dmy(s) { return window.VOTA.Utils.formatters.dmy(s, this.isEn()); }
+  nights() { return window.VOTA.Utils.formatters.countNights(this.state.dStart, this.state.dEnd); }
+  monthName(m) {
+    if (this.isEn()) return ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][m];
+    return ['Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Tháng 6', 'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12'][m];
+  }
+
+  calendarCells() {
+    const { calY, calM, dStart, dEnd } = this.state;
+    const first = new Date(calY, calM, 1);
+    const lead = (first.getDay() + 6) % 7;
+    const len = new Date(calY, calM + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < lead; i++) cells.push({ d: 0, key: 'b' + i });
+    for (let d = 1; d <= len; d++) cells.push({ d: d, key: 'd' + d });
+    return cells.map(c => {
+      const d = c.d;
+      const val = d ? this.iso(calY, calM, d) : null;
+      const isS = val && val === dStart, isE = val && val === dEnd;
+      const inR = val && dStart && dEnd && val > dStart && val < dEnd;
+      const on = isS || isE;
+      return {
+        key: c.key, label: d ? String(d) : '', cursor: d ? 'pointer' : 'default',
+        bg: on ? 'var(--btn)' : inR ? 'rgba(58,115,222,.13)' : 'transparent',
+        fg: on ? 'var(--btn-fg)' : d ? 'var(--t1)' : 'transparent',
+        weight: on ? '600' : '400',
+        radius: isS ? '11px 5px 5px 11px' : isE ? '5px 11px 11px 5px' : inR ? '5px' : '11px',
+        onPick: d ? () => this.pickDate(val) : null
+      };
+    });
+  }
+  pickDate(val) {
+    const { dStart, dEnd } = this.state;
+    if (!dStart || dEnd) this.setState({ dStart: val, dEnd: null });
+    else if (val > dStart) this.setState({ dEnd: val });
+    else this.setState({ dStart: val, dEnd: null });
+  }
+  shiftMonth(n) {
+    const d = new Date(this.state.calY, this.state.calM + n, 1);
+    this.setState({ calY: d.getFullYear(), calM: d.getMonth() });
+  }
+  shiftYear(n) { this.setState({ calY: this.state.calY + n }); }
+
+  // Dual-thumb budget slider (single track, two handles)
+  budgetDrag = e => {
+    const el = this.trackEl;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const { MIN, MAX, STEP } = window.VOTA.Config.BUDGET;
+    const move = ev => {
+      const x = (ev.touches ? ev.touches[0].clientX : ev.clientX) - rect.left;
+      const pct = Math.max(0, Math.min(1, x / rect.width));
+      let v = Math.round((MIN + pct * (MAX - MIN)) / STEP) * STEP;
+      const s = this.state;
+      if (this._thumb === 'min') this.setState({ bMin: Math.min(v, s.bMax - STEP) });
+      else this.setState({ bMax: Math.max(v, s.bMin + STEP) });
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      this._thumb = null;
+      this.forceUpdate();
+    };
+    const x0 = e.clientX - rect.left;
+    const pct0 = Math.max(0, Math.min(1, x0 / rect.width));
+    const v0 = MIN + pct0 * (MAX - MIN);
+    this._thumb = Math.abs(v0 - this.state.bMin) < Math.abs(v0 - this.state.bMax) ? 'min' : 'max';
+    move(e);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  bPct(v) { const { MIN, MAX } = window.VOTA.Config.BUDGET; return ((v - MIN) / (MAX - MIN) * 100).toFixed(2) + '%'; }
+
+  renderVals() {
+    const s = this.state;
+    const st = s.step;
+    const intake = s.phase === 'intake';
+    const filled = [st > 0, st > 1, st > 2, st > 3, st > 4];
+    const srcDays = this.getDays();
+    const day = srcDays.find(d => 'day' + d.n === s.tab);
+    const sel = s.selected ? this.findItem(s.selected) : null;
+
+    const messages = s.messages.map(m => ({
+      id: m.id, text: m.sample ? this.tx(m.text) : this.trMsg(m.text), isAI: m.role === 'ai', at: m.at || '',
+      justify: m.role === 'ai' ? 'flex-start' : 'flex-end',
+      align: m.role === 'ai' ? 'flex-start' : 'flex-end',
+      radius: m.role === 'ai' ? '18px 18px 18px 6px' : '18px 18px 6px 18px',
+      weight: '400',
+      bg: m.role === 'ai' ? 'var(--g3)' : 'linear-gradient(145deg,#4F86E8,#2C5FC9)',
+      fg: m.role === 'ai' ? 'var(--t1)' : '#FCFDFE',
+      border: m.role === 'ai' ? '1px solid var(--line)' : '1px solid rgba(255,255,255,.22)',
+      shadow: m.role === 'ai' ? '0 6px 16px -12px rgba(var(--sh),.7)' : '0 8px 20px -10px rgba(44,95,201,.6)'
+    }));
+
+    const destOptions = this.dests.slice(0, 6)
+      .map(d => ({ key: d, label: this.tx(d), onPick: () => this.answer(this.tx(d), { destQuery: d }) }));
+
+    const peopleOptions = [1, 2, 3, 4, 5].map(n => ({
+      key: n, label: n === 5 ? '5+' : String(n),
+      bg: s.people === n ? 'var(--g3)' : 'transparent',
+      fg: s.people === n ? 'var(--t1)' : 'var(--t2)',
+      weight: s.people === n ? '600' : '400',
+      shadow: s.people === n ? '0 4px 12px -6px rgba(var(--sh),.6)' : 'none',
+      onPick: () => this.setState({ people: n })
+    }));
+
+    const interestOptions = this.interests.map(i => {
+      const on = s.picked.indexOf(i) >= 0;
+      return {
+        key: i, label: this.tx(i),
+        bg: on ? 'var(--btn)' : 'rgba(255,255,255,.8)',
+        fg: on ? 'var(--btn-fg)' : 'var(--t1)',
+        border: on ? 'var(--btn)' : 'var(--fill2)',
+        weight: on ? '500' : '400',
+        onToggle: () => this.setState(p => ({ picked: on ? p.picked.filter(x => x !== i) : [...p.picked, i] }))
+      };
+    });
+
+    const tabs = [{ key: 'overview', label: this.t('overview'), flex: '1.6' }].concat(this.days.map(d => ({ key: 'day' + d.n, label: this.t('dayWord') + ' ' + d.n, flex: '1' })))
+      .map(t => ({
+        key: t.key, label: t.label, flex: t.flex,
+        bg: s.tab === t.key ? 'var(--g3)' : 'transparent',
+        fg: s.tab === t.key ? 'var(--t1)' : 'var(--t2)',
+        weight: s.tab === t.key ? '600' : '400',
+        shadow: s.tab === t.key ? '0 4px 12px -6px rgba(var(--sh),.55)' : 'none',
+        onPick: () => this.setState({ tab: t.key, selected: null })
+      }));
+
+    const thumbs = { 'Khách sạn': 'rgba(42,145,135,', 'Tham quan': 'rgba(58,115,222,', 'Ăn uống': 'rgba(200,128,47,', 'Di chuyển': 'rgba(142,107,196,' };
+    const compact = this.props.compactCards === true;
+    const dayItems = (day ? day.items : []).map((it, i) => {
+      const on = s.hovered === it.id || s.selected === it.id;
+      const base = thumbs[it.kind] || 'rgba(14,19,25,';
+      return {
+        id: it.id, time: it.time, num: i + 1, name: this.tx(it.name), kind: this.trKind(it.kind),
+        note: compact ? '' : this.tx(it.note), meta: this.trUnits(it.meta), leg: this.trUnits(it.leg), hasLeg: !!it.leg,
+        delay: (i * 65) + 'ms',
+        legColor: this.LEG[i % this.LEG.length], legHop: (i + 1) + ' → ' + (i + 2),
+        legDash: 'repeating-linear-gradient(to bottom,' + this.LEG[i % this.LEG.length] + ' 0 4px,transparent 4px 8px)',
+        dotBg: this.C[(day ? day.n : 1) - 1],
+        thumb: 'repeating-linear-gradient(115deg,' + base + '.18) 0 8px,' + base + '.05) 8px 16px)',
+        bg: on ? 'var(--g3)' : 'var(--g2)',
+        border: s.focus === it.id ? 'var(--acc)' : on ? 'rgba(58,115,222,.45)' : 'var(--edge)',
+        shadow: s.focus === it.id ? '0 18px 38px -18px rgba(var(--sh),.6),0 0 0 3px var(--acc-soft)' : on ? '0 16px 34px -18px rgba(var(--sh),.6)' : '0 6px 16px -14px rgba(var(--sh),.6)',
+        transform: on ? 'translateY(-2px)' : 'none',
+        onEnter: () => this.setState({ hovered: it.id }),
+        onLeave: () => this.setState({ hovered: null }),
+        onClick: () => this.openDetail(it.id, day ? day.n : null)
+      };
+    });
+
+    const legend = srcDays.map(d => ({
+      key: d.n, label: this.t('dayWord') + ' ' + d.n + ' · ' + this.tx(d.sub).split('·')[1].trim(), color: this.C[d.n - 1],
+      opacity: s.tab === 'overview' || s.tab === 'day' + d.n ? '1' : '.3'
+    }));
+
+    const budgetRows = [
+      { label: this.t('bStay'), amount: this.mnyShort(9.6), pct: '39%', color: '#3A73DE' },
+      { label: this.t('bFood'), amount: this.mnyShort(5.4), pct: '22%', color: '#2A9187' },
+      { label: this.t('bTickets'), amount: this.mnyShort(6.2), pct: '25%', color: '#C8802F' },
+      { label: this.t('bTransport'), amount: this.mnyShort(3.4), pct: '14%', color: '#8E6BC4' }
+    ];
+
+    const fx = !!s.focus && s.phase === 'workspace';
+    const det = fx ? this.detailData(s.focus) : null;
+    const hfx = !!s.hFocus && s.phase === 'hotels';
+    const hDet = hfx ? this.hotelDetailData(s.hFocus) : null;
+    const anyFocus = fx || hfx;
+
+    const L = this.L(), T = k => L[k] || k, X = v => this.tx(v);
+
+    return {
+      L: L,
+      langs: [{ k: 'vi', full: 'Tiếng Việt', short: 'VI', title: 'Tiếng Việt' }, { k: 'en', full: 'English', short: 'EN', title: 'English' }].map(g => ({
+        key: g.k, label: s.collapsed ? g.short : g.full, title: g.title,
+        size: s.collapsed ? '10.5px' : '11.5px',
+        weight: s.lang === g.k ? '590' : '450',
+        bg: s.lang === g.k ? 'var(--g3)' : 'transparent',
+        fg: s.lang === g.k ? 'var(--t1)' : 'var(--t3)',
+        shadow: s.lang === g.k ? '0 4px 12px -6px rgba(var(--sh),.6)' : 'none',
+        onPick: () => this.setLang(g.k)
+      })),
+      hasHotelDetail: !!hDet, hDet: hDet || {}, closeHotelDetail: this.closeHotelDetail,
+      hListW: hfx ? '470px' : '520px',
+      hMapFlex: hfx ? '0 0 0px' : '1 1 auto',
+      hMapO: hfx ? '0' : '1',
+      hMapT: hfx ? 'scale(.94)' : 'none',
+      hMapF: hfx ? 'blur(16px)' : 'blur(0px)',
+      hMapPE: hfx ? 'none' : 'auto',
+      hMapMinW: hfx ? '0px' : '340px',
+      hDetFlex: hfx ? '1 1 auto' : '0 0 0px',
+      hDetO: hfx ? '1' : '0',
+      hDetT: hfx ? 'none' : 'scale(.96)',
+      hDetF: hfx ? 'blur(0px)' : 'blur(12px)',
+      hDetPE: hfx ? 'auto' : 'none',
+      hDetMinW: hfx ? '440px' : '0px',
+      hasDetail: !!det, det: det || {}, closeDetail: this.closeDetail,
+      chatW: anyFocus ? '0px' : '352px',
+      chatM: anyFocus ? '14px 0 14px 0' : '14px 0 14px 14px',
+      chatO: anyFocus ? '0' : '1',
+      chatT: anyFocus ? 'translateX(-40px)' : 'none',
+      chatF: anyFocus ? 'blur(14px)' : 'blur(0px)',
+      chatPE: anyFocus ? 'none' : 'auto',
+      itinW: fx ? '520px' : '470px',
+      mapFlex: fx ? '0 0 0px' : '1 1 auto',
+      mapO: fx ? '0' : '1',
+      mapT: fx ? 'scale(.94)' : 'none',
+      mapF: fx ? 'blur(16px)' : 'blur(0px)',
+      mapPE: fx ? 'none' : 'auto',
+      mapMinW: fx ? '0px' : '320px',
+      detFlex: fx ? '1 1 auto' : '0 0 0px',
+      detO: fx ? '1' : '0',
+      detT: fx ? 'none' : 'scale(.96)',
+      detF: fx ? 'blur(0px)' : 'blur(12px)',
+      detPE: fx ? 'auto' : 'none',
+      detMinW: fx ? '430px' : '0px',
+      isIntake: intake, isGenerating: s.phase === 'searching' || s.phase === 'optimizing', isWorkspace: s.phase === 'workspace',
+      isHotels: s.phase === 'hotels',
+      progressTitle: s.phase === 'optimizing' ? T('optTitle') : T('searchTitle'),
+      progressSub: s.phase === 'optimizing' ? this.hotelObj().name + ' · ' + T('startEndEachDay') : X('Đà Nẵng – Hội An') + ' · ' + (this.isEn() ? '4 days · 2 travellers · VND 25,000,000' : '4 ngày · 2 người · 25 triệu ₫'),
+      hotelMapRef: this.hotelMapRef, hotelListRef: this.hotelListRef,
+      hotelCards: this.hotels.map((h, i) => {
+        const on = s.hotel === h.id, hv = s.hoverHotel === h.id;
+        return {
+          key: h.id, id: h.id, name: h.name, area: X(h.area), price: this.trUnits(h.price), total: this.trUnits(h.total), center: this.trUnits(h.center),
+          rate: this.isEn() ? h.rate.toFixed(1) : h.rate.toFixed(1).replace('.', ','), reviews: h.reviews + (this.isEn() ? ' reviews' : ' đánh giá'),
+          starText: '★'.repeat(h.stars) + '☆'.repeat(5 - h.stars),
+          match: h.match + '%', matchDeg: Math.round(h.match * 3.6) + 'deg',
+          matchColor: h.match >= 90 ? '#2A9187' : h.match >= 80 ? '#C8802F' : '#C05E70',
+          amen: h.amen.map(a => ({ key: a, label: X(a) })),
+          why: h.why.map(w => ({ key: w, label: X(w) })),
+          delay: (i * 90) + 'ms',
+          bg: on ? 'var(--g3)' : hv ? 'var(--g3)' : 'var(--g1)',
+          ring: s.hFocus === h.id ? '0 0 0 3px var(--acc-soft)' : '0 0 0 0 transparent',
+          border: s.hFocus === h.id ? 'var(--acc)' : on ? 'var(--btn)' : hv ? 'rgba(58,115,222,.5)' : 'var(--edge)',
+          shadow: on ? '0 26px 54px -26px rgba(var(--sh),.7)' : hv ? '0 20px 44px -24px rgba(var(--sh),.6)' : '0 10px 26px -20px rgba(var(--sh),.6)',
+          transform: on ? 'translateY(-3px) scale(1.008)' : hv ? 'translateY(-2px)' : 'none',
+          btnBg: on ? 'var(--btn)' : 'var(--fill)',
+          btnFg: on ? 'var(--btn-fg)' : 'var(--t2)',
+          btnLabel: on ? (this.isEn() ? '✓ Selected' : '✓ Đã chọn') : (this.isEn() ? 'Choose this hotel' : 'Chọn khách sạn'),
+          onEnter: () => this.setState({ hoverHotel: h.id }),
+          onLeave: () => this.setState({ hoverHotel: null }),
+          onOpen: () => this.openHotelDetail(h.id),
+          onPick: () => this.chooseHotel(h.id)
+        };
+      }),
+      hotelChosen: !!s.hotel, chosenHotelName: s.hotel ? this.hotelObj().name : '',
+      confirmHotel: this.confirmHotel,
+      confirmHotelBg: s.hotel ? 'var(--btn)' : 'var(--fill2)',
+      confirmHotelFg: s.hotel ? 'var(--btn-fg)' : 'var(--t4)',
+      hotelBadge: s.hotel ? this.hotelObj().name + (this.isEn() ? ' — start and end of every day' : ' — điểm xuất phát & kết thúc mỗi ngày') : (this.isEn() ? 'Pick a hotel to see distances to the key sights' : 'Chọn một khách sạn để xem khoảng cách tới các điểm nổi bật'),
+      pending: !!s.pending,
+      pendingFields: s.pending ? s.pending.fields.map(f => ({ key: f, label: X(f) })) : [],
+      pendingAffected: s.pending ? s.pending.affected.map(f => ({ key: f, label: X(f) })) : [],
+      pendingNote: s.pending ? (this.isEn()
+        ? (s.pending.scope === 'places' ? 'Partial update: the hotel stays, only the places change.' : s.pending.scope === 'hotels' ? 'Partial update: only the hotel search is rerun.' : s.pending.scope === 'both' ? 'The hotel is re-searched, then the itinerary is rebuilt.' : 'Partial update: only the itinerary is rebuilt.')
+        : (s.pending.scope === 'places' ? 'Cập nhật từng phần: giữ khách sạn, chỉ đổi điểm tham quan.' : s.pending.scope === 'hotels' ? 'Cập nhật từng phần: chỉ tìm lại khách sạn.' : s.pending.scope === 'both' ? 'Cập nhật khách sạn rồi dựng lại lịch trình.' : 'Cập nhật từng phần: chỉ dựng lại lịch trình.')) : '',
+      applyPending: this.applyPending, keepPending: this.keepPending,
+      toggleTheme: this.toggleTheme,
+      themeLabel: s.collapsed ? (s.theme === 'dark' ? '☀' : '☾') : T(s.theme === 'dark' ? 'themeLight' : 'themeDark'),
+      collapsed: s.collapsed, sidebarWidth: s.collapsed ? '68px' : '252px',
+      toggleSidebar: () => this.setState({ collapsed: !s.collapsed, hoverConvo: null }),
+      sbPad: s.collapsed ? '14px 13px' : '14px 12px',
+      sbHeadDir: s.collapsed ? 'column' : 'row',
+      sbLabelDisplay: s.collapsed ? 'none' : 'block',
+      sbToggleIcon: s.collapsed ? '⇥' : '⇤',
+      sbBtnPad: s.collapsed ? '0' : '0 13px',
+      sbBtnFont: s.collapsed ? '18px' : '12.5px',
+      sbBtnJustify: 'center',
+      newTrip: this.newTrip, newTripLabel: s.collapsed ? '+' : '+  ' + T('ttNewTrip'),
+      tripTitle: X(this.convoObj().title),
+      convoRows: this.convos.map((c, i) => {
+        const on = c.id === s.convo;
+        return {
+          key: c.id, title: X(c.title), date: this.convoDate(c.date), status: T(c.status === 'Completed' ? 'statusDone' : 'statusDraft'),
+          statusBg: c.status === 'Completed' ? 'var(--ok-soft)' : 'var(--warn-soft)',
+          statusFg: c.status === 'Completed' ? 'var(--ok-ink)' : 'var(--warn-ink)',
+          bg: on ? 'var(--g3)' : 'transparent',
+          border: on ? 'var(--edge)' : 'transparent',
+          shadow: on ? '0 10px 24px -18px rgba(var(--sh),.7)' : 'none',
+          thumb: 'repeating-linear-gradient(115deg,' + (on ? 'rgba(58,115,222,.28)' : 'var(--t4)') + ' 0 7px,transparent 7px 14px)',
+          delay: (i * 55) + 'ms',
+          pad: s.collapsed ? '4px' : '9px',
+          showDelete: !s.collapsed && s.hoverConvo === c.id,
+          onEnter: () => this.setState({ hoverConvo: c.id }),
+          onLeave: () => this.setState({ hoverConvo: null }),
+          onDelete: e => { if (e && e.stopPropagation) e.stopPropagation(); this.deleteConvo(c.id); },
+          onPick: () => this.openConvo(c.id)
+        };
+      }),
+      stepLabel: intake ? (s.editing ? T('stepEditing') : T('step1Full')) : s.phase === 'hotels' ? T('step2Full') : s.phase === 'workspace' ? T('step3Full') : T('aiWorking'),
+      steps3: [{ k: 'intake', n: '1', label: T('stepDetails') }, { k: 'hotels', n: '2', label: T('stepHotel') }, { k: 'workspace', n: '3', label: T('stepItinerary') }].map(p => {
+        const cur = s.phase === p.k;
+        const open = p.k === 'intake' || (p.k === 'hotels' && st >= 5) || (p.k === 'workspace' && !!s.hotel);
+        return {
+          key: p.k, n: p.n, label: p.label,
+          bg: cur ? 'var(--btn)' : open ? 'var(--g2)' : 'transparent',
+          fg: cur ? 'var(--btn-fg)' : open ? 'var(--t1)' : 'var(--t4)',
+          border: cur ? 'var(--btn)' : open ? 'var(--stroke)' : 'var(--line)',
+          weight: cur ? '600' : '400',
+          cursor: open && !cur ? 'pointer' : 'default',
+          onPick: () => this.goStep(p.k)
+        };
+      }),
+      showQuick: s.phase === 'workspace' || s.phase === 'hotels',
+      collectedRows: [
+        { key: 'a', i: 0, label: T('destLabel'), value: st > 0 ? X(s.destQuery || 'Đà Nẵng – Hội An') : '—', done: st > 0 },
+        { key: 'b', i: 1, label: T('peopleLabel'), value: st > 1 ? s.people + ' ' + T('peopleWord') : '—', done: st > 1 },
+        { key: 'c', i: 2, label: T('datesLabel'), value: st > 2 && s.dStart && s.dEnd ? this.dmy(s.dStart) + ' → ' + this.dmy(s.dEnd) + ' · ' + this.nights(s.dStart, s.dEnd) : '—', done: st > 2 },
+        { key: 'd', i: 3, label: T('budgetLabel'), value: st > 3 ? this.fmtBudget() : '—', done: st > 3 },
+        { key: 'e', i: 4, label: T('interestLabel'), value: s.picked.length && st > 4 ? s.picked.slice(0, 2).map(X).join(', ') + (s.picked.length > 2 ? ' +' + (s.picked.length - 2) : '') : '—', done: st > 4 }
+      ].map(r => ({ key: r.key, label: r.label, value: r.value,
+        fg: r.done ? 'var(--t1)' : 'var(--t4)',
+        mark: r.done ? '✓' : '',
+        dotBg: r.done ? '#2A9187' : 'transparent',
+        dotBorder: r.done ? 'var(--ok)' : 'var(--stroke)',
+        editLabel: r.done ? (this.isEn() ? 'Edit' : 'Sửa') : '',
+        cursor: r.done ? 'pointer' : 'default',
+        onPick: r.done ? () => this.editField(r.i) : null })),
+      wsTitle: X('Đà Nẵng – Hội An'),
+      wsMeta: (s.dStart && s.dEnd ? this.dmy(s.dStart) + ' → ' + this.dmy(s.dEnd) : this.isEn() ? 'Sep 12 – 15, 2026' : '12–15/09/2026')
+        + ' · ' + (this.isEn() ? '4 days 3 nights · 2 travellers · ' : '4 ngày 3 đêm · 2 người · ') + this.mnyShort(24.6),
+      hotelName: this.hotelObj().name, hotelArea: X(this.hotelObj().area), hotelTotal: this.trUnits(this.hotelObj().total), hotelView: this.trView(this.hotelObj().view),
+      chatRef: this.chatRef, chatRef2: this.chatRef2, itinRef: this.itinRef, mapRef: this.mapRef,
+      messages: messages, thinking: s.thinking,
+      draft: s.draft, onDraft: e => this.setState({ draft: e.target.value }),
+      onKey: e => { if (e.key === 'Enter') this.send(); },
+      send: this.send, regenerate: this.regenerate,
+      progressDots: [T('destLabel'), T('peopleLabel'), T('dateFrom'), T('budgetLabel'), T('interestLabel')].map((l, i) => ({
+        key: l, label: l, bg: filled[i] ? 'var(--acc)' : 'var(--fill2)'
+      })),
+      showDest: intake && st === 0 && !s.thinking && !s.streaming,
+      showPeople: intake && st === 1 && !s.thinking && !s.streaming,
+      showDates: intake && st === 2 && !s.thinking && !s.streaming,
+      showBudget: intake && st === 3 && !s.thinking && !s.streaming,
+      showInterests: intake && st === 4 && !s.thinking && !s.streaming,
+      destOptions: destOptions,
+      peopleOptions: peopleOptions, confirmPeople: () => this.answer(s.people + ' ' + T('peopleWord')),
+      calendar: this.calendarCells(), calKey: s.calY + '-' + s.calM,
+      calMonthLabel: this.monthName(s.calM), calYearLabel: String(s.calY),
+      prevMonth: () => this.shiftMonth(-1), nextMonth: () => this.shiftMonth(1),
+      prevYear: () => this.shiftYear(-1), nextYear: () => this.shiftYear(1),
+      goDateStart: this.dmy(s.dStart), goDateEnd: this.dmy(s.dEnd),
+      nightsLabel: this.nights() ? (this.isEn() ? this.nights() + ' days ' + (this.nights() - 1) + ' nights' : this.nights() + ' ngày ' + (this.nights() - 1) + ' đêm') : '—',
+      datesBtnBg: s.dStart && s.dEnd ? 'var(--btn)' : 'var(--fill2)',
+      datesBtnFg: s.dStart && s.dEnd ? 'var(--btn-fg)' : 'var(--t4)',
+      confirmDates: () => { if (s.dStart && s.dEnd) this.answer(this.isEn() ? this.dmy(s.dStart) + ' to ' + this.dmy(s.dEnd) + ' (' + this.nights() + ' days)' : 'Từ ' + this.dmy(s.dStart) + ' đến ' + this.dmy(s.dEnd) + ' (' + this.nights() + ' ngày)'); },
+      trackRef: this.trackRef, budgetDrag: this.budgetDrag,
+      bMinLabel: this.vnd(s.bMin), bMaxLabel: this.vnd(s.bMax),
+      bMinPct: this.bPct(s.bMin), bMaxPct: this.bPct(s.bMax),
+      bFillLeft: this.bPct(s.bMin), bFillWidth: (parseFloat(this.bPct(s.bMax)) - parseFloat(this.bPct(s.bMin))).toFixed(2) + '%',
+      confirmBudget: () => this.answer((this.isEn() ? 'Budget from ' : 'Ngân sách từ ') + this.vnd(s.bMin) + (this.isEn() ? ' to ' : ' đến ') + this.vnd(s.bMax)),
+      interestOptions: interestOptions,
+      interestBtnBg: s.picked.length ? 'var(--btn)' : 'var(--fill2)',
+      interestBtnFg: s.picked.length ? 'var(--btn-fg)' : 'var(--t4)',
+      confirmInterests: () => { if (s.picked.length) this.answer(s.picked.map(X).join(', ')); },
+      genSteps: (s.phase === 'optimizing' ? this.optLabels : this.searchLabels).map((l, i) => ({
+        key: l, label: X(l), opacity: s.progress >= i ? '1' : '.32',
+        ring: s.progress > i ? 'var(--ok)' : 'var(--stroke)',
+        top: s.progress === i ? '#3A73DE' : (s.progress > i ? 'var(--ok)' : 'var(--stroke)'),
+        fill: s.progress > i ? '#2A9187' : 'transparent',
+        mark: s.progress > i ? '✓' : '',
+        anim: s.progress === i ? 'vSpin .9s linear infinite' : 'none'
+      })),
+      skeletons: [{ key: 1, h: '58px', w: '100%' }, { key: 2, h: '58px', w: '88%' }, { key: 3, h: '58px', w: '95%' }],
+      tabs: tabs, isOverview: s.tab === 'overview', isDay: !!day,
+      dayTitle: day ? X(day.title) : '', daySub: day ? X(day.sub) : '',
+      dayItems: dayItems,
+      stats: [{ key: 'a', value: '4', label: this.isEn() ? 'days · 3 nights' : 'ngày · 3 đêm' }, { key: 'b', value: '12', label: T('statPlaces') }, { key: 'c', value: '132', label: T('statKm') }, { key: 'd', value: this.mnyShort(24.6), label: T('statCost') }]
+        .map((x, i) => Object.assign(x, { delay: (60 + i * 55) + 'ms' })),
+      dayRows: srcDays.map((d, i) => ({
+        key: d.n, title: X(d.title), sub: X(d.sub), color: this.C[d.n - 1], delay: (120 + i * 70) + 'ms',
+        halo: this.C[d.n - 1] + '2e',
+        onPick: () => this.setState({ tab: 'day' + d.n, selected: null }),
+        onEnter: () => this.setState({ hovered: d.items[0].id }),
+        onLeave: () => this.setState({ hovered: null })
+      })),
+      budgetRows: budgetRows,
+      legLegend: (day ? day.items : []).filter(it => !!it.leg).map((it, i) => ({
+        key: it.id, color: this.LEG[i % this.LEG.length], hop: (i + 1) + '→' + (i + 2), label: this.trUnits(it.leg),
+        bg: s.hovered === it.id ? 'var(--fill)' : 'transparent',
+        onEnter: () => this.setState({ hovered: it.id }),
+        onLeave: () => this.setState({ hovered: null })
+      })),
+      legend: legend, mapMode: s.tab === 'overview' ? T('fullRoute') + ' · 4 ' + (this.isEn() ? 'days' : 'ngày') : T('dayRoute') + ' ' + (day ? day.n : ''),
+      selectedName: sel ? X(sel.name) : '', selectedMeta: sel ? this.trKind(sel.kind) + ' · ' + this.trUnits(sel.meta) : '',
+      clearSelected: () => this.setState({ selected: null }),
+      quickActions: [
+        { key: 'a', label: T('qaBudget'), onPick: () => this.setState({ draft: T('draftBudget') }) },
+        { key: 'b', label: T('qaHotel'), onPick: () => this.setState({ draft: T('draftHotel') }) },
+        { key: 'c', label: T('qaFood'), onPick: () => this.setState({ draft: T('draftFood') }) }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

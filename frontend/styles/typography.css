@@ -1,0 +1,4 @@
+/* Text-level base styles shared across every feature. */
+a{color:var(--acc);text-decoration:none}a:hover{color:var(--acc);opacity:.75}
+input,button,textarea{font-family:inherit}
+input::placeholder{color:var(--t4)}

@@ -1,0 +1,10 @@
+<x-dc>
+<div style="display:flex;flex-direction:column;gap:7px;animation:vPop .5s cubic-bezier(.22,1,.36,1) both">
+  <div style="font-size:10.5px;font-weight:400;color:var(--t3);padding-left:4px">{{ dict.quickHint }}</div>
+  <div style="display:flex;flex-wrap:wrap;gap:7px">
+    <sc-for list="{{ destOptions }}" as="o" hint-placeholder-count="5">
+      <button onClick="{{ o.onPick }}" style="padding:8px 13px;border-radius:999px;border:1px solid var(--stroke);background:var(--g2);font-size:12.5px;color:var(--t1);cursor:pointer;transition:all .22s cubic-bezier(.34,1.4,.64,1)" style-hover="background:#3A73DE;color:var(--on-acc);border-color:#3A73DE;transform:translateY(-2px)" style-active="transform:scale(.96)">{{ o.label }}</button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>

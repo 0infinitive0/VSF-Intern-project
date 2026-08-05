@@ -1,0 +1,56 @@
+<x-dc>
+<div style="border-radius:22px;padding:14px;background:{{ r.bg }};border:1px solid {{ r.border }};box-shadow:{{ r.shadow }};transition:all .34s cubic-bezier(.34,1.3,.64,1);animation:vFade .5s {{ r.delay }} ease both">
+  <div style="display:flex;gap:13px">
+    <div style="position:relative;overflow:hidden;width:92px;height:76px;flex:none;border-radius:16px;background:repeating-linear-gradient(115deg,var(--fill2) 0 9px,transparent 9px 18px);display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px;font-family:ui-monospace,Menlo,monospace;font-size:9px;color:var(--t3)">{{ dict.galleryRoom }}
+      <div style="position:absolute;top:0;bottom:0;width:40%;background:linear-gradient(90deg,transparent,var(--sheen),transparent);animation:vSheen 6.5s 1.6s ease-in-out infinite"></div>
+    </div>
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:590;letter-spacing:-.2px">{{ r.name }}</div>
+          <div style="font-size:11px;font-weight:450;color:var(--t3);margin-top:2px">{{ r.size }} · {{ r.cap }} · {{ r.bed }} · view {{ r.view }}</div>
+        </div>
+        <div style="flex:none;text-align:right">
+          <div style="font-size:15px;font-weight:590;letter-spacing:-.3px">{{ r.price }}</div>
+          <div style="font-size:10px;font-weight:450;color:var(--t3)">{{ dict.perNight }}</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:7px;flex-wrap:wrap">
+        <div style="font-size:10.5px;font-weight:530;padding:3px 9px;border-radius:99px;background:rgba(42,145,135,.14);color:var(--ok)">{{ r.avail }}</div>
+        <div style="font-size:10.5px;font-weight:450;color:var(--t3)">{{ r.cancel }}</div>
+      </div>
+    </div>
+  </div>
+
+  <sc-if value="{{ r.open }}" hint-placeholder-val="{{ false }}">
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:11px;animation:vFade .35s ease both">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+        <sc-for list="{{ r.gallery }}" as="g" hint-placeholder-count="3">
+          <div style="height:70px;border-radius:14px;background:repeating-linear-gradient(115deg,var(--fill2) 0 8px,transparent 8px 16px);display:flex;align-items:flex-end;justify-content:center;padding-bottom:5px;font-family:ui-monospace,Menlo,monospace;font-size:9px;color:var(--t3);animation:vFade .4s {{ g.delay }} ease both">{{ g.label }}</div>
+        </sc-for>
+      </div>
+      <div style="font-size:13px;font-weight:400;line-height:1.55;color:var(--t2);text-wrap:pretty">{{ r.desc }}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <sc-for list="{{ r.amen }}" as="a" hint-placeholder-count="4">
+          <div style="font-size:11px;font-weight:450;padding:4px 10px;border-radius:99px;background:var(--fill);color:var(--t2)">{{ a.label }}</div>
+        </sc-for>
+      </div>
+      <div style="display:flex;gap:9px">
+        <div style="flex:1;padding:10px 12px;border-radius:16px;background:var(--g2);border:1px solid var(--edge)">
+          <div style="font-size:10px;font-weight:590;letter-spacing:.1em;text-transform:uppercase;color:var(--t3)">{{ dict.cancelPolicy }}</div>
+          <div style="font-size:12px;font-weight:450;color:var(--t2);margin-top:3px">{{ r.cancel }}</div>
+        </div>
+        <div style="flex:1;padding:10px 12px;border-radius:16px;background:var(--g2);border:1px solid var(--edge)">
+          <div style="font-size:10px;font-weight:590;letter-spacing:.1em;text-transform:uppercase;color:var(--t3)">{{ dict.payPolicy }}</div>
+          <div style="font-size:12px;font-weight:450;color:var(--t2);margin-top:3px">{{ r.pay }}</div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="display:flex;gap:8px;margin-top:12px">
+    <button onClick="{{ r.onPick }}" style="flex:1;padding:10px;border-radius:14px;border:none;background:{{ r.btnBg }};color:{{ r.btnFg }};font-size:12.5px;font-weight:590;letter-spacing:-.1px;cursor:pointer;transition:all .26s" style-active="transform:scale(.985)">{{ r.btnLabel }}</button>
+    <button onClick="{{ r.onToggle }}" style="flex:none;padding:10px 14px;border-radius:14px;border:1px solid var(--stroke);background:var(--g2);color:var(--t2);font-size:12.5px;font-weight:530;cursor:pointer;transition:all .24s" style-hover="background:var(--g3);color:var(--t1)">{{ r.chevron }} {{ dict.roomDetail }}</button>
+  </div>
+</div>
+</x-dc>

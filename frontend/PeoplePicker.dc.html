@@ -1,0 +1,11 @@
+<x-dc>
+<div style="padding:14px;border-radius:22px;background:var(--g2);border:1px solid var(--edge);box-shadow:0 14px 34px -18px rgba(var(--sh),.4);animation:vPop .5s cubic-bezier(.22,1,.36,1) both">
+  <div style="font-size:10px;font-weight:590;letter-spacing:.1em;text-transform:uppercase;color:var(--t3);margin-bottom:9px">{{ dict.people }}</div>
+  <div style="display:flex;padding:3px;border-radius:13px;background:var(--fill);gap:2px">
+    <sc-for list="{{ peopleOptions }}" as="p" hint-placeholder-count="5">
+      <button onClick="{{ p.onPick }}" style="flex:1;padding:8px 0;border-radius:10px;border:none;cursor:pointer;font-size:13px;font-weight:{{ p.weight }};background:{{ p.bg }};color:{{ p.fg }};box-shadow:{{ p.shadow }};transition:all .28s cubic-bezier(.34,1.4,.64,1)">{{ p.label }}</button>
+    </sc-for>
+  </div>
+  <button onClick="{{ confirmPeople }}" style="margin-top:11px;width:100%;padding:10px;border-radius:13px;border:none;background:var(--btn);color:var(--btn-fg);font-size:13px;font-weight:590;letter-spacing:-.12px;cursor:pointer" style-active="transform:scale(.98)">{{ dict.confirm }}</button>
+</div>
+</x-dc>

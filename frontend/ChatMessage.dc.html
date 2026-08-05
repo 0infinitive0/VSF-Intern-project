@@ -1,0 +1,11 @@
+<x-dc>
+<div style="display:flex;gap:9px;align-items:flex-end;justify-content:{{ m.justify }};animation:vPop .5s cubic-bezier(.22,1,.36,1) both">
+  <sc-if value="{{ m.isAI }}" hint-placeholder-val="{{ true }}">
+    <div style="width:24px;height:24px;flex:none;border-radius:9px;background:linear-gradient(145deg,#5C93EE,#2C5FC9);box-shadow:0 4px 12px -3px rgba(44,95,201,.55);display:flex;align-items:center;justify-content:center;color:var(--on-acc);font-size:11px;font-weight:590">V</div>
+  </sc-if>
+  <div style="display:flex;flex-direction:column;align-items:{{ m.align }};gap:4px;max-width:84%;min-width:0">
+    <div style="max-width:44ch;padding:10px 14px;border-radius:{{ m.radius }};font-size:14px;line-height:1.58;letter-spacing:-.08px;white-space:pre-wrap;background:{{ m.bg }};color:{{ m.fg }};border:1px solid {{ m.border }};box-shadow:{{ m.shadow }}">{{ m.text }}</div>
+    <div style="font-size:9.5px;font-weight:500;letter-spacing:.04em;color:var(--t3);padding:0 4px">{{ m.at }}</div>
+  </div>
+</div>
+</x-dc>

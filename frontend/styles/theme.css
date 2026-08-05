@@ -1,0 +1,16 @@
+/* Dark theme overrides — same token names as variables.css, applied when
+   <body data-theme="dark"> (toggled by Component.applyTheme in the root
+   .dc.html). Must load after variables.css so the override wins. */
+body[data-theme="dark"]{
+  --t1:#EDF0F4; --t2:rgba(237,240,244,.64); --t3:rgba(237,240,244,.58); --t4:rgba(237,240,244,.42);
+  --acc:#6C9BF0; --acc-soft:rgba(108,155,240,.16); --ok:#4FB3A5; --warn:#DCA05A; --err:#DC8291;
+  --ok-soft:rgba(79,179,165,.20); --warn-soft:rgba(220,160,90,.22); --ok-ink:#8FDACE; --warn-ink:#F0C48C;
+  --btn:#EDF0F4; --btn-fg:#14171B;
+  --g0:rgba(30,34,40,.50); --g1:rgba(32,36,43,.62); --g2:rgba(42,47,55,.70); --g3:rgba(52,58,67,.86);
+  --edge:rgba(255,255,255,.09); --gloss:rgba(255,255,255,.10); --sheen:rgba(255,255,255,.14);
+  --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.07); --stroke:rgba(255,255,255,.14);
+  --fill:rgba(255,255,255,.07); --fill2:rgba(255,255,255,.11);
+  --sh:0,4,12;
+  --page:linear-gradient(165deg,#14171C 0%,#1B1D22 48%,#12161B 100%);
+  --tile:saturate(.35) brightness(.72) contrast(1.04) invert(.92) hue-rotate(180deg);
+}

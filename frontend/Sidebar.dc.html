@@ -1,0 +1,27 @@
+<x-dc>
+<div style="position:relative;z-index:3;flex:none;width:{{ sidebarWidth }};height:100%;display:flex;flex-direction:column;gap:10px;padding:{{ sbPad }};border-right:1px solid var(--line2);background:var(--g1);backdrop-filter:blur(30px) saturate(1.7);-webkit-backdrop-filter:blur(30px) saturate(1.7);transition:width .42s cubic-bezier(.22,1,.36,1),padding .42s ease;overflow:hidden">
+  <div style="flex:none;display:flex;flex-direction:{{ sbHeadDir }};align-items:center;gap:8px">
+    <div style="width:34px;height:34px;flex:none;border-radius:12px;background:linear-gradient(145deg,#5C93EE,#2C5FC9);box-shadow:0 8px 20px -7px rgba(44,95,201,.65);display:flex;align-items:center;justify-content:center;color:var(--on-acc);font-weight:590;font-size:16px">V</div>
+    <div style="flex:1;min-width:0;font-size:15px;font-weight:590;letter-spacing:-.3px;white-space:nowrap;display:{{ sbLabelDisplay }}">V‑OTA</div>
+    <button title="{{ dict.ttSidebar }}" onClick="{{ toggleSidebar }}" style="width:30px;height:30px;flex:none;border-radius:10px;border:1px solid var(--stroke);background:var(--g2);color:var(--t2);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .22s" style-hover="background:#fff;color:var(--t1)" style-active="transform:scale(.92)">{{ sbToggleIcon }}</button>
+  </div>
+
+  <button title="{{ dict.ttNewTrip }}" onClick="{{ newTrip }}" style="flex:none;height:40px;padding:{{ sbBtnPad }};border-radius:14px;border:1px dashed var(--stroke);background:var(--g1);font-size:{{ sbBtnFont }};font-weight:530;color:var(--t1);cursor:pointer;white-space:nowrap;display:flex;align-items:center;justify-content:{{ sbBtnJustify }};gap:8px;transition:all .24s cubic-bezier(.34,1.3,.64,1)" style-hover="background:#fff;border-color:#3A73DE;color:#3A73DE;transform:translateY(-1px)">{{ newTripLabel }}</button>
+
+  <div style="font-size:10px;font-weight:590;letter-spacing:.1em;text-transform:uppercase;color:var(--t3);padding:2px 4px;white-space:nowrap;display:{{ sbLabelDisplay }}">{{ dict.history }}</div>
+
+  <div style="flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:5px">
+    <sc-for list="{{ convoRows }}" as="c" hint-placeholder-count="4">
+      <dc-import name="HistoryRow" row="{{ c }}" labelDisplay="{{ sbLabelDisplay }}" deleteLabel="{{ dict.ttDelete }}"></dc-import>
+    </sc-for>
+  </div>
+
+  <div style="flex:none;display:flex;padding:3px;border-radius:12px;background:var(--fill);gap:2px">
+    <sc-for list="{{ langs }}" as="g" hint-placeholder-count="2">
+      <button title="{{ g.title }}" onClick="{{ g.onPick }}" style="flex:1;min-width:0;padding:7px 0;border-radius:9px;border:none;cursor:pointer;font-size:{{ g.size }};font-weight:{{ g.weight }};letter-spacing:-.1px;background:{{ g.bg }};color:{{ g.fg }};box-shadow:{{ g.shadow }};white-space:nowrap;overflow:hidden;transition:all .3s cubic-bezier(.34,1.4,.64,1)">{{ g.label }}</button>
+    </sc-for>
+  </div>
+
+  <button title="{{ dict.ttTheme }}" onClick="{{ toggleTheme }}" style="flex:none;height:36px;border-radius:12px;border:1px solid var(--stroke);background:var(--g1);color:var(--t2);font-size:11.5px;font-weight:530;letter-spacing:-.1px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;transition:all .24s" style-hover="background:var(--g3);color:var(--t1)" style-active="transform:scale(.97)">{{ themeLabel }}</button>
+</div>
+</x-dc>

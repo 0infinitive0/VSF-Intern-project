@@ -1,0 +1,5 @@
+/* Document-level resets and the base body style. */
+html,body{margin:0;padding:0;height:100%}
+body{background:var(--page);font-family:-apple-system,"SF Pro Display","SF Pro Text",BlinkMacSystemFont,'Be Vietnam Pro',"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-synthesis-weight:none;color:var(--t1);letter-spacing:-.01em;transition:background .5s ease}
+*{box-sizing:border-box}
+button{-webkit-tap-highlight-color:transparent}

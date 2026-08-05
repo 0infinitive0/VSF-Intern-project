@@ -2,32 +2,8 @@
   "name": "vsf-trip-planner-frontend",
   "private": true,
   "version": "0.1.0",
-  "description": "React chat frontend for VSF Trip Planner (Phase 4). React 19.2.8.",
-  "type": "module",
+  "description": "VSF Trip Planner frontend (.dc.html Design Components UI). Mock data only — see MIGRATION_NOTE.md for real-backend wiring status.",
   "scripts": {
-    "dev": "vite",
-    "mock": "node mock/server.js",
-    "build": "vite build",
-    "lint": "oxlint",
-    "typecheck": "tsc --noEmit",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "@daypicker/react": "^10.0.1",
-    "@tailwindcss/vite": "^4.3.3",
-    "date-fns": "^4.4.0",
-    "i18next": "^26.3.6",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "react-i18next": "^17.0.11",
-    "tailwindcss": "^4.3.3"
-  },
-  "devDependencies": {
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.4",
-    "oxlint": "^1.75.0",
-    "typescript": "^7.0.2",
-    "vite": "^8.2.0"
+    "dev": "node server.js"
   }
 }

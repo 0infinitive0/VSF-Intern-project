@@ -1,0 +1,28 @@
+<x-dc>
+<div style="padding:14px;border-radius:20px;background:var(--g3);border:1px solid rgba(200,128,47,.45);box-shadow:0 16px 36px -22px rgba(var(--sh),.6);animation:vPop .5s cubic-bezier(.22,1,.36,1) both">
+  <div style="display:flex;align-items:center;gap:8px">
+    <div style="width:6px;height:6px;border-radius:50%;background:#C8802F;box-shadow:0 0 0 3px rgba(200,128,47,.2)"></div>
+    <div style="font-size:12.5px;font-weight:590;letter-spacing:-.1px">{{ dict.reqChanged }}</div>
+  </div>
+  <div style="font-size:10px;font-weight:590;letter-spacing:.1em;text-transform:uppercase;color:var(--t3);margin:11px 0 6px">{{ dict.youChanged }}</div>
+  <div style="display:flex;flex-wrap:wrap;gap:6px">
+    <sc-for list="{{ pendingFields }}" as="f" hint-placeholder-count="1">
+      <div style="font-size:11px;padding:3px 9px;border-radius:99px;background:rgba(200,128,47,.14);color:#8A5A21;font-weight:530">{{ f.label }}</div>
+    </sc-for>
+  </div>
+  <div style="font-size:10px;font-weight:590;letter-spacing:.1em;text-transform:uppercase;color:var(--t3);margin:11px 0 6px">{{ dict.willAffect }}</div>
+  <div style="display:flex;flex-direction:column;gap:4px">
+    <sc-for list="{{ pendingAffected }}" as="a" hint-placeholder-count="2">
+      <div style="display:flex;gap:7px;align-items:center">
+        <div style="width:4px;height:4px;border-radius:50%;background:var(--t4);flex:none"></div>
+        <div style="font-size:11.5px;font-weight:400;color:var(--t2)">{{ a.label }}</div>
+      </div>
+    </sc-for>
+  </div>
+  <div style="font-size:11px;font-weight:450;letter-spacing:.01em;color:var(--t3);margin-top:9px;line-height:1.45;text-wrap:pretty">{{ pendingNote }}</div>
+  <div style="display:flex;gap:8px;margin-top:12px">
+    <button onClick="{{ applyPending }}" style="flex:1;padding:10px;border-radius:13px;border:none;background:var(--btn);color:var(--btn-fg);font-size:12.5px;font-weight:590;letter-spacing:-.1px;cursor:pointer;transition:transform .2s" style-active="transform:scale(.97)">{{ dict.applyUpdate }}</button>
+    <button onClick="{{ keepPending }}" style="flex:1;padding:10px;border-radius:13px;border:1px solid var(--stroke);background:var(--g2);color:var(--t2);font-size:12.5px;font-weight:400;cursor:pointer;transition:transform .2s" style-active="transform:scale(.97)">{{ dict.keepResult }}</button>
+  </div>
+</div>
+</x-dc>

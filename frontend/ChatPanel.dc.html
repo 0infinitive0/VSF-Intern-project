@@ -1,0 +1,81 @@
+<x-dc>
+<div style="position:relative;z-index:2;flex:none;width:{{ chatW }};height:calc(100% - 28px);margin:{{ chatM }};opacity:{{ chatO }};transform:{{ chatT }};filter:{{ chatF }};pointer-events:{{ chatPE }};transition:width .62s cubic-bezier(.22,1,.36,1),margin .62s cubic-bezier(.22,1,.36,1),transform .62s cubic-bezier(.22,1,.36,1),opacity .38s ease,filter .38s ease;display:flex;flex-direction:column;min-height:0;border-radius:26px;background:var(--g1);backdrop-filter:blur(32px) saturate(1.7);-webkit-backdrop-filter:blur(32px) saturate(1.7);border:1px solid var(--edge);box-shadow:0 24px 56px -28px rgba(var(--sh),.34),inset 0 1px 0 var(--gloss);overflow:hidden">
+  <div style="flex:none;display:flex;align-items:center;gap:9px;padding:14px 18px;border-bottom:1px solid var(--line)">
+    <div style="width:7px;height:7px;border-radius:50%;background:#2A9187;box-shadow:0 0 0 3px rgba(42,145,135,.18)"></div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:12.5px;font-weight:590;letter-spacing:-.1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ tripTitle }}</div>
+      <div style="font-size:10.5px;font-weight:450;letter-spacing:.01em;color:var(--t3);font-weight:400">{{ stepLabel }}</div>
+    </div>
+    <div style="display:flex;gap:3px">
+      <sc-for list="{{ progressDots }}" as="d" hint-placeholder-count="5">
+        <div title="{{ d.label }}" style="width:13px;height:4px;border-radius:3px;background:{{ d.bg }};transition:background .4s ease"></div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="flex:none;display:flex;align-items:center;gap:5px;padding:10px 14px;border-bottom:1px solid var(--line)">
+    <sc-for list="{{ steps3 }}" as="p" hint-placeholder-count="3">
+      <button onClick="{{ p.onPick }}" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:7px 6px;border-radius:12px;border:1px solid {{ p.border }};background:{{ p.bg }};color:{{ p.fg }};font-size:11.5px;font-weight:{{ p.weight }};cursor:{{ p.cursor }};white-space:nowrap;transition:all .3s cubic-bezier(.34,1.3,.64,1)" style-active="transform:scale(.97)">
+        <span style="font-size:9.5px;opacity:.6">{{ p.n }}</span>{{ p.label }}
+      </button>
+    </sc-for>
+  </div>
+
+  <div ref="{{ chatRef }}" style="flex:1 1 auto;min-height:0;overflow-y:auto;padding:16px 16px 6px;display:flex;flex-direction:column;gap:12px">
+    <sc-for list="{{ messages }}" as="m" hint-placeholder-count="2">
+      <dc-import name="ChatMessage" m="{{ m }}"></dc-import>
+    </sc-for>
+
+    <sc-if value="{{ pending }}" hint-placeholder-val="{{ false }}">
+      <dc-import name="PendingChangeCard" dict="{{ dict }}" pendingFields="{{ pendingFields }}" pendingAffected="{{ pendingAffected }}" pendingNote="{{ pendingNote }}" applyPending="{{ applyPending }}" keepPending="{{ keepPending }}"></dc-import>
+    </sc-if>
+
+    <sc-if value="{{ thinking }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;gap:9px;align-items:flex-end">
+        <div style="width:24px;height:24px;flex:none;border-radius:9px;background:linear-gradient(145deg,#5C93EE,#2C5FC9);display:flex;align-items:center;justify-content:center;color:var(--on-acc);font-size:11px;font-weight:590">V</div>
+        <div style="display:flex;gap:4px;padding:13px 15px;border-radius:18px;background:var(--g3);border:1px solid var(--line)">
+          <div style="width:6px;height:6px;border-radius:50%;background:var(--t1);animation:vDot 1.1s infinite"></div>
+          <div style="width:6px;height:6px;border-radius:50%;background:var(--t1);animation:vDot 1.1s .16s infinite"></div>
+          <div style="width:6px;height:6px;border-radius:50%;background:var(--t1);animation:vDot 1.1s .32s infinite"></div>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+
+  <div style="flex:none;padding:0 14px 14px;display:flex;flex-direction:column;gap:10px;max-height:56vh;overflow-y:auto">
+
+    <sc-if value="{{ showDest }}" hint-placeholder-val="{{ false }}">
+      <dc-import name="DestinationPicker" dict="{{ dict }}" destOptions="{{ destOptions }}"></dc-import>
+    </sc-if>
+
+    <sc-if value="{{ showPeople }}" hint-placeholder-val="{{ false }}">
+      <dc-import name="PeoplePicker" dict="{{ dict }}" peopleOptions="{{ peopleOptions }}" confirmPeople="{{ confirmPeople }}"></dc-import>
+    </sc-if>
+
+    <sc-if value="{{ showDates }}" hint-placeholder-val="{{ false }}">
+      <dc-import name="DatePicker" dict="{{ dict }}" prevYear="{{ prevYear }}" prevMonth="{{ prevMonth }}" nextMonth="{{ nextMonth }}" nextYear="{{ nextYear }}" calMonthLabel="{{ calMonthLabel }}" calYearLabel="{{ calYearLabel }}" calKey="{{ calKey }}" calendar="{{ calendar }}" goDateStart="{{ goDateStart }}" goDateEnd="{{ goDateEnd }}" confirmDates="{{ confirmDates }}" datesBtnBg="{{ datesBtnBg }}" datesBtnFg="{{ datesBtnFg }}"></dc-import>
+    </sc-if>
+
+    <sc-if value="{{ showBudget }}" hint-placeholder-val="{{ false }}">
+      <dc-import name="BudgetSlider" dict="{{ dict }}" bMinLabel="{{ bMinLabel }}" bMaxLabel="{{ bMaxLabel }}" trackRef="{{ trackRef }}" budgetDrag="{{ budgetDrag }}" bFillLeft="{{ bFillLeft }}" bFillWidth="{{ bFillWidth }}" bMinPct="{{ bMinPct }}" bMaxPct="{{ bMaxPct }}" confirmBudget="{{ confirmBudget }}"></dc-import>
+    </sc-if>
+
+    <sc-if value="{{ showInterests }}" hint-placeholder-val="{{ false }}">
+      <dc-import name="InterestPicker" dict="{{ dict }}" interestOptions="{{ interestOptions }}" confirmInterests="{{ confirmInterests }}" interestBtnBg="{{ interestBtnBg }}" interestBtnFg="{{ interestBtnFg }}"></dc-import>
+    </sc-if>
+
+    <sc-if value="{{ showQuick }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <sc-for list="{{ quickActions }}" as="q" hint-placeholder-count="3">
+          <button onClick="{{ q.onPick }}" style="padding:7px 11px;border-radius:999px;border:1px solid var(--stroke);background:var(--g2);font-size:11.5px;color:var(--t2);cursor:pointer;transition:all .2s" style-hover="background:var(--btn);color:var(--btn-fg);border-color:var(--t1)">{{ q.label }}</button>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <div style="display:flex;align-items:center;gap:9px;padding:5px 5px 5px 15px;border-radius:20px;background:var(--g2);border:1px solid var(--edge);box-shadow:0 8px 22px -14px rgba(var(--sh),.4)">
+      <input value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onKey }}" placeholder="{{ dict.phChat }}" style="flex:1;border:none;background:transparent;outline:none;font-size:13.5px;color:var(--t1);padding:9px 0">
+      <button onClick="{{ send }}" style="width:34px;height:34px;flex:none;border-radius:50%;border:none;background:var(--btn);color:var(--btn-fg);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 18px -8px rgba(14,19,25,.8);transition:transform .22s cubic-bezier(.34,1.5,.64,1)" style-hover="transform:scale(1.08)" style-active="transform:scale(.93)">↑</button>
+    </div>
+  </div>
+</div>
+</x-dc>

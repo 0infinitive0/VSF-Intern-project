@@ -1,0 +1,30 @@
+<x-dc>
+<div style="padding:14px;border-radius:22px;background:var(--g2);border:1px solid var(--edge);box-shadow:0 14px 34px -18px rgba(var(--sh),.4);animation:vPop .5s cubic-bezier(.22,1,.36,1) both">
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+    <button onClick="{{ prevYear }}" title="{{ dict.ttPrevYear }}" style="width:26px;height:26px;border-radius:9px;border:1px solid var(--stroke);background:var(--g2);cursor:pointer;color:var(--t2);font-size:11px;transition:all .2s" style-hover="background:var(--btn);color:var(--btn-fg)">«</button>
+    <button onClick="{{ prevMonth }}" title="{{ dict.ttPrevMonth }}" style="width:26px;height:26px;border-radius:9px;border:1px solid var(--stroke);background:var(--g2);cursor:pointer;color:var(--t2);font-size:11px;transition:all .2s" style-hover="background:var(--btn);color:var(--btn-fg)">‹</button>
+    <div style="flex:1;text-align:center;font-size:13px;font-weight:590;letter-spacing:-.12px;letter-spacing:-.2px">{{ calMonthLabel }} <span style="font-weight:400;color:var(--t3)">{{ calYearLabel }}</span></div>
+    <button onClick="{{ nextMonth }}" title="{{ dict.ttNextMonth }}" style="width:26px;height:26px;border-radius:9px;border:1px solid var(--stroke);background:var(--g2);cursor:pointer;color:var(--t2);font-size:11px;transition:all .2s" style-hover="background:var(--btn);color:var(--btn-fg)">›</button>
+    <button onClick="{{ nextYear }}" title="{{ dict.ttNextYear }}" style="width:26px;height:26px;border-radius:9px;border:1px solid var(--stroke);background:var(--g2);cursor:pointer;color:var(--t2);font-size:11px;transition:all .2s" style-hover="background:var(--btn);color:var(--btn-fg)">»</button>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;font-size:10px;color:var(--t4);text-align:center;margin-bottom:3px">
+    <div>{{ dict.dowMon }}</div><div>{{ dict.dowTue }}</div><div>{{ dict.dowWed }}</div><div>{{ dict.dowThu }}</div><div>{{ dict.dowFri }}</div><div>{{ dict.dowSat }}</div><div>{{ dict.dowSun }}</div>
+  </div>
+  <div key="{{ calKey }}" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;animation:vFade .32s ease both">
+    <sc-for list="{{ calendar }}" as="c" hint-placeholder-count="30">
+      <button onClick="{{ c.onPick }}" style="height:31px;border:none;cursor:{{ c.cursor }};border-radius:{{ c.radius }};font-size:12.5px;font-weight:{{ c.weight }};background:{{ c.bg }};color:{{ c.fg }};transition:background .22s ease,color .22s ease,border-radius .22s ease" style-hover="background:rgba(58,115,222,.12)">{{ c.label }}</button>
+    </sc-for>
+  </div>
+  <div style="display:flex;gap:6px;margin-top:11px">
+    <div style="flex:1;padding:8px 10px;border-radius:12px;background:var(--fill)">
+      <div style="font-size:9.5px;color:var(--t3);letter-spacing:.05em;text-transform:uppercase">{{ dict.dateFrom }}</div>
+      <div style="font-size:12.5px;font-weight:590;letter-spacing:-.1px;margin-top:2px">{{ goDateStart }}</div>
+    </div>
+    <div style="flex:1;padding:8px 10px;border-radius:12px;background:var(--fill)">
+      <div style="font-size:9.5px;color:var(--t3);letter-spacing:.05em;text-transform:uppercase">{{ dict.dateTo }}</div>
+      <div style="font-size:12.5px;font-weight:590;letter-spacing:-.1px;margin-top:2px">{{ goDateEnd }}</div>
+    </div>
+  </div>
+  <button onClick="{{ confirmDates }}" style="margin-top:10px;width:100%;padding:10px;border-radius:13px;border:none;background:{{ datesBtnBg }};color:{{ datesBtnFg }};font-size:13px;font-weight:590;letter-spacing:-.12px;cursor:pointer">{{ dict.confirmDates }}</button>
+</div>
+</x-dc>

@@ -1,0 +1,8 @@
+/* Scrollbar cosmetics + third-party (Leaflet) widget layout overrides. */
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:rgba(120,130,145,.4);border-radius:8px}
+::-webkit-scrollbar-track{background:transparent}
+.leaflet-container{font-family:inherit;background:var(--fill)}
+.leaflet-tile-pane{filter:var(--tile);transition:filter .5s ease}
+.leaflet-control-attribution{font-size:9px;background:var(--g1)!important;backdrop-filter:blur(8px)}
+.leaflet-marker-icon{transition:transform .28s cubic-bezier(.34,1.56,.64,1)}
