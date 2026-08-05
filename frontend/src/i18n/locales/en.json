@@ -1,10 +1,24 @@
 {
   "navBrand": "V-OTA AI",
-  "navExplorer": "Explorer",
-  "navTrips": "Trips",
-  "navConcierge": "Concierge",
-  "navNotifications": "Notifications",
-  "navHelp": "Help",
+
+  "sidebarLabel": "Main navigation",
+  "sidebarCollapseHint": "Collapse sidebar",
+  "sidebarExpandHint": "Expand sidebar",
+  "sidebarHistoryLabel": "History",
+  "sidebarUntitledSession": "Untitled conversation",
+  "sidebarStatusCompleted": "Completed",
+  "sidebarStatusDraft": "Draft",
+  "sidebarDeleteSessionHint": "Delete this conversation",
+
+  "themeToggleSwitchToDark": "Dark mode",
+  "themeToggleSwitchToLight": "Light mode",
+
+  "stageIntakeTitle": "Start planning",
+  "stageIntakeBody": "Reply to the AI Assistant on the left to start building your trip.",
+  "stageGeneratingTitle": "Working on it",
+  "stageGeneratingBody": "The AI is finding hotels or building your itinerary — this usually takes 30–60 seconds.",
+  "stageHotelsTitle": "Pick a hotel",
+  "stageHotelsBody": "Review the hotels the AI suggested in the chat to make your pick.",
 
   "chatPanelTitle": "AI Assistant",
   "chatPanelMoreHint": "Options (not yet supported)",

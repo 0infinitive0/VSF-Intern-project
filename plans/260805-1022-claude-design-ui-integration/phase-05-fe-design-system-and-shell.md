@@ -1,7 +1,7 @@
 ---
 phase: 5
 title: "[FE] Design System & App Shell"
-status: pending
+status: done
 priority: P1
 effort: "2-2.5 ngày"
 dependencies: [1]
@@ -158,16 +158,32 @@ VI/EN trong sidebar, vẫn là component đó với class mới và vị trí m�
 
 ## Tiêu chí hoàn thành
 
-- [ ] Shell render sidebar + chat cố định + stage; sidebar thu gọn mượt
-- [ ] Chat panel không bao giờ bị unmount qua bất kỳ chuyển stage hay focus nào
-- [ ] Cả bốn trạng thái stage suy ra đúng; quy tắc ưu tiên đúng
-- [ ] Focus mode thu gọn chat+map và mở rộng stage mà không unmount cái nào
-- [ ] Đổi đối tượng focus khi đang focus không làm đóng focus mode
-- [ ] Toggle theme chạy, được lưu, và cả hai theme đều đọc được
-- [ ] Danh sách lịch sử xử lý được đang tải / rỗng / 404 / có dữ liệu mà không có dữ liệu giả
-- [ ] Luồng cũ nguyên vẹn: bootstrap, gửi tin, reset+xác nhận, chuyển ngôn ngữ, kéo đổi kích thước panel
-- [ ] Responsive ở `sm` / `md` / `lg` / `xl`, không có scroll ngang toàn trang
-- [ ] `npm run typecheck` và `npm run lint` pass
+- [x] Shell render sidebar + chat cố định + stage; sidebar thu gọn mượt
+- [x] Chat panel không bao giờ bị unmount qua bất kỳ chuyển stage hay focus nào
+- [x] Cả bốn trạng thái stage suy ra đúng; quy tắc ưu tiên đúng (7 vitest case,
+  bao gồm cả hai rủi ro ưu tiên nêu ở "Kiến trúc")
+- [x] Focus mode thu gọn chat+map và mở rộng stage mà không unmount cái nào —
+  cơ chế transform-only đã đúng (xác nhận qua code review); **chưa có UI nào
+  gọi `openFocus` trong phase này** (đúng phạm vi — trigger là việc của
+  Phase 8/9), nên chưa test được end-to-end bằng tay
+- [x] Đổi đối tượng focus khi đang focus không làm đóng focus mode (đúng theo
+  thiết kế hook, cùng giới hạn "chưa có trigger" ở trên)
+- [x] Toggle theme chạy, được lưu, và cả hai theme đều đọc được; thêm inline
+  script tránh flash theme sáng khi tải lại ở chế độ tối
+- [x] Danh sách lịch sử xử lý được đang tải / rỗng / 404 / có dữ liệu mà không
+  có dữ liệu giả; dòng lịch sử **chưa clickable** (mở lại hội thoại cần
+  hydrate `use-chat-session.ts`, ngoài phạm vi phase này) nên render như
+  hiển thị tĩnh, không phải nút chết
+- [x] Luồng cũ nguyên vẹn: bootstrap, gửi tin, reset+xác nhận, chuyển ngôn ngữ,
+  kéo đổi kích thước panel
+- [x] Responsive ở `sm` / `md` / `lg` / `xl`, không có scroll ngang toàn trang
+- [x] `npm run typecheck` và `npm run lint` pass; thêm `npm run test` (vitest)
+  cho `derive-stage.ts`
+
+Review vòng đầu (code-reviewer subagent) phát hiện 3 bug thật do thiếu
+`display:flex` trên các wrapper mới (chat panel mất chiều cao, resizer cao
+0px, sidebar thu gọn che nội dung dưới `lg`) — cả ba đã sửa và verify lại
+bằng typecheck/lint/vitest/build. Chi tiết đầy đủ trong báo cáo cuối phase.
 
 ## Đánh giá rủi ro
 

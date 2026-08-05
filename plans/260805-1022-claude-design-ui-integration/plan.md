@@ -153,7 +153,7 @@ thay đổi contract: phải được cả hai dev đồng ý và phải sửa k
 | 3 | [Endpoint chi tiết khách sạn & địa điểm](./phase-03-be-detail-endpoints.md) | Backend | Pending | 1 |
 | 4 | [Persist session & lịch sử hội thoại](./phase-04-be-session-persistence.md) | Backend | Pending | 1 |
 | 12 | [Chuyển OSRM → Mapbox Directions](./phase-12-be-mapbox-routing.md) | Backend | Pending | 1 |
-| 5 | [Design system & App Shell](./phase-05-fe-design-system-and-shell.md) | Frontend | Pending | 1 |
+| 5 | [Design system & App Shell](./phase-05-fe-design-system-and-shell.md) | Frontend | Done | 1 |
 | 6 | [Chat panel cố định](./phase-06-fe-chat-panel.md) | Frontend | Pending | 5 |
 | 7 | [Stage: Intake & Generating](./phase-07-fe-stage-intake-generating.md) | Frontend | Pending | 5 |
 | 8 | [Stage: Khách sạn & Hotel Focus](./phase-08-fe-stage-hotels-focus.md) | Frontend | Pending | 5 |

@@ -12,6 +12,17 @@
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
   </head>
   <body>
+    <script>
+      // Set data-theme before first paint so a returning dark-mode user
+      // doesn't see a flash of the light theme. Reads the same
+      // localStorage key hooks/use-theme.ts owns; kept in sync manually
+      // since this runs before any JS module loads.
+      try {
+        if (localStorage.getItem('vota-theme') === 'dark') {
+          document.body.dataset.theme = 'dark'
+        }
+      } catch {}
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

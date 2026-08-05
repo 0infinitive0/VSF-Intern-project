@@ -1,10 +1,24 @@
 {
   "navBrand": "V-OTA AI",
-  "navExplorer": "Explorer",
-  "navTrips": "Trips",
-  "navConcierge": "Concierge",
-  "navNotifications": "Thông báo",
-  "navHelp": "Trợ giúp",
+
+  "sidebarLabel": "Điều hướng chính",
+  "sidebarCollapseHint": "Thu gọn thanh bên",
+  "sidebarExpandHint": "Mở rộng thanh bên",
+  "sidebarHistoryLabel": "Lịch sử",
+  "sidebarUntitledSession": "Hội thoại chưa đặt tên",
+  "sidebarStatusCompleted": "Hoàn tất",
+  "sidebarStatusDraft": "Bản nháp",
+  "sidebarDeleteSessionHint": "Xoá hội thoại này",
+
+  "themeToggleSwitchToDark": "Chế độ tối",
+  "themeToggleSwitchToLight": "Chế độ sáng",
+
+  "stageIntakeTitle": "Bắt đầu lên kế hoạch",
+  "stageIntakeBody": "Trả lời AI Assistant bên trái để bắt đầu tạo chuyến đi.",
+  "stageGeneratingTitle": "Đang xử lý",
+  "stageGeneratingBody": "AI đang tìm khách sạn hoặc dựng lịch trình — thường mất 30–60 giây.",
+  "stageHotelsTitle": "Chọn khách sạn",
+  "stageHotelsBody": "Xem các khách sạn AI gợi ý trong khung chat để chọn.",
 
   "chatPanelTitle": "AI Assistant",
   "chatPanelMoreHint": "Tùy chọn (chưa hỗ trợ)",
