@@ -71,6 +71,7 @@ def create_session() -> dict:
 
 
 @router.get("/chat/{session_id}/plan")
+@router.get("/session/{session_id}/state")
 def get_session_plan(session_id: str) -> dict:
     """Trả về kế hoạch chuyến đi hiện tại của một phiên, hoặc 404 nếu không có."""
     session = registry.get(session_id)
@@ -92,6 +93,7 @@ def delete_session(session_id: str) -> None:
 
 
 @router.post("/chat/select_hotel", response_model=PlannerChatResponse)
+@router.post("/hotels/select", response_model=PlannerChatResponse)
 def select_hotel(request: SelectHotelRequest) -> PlannerChatResponse:
     session_id = str(request.session_id)
     registry.evict_expired()
@@ -134,6 +136,7 @@ def select_hotel(request: SelectHotelRequest) -> PlannerChatResponse:
 
 
 @router.post("/planner_chat", response_model=PlannerChatResponse)
+@router.post("/chat", response_model=PlannerChatResponse)
 def planner_chat(request: PlannerChatRequest) -> PlannerChatResponse:
     """Chat với trip planner thật."""
     session_id = str(request.session_id)
@@ -268,3 +271,88 @@ async def search_hotels(q: str, k: int = 10):
     except Exception:
         logger.exception("search_hotels error")
         raise HTTPException(status_code=500, detail="Đã xảy ra lỗi máy chủ. Vui lòng thử lại.")
+
+
+from pydantic import BaseModel
+
+class LoadMoreHotelsRequest(BaseModel):
+    session_id: str
+    load_more: bool
+
+@router.post("/hotels/search")
+def hotels_search(request: LoadMoreHotelsRequest):
+    session_id = str(request.session_id)
+    registry.evict_expired()
+    session = registry.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
+    
+    with session.lock:
+        try:
+            from src.agents.session import _clear_pending_hotel_selection
+            from src.services.supabase_search import match_hotels_with_rooms
+            from src.models.schemas import to_hotel_options_payload
+            
+            budget = session.hotel_pref_state.target_price or 1500000
+            
+            params = {
+                "dest": session.intake_state.destination,
+                "price": budget,
+                "amenities": list(session.intake_state.preferences),
+            }
+            results = match_hotels_with_rooms(**params, match_count=10)
+            
+            # Identify which hotels we already have
+            existing = session.pending_hotel_selection.get("options", []) if session.pending_hotel_selection else []
+            existing_names = {h.get("name") for h in existing if isinstance(h, dict)}
+            
+            new_hotels = []
+            for r in results:
+                if r.get("name") not in existing_names:
+                    new_hotels.append(r)
+                if len(new_hotels) == 5:
+                    break
+                    
+            if not session.pending_hotel_selection:
+                session.pending_hotel_selection = {"options": []}
+                
+            start_idx = len(existing) + 1
+            added_hotels = []
+            for i, h in enumerate(new_hotels):
+                # Ensure it's a dict and append
+                hotel_dict = dict(h)
+                hotel_dict["index"] = start_idx + i
+                session.pending_hotel_selection["options"].append(hotel_dict)
+                added_hotels.append(hotel_dict)
+                
+            return {
+                "hotels": added_hotels,
+                "has_more": len(results) >= 10
+            }
+        except Exception as exc:
+            logger.exception("Error in hotels_search")
+            raise HTTPException(status_code=500, detail="Error fetching more hotels")
+
+@router.post("/itineraries/generate")
+def itineraries_generate(request: PlannerChatRequest):
+    session_id = str(request.session_id)
+    registry.evict_expired()
+    session = registry.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
+        
+    with session.lock:
+        if session.trip_data and session.trip_data.get("itineraries"):
+            # Already generated during select_hotel
+            trip_plan = to_trip_plan_payload(session.trip_data)
+            return {"status": "success", "trip_plan": trip_plan}
+            
+        try:
+            from src.agents.session import process_chat_turn
+            result = process_chat_turn(session, "Tạo lịch trình", language=request.language)
+            trip_plan = to_trip_plan_payload(session.trip_data)
+            return {"status": "success", "trip_plan": trip_plan}
+        except Exception as exc:
+            logger.exception("Error generating itinerary")
+            raise HTTPException(status_code=500, detail="Error generating itinerary")
+

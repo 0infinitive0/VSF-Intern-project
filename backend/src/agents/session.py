@@ -995,9 +995,10 @@ def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:
             # up whatever the tool actually changed. Verified empirically:
             # without the seed, a fresh thread has no TripState keys at all
             # and a tool reading runtime.state raises KeyError.
+            config_with_limit = {**session.config, "recursion_limit": 5}
             events = session.agent.stream(
                 {**session.state, "messages": [("user", agent_input)]},
-                config=session.config,
+                config=config_with_limit,
                 stream_mode="values",
             )
 
