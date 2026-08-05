@@ -1,28 +1,43 @@
 # Chat API Contract
 
 Frozen 2026-07-31 in Phase 1 of `plans/260729-1637-trip-planner-chat-ui-and-agents-backend/`
-so Phase 3 (backend) and Phase 4 (React frontend) can build against it independently.
+so Phase 3 (backend) and Phase 4 (React frontend) could build against it independently.
+Extended 2026-08-05 in Phase 1 of `plans/260805-1022-claude-design-ui-integration/` to add
+four more endpoints and extend two existing payloads for the Claude Design UI integration.
+Phase numbers below without a plan prefix refer to the **2026-08-05** plan; the original
+2026-07-31 phase numbers are gone now that those endpoints are shipped.
 
-**Status of this document relative to the shipped code:** the four endpoints and the
-extended `PlannerChatResponse` fields below (`stage`, `hotel_options`, `trip_plan`,
-`intake`) are the **target** contract. As of this Phase 1 commit, only
-`POST /api/v1/planner_chat` exists, and it returns only `{reply, suggestions}` — the
-extended fields and the other three endpoints are built in Phase 3. `reply` and
-`suggestions` keep their current meaning throughout (D10); `GET /chat` depends on that
-and must keep working unmodified through Phase 4.
+**Status of this document relative to the shipped code, as of 2026-08-05:** the four
+endpoints below marked "Shipped" are live — `PlannerChatResponse` already carries `stage`,
+`hotel_options`, `trip_plan`, and `intake` in production
+(`backend/src/models/schemas.py:257-265`), correcting this doc's prior "Phase 3 target"
+framing, which was stale. The four endpoints marked "Pending" do not exist yet; the
+frontend develops against `frontend/mock/server.js` fixtures for them until their phase
+ships (contract-first, per `plans/260805-1022-claude-design-ui-integration/plan.md`).
 
 ## Endpoints
 
 | Method | Path | Body / Query | Returns | Status |
 |---|---|---|---|---|
-| `POST` | `/api/v1/chat/session` | — | `{session_id, created_at}` | Phase 3 |
-| `POST` | `/api/v1/planner_chat` | `{message, session_id}` | `PlannerChatResponse` | Shipped (extended in Phase 3) |
-| `GET` | `/api/v1/chat/{session_id}/plan` | — | `{trip_plan}` or 404 | Phase 3 |
-| `DELETE` | `/api/v1/chat/{session_id}` | — | `204` | Phase 3 |
+| `POST` | `/api/v1/chat/session` | — | `{session_id, created_at}` | Shipped |
+| `POST` | `/api/v1/planner_chat` | `{message, session_id}` | `PlannerChatResponse` | Shipped |
+| `GET` | `/api/v1/chat/{session_id}/plan` | — | `{trip_plan}` or 404 | Shipped |
+| `DELETE` | `/api/v1/chat/{session_id}` | — | `204` | Shipped |
+| `GET` | `/api/v1/hotels/{hotel_id}` | — | `HotelDetail` or 404 | Pending (Phase 3) |
+| `GET` | `/api/v1/attractions/{attraction_id}` | — | `AttractionDetail` or 404 | Pending (Phase 3) |
+| `GET` | `/api/v1/chat/sessions` | — | `{sessions: SessionSummary[]}` | Pending (Phase 4) |
+| `GET` | `/api/v1/chat/{session_id}/restore` | — | `SessionRestore` or 404 | Pending (Phase 4) |
 
 `message` stays required with `min_length=1`, and `session_id` stays required on
 `planner_chat`, so `tests/test_api/test_routes.py` passes unchanged (backwards
-compatibility, per D10).
+compatibility, per D10). The four new endpoints above are additive only — none of them
+change `planner_chat`'s request or the four shipped endpoints' shapes.
+
+> Not documented here: `POST /api/v1/chat/select_hotel`, `GET /api/v1/status`,
+> `GET /api/v1/search_attractions`, `GET /api/v1/search_hotels` exist in
+> `backend/src/api/routes.py` but are not called by the current frontend
+> (`frontend/src/api/chat-client.ts` only calls the four "Shipped" rows above) and are out
+> of scope for this contract.
 
 ## `PlannerChatResponse`
 
@@ -34,7 +49,9 @@ compatibility, per D10).
   "stage": "intake | hotel_options | planned | modified | finalized | error",
   "hotel_options": [
     { "index": 1, "id": "uuid", "name": "...", "star_rating": 4,
-      "description": "...", "matched_rooms": ["..."] }
+      "description": "...", "matched_rooms": ["..."],
+      "average_nightly_price": 3200000, "total_stay_price": 9600000,
+      "stay_night_count": 3, "currency": "VND" }
   ],
   "trip_plan": { "...null until a hotel is picked..." },
   "intake": { "destination": "...", "duration": "...", "people": "...", "missing": ["people"] }
@@ -76,6 +93,85 @@ client sends the chosen `index` back as the plain next `message` — that is exa
 `select_hotel` already parses (`process_chat_turn`, branch 1 below). `hotel_options[].index`
 in the structured payload is the same ordinal as `suggestions[].value`; the two are two
 views of one list, not independent contracts.
+
+### `hotel_options[]` extension (Pending, Phase 2)
+
+`hotel_selection.py:50` already selects these columns for ranking; `to_hotel_options_payload`
+currently throws them away. All new fields are optional so a pre-Phase-2 backend still
+satisfies the type:
+
+```jsonc
+{
+  "index": 1, "id": "uuid", "name": "...", "star_rating": 5,
+  // Already shipped (schemas.py:92, to_hotel_options_payload) — a types.ts gap fix,
+  // same as days[].items[].coordinates below, not a new Phase 2 field.
+  // "lat,lng"; verified against database_schema.sql:12 and both backend
+  // parse_coordinates() functions — never WKT.
+  "coordinates": "16.0544,108.2022",
+  "address": "Mỹ Khê, Ngũ Hành Sơn",
+  "area_name": "Ngũ Hành Sơn",
+  "image_url": "https://…",            // null if the hotel row has none
+  "amenities": ["Hồ bơi vô cực", "Bãi biển riêng"],
+  "review_score": 8.9,                 // 0..10
+  "review_count": 1284,
+  "match_score": 0.96,                 // 0..1, the real _composite_score (hotel_selection.py:172)
+  "match_reasons": [                   // codes + raw values, never display strings
+    { "code": "budget_fit",    "value": 0.39 },
+    { "code": "high_rating",   "value": 8.9 },
+    { "code": "amenity_match", "value": "Hồ bơi vô cực" }
+  ]
+}
+```
+
+`match_reasons[].code` is an i18n key (`matchReason.<code>`); the frontend builds the
+displayed sentence from the code + value. This keeps the "AI đề xuất vì..." panel honest —
+it can only ever restate a real ranking parameter — and keeps display strings out of the
+backend, matching `route_to_next.profile` below. The exact set of codes `hotel_selection.py`
+emits is decided in Phase 2; the three above are illustrative, not exhaustive.
+
+### `days[].items[]` extension (Pending, Phase 2)
+
+```jsonc
+{
+  "order_index": 1, "start_time": "08:00", "end_time": "09:30",
+  "activity": "...", "kind": "breakfast",
+  "reference_type": "Attraction", "reference_id": "uuid",
+
+  // Already returned today by to_trip_plan_payload
+  // (backend/src/services/trip_formatter.py:320-323) — a types.ts gap fix, not a new
+  // backend field. "lat,lng", same format as hotel_options.
+  "coordinates": "16.0678,108.2208",
+
+  // New — from routing.py, currently computed but dropped by to_trip_plan_payload
+  "route_to_next": {
+    "distance_km": 6.4,
+    "duration_mins": 14.2,
+    "polyline": "yseeAo...",      // Google Encoded Polyline, precision 1e5
+    "profile": "driving-traffic"  // code Mapbox Directions was called with (Phase 12);
+                                    // null until Phase 12 ships — today's OSRM call site
+                                    // (routing.py:44-48) does not set this key at all
+  }, // | null
+
+  "route_from_hotel": { /* same shape */ } // | null — see caveat below
+}
+```
+
+`route_to_next` / `route_from_hotel` is `null` when either endpoint's coordinates are
+missing, the routing call failed or timed out, or no route was found — the frontend must
+render its straight-line fallback in every one of those cases (`index.html:874-876` in the
+airflow dashboard reference implementation is the pattern to port).
+
+When origin and destination coordinates are **identical**, `get_route_to_next`
+(`routing.py:84-89`) instead returns `{distance_km: 0.0, duration_mins: 0.0, polyline: ""}`
+— no `profile` key at all today, so the frontend type allows `profile: null` here too. This
+is "no travel needed", a different UI state from the route being absent.
+
+`route_from_hotel` is commonly `null` even on itineraries where it was computed at
+generation time: `recalculate_itinerary_routes` (`routing.py:127`) does set it, but
+`ITEM_RPC_FIELDS` (`itinerary_store.py:47-60`) does not include `route_from_hotel`, so it is
+silently dropped on the next DB round-trip. Expect this on most saved/reloaded itineraries,
+not as a rare edge case (`plan.md` "Phần chưa làm" #15) — fixing it is out of this plan's
+scope (would need an `ITEM_RPC_FIELDS` change plus a DB migration/RPC update).
 
 ## `stage` values
 
@@ -160,3 +256,105 @@ re-derivation of this machine that drops 1c reintroduces that bug.
   to replace `detail=str(e)` with a generic 5xx body; not fixed in Phase 1.
 - No endpoint should raise an unhandled `TypeError` on a normal request (Phase 1 success
   criterion, verified via manual walkthrough — see phase notes).
+
+## New endpoints (Pending — `260805-1022-claude-design-ui-integration`)
+
+None of the four endpoints below exist in `backend/src/api/routes.py` yet. Shapes are
+frozen here so the frontend can build against `frontend/mock/server.js` fixtures now and
+swap to the real backend without a contract change once each phase ships.
+
+### `GET /api/v1/hotels/{hotel_id}` (Phase 3)
+
+Serves the Hotel Detail Focus Mode. Reads `hotels` + `rooms` + `room_prices`. `404` with
+`{"detail": "..."}` if `hotel_id` doesn't exist.
+
+```jsonc
+{
+  "id": "uuid", "name": "...", "star_rating": 5, "description": "...",
+  "address": "...", "city": "...", "area_name": "...", "location_highlight": "...",
+  "coordinates": "16.0544,108.2022",
+  "image_url": "https://…", "images": ["https://…"],
+  "amenities": ["..."], "amenity_groups": { "Hồ bơi": ["..."] },
+  "review_score": 8.9, "review_count": 1284, "category_scores": { "Vị trí": 9.1 },
+  "check_in_time": "14:00", "check_in_until": "22:00",
+  "check_out_time": "12:00", "reception_open_until": "23:00",
+  "nearby_attractions": ["..."], "nearby_essentials": ["..."],
+  "lowest_price": 1800000, "currency": "VND",
+  "rooms": [{
+    "id": "uuid", "name": "Superior Ocean View", "bed_description": "1 giường đôi lớn",
+    "room_size_sqm": 32, "max_guests": 2, "view": "Hướng biển",
+    "room_facilities": ["..."], "images": ["https://…"],
+    "price": {
+      "amount": 2200000, "currency": "VND",
+      "check_in_date": "2026-10-12", "check_out_date": "2026-10-14",
+      "sold_out": false, "package_details": null
+    } // | null — no room_prices row matches the requested stay
+  }]
+}
+```
+
+Read-only. There is no "select this room" action — `select_hotel` only accepts a hotel
+index, and there is no per-room price-recalculation logic to hang a selection off of
+(`plan.md` "Phần chưa làm" #4).
+
+### `GET /api/v1/attractions/{attraction_id}` (Phase 3)
+
+Serves the Place Detail Focus Mode. The frontend gets the id from
+`trip_plan.days[].items[].reference_id` when `reference_type == "attraction"`. `404` if
+`attraction_id` doesn't exist.
+
+```jsonc
+{
+  "id": "uuid", "name": "...", "description": "...", "category": "Biển", "is_tour": false,
+  "estimated_duration_minutes": 120,
+  "opening_time": "06:00", "closing_time": "22:00",
+  "ticket_price_adult": 100000, "ticket_price_child": 50000,
+  "rating": 4.6, "review_count": 892,
+  "coordinates": "16.0490,108.2493",
+  "images": ["https://…"]
+}
+```
+
+No review-quote field exists — `attractions` has `rating`/`review_count` but no review
+text rows (`plan.md` "Phần chưa làm" #6). No nearby-attractions field either — there is no
+attraction-to-attraction adjacency data (#7); that relation only exists for hotels
+(`hotels.nearby_attractions`).
+
+### `GET /api/v1/chat/sessions` (Phase 4)
+
+Serves the conversation-history sidebar rail.
+
+```jsonc
+{
+  "sessions": [{
+    "session_id": "uuid",
+    "title": "Đà Nẵng – Hội An 4N3Đ",      // inferred from destination + duration_days
+    "destination": "Đà Nẵng", "duration_days": 3,
+    "status": "draft",                        // "completed" once trip_data exists
+    "created_at": "2026-08-01T09:12:00Z", "updated_at": "2026-08-01T09:40:00Z",
+    "thumbnail_url": "https://…"              // chosen hotel's image_url, or null
+  }]
+}
+```
+
+Never `404` — an empty `sessions: []` list is the correct response when a user has no
+saved conversations. The frontend treats a `404` from this endpoint (e.g. before Phase 4
+ships) as "history feature not available" and hides the rail, not as an error state.
+
+### `GET /api/v1/chat/{session_id}/restore` (Phase 4)
+
+Reopens a past conversation. Same shape as `PlannerChatResponse`, plus the message
+timeline. `404` if `session_id` doesn't exist or was never persisted.
+
+```jsonc
+{
+  "session_id": "uuid",
+  "messages": [
+    { "role": "user", "text": "Tôi muốn đi Đà Nẵng 3 ngày", "stage": "intake", "at": "2026-08-01T09:12:00Z" },
+    { "role": "ai", "text": "...", "stage": "hotel_options", "at": "2026-08-01T09:13:30Z" }
+  ],
+  "suggestions": [], "stage": "planned",
+  "hotel_options": [], "trip_plan": { "...same shape as PlannerChatResponse.trip_plan..." },
+  "intake": { "...same shape as PlannerChatResponse.intake..." }
+}
+```

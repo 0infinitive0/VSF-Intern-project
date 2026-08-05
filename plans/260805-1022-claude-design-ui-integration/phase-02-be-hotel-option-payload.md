@@ -18,7 +18,7 @@ kiểu:
 1. `hotel_selection.py` đã select ảnh, tiện nghi, điểm đánh giá, địa chỉ, toạ độ từ Supabase
    và đã tính điểm relevance thật để xếp hạng — rồi `to_hotel_options_payload` vứt hết, chỉ
    trả 7 field.
-2. `recalculate_itinerary_routes` (`routing.py:93`) đã gọi OSRM và gắn
+2. `recalculate_itinerary_routes` (`routing.py:93`) đã gọi routing API và gắn
    `route_to_next = {distance_km, duration_mins, polyline}` lên từng itinerary item — rồi
    `to_trip_plan_payload` không copy sang payload.
 
@@ -26,7 +26,7 @@ Phase này mở rộng cả hai đúng theo contract Phase 1.
 
 Đây là thay đổi backend nhỏ nhất nhưng đòn bẩy lớn nhất trong plan: chỉ riêng nó đã mở khoá
 card khách sạn theo design (ảnh, tiện nghi, điểm đánh giá, vòng match) **và** route bám
-đường thật trên map, mà **không thêm một query hay một lời gọi OSRM nào**.
+đường thật trên map, mà **không thêm một query hay một lời gọi routing nào**.
 
 ## Yêu cầu
 
@@ -100,7 +100,8 @@ khớp/độ phù hợp (chữ "MATCH" trong design vốn đã đúng).
 đã được `recalculate_itinerary_routes` gắn lên. Bổ sung `route_to_next` và `route_from_hotel`
 vào mapper item.
 
-Không cần đổi gì trong `routing.py`. Không phát sinh lời gọi OSRM mới — route đã được tính
+Không cần đổi gì trong `routing.py` (Phase 12 mới sửa file đó). Không phát sinh lời gọi
+routing mới — route đã được tính
 lúc `persist_itinerary_bundle` chạy (`itinerary_store.py:215-219`) và đã nằm sẵn trên item.
 
 Ba điểm phải giữ đúng nguyên trạng, **không "dọn dẹp"**:
@@ -109,8 +110,11 @@ Ba điểm phải giữ đúng nguyên trạng, **không "dọn dẹp"**:
   object với số 0 (`routing.py:84-89`). Đây là "cùng chỗ, không cần di chuyển" — khác hẳn
   `null` nghĩa là "không có dữ liệu route". **Truyền qua nguyên vẹn**, đừng chuẩn hoá thành
   `null`; frontend cần phân biệt hai trạng thái này.
-- **`duration_mins` đã bị nhân 2.5** (`routing.py:41`). Không sửa hệ số trong phase này —
-  đó là quyết định riêng, đã ghi ở mục "Câu hỏi mở" của `plan.md`. Chỉ truyền qua.
+- **`profile` phải được truyền qua.** Phase 12 bổ sung khoá này vào `route_to_next`
+  (`driving-traffic` / `walking` / `cycling`). Mapper phải copy nó — nếu thiếu, frontend
+  không dựng được nhãn phương tiện. Phase 2 và 12 chạy song song, nên viết mapper theo kiểu
+  copy nguyên object `route_to_next` thay vì liệt kê từng khoá; như vậy không phụ thuộc thứ
+  tự hai phase land.
 - **`route_from_hotel` thường là `null` sau round-trip DB.** `ITEM_RPC_FIELDS`
   (`itinerary_store.py:47-60`) không chứa nó nên nó bị lọc trước khi persist. Mapper vẫn phải
   copy nó khi có (đường in-memory), và contract khai báo nullable. Đây là mục 15 bảng "Phần
@@ -154,7 +158,7 @@ Ba điểm phải giữ đúng nguyên trạng, **không "dọn dẹp"**:
     - item không có route → `null`
     - chuỗi `polyline` không bị escape hay cắt ngắn
 11. Kiểm chứng thật: chạy một chuyến rồi xác nhận `trip_plan.days[].items[].route_to_next`
-    có mặt trong response HTTP. **Báo lại tỉ lệ item có route** — nếu OSRM public bị
+    có mặt trong response HTTP. **Báo lại tỉ lệ item có route** — nếu routing API bị
     rate-limit lúc seed thì phần lớn sẽ `null` và Dev F cần biết để test đường fallback.
 
 ## Tiêu chí hoàn thành
@@ -164,8 +168,8 @@ Ba điểm phải giữ đúng nguyên trạng, **không "dọn dẹp"**:
 - [ ] Cả hai chỗ dựng option dict trong `hotel_selection.py` phát ra shape giống hệt nhau
 - [ ] `route_to_next` / `route_from_hotel` có mặt trong `trip_plan` payload
 - [ ] `{0.0, 0.0, ""}` (trùng toạ độ) khác biệt rõ với `null` (không có route)
-- [ ] `duration_mins` truyền qua nguyên trạng, **không** sửa hệ số 2.5 trong phase này
-- [ ] `routing.py` không bị sửa; không phát sinh lời gọi OSRM mới
+- [ ] Mapper copy nguyên object `route_to_next` (gồm cả `profile` từ Phase 12), không liệt kê từng khoá
+- [ ] `routing.py` không bị sửa trong phase này (Phase 12 mới là phase sửa nó)
 - [ ] Không phát sinh query Supabase nào thêm mỗi lượt chat
 - [ ] Chọn theo số thứ tự (`select_hotel`) và sự khớp với `suggestions` không đổi
 - [ ] Field thiếu trong DB xuống cấp thành `null`/`[]`, không bao giờ thành giá trị bịa

@@ -1,7 +1,7 @@
 ---
 phase: 1
 title: "API Contract & Design Tokens"
-status: pending
+status: done
 priority: P1
 effort: "1-1.5 ngày"
 dependencies: []
@@ -131,11 +131,13 @@ Mọi motion phải bị vô hiệu dưới `@media (prefers-reduced-motion: red
 2. Mở rộng `types.ts`:
    - thêm `coordinates?: string | null` vào `DayItem` (**backend đã trả về từ trước** —
      đây là lỗ hổng type, không phải field mới) và vào `HotelOption`
-   - thêm `RouteInfo { distance_km: number; duration_mins: number; polyline: string }` và
-     gắn `route_to_next?: RouteInfo | null`, `route_from_hotel?: RouteInfo | null` vào
-     `DayItem`. **Lưu ý định dạng thật của backend**: hai điểm trùng toạ độ cho ra
-     `{0, 0, ""}` chứ không phải `null` (`routing.py:84-89`) — kiểu phải cho phép cả hai và
-     comment phải ghi rõ sự khác biệt
+   - thêm `RouteInfo { distance_km: number; duration_mins: number; polyline: string;
+     profile: RouteProfile | null }` với
+     `type RouteProfile = 'driving-traffic' | 'walking' | 'cycling' | 'driving'`, và gắn
+     `route_to_next?: RouteInfo | null`, `route_from_hotel?: RouteInfo | null` vào `DayItem`.
+     **Lưu ý định dạng thật của backend**: hai điểm trùng toạ độ cho ra `{0, 0, "", null}`
+     chứ không phải `null` (`routing.py:84-89`) — kiểu phải cho phép cả hai và comment phải
+     ghi rõ sự khác biệt. `profile` là **mã**, frontend dịch qua khoá `routeProfile.*`
    - **kiểm tra định dạng `coordinates`**: `parse_coordinates` (`routing.py:57-70`) chỉ chấp
      nhận `"lat,lng"` hoặc tuple. Comment hiện tại ở `types.ts:46-48` nói `hotel.coordinates`
      là chuỗi WKT — **hai điều này mâu thuẫn nhau**. Xác định cái nào đúng trên dữ liệu thật
@@ -149,10 +151,13 @@ Mọi motion phải bị vô hiệu dưới `@media (prefers-reduced-motion: red
 3. Mở rộng `mock/server.js` với fixture cho các endpoint mới. Giữ nguyên kịch bản hội thoại
    7 lượt đang chạy; làm giàu fixture `hotel_options` ở lượt 3 với các field mới, và gán
    toạ độ Đà Nẵng thật cho các itinerary item để map có thể phát triển được.
-   Fixture route phải phủ **cả bốn** trạng thái để Dev F test được mọi nhánh:
-   - route đầy đủ với `polyline` OSRM thật (lấy một chuỗi encoded thật, đừng bịa ký tự)
-   - `route_to_next: null` (OSRM lỗi) → frontend phải vẽ đường thẳng fallback
-   - `{distance_km: 0, duration_mins: 0, polyline: ""}` (trùng toạ độ) → hiển thị khác `null`
+   Fixture route phải phủ **cả năm** trạng thái để Dev F test được mọi nhánh:
+   - route ô tô đầy đủ, `profile: "driving-traffic"`, `polyline` thật (lấy một chuỗi encoded
+     thật từ Mapbox, đừng bịa ký tự)
+   - route đi bộ, `profile: "walking"` — chặng ngắn, để test nhãn phương tiện thứ hai
+   - `route_to_next: null` (routing lỗi) → frontend phải vẽ đường thẳng fallback
+   - `{distance_km: 0, duration_mins: 0, polyline: "", profile: null}` (trùng toạ độ) →
+     hiển thị khác `null`
    - `route_from_hotel: null` trên item đầu ngày → đây là trạng thái **thường gặp nhất** sau
      round-trip DB (mục 15 bảng "Phần chưa làm"), không phải ca hiếm
 4. Viết lại khối `@theme` trong `styles.css` theo bảng ánh xạ. Giữ mọi tên token mà
@@ -166,15 +171,19 @@ Mọi motion phải bị vô hiệu dưới `@media (prefers-reduced-motion: red
 
 ## Tiêu chí hoàn thành
 
-- [ ] `docs/chat_api_contract.md` mô tả đủ 8 endpoint kèm shape request/response/error
-- [ ] `types.ts` compile được và mirror đúng contract; mọi field mới đều optional
-- [ ] `mock/server.js` phục vụ đủ 8 route; kịch bản 7 lượt vẫn chạy trọn
-- [ ] Fixture khách sạn mock có ảnh, tiện nghi, điểm đánh giá, toạ độ, match score
-- [ ] Itinerary item trong mock có toạ độ
-- [ ] Định nghĩa đủ hai theme; đặt `data-theme="dark"` trên `<body>` là đổi palette thấy rõ
-- [ ] Tôn trọng cả `prefers-reduced-motion` và `prefers-reduced-transparency`
-- [ ] `npm run typecheck` và `npm run lint` pass
+- [x] `docs/chat_api_contract.md` mô tả đủ 8 endpoint kèm shape request/response/error
+- [x] `types.ts` compile được và mirror đúng contract; mọi field mới đều optional
+- [x] `mock/server.js` phục vụ đủ 8 route; kịch bản 7 lượt vẫn chạy trọn
+- [x] Fixture khách sạn mock có ảnh, tiện nghi, điểm đánh giá, toạ độ, match score
+- [x] Itinerary item trong mock có toạ độ
+- [x] Định nghĩa đủ hai theme; đặt `data-theme="dark"` trên `<body>` là đổi palette thấy rõ
+- [x] Tôn trọng cả `prefers-reduced-motion` và `prefers-reduced-transparency`
+- [x] `npm run typecheck` và `npm run lint` pass
 - [ ] Cả hai dev đã review và chốt contract trước khi bất kỳ track nào bắt đầu
+  (nhân bước này — cần review thủ công từ cả hai dev, không tự động hoá được)
+
+Font stack thực tế dùng "Inter", "Be Vietnam Pro" — quyết định của người dùng, ghi đè
+gợi ý SF Pro trong "Kiến trúc" ở trên. `--font-display` giữ nguyên Hanken Grotesk.
 
 ## Đánh giá rủi ro
 

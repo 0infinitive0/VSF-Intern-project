@@ -26,7 +26,7 @@ Design này **không phải một sản phẩm mới** — nó là một bản r
 cấu trúc trên chính ứng dụng đang chạy:
 
 1. **Ngôn ngữ thị giác mới**: Apple HIG glassmorphism, layered translucency, theme
-   sáng **và** tối, typography SF Pro / Be Vietnam Pro, motion dạng spring.
+   sáng **và** tối, typography Be Vietnam Pro, motion dạng spring.
 2. **Shell mới**: **sidebar rail thu gọn được → chat panel cố định → "stage" bên phải**,
    trong đó stage chuyển giữa 4 trạng thái và có thể thu gọn chat+map thành hai
    **focus mode** (chi tiết khách sạn, chi tiết địa điểm).
@@ -50,7 +50,7 @@ cần.** Vấn đề chỉ là API không trả về.
 | Card phòng | `rooms.*` + `room_prices.price` | ❌ | ❌ |
 | Chi tiết địa điểm | `attractions.opening_time/ticket_price_adult/rating/images` | ❌ | ❌ |
 | Marker trên map | `itinerary_items.coordinates` | ✅ | ✅ **đã trả về rồi**, frontend chưa dùng |
-| **Route bám đường thật, khoảng cách, thời lượng** | `itinerary_items.route_to_next` (jsonb) | ✅ `routing.py` gọi OSRM → `distance_km` / `duration_mins` / `polyline` | ❌ bị `to_trip_plan_payload` cắt bỏ |
+| **Route bám đường thật, khoảng cách, thời lượng** | `itinerary_items.route_to_next` (jsonb) | ✅ `routing.py` gọi routing API → `distance_km` / `duration_mins` / `polyline` | ❌ bị `to_trip_plan_payload` cắt bỏ |
 | AI Match Score | — | ✅ `_composite_score` tính điểm relevance thật 0..1 | ❌ chỉ dùng để sort rồi bỏ |
 
 Nghĩa là những tính năng lớn nhất về mặt thị giác (card khách sạn có ảnh, cả hai focus
@@ -65,16 +65,29 @@ payload**, không phải làm mới data model.
 2. **Lịch sử hội thoại: làm persistence ở backend.** Hiện session chỉ nằm trong RAM, có
    TTL, không có endpoint list. Sẽ persist xuống bảng `sessions` / `chat_messages` có sẵn
    thông qua `persist_hook` đã tồn tại, cộng thêm endpoint list + restore.
-3. **Map: Leaflet thật, route bám đường thật từ OSRM.**
+3. **Map: Leaflet thật, route bám đường thật.**
    *Quyết định này đã được sửa sau khi người dùng chỉ ra `backend/src/services/routing.py`
    — bản plan đầu tiên đánh giá sai là "không có dữ liệu routing".* Thực tế:
-   `recalculate_itinerary_routes` (`routing.py:93`) gọi OSRM cho từng cặp điểm liên tiếp và
-   lưu `route_to_next = {distance_km, duration_mins, polyline}` lên itinerary item. Nên map
-   sẽ vẽ **polyline bám đường thật**, và leg pill hiển thị **khoảng cách + thời lượng thật**.
-   Haversine chỉ còn là **fallback** khi OSRM lỗi. Ba giới hạn còn lại (nhãn phương tiện,
-   độ chính xác thời lượng, `route_from_hotel` không được persist) nằm ở mục 1, 2, 15 trong
-   [Phần chưa làm](#phần-chưa-làm-not-implemented-register).
-4. **Ngân sách: chip theo mức (glass tier chips), không dùng slider số.** Backend intake
+   `recalculate_itinerary_routes` (`routing.py:93`) đã gọi routing cho từng cặp điểm liên
+   tiếp và lưu `route_to_next = {distance_km, duration_mins, polyline}` lên itinerary item.
+   Map vẽ **polyline bám đường thật**; leg pill hiển thị **khoảng cách + thời lượng thật**.
+   Haversine chỉ còn là **fallback** khi routing lỗi.
+
+4. **Nhà cung cấp routing: Mapbox Directions v5, thay OSRM public demo (Phase 12).**
+   Mapbox là tác giả gốc của OSRM nên Directions v5 gần như tương thích shape — migration
+   là drop-in. Đổi lấy được ba thứ:
+   - `driving-traffic` cho thời lượng có traffic thật → **xoá được hệ số bịa `× 2.5`**
+     (`routing.py:41`)
+   - 4 profile (`driving-traffic` / `walking` / `cycling`) → **nhãn phương tiện thật**,
+     chọn bằng luật khoảng cách haversine cục bộ nên vẫn 1 request/chặng
+   - 300 req/phút có SLA và `https://`, thay cho demo server không cam kết
+
+5. **Tile bản đồ: Mapbox raster tiles (`light-v11` / `dark-v11`), thay tile OSM.**
+   Bỏ được hack CSS `invert(.92) hue-rotate(180deg)` mà bản export dùng để giả dark mode.
+   Vẫn dùng **Leaflet**, không chuyển sang Mapbox GL JS — chỉ đổi URL tile, mọi thứ khác
+   trong Phase 10 giữ nguyên. Cần **token thứ hai** (public, có URL restriction) tách biệt
+   với token server của Phase 12.
+6. **Ngân sách: chip theo mức (glass tier chips), không dùng slider số.** Backend intake
    match nhãn mức ngân sách theo closed-set bằng regex (`hotel_selection.py:509-531`).
    Slider 500k–50M của design sẽ đòi hỏi làm lại NLU. Giữ nguyên giá trị wire hiện tại,
    chỉ restyle thành card glass theo design.
@@ -139,13 +152,18 @@ thay đổi contract: phải được cả hai dev đồng ý và phải sửa k
 | 2 | [Mở rộng payload khách sạn](./phase-02-be-hotel-option-payload.md) | Backend | Pending | 1 |
 | 3 | [Endpoint chi tiết khách sạn & địa điểm](./phase-03-be-detail-endpoints.md) | Backend | Pending | 1 |
 | 4 | [Persist session & lịch sử hội thoại](./phase-04-be-session-persistence.md) | Backend | Pending | 1 |
+| 12 | [Chuyển OSRM → Mapbox Directions](./phase-12-be-mapbox-routing.md) | Backend | Pending | 1 |
 | 5 | [Design system & App Shell](./phase-05-fe-design-system-and-shell.md) | Frontend | Pending | 1 |
 | 6 | [Chat panel cố định](./phase-06-fe-chat-panel.md) | Frontend | Pending | 5 |
 | 7 | [Stage: Intake & Generating](./phase-07-fe-stage-intake-generating.md) | Frontend | Pending | 5 |
 | 8 | [Stage: Khách sạn & Hotel Focus](./phase-08-fe-stage-hotels-focus.md) | Frontend | Pending | 5 |
 | 9 | [Stage: Workspace & Place Focus](./phase-09-fe-stage-workspace-focus.md) | Frontend | Pending | 5 |
 | 10 | [Leaflet Map & Route](./phase-10-fe-map.md) | Frontend | Pending | 9 |
-| 11 | [Tích hợp & Kiểm thử](./phase-11-integration-verification.md) | Chung | Pending | 2,3,4,6,7,8,9,10 |
+| 11 | [Tích hợp & Kiểm thử](./phase-11-integration-verification.md) | Chung | Pending | 2,3,4,6,7,8,9,10,12 |
+
+> Phase 12 nằm ở track backend, **chạy song song với Phase 2** (không phụ thuộc nhau):
+> Phase 2 chuyển route từ item sang payload, Phase 12 đổi thứ tạo ra route. Đánh số 12 để
+> không phải đánh lại số 11 phase đã viết.
 
 ## API Contract (điểm nối giữa 2 track)
 
@@ -250,38 +268,41 @@ nhưng `to_trip_plan_payload` không copy sang payload — **đúng cùng một 
   // đã trả về sẵn, chỉ thiếu trong types.ts
   "coordinates": "16.0678,108.2208",
 
-  // MỚI — từ routing.py, dữ liệu OSRM thật
+  // MỚI — từ routing.py, dữ liệu Mapbox Directions thật
   "route_to_next": {
-    "distance_km": 6.4,        // khoảng cách đường bộ thật
-    "duration_mins": 14.0,     // ƯỚC TÍNH — OSRM duration × 2.5 (routing.py:41)
-    "polyline": "yseeAo..."    // encoded polyline, precision 1e5, overview=full
+    "distance_km": 6.4,               // khoảng cách đường bộ thật
+    "duration_mins": 14.2,            // thời lượng thật (Phase 12 xoá hệ số 2.5 cũ)
+    "polyline": "yseeAo...",          // encoded polyline, precision 1e5, overview=full
+    "profile": "driving-traffic"      // MÃ profile đã gọi: driving-traffic|walking|cycling
   } | null,
 
   "route_from_hotel": { … } | null   // chỉ item đầu ngày; null sau round-trip DB (mục 15)
 }
 ```
 
-`polyline` là chuỗi Google Encoded Polyline (precision 1e5). Frontend giải mã bằng hàm port
-từ `backend/src/airflow/dashboard/templates/index.html:769-795` — **đã có sẵn bản chạy được**.
+`polyline` là chuỗi Google Encoded Polyline (precision 1e5). Mapbox trả cùng định dạng với
+OSRM (`geometries=polyline` mặc định), nên frontend giải mã bằng hàm port từ
+`backend/src/airflow/dashboard/templates/index.html:769-795` — **đã có sẵn bản chạy được,
+không cần sửa khi đổi nhà cung cấp**.
 
-`route_to_next` là `null` khi: thiếu toạ độ ở một trong hai đầu, OSRM lỗi/timeout, hoặc
-OSRM không tìm được tuyến. Frontend **bắt buộc** phải có fallback đường thẳng cho mọi
+`profile` là **mã**, không phải chuỗi hiển thị. Frontend dựng nhãn phương tiện qua i18n
+(`routeProfile.walking` → "đi bộ"). Cùng nguyên tắc với `match_reasons`.
+
+`route_to_next` là `null` khi: thiếu toạ độ ở một trong hai đầu, routing API lỗi/timeout,
+hoặc không tìm được tuyến. Frontend **bắt buộc** phải có fallback đường thẳng cho mọi
 trường hợp đó — xem `index.html:874-876` làm mẫu.
 
-Trường hợp hai điểm trùng toạ độ, `get_route_to_next` trả `{0.0, 0.0, ""}` chứ **không**
-trả `null` (`routing.py:84-89`). Frontend phải phân biệt "cùng chỗ, không cần di chuyển"
-với "không có dữ liệu route" — hai trạng thái hiển thị khác nhau.
+Trường hợp hai điểm trùng toạ độ, `get_route_to_next` trả `{0.0, 0.0, "", profile: null}`
+chứ **không** trả `null` (`routing.py:84-89`). Frontend phải phân biệt "cùng chỗ, không cần
+di chuyển" với "không có dữ liệu route" — hai trạng thái hiển thị khác nhau.
 
 ### Câu hỏi mở
 
-**Hệ số `duration × 2.5` trong `routing.py:41`.** Comment nói để "mô phỏng tốc độ thực tế",
-nhưng nó thổi mọi thời lượng lên 2.5 lần so với ước tính lái xe của OSRM. Một quãng OSRM
-tính 10 phút sẽ hiển thị thành 25 phút. Đây không phải thời gian đo được, và cũng không phải
-một hiệu chỉnh có nguồn gốc rõ ràng.
-
-Plan này **ship nguyên trạng** (không đổi backend logic) nhưng hiển thị có tiền tố `~` và
-nhãn nói rõ là ước tính. Cần quyết định riêng, ngoài phạm vi plan:
-bỏ hệ số, thay bằng hệ số có căn cứ, hay giữ nguyên và ghi rõ trong tài liệu.
+**Hạn mức và chi phí Mapbox.** Directions API giới hạn 300 request/phút; một chuyến 4 ngày
+≈ 24 request và `lru_cache` khiến việc chạy lại gần như miễn phí. Nhưng **hạn mức free tier
+và đơn giá cần được kiểm tra trên trang giá Mapbox trước khi lên production** — chính sách
+giá thay đổi theo thời gian nên plan này không ghi con số cụ thể. Nhớ bật cảnh báo quota
+trong dashboard Mapbox, cho **cả** Directions API lẫn map loads (tile).
 
 ## Phần chưa làm (Not Implemented Register)
 
@@ -290,8 +311,8 @@ là bỏ sót — mỗi phần đều thiếu nguồn dữ liệu hoặc là ran
 
 | # | Tính năng trong design | Tài liệu nguồn | Vì sao không làm | Thay bằng gì |
 |---|---|---|---|---|
-| 1 | **Nhãn phương tiện** phân biệt theo chặng (ô tô / đi bộ / cáp treo) | `UX Improvements.md` §5 | OSRM được gọi với profile `/driving` **hardcode** (`routing.py:11`). Mọi chặng đều là tuyến ô tô — hệ thống không hề biết chặng nào nên đi bộ hay đi cáp treo. Ba nhãn khác nhau trong design sẽ là bịa. | Một nhãn duy nhất "di chuyển bằng ô tô" — đúng với thứ thực sự được tính. Legend không có 3 mức phương tiện |
-| 2 | **Thời gian di chuyển là con số chính xác** ("14 phút") | `UX Improvements.md` §5 | `duration_mins` = thời lượng OSRM **nhân 2.5** (`routing.py:41`, comment ghi rõ "simulate a more realistic pace"). Đây là ước lượng đã bị thổi lên có chủ đích, không phải thời gian đo được. Hiển thị nó như con số chính xác là sai lệch. | Hiển thị **có tiền tố `~`** và nhãn i18n nói rõ là ước tính. Xem [câu hỏi mở](#câu-hỏi-mở) — hệ số 2.5 cần được xem lại |
+| 1 | Nhãn **cáp treo** cho chặng đi cáp | `UX Improvements.md` §5 | Mapbox Directions chỉ có 4 profile: `driving`, `driving-traffic`, `walking`, `cycling`. Không có cáp treo, và không có dữ liệu nào trong DB cho biết chặng nào đi cáp. | Ô tô / đi bộ **là thật** (Phase 12 gọi đúng profile tương ứng). Cáp treo không có nhãn riêng — chặng đó hiển thị như chặng ô tô hoặc đi bộ theo profile đã gọi |
+| 2 | Thời lượng **chính xác tại thời điểm đi** | `UX Improvements.md` §5 | Route được tính lúc `persist_itinerary_bundle` chạy, không phải lúc người dùng thực sự di chuyển. `driving-traffic` phản ánh traffic **lúc lập lịch trình**. Với chuyến đi trong tương lai thì vẫn là ước lượng | Thời lượng **thật từ Mapbox** (hệ số bịa 2.5 đã bị xoá ở Phase 12), hiển thị có tiền tố `~`. Nâng cấp được sau bằng tham số `depart_at` với ngày giờ thật của lịch trình — ghi lại thành việc tiếp theo |
 | 3 | Card "Yêu cầu đã thay đổi → Cập nhật / Giữ kết quả" | `Yêu cầu cập nhật thiết kế.md`, §Conversation State Management | Backend không phát ra diff có cấu trúc. `pending_trip_edit_request` chỉ là text tự do, không phải diff theo từng field kèm phạm vi ảnh hưởng. | Bỏ. Thay bằng danh sách `trip_plan.adjustments[]` đang có sẵn — đây mới là bản ghi thật của các thay đổi đã áp dụng |
 | 4 | Chọn phòng làm cập nhật tổng giá / AI Summary | `Hotel Detail Focus.md` §Room Selection | `select_hotel` chỉ nhận số thứ tự khách sạn. Không có verb chọn phòng, cũng không có logic tính lại giá theo phòng. | Danh sách phòng hiển thị **chỉ đọc** với dữ liệu `room_prices` thật; mở rộng card phòng vẫn hoạt động; **không có nút "Chọn phòng"** |
 | 5 | Đoạn văn "AI Summary" cho khách sạn và địa điểm | `Hotel/Place Detail Focus.md` §AI Recommendation | Cần gọi LLM cho từng thực thể — độ trễ và chi phí ngoài phạm vi plan, và sẽ sinh ra câu chữ không kiểm chứng được | Bullet đã dịch, dựng từ `match_reasons` — tức là các tham số ranking thật |
@@ -304,7 +325,7 @@ là bỏ sót — mỗi phần đều thiếu nguồn dữ liệu hoặc là ran
 | 12 | Ngôn ngữ hội thoại tách khỏi ngôn ngữ giao diện (tự nhận diện) | `Internationalization.md` §AI Conversation | Đã đáp ứng một phần: `language` được truyền theo từng lượt và prompt LLM đã được localize. Việc *nhận diện* ngôn ngữ theo từng tin nhắn là hành vi NLU backend, không phải việc của UI | Giữ nguyên hành vi hiện tại, không mở rộng |
 | 13 | Ô thống kê **tổng ngân sách / tổng chi phí** ở tab Tổng quan | `V-OTA_Frontend_Design_Specification.md` §Panel 2 Tab Tổng quan | `TripPlanPayload` không có trường chi phí nào (`schemas.py:121-133`). Giá chỉ tồn tại trên `hotel_options[]` trong lúc chọn khách sạn và không được chuyển sang `trip_plan`. Không suy ra được sau khi đã chốt lịch trình | Bỏ hẳn ô đó. Các ô còn lại (số ngày, số điểm, khách sạn, tổng quãng đường `≈`) đều tính được từ dữ liệu thật |
 | 14 | Danh sách **6 bước AI Searching có dấu tick tuần tự** ("✓ Phân tích điểm đến", "✓ Tìm khách sạn phù hợp", …) | `Yêu cầu cập nhật thiết kế.md` §AI Searching State | Backend không phát ra tiến độ theo bước — chỉ có `pending: true` và thời gian đã trôi. Tick tuần tự sẽ là tuyên bố tiến độ bịa. Cùng tiền lệ đã loại bỏ "DeepDive Thinking" trong plan Stitch trước đó | Một trạng thái đang xử lý + số giây thật đã trôi + skeleton card + progress vô hạn (indeterminate). Nếu backend sau này phát ra tiến độ thật thì thêm vào được mà không đổi gì khác |
-| 15 | Route **chặng đầu tiên mỗi ngày** (khách sạn → điểm đầu) sau khi đọc lại từ DB | — (lỗ hổng phát hiện khi rà `routing.py`) | `recalculate_itinerary_routes` **có** tính `route_from_hotel` (`routing.py:127`), nhưng `ITEM_RPC_FIELDS` (`itinerary_store.py:47-60`) **không chứa** `route_from_hotel` nên nó bị lọc bỏ trước khi persist. Chỉ `route_to_next` được lưu. Sau một vòng round-trip DB, chặng đầu mỗi ngày mất route | Chặng đầu ngày dùng **fallback đường thẳng** như mọi chặng lỗi OSRM khác. **Sửa được rất rẻ** — thêm `route_from_hotel` vào `ITEM_RPC_FIELDS` — nhưng cần migration/RPC phía DB nên để ngoài phạm vi plan này. Ghi lại thành việc tiếp theo |
+| 15 | Route **chặng đầu tiên mỗi ngày** (khách sạn → điểm đầu) sau khi đọc lại từ DB | — (lỗ hổng phát hiện khi rà `routing.py`) | `recalculate_itinerary_routes` **có** tính `route_from_hotel` (`routing.py:127`), nhưng `ITEM_RPC_FIELDS` (`itinerary_store.py:47-60`) **không chứa** `route_from_hotel` nên nó bị lọc bỏ trước khi persist. Chỉ `route_to_next` được lưu. Sau một vòng round-trip DB, chặng đầu mỗi ngày mất route | Chặng đầu ngày dùng **fallback đường thẳng** như mọi chặng lỗi routing khác. **Sửa được rất rẻ** — thêm `route_from_hotel` vào `ITEM_RPC_FIELDS` — nhưng cần migration/RPC phía DB nên để ngoài phạm vi plan này. Ghi lại thành việc tiếp theo |
 
 ## Rủi ro
 
@@ -316,6 +337,8 @@ là bỏ sót — mỗi phần đều thiếu nguồn dữ liệu hoặc là ran
 | URL ảnh khách sạn là link ngoài, có thể 404 | Trung bình | Mọi ô ảnh phải có placeholder dự phòng — tái dùng pattern icon Material đang có |
 | Viết lại layout làm hỏng luồng intake / chọn khách sạn đang chạy tốt | Cao | Chat contract, giá trị wire của `composeIntakeMessage`, và chọn khách sạn theo số thứ tự bị đóng băng tuyệt đối; Phase 11 chạy lại toàn bộ kịch bản hội thoại mock |
 | Theme tối không đạt tương phản WCAG trên nền glass | Trung bình | Rà tương phản cho cả hai theme ở Phase 11 |
+| **Token Mapbox lọt ra ngoài** | Cao | **Hai token tách biệt**: secret token phía server cho Directions (Phase 12, không bao giờ vào payload/log), public token có URL restriction cho tile trình duyệt (Phase 10). Không commit token nào. Không dùng chung |
+| Vượt quota Mapbox | Trung bình | `lru_cache` đã có; 1 request/chặng nhờ lọc haversine cục bộ; bật cảnh báo quota cho cả Directions và map loads |
 
 ## Tiêu chí hoàn thành
 
@@ -327,6 +350,9 @@ là bỏ sót — mỗi phần đều thiếu nguồn dữ liệu hoặc là ran
 - [ ] Card khách sạn hiển thị ảnh thật, tiện nghi, điểm đánh giá và match score thật
 - [ ] Hai focus mode đều chạy trên dữ liệu endpoint thật; không phải modal, không phải popup
 - [ ] Map hiển thị marker và route theo ngày từ `coordinates` thật; hover đồng bộ hai chiều
+- [ ] Route vẽ từ polyline Mapbox bám đường thật; leg pill có phương tiện + thời lượng thật
+- [ ] Hệ số `× 2.5` đã bị xoá khỏi `routing.py`
+- [ ] Hai token Mapbox tách biệt; không token nào bị commit hay lọt vào payload
 - [ ] Lịch sử hội thoại liệt kê session đã persist thật và khôi phục được
 - [ ] Mọi chuỗi đều được dịch; catalog `en` và `vi` đầy đủ; không còn text hardcode
 - [ ] Hành vi cũ nguyên vẹn: vòng đời session, giá trị wire intake NLU, chọn khách sạn theo số thứ tự, xử lý lỗi

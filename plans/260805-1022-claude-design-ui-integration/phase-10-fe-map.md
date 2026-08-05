@@ -13,17 +13,17 @@ track: frontend
 ## Tổng quan
 
 Thay `MapPanel` placeholder bằng bản đồ Leaflet thật: marker, **route bám đường thật từ
-OSRM**, đồng bộ hover hai chiều với timeline và danh sách khách sạn.
+Mapbox**, đồng bộ hover hai chiều với timeline và danh sách khách sạn.
 
 **Đã có sẵn một bản chạy được để port**: `backend/src/airflow/dashboard/templates/index.html`
-là dashboard Airflow đang hoạt động, đã giải mã polyline OSRM và vẽ route nhiều màu theo
+là dashboard Airflow đang hoạt động, đã giải mã polyline và vẽ route nhiều màu theo
 ngày trên Leaflet, kèm fallback đường thẳng. Phase này **port logic đó sang React**, không
 phải phát minh lại. Đọc `index.html:769-1000` trước khi viết dòng code đầu tiên.
 
 ## Yêu cầu
 
 **Chức năng**
-- Bản đồ Leaflet với tile OSM, chrome dạng glass theo design
+- Bản đồ Leaflet với tile Mapbox (`light-v11`/`dark-v11`), chrome dạng glass theo design
 - Stage `hotels`: marker cho từng khách sạn; hover card ↔ hover marker; click marker → mở
   Hotel Detail Focus Mode
 - Stage `workspace` tab Tổng quan: route toàn chuyến, mỗi ngày một màu, có legend
@@ -36,8 +36,8 @@ phải phát minh lại. Đọc `index.html:769-1000` trước khi viết dòng 
 
 **Phi chức năng**
 - Bản đồ thu gọn mượt khi vào focus mode, không remount
-- Tile OSM tuân thủ chính sách sử dụng (có attribution)
-- Bộ lọc tile theo theme sáng/tối như bản export làm
+- Attribution Mapbox + OpenStreetMap hiển thị đầy đủ theo điều khoản sử dụng
+- Đổi style tile theo theme, không dùng bộ lọc CSS giả dark mode
 
 ## Kiến trúc
 
@@ -71,8 +71,8 @@ Mỗi chặng vẽ theo đúng thứ tự ưu tiên mà dashboard Airflow đã d
 2. không có / giải mã ra < 2 điểm → đường thẳng [điểm A, điểm B]
 ```
 
-Bước 2 **bắt buộc**, không phải tuỳ chọn: OSRM public demo có thể rate-limit hoặc timeout,
-khi đó backend trả `null` và map vẫn phải vẽ được cái gì đó.
+Bước 2 **bắt buộc**, không phải tuỳ chọn: routing API có thể lỗi, hết quota, hoặc backend
+chưa cấu hình token — khi đó `route_to_next` là `null` và map vẫn phải vẽ được cái gì đó.
 
 Cấu trúc mỗi ngày: `route_from_hotel` (chặng khách sạn → điểm đầu) → các `route_to_next`
 giữa các item → `route_to_next` của item cuối (quay về khách sạn). Đúng cấu trúc mà
@@ -97,14 +97,18 @@ theme. Tham khảo `routeColors` trong `index.html` để giữ nhất quán v�
 
 ### Legend — nói đúng sự thật
 
-Legend liệt kê **màu theo ngày**. Về phương tiện:
+Legend liệt kê **màu theo ngày**, cộng phần chú giải phương tiện dựng từ các `profile`
+**thực sự xuất hiện** trong lịch trình đang xem:
 
-- Khi chặng có route thật: một nhãn duy nhất "ô tô" — OSRM luôn được gọi với profile
-  `/driving` hardcode (`routing.py:11`), nên đó chính xác là thứ đã được tính
-- Khi chặng là fallback: không có nhãn phương tiện
+- `driving-traffic` → "ô tô" (nét liền)
+- `walking` → "đi bộ" (nét đứt dày)
+- chặng fallback (`null`) → "ước lượng" (nét đứt thưa, màu nhạt)
 
-Design có **ba** mức (ô tô / đi bộ / cáp treo). **Chỉ ship một** — hệ thống không hề biết
-chặng nào nên đi bộ hay đi cáp treo. Mục 1 bảng "Phần chưa làm".
+Chỉ render mục nào thật sự có trong dữ liệu — lịch trình toàn ô tô thì không hiện mục "đi bộ".
+
+Design có **ba** mức: ô tô / đi bộ / **cáp treo**. Hai mức đầu là thật (Phase 12 gọi đúng
+profile). **Cáp treo không ship** — Mapbox không có profile đó và DB không có dữ liệu nào
+cho biết chặng nào đi cáp. Mục 1 bảng "Phần chưa làm".
 
 Chặng fallback nên vẽ khác chặng thật (ví dụ nét đứt thưa hơn) để người dùng phân biệt được
 đâu là tuyến đường thật và đâu là đường nối ước lượng.
@@ -130,13 +134,39 @@ Map không unmount khi vào focus mode; nó bị thu về bề rộng 0 bằng t
 `map.invalidateSize()`** sau khi transition kết thúc, nếu không Leaflet sẽ render sai kích
 thước khi mở lại. Đây là lỗi kinh điển của Leaflet trong layout động.
 
-### Theme
+### Tile — Mapbox raster, không phải OSM
 
-Bản export lọc tile theo theme (`--tile`, `V-OTA Planner.dc.html:61`):
-- sáng: `saturate(.55) brightness(1.06) contrast(.9)`
-- tối: `saturate(.35) brightness(.72) contrast(1.04) invert(.92) hue-rotate(180deg)`
+Dùng **Mapbox raster tiles** nạp vào Leaflet, **không** chuyển sang Mapbox GL JS. Đổi mỗi
+URL tile; toàn bộ phần còn lại của phase (marker, polyline, hover sync, `invalidateSize`)
+giữ nguyên vì vẫn là Leaflet.
 
-Port nguyên. Cách này cho dark map từ tile OSM thường mà không cần nhà cung cấp tile riêng.
+```
+https://api.mapbox.com/styles/v1/mapbox/{style}/tiles/{z}/{x}/{y}?access_token={token}
+   style sáng: light-v11        style tối: dark-v11
+```
+
+Đổi style theo `data-theme` → **bỏ được hack CSS** `invert(.92) hue-rotate(180deg)` mà bản
+export dùng để giả dark mode (`V-OTA Planner.dc.html:61`). Dark map thật đẹp hơn hẳn và đúng
+tinh thần Apple HIG của design.
+
+**Token tile là token THỨ HAI**, khác token server của Phase 12:
+
+| | Phase 12 (Directions) | Phase 10 (tile) |
+|---|---|---|
+| Loại | secret | public |
+| Nơi dùng | backend | trình duyệt |
+| Restriction | không | **bắt buộc có URL restriction** |
+| Scope | directions | chỉ `styles:tiles`, `styles:read` |
+
+Token tile **lộ ra trong bundle trình duyệt** — đó là bình thường và không tránh được, nên
+URL restriction là biện pháp bảo vệ duy nhất. Đặt qua `VITE_MAPBOX_TOKEN` (tiền tố `VITE_`
+nên nó cố ý đi vào bundle). **Tuyệt đối không** dùng token server ở đây.
+
+Attribution của Mapbox và OpenStreetMap là **bắt buộc** theo điều khoản sử dụng — giữ
+control attribution của Leaflet, đừng ẩn đi.
+
+Nếu thiếu `VITE_MAPBOX_TOKEN`: fallback về tile OSM + bộ lọc CSS cũ, và log cảnh báo. Map
+vẫn chạy được cho dev chưa cấu hình token.
 
 ## File liên quan
 
@@ -171,7 +201,9 @@ Port nguyên. Cách này cho dark map từ tile OSM thường mà không cần n
    chuỗi hợp lệ đã biết kết quả).
 3. `use-leaflet-map.ts` — khởi tạo, dọn dẹp, `invalidateSize` sau transition (dùng
    `transitionend` hoặc `ResizeObserver`, không dùng `setTimeout` đoán mò).
-4. `map-view.tsx` với tile OSM + attribution + bộ lọc theme.
+4. `map-view.tsx` với **Mapbox raster tiles** (`light-v11` / `dark-v11` theo `data-theme`),
+   attribution Mapbox + OSM, token từ `VITE_MAPBOX_TOKEN`. Fallback tile OSM + bộ lọc CSS
+   khi thiếu token. **Không** dùng token server của Phase 12 ở đây.
 5. `map-colors.ts` — màu theo ngày, kiểm tra tương phản ở cả hai theme.
 6. Marker: khách sạn (biểu tượng riêng) và điểm tham quan (số thứ tự). Bỏ điểm không parse được.
 7. Polyline theo ngày: ưu tiên `route_to_next.polyline` đã giải mã, fallback đường thẳng khi
@@ -181,7 +213,8 @@ Port nguyên. Cách này cho dark map từ tile OSM thường mà không cần n
 9. Highlight khi hover: marker phóng to, đoạn route liên quan giữ nguyên opacity, các đoạn
    khác giảm.
 10. Click marker → cuộn tới card; click marker khách sạn → mở Hotel Detail Focus Mode.
-11. `map-legend.tsx` — chỉ màu theo ngày. **Không** có nhãn phương tiện.
+11. `map-legend.tsx` — màu theo ngày + chú giải phương tiện dựng từ các `profile` thật sự
+    xuất hiện trong dữ liệu. **Không** có mục cáp treo.
 12. Thay `MapPanel` bằng `MapView` trong cả hai stage; chạy thông rồi xoá `map-panel.tsx`.
 13. Thêm chuỗi map vào cả hai catalog.
 14. Kiểm chứng: marker đúng vị trí trên bản đồ Đà Nẵng; đổi tab ngày đổi route; hover đồng bộ
@@ -191,7 +224,7 @@ Port nguyên. Cách này cho dark map từ tile OSM thường mà không cần n
 
 - [ ] Map Leaflet thật với tile OSM và attribution đầy đủ
 - [ ] Marker vẽ từ `coordinates` thật; toạ độ hỏng bị bỏ, không có marker ở `(0,0)`
-- [ ] Route vẽ từ `polyline` OSRM đã giải mã — **bám đường thật**, không phải đường thẳng
+- [ ] Route vẽ từ `polyline` Mapbox đã giải mã — **bám đường thật**, không phải đường thẳng
 - [ ] Fallback đường thẳng hoạt động khi `route_to_next` là `null` hoặc polyline hỏng
 - [ ] Chặng fallback vẽ khác chặng thật để phân biệt được bằng mắt
 - [ ] `decodePolyline` port từ dashboard Airflow, có case kiểm tra; **không** thêm dependency
@@ -202,7 +235,11 @@ Port nguyên. Cách này cho dark map từ tile OSM thường mà không cần n
 - [ ] Click marker cuộn tới card tương ứng
 - [ ] Legend chỉ có **một** nhãn phương tiện ("ô tô"), không phải ba mức của design
 - [ ] Map thu gọn/mở lại quanh focus mode mà vẫn đúng kích thước (`invalidateSize`)
-- [ ] Bộ lọc tile hoạt động ở cả theme sáng và tối
+- [ ] Tile Mapbox đổi style theo theme (`light-v11` / `dark-v11`); **không** còn hack CSS `invert()`
+- [ ] Thiếu `VITE_MAPBOX_TOKEN` → fallback tile OSM, map vẫn chạy
+- [ ] Token tile là public + có URL restriction; **không** phải token server của Phase 12
+- [ ] Attribution Mapbox + OSM hiển thị, không bị ẩn
+- [ ] Legend chỉ hiện phương tiện thật sự có trong dữ liệu; không có mục cáp treo
 - [ ] `map-panel.tsx` đã xoá
 - [ ] `npm run typecheck` và `npm run lint` pass
 
@@ -217,16 +254,19 @@ bằng mắt rằng marker rơi vào đúng Đà Nẵng.
 xám hoặc lệch. Phải gắn vào `transitionend`/`ResizeObserver`, không phải `setTimeout` với số
 giây đoán mò.
 
-**Cám dỗ thêm nhãn phương tiện cho "đủ giống design".** OSRM luôn chạy profile `/driving`,
-nên chỉ có một phương tiện là thật. Thêm "đi bộ" cho chặng ngắn và "cáp treo" cho chặng lên
-núi là suy đoán, không phải dữ liệu. Mục 1 bảng "Phần chưa làm"; tiêu chí hoàn thành nêu
-tường minh là chỉ **một** nhãn.
+**Token tile lộ trong bundle.** Không tránh được với tile phía trình duyệt. URL restriction
+là biện pháp bảo vệ duy nhất và **bắt buộc** phải bật trước khi deploy — nếu không, token bị
+lấy đi dùng và tính tiền vào tài khoản. Đây cũng là lý do nó phải khác token server Phase 12:
+token server bị lộ thì mất nhiều hơn nhiều.
 
-**OSRM public demo server là điểm phụ thuộc ngoài không có SLA.** `router.project-osrm.org`
-có thể rate-limit, chậm, hoặc chết. Backend đã xử lý đúng (timeout 5s, `lru_cache`, trả
-`None`), nhưng hệ quả với frontend là: **tỉ lệ chặng có route thật có thể rất thấp** trong
-môi trường dev. Đường fallback không phải nhánh hiếm — nó phải được test kỹ như nhánh chính.
-Lấy số liệu thật từ báo cáo Phase 2 bước 11 trước khi đánh giá kết quả phase này.
+**Cám dỗ thêm nhãn cáp treo cho "đủ giống design".** Ô tô và đi bộ là thật vì Phase 12 gọi
+đúng profile tương ứng. Cáp treo thì không có profile, không có dữ liệu — thêm vào là suy
+đoán. Mục 1 bảng "Phần chưa làm"; tiêu chí hoàn thành nêu tường minh.
+
+**Route có thể vắng trong môi trường dev.** Nếu backend chưa cấu hình `MAPBOX_ACCESS_TOKEN`
+thì mọi `route_to_next` là `null` và toàn bộ map chạy nhánh fallback đường thẳng. Đường
+fallback không phải nhánh hiếm — phải test kỹ như nhánh chính. Lấy số liệu thật (tỉ lệ chặng
+có route + phân bố profile) từ báo cáo Phase 12 bước 8 trước khi đánh giá kết quả phase này.
 
 **Hiệu năng khi hover.** `hoveredId` đổi theo từng chuyển động chuột. Giữ state ở cấp stage,
 memo hoá marker, và cập nhật style Leaflet trực tiếp qua ref thay vì render lại cả cây React.

@@ -25,7 +25,7 @@ Mode. Tiêu thụ `trip_plan` đã có sẵn (không đổi contract) cộng `GE
 - Tab: Tổng quan + mỗi ngày một tab
 - Tab Tổng quan: các ô thống kê, danh sách ngày, phần điều chỉnh (`adjustments`)
 - Tab ngày: timeline theo giờ, mỗi item có thumbnail, tên, loại, ghi chú, metadata
-- Leg pill giữa các item hiển thị khoảng cách xấp xỉ (chi tiết ở Phase 10)
+- Leg pill giữa các item hiển thị phương tiện + khoảng cách + thời lượng (chi tiết ở Phase 10)
 - Click item trong timeline → mở Place Detail Focus Mode
 - Focus mode: chat + map thu gọn, timeline mở rộng sang trái, panel chi tiết bên phải
 - Item đang xem được highlight trong timeline; timeline vẫn cuộn được
@@ -57,12 +57,13 @@ trình. Chỉ ship những ô tính được từ dữ liệu thật:
 
 - **Số ngày, số điểm, khách sạn** — có sẵn ✅
 - **Tổng quãng đường** — cộng `route_to_next.distance_km` (khoảng cách đường bộ **thật** từ
-  OSRM). Chặng nào `null` thì bù bằng haversine và đánh dấu tổng là xấp xỉ ✅
-- **Tổng thời gian di chuyển** — cộng `route_to_next.duration_mins`, hiển thị có tiền tố `~`
-  vì đây là ước tính đã nhân 2.5 (mục 2 bảng "Phần chưa làm") ✅
+  Mapbox). Chặng nào `null` thì bù bằng haversine và đánh dấu tổng là xấp xỉ ✅
+- **Tổng thời gian di chuyển** — cộng `route_to_next.duration_mins` (thời lượng Mapbox thật),
+  hiển thị có tiền tố `~` vì route tính lúc lập lịch trình, không phải lúc đi (mục 2) ✅
 - **Tổng ngân sách/chi phí** — ❌ `trip_plan` không có trường chi phí nào
   (`schemas.py:121-133`); giá chỉ có trên `hotel_options[]` lúc chọn khách sạn và không
   được chuyển sang `trip_plan`. Bỏ ô này — mục 13 bảng "Phần chưa làm"
+
 Không hiển thị ô có giá trị `0` hay `—` chỉ để lấp bố cục; ô nào không có dữ liệu thì **bỏ ô đó**.
 
 ### Card "Cập nhật / Giữ kết quả"
@@ -114,20 +115,24 @@ Mỗi item: cột giờ + số thứ tự, thumbnail, nội dung. Theo đúng b�
 
 `start_time` có thể `null` — khi đó bỏ cột giờ, giữ số thứ tự. Không bịa giờ.
 
-Leg pill giữa hai item liên tiếp, ba trạng thái phân biệt rõ:
+Leg pill giữa hai item liên tiếp, bốn trạng thái phân biệt rõ:
 
 | `route_to_next` | Hiển thị |
 |---|---|
-| có dữ liệu | `6,4 km · ~14 phút` — khoảng cách đường bộ **thật**, thời lượng có tiền tố `~` |
-| `{0, 0, ""}` (trùng toạ độ) | "cùng địa điểm" — **không** hiện `0 km · 0 phút` |
-| `null` (OSRM lỗi/thiếu toạ độ) | `≈ 5,1 km đường chim bay` từ haversine, **không** có thời lượng |
+| có dữ liệu, `profile: "driving-traffic"` | `Ô tô · 6,4 km · ~14 phút` |
+| có dữ liệu, `profile: "walking"` | `Đi bộ · 0,9 km · ~12 phút` |
+| `{0, 0, "", null}` (trùng toạ độ) | "cùng địa điểm" — **không** hiện `0 km · 0 phút` |
+| `null` (routing lỗi/thiếu toạ độ) | `≈ 5,1 km đường chim bay` từ haversine, **không** phương tiện, **không** thời lượng |
 
-Ba trạng thái này khác nhau về mặt ngữ nghĩa và không được gộp. Đặc biệt: khi `null` thì
+Bốn trạng thái này khác nhau về ngữ nghĩa và không được gộp. Đặc biệt: khi `null` thì
 **tuyệt đối không** hiện thời lượng — không có cách nào ước tính thời gian từ đường chim bay.
 
-Nhãn phương tiện: một nhãn duy nhất "ô tô" khi có route thật (OSRM luôn dùng profile
-`/driving`), không có nhãn khi fallback. Không có ba mức đi bộ/cáp treo — mục 1 bảng
-"Phần chưa làm".
+Nhãn phương tiện dựng từ `profile` qua khoá i18n `routeProfile.*`. Phase 12 gọi đúng profile
+tương ứng nên nhãn luôn khớp với tuyến thực sự được tính. `profile` lạ (backend thêm mới) →
+hiển thị khoảng cách + thời lượng nhưng **bỏ nhãn phương tiện**, không render mã thô.
+
+Thời lượng luôn có tiền tố `~` — route được tính lúc lập lịch trình, không phải lúc đi
+(mục 2 bảng "Phần chưa làm").
 
 `lib/geo.ts` (haversine) chỉ dùng cho nhánh fallback. Logic đặt ở Phase 10 và dùng chung.
 
@@ -174,8 +179,9 @@ Nhãn phương tiện: một nhãn duy nhất "ô tô" khi có route thật (OSR
 - [ ] Chỉ hiện ô thống kê tính được từ dữ liệu thật; ô không có nguồn bị bỏ hẳn
 - [ ] Tổng quãng đường cộng từ `distance_km` thật; chỉ đánh dấu xấp xỉ khi có chặng fallback
 - [ ] Tổng thời gian di chuyển có tiền tố `~`
-- [ ] Leg pill phân biệt đủ ba trạng thái: có route / trùng toạ độ / `null`
-- [ ] Nhánh fallback (`null`) **không** hiển thị thời lượng
+- [ ] Leg pill phân biệt đủ bốn trạng thái: ô tô / đi bộ / trùng toạ độ / `null`
+- [ ] Nhãn phương tiện dựng từ `profile` qua i18n; `profile` lạ thì bỏ nhãn, không render mã thô
+- [ ] Nhánh fallback (`null`) **không** hiển thị thời lượng và **không** hiển thị phương tiện
 - [ ] `adjustments[]` được render; **không** có card "Cập nhật / Giữ kết quả" giả
 - [ ] Item không mở được không có affordance click
 - [ ] Place focus mode là chuyển đổi layout, không phải modal
