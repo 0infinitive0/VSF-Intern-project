@@ -1,15 +1,4 @@
-import { useTranslation } from 'react-i18next'
 import type { ChatMessage } from '../types'
-
-function formatTimestamp(at: string | undefined, locale: string): string | null {
-  if (!at) return null
-  const date = new Date(at)
-  if (Number.isNaN(date.getTime())) return null
-  return new Intl.DateTimeFormat(locale === 'vi' ? 'vi-VN' : 'en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date)
-}
 
 /**
  * MessageBubble — renders one chat turn per the Claude Design glassmorphism
@@ -21,10 +10,8 @@ function formatTimestamp(at: string | undefined, locale: string): string | null 
  *   - bubbles cap at 44ch; the backend's pre-formatted text is preserved
  */
 export default function MessageBubble({ message }: { message: ChatMessage }) {
-  const { t, i18n } = useTranslation()
-  const { role, text, isError, at } = message
+  const { role, text, isError } = message
   const isUser = role === 'user'
-  const timestamp = formatTimestamp(at, i18n.language)
 
   const radiusClass = isUser ? 'rounded-[18px] rounded-br-[6px]' : 'rounded-[18px] rounded-bl-[6px]'
 
@@ -49,14 +36,6 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
         >
           {text}
         </div>
-        {timestamp && (
-          <div
-            className="text-[9.5px] font-medium tracking-[0.04em] text-on-surface-muted px-1"
-            aria-label={t('messageTimestampLabel', { time: timestamp })}
-          >
-            {timestamp}
-          </div>
-        )}
       </div>
     </div>
   )

@@ -26,8 +26,8 @@
 
   "composerPlaceholder": "Message V-OTA…",
   "sendBtn": "Send",
-  "newChatBtn": "+ New chat",
-  "newChatConfirm": "Start a new chat? The current conversation will be deleted.",
+  "newChatBtn": "New trip",
+  "newChatConfirm": "Start a new trip? The current conversation will be deleted.",
 
   "stepNavigatorLabel": "Planning steps",
   "stepDetails": "Details",

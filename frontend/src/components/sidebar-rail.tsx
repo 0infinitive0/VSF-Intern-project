@@ -40,11 +40,16 @@ export default function SidebarRail({
         />
       )}
       <aside
-        className="fixed lg:relative inset-y-0 left-0 z-40 lg:z-30 shrink-0 flex flex-col gap-2.5 border-r border-border-subtle glass-panel overflow-hidden"
+        className="fixed lg:relative inset-y-0 left-0 z-40 lg:z-30 shrink-0 flex flex-col gap-2.5 glass-panel overflow-hidden"
         style={{
           width: collapsed ? '76px' : '248px',
           padding: collapsed ? '14px 13px' : '14px 12px',
           borderRadius: 0,
+          // glass-panel's own `border` shorthand (--color-edge, all sides) sorts after
+          // plain utilities in the generated stylesheet and wins on equal specificity,
+          // silently overriding a `border-r border-line2` className. Inline style always
+          // outranks any class, so the design's border-right token is set here instead.
+          borderRight: '1px solid var(--line2)',
           transition: 'width .42s var(--ease-glide), padding .42s ease',
         }}
         aria-label={t('sidebarLabel')}
@@ -52,7 +57,10 @@ export default function SidebarRail({
         <div className={`flex items-center gap-2 shrink-0 ${collapsed ? 'flex-col' : 'flex-row'}`}>
           <div
             className="w-[34px] h-[34px] shrink-0 rounded-xl flex items-center justify-center text-on-primary font-bold text-base"
-            style={{ background: 'linear-gradient(145deg,#5C93EE,#2C5FC9)' }}
+            style={{
+              background: 'linear-gradient(145deg,#5C93EE,#2C5FC9)',
+              boxShadow: '0 8px 20px -7px rgba(44,95,201,.65)',
+            }}
             aria-hidden="true"
           >
             V
@@ -79,7 +87,7 @@ export default function SidebarRail({
           type="button"
           onClick={onNewTrip}
           title={t('resetTitle')}
-          className="shrink-0 h-10 rounded-2xl border border-dashed border-outline-variant flex items-center justify-center gap-2 text-sm font-medium text-on-surface hover:border-primary hover:text-primary transition-colors"
+          className="shrink-0 h-10 rounded-[14px] border border-dashed border-outline-variant bg-glass-1 flex items-center justify-center gap-2 text-sm font-medium text-on-surface hover:border-primary hover:text-primary transition-colors"
         >
           <span className="material-symbols-outlined text-[18px]" aria-hidden="true">
             add

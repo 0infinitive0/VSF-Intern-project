@@ -65,11 +65,17 @@ export default function ConversationList({ collapsed }: { collapsed: boolean }) 
       role="list"
       aria-label={t('sidebarHistoryLabel')}
     >
-      {sessions.map((session) => {
+      {sessions.map((session, i) => {
         const title = session.title || session.destination || t('sidebarUntitledSession')
         return (
-          <div key={session.session_id} role="listitem" className="relative group" title={title}>
-            <div className="w-full flex items-center gap-2.5 rounded-2xl p-2">
+          <div
+            key={session.session_id}
+            role="listitem"
+            className="relative group animate-[vFade_0.5s_ease_both]"
+            style={{ animationDelay: `${Math.min(i, 8) * 60}ms` }}
+            title={title}
+          >
+            <div className="w-full flex items-center gap-2.5 rounded-[14px] p-2 hover:bg-glass-2 transition-colors">
               {session.thumbnail_url ? (
                 <img src={session.thumbnail_url} alt="" className="w-8 h-8 rounded-[11px] object-cover shrink-0" />
               ) : (
@@ -77,9 +83,9 @@ export default function ConversationList({ collapsed }: { collapsed: boolean }) 
               )}
               {!collapsed && (
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-semibold text-on-surface truncate pr-4">{title}</div>
+                  <div className="text-[12.5px] font-[590] text-on-surface truncate pr-4">{title}</div>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="text-[10px] text-on-surface-faint whitespace-nowrap">
+                    <span className="text-[10px] text-on-surface-muted whitespace-nowrap">
                       {formatSessionDate(session.updated_at, i18n.language)}
                     </span>
                     <span
@@ -101,7 +107,7 @@ export default function ConversationList({ collapsed }: { collapsed: boolean }) 
                 title={t('sidebarDeleteSessionHint')}
                 aria-label={t('sidebarDeleteSessionHint')}
                 onClick={() => handleDelete(session.session_id)}
-                className="absolute top-1.5 right-1.5 w-6 h-6 rounded-lg border border-border-subtle bg-surface-background text-on-surface-variant items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-error hover:text-on-error hover:border-error transition-colors flex"
+                className="absolute top-2 right-2 w-6 h-6 rounded-lg border border-border-subtle bg-surface-background text-on-surface-variant items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-error hover:text-on-error hover:border-error transition-colors flex"
               >
                 <span className="material-symbols-outlined text-[14px]" aria-hidden="true">
                   close

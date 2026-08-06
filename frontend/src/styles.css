@@ -1,40 +1,93 @@
 /* ============================================================
    styles.css — Tailwind entry + design tokens.
-   Token values ported from data/design/V-OTA Planner.dc.html:22-76 (Claude Design
-   glassmorphism export). Token NAMES kept from the pre-existing Stitch layer so every
-   className already in components/*.tsx keeps resolving — only values changed, plus
-   new glass/motion tokens added alongside. See
-   plans/260805-1022-claude-design-ui-integration/phase-01-api-contract-and-design-tokens.md
-   for the mapping table this file implements.
 
-   Dark mode: each token below is declared once with its light value in @theme, then
-   redeclared directly under the SAME name in body[data-theme="dark"]. Deliberately not
-   routed through an extra layer of --raw-* variables aliased via @theme inline — a
-   custom property declared once at :root and never redeclared on body stays frozen to
-   its :root-computed value for every descendant (inheritance copies the already-resolved
-   value, it does not re-run var() substitution lower in the tree), so a body-scoped
-   override of an aliased --raw-* variable never reaches it. Redeclaring the final name
-   directly on body[data-theme="dark"] sidesteps that: cascade resolves it at body itself,
-   which every descendant correctly sees.
+   Token architecture (rewritten 06/08/2026 — replaces the old hand-copied @theme
+   values). The design's token VALUES have ONE origin: three CSS files copied byte-for-
+   byte from data/trip_planner/trip_planner_components/styles/ (the same tokens the
+   exported .dc.html uses), imported below:
+     - design-variables.css  → :root light tokens (--t1…--t4, --acc, --g0…--g3, …)
+     - design-theme.css      → body[data-theme="dark"] overrides of the same names
+     - design-animation.css  → every keyframe the design uses (vRise, vPop, …)
+   The copied files are the ONLY place token values live. Never hand-copy a value here.
+
+   Namespace aliasing uses @theme inline (not @theme). With a plain @theme, Tailwind
+   emits .bg-primary{background:var(--color-primary)} and resolves --color-primary once
+   at :root, freezing the light value — the body[data-theme="dark"] override of the
+   aliased source token would never be reached by descendants. With @theme inline,
+   Tailwind emits .bg-primary{background:var(--acc)} instead: var() substitution happens
+   at the point of use, so a body-scoped --acc override is picked up correctly. Direct
+   var(--color-*) consumers also work: @theme inline still emits the --color-* variable
+   (--color-primary:var(--acc)), and CSS re-resolves that inner var() per element. See
+   plans/260805-1022-claude-design-ui-integration/phase-01-…md for the mapping table.
+
+   Tokens with NO 1:1 design source (surface-*, outline-*, error-container, etc. — project
+   UI-material derivations) stay as literal values below. They are NOT in the copied
+   files, so check:tokens only enforces the three copied files stay byte-identical.
    ============================================================ */
 
 @import "tailwindcss";
+@import "./styles/design-variables.css";
+@import "./styles/design-theme.css";
+@import "./styles/design-animation.css";
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-@theme {
-  --font-sans: "Inter", "Be Vietnam Pro", sans-serif;
-  --font-display: "Hanken Grotesk", sans-serif;
+/* Design-backed tokens — aliased 1:1 into the copied design files. Each utility here
+   inlines var(--<design-token>) so both themes work with zero value duplication. */
+@theme inline {
+  --color-primary: var(--acc);
+  --color-on-primary: var(--on-acc);
+  --color-primary-soft: var(--acc-soft);
+  /* primary-container aliases --acc (solid) — pre-existing usages pair it with
+     near-white text, which needs a solid background, not the soft wash. */
+  --color-primary-container: var(--acc);
+  --color-on-primary-container: var(--on-acc);
 
-  --color-primary: #3a73de;
-  --color-on-primary: #fcfdfe;
-  --color-primary-soft: rgba(58, 115, 222, 0.12);
-  /* Aliased to --color-primary itself (not the soft tint) — the pre-existing usages
-     of this pair (intake-parameters-form.tsx button hover, hotel-option-card.tsx /
-     itinerary-panel.tsx badges) all pair it with near-white text, which needs a solid
-     background for contrast, not a soft wash. */
-  --color-primary-container: #3a73de;
-  --color-on-primary-container: #fcfdfe;
+  --color-on-surface: var(--t1);
+  --color-on-surface-variant: var(--t2);
+  --color-on-surface-muted: var(--t3);
+  --color-on-surface-faint: var(--t4);
+  --color-text-primary: var(--t1);
+  --color-text-secondary: var(--t2);
+  --color-secondary: var(--t2);
+  --color-on-secondary-container: var(--t2);
+  --color-secondary-container: var(--fill2);
+
+  --color-border-subtle: var(--line);
+  --color-outline: var(--t2);
+  --color-outline-variant: var(--stroke);
+
+  --color-success: var(--ok);
+  --color-success-soft: var(--ok-soft);
+  --color-success-ink: var(--ok-ink);
+  --color-warning: var(--warn);
+  --color-warning-soft: var(--warn-soft);
+  --color-warning-ink: var(--warn-ink);
+  --color-error: var(--err);
+  --color-on-error: var(--on-acc);
+
+  --color-glass-0: var(--g0);
+  --color-glass-1: var(--g1);
+  --color-glass-2: var(--g2);
+  --color-glass-3: var(--g3);
+  --color-edge: var(--edge);
+  --color-gloss: var(--gloss);
+  --color-sheen: var(--sheen);
+  --color-line: var(--line);
+  --color-line2: var(--line2);
+  --color-stroke: var(--stroke);
+  --color-fill: var(--fill);
+  --color-fill2: var(--fill2);
+
+  --color-button: var(--btn);
+  --color-on-button: var(--btn-fg);
+}
+
+/* Project-derived tokens — no 1:1 design source. Kept as literal values (verified equal
+   to the corresponding design t-values) because components reference them; changing them
+   would alter existing visuals. Declared at :root + body[data-theme="dark"] with the
+   unlayered override winning, same cascade trick the pre-06/08 build relied on. */
+@theme {
   --color-primary-fixed: rgba(58, 115, 222, 0.35);
   --color-primary-fixed-dim: rgba(58, 115, 222, 0.35);
 
@@ -45,70 +98,32 @@
   --color-surface-container-high: #dce1f0;
   --color-surface-container-highest: #dce1f0;
 
-  --color-on-surface: #15181c;
-  --color-on-surface-variant: rgba(21, 24, 28, 0.66);
-  --color-on-surface-muted: rgba(21, 24, 28, 0.6);
-  --color-on-surface-faint: rgba(21, 24, 28, 0.44);
-  --color-text-primary: #15181c;
-  --color-text-secondary: rgba(21, 24, 28, 0.66);
-  --color-secondary: rgba(21, 24, 28, 0.66);
-  --color-secondary-container: rgba(21, 24, 28, 0.085);
-  --color-on-secondary-container: rgba(21, 24, 28, 0.66);
-
-  --color-border-subtle: rgba(21, 24, 28, 0.07);
-  --color-outline: rgba(21, 24, 28, 0.66);
-  --color-outline-variant: rgba(21, 24, 28, 0.11);
-
   /* -soft/-ink not defined for error in the design source (only --err itself is used
      there); derived here following the same soft-tint/darker-ink pattern as
      success/warning so the pre-existing error-container tokens have real values. */
-  --color-success: #2a9187;
-  --color-success-soft: rgba(42, 145, 135, 0.14);
-  --color-success-ink: #1f6f67;
-  --color-warning: #c8802f;
-  --color-warning-soft: rgba(200, 128, 47, 0.16);
-  --color-warning-ink: #8a5a21;
-  --color-error: #c05e70;
   --color-error-soft: rgba(192, 94, 112, 0.14);
   --color-error-ink: #8c3f4d;
   --color-error-container: rgba(192, 94, 112, 0.14);
-  --color-on-error: #fcfdfe;
   --color-on-error-container: #8c3f4d;
-
-  --color-glass-0: rgba(255, 255, 255, 0.44);
-  --color-glass-1: rgba(255, 255, 255, 0.6);
-  --color-glass-2: rgba(255, 255, 255, 0.76);
-  --color-glass-3: rgba(255, 255, 255, 0.92);
-  --color-edge: rgba(255, 255, 255, 0.8);
-  --color-gloss: rgba(255, 255, 255, 0.92);
-  --color-sheen: rgba(255, 255, 255, 0.7);
-  --color-line: rgba(21, 24, 28, 0.07);
-  --color-line2: rgba(255, 255, 255, 0.6);
-  --color-stroke: rgba(21, 24, 28, 0.11);
-  --color-fill: rgba(21, 24, 28, 0.05);
-  --color-fill2: rgba(21, 24, 28, 0.085);
-
-  --color-button: #1b1f24;
-  --color-on-button: #fbfcfd;
 
   --ease-glide: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1);
 }
 
-/* Not a Tailwind utility namespace — plain custom properties consumed directly via
-   var()/rgb(), same as the design source's --page/--sh. --shadow-rgb is intentionally
-   SPACE-separated ("20 42 84", not "20,42,84" like the source) so `rgb(var(--shadow-rgb)
-   / alpha)` — the modern CSS Color 4 syntax used below — stays valid; the comma form
-   only works with the legacy rgb(r,g,b,a) function. */
+/* Not Tailwind utility namespaces — plain custom properties consumed directly via
+   var(), same as the design source's --page/--sh. Declared at BOTH :root and
+   body[data-theme="dark"] so the value recomputes per theme (inheritance copies the
+   computed value, so a single :root declaration would freeze the light gradient).
+   --shadow-rgb is intentionally SPACE-separated ("20 42 84", the space-form of the
+   source's "20,42,84") so `rgb(var(--shadow-rgb) / alpha)` — the modern CSS Color 4
+   syntax used in components — stays valid; the comma form only works with the legacy
+   rgb(r,g,b,a) function. */
 :root {
   --gradient-page: linear-gradient(165deg, #eaf0f9 0%, #f5f2ee 48%, #e8eff6 100%);
   --shadow-rgb: 20 42 84;
 }
 
 body[data-theme="dark"] {
-  --color-primary: #6c9bf0;
-  --color-primary-soft: rgba(108, 155, 240, 0.16);
-  --color-primary-container: #6c9bf0;
   --color-primary-fixed: rgba(108, 155, 240, 0.35);
   --color-primary-fixed-dim: rgba(108, 155, 240, 0.35);
 
@@ -119,47 +134,10 @@ body[data-theme="dark"] {
   --color-surface-container-high: #363c44;
   --color-surface-container-highest: #363c44;
 
-  --color-on-surface: #edf0f4;
-  --color-on-surface-variant: rgba(237, 240, 244, 0.64);
-  --color-on-surface-muted: rgba(237, 240, 244, 0.58);
-  --color-on-surface-faint: rgba(237, 240, 244, 0.42);
-  --color-text-primary: #edf0f4;
-  --color-text-secondary: rgba(237, 240, 244, 0.64);
-  --color-secondary: rgba(237, 240, 244, 0.64);
-  --color-secondary-container: rgba(255, 255, 255, 0.11);
-  --color-on-secondary-container: rgba(237, 240, 244, 0.64);
-
-  --color-border-subtle: rgba(255, 255, 255, 0.08);
-  --color-outline: rgba(237, 240, 244, 0.64);
-  --color-outline-variant: rgba(255, 255, 255, 0.14);
-
-  --color-success: #4fb3a5;
-  --color-success-soft: rgba(79, 179, 165, 0.2);
-  --color-success-ink: #8fdace;
-  --color-warning: #dca05a;
-  --color-warning-soft: rgba(220, 160, 90, 0.22);
-  --color-warning-ink: #f0c48c;
-  --color-error: #dc8291;
   --color-error-soft: rgba(220, 130, 145, 0.2);
   --color-error-ink: #f2b8c2;
   --color-error-container: rgba(220, 130, 145, 0.2);
   --color-on-error-container: #f2b8c2;
-
-  --color-glass-0: rgba(30, 34, 40, 0.5);
-  --color-glass-1: rgba(32, 36, 43, 0.62);
-  --color-glass-2: rgba(42, 47, 55, 0.7);
-  --color-glass-3: rgba(52, 58, 67, 0.86);
-  --color-edge: rgba(255, 255, 255, 0.09);
-  --color-gloss: rgba(255, 255, 255, 0.1);
-  --color-sheen: rgba(255, 255, 255, 0.14);
-  --color-line: rgba(255, 255, 255, 0.08);
-  --color-line2: rgba(255, 255, 255, 0.07);
-  --color-stroke: rgba(255, 255, 255, 0.14);
-  --color-fill: rgba(255, 255, 255, 0.07);
-  --color-fill2: rgba(255, 255, 255, 0.11);
-
-  --color-button: #edf0f4;
-  --color-on-button: #14171b;
 
   --gradient-page: linear-gradient(165deg, #14171c 0%, #1b1d22 48%, #12161b 100%);
   --shadow-rgb: 0 4 12;
@@ -269,143 +247,8 @@ body {
   }
 }
 
-/* ============================================================
-   Motion tokens — ported verbatim from V-OTA Planner.dc.html:52-70 (only the 12
-   keyframes actually referenced by the phase-01 mapping table; vFadeOut/vHue/vPulse
-   in the source are unused there and not ported).
-   ============================================================ */
-
-@keyframes vRise {
-  from {
-    opacity: 0;
-    transform: translateY(14px) scale(0.985);
-    filter: blur(8px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-    filter: blur(0);
-  }
-}
-
-@keyframes vPop {
-  0% {
-    opacity: 0;
-    transform: translateY(18px) scale(0.96);
-  }
-  60% {
-    transform: translateY(-3px) scale(1.008);
-  }
-  100% {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes vFade {
-  from {
-    opacity: 0;
-    filter: blur(6px);
-  }
-  to {
-    opacity: 1;
-    filter: blur(0);
-  }
-}
-
-@keyframes vIn {
-  from {
-    opacity: 0;
-    transform: translateY(14px);
-    filter: blur(7px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-    filter: blur(0);
-  }
-}
-
-@keyframes vDot {
-  0%,
-  60%,
-  100% {
-    transform: translateY(0);
-    opacity: 0.45;
-  }
-  30% {
-    transform: translateY(-4px);
-    opacity: 1;
-  }
-}
-
-@keyframes vShimmer {
-  0% {
-    background-position: -500px 0;
-  }
-  100% {
-    background-position: 500px 0;
-  }
-}
-
-@keyframes vSpin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes vPinIn {
-  0% {
-    opacity: 0;
-    transform: translateY(-14px) scale(0.4);
-  }
-  70% {
-    transform: translateY(0) scale(1.14);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes vHero {
-  from {
-    opacity: 0;
-    transform: scale(1.08);
-    filter: blur(12px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-    filter: blur(0);
-  }
-}
-
-@keyframes vSheen {
-  0% {
-    transform: translateX(-130%) skewX(-14deg);
-  }
-  55%,
-  100% {
-    transform: translateX(240%) skewX(-14deg);
-  }
-}
-
-@keyframes vDash {
-  to {
-    stroke-dashoffset: -40;
-  }
-}
-
-@keyframes vFloat {
-  0%,
-  100% {
-    transform: translate(0, 0) scale(1);
-  }
-  50% {
-    transform: translate(3%, -4%) scale(1.06);
-  }
-}
+/* Keyframes (vRise, vPop, vShimmer, …) now live in the imported
+   design-animation.css — do not redefine them here. */
 
 /* ============================================================
    Calendar override — @daypicker/react (react-day-picker v10) ships with
@@ -535,6 +378,7 @@ body {
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;

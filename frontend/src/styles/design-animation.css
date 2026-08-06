@@ -1,0 +1,20 @@
+/* All keyframe animations + the SVG route-dash helper classes that use them
+   (v-walk/v-air/v-flow — animated dashed lines on the trip map). */
+@keyframes vShimmer{0%{background-position:-500px 0}100%{background-position:500px 0}}
+@keyframes vRise{from{opacity:0;transform:translateY(14px) scale(.985);filter:blur(8px)}to{opacity:1;transform:none;filter:blur(0)}}
+@keyframes vPop{0%{opacity:0;transform:translateY(18px) scale(.96)}60%{transform:translateY(-3px) scale(1.008)}100%{opacity:1;transform:none}}
+@keyframes vFadeOut{to{opacity:0;transform:scale(1.03);filter:blur(14px)}}
+@keyframes vDot{0%,60%,100%{transform:translateY(0);opacity:.45}30%{transform:translateY(-4px);opacity:1}}
+@keyframes vFloat{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(3%,-4%) scale(1.06)}}
+@keyframes vSpin{to{transform:rotate(360deg)}}
+@keyframes vPulse{0%,100%{box-shadow:0 0 0 0 rgba(58,115,222,.45)}70%{box-shadow:0 0 0 12px rgba(58,115,222,0)}}
+@keyframes vDash{to{stroke-dashoffset:-40}}
+@keyframes vIn{from{opacity:0;transform:translateY(14px);filter:blur(7px)}to{opacity:1;transform:none;filter:blur(0)}}
+@keyframes vFade{from{opacity:0;filter:blur(6px)}to{opacity:1;filter:blur(0)}}
+@keyframes vHue{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+@keyframes vPinIn{0%{opacity:0;transform:translateY(-14px) scale(.4)}70%{transform:translateY(0) scale(1.14)}100%{opacity:1;transform:scale(1)}}
+@keyframes vHero{from{opacity:0;transform:scale(1.08);filter:blur(12px)}to{opacity:1;transform:none;filter:blur(0)}}
+@keyframes vSheen{0%{transform:translateX(-130%) skewX(-14deg)}55%,100%{transform:translateX(240%) skewX(-14deg)}}
+.v-walk{stroke-dasharray:2 9;stroke-linecap:round;animation:vDash 1.6s linear infinite}
+.v-air{stroke-dasharray:9 8;animation:vDash 2.2s linear infinite}
+.v-flow{stroke-dasharray:14 120;stroke-linecap:round;animation:vDash 3.4s linear infinite}

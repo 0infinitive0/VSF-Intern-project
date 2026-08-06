@@ -1,0 +1,18 @@
+/* Design tokens (light / default theme). Dark overrides live in theme.css —
+   keep both in sync when adding a new token. Extracted verbatim from the
+   root .dc.html <style> block; do not change values here without also
+   checking screenshots/ for visual regressions. */
+:root{
+  --t1:#15181C; --t2:rgba(21,24,28,.66); --t3:rgba(21,24,28,.60); --t4:rgba(21,24,28,.44);
+  --acc:#3A73DE; --acc-soft:rgba(58,115,222,.12); --ok:#2A9187; --warn:#C8802F; --err:#C05E70;
+  --ok-soft:rgba(42,145,135,.14); --warn-soft:rgba(200,128,47,.16); --ok-ink:#1F6F67; --warn-ink:#8A5A21;
+  --on-acc:#FCFDFE;
+  --btn:#1B1F24; --btn-fg:#FBFCFD;
+  --g0:rgba(255,255,255,.44); --g1:rgba(255,255,255,.60); --g2:rgba(255,255,255,.76); --g3:rgba(255,255,255,.92);
+  --edge:rgba(255,255,255,.80); --gloss:rgba(255,255,255,.92); --sheen:rgba(255,255,255,.70);
+  --line:rgba(21,24,28,.07); --line2:rgba(255,255,255,.6); --stroke:rgba(21,24,28,.11);
+  --fill:rgba(21,24,28,.05); --fill2:rgba(21,24,28,.085);
+  --sh:20,42,84;
+  --page:linear-gradient(165deg,#EAF0F9 0%,#F5F2EE 48%,#E8EFF6 100%);
+  --tile:saturate(.55) brightness(1.06) contrast(.9);
+}

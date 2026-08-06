@@ -9,6 +9,7 @@
     "mock": "node mock/server.js",
     "build": "vite build",
     "lint": "oxlint",
+    "check:tokens": "node scripts/check-design-tokens.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "preview": "vite preview"
