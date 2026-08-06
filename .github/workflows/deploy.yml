@@ -1,0 +1,58 @@
+name: Deploy Staging (main)
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-staging:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Deploy to staging EC2 (build on box)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            cd /home/ubuntu/app
+            git fetch origin main
+            git checkout main
+            git reset --hard origin/main
+            docker compose -f docker-compose.staging.yml build
+            docker compose -f docker-compose.staging.yml up -d --wait --wait-timeout 300
+            docker image prune -f
+
+      - name: Health check backend + frontend
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          CADDY_DOMAIN: ${{ secrets.CADDY_DOMAIN }}
+        run: |
+          set -e
+          DOMAIN="${CADDY_DOMAIN:-staging-app.duckdns.org}"
+          ok=0
+          for i in $(seq 1 12); do
+            if curl -sf "http://${EC2_HOST}:8000/health" >/dev/null \
+               && curl -sfk "https://${DOMAIN}/" >/dev/null; then
+              echo "Health check OK on ${DOMAIN} after attempt ${i}"
+              ok=1
+              break
+            fi
+            sleep 5
+          done
+          if [ "$ok" != "1" ]; then
+            echo "Health check FAILED for ${DOMAIN}"
+            curl -sS "http://${EC2_HOST}:8000/health" || true
+            curl -sSk "https://${DOMAIN}/" || true
+            exit 1
+          fi

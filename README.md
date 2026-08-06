@@ -1,226 +1,204 @@
-# 🤖 AI20K Agent Template
+# 🧳 VSF Trip Planner — AI Agent
 
-Template chính thức cho học viên **VinUni AI20K Build Phase** — cung cấp sẵn cấu trúc dự án, code mẫu, và hướng dẫn kỹ thuật chi tiết để xây dựng AI Agent đạt điểm cao (35+/50).
+AI Agent lập kế hoạch du lịch **đa lượt (multi-turn)** cho khách du lịch Việt Nam. Người dùng trò chuyện bằng tiếng Việt tự nhiên; hệ thống thu thập nhu cầu, tìm kiếm địa điểm một cách ngữ nghĩa (RAG), lập lịch trình tối ưu khoảng cách/thời gian, và tái sử dụng lịch trình mẫu (Tier 1 Cache).
 
-> 📖 **Technical Guidebook:** [phoenix.note.transformerlabs.ai/technical-book](https://phoenix.note.transformerlabs.ai/technical-book)
+Kiến trúc gồm **LangGraph Orchestrator**, **FastAPI Backend**, **Supabase (PostgreSQL + pgvector)**, **React + Vite Frontend** và **Airflow Data Pipeline**.
 
-## 🎯 Template này dùng để làm gì?
+> 📐 Xem thêm: [ARCHITECTURE.md](./ARCHITECTURE.md) · [Setup Guide](./docs/setup/SETUP_GUIDE.md) · [Docs Index](./docs/README.md)
 
-Khi tham gia AI20K Build Phase, mỗi đội cần xây dựng một AI Agent hoàn chỉnh — từ kiến trúc, code, test, đến deploy. Thay vì bắt đầu từ con số không, template này cung cấp:
+---
 
-- **Cấu trúc thư mục chuẩn** — đã được thiết kế theo best practices (separation of concerns)
-- **Code mẫu** cho các phần cốt lõi: LangGraph agent, FastAPI API, config, schemas
-- **Docker + CI/CD sẵn** — Dockerfile multi-stage, GitHub Actions workflow
-- **Hướng dẫn kỹ thuật 10 chương** — từ clone template đến nộp bài Demo Day
-- **Checklist 10 deliverables** — đảm bảo không bỏ sót yêu cầu BTC
-- **AI Usage Logging tự động** — Pre-configured hooks cho Claude Code, Cursor, Codex, Gemini CLI, Antigravity, và GitHub Copilot
+## ✨ Tính năng
 
-## ⚡ Quick Start
+- **Trò chuyện đa lượt tiếng Việt** — thu thập nhu cầu (điểm đến, số ngày, số người, sở thích) bằng câu hỏi làm rõ tự động.
+- **Tìm kiếm ngữ nghĩa (RAG)** — retriever điểm tham quan & khách sạn qua Supabase `pgvector` và Qdrant.
+- **Lập lịch tự động** — engine quyết định (`trip_scheduler`) phân bổ thời gian, cụm theo bán kính khoảng cách, chèn bữa ăn/nghỉ ngơi.
+- **Tái sử dụng lịch trình (Tier 1 Cache)** — fingerprint BGE-M3 (`>88%` tương đồng) để lấy lại template gần giống.
+- **Chỉnh sửa & chốt lịch** — đổi khách sạn, sửa itinerary, chốt lịch trình.
+- **Web UI đầy đủ** — ChatPanel + ItineraryPanel, chọn khách sạn, suggestion chips.
+- **CLI terminal** — dùng nhanh không cần UI.
 
-### Bước 1: Fork hoặc Clone
+## 🧱 Cấu trúc dự án
 
-```bash
-# Clone template
-git clone https://github.com/AI20K-Build-Cohort-2/starter-code-template.git team-YOUR_TEAM_NAME
-cd team-YOUR_TEAM_NAME
-
-# Xóa git history cũ và khởi tạo lại
-rm -rf .git
-git init
-git add .
-git commit -m "feat: khởi tạo dự án từ template"
+```
+├── backend/              # 🐍 FastAPI + LangGraph + AI Agent
+│   ├── src/
+│   │   ├── agents/       #    LangGraph: graph, state, routing_decision, supervisor
+│   │   │   ├── nodes/    #      Node functions (intake, …)
+│   │   │   └── tools/    #      Agent tools (select_hotel, recommend_hotels, …)
+│   │   ├── api/          #    API endpoints (routes.py)
+│   │   ├── services/     #    Business logic (LLM, supabase_search, vector_store,
+│   │   │                 #      trip_scheduler, trip_intake, itinerary_reuse, …)
+│   │   ├── models/       #    Pydantic schemas
+│   │   ├── i18n/         #    Translation catalogs
+│   │   ├── airflow/      #    Airflow ETL (attraction + hotel pipelines)
+│   │   ├── config.py     #    Settings
+│   │   └── main.py       #    App entry point
+│   ├── tests/            #    pytest suite
+│   ├── scripts/          #    Sync/embedding utilities
+│   ├── requirements.txt
+│   ├── Makefile          #    run / test / lint / format / typecheck
+│   └── Dockerfile
+├── frontend/             # ⚛️ React 19 + Vite 8 + Tailwind 4 (+ i18next)
+│   ├── src/              #    UI components, chat session logic, API client
+│   ├── mock/             #    Mock server (npm run mock)
+│   ├── nginx.conf        #    Serving built assets
+│   └── Dockerfile
+├── data/                 # 📦 Dữ liệu thô nguồn (agoda, booking, …)
+├── docs/                 # 📚 Tài liệu: architecture, setup, design, BRD, proposals
+├── supabase/             # 🗄️ SQL schema & queries
+├── eval/                 # 📊 Kết quả đánh giá
+├── tests/                # 🧪 Test cấp repo (kế thừa)
+├── scripts/              # 🔌 Scripts cấp repo
+├── .github/workflows/    # ⚡ CI/CD
+├── docker-compose.yml    # 🐙 Backend + frontend (+ profile local-llm)
+└── Caddyfile             # Proxy cho production
 ```
 
-### Bước 2: Setup môi trường
+## 🚀 Quick Start
+
+### Yêu cầu
+
+- **Python 3.11+** · **Node.js 20+** & npm · **Docker Desktop** (Ollama/full stack)
+- Tối thiểu ~8 GB RAM phân bổ cho Docker nếu dùng LLM local (llama3.1 ~4.7 GB)
+
+### Bước 1 — Cấu hình backend
 
 ```bash
-# Tạo virtual environment
+cp backend/.env.example backend/.env
+# Mở backend/.env và điền:
+#   SUPABASE_URL / SUPABASE_SERVICE_KEY   (bắt buộc để search khách sạn/điểm tham quan)
+#   LLM_PROVIDER / LLM_MODEL / LLM_API_KEY (nếu dùng cloud LLM)
+```
+
+### Bước 2 — Chạy backend (FastAPI)
+
+```bash
+cd backend
 python3.11 -m venv .venv
-source .venv/bin/activate
-
-# Cài dependencies
-pip install -e ".[dev]"
-
-# Cấu hình API keys
-cp .env.example .env
-# Mở .env và thêm OPENAI_API_KEY của bạn
-# Đồng thời cập nhật AI_LOG_API_KEY bằng key riêng từ link mời của BTC
-# (giá trị trong .env.example chỉ là placeholder)
-```
-
-### Bước 3: Cài AI Logging Hooks
-
-```bash
-# Linux / macOS / Git Bash
-bash scripts/setup_hooks.sh
-
-# Windows PowerShell
-# powershell -ExecutionPolicy Bypass -File scripts\setup_hooks.ps1
-```
-
-Hooks tự động log mọi AI prompt khi dùng Claude Code, Cursor, Codex, Gemini CLI, Antigravity, hoặc GitHub Copilot. Không cần thao tác thủ công.
-
-### Bước 4: Chạy backend & React frontend
-
-```bash
-# Terminal 1 — FastAPI backend
+source .venv/bin/activate          # macOS/Linux
+pip install -r requirements.txt
 uvicorn src.main:app --reload --port 8000
-# API docs: http://localhost:8000/docs
+# → API docs: http://localhost:8000/docs
+# → Health:   http://localhost:8000/health
+```
 
-# Terminal 2 — React + Vite frontend
+### Bước 3 — Chạy frontend (React + Vite)
+
+Mở **terminal mới** (giữ backend chạy):
+
+```bash
 cd frontend
 npm install
 npm run dev
-# Chat UI: http://localhost:5173
+# → Chat UI: http://localhost:5173
+cp .env.example .env.local        # để trống VITE_API_BASE khi dùng proxy dev
 ```
 
-Vite tự động proxy `/api → http://localhost:8000` — không cần cấu hình CORS trong dev.
+> Vite tự proxy `/api → http://localhost:8000` trong dev — không cần cấu hình CORS.
 
-> **Local LLM (Ollama):** cần pull model trước khi chạy backend:
-> ```bash
-> ollama pull bge-m3    # ~550 MB — bắt buộc mọi môi trường
-> ollama pull llama3.1  # ~4.7 GB — chỉ cần khi LLM_PROVIDER=ollama
+### Bước 4 — Ollama (nếu `LLM_PROVIDER=ollama` — mặc định)
+
+```bash
+ollama pull bge-m3    # Embedding ~550 MB — bắt buộc mọi môi trường
+ollama pull llama3.1  # Chat ~4.7 GB — chỉ cần khi dùng LLM local
+```
+
+> **Mẹo:** Trên máy RAM thấp hoặc bản deploy cloud, chuyển sang cloud LLM trong `.env`:
 > ```
-> Muốn dùng cloud LLM thay thế: set `LLM_PROVIDER=openai LLM_MODEL=gpt-4o-mini LLM_API_KEY=sk-...` trong `.env`.
+> LLM_PROVIDER=openai
+> LLM_MODEL=gpt-4o-mini
+> LLM_API_KEY=sk-proj-...
+> ```
+> ⚠️ Embedding luôn dùng Ollama `bge-m3` bất kể `LLM_PROVIDER` — vector dùng cố định `1024-dim`.
 
-| Setting | Local dev | Deployed |
-|---------|-----------|---------|
+### Chạy full stack bằng Docker Compose
+
+```bash
+# Cloud LLM (mặc định, backend + frontend):
+docker compose up
+
+# Local Ollama (kéo thêm bge-m3 + llama3.1):
+docker compose --profile local-llm up
+```
+
+| Service | URL |
+|---------|-----|
+| FastAPI backend | http://localhost:8000 |
+| React frontend | http://localhost:5173 |
+| Ollama API | http://localhost:11434 |
+
+## 🌐 Kịch bản môi trường
+
+| Setting | Local dev | Deployed (cloud) |
+|---------|-----------|------------------|
 | `LLM_PROVIDER` | `ollama` | `openai` / `openrouter` |
 | `LLM_MODEL` | `llama3.1` | `gpt-4o-mini` hoặc OpenRouter model id |
-| `EMBEDDING_MODEL` | `bge-m3` | `bge-m3` (locked — không đổi) |
-| Frontend | Vite dev server (5173) | Build assets — host TBD |
+| `EMBEDDING_MODEL` | `bge-m3` | `bge-m3` (⚠️ cố định — đừng đổi) |
+| Frontend | Vite dev server (5173) | Build assets qua Nginx |
+| Ollama cần không? | Có (cả 2 model) | Có (chỉ bge-m3; chat model dùng cloud) |
 
-### Bước 5: Đọc hướng dẫn & Setup Chi Tiết
+## 🔌 API
 
-📖 Mở **[Setup Guide](file:///d:/Git%20repo/vsf-project/docs/setup/SETUP_GUIDE.md)** hoặc **[Technical Guidebook](https://phoenix.note.transformerlabs.ai/technical-book)** và làm theo từng bước.
+| Method | Endpoint | Mô tả |
+|--------|----------|-------|
+| `POST` | `/api/v1/chat/session` | Tạo session, trả `{session_id, created_at}` |
+| `POST` | `/api/v1/planner_chat` | Lượt chat chính, trả `PlannerChatResponse` |
+| `GET` | `/api/v1/chat/{session_id}/plan` | Lấy lịch trình hiện tại |
+| `DELETE` | `/api/v1/chat/{session_id}` | Reset / kết thúc session |
 
-## 📁 Cấu trúc dự án
+Tài liệu chi tiết: [`docs/chat_api_contract.md`](./docs/chat_api_contract.md).
 
-```
-├── src/
-│   ├── agents/           # 🧠 LangGraph Agent
-│   │   ├── graph.py      #    State graph (nodes + edges)
-│   │   ├── state.py      #    State schema (TypedDict)
-│   │   ├── nodes/        #    Node functions
-│   │   └── tools/        #    Agent tools (@tool)
-│   ├── api/              # 🌐 FastAPI Backend
-│   │   └── routes.py     #    API endpoints
-│   ├── models/           # 📋 Pydantic schemas
-│   ├── services/         # 🔧 Business logic (LLM, etc.)
-│   ├── config.py         # ⚙️ Pydantic Settings
-│   └── main.py           # 🚀 App entry point
-├── tests/                # 🧪 pytest suite
-│   ├── test_agents/      #    Agent/graph tests
-│   └── test_api/         #    API endpoint tests
-├── scripts/              # 🔌 AI Logging Hooks
-│   ├── log_hook.py       #    Auto-log cho Claude/Cursor/Codex/Gemini/Copilot
-│   ├── log_antigravity.py#    Antigravity IDE prompt scanner
-│   ├── log_manual.py     #    Manual log cho ChatGPT / web tools
-│   ├── submit_log.py     #    Submit logs on git push
-│   └── setup_hooks.sh    #    One-time hook installer
-├── .claude/ .codex/ .cursor/ .gemini/  # Per-tool hook configs
-├── .agents/              # Antigravity rules + workflows
-├── .ai-log/              # 📊 AI usage logs (auto-generated)
-├── docs/
-│   ├── README.md         # 📖 Docs index & sitemap
-│   ├── architecture/     # 📐 Technical & agent architecture specs
-│   ├── setup/            # 🚀 Environment & Docker setup guide
-│   ├── design/           # 🎨 UI specs, wireframes, techstack diagrams
-│   ├── proposals/        # 💡 Feature design proposals (Itinerary Reuse v2)
-│   ├── brd/              # 📄 Business Requirements Document (BRD)
-│   └── guide/            # 📚 Technical Guidebook (10 chapters)
-├── eval/                 # 📊 Evaluation results
-├── presentation/         # 🎤 Demo Day slides
-├── .github/workflows/    # ⚡ CI/CD (GitHub Actions)
-├── .github/hooks/        # 🪝 Copilot hook config
-├── Dockerfile            # 🐳 Multi-stage build
-├── docker-compose.yml    # 🐙 Full stack orchestration
-└── README_boilerplate.md # 📝 README template cho đội của bạn
-```
+## 🧪 Kiểm thử
 
-## 📚 Technical Guidebook — 10 Chương
-
-| Chương | Nội dung | Thời gian |
-|---------|----------|-----------|
-| 1 | Lời mở đầu — Mục tiêu, cách sử dụng | 15 phút |
-| 2 | Khởi tạo dự án — Clone, setup, git workflow | 4 giờ |
-| 3 | Thiết kế kiến trúc — 3-tier, diagrams, ADR | 6 giờ |
-| 4 | **LangGraph Agent** — State, nodes, edges, tools, RAG | 8 giờ |
-| 5 | FastAPI — Routes, validation, error handling, streaming | 6 giờ |
-| 6 | Giao diện — Next.js + Streamlit quickstart | 6 giờ |
-| 7 | Production — Docker, multi-stage, Railway deploy | 4 giờ |
-| 8 | Quan sát — LangSmith, auto AI usage logging | 4 giờ |
-| 9 | Kiểm thử — Unit, integration, eval pipeline | 6 giờ |
-| 10 | Tổng kết — Final checklist, presentation prep | 4 giờ |
-
-📖 **Đọc online:** [phoenix.note.transformerlabs.ai/technical-book](https://phoenix.note.transformerlabs.ai/technical-book)
-
-## 📋 10 Deliverables cho Demo Day
-
-| # | Deliverable | File vị trí | Template có sẵn |
-|---|-------------|-------------|:---:|
-| 1 | Source Code | `src/` | ✅ |
-| 2 | README.md | `README_boilerplate.md` → copy thành `README.md` | ✅ |
-| 3 | Architecture Specs | `docs/architecture/agent_workflow_and_semantic_search_stack.md` | ✅ |
-| 4 | AI Logs | LangSmith (3 env vars) + Auto AI Usage Logging | ✅ |
-| 5 | Live URL | Deploy lên Render/Vercel | ⚡ CI/CD sẵn |
-| 6 | Video Demo | `presentation/` | 📝 |
-| 7 | Pitch Deck | `presentation/` | 📝 |
-| 8 | Development Journal | `JOURNAL.md` | ✅ |
-| 9 | Worklog | `WORKLOG.md` | ✅ |
-| 10 | Evaluation Evidence | `eval/` | 📝 |
-
-## 🛠 Tech Stack
-
-| Layer | Technology | Version |
-|-------|-----------|---------|
-| AI Agent | LangGraph + LangChain | Latest |
-| Backend | FastAPI + Uvicorn | 0.100+ |
-| LLM | OpenAI GPT-4o-mini | API |
-| Frontend | Next.js / Streamlit | 14+ / 1.30+ |
-| Database | SQLite (dev) / PostgreSQL (prod) | — |
-| DevOps | Docker + GitHub Actions | — |
-| Testing | pytest + pytest-asyncio | 8+ |
-
-## 📊 AI Usage Logging
-
-Template đã tích hợp sẵn auto-logging hooks cho 6 AI tools:
-
-| Tool | Cơ chế | Config |
-|------|--------|--------|
-| Claude Code | `.claude/settings.json` hooks | Tự động |
-| Cursor | `.cursor/hooks.json` | Tự động |
-| OpenAI Codex CLI | `.codex/hooks.json` | Tự động |
-| Gemini CLI | `.gemini/settings.json` | Tự động |
-| GitHub Copilot | `.github/hooks/hooks.json` | Tự động |
-| Antigravity IDE | Pre-push scan transcript | Tự động trên `git push` |
-
-Tất cả prompts và tool calls được log vào `.ai-log/session.jsonl` và tự động submit lên grading server mỗi khi `git push`.
-
-**ChatGPT / web tools khác** — log thủ công:
 ```bash
-bash scripts/_pyrun.sh scripts/log_manual.py --tool chatgpt --prompt "What you asked"
+cd backend
+# Full suite (bỏ qua test live Qdrant schema)
+pytest tests -q --ignore=tests/test_qdrant_schema.py
+
+# Chỉ test API layer
+pytest tests/test_api/ -q
+
+# Lint
+ruff check src/
+
+# Hoặc dùng Makefile
+make test lint
 ```
 
-> ⚠️ Chạy `bash scripts/setup_hooks.sh` một lần sau khi clone để cài pre-push hook.
+## 🖥 CLI (thay cho Web UI)
 
-## 📖 Đọc Technical Guidebook
+```bash
+cd backend
+python -m scripts.poc_trip_planner
+```
 
-**Online (khuyến nghị):** [phoenix.note.transformerlabs.ai/technical-book](https://phoenix.note.transformerlabs.ai/technical-book)
+Lệnh ví dụ:
+- **Chuyến mới:** `"Tôi muốn đi Đà Nẵng 3 ngày 2 người thích lịch sử"`
+- **Sửa kế hoạch:** `"Đổi khách sạn sang Caravelle Saigon"`
+- **Chốt:** `"Chốt lịch trình"` · **Thoát:** `exit` / `quit` / `q`
 
-Đăng nhập bằng GitHub (cùng account đã được BTC mời vào org `AI20K-Build-Cohort-2`)
-→ chọn tab **Technical Book** ở sidebar trái → đọc 10 chương + topic sections,
-có table of contents bên phải, hỗ trợ light/dark/cyberpunk theme.
+## 📦 Data Pipeline (Airflow)
 
-**Offline:** mọi chương đều ở thư mục `docs/guide/` trong template này — mở bằng
-bất kỳ markdown viewer/editor nào (VS Code, Obsidian, GitHub UI, …).
+```bash
+cd backend/src/airflow
+docker compose up airflow-init   # Lần đầu khởi tạo
+docker compose up -d
+```
 
-## 🔗 Liên kết
+Airflow UI tại http://localhost:8080 (user/pass: `airflow` / `airflow`).
 
-- 📖 **Technical Guidebook:** [phoenix.note.transformerlabs.ai/technical-book](https://phoenix.note.transformerlabs.ai/technical-book)
-- 🏫 **AI20K Program:** VinUni AI20K Build Phase
-- 👨‍🏫 **Mentor:** Đặng Hải Lộc
+## 📚 Tài liệu liên quan
+
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — tổng quan kiến trúc & mermaid diagrams
+- [docs/setup/SETUP_GUIDE.md](./docs/setup/SETUP_GUIDE.md) — hướng dẫn setup chi tiết
+- [docs/README.md](./docs/README.md) — chỉ mục tài liệu (architecture, design, BRD, proposals)
+- [docs/brd/BRD_V-OTA_AI-Chat_VSF2026_2.pdf](./docs/brd/BRD_V-OTA_AI-Chat_VSF2026_2.pdf) — Business Requirements Document
+
+## 🤝 Đóng góp
+
+Nếu muốn đóng góp: fork repo, tạo nhánh feature, gửi Pull Request. Tuân theo quy tắc import một chiều (`api → agents → services → models`) để tránh circular dependency.
 
 ## 📄 License
 
-MIT — Sử dụng tự do cho mục đích giáo dục.
+MIT — sử dụng tự do cho mục đích giáo dục.

@@ -1,11 +1,20 @@
 /**
  * types.ts — shared shapes for the chat/trip-plan contract.
- * Verified against src/services/trip_formatter.py:238-345 (backend payload field names).
+ * Verified against backend/src/services/trip_formatter.py (backend payload field names).
  */
 
 export interface Suggestion {
   label: string
   value: string
+}
+
+// One ranking parameter behind "AI đề xuất vì...". code is an i18n key under
+// matchReason.*; value is the raw number/label the code is about — backend never
+// sends pre-translated display strings (src/models/schemas.py's HotelOption docs
+// the same principle for match_score).
+export interface MatchReason {
+  code: string
+  value: number | string
 }
 
 export interface HotelOption {
@@ -19,6 +28,35 @@ export interface HotelOption {
   total_stay_price?: number
   stay_night_count?: number
   currency?: string
+  // "lat,lng" string; verified against DB column (backend/scripts/database_schema.sql:12,
+  // e.g. '10.762622, 106.660172') and both backend parsers
+  // (routing.py:parse_coordinates, trip_scheduler.py:parse_coordinates), which only ever
+  // split on "," — never WKT.
+  coordinates?: string | null
+  address?: string
+  area_name?: string
+  image_url?: string | null
+  amenities?: string[]
+  review_score?: number // 0..10
+  review_count?: number
+  match_score?: number // 0..1, real composite ranking score (hotel_selection.py:_composite_score)
+  match_reasons?: MatchReason[]
+}
+
+// Vehicle/profile code Mapbox Directions was actually called with — never a display
+// string. Frontend translates via i18n key routeProfile.<code>. 'driving' kept for
+// forward-compat even though only driving-traffic/walking/cycling are called today
+// (routing.py, Phase 12).
+export type RouteProfile = 'driving-traffic' | 'walking' | 'cycling' | 'driving'
+
+export interface RouteInfo {
+  distance_km: number
+  duration_mins: number
+  polyline: string // Google Encoded Polyline, precision 1e5
+  // Optional, not just nullable: today's OSRM call sites (routing.py:44-48 success case,
+  // :83-88 identical-coordinates case) don't emit this key at all — it only starts
+  // appearing once Phase 12 (Mapbox) ships. Treat missing and null the same way.
+  profile?: RouteProfile | null
 }
 
 export interface DayItem {
@@ -29,6 +67,22 @@ export interface DayItem {
   kind?: string | null
   reference_type?: string | null
   reference_id?: string | null
+  // Already returned today by to_trip_plan_payload (backend/src/services/trip_formatter.py:320-323)
+  // — this is a type-gap fix, not a new backend field.
+  coordinates?: string | null
+  // Real routed distance/duration from routing.py (recalculate_itinerary_routes);
+  // null when coordinates are missing on either end, routing failed/timed out, or no
+  // route was found — render the straight-line fallback in all of those cases.
+  // When origin and destination coordinates are identical, the backend instead
+  // returns {distance_km: 0, duration_mins: 0, polyline: "", profile: null}
+  // (routing.py:get_route_to_next) — treat that as "no travel needed", distinct from
+  // route_to_next being null outright.
+  route_to_next?: RouteInfo | null
+  // Hotel -> first item of the day. Commonly null even when a route was computed at
+  // generation time: ITEM_RPC_FIELDS (itinerary_store.py:47-60) does not persist
+  // route_from_hotel, so it is dropped on the next DB round-trip. Not a rare edge
+  // case — expect this on most saved/reloaded itineraries (plan.md "Phần chưa làm" #15).
+  route_from_hotel?: RouteInfo | null
 }
 
 export interface Day {
@@ -43,8 +97,9 @@ export interface Hotel {
   star_rating?: number
   description?: string
   matched_rooms?: string[]
-  // WKT/string form from the backend (src/models/schemas.py:110), not {lat,lng} — do
-  // not restructure it; the map phase is deferred and does not consume this field.
+  // "lat,lng" string (see HotelOption.coordinates above for the verification source) —
+  // corrected from a prior comment here that claimed WKT; the DB column and every
+  // backend parser only ever handle "lat,lng".
   coordinates?: string | null
 }
 
@@ -71,6 +126,11 @@ export interface ChatMessage {
   text: string
   stage: Stage
   isError?: boolean
+  // Client-side ISO timestamp, stamped in the reducer at SEND_START/SEND_SUCCESS
+  // (phase-06). Only ever present for messages sent this session — restored
+  // history carries the server's real `at` (SessionRestore.restored_messages)
+  // and must not be invented here.
+  at?: string
 }
 
 // Snapshot of what the intake gate has collected so far (src/models/schemas.py:127-190).
@@ -108,6 +168,108 @@ export interface ChatState {
 export interface PlannerChatResponse {
   session_id: string
   reply: string
+  suggestions: Suggestion[]
+  stage: Stage
+  hotel_options: HotelOption[]
+  trip_plan: TripPlan | null
+  intake?: IntakeStatus | null
+}
+
+// ── Phase 3 payloads — GET /hotels/{id}, GET /attractions/{id} ──────────────────
+// All optional: these endpoints don't exist yet (Phase 3), so the frontend must
+// render correctly against a fixture-only mock until then.
+
+export interface RoomPrice {
+  amount?: number | null
+  currency?: string
+  check_in_date?: string
+  check_out_date?: string
+  sold_out?: boolean
+  package_details?: string | null
+}
+
+export interface RoomDetail {
+  id?: string
+  name?: string
+  bed_description?: string
+  room_size_sqm?: number
+  max_guests?: number
+  view?: string
+  room_facilities?: string[]
+  images?: string[]
+  price?: RoomPrice | null // null when no room_prices row matches the requested stay
+}
+
+export interface HotelDetail {
+  id?: string
+  name?: string
+  star_rating?: number
+  description?: string
+  address?: string
+  city?: string
+  area_name?: string
+  location_highlight?: string
+  coordinates?: string | null // "lat,lng" — see HotelOption.coordinates
+  image_url?: string | null
+  images?: string[]
+  amenities?: string[]
+  amenity_groups?: Record<string, string[]>
+  review_score?: number
+  review_count?: number
+  category_scores?: Record<string, number>
+  check_in_time?: string
+  check_in_until?: string
+  check_out_time?: string
+  reception_open_until?: string
+  nearby_attractions?: string[]
+  nearby_essentials?: string[]
+  lowest_price?: number
+  currency?: string
+  rooms?: RoomDetail[]
+}
+
+export interface AttractionDetail {
+  id?: string
+  name?: string
+  description?: string
+  category?: string
+  is_tour?: boolean
+  estimated_duration_minutes?: number
+  opening_time?: string
+  closing_time?: string
+  ticket_price_adult?: number
+  ticket_price_child?: number
+  rating?: number
+  review_count?: number
+  coordinates?: string | null
+  images?: string[]
+}
+
+// ── Phase 4 payloads — GET /chat/sessions, GET /chat/{id}/restore ──────────────
+
+export type SessionStatus = 'draft' | 'completed'
+
+export interface SessionSummary {
+  session_id: string
+  title?: string // inferred, e.g. "Đà Nẵng – Hội An 4N3Đ"
+  destination?: string | null
+  duration_days?: number | null
+  status: SessionStatus
+  created_at: string
+  updated_at: string
+  thumbnail_url?: string | null // chosen hotel's image_url, or null
+}
+
+export interface RestoredMessage {
+  role: MessageRole
+  text: string
+  stage: Stage
+  at: string
+}
+
+export interface SessionRestore {
+  session_id: string
+  messages: RestoredMessage[]
   suggestions: Suggestion[]
   stage: Stage
   hotel_options: HotelOption[]

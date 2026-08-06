@@ -1,0 +1,127 @@
+/**
+ * next-intake-field.ts — the ONE place that maps the real `intake.missing`
+ * keys to the progressive-disclosure widgets.
+ *
+ * Verification (see plan phase-06 step 1): `IntakeStatus.from_state`
+ * (backend/src/models/schemas.py:163-204) only ever emits these real keys in
+ * `missing`:
+ *
+ *     'destination', 'people', 'start_date', 'duration'
+ *
+ * `budget` and `preferences` are NEVER listed in `missing` — the backend does
+ * not gate them. The phase-06 plan's assumed ORDER
+ * `['destination','people','dates','budget','preferences']` therefore cannot be
+ * matched directly against `missing`; this module is the sanctioned mapping
+ * point ("nếu tên khác thì ánh xạ ngay tại đây, một chỗ duy nhất"). The
+ * widget order still follows the plan/design; only the *source* differs.
+ *
+ * `isFieldMissing` + `currentIntakeField` are pure and unit-tested; the intake
+ * orchestrator uses them and nothing else decides which card shows.
+ */
+import type { IntakeStatus } from '../types'
+
+/**
+ * The minimal subset of the intake form state these helpers read. Declared as a
+ * structural shape (not importing `IntakeFormState`) so the widget-order module
+ * stays decoupled from the wire-message module; `IntakeFormState` is
+ * structurally assignable to it.
+ */
+export interface IntakeFormShape {
+  destination?: string
+  guests?: number
+  startDate?: string
+  endDate?: string
+  budget?: string
+  preferences?: unknown[]
+}
+
+export const INTAKE_FIELD_ORDER = [
+  'destination',
+  'people',
+  'dates',
+  'budget',
+  'preferences',
+] as const
+
+export type IntakeField = (typeof INTAKE_FIELD_ORDER)[number]
+
+// Real keys emitted in `intake.missing` for each widget field. Budget and
+// preferences intentionally have no real keys (backend never gates them) —
+// they surface only once every missing-gated field is answered.
+export const FIELD_TO_REAL_KEYS: Record<IntakeField, readonly string[]> = {
+  destination: ['destination'],
+  people: ['people'],
+  dates: ['start_date', 'duration'],
+  budget: [],
+  preferences: [],
+}
+
+export function isFieldMissing(intake: IntakeStatus | null, field: IntakeField): boolean {
+  if (!intake) return false
+  return FIELD_TO_REAL_KEYS[field].some((key) => intake.missing?.includes(key))
+}
+
+/**
+ * First field the BACKEND still needs, in widget order, or null when every
+ * missing-gated field is answered. This is the server-truth driver for the
+ * first card shown on a given turn.
+ */
+export function nextIntakeField(intake: IntakeStatus | null): IntakeField | null {
+  if (!intake) return null
+  return INTAKE_FIELD_ORDER.find((field) => isFieldMissing(intake, field)) ?? null
+}
+
+/** Whether a widget field is already answered, considering both the local
+ * form edits and the server snapshot the form was seeded from. */
+export function isFieldFilled(
+  form: IntakeFormShape,
+  field: IntakeField,
+): boolean {
+  switch (field) {
+    case 'destination':
+      return Boolean(form.destination)
+    case 'people':
+      return Number(form.guests) > 0
+    case 'dates':
+      return Boolean(
+        form.startDate && form.endDate && String(form.endDate) > String(form.startDate),
+      )
+    case 'budget':
+      return form.budget !== ''
+    case 'preferences':
+      return Array.isArray(form.preferences) && form.preferences.length > 0
+  }
+}
+
+/**
+ * The widget field to show RIGHT NOW.
+ *
+ * Progressive-disclosure driver: walk the missing-gated fields first
+ * (destination → people → dates); once all of those are filled locally (the
+ * form holds the server-seeded values plus in-progress edits), surface the two
+ * optional fields the backend never gates but the design does ask — budget
+ * (only if real `budget_options` exist) then preferences.
+ *
+ * `preferences` is the terminal field: it stays active once reached regardless
+ * of how many chips are toggled, because it is a multi-select with its own
+ * "Tìm khách sạn" submit button — the card must not disappear the instant the
+ * user picks one interest (that button is the only way `submitAll` runs). The
+ * card only goes away when the parent hides the whole form after a real
+ * submission changes `intake`.
+ */
+export function currentIntakeField(
+  intake: IntakeStatus | null,
+  form: IntakeFormShape,
+): IntakeField | null {
+  if (!intake) return null
+  for (const field of INTAKE_FIELD_ORDER) {
+    if (isFieldMissing(intake, field)) {
+      if (!isFieldFilled(form, field)) return field
+      continue
+    }
+  }
+  if (!isFieldFilled(form, 'budget') && (intake.budget_options?.length ?? 0) > 0) {
+    return 'budget'
+  }
+  return 'preferences'
+}

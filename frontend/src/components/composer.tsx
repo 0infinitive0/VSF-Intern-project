@@ -2,7 +2,7 @@ import { useRef, useEffect, type KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 /**
- * Composer — textarea + send button.
+ * Composer — pill glass input + round send button (design dc.html:298-301).
  * Disabled while pending. Auto-grows up to 140px.
  * Enter sends; Shift+Enter inserts a newline.
  */
@@ -44,32 +44,28 @@ export default function Composer({
   }
 
   return (
-    <footer className="p-4 pr-1 border-t border-border-subtle bg-surface-background shrink-0">
-      <div className="relative flex items-end">
-        <div className="w-full mr-14 bg-surface-muted rounded-3xl py-3.5 pl-5 pr-2 focus-within:ring-2 focus-within:ring-primary transition-all">
-          <textarea
-            ref={textareaRef}
-            id="message-input"
-            className="composer-scrollbar w-full bg-transparent border-none rounded-none text-sm resize-none leading-normal focus:outline-none disabled:opacity-60 placeholder:text-on-surface-variant"
-placeholder={t('composerPlaceholder')}
-            rows={1}
-            disabled={disabled}
-            onKeyDown={handleKeyDown}
-            onInput={handleInput}
-            aria-label={t('composerPlaceholder')}
-          />
-        </div>
-        <button
-          id="send-btn"
-          className="absolute right-2 bottom-2 w-9 h-9 bg-primary text-on-primary hover:opacity-90 disabled:opacity-60 rounded-full flex items-center justify-center transition-opacity"
-          disabled={disabled}
-          onClick={handleSend}
-          type="button"
-          aria-label={t('sendBtn')}
-        >
-          <span className="material-symbols-outlined text-[18px]">send</span>
-        </button>
-      </div>
-    </footer>
+    <div className="shrink-0 flex items-center gap-2.5 pl-[15px] pr-[5px] py-[5px] rounded-[20px] bg-glass-2 border border-edge shadow-[0_8px_22px_-14px_rgb(var(--shadow-rgb)/0.4)]">
+      <textarea
+        ref={textareaRef}
+        id="message-input"
+        className="composer-scrollbar flex-1 bg-transparent border-none rounded-none text-[13px] text-on-surface resize-none leading-normal focus:outline-none disabled:opacity-60 placeholder:text-on-surface-faint py-2"
+        placeholder={t('composerPlaceholder')}
+        rows={1}
+        disabled={disabled}
+        onKeyDown={handleKeyDown}
+        onInput={handleInput}
+        aria-label={t('composerPlaceholder')}
+      />
+      <button
+        id="send-btn"
+        className="w-[34px] h-[34px] flex-none bg-button text-on-button hover:opacity-90 disabled:opacity-60 rounded-full flex items-center justify-center transition-opacity shadow-[0_8px_18px_-8px_rgb(var(--shadow-rgb)/0.8)]"
+        disabled={disabled}
+        onClick={handleSend}
+        type="button"
+        aria-label={t('sendBtn')}
+      >
+        <span className="material-symbols-outlined text-[15px]">arrow_upward</span>
+      </button>
+    </div>
   )
 }

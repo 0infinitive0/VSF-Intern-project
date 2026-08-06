@@ -1,45 +1,156 @@
 /* ============================================================
-   styles.css — Tailwind entry + design tokens from
-   docs/design/v-ota-chat-ui (Trip.com-style Stitch screen).
+   styles.css — Tailwind entry + design tokens.
+
+   Token architecture (rewritten 06/08/2026 — replaces the old hand-copied @theme
+   values). The design's token VALUES have ONE origin: three CSS files copied byte-for-
+   byte from data/trip_planner/trip_planner_components/styles/ (the same tokens the
+   exported .dc.html uses), imported below:
+     - design-variables.css  → :root light tokens (--t1…--t4, --acc, --g0…--g3, …)
+     - design-theme.css      → body[data-theme="dark"] overrides of the same names
+     - design-animation.css  → every keyframe the design uses (vRise, vPop, …)
+   The copied files are the ONLY place token values live. Never hand-copy a value here.
+
+   Namespace aliasing uses @theme inline (not @theme). With a plain @theme, Tailwind
+   emits .bg-primary{background:var(--color-primary)} and resolves --color-primary once
+   at :root, freezing the light value — the body[data-theme="dark"] override of the
+   aliased source token would never be reached by descendants. With @theme inline,
+   Tailwind emits .bg-primary{background:var(--acc)} instead: var() substitution happens
+   at the point of use, so a body-scoped --acc override is picked up correctly. Direct
+   var(--color-*) consumers also work: @theme inline still emits the --color-* variable
+   (--color-primary:var(--acc)), and CSS re-resolves that inner var() per element. See
+   plans/260805-1022-claude-design-ui-integration/phase-01-…md for the mapping table.
+
+   Tokens with NO 1:1 design source (surface-*, outline-*, error-container, etc. — project
+   UI-material derivations) stay as literal values below. They are NOT in the copied
+   files, so check:tokens only enforces the three copied files stay byte-identical.
    ============================================================ */
 
 @import "tailwindcss";
+@import "./styles/design-variables.css";
+@import "./styles/design-theme.css";
+@import "./styles/design-animation.css";
 
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Design-backed tokens — aliased 1:1 into the copied design files. Each utility here
+   inlines var(--<design-token>) so both themes work with zero value duplication. */
+@theme inline {
+  --color-primary: var(--acc);
+  --color-on-primary: var(--on-acc);
+  --color-primary-soft: var(--acc-soft);
+  /* primary-container aliases --acc (solid) — pre-existing usages pair it with
+     near-white text, which needs a solid background, not the soft wash. */
+  --color-primary-container: var(--acc);
+  --color-on-primary-container: var(--on-acc);
+
+  --color-on-surface: var(--t1);
+  --color-on-surface-variant: var(--t2);
+  --color-on-surface-muted: var(--t3);
+  --color-on-surface-faint: var(--t4);
+  --color-text-primary: var(--t1);
+  --color-text-secondary: var(--t2);
+  --color-secondary: var(--t2);
+  --color-on-secondary-container: var(--t2);
+  --color-secondary-container: var(--fill2);
+
+  --color-border-subtle: var(--line);
+  --color-outline: var(--t2);
+  --color-outline-variant: var(--stroke);
+
+  --color-success: var(--ok);
+  --color-success-soft: var(--ok-soft);
+  --color-success-ink: var(--ok-ink);
+  --color-warning: var(--warn);
+  --color-warning-soft: var(--warn-soft);
+  --color-warning-ink: var(--warn-ink);
+  --color-error: var(--err);
+  --color-on-error: var(--on-acc);
+
+  --color-glass-0: var(--g0);
+  --color-glass-1: var(--g1);
+  --color-glass-2: var(--g2);
+  --color-glass-3: var(--g3);
+  --color-edge: var(--edge);
+  --color-gloss: var(--gloss);
+  --color-sheen: var(--sheen);
+  --color-line: var(--line);
+  --color-line2: var(--line2);
+  --color-stroke: var(--stroke);
+  --color-fill: var(--fill);
+  --color-fill2: var(--fill2);
+
+  --color-button: var(--btn);
+  --color-on-button: var(--btn-fg);
+}
+
+/* Project-derived tokens — no 1:1 design source. Kept as literal values (verified equal
+   to the corresponding design t-values) because components reference them; changing them
+   would alter existing visuals. Declared at :root + body[data-theme="dark"] with the
+   unlayered override winning, same cascade trick the pre-06/08 build relied on. */
 @theme {
-  --font-sans: "Inter", sans-serif;
-  --font-display: "Hanken Grotesk", sans-serif;
-
-  --color-primary: #0047dd;
-  --color-on-primary: #ffffff;
-  --color-primary-container: #2c61fe;
-  --color-on-primary-container: #f5f4ff;
-  --color-primary-fixed: #dce1ff;
-  --color-primary-fixed-dim: #b7c4ff;
+  --color-primary-fixed: rgba(58, 115, 222, 0.35);
+  --color-primary-fixed-dim: rgba(58, 115, 222, 0.35);
 
   --color-surface-background: #ffffff;
-  --color-surface-muted: #f5f7fa;
-  --color-surface-container: #e9edff;
+  --color-surface-muted: #f3f5fa;
+  --color-surface-container: #e6eaf5;
+  --color-surface-container-low: #edf0f8;
+  --color-surface-container-high: #dce1f0;
+  --color-surface-container-highest: #dce1f0;
 
-  --color-on-surface: #151b29;
-  --color-on-surface-variant: #434656;
-  --color-text-primary: #121826;
-  --color-text-secondary: #4f5563;
-  --color-border-subtle: #ebedf1;
+  /* -soft/-ink not defined for error in the design source (only --err itself is used
+     there); derived here following the same soft-tint/darker-ink pattern as
+     success/warning so the pre-existing error-container tokens have real values. */
+  --color-error-soft: rgba(192, 94, 112, 0.14);
+  --color-error-ink: #8c3f4d;
+  --color-error-container: rgba(192, 94, 112, 0.14);
+  --color-on-error-container: #8c3f4d;
 
-  --color-error: #ba1a1a;
-  --color-on-error: #ffffff;
-  --color-error-container: #ffdad6;
-  --color-on-error-container: #93000a;
+  --ease-glide: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1);
+}
 
-  /* New Stitch tokens — consistent across all 4 assets/*.html exports */
-  --color-secondary: #585e6d;
-  --color-secondary-container: #dadff0;
-  --color-on-secondary-container: #5d6371;
-  --color-outline: #737687;
-  --color-outline-variant: #c3c5d8;
-  --color-surface-container-low: #f1f3ff;
-  --color-surface-container-high: #e2e8fc;
-  --color-surface-container-highest: #dde2f6;
+/* Not Tailwind utility namespaces — plain custom properties consumed directly via
+   var(), same as the design source's --page/--sh. Declared at BOTH :root and
+   body[data-theme="dark"] so the value recomputes per theme (inheritance copies the
+   computed value, so a single :root declaration would freeze the light gradient).
+   --shadow-rgb is intentionally SPACE-separated ("20 42 84", the space-form of the
+   source's "20,42,84") so `rgb(var(--shadow-rgb) / alpha)` — the modern CSS Color 4
+   syntax used in components — stays valid; the comma form only works with the legacy
+   rgb(r,g,b,a) function. */
+:root {
+  --gradient-page: linear-gradient(165deg, #eaf0f9 0%, #f5f2ee 48%, #e8eff6 100%);
+  --shadow-rgb: 20 42 84;
+}
+
+body[data-theme="dark"] {
+  --color-primary-fixed: rgba(108, 155, 240, 0.35);
+  --color-primary-fixed-dim: rgba(108, 155, 240, 0.35);
+
+  --color-surface-background: #1e2126;
+  --color-surface-muted: #262a30;
+  --color-surface-container: #2f343b;
+  --color-surface-container-low: #2a2f36;
+  --color-surface-container-high: #363c44;
+  --color-surface-container-highest: #363c44;
+
+  --color-error-soft: rgba(220, 130, 145, 0.2);
+  --color-error-ink: #f2b8c2;
+  --color-error-container: rgba(220, 130, 145, 0.2);
+  --color-on-error-container: #f2b8c2;
+
+  --gradient-page: linear-gradient(165deg, #14171c 0%, #1b1d22 48%, #12161b 100%);
+  --shadow-rgb: 0 4 12;
+}
+
+body {
+  background: var(--gradient-page);
+  color: var(--color-on-surface);
+  font-family: var(--font-sans);
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background 0.5s ease;
 }
 
 .material-symbols-outlined {
@@ -87,4 +198,215 @@
 }
 .elapsed-spinner__ring {
   animation: spin 0.8s linear infinite;
+}
+
+/* ============================================================
+   Glass utilities — shared panel/card/chip surfaces, ported from the ~20 repeated
+   inline formulas in V-OTA Planner.dc.html. See phase-01 doc for the formula source.
+   ============================================================ */
+
+@utility glass-panel {
+  background: var(--color-glass-1);
+  backdrop-filter: blur(30px) saturate(1.7);
+  -webkit-backdrop-filter: blur(30px) saturate(1.7);
+  border: 1px solid var(--color-edge);
+  box-shadow:
+    0 24px 56px -28px rgb(var(--shadow-rgb) / 0.34),
+    inset 0 1px 0 var(--color-gloss);
+}
+
+@utility glass-card {
+  background: var(--color-glass-2);
+  backdrop-filter: blur(20px) saturate(1.6);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  border: 1px solid var(--color-edge);
+  border-radius: 22px;
+  box-shadow:
+    0 16px 36px -20px rgb(var(--shadow-rgb) / 0.28),
+    inset 0 1px 0 var(--color-gloss);
+}
+
+@utility glass-chip {
+  background: var(--color-glass-3);
+  backdrop-filter: blur(14px) saturate(1.5);
+  -webkit-backdrop-filter: blur(14px) saturate(1.5);
+  border: 1px solid var(--color-edge);
+  border-radius: 999px;
+}
+
+/* Shimmer skeleton block — exact formula from the design's generating-state
+   skeletons (V-OTA Planner.dc.html:150). Shared by stage-generating (Phase 7)
+   and the hotel cards (Phase 8) via skeleton-card.tsx. */
+@utility shimmer-block {
+  background: linear-gradient(
+    100deg,
+    var(--color-fill) 30%,
+    var(--color-glass-3) 50%,
+    var(--color-fill) 70%
+  );
+  background-size: 900px 100%;
+  animation: vShimmer 1.5s linear infinite;
+}
+
+/* Indeterminate progress segment (generating stage). Honest by design: moving
+   endlessly, never a fake percentage. Kept out of design-animation.css — that
+   file is byte-locked to the design source. */
+@keyframes indeterminate-segment {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(340%);
+  }
+}
+
+/* prefers-reduced-transparency: replace the blur with a solid surface instead of a
+   translucent one — same tokens elsewhere still apply, only the blur/translucency
+   itself is removed. */
+@media (prefers-reduced-transparency: reduce) {
+  .glass-panel,
+  .glass-card,
+  .glass-chip {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--color-surface-background);
+  }
+}
+
+/* Keyframes (vRise, vPop, vShimmer, …) now live in the imported
+   design-animation.css — do not redefine them here. */
+
+/* ============================================================
+   Calendar override — @daypicker/react (react-day-picker v10) ships with
+   circular 44px cells, blue selected/range defaults, and a "blue" accent that
+   never matched this design. Scoped under .intake-calendar (only
+   IntakeDateRange uses it) so it doesn't leak to any other DayPicker
+   instance. Values ported from DatePicker.dc.html:16-25 and
+   V-OTA Planner.dc.html:2237-2243.
+   ============================================================ */
+
+/* Custom nav row above (prev/next month + year buttons) replaces this —
+   `hideNavigation` only removes the library's arrow buttons, not this
+   caption, so it renders unstyled and duplicates the month/year label. */
+.intake-calendar .rdp-month_caption {
+  display: none;
+}
+
+.intake-calendar .rdp-months,
+.intake-calendar .rdp-month {
+  width: 100%;
+  max-width: none;
+}
+
+.intake-calendar .rdp-month_grid {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 3px;
+}
+
+.intake-calendar .rdp-weekday {
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: none;
+  opacity: 1;
+  color: var(--color-on-surface-faint);
+  padding: 0;
+}
+
+.intake-calendar .rdp-day {
+  width: auto;
+  height: 31px;
+  padding: 0;
+  text-align: center;
+}
+
+/* Raised to a 3-class-selector specificity (ancestor .rdp-day + .rdp-day_button)
+   so this consistently outranks the library's own `.rdp-selected .rdp-day_button`
+   border rule regardless of CSS import order — both are otherwise tied at
+   two class selectors each. */
+.intake-calendar .rdp-day .rdp-day_button {
+  width: 100%;
+  height: 31px;
+  border: none;
+  border-radius: 11px;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--color-on-surface);
+  background: transparent;
+  transition:
+    background 0.22s ease,
+    color 0.22s ease,
+    border-radius 0.22s ease;
+}
+
+.intake-calendar .rdp-day_button:hover:not(:disabled) {
+  background: rgba(58, 115, 222, 0.12);
+}
+
+.intake-calendar .rdp-today:not(.rdp-outside) .rdp-day_button {
+  color: var(--color-primary);
+}
+
+.intake-calendar .rdp-outside .rdp-day_button {
+  opacity: 0.4;
+}
+
+/* The library already dims the day CELL (.rdp-disabled) to 0.5 opacity;
+   neutralize that so this button-level 0.3 doesn't compound to ~0.15. */
+.intake-calendar .rdp-disabled {
+  opacity: 1;
+}
+
+.intake-calendar .rdp-disabled .rdp-day_button {
+  opacity: 0.3;
+}
+
+.intake-calendar .rdp-range_start,
+.intake-calendar .rdp-range_end {
+  background: transparent;
+}
+
+.intake-calendar .rdp-range_middle {
+  background: rgba(58, 115, 222, 0.13);
+  border-radius: 5px;
+}
+
+.intake-calendar .rdp-range_middle .rdp-day_button {
+  background: transparent;
+  color: var(--color-on-surface);
+  font-weight: 400;
+  border-radius: 5px;
+}
+
+.intake-calendar .rdp-range_start .rdp-day_button,
+.intake-calendar .rdp-range_end .rdp-day_button {
+  background: var(--color-button);
+  color: var(--color-on-button);
+  font-weight: 600;
+  border: none;
+}
+
+.intake-calendar .rdp-range_start .rdp-day_button {
+  border-radius: 11px 5px 5px 11px;
+}
+
+.intake-calendar .rdp-range_end .rdp-day_button {
+  border-radius: 5px 11px 11px 5px;
+}
+
+.intake-calendar .rdp-range_start.rdp-range_end .rdp-day_button {
+  border-radius: 11px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

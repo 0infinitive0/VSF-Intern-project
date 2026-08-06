@@ -11,7 +11,7 @@ export default function PanelResizer({
   return (
     <div
       onMouseDown={onMouseDown}
-      className="w-[2px] shrink-0 cursor-col-resize bg-surface-muted hover:bg-primary-fixed active:bg-primary transition-colors"
+      className="w-[2px] shrink-0 cursor-col-resize bg-surface-muted hover:bg-primary-fixed active:bg-primary transition-colors h-[calc(100%-52px)] translate-y-[26px]"
       role="separator"
       aria-orientation="vertical"
       aria-label="Resize panel"

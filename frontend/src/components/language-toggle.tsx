@@ -1,14 +1,15 @@
 /**
- * language-toggle.tsx — manual EN | VI switch in the nav.
- * Persists via the shared i18n instance (i18n/index.ts listens to
- * 'languageChanged' and writes localStorage). Accessible: role="group",
- * each option is a <button aria-pressed={...}>.
+ * language-toggle.tsx — manual VI | EN switch, restyled for the sidebar rail
+ * (Phase 5) as a full-width segmented control. Persists via the shared i18n
+ * instance (i18n/index.ts listens to 'languageChanged' and writes
+ * localStorage). Accessible: role="group", each option is a
+ * <button aria-pressed={...}>.
  */
 import { useTranslation } from 'react-i18next'
 
 const OPTIONS = [
-  { code: 'en', label: 'EN' },
   { code: 'vi', label: 'VI' },
+  { code: 'en', label: 'EN' },
 ] as const
 
 export default function LanguageToggle() {
@@ -18,7 +19,7 @@ export default function LanguageToggle() {
     <div
       role="group"
       aria-label="Language"
-      className="flex items-center gap-0.5 bg-surface-container-high rounded-full p-0.5"
+      className="flex items-center gap-0.5 bg-fill rounded-xl p-[3px]"
     >
       {OPTIONS.map((option) => {
         const active = i18n.language === option.code
@@ -28,10 +29,10 @@ export default function LanguageToggle() {
             type="button"
             aria-pressed={active}
             onClick={() => i18n.changeLanguage(option.code)}
-            className={`px-2.5 py-1 text-[11px] font-semibold rounded-full transition-colors ${
+            className={`flex-1 py-1.5 text-[11px] font-semibold rounded-[9px] transition-colors ${
               active
-                ? 'bg-primary text-on-primary'
-                : 'text-on-surface-variant hover:text-on-surface'
+                ? 'bg-surface-background text-on-surface shadow-sm'
+                : 'text-on-surface-faint hover:text-on-surface-variant'
             }`}
           >
             {option.label}
