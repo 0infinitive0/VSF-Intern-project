@@ -16,9 +16,12 @@ from __future__ import annotations
 
 import logging
 
-from langchain.tools import ToolRuntime, tool
+from langchain.tools import tool
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
+from typing import Annotated
+from langchain_core.tools import InjectedToolCallId
+from langgraph.prebuilt import InjectedState
 
 from src.agents.state import TripState
 from src.i18n import t
@@ -40,16 +43,20 @@ def _reply(text: str, tool_call_id: str | None, **extra_updates: object) -> Comm
 from langchain_core.tools import InjectedToolCallId
 from langgraph.prebuilt import InjectedState
 
-@tool
+@tool(return_direct=True)
 def select_hotel(selection: str, state: Annotated[dict, InjectedState], tool_call_id: Annotated[str, InjectedToolCallId]) -> Command:
     """
     Use this tool whenever a numbered hotel list has just been shown and the user's reply is their
     choice (a number like "2" or a hotel name). Pass their reply text verbatim as `selection`.
     """
     logger.warning("Inside select_hotel! state keys: %s", state.keys())
-    logger.warning("Inside select_hotel! pending_hotel_selection is None: %s", state.get("pending_hotel_selection") is None)
     pending = state.get("pending_hotel_selection")
-    session_id = "poc_trip_planner_1"  # Simplified since we don't need config thread_id
+    logger.warning("Inside select_hotel! pending_hotel_selection is None: %s", pending is None)
+    if pending:
+        logger.warning("Inside select_hotel! pending keys: %s", pending.keys())
+        logger.warning("Inside select_hotel! pending options count: %s", len(pending.get("options") or []))
+
+    session_id = "poc_trip_planner_1"
     language = str(state.get("language") or "vi")
 
     if not pending:
@@ -97,6 +104,7 @@ def select_hotel(selection: str, state: Annotated[dict, InjectedState], tool_cal
                 t("SYSTEM ERROR: Không còn kế hoạch chuyến đi để đổi khách sạn.", language),
                 tool_call_id,
                 pending_hotel_selection=None,
+            initial_plan_complete=True,
             )
 
         saved_itinerary = (trip_data.get("itineraries") or [{}])[0]
@@ -108,6 +116,7 @@ def select_hotel(selection: str, state: Annotated[dict, InjectedState], tool_cal
                 ),
                 tool_call_id,
                 pending_hotel_selection=None,
+            initial_plan_complete=True,
             )
 
         planning_constraints = pending.get("planning_constraints") or {} if mode == "change_hotel" else {}
@@ -148,6 +157,7 @@ def select_hotel(selection: str, state: Annotated[dict, InjectedState], tool_cal
             tool_call_id,
             trip_data=updated_data,
             pending_hotel_selection=None,
+            initial_plan_complete=True,
         )
 
     captured: dict[str, object] = {}
@@ -174,4 +184,5 @@ def select_hotel(selection: str, state: Annotated[dict, InjectedState], tool_cal
         tool_call_id,
         trip_data=captured.get("trip_data"),
         pending_hotel_selection=None,
+            initial_plan_complete=True,
     )
