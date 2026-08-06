@@ -1,7 +1,7 @@
 ---
 phase: 8
 title: "[FE] Stage: Khách sạn & Hotel Detail Focus Mode"
-status: pending
+status: done
 priority: P1
 effort: "2.5-3 ngày"
 dependencies: [5]
@@ -254,30 +254,52 @@ Hệ quả cần xử lý:
 
 ## Tiêu chí hoàn thành
 
-- [ ] Card khách sạn khớp design với dữ liệu thật (ảnh, tiện nghi, đánh giá, match score)
-- [ ] Chốt khách sạn vẫn gửi `String(hotel.index)` byte giống hệt, không có verb mới
-- [ ] Bấm card **không** gửi gì; chỉ nút xác nhận ở header gửi
-- [ ] Nút xác nhận vô hiệu khi chưa chọn khách sạn nào
-- [ ] Badge header đổi đúng theo trạng thái chọn; cả hai chuỗi đều qua i18n
-- [ ] Vòng match score ẩn hoàn toàn khi không có `match_score`
-- [ ] Lý do đề xuất dựng từ catalog i18n; mã lạ bị bỏ qua im lặng
-- [ ] Focus mode là chuyển đổi layout, không phải modal/popup
-- [ ] Đang focus vẫn đổi được khách sạn mà không đóng focus mode
-- [ ] Đóng focus khôi phục chat + map + vị trí cuộn, không tải lại dữ liệu
-- [ ] Card phòng chỉ đọc, không có nút "Chọn phòng"
-- [ ] Không có khối review khách sạn, khối liên hệ, ô "Phòng đã chọn", ô chính sách phòng
-- [ ] Không hiển thị "cách trung tâm"; chỗ đó là `area_name` thật
-- [ ] Badge tình trạng phòng chỉ hiện khi có `price`; ánh xạ từ `sold_out`, không đoán
-- [ ] Giá tổng chỉ hiện khi có đủ `start_date` + `end_date`; không có số đêm mặc định
-- [ ] Danh sách lân cận có hai cột (tên · km), **không** có cột phút
-- [ ] Km format từ `distance_km` theo locale; **không** render `distance_text` của DB
-- [ ] `room.price = null` hiện "giá theo yêu cầu", không hiện 0, không mượn giá khách sạn
-- [ ] Mọi ô ảnh có placeholder dự phòng khi lỗi
-- [ ] Section vắng dữ liệu bị ẩn cả section, không có tiêu đề rỗng
-- [ ] Toàn bộ render đẹp với backend **chưa** có Phase 2/3 (mọi field mới đều optional)
-- [ ] `npm run typecheck`, `npm run lint`, `npm run check:tokens` pass
-- [ ] `design-fidelity-checklist.md` §Phase 8 đã tick hết (HotelCard, HotelDetail, RoomCard);
-      dòng bỏ tick có ghi lý do
+Rà 06/08/2026 qua code (không mở trình duyệt, theo CLAUDE.md): mọi mục dưới đã đối chiếu trực
+tiếp với `hotel-option-card.tsx`, `stage-hotels.tsx`, `hotel-detail-panel.tsx`, `room-card.tsx`,
+`match-score-ring.tsx`, `match-reasons.tsx`, `match-reason-lines.ts`, `remote-image.tsx`,
+`use-hotel-detail.ts`, `place-client.ts`, `use-focus-mode.ts`, hai catalog i18n, và ba lệnh
+gate (`typecheck`/`lint`/`check:tokens`, cả ba pass).
+
+- [x] Card khách sạn khớp design với dữ liệu thật (ảnh, tiện nghi, đánh giá, match score)
+- [x] Chốt khách sạn vẫn gửi `String(hotel.index)` byte giống hệt, không có verb mới — chỉ
+      `confirmSelection()` trong `stage-hotels.tsx` gọi `onSend`
+- [x] Bấm card **không** gửi gì; chỉ nút xác nhận ở header gửi
+- [x] Nút xác nhận vô hiệu khi chưa chọn khách sạn nào (`disabled={!selectedHotel}`)
+- [x] Badge header đổi đúng theo trạng thái chọn; cả hai chuỗi đều qua i18n
+      (`hotelBadgeSelected`/`hotelBadgeEmpty`)
+- [x] Vòng match score ẩn hoàn toàn khi không có `match_score` (`if (score == null...) return null`)
+- [x] Lý do đề xuất dựng từ catalog i18n; mã lạ bị bỏ qua im lặng (`KNOWN_CODES` whitelist)
+- [x] Focus mode là chuyển đổi layout, không phải modal/popup (flex sibling thứ ba trong
+      `stage-hotels.tsx`)
+- [x] Đang focus vẫn đổi được khách sạn mà không đóng focus mode (`openFocus` set trực tiếp,
+      không toggle qua null; xác nhận trong `use-focus-mode.ts`)
+- [x] Đóng focus khôi phục chat + map + vị trí cuộn, không tải lại dữ liệu (`savedScroll` ref +
+      `useLayoutEffect`; danh sách/map không unmount, chỉ resize)
+- [x] Card phòng chỉ đọc, không có nút "Chọn phòng"
+- [x] Không có khối review khách sạn, khối liên hệ, ô "Phòng đã chọn", ô chính sách phòng
+- [x] Không hiển thị "cách trung tâm"; chỗ đó là `area_name` thật
+- [x] Badge tình trạng phòng chỉ hiện khi có `price`; ánh xạ từ `sold_out`, không đoán
+- [x] Giá tổng chỉ hiện khi có đủ `start_date` + `end_date`; không có số đêm mặc định
+      (`nightsFrom` trả `null` nếu thiếu ngày)
+- [x] Danh sách lân cận có hai cột (tên · km), **không** có cột phút
+- [x] Km format từ `distance_km` theo locale; **không** render `distance_text` của DB
+- [x] `room.price = null` hiện "giá theo yêu cầu", không hiện 0, không mượn giá khách sạn
+- [x] Mọi ô ảnh có placeholder dự phòng khi lỗi (`remote-image.tsx` ba trạng thái)
+- [x] Section vắng dữ liệu bị ẩn cả section, không có tiêu đề rỗng
+- [x] Toàn bộ render đẹp với backend **chưa** có Phase 2/3 (mọi field mới đều optional trong `types.ts`)
+- [x] `npm run typecheck`, `npm run lint`, `npm run check:tokens` pass
+- [x] `design-fidelity-checklist.md` §Phase 8 đã tick hết (HotelCard, HotelDetail, RoomCard);
+      dòng bỏ tick có ghi lý do — 1 dòng còn bỏ tick (RoomCard mô tả gói `package_details` thiếu
+      `leading-[1.55]` tường minh), lý do đã ghi tại chỗ
+
+## Trạng thái thật (rà 06/08/2026)
+
+Toàn bộ file trong "File liên quan" đã tồn tại và implement đầy đủ; chưa có commit (untracked/
+modified trong git status). `npm run typecheck`, `npm run lint`, `npm run check:tokens` đều pass;
+unit test `match-reason-lines.test.ts` (6 test) pass. Chưa kiểm chứng bằng mắt qua trình duyệt
+(bước 12 "Kiểm chứng trên mock") — rà soát này chỉ đối chiếu code với design tokens gốc, không
+mở Chrome (theo CLAUDE.md). Nếu cần xác nhận thị giác thật (animation timing, glass blur thực tế),
+nên chạy `npm run dev` + mock server và tự kiểm bước 12 trước khi coi phase là đóng hoàn toàn.
 
 ## Đánh giá rủi ro
 

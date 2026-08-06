@@ -200,6 +200,19 @@ export interface RoomDetail {
   price?: RoomPrice | null // null when no room_prices row matches the requested stay
 }
 
+// Shape confirmed 06/08/2026 against real DB rows: objects, not free strings.
+// distance_text/category are pre-formatted VI strings stored in the DB — data,
+// not UI strings: pass category through as-is, but rebuild the km figure from
+// distance_km via Intl.NumberFormat so it honours the UI locale. Never render
+// distance_text directly (phase-08 §distToSights — same trap as intake.people).
+export interface NearbyPlace {
+  name?: string
+  category?: string
+  coordinates?: string | null // "lat,lng" — see HotelOption.coordinates
+  distance_km?: number
+  distance_text?: string
+}
+
 export interface HotelDetail {
   id?: string
   name?: string
@@ -221,8 +234,8 @@ export interface HotelDetail {
   check_in_until?: string
   check_out_time?: string
   reception_open_until?: string
-  nearby_attractions?: string[]
-  nearby_essentials?: string[]
+  nearby_attractions?: NearbyPlace[]
+  nearby_essentials?: string[] // shape not re-confirmed; unused by the UI so far
   lowest_price?: number
   currency?: string
   rooms?: RoomDetail[]

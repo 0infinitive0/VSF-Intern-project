@@ -13,9 +13,6 @@
   "themeToggleSwitchToDark": "Chế độ tối",
   "themeToggleSwitchToLight": "Chế độ sáng",
 
-  "stageHotelsTitle": "Chọn khách sạn",
-  "stageHotelsBody": "Xem các khách sạn AI gợi ý trong khung chat để chọn.",
-
   "intakeHeroTagline": "V‑OTA AI Travel Planner",
   "intakeHeroA": "Chuyến đi tiếp theo của bạn,",
   "intakeHeroB": "lên kế hoạch trong 2 phút",
@@ -169,10 +166,54 @@
     }
   },
 
-  "hotelRooms": "Phòng gợi ý",
-  "hotelAverageNightly": "{{price}} {{currency}}/đêm",
-  "hotelTotalStay": "Tổng {{nights}} đêm: {{price}} {{currency}}",
   "hotelPickBtn": "Chọn khách sạn này",
+  "hotelPickBtnSelected": "✓ Đã chọn",
+
+  "viewDetail": "Xem chi tiết",
+  "perNight": "mỗi đêm",
+  "perNightSep": "/ đêm",
+  "hotelNightlyTotal": "mỗi đêm · {{total}}",
+  "hotelReviewCount": "{{count}} đánh giá",
+  "matchWord": "ĐỘ KHỚP",
+  "matchScoreAria": "Điểm khớp {{pct}} phần trăm",
+  "matchReason": {
+    "budget_fit": "Vừa đúng {{value}}% ngân sách dành cho khách sạn",
+    "high_rating": "Điểm đánh giá {{value}}/10 từ khách đã ở",
+    "amenity_match": "Có {{value}} như bạn mong muốn",
+    "star_rating": "Khách sạn {{value}} sao",
+    "strong_similarity": "Khớp với mô tả chuyến đi của bạn",
+    "near_center": "Nằm ở {{value}}, gần trung tâm"
+  },
+
+  "hotelHeadSub": "Lịch trình sẽ được dựng quanh vị trí khách sạn bạn chọn",
+  "buildFromHotel": "Tạo lịch trình từ khách sạn này",
+  "hotelBadgeEmpty": "Chọn một khách sạn để xem khoảng cách tới các điểm nổi bật",
+  "hotelBadgeSelected": "{{name}} — điểm xuất phát & kết thúc mỗi ngày",
+
+  "detailWhy": "Vì sao V-OTA đề xuất khách sạn này",
+  "detailRooms": "Danh sách phòng",
+  "detailNearby": "Khoảng cách tới các điểm chính",
+  "detailAmen": "Tiện nghi khách sạn",
+  "detailPriceFrom": "Giá từ",
+  "detailNoInfo": "Không có thông tin chi tiết cho khách sạn này.",
+  "detailCloseLabel": "Đóng chi tiết khách sạn",
+  "policyCheckIn": "Nhận phòng",
+  "policyCheckOut": "Trả phòng",
+  "policyReception": "Lễ tân mở đến",
+  "distanceKm": "{{km}} km",
+
+  "roomPriceOnRequest": "Giá theo yêu cầu",
+  "roomAvailable": "Còn phòng",
+  "roomSoldOut": "Hết phòng",
+  "roomExpand": "Chi tiết phòng",
+  "roomCollapse": "Thu gọn",
+  "roomSqm": "{{n}} m²",
+  "roomSleeps": "{{count}} khách",
+  "roomViewPrefix": "view {{view}}",
+
+  "hotelImgAlt": "Ảnh khách sạn {{name}}",
+  "roomImgAlt": "Ảnh phòng {{name}}",
+  "galleryImgAlt": "Ảnh {{index}} của {{name}}",
 
   "errorPrefix": "Lỗi: ",
   "errorNetwork": "Lỗi kết nối: {{msg}}",

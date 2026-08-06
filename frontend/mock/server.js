@@ -240,7 +240,14 @@ const HOTEL_DETAILS = {
     category_scores: { 'Vị trí': 9.4, 'Sạch sẽ': 9.0, 'Dịch vụ': 8.7 },
     check_in_time: '14:00', check_in_until: '22:00',
     check_out_time: '12:00', reception_open_until: '23:59',
-    nearby_attractions: ['Bãi biển Mỹ Khê (2 phút đi bộ)', 'Cầu Rồng (10 phút lái xe)'],
+    // Object shape confirmed 06/08/2026 (docs/chat_api_contract.md). Entries span
+    // more than sights (airport, bus station) — Phase 8 renders name + distance_km
+    // only, rebuilding the km figure per locale instead of using distance_text.
+    nearby_attractions: [
+      { name: 'Bãi biển Mỹ Khê', category: 'Bãi biển', coordinates: '16.0490,108.2493', distance_km: 0.8, distance_text: '0,8 km' },
+      { name: 'Sân bay Quốc tế Đà Nẵng (DAD)', category: 'Sân bay lân cận', coordinates: '16.056327,108.200833', distance_km: 4.81, distance_text: '4,81 km' },
+      { name: 'Bến xe khách Đà Nẵng', category: 'Bến xe', coordinates: '16.0500,108.2100', distance_km: 6.2, distance_text: '6,2 km' },
+    ],
     nearby_essentials: ['Vinmart+ (5 phút đi bộ)', 'Nhà thuốc Long Châu (7 phút đi bộ)'],
     lowest_price: 2200000, currency: 'VND',
     rooms: [
@@ -257,6 +264,68 @@ const HOTEL_DETAILS = {
         room_facilities: ['Lối ra hồ bơi riêng', 'Bồn tắm', 'Minibar'],
         images: [],
         price: { amount: 3600000, currency: 'VND', check_in_date: '2026-10-12', check_out_date: '2026-10-14', sold_out: true, package_details: 'Bao gồm bữa sáng buffet' },
+      },
+    ],
+  },
+  // hotel-2: thinner record — no images array, a room without a room_prices row
+  // (price: null → "giá theo yêu cầu" path), fewer policies; exercises the
+  // hide-the-section-when-empty rules in the detail panel.
+  'hotel-2': {
+    id: 'hotel-2',
+    name: 'Mường Thanh Luxury Đà Nẵng',
+    star_rating: 4,
+    description: 'Khách sạn 4 sao trung tâm, gần cầu Rồng, phù hợp gia đình.',
+    address: '25 Phạm Văn Đồng', city: 'Đà Nẵng', area_name: 'Sơn Trà',
+    location_highlight: 'Đối diện biển Mỹ Khê, ngắm cầu Rồng phun lửa',
+    coordinates: '16.0668,108.2223',
+    image_url: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=1200',
+    amenities: ['Hồ bơi ngoài trời', 'Nhà hàng buffet', 'Đưa đón sân bay'],
+    review_score: 8.1, review_count: 903,
+    check_in_time: '14:00', check_out_time: '12:00',
+    nearby_attractions: [
+      { name: 'Cầu Rồng', category: 'Điểm tham quan', coordinates: '16.0610,108.2277', distance_km: 1.1, distance_text: '1,1 km' },
+      { name: 'Sân bay Quốc tế Đà Nẵng (DAD)', category: 'Sân bay lân cận', coordinates: '16.056327,108.200833', distance_km: 5.3, distance_text: '5,3 km' },
+    ],
+    lowest_price: 1450000, currency: 'VND',
+    rooms: [
+      {
+        id: 'room-2a', name: 'Deluxe City View', bed_description: '1 giường đôi',
+        room_size_sqm: 30, max_guests: 2, view: 'Hướng thành phố',
+        room_facilities: ['Bàn làm việc', 'Điều hòa'],
+        images: [],
+        price: { amount: 1450000, currency: 'VND', check_in_date: '2026-10-12', check_out_date: '2026-10-14', sold_out: false, package_details: null },
+      },
+      {
+        id: 'room-2b', name: 'Family Suite', bed_description: '1 giường đôi + 1 giường đơn',
+        room_size_sqm: 45, max_guests: 4, view: 'Hướng biển',
+        room_facilities: ['Phòng khách riêng', 'Bồn tắt', 'Minibar'],
+        images: [],
+        price: null, // no room_prices row for the stay → "giá theo yêu cầu", no badge
+      },
+    ],
+  },
+  // hotel-3: sold-out room + empty image fields (image_url null here as well)
+  // to exercise the placeholder fallback at every image slot in the panel.
+  'hotel-3': {
+    id: 'hotel-3',
+    name: 'Fusion Maia Đà Nẵng',
+    star_rating: 5,
+    description: 'All-spa-inclusive resort yên tĩnh, spa vô hạn mỗi ngày.',
+    address: '278 Võ Nguyên Giáp', city: 'Đà Nẵng', area_name: 'Ngũ Hành Sơn',
+    coordinates: '16.0330,108.2517',
+    image_url: null,
+    images: [],
+    amenities: ['Spa vô hạn', 'Villa riêng có hồ bơi', 'Yoga buổi sáng'],
+    review_score: 9.2, review_count: 541,
+    check_in_time: '14:00', check_in_until: '22:00', check_out_time: '12:00',
+    lowest_price: null, currency: 'VND',
+    rooms: [
+      {
+        id: 'room-3a', name: 'Pool Villa', bed_description: '1 giường đôi lớn',
+        room_size_sqm: 85, max_guests: 3, view: 'Vườn riêng',
+        room_facilities: ['Hồ bơi riêng', 'Sân hiên', 'Spa trong villa'],
+        images: ['https://images.unsplash.com/photo-1582719508461-905c673771fd?w=1200'],
+        price: { amount: 8200000, currency: 'VND', check_in_date: '2026-10-12', check_out_date: '2026-10-14', sold_out: true, package_details: 'Bao gồm spa mỗi ngày' },
       },
     ],
   },

@@ -13,9 +13,6 @@
   "themeToggleSwitchToDark": "Dark mode",
   "themeToggleSwitchToLight": "Light mode",
 
-  "stageHotelsTitle": "Pick a hotel",
-  "stageHotelsBody": "Review the hotels the AI suggested in the chat to make your pick.",
-
   "intakeHeroTagline": "V‑OTA AI Travel Planner",
   "intakeHeroA": "Your next trip,",
   "intakeHeroB": "planned in two minutes",
@@ -170,10 +167,54 @@
     }
   },
 
-  "hotelRooms": "Suggested rooms",
-  "hotelAverageNightly": "{{price}} {{currency}}/night",
-  "hotelTotalStay": "{{nights}} night(s) total: {{price}} {{currency}}",
-  "hotelPickBtn": "Pick this hotel",
+  "hotelPickBtn": "Choose this hotel",
+  "hotelPickBtnSelected": "✓ Selected",
+
+  "viewDetail": "View details",
+  "perNight": "per night",
+  "perNightSep": "/ night",
+  "hotelNightlyTotal": "per night · {{total}}",
+  "hotelReviewCount": "{{count}} reviews",
+  "matchWord": "match",
+  "matchScoreAria": "Match score {{pct}} percent",
+  "matchReason": {
+    "budget_fit": "Fits {{value}}% of your hotel budget",
+    "high_rating": "Rated {{value}}/10 by past guests",
+    "amenity_match": "Has {{value}}, as you asked",
+    "star_rating": "{{value}}-star hotel",
+    "strong_similarity": "Matches your trip description",
+    "near_center": "In {{value}}, near the centre"
+  },
+
+  "hotelHeadSub": "The itinerary is built around the hotel you pick",
+  "buildFromHotel": "Build the itinerary from this hotel",
+  "hotelBadgeEmpty": "Pick a hotel to see distances to the key sights",
+  "hotelBadgeSelected": "{{name}} — start and end of every day",
+
+  "detailWhy": "Why V-OTA recommends this hotel",
+  "detailRooms": "Rooms",
+  "detailNearby": "Distance to key points",
+  "detailAmen": "Hotel amenities",
+  "detailPriceFrom": "From",
+  "detailNoInfo": "No details available for this hotel.",
+  "detailCloseLabel": "Close hotel details",
+  "policyCheckIn": "Check-in",
+  "policyCheckOut": "Check-out",
+  "policyReception": "Reception until",
+  "distanceKm": "{{km}} km",
+
+  "roomPriceOnRequest": "Price on request",
+  "roomAvailable": "Available",
+  "roomSoldOut": "Sold out",
+  "roomExpand": "Room details",
+  "roomCollapse": "Collapse",
+  "roomSqm": "{{n}} m²",
+  "roomSleeps": "{{count}} guests",
+  "roomViewPrefix": "view {{view}}",
+
+  "hotelImgAlt": "Photo of {{name}}",
+  "roomImgAlt": "Photo of room {{name}}",
+  "galleryImgAlt": "Photo {{index}} of {{name}}",
 
   "errorPrefix": "Error: ",
   "errorNetwork": "Connection error: {{msg}}",

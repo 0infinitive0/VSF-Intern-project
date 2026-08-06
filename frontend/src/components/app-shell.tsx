@@ -178,6 +178,7 @@ export default function AppShell({
             itineraryWidth={itineraryWidth}
             onItineraryResizeStart={onItineraryResizeStart}
             focusMode={focusMode}
+            onSend={onSend}
           />
         </div>
       </div>

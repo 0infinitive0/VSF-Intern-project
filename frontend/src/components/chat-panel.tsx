@@ -3,7 +3,6 @@ import MessageList from './message-list'
 import Composer from './composer'
 import StepNavigator from './step-navigator'
 import SuggestionChips from './suggestion-chips'
-import HotelOptionCards from './hotel-option-card'
 import TripParametersCard from './trip-parameters-card'
 import IntakeParametersForm from './intake-parameters-form'
 import { deriveStageView } from '../lib/derive-stage'
@@ -65,7 +64,11 @@ export default function ChatPanel({
 
   const tripTitle = tripPlan?.destination || intake?.destination || t('chatPanelTitle')
 
-  const showHotelCards = lastStage === 'hotel_options' && hotelOptions.length > 0
+  // Phase 8: hotel cards live in the hotels STAGE (stage-hotels.tsx), not in
+  // this rail — the two-step pick (card → header confirm) needs a single
+  // selectedIndex owner. The rail keeps the one-step path unchanged: the
+  // suggestion chips ("1".."3") still pick a hotel in one tap.
+  const inHotelStage = lastStage === 'hotel_options' && hotelOptions.length > 0
   const showIntakeForm = lastStage === 'intake' && Boolean(intake) && !pending
 
   return (
@@ -109,18 +112,13 @@ export default function ChatPanel({
       <MessageList messages={messages} pending={pending} elapsedMs={state.elapsedMs} />
 
       {/* Widget rail — fixed above the composer, never inside the scroll */}
-      {!pending && (showHotelCards || showIntakeForm || suggestions.length > 0) && (
+      {!pending && (showIntakeForm || inHotelStage || suggestions.length > 0) && (
         <div className="flex-none max-h-[56vh] overflow-y-auto custom-scrollbar px-4 pb-1 flex flex-col gap-2.5">
-          {showHotelCards ? (
-            <>
-              <TripParametersCard tripPlan={tripPlan} intake={intake} />
-              <HotelOptionCards hotelOptions={hotelOptions} onPick={onSend} disabled={false} />
-            </>
+          {showIntakeForm ? (
+            <IntakeParametersForm intake={intake!} onSubmit={onSend} disabled={false} />
           ) : (
             <>
-              {showIntakeForm && (
-                <IntakeParametersForm intake={intake} onSubmit={onSend} disabled={false} />
-              )}
+              {inHotelStage && <TripParametersCard tripPlan={tripPlan} intake={intake} />}
               {lastStage !== 'intake' && (
                 <SuggestionChips
                   suggestions={suggestions}
