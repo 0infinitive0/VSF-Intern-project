@@ -178,11 +178,26 @@ VI/EN trong sidebar, vẫn là component đó với class mới và vị trí m�
   kéo đổi kích thước panel
 - [x] Responsive ở `sm` / `md` / `lg` / `xl`, không có scroll ngang toàn trang
 - [x] `npm run typecheck` và `npm run lint` pass; thêm `npm run test` (vitest)
-- [ ] **Mở lại sau audit 06/08/2026:** `design-fidelity-checklist.md` §Phase 5 (nền gradient,
-      sidebar, HistoryRow). Phase này đã đánh Done trước khi có cơ chế nghiệm thu thị giác, và
+- [x] **Đóng lại sau audit 06/08/2026:** `design-fidelity-checklist.md` §Phase 5 (nền gradient,
+      sidebar, HistoryRow). Phase này đã đánh Done trước khi có cơ chế nghiệm thu thị giác;
       audit tìm thấy `app-shell.tsx:90` phủ `bg-surface-background` đặc lên `--gradient-page` —
-      giết toàn bộ hệ glass của app. Sửa nằm ở Phase 6 bước 11 mục 1; tick lại dòng này sau đó
-  cho `derive-stage.ts`
+      giết toàn bộ hệ glass của app — đã hotfix ở Phase 6 bước 11 mục 1. Phần còn lại
+      (`sidebar-rail.tsx`, `theme-toggle.tsx`, `conversation-list.tsx`) rà và sửa trực tiếp tại
+      đây: border sidebar `--line`→`--line2`; brand thiếu shadow; nút chuyến mới radius
+      16→14 + thiếu bg `--g1`; nút theme dùng `glass-chip`(`--g3`, radius 999) thay vì
+      `bg-glass-1`; HistoryRow radius 16→14, tiêu đề 12px/600→12.5px/590, ngày dùng `--t4` thay
+      vì `--t3`, nút xoá lệch 6px thay vì 8px, và hoàn toàn thiếu `vFade` lệch pha khi list
+      render. Lang segmented đã đúng sẵn, không cần sửa. `typecheck`/`lint`/`test`(43/43)/
+      `check:tokens`/`build` đều pass sau khi sửa.
+
+      `code-reviewer` subagent rà lại diff, phát hiện 3 vấn đề thật: (1) `border-r border-line2`
+      trên `<aside>` vô hiệu — `glass-panel`'s `border` shorthand sort sau trong stylesheet nên
+      đè mất border-color, dù cùng specificity; sửa bằng inline `borderRight` (luôn thắng mọi
+      class); (2) `animate-[vFade_..._both]` lệch pha bằng `animationDelay` không bị chặn bởi
+      `@media (prefers-reduced-motion: reduce)` (khối đó thiếu `animation-delay: 0s !important`)
+      — user giảm-motion vẫn thấy từng dòng history hiện dần; sửa ở `styles.css`; (3) độ trễ lệch
+      pha không giới hạn theo số session — dòng cuối cùng vô hình 2.4s+ nếu lịch sử dài; giới hạn
+      `Math.min(i, 8) * 60ms`. Cả 3 đã sửa và verify lại đủ 4 gate ở trên.
 
 Review vòng đầu (code-reviewer subagent) phát hiện 3 bug thật do thiếu
 `display:flex` trên các wrapper mới (chat panel mất chiều cao, resizer cao

@@ -167,7 +167,7 @@ thay đổi contract: phải được cả hai dev đồng ý và phải sửa k
 
 | # | Phase | Track | Trạng thái | Phụ thuộc |
 |---|-------|-------|--------|-----------|
-| 1 | [API Contract & Design Tokens](./phase-01-api-contract-and-design-tokens.md) | Chung | Pending² | — |
+| 1 | [API Contract & Design Tokens](./phase-01-api-contract-and-design-tokens.md) | Chung | Done² | — |
 | 2 | [Mở rộng payload khách sạn](./phase-02-be-hotel-option-payload.md) | Backend | Pending | 1 |
 | 3 | [Endpoint chi tiết khách sạn & địa điểm](./phase-03-be-detail-endpoints.md) | Backend | Pending | 1 |
 | 4 | [Persist session & lịch sử hội thoại](./phase-04-be-session-persistence.md) | Backend | Pending | 1 |
@@ -183,7 +183,10 @@ thay đổi contract: phải được cả hai dev đồng ý và phải sửa k
 > ² Phần token của Phase 1 đã ship (chép tay giá trị vào `@theme`). Rà 06/08/2026 phát hiện
 > Tailwind v4 có `@theme inline` — giải đúng bài toán mà bản đầu phải né bằng cách chép tay.
 > Bốn tiêu chí đã mở lại: chuyển sang chép file design nguyên văn + alias `inline`. Ròng lại
-> là **ít việc hơn** (xoá ~120 dòng chép tay, script gác đơn giản đi hẳn).
+> là **ít việc hơn** (xoá ~120 dòng chép tay, script gác đơn giản đi hẳn). Đóng lại cùng ngày
+> 06/08/2026: `check:tokens`/`typecheck`/`lint`/`build` đều pass, `data-theme` đổi màu đúng cả
+> hai chiều. Tiêu chí còn lại (cả hai dev review contract) là bước thủ công, không tự động
+> hoá được.
 
 > ¹ Phase 5 đã đánh Done **trước khi** có cơ chế nghiệm thu thị giác. Audit 06/08/2026 tìm
 > thấy `app-shell.tsx:90` phủ màu đặc lên `--gradient-page`, giết toàn bộ hệ glass. Một tiêu

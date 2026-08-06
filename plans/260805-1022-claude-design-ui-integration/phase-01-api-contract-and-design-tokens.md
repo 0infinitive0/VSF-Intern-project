@@ -266,12 +266,15 @@ Mọi motion phải bị vô hiệu dưới `@media (prefers-reduced-motion: red
 - [x] `npm run typecheck` và `npm run lint` pass
 - [ ] Cả hai dev đã review và chốt contract trước khi bất kỳ track nào bắt đầu
   (nhân bước này — cần review thủ công từ cả hai dev, không tự động hoá được)
-- [ ] **[Mở lại 06/08/2026]** Token dùng `@theme inline` alias vào ba file CSS chép nguyên văn;
-      không còn giá trị token chép tay trong `styles.css`
-- [ ] Đổi `data-theme` trên `<body>` là utility Tailwind đổi màu theo (kiểm cả hai chiều)
-- [ ] `border-error/30` (`message-bubble.tsx:34`) render đúng sau khi chuyển sang alias `var()`
-- [ ] Comment đầu `styles.css` mô tả đúng kiến trúc hiện tại, không còn giải thích cũ
-- [ ] `npm run check:tokens` pass — ba file CSS khớp từng byte với bản gốc của design
+- [x] **[Mở lại 06/08/2026, đóng lại cùng ngày]** Token dùng `@theme inline` alias vào ba file
+      CSS chép nguyên văn; không còn giá trị token chép tay trong `styles.css`
+- [x] Đổi `data-theme` trên `<body>` là utility Tailwind đổi màu theo (kiểm cả hai chiều) —
+      `use-theme.ts` ghi `document.body.dataset.theme`, `@theme inline` resolve `var()` tại
+      điểm dùng nên override theo theme lan tới mọi utility
+- [x] `border-error/30` (`message-bubble.tsx:34`) render đúng sau khi chuyển sang alias `var()`
+      — `npm run build` biên dịch sạch, Tailwind dựng `color-mix()` cho modifier trên token var
+- [x] Comment đầu `styles.css` mô tả đúng kiến trúc hiện tại, không còn giải thích cũ
+- [x] `npm run check:tokens` pass — ba file CSS khớp từng byte với bản gốc của design
 
 Font stack thực tế dùng "Inter", "Be Vietnam Pro" — quyết định của người dùng, ghi đè
 gợi ý SF Pro trong "Kiến trúc" ở trên. `--font-display` giữ nguyên Hanken Grotesk.
