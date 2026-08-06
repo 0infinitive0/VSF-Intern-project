@@ -33,43 +33,67 @@ def _pick_profile(origin: Tuple[float, float], dest: Tuple[float, float]) -> str
         return "walking"
     return "driving-traffic"
 
+def encode_polyline(coordinates: list[Tuple[float, float]]) -> str:
+    """Encode a list of (lat, lon) coordinates into a polyline string (precision 5)."""
+    def encode_number(num):
+        num = int(round(num * 1e5))
+        num = ~(num << 1) if num < 0 else (num << 1)
+        res = ""
+        while num >= 0x20:
+            res += chr((0x20 | (num & 0x1f)) + 63)
+            num >>= 5
+        res += chr(num + 63)
+        return res
+
+    result = []
+    prev_lat = 0
+    prev_lon = 0
+    for lat, lon in coordinates:
+        result.append(encode_number(lat - prev_lat))
+        result.append(encode_number(lon - prev_lon))
+        prev_lat = lat
+        prev_lon = lon
+    return "".join(result)
+
 class MapboxDirectionsClient:
     """Client for fetching route data from Mapbox Directions API v5."""
     
     BASE_URL = "https://api.mapbox.com/directions/v5/mapbox"
-    TIMEOUT_SECONDS = 5
+    TIMEOUT_SECONDS = 10
     
     @staticmethod
-    @lru_cache(maxsize=1024)
-    def get_route_info(
-        origin_coords: Tuple[float, float], 
-        dest_coords: Tuple[float, float],
+    def get_route_info_batch(
+        coords_list: list[Tuple[float, float]],
         profile: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[list[Dict[str, Any]]]:
         """
-        Fetch route information between two coordinates using Mapbox API.
-        Coordinates should be (latitude, longitude).
-        Returns a dictionary with distance_km, duration_mins, polyline and profile if successful.
-        Returns None if the request fails or no route is found.
+        Fetch batch route information using Mapbox API.
+        Returns a list of dictionaries corresponding to each leg between consecutive coordinates.
         """
         settings = get_settings()
         token = settings.mapbox_access_token
         
         if not token:
-            # We use a static attribute to warn only once
             if not getattr(MapboxDirectionsClient, "_warned_missing_token", False):
                 logger.warning("MAPBOX_ACCESS_TOKEN is not set. Routing will be skipped and return None.")
                 MapboxDirectionsClient._warned_missing_token = True
             return None
 
-        origin_lat, origin_lon = origin_coords
-        dest_lat, dest_lon = dest_coords
-        
-        # Mapbox expects {longitude},{latitude}
-        url = f"{MapboxDirectionsClient.BASE_URL}/{profile}/{origin_lon},{origin_lat};{dest_lon},{dest_lat}"
+        if len(coords_list) < 2:
+            return []
+
+        # Mapbox API limit is 25 coordinates per request. 
+        if len(coords_list) > 25:
+            logger.warning(f"Mapbox API limit is 25 coordinates, got {len(coords_list)}. Truncating.")
+            coords_list = coords_list[:25]
+
+        coords_str = ";".join([f"{lon},{lat}" for lat, lon in coords_list])
+        url = f"{MapboxDirectionsClient.BASE_URL}/{profile}/{coords_str}"
         
         params = {
-            "overview": "full",
+            "overview": "false",
+            "steps": "true",
+            "geometries": "geojson",
             "access_token": token
         }
         
@@ -80,7 +104,7 @@ class MapboxDirectionsClient:
                 logger.error("Mapbox API returned 401 Unauthorized. Check MAPBOX_ACCESS_TOKEN.")
                 return None
             elif response.status_code == 422:
-                logger.info("Mapbox API returned 422 Unprocessable Entity. Bad coordinates.")
+                logger.info(f"Mapbox API returned 422 Unprocessable Entity. Bad coordinates: {coords_str}")
                 return None
             elif response.status_code == 429:
                 logger.warning("Mapbox API returned 429 Too Many Requests. Rate limit exceeded.")
@@ -90,17 +114,33 @@ class MapboxDirectionsClient:
             data = response.json()
             
             if data.get("code") == "Ok" and "routes" in data and len(data["routes"]) > 0:
-                route = data["routes"][0]
-                distance_meters = route.get("distance", 0.0)
-                duration_seconds = route.get("duration", 0.0)
-                geometry = route.get("geometry", "")
-                
-                return {
-                    "distance_km": round(distance_meters / 1000.0, 2),
-                    "duration_mins": round(duration_seconds / 60.0, 1),
-                    "polyline": geometry,
-                    "profile": profile
-                }
+                legs = data["routes"][0].get("legs", [])
+                results = []
+                for leg in legs:
+                    distance_meters = leg.get("distance", 0.0)
+                    duration_seconds = leg.get("duration", 0.0)
+                    
+                    coords = []
+                    for step in leg.get("steps", []):
+                        geom = step.get("geometry", {})
+                        if geom.get("type") == "LineString":
+                            for pt in geom.get("coordinates", []):
+                                coords.append((pt[1], pt[0]))
+                    
+                    deduped = []
+                    for pt in coords:
+                        if not deduped or deduped[-1] != pt:
+                            deduped.append(pt)
+                            
+                    polyline = encode_polyline(deduped) if deduped else ""
+                    
+                    results.append({
+                        "distance_km": round(distance_meters / 1000.0, 2),
+                        "duration_mins": round(duration_seconds / 60.0, 1),
+                        "polyline": polyline,
+                        "profile": profile
+                    })
+                return results
             else:
                 logger.warning(f"Mapbox API returned non-Ok code or no routes: {data.get('code')}")
                 return None
@@ -158,10 +198,12 @@ def recalculate_itinerary_routes(trip_data: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(items, list):
         return trip_data
 
-    hotel_coords = None
+    hotel_coords_raw = None
     hotel = trip_data.get("hotel")
     if isinstance(hotel, dict):
-        hotel_coords = hotel.get("coordinates")
+        hotel_coords_raw = hotel.get("coordinates")
+    
+    parsed_hotel_coords = parse_coordinates(hotel_coords_raw) if hotel_coords_raw else None
 
     # Group items by day_number
     by_day: Dict[int, list] = {}
@@ -173,34 +215,83 @@ def recalculate_itinerary_routes(trip_data: Dict[str, Any]) -> Dict[str, Any]:
     for day, day_items in by_day.items():
         # Sort items by order_index if present
         day_items.sort(key=lambda x: x.get("order_index", 0))
-        n = len(day_items)
-
-        # First item of the day: route from hotel to first item if available
-        if hotel_coords and n > 0:
+        
+        # Build the sequence of coordinates for the day
+        day_sequence = []
+        item_mapping = [] # stores tuple: (item_dict, field_to_update, origin_coords, dest_coords)
+        
+        if parsed_hotel_coords and len(day_items) > 0:
             first_item = day_items[0]
-            first_coords = first_item.get("coordinates")
+            first_coords = parse_coordinates(first_item.get("coordinates"))
             if first_coords:
-                route_info = get_route_to_next(hotel_coords, first_coords)
-                if route_info:
-                    first_item["route_from_hotel"] = route_info
+                day_sequence.append(parsed_hotel_coords)
+                day_sequence.append(first_coords)
+                item_mapping.append((first_item, "route_from_hotel", parsed_hotel_coords, first_coords))
 
-        for i in range(n):
+        for i in range(len(day_items)):
             curr_item = day_items[i]
-            curr_coords = curr_item.get("coordinates")
+            curr_coords = parse_coordinates(curr_item.get("coordinates"))
             
-            if i < n - 1:
+            if i < len(day_items) - 1:
                 next_item = day_items[i + 1]
-                next_coords = next_item.get("coordinates")
+                next_coords = parse_coordinates(next_item.get("coordinates"))
                 if curr_coords and next_coords:
-                    route_info = get_route_to_next(curr_coords, next_coords)
-                    if route_info:
-                        curr_item["route_to_next"] = route_info
+                    if not day_sequence:
+                        day_sequence.append(curr_coords)
+                    day_sequence.append(next_coords)
+                    item_mapping.append((curr_item, "route_to_next", curr_coords, next_coords))
             else:
-                # Last item of the day: route back to hotel if available and not already at hotel
-                if curr_coords and hotel_coords:
-                    route_info = get_route_to_next(curr_coords, hotel_coords)
-                    if route_info:
-                        curr_item["route_to_next"] = route_info
+                # Last item -> back to hotel
+                if curr_coords and parsed_hotel_coords:
+                    if not day_sequence:
+                        day_sequence.append(curr_coords)
+                    day_sequence.append(parsed_hotel_coords)
+                    item_mapping.append((curr_item, "route_to_next", curr_coords, parsed_hotel_coords))
+                    
+        if not day_sequence or not item_mapping:
+            continue
+            
+        # Deduplicate consecutive identical coordinates for Mapbox API to avoid empty legs,
+        # but mapbox can handle them. Wait, if Mapbox receives identical consecutive coords,
+        # it returns a leg with 0 distance. It's safer to just send them and let Mapbox handle it.
+        # This keeps leg indexes aligned with item_mapping!
+        
+        driving_legs = MapboxDirectionsClient.get_route_info_batch(day_sequence, "driving-traffic")
+        
+        # Check if any leg requires walking
+        needs_walking = False
+        for (item, field, origin, dest) in item_mapping:
+            if origin != dest and _haversine_km(origin, dest) < WALKING_THRESHOLD_KM:
+                needs_walking = True
+                break
+                
+        walking_legs = None
+        if needs_walking:
+            walking_legs = MapboxDirectionsClient.get_route_info_batch(day_sequence, "walking")
+            
+        # Assign back to items
+        for i, (item, field, origin, dest) in enumerate(item_mapping):
+            if origin == dest:
+                item[field] = {
+                    "distance_km": 0.0,
+                    "duration_mins": 0.0,
+                    "polyline": "",
+                    "profile": "walking"
+                }
+                continue
+                
+            dist_km = _haversine_km(origin, dest)
+            use_walking = dist_km < WALKING_THRESHOLD_KM
+            
+            # Select appropriate leg data
+            leg_data = None
+            if use_walking and walking_legs and i < len(walking_legs):
+                leg_data = walking_legs[i]
+            elif driving_legs and i < len(driving_legs):
+                leg_data = driving_legs[i]
+                
+            if leg_data:
+                item[field] = leg_data
 
     return trip_data
 
