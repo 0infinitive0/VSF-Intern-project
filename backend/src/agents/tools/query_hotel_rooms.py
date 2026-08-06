@@ -30,17 +30,25 @@ def query_hotel_rooms(
     
     # Anti-loop mechanism
     messages = runtime.state.get("messages", [])
-    ai_messages = [m for m in messages if hasattr(m, "tool_calls") and m.tool_calls]
-    if len(ai_messages) >= 2:
-        last_calls = ai_messages[-2].tool_calls
-        current_calls = ai_messages[-1].tool_calls
-        if last_calls and current_calls and last_calls[0]["name"] == "query_hotel_rooms" and current_calls[0]["name"] == "query_hotel_rooms":
-            if str(last_calls[0]["args"].get("hotel_identifier", "")) == str(hotel_identifier):
-                reply = t(
-                    "Lỗi: Bạn đã gọi công cụ này với cùng tham số nhưng không tìm thấy thông tin. ĐỪNG gọi lại. Hãy nói với người dùng bạn không có thông tin này và xử lý phần còn lại của yêu cầu.",
-                    language
-                ) if language == "vi" else "Error: You just called this tool with the same args but the info wasn't there. DO NOT CALL IT AGAIN. Tell the user you don't have the info."
-                return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
+    
+    # In LangGraph, when a tool is executing, the last message in state is the AIMessage containing the tool_calls.
+    # If the AI is looping, the sequence is: AIMessage(tool_calls) -> ToolMessage -> AIMessage(tool_calls)[CURRENT]
+    # So if messages[-2] is a ToolMessage and messages[-3] is an AIMessage, it's a consecutive tool call without user input.
+    if len(messages) >= 3 and getattr(messages[-2], "type", "") == "tool" and getattr(messages[-3], "type", "") == "ai":
+        last_ai_msg = messages[-3]
+        curr_ai_msg = messages[-1]
+        
+        if hasattr(last_ai_msg, "tool_calls") and last_ai_msg.tool_calls and hasattr(curr_ai_msg, "tool_calls") and curr_ai_msg.tool_calls:
+            last_calls = last_ai_msg.tool_calls
+            current_calls = curr_ai_msg.tool_calls
+            if last_calls[0]["name"] == "query_hotel_rooms" and current_calls[0]["name"] == "query_hotel_rooms":
+                if str(last_calls[0]["args"].get("hotel_identifier", "")) == str(hotel_identifier) and str(last_calls[0]["args"].get("room_name", "")) == str(room_name):
+                    logger.warning("[query_hotel_rooms] ANTI-LOOP TRIGGERED!")
+                    reply = t(
+                        "Lỗi: Bạn đã gọi công cụ này với cùng tham số nhưng không tìm thấy thông tin. ĐỪNG gọi lại. Hãy nói với người dùng bạn không có thông tin này và xử lý phần còn lại của yêu cầu.",
+                        language
+                    ) if language == "vi" else "Error: You just called this tool with the same args but the info wasn't there. DO NOT CALL IT AGAIN. Tell the user you don't have the info."
+                    return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
 
     pending_hotel_selection = runtime.state.get("pending_hotel_selection")
     

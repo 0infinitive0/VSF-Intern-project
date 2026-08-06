@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     llm_temperature: float = Field(default=0.3, ge=0.0, le=2.0)
     llm_provider: str = "ollama"
     llm_model: str = "llama3.1"
-    llm_fast_model: str = "@cf/meta/llama-3.1-8b-instruct-fast"
+    llm_fast_model: str = "llama3.1"
     llm_api_key: str = ""
     llm_api_base: str = ""
 
@@ -65,6 +65,9 @@ class Settings(BaseSettings):
         "deploy — the operational rollback for R1/R2/R3 in that plan.",
     )
 
+
+    # Mapbox
+    mapbox_access_token: str = ""
 
 @lru_cache
 def get_settings() -> Settings:

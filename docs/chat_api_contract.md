@@ -243,10 +243,21 @@ Searches for hotels and rooms by semantic similarity.
   "days": [ { "day_number": 1, "theme": "...",
               "items": [ { "order_index": 1, "start_time": "08:00", "end_time": "09:30",
                            "activity": "...", "kind": "breakfast",
-                           "reference_type": "Attraction", "reference_id": "uuid" } ] } ],
+                           "reference_type": "Attraction", "reference_id": "uuid",
+                           "route_to_next": {
+                             "distance_km": 6.4,
+                             "duration_mins": 14.2,
+                             "polyline": "yseeAo...",
+                             "profile": "driving-traffic"
+                           } } ] } ],
   "adjustments": ["..."]
 }
 ```
+
+**`profile` values**:
+- `driving-traffic`: For routes >= 1.2km
+- `walking`: For routes < 1.2km
+
 
 ## Internal Architecture & Routing
 

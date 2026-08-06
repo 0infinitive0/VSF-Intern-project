@@ -166,16 +166,22 @@ def run_extended_flow():
     
     hotels_step4 = hotels_step3 + new_hotels
     
-    # === Test Step 5: Select Hotel ===
-    print("\n=== Test Step 5: Select Hotel (Happy Path) ===")
-    print(f"Action: POST /api/v1/hotels/select with hotel_id={hotel_uuid}")
-    payload = {"session_id": session_id, "hotel_id": hotel_uuid}
-    resp, elapsed = request_with_timeout(client, 'POST', "/api/v1/hotels/select", payload)
+    # === Test Step 5: Select Hotel via Natural Language Chat ===
+    token_monitor.reset_step()
+    print("\n=== Test Step 5: Select Hotel via Natural Language Chat ===")
+    msg5 = "Tôi chọn khách sạn số 2"
+    print(f"User: '{msg5}'")
+    print("Action: POST /api/v1/chat")
+    payload = {"session_id": session_id, "message": msg5}
+    resp, elapsed = request_with_timeout(client, 'POST', "/api/v1/chat", payload)
     data = print_response(resp, elapsed)
+    
+    print(f"Tokens used in Step 5: Input ~{token_monitor.step_input_tokens}, Output ~{token_monitor.step_output_tokens}")
+    assert token_monitor.step_input_tokens <= 8000, f"Token limit exceeded in Step 5: {token_monitor.step_input_tokens} > 8000"
     
     # Assertions
     assert data.get("stage") == "planned", f"Expected stage planned, got {data.get('stage')}"
-    print(f"Selected hotel confirmed")
+    print(f"Selected hotel via LLM confirmed")
     
     # === Test Step 6: Conflict Detection Edge Case ===
     token_monitor.reset_step()

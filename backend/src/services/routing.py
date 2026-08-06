@@ -1,57 +1,112 @@
+import math
 import logging
 import requests
 from typing import Optional, Dict, Any, Tuple
 from functools import lru_cache
 
+from src.config import get_settings
+
 logger = logging.getLogger(__name__)
 
-class OSRMClient:
-    """Client for fetching route data from OSRM public demo server."""
+WALKING_THRESHOLD_KM = 1.2
+
+def _haversine_km(origin: Tuple[float, float], dest: Tuple[float, float]) -> float:
+    """Calculate the great circle distance between two points on the earth."""
+    lat1, lon1 = origin
+    lat2, lon2 = dest
+    radius = 6371.0 # km
+
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2) * math.sin(dlat / 2) + math.cos(math.radians(lat1)) \
+        * math.cos(math.radians(lat2)) * math.sin(dlon / 2) * math.sin(dlon / 2)
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return radius * c
+
+def _pick_profile(origin: Tuple[float, float], dest: Tuple[float, float]) -> str:
+    """Chọn profile theo khoảng cách đường chim bay.
+    Ngưỡng 1.2km ~ 15 phút đi bộ — quãng mà người đi du lịch thường đi bộ thay vì
+    bắt xe. Đây là luật sản phẩm, không phải dữ liệu: nó quyết định HỎI Mapbox cái gì.
+    Nhãn hiển thị luôn khớp profile đã gọi, nên con số trả về vẫn là thật.
+    """
+    if _haversine_km(origin, dest) < WALKING_THRESHOLD_KM:
+        return "walking"
+    return "driving-traffic"
+
+class MapboxDirectionsClient:
+    """Client for fetching route data from Mapbox Directions API v5."""
     
-    BASE_URL = "http://router.project-osrm.org/route/v1/driving"
+    BASE_URL = "https://api.mapbox.com/directions/v5/mapbox"
     TIMEOUT_SECONDS = 5
     
     @staticmethod
     @lru_cache(maxsize=1024)
     def get_route_info(
         origin_coords: Tuple[float, float], 
-        dest_coords: Tuple[float, float]
+        dest_coords: Tuple[float, float],
+        profile: str
     ) -> Optional[Dict[str, Any]]:
         """
-        Fetch route information between two coordinates.
+        Fetch route information between two coordinates using Mapbox API.
         Coordinates should be (latitude, longitude).
-        Returns a dictionary with distance_km, duration_mins, and polyline if successful.
+        Returns a dictionary with distance_km, duration_mins, polyline and profile if successful.
         Returns None if the request fails or no route is found.
         """
+        settings = get_settings()
+        token = settings.mapbox_access_token
+        
+        if not token:
+            # We use a static attribute to warn only once
+            if not getattr(MapboxDirectionsClient, "_warned_missing_token", False):
+                logger.warning("MAPBOX_ACCESS_TOKEN is not set. Routing will be skipped and return None.")
+                MapboxDirectionsClient._warned_missing_token = True
+            return None
+
         origin_lat, origin_lon = origin_coords
         dest_lat, dest_lon = dest_coords
         
-        # OSRM expects {longitude},{latitude}
-        url = f"{OSRMClient.BASE_URL}/{origin_lon},{origin_lat};{dest_lon},{dest_lat}?overview=full"
+        # Mapbox expects {longitude},{latitude}
+        url = f"{MapboxDirectionsClient.BASE_URL}/{profile}/{origin_lon},{origin_lat};{dest_lon},{dest_lat}"
+        
+        params = {
+            "overview": "full",
+            "access_token": token
+        }
         
         try:
-            response = requests.get(url, timeout=OSRMClient.TIMEOUT_SECONDS)
+            response = requests.get(url, params=params, timeout=MapboxDirectionsClient.TIMEOUT_SECONDS)
+            
+            if response.status_code == 401:
+                logger.error("Mapbox API returned 401 Unauthorized. Check MAPBOX_ACCESS_TOKEN.")
+                return None
+            elif response.status_code == 422:
+                logger.info("Mapbox API returned 422 Unprocessable Entity. Bad coordinates.")
+                return None
+            elif response.status_code == 429:
+                logger.warning("Mapbox API returned 429 Too Many Requests. Rate limit exceeded.")
+                return None
+                
             response.raise_for_status()
             data = response.json()
             
             if data.get("code") == "Ok" and "routes" in data and len(data["routes"]) > 0:
                 route = data["routes"][0]
                 distance_meters = route.get("distance", 0.0)
-                # OSRM demo server uses driving profile. Multiply duration by 2.5 to simulate a more realistic pace
-                duration_seconds = route.get("duration", 0.0) * 2.5
+                duration_seconds = route.get("duration", 0.0)
                 geometry = route.get("geometry", "")
                 
                 return {
                     "distance_km": round(distance_meters / 1000.0, 2),
                     "duration_mins": round(duration_seconds / 60.0, 1),
-                    "polyline": geometry
+                    "polyline": geometry,
+                    "profile": profile
                 }
             else:
-                logger.warning(f"OSRM API returned non-Ok code or no routes: {data.get('code')}")
+                logger.warning(f"Mapbox API returned non-Ok code or no routes: {data.get('code')}")
                 return None
                 
         except requests.RequestException as e:
-            logger.warning(f"OSRM API request failed: {e}")
+            logger.warning(f"Mapbox API request failed: {e}")
             return None
 
 def parse_coordinates(value: Any) -> Optional[Tuple[float, float]]:
@@ -80,15 +135,18 @@ def get_route_to_next(
     if not origin or not dest:
         return None
         
+    profile = _pick_profile(origin, dest)
+
     # Ignore routing if coordinates are identical
     if origin == dest:
         return {
             "distance_km": 0.0,
             "duration_mins": 0.0,
-            "polyline": ""
+            "polyline": "",
+            "profile": profile
         }
         
-    return OSRMClient.get_route_info(origin, dest)
+    return MapboxDirectionsClient.get_route_info(origin, dest, profile)
 
 def recalculate_itinerary_routes(trip_data: Dict[str, Any]) -> Dict[str, Any]:
     """

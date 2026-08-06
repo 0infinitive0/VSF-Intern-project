@@ -90,6 +90,12 @@ class HotelOption(BaseModel):
     coordinates: str | None = Field(default=None, description="Tọa độ lat,lng của khách sạn")
 
 
+class RouteInfoPayload(BaseModel):
+    distance_km: float
+    duration_mins: float
+    polyline: str
+    profile: str | None = None
+
 class ItineraryItem(BaseModel):
     order_index: int | None = None
     start_time: str | None = None
