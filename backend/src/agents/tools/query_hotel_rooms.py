@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any
+from typing import Optional
 
 from langchain.tools import ToolRuntime, tool
 from langchain_core.messages import ToolMessage
@@ -8,36 +8,34 @@ from langgraph.types import Command
 
 from src.agents.state import TripState
 from src.i18n import t
+from src.services.supabase_search import get_supabase_client
 
 logger = logging.getLogger(__name__)
 
 
 @tool
-def query_hotel(
+def query_hotel_rooms(
     hotel_identifier: str,
+    room_name: Optional[str] = None,
     *,
     runtime: ToolRuntime[None, TripState],
 ) -> Command:
     """
-    CRITICAL: Use this tool ONLY when the user asks a specific question about a hotel in the generated
-    hotel list (e.g., "Does hotel 2 have a pool?", "What is the cancellation policy for hotel X?").
+    CRITICAL: Use this tool ONLY when the user asks a specific question about room types, beds, capacity,
+    or views for a hotel in the generated hotel list (e.g., "Does hotel 2 have a king bed?", "What is the view for rooms in hotel X?").
     Pass the rank number (e.g. "2") or the hotel name/id as `hotel_identifier`.
-    This tool will fetch the detailed information (amenities, description, price, policy) for that specific hotel.
+    You can optionally provide a `room_name` to filter rooms containing a specific keyword.
     """
     language = str(runtime.state.get("language") or "vi")
     
     # Anti-loop mechanism
     messages = runtime.state.get("messages", [])
     ai_messages = [m for m in messages if hasattr(m, "tool_calls") and m.tool_calls]
-    
-    print(f"[DEBUG] query_hotel called. ai_messages count: {len(ai_messages)}")
     if len(ai_messages) >= 2:
         last_calls = ai_messages[-2].tool_calls
         current_calls = ai_messages[-1].tool_calls
-        print(f"[DEBUG] last_calls: {last_calls}, current_calls: {current_calls}")
-        if last_calls and current_calls and last_calls[0]["name"] == "query_hotel" and current_calls[0]["name"] == "query_hotel":
+        if last_calls and current_calls and last_calls[0]["name"] == "query_hotel_rooms" and current_calls[0]["name"] == "query_hotel_rooms":
             if str(last_calls[0]["args"].get("hotel_identifier", "")) == str(hotel_identifier):
-                print("[DEBUG] ANTI-LOOP TRIGGERED!")
                 reply = t(
                     "Lỗi: Bạn đã gọi công cụ này với cùng tham số nhưng không tìm thấy thông tin. ĐỪNG gọi lại. Hãy nói với người dùng bạn không có thông tin này và xử lý phần còn lại của yêu cầu.",
                     language
@@ -56,11 +54,11 @@ def query_hotel(
     options = pending_hotel_selection["options"]
     matched_hotel = None
     
-    hotel_identifier = str(hotel_identifier).strip().lower()
+    hotel_identifier_str = str(hotel_identifier).strip().lower()
     
     # 1. Try to match by rank/index
     try:
-        rank_idx = int(hotel_identifier)
+        rank_idx = int(hotel_identifier_str)
         for opt in options:
             if opt.get("rank") == rank_idx:
                 matched_hotel = opt
@@ -72,7 +70,7 @@ def query_hotel(
     if not matched_hotel:
         for opt in options:
             name = str(opt.get("name", "")).strip().lower()
-            if hotel_identifier in name:
+            if hotel_identifier_str in name:
                 matched_hotel = opt
                 break
                 
@@ -82,22 +80,35 @@ def query_hotel(
             language,
         ) if language == "vi" else f"Error: Could not find any hotel matching '{hotel_identifier}' in the current list."
         return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
+    
+    hotel_id = matched_hotel.get("id")
+    if not hotel_id:
+        reply = "SYSTEM ERROR: No valid ID found for this hotel."
+        return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
+
+    try:
+        client = get_supabase_client()
+        query = client.table("rooms").select("name, max_guests, room_size_sqm, bed_description, view, room_facilities").eq("hotel_id", hotel_id)
         
-    # Format the hotel details cleanly to save tokens, discarding giant unused fields
-    cleaned_details = {
-        "id": matched_hotel.get("id"),
-        "name": matched_hotel.get("name"),
-        "rank": matched_hotel.get("rank"),
-        "star_rating": matched_hotel.get("star_rating"),
-        "description": str(matched_hotel.get("description", ""))[:500] + "...", # Truncate description
-        "amenities": matched_hotel.get("amenities", []),
-        "covered_meals": matched_hotel.get("covered_meals", []),
-        "lowest_price": matched_hotel.get("lowest_price"),
-        "currency": matched_hotel.get("currency", "VND"),
-        "matched_room_names": matched_hotel.get("matched_room_names", []),
-    }
-    
-    hotel_json = json.dumps(cleaned_details, ensure_ascii=False, indent=2)
-    reply = f"Here is the detailed information for the requested hotel:\n{hotel_json}"
-    
-    return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
+        if room_name:
+            query = query.ilike("name", f"%{room_name}%")
+            
+        res = query.execute()
+        rooms_data = res.data
+        
+        if not rooms_data:
+            reply = t(
+                "Không tìm thấy thông tin phòng cho khách sạn này hoặc với từ khóa này. Vui lòng nói với người dùng rằng không có thông tin.",
+                language,
+            ) if language == "vi" else "No room data found for this hotel or keyword. Please inform the user that the information is unavailable."
+            return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
+            
+        rooms_json = json.dumps(rooms_data, ensure_ascii=False, indent=2)
+        reply = f"Here is the detailed room information for the requested hotel:\n{rooms_json}"
+        
+        return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
+        
+    except Exception as e:
+        logger.exception("Failed to fetch rooms from Supabase.")
+        reply = f"SYSTEM ERROR: Lỗi khi lấy dữ liệu phòng ({str(e)})."
+        return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})

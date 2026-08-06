@@ -1140,6 +1140,17 @@ def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:
                     if "SYSTEM ERROR:" not in str(latest_message.content):
                         tool_output_response = latest_message.content
                     logger.info("Tool returned: %s", latest_message.name)
+                    
+                    # If tool signals anti-loop, abort immediately to prevent LLM from spinning
+                    if "ĐỪNG gọi lại" in str(latest_message.content) or "DO NOT CALL IT AGAIN" in str(latest_message.content):
+                        logger.warning("Anti-loop signal received from tool. Breaking execution loop.")
+                        from src.i18n import t
+                        lang = session.state.get("language", "vi")
+                        final_ai_response = t(
+                            "Xin lỗi, tôi không tìm thấy thông tin này để trả lời bạn.",
+                            lang,
+                        ) if lang == "vi" else "I'm sorry, I couldn't find this information."
+                        break
 
                 if latest_message.type == "ai" and not latest_message.tool_calls:
                     final_ai_response = latest_message.content
@@ -1164,7 +1175,7 @@ def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:
                     )
         except Exception as exc:
             if "Recursion limit" in str(exc) or "recursion" in str(exc).lower() or type(exc).__name__ == "GraphRecursionError":
-                logger.error("Agent hit recursion limit of 3 loops and was stopped.")
+                logger.error("Agent hit recursion limit of 15 loops and was stopped.")
                 return TurnResult(
                     text="Xin lỗi, tôi cần thêm thông tin để làm rõ yêu cầu của bạn, hiện tại tôi đang gặp một chút khó khăn khi tự động phân tích.",
                     tool="agent_stream"

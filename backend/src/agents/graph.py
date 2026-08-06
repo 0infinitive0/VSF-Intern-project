@@ -20,13 +20,14 @@ from src.agents.tools.direct_invoke import invoke_tool_directly
 from src.agents.tools.finalize_itinerary import finalize_trip_plan
 from src.agents.tools.modify_itinerary import modify_trip_plan
 from src.agents.tools.query_hotel import query_hotel
+from src.agents.tools.query_hotel_rooms import query_hotel_rooms
 from src.agents.tools.recommend_hotels import recommend_hotels
 from src.services.llm import get_reasoning_llm as get_llm
 
 if TYPE_CHECKING:
     from src.agents.session import TripSession
 
-_AGENT_TOOLS = [recommend_hotels, modify_trip_plan, finalize_trip_plan, query_hotel]
+_AGENT_TOOLS = [recommend_hotels, modify_trip_plan, finalize_trip_plan, query_hotel, query_hotel_rooms]
 
 
 class _ToolAdapter:
@@ -70,6 +71,7 @@ class SessionTools(NamedTuple):
     modify_trip_plan: object
     finalize_trip_plan: object
     query_hotel: object
+    query_hotel_rooms: object
 
 
 def build_trip_agent(session: TripSession, *, temperature: float = 0.3):
@@ -83,6 +85,7 @@ def build_trip_agent(session: TripSession, *, temperature: float = 0.3):
         modify_trip_plan=_ToolAdapter(modify_trip_plan, session),
         finalize_trip_plan=_ToolAdapter(finalize_trip_plan, session),
         query_hotel=_ToolAdapter(query_hotel, session),
+        query_hotel_rooms=_ToolAdapter(query_hotel_rooms, session),
     )
     llm = get_llm(temperature=temperature)
     memory = MemorySaver()
