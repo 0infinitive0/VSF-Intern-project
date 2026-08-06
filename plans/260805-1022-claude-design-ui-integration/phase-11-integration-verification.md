@@ -58,7 +58,9 @@ Với mỗi endpoint, kiểm ba điều:
 Ba việc:
 1. Đối chiếu khoá giữa `en.json` và `vi.json` — không bên nào được có khoá mà bên kia thiếu
 2. Grep tìm chuỗi hardcode còn sót trong `frontend/src/components/**` (chữ có dấu tiếng Việt
-   nằm trong JSX là dấu hiệu rõ nhất)
+   nằm trong JSX là dấu hiệu rõ nhất). Đối chiếu với `trip_planner_components/scripts/
+   constants/i18n.js` để bắt chuỗi UI còn thiếu — nhưng **chỉ lấy phần `ui`**, không lấy phần
+   kịch bản hội thoại mock (xem `plan.md` §Lấy gì từ bản design prototype)
 3. Kiểm tra `matchReason.*` phủ hết mọi mã mà Phase 2 phát ra
 
 Nhớ kiểm tra cả trường hợp text tiếng Anh dài hơn tiếng Việt làm vỡ card/nút — đây là yêu
@@ -74,11 +76,40 @@ Danh sách này là hợp đồng bất biến của plan. Kiểm tay từng m�
 | Server restart → tự tạo session mới im lặng | Restart backend rồi gửi tin |
 | Gửi tin, chip gợi ý, form intake | Chạy trọn luồng thu thập thông tin |
 | Giá trị wire intake không đổi | So log backend với baseline Phase 6 |
-| Chọn khách sạn theo số thứ tự | Chọn bằng card và bằng chip, cả hai phải cùng kết quả |
+| Chọn khách sạn theo số thứ tự | Ba đường phải ra cùng kết quả: card → nút xác nhận header (luồng hai bước của Phase 8), chip gợi ý, và gõ thẳng số vào composer. Kiểm tra bấm card **không** gửi gì cho tới khi bấm nút xác nhận |
 | Reset "Chuyến đi mới" + hộp xác nhận | Bấm nút, huỷ, rồi bấm lại và xác nhận |
 | Chuyển ngôn ngữ giữa chừng không mất dữ liệu | Đổi VI↔EN khi đang ở workspace |
 | Kéo đổi kích thước panel | Kéo vách ngăn |
 | Bong bóng lỗi khi backend lỗi | Tắt backend rồi gửi tin |
+
+### Đối chiếu thị giác với bản design đang chạy
+
+Bản design **chạy được**, không phải ảnh tĩnh:
+
+```bash
+cd data/trip_planner/trip_planner_components && npm run dev   # → http://localhost:5173
+```
+
+Server node zero-dependency (`server.js`), không cần cài gì. Chạy song song với app thật ở
+cổng khác, rồi đối chiếu **4 breakpoint × 2 theme × 4 stage**.
+
+Ảnh tham chiếu có sẵn: `trip_planner_components/screenshots/` — `sb.png` (intake),
+`hotel-focus.png`, `01-focus.png` / `02-focus.png` (workspace + place focus), `dark.png`.
+
+**Không** làm pixel-diff tự động. Dữ liệu thật khác mock của design (tên khách sạn, số ngày,
+số điểm đều khác) nên diff pixel sẽ nhiễu tới mức vô dụng và sẽ bị bỏ qua sau lần thứ hai.
+Mục tiêu là bắt lệch **cấu trúc**: thiếu panel, thiếu bề mặt glass, sai bố cục cột, sai thang
+bậc chữ, mất animation vào.
+
+Cụ thể cần soi:
+
+| Điều dễ trượt | Vì sao |
+|---|---|
+| Bề mặt glass của panel | Đúng loại lỗi Phase 6 mắc — nội dung đúng, bề mặt không tồn tại |
+| Nền `--gradient-page` bị phủ | Một `bg-*` đặc ở container cha là đủ giết cả hệ glass |
+| Animation vào (`vPop`/`vFade`/`vIn`/`vRise`) | Không có nó thì UI "đúng" nhưng chết cứng |
+| Thang bậc chữ | 12.5 / 13.5 / 14 / 16 / 26px là có chủ đích, không phải làm tròn được |
+| Dark theme | Chỗ hardcode hex chỉ lộ ra ở theme tối |
 
 ### Đối chiếu bảng "Phần chưa làm"
 
@@ -110,7 +141,12 @@ quả): đây là hai chỗ dễ bị "lỡ tay" thêm vào cho giống design n
 9. Kiểm responsive ở 4 breakpoint; kiểm tương phản cả hai theme; kiểm reduced-motion và
    reduced-transparency.
 10. Kiểm bàn phím và screen reader trên các luồng chính.
-11. Chạy `npm run typecheck`, `npm run lint`, test suite backend.
+11. Chạy `npm run typecheck`, `npm run lint`, `npm run check:tokens`, test suite backend.
+11b. **Đối chiếu thị giác**: chạy bản design (`npm run dev` trong `trip_planner_components`)
+    song song app thật; soi 4 breakpoint × 2 theme × 4 stage theo bảng "điều dễ trượt" ở trên.
+    Ghi lệch vào báo cáo nghiệm thu kèm ảnh, phân loại sửa-ngay / chấp-nhận / ghi-việc-sau.
+11c. Rà lại `design-fidelity-checklist.md`: mọi dòng của phase 5-10 phải hoặc đã tick, hoặc
+    bỏ tick **kèm lý do**. Dòng bỏ trống không lý do là chưa xong, không phải đã bỏ qua.
 12. Đối chiếu bảng "Phần chưa làm", cập nhật `plan.md`.
 13. Viết báo cáo nghiệm thu: file đã thêm, file đã sửa, component tái dùng, component tạo
     mới, việc còn phải làm tay.
@@ -129,7 +165,11 @@ quả): đây là hai chỗ dễ bị "lỡ tay" thêm vào cho giống design n
 - [ ] Responsive ở 4 breakpoint, không scroll ngang toàn trang
 - [ ] Tương phản WCAG AA ở cả hai theme
 - [ ] `prefers-reduced-motion` và `prefers-reduced-transparency` được tôn trọng
-- [ ] `npm run typecheck`, `npm run lint`, test suite backend đều pass
+- [ ] `npm run typecheck`, `npm run lint`, `npm run check:tokens`, test suite backend đều pass
+- [ ] Đã đối chiếu ảnh cạnh nhau với bản design đang chạy ở 4 breakpoint × 2 theme × 4 stage
+- [ ] Mọi bề mặt glass tồn tại thật; không container nào phủ màu đặc lên `--gradient-page`
+- [ ] Animation vào (`vPop`/`vFade`/`vIn`/`vRise`) có mặt ở đúng chỗ design quy định
+- [ ] `design-fidelity-checklist.md` không còn dòng bỏ trống mà không có lý do
 - [ ] Bảng "Phần chưa làm" đã đối chiếu và cập nhật
 - [ ] Báo cáo nghiệm thu đã viết
 
@@ -142,6 +182,13 @@ optional, nên nó chịu được field thiếu; ngược lại thì không).
 **Sai kiểu âm thầm.** TypeScript không kiểm tra runtime, nên `star_rating: "4.5"` thay vì
 `4.5` sẽ trượt qua compile và hỏng ở chỗ render. Bước 2 phải xem giá trị thật, không chỉ đọc
 tên field.
+
+**`mock-data.js` của bản design nằm sẵn ngay cạnh thứ được phép lấy.** 86 dòng hotels/days/
+landmarks/convos giả, trông hoàn toàn thật. Nếu một section render rỗng vì DB thưa dữ liệu,
+đây là thứ dễ với tay nhất để lấp — và lấp xong thì **mọi tiêu chí "giống design" đều pass**
+trong khi nguyên tắc số một của plan bị vi phạm, không ai phát hiện cho tới lúc demo. Bước 12
+và bảng "Phần chưa làm" tồn tại để chống lại đúng điều này. Grep `frontend/src` tìm dấu vết
+tên khách sạn/địa điểm của mock design trước khi nghiệm thu.
 
 **Cám dỗ "làm nốt cho giống design" ở phút chót.** Đến phase này, phần chưa làm sẽ rất dễ
 thấy và rất dễ lấp bằng dữ liệu bịa. Bước 12 tồn tại chính để chống lại điều đó — đối chiếu

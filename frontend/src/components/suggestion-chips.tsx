@@ -1,7 +1,7 @@
 import type { Suggestion } from '../types'
 
 /**
- * SuggestionChips — renders suggestions[] from any turn as tappable chips.
+ * SuggestionChips — renders suggestions[] from any turn as tappable glass chips.
  *
  * Per the contract and the comment in chat.html:
  *   "Chips come from the server's `suggestions` field, never from scanning
@@ -28,7 +28,7 @@ export default function SuggestionChips({
       {suggestions.map((s, i) => (
         <button
           key={i}
-          className="px-3 py-1.5 bg-surface-background border border-outline-variant text-secondary hover:bg-surface-muted hover:text-on-surface rounded-full text-xs font-medium whitespace-nowrap transition-colors disabled:opacity-60"
+          className="rounded-full px-[11px] py-[7px] text-[11.5px] font-normal text-on-surface-variant bg-glass-2 border border-stroke hover:bg-button hover:text-on-button hover:border-on-surface transition-all disabled:opacity-60"
           disabled={disabled}
           onClick={() => onSelect(s.value)}
           type="button"

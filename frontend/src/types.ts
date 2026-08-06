@@ -126,6 +126,11 @@ export interface ChatMessage {
   text: string
   stage: Stage
   isError?: boolean
+  // Client-side ISO timestamp, stamped in the reducer at SEND_START/SEND_SUCCESS
+  // (phase-06). Only ever present for messages sent this session — restored
+  // history carries the server's real `at` (SessionRestore.restored_messages)
+  // and must not be invented here.
+  at?: string
 }
 
 // Snapshot of what the intake gate has collected so far (src/models/schemas.py:127-190).

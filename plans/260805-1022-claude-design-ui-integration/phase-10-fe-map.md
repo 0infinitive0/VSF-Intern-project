@@ -113,6 +113,16 @@ cho biết chặng nào đi cáp. Mục 1 bảng "Phần chưa làm".
 Chặng fallback nên vẽ khác chặng thật (ví dụ nét đứt thưa hơn) để người dùng phân biệt được
 đâu là tuyến đường thật và đâu là đường nối ước lượng.
 
+### Thẻ chú thích trên map ở stage khách sạn
+
+Design đặt một card glass ở góc trên trái map trong stage khách sạn
+(`trip_planner_components/V-OTA Planner.dc.html:178-181`): nhãn uppercase số khách sạn +
+một dòng gợi ý đổi theo trạng thái chọn. Nội dung thật của dòng đó là
+"Chọn một khách sạn để xem khoảng cách tới các điểm nổi bật" khi chưa chọn, và
+"*Tên khách sạn* — điểm xuất phát & kết thúc mỗi ngày" khi đã chọn — cả hai đều là câu mô tả
+trạng thái thật, không phải dữ liệu bịa, nên ship được. Nối vào cùng state chọn khách sạn của
+Phase 8 (xem quyết định một bước / hai bước ở phase đó).
+
 ### Đồng bộ hover
 
 Trạng thái hover dùng chung giữa timeline/danh sách và map. Một hook nhẹ:
@@ -204,7 +214,12 @@ vẫn chạy được cho dev chưa cấu hình token.
 4. `map-view.tsx` với **Mapbox raster tiles** (`light-v11` / `dark-v11` theo `data-theme`),
    attribution Mapbox + OSM, token từ `VITE_MAPBOX_TOKEN`. Fallback tile OSM + bộ lọc CSS
    khi thiếu token. **Không** dùng token server của Phase 12 ở đây.
-5. `map-colors.ts` — màu theo ngày, kiểm tra tương phản ở cả hai theme.
+5. `map-colors.ts` — lấy thẳng `DAY_COLORS` + `LEG_COLORS` từ
+   `trip_planner_components/scripts/constants/config.js` (đây là bảng màu chuẩn của design);
+   kiểm tra tương phản ở cả hai theme. Phase 9 `DayCard` **dùng chung đúng file này**.
+   **Không** dùng `geo.js:curve()` cho bất kỳ chặng nào — nó bẻ cong đường thẳng thành cung
+   để trông giống tuyến đường thật, biến fallback thành lời nói dối bằng đồ hoạ. Xem
+   `plan.md` §Lấy gì từ bản design prototype.
 6. Marker: khách sạn (biểu tượng riêng) và điểm tham quan (số thứ tự). Bỏ điểm không parse được.
 7. Polyline theo ngày: ưu tiên `route_to_next.polyline` đã giải mã, fallback đường thẳng khi
    `null` hoặc giải mã ra < 2 điểm. Chèn khách sạn đầu/cuối. Chặng fallback vẽ khác chặng
@@ -222,18 +237,20 @@ vẫn chạy được cho dev chưa cấu hình token.
 
 ## Tiêu chí hoàn thành
 
-- [ ] Map Leaflet thật với tile OSM và attribution đầy đủ
+- [ ] Map Leaflet thật với tile Mapbox raster và attribution Mapbox + OSM đầy đủ
 - [ ] Marker vẽ từ `coordinates` thật; toạ độ hỏng bị bỏ, không có marker ở `(0,0)`
 - [ ] Route vẽ từ `polyline` Mapbox đã giải mã — **bám đường thật**, không phải đường thẳng
 - [ ] Fallback đường thẳng hoạt động khi `route_to_next` là `null` hoặc polyline hỏng
 - [ ] Chặng fallback vẽ khác chặng thật để phân biệt được bằng mắt
+- [ ] Chặng fallback là **đường thẳng**, không bị bẻ cong thành cung (`curve()` không được dùng)
 - [ ] `decodePolyline` port từ dashboard Airflow, có case kiểm tra; **không** thêm dependency
 - [ ] Route theo ngày, mỗi ngày một màu; tab Tổng quan hiện toàn chuyến, tab ngày chỉ ngày đó
 - [ ] Khách sạn là điểm đầu và cuối mỗi ngày khi có toạ độ
 - [ ] Chặng đầu ngày là đường thẳng khi `route_from_hotel` là `null` — đúng hành vi, không "sửa"
 - [ ] Hover đồng bộ hai chiều timeline ↔ map; các đoạn route khác giảm opacity
 - [ ] Click marker cuộn tới card tương ứng
-- [ ] Legend chỉ có **một** nhãn phương tiện ("ô tô"), không phải ba mức của design
+- [ ] Legend có ô tô và đi bộ khi dữ liệu thật sự có profile đó, cộng mục "ước lượng" cho
+      chặng fallback; **không** có mục cáp treo
 - [ ] Map thu gọn/mở lại quanh focus mode mà vẫn đúng kích thước (`invalidateSize`)
 - [ ] Tile Mapbox đổi style theo theme (`light-v11` / `dark-v11`); **không** còn hack CSS `invert()`
 - [ ] Thiếu `VITE_MAPBOX_TOKEN` → fallback tile OSM, map vẫn chạy
@@ -241,7 +258,9 @@ vẫn chạy được cho dev chưa cấu hình token.
 - [ ] Attribution Mapbox + OSM hiển thị, không bị ẩn
 - [ ] Legend chỉ hiện phương tiện thật sự có trong dữ liệu; không có mục cáp treo
 - [ ] `map-panel.tsx` đã xoá
-- [ ] `npm run typecheck` và `npm run lint` pass
+- [ ] `npm run typecheck`, `npm run lint`, `npm run check:tokens` pass
+- [ ] `design-fidelity-checklist.md` §Phase 10 đã tick hết (khung map, thẻ chú thích, tile
+      theo theme); dòng bỏ tick có ghi lý do
 
 ## Đánh giá rủi ro
 

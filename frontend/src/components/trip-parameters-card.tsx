@@ -27,12 +27,12 @@ export default function TripParametersCard({
   tripPlan: TripPlan | null
   intake?: IntakeStatus | null
 }) {
+  const { t, i18n } = useTranslation()
   const dateRange =
-    formatTripDateRange(tripPlan?.start_date, tripPlan?.end_date) ??
-    formatTripDateRange(intake?.start_date, intake?.end_date)
+    formatTripDateRange(tripPlan?.start_date, tripPlan?.end_date, i18n.language) ??
+    formatTripDateRange(intake?.start_date, intake?.end_date, i18n.language)
 
   const adults = tripPlan?.number_of_adults ?? parseLeadingCount(intake?.people)
-  const { t } = useTranslation()
 
   if (!dateRange && !adults) return null
 

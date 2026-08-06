@@ -75,7 +75,10 @@ export default function AppShell({
   const isDesktop = viewportWidth >= DESKTOP_BREAKPOINT_PX
   const isLgUp = viewportWidth >= SIDEBAR_PUSH_BREAKPOINT_PX
   const effectiveChatWidth = isDesktop ? chatWidth : viewportWidth
-  const chatGutter = focused ? 0 : chatWidth + 6
+  // +14 compensates the chat panel's own 14px left margin below (design
+  // dc.html:125 `margin:14px 0 14px 14px`) so the stage's reserved gutter and
+  // the resizer both line up with the panel's actual right edge.
+  const chatGutter = focused ? 0 : chatWidth + 6 + 14
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => viewportWidth < SIDEBAR_PUSH_BREAKPOINT_PX)
   // Below `lg` the rail is `position: fixed` (an overlay, see sidebar-rail.tsx) and
@@ -87,7 +90,7 @@ export default function AppShell({
   const sidebarGutter = isLgUp ? 0 : sidebarCollapsed ? SIDEBAR_COLLAPSED_PX : 0
 
   return (
-    <div className="h-screen overflow-hidden flex bg-surface-background text-on-surface font-sans">
+    <div className="h-screen overflow-hidden flex text-on-surface font-sans">
       <SidebarRail
         theme={theme}
         onToggleTheme={toggleTheme}
@@ -101,9 +104,9 @@ export default function AppShell({
         style={{ paddingLeft: sidebarGutter }}
       >
         <div
-          className="flex h-[55vh] shrink-0 md:h-auto md:absolute md:top-0 md:bottom-0 md:left-0 md:z-20"
+          className="flex h-[55vh] shrink-0 md:h-auto md:absolute md:top-0 md:bottom-0 md:left-0 md:z-20 md:mt-3.5 md:mb-3.5 md:ml-3.5"
           style={{
-            transform: focused ? 'translateX(-100%)' : 'none',
+            transform: focused ? 'translateX(calc(-100% - 14px))' : 'none',
             opacity: focused ? 0 : 1,
             pointerEvents: focused ? 'none' : 'auto',
             transition: 'transform .62s var(--ease-glide), opacity .38s ease',
@@ -113,9 +116,9 @@ export default function AppShell({
         </div>
 
         <div
-          className="hidden md:flex md:absolute md:top-0 md:bottom-0 md:z-20"
+          className="hidden md:flex md:absolute md:top-0 md:bottom-0 md:z-20 md:my-3.5"
           style={{
-            left: chatWidth,
+            left: chatWidth + 14,
             opacity: focused ? 0 : 1,
             pointerEvents: focused ? 'none' : 'auto',
             transition: 'opacity .3s ease',

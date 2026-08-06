@@ -46,6 +46,13 @@ merge xong trước khi bất kỳ track nào bắt đầu.
 
 ### Lớp token
 
+> **Sửa 06/08/2026 — cách triển khai đổi, bảng ánh xạ giữ nguyên.** Bản đầu chép tay giá
+> trị token vào `@theme` hai lần (sáng ở `:root`, tối ở `body[data-theme="dark"]`), vì tin
+> rằng alias `var()` không xuyên qua được override theo theme. Điều đó **đúng với `@theme`
+> thường nhưng sai với `@theme inline`** — Tailwind v4 có directive này chính để giải bài
+> toán đó, và docs chính thức đưa ra đúng recipe `data-theme`. Xem §"Nguồn token" bên dưới.
+> Comment ở `styles.css:10-18` đang giải thích theo hiểu biết cũ, **phải viết lại**.
+
 Token gốc của design (`V-OTA Planner.dc.html:22-43`) tiện cho inline style nhưng không hợp
 với Tailwind. Ánh xạ vào `@theme` mà vẫn giữ tên ngữ nghĩa cũ:
 
@@ -66,6 +73,52 @@ variant của Tailwind để component viết được utility `dark:`:
 ```css
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 ```
+
+### Nguồn token — chép file design nguyên văn, alias bằng `@theme inline`
+
+**Không chép tay giá trị.** Copy ba file CSS của design vào `frontend/src/styles/`
+**nguyên văn, không sửa một byte**:
+
+| Chép | Từ | Vì sao |
+|---|---|---|
+| `frontend/src/styles/design-variables.css` | `trip_planner_components/styles/variables.css` | token light ở `:root` |
+| `frontend/src/styles/design-theme.css` | `…/styles/theme.css` | override dark ở `body[data-theme="dark"]` |
+| `frontend/src/styles/design-animation.css` | `…/styles/animation.css` | toàn bộ keyframes |
+
+Rồi alias sang namespace Tailwind bằng **`@theme inline`**:
+
+```css
+@import "tailwindcss";
+@import "./styles/design-variables.css";
+@import "./styles/design-theme.css";
+@import "./styles/design-animation.css";
+
+@theme inline {
+  --color-glass-1: var(--g1);
+  --color-primary:  var(--acc);
+  /* … theo đúng bảng ánh xạ ở trên */
+}
+```
+
+`inline` là phần bắt buộc. `@theme` thường phát ra `.bg-primary{background:var(--color-primary)}`
+— biến bị resolve ở `:root` rồi đóng băng, override dark không với tới. `@theme inline` phát
+ra `.bg-primary{background:var(--acc)}` — resolve tại chỗ dùng, nên `body[data-theme="dark"]`
+đổi `--acc` là utility đổi theo. Đây là recipe chính thức của Tailwind v4 cho đúng tình huống
+`data-theme` này.
+
+Design dùng `body[data-theme="dark"]`, app cũng set `data-theme` trên `<body>`
+(`index.html`) — khớp sẵn, không phải sửa.
+
+**Không chép** `global.css` (đặt font `-apple-system`/SF Pro, đè lên Inter + Be Vietnam Pro
+đã chọn) và `layout.css` (chứa `.leaflet-tile-pane{filter:var(--tile)}` — chính hack CSS giả
+dark mode mà Phase 10 loại bỏ để dùng tile Mapbox `dark-v11` thật).
+
+Cái được: giá trị token có **một bản gốc duy nhất**. Design đổi màu thì chép lại file, không
+phải dịch tay từng dòng — và không có cơ hội dịch sai.
+
+**Cần xác minh sau khi đổi:** codebase có đúng một chỗ dùng opacity modifier trên token
+(`border-error/30` ở `message-bubble.tsx:34`). Với giá trị `var()`, Tailwind dựng
+`color-mix()`; về lý thuyết chạy được nhưng phải nhìn tận mắt, đừng tin suông.
 
 Thang typography theo `Typography & Color System.md` — 5 cấp, mỗi cấp khác nhau về size,
 weight, letter-spacing, line-height **và** opacity:
@@ -120,7 +173,12 @@ Mọi motion phải bị vô hiệu dưới `@media (prefers-reduced-motion: red
 - Sửa: `frontend/mock/server.js` — fixture cho 3 endpoint mới
 - Sửa: `frontend/src/styles.css` — toàn bộ lớp token, cả hai theme, utility glass, keyframes
 - Sửa: `frontend/index.html` — preconnect/preload Be Vietnam Pro
-- Tham chiếu (chỉ đọc): `data/design/V-OTA Planner.dc.html:22-76` — nguồn chuẩn của token
+- Tạo: `frontend/src/styles/design-variables.css`, `design-theme.css`, `design-animation.css`
+  — **bản chép nguyên văn** từ `trip_planner_components/styles/`; không sửa nội dung
+- Tạo: `frontend/scripts/check-design-tokens.mjs` — diff ba file trên với bản gốc (lớp 1)
+- Tham chiếu (chỉ đọc): `data/design/V-OTA Planner.dc.html:22-76` — nguồn chuẩn của token,
+  và bản đã tách file `data/trip_planner/trip_planner_components/styles/variables.css` +
+  `theme.css` (cùng giá trị, dễ parse hơn — script dùng bản này)
 
 ## Các bước thực hiện
 
@@ -160,14 +218,41 @@ Mọi motion phải bị vô hiệu dưới `@media (prefers-reduced-motion: red
      hiển thị khác `null`
    - `route_from_hotel: null` trên item đầu ngày → đây là trạng thái **thường gặp nhất** sau
      round-trip DB (mục 15 bảng "Phần chưa làm"), không phải ca hiếm
-4. Viết lại khối `@theme` trong `styles.css` theo bảng ánh xạ. Giữ mọi tên token mà
-   component đang tham chiếu; chỉnh giá trị; thêm token glass/motion.
+4. **[Làm lại 06/08/2026]** Chép ba file CSS của design vào `frontend/src/styles/` nguyên văn
+   (`design-variables.css`, `design-theme.css`, `design-animation.css`), rồi viết khối
+   **`@theme inline`** trong `styles.css` alias sang namespace `--color-*` theo bảng ánh xạ.
+   Giữ mọi tên token mà component đang tham chiếu — **không component nào phải sửa**.
+   Xoá ~120 dòng giá trị chép tay ở `:root`/`body[data-theme="dark"]` mà bản đầu đã viết, và
+   xoá luôn khối keyframes chép tay (đã có trong `design-animation.css`).
+   Viết lại comment đầu file `styles.css` — bản hiện tại giải thích vì sao **không** alias
+   được, lập luận đó chỉ đúng với `@theme` thường. Comment giải thích sai còn tệ hơn không có.
 5. Thêm custom variant `dark`, các utility glass, keyframes đã port, và cả hai guard
    reduced-motion + reduced-transparency.
 6. Cập nhật `frontend/index.html` cho font stack.
 7. Kiểm chứng: `npm run typecheck` pass, `npm run mock` phục vụ đủ mọi route đã ghi trong
    tài liệu, `npm run dev` render UI **hiện tại** không vỡ (màu sẽ đổi — điều đó đúng và
    mong đợi; layout thì không được vỡ).
+8. **`check-design-tokens.mjs`** — script node thuần, không thêm dependency.
+
+   Vì ba file CSS được chép **nguyên văn** (bước 4b), script này chỉ cần **diff từng byte**,
+   không phải parse hay so sánh token theo ngữ nghĩa:
+
+   ```
+   frontend/src/styles/design-variables.css  ⟷  trip_planner_components/styles/variables.css
+   frontend/src/styles/design-theme.css      ⟷  …/styles/theme.css
+   frontend/src/styles/design-animation.css  ⟷  …/styles/animation.css
+   ```
+
+   - Khác nhau → in unified diff, exit ≠ 0
+   - Không có ngoại lệ nào. File chép về mà **sửa** là sai theo định nghĩa — muốn đổi giá trị
+     thì đổi ở bản design rồi chép lại
+   - Kiểm luôn: mọi token mà `@theme inline` tham chiếu (`var(--xxx)`) phải tồn tại trong
+     `design-variables.css`. Alias trỏ vào biến không tồn tại là lỗi im lặng — utility ra rỗng,
+     không ai báo
+   - Thêm `"check:tokens"` vào `package.json`; các phase FE sau chạy nó như một gate
+
+   Đơn giản hơn hẳn bản dự kiến ban đầu (parse + ánh xạ tên + chuẩn hoá giá trị + danh sách
+   ngoại lệ), vì kiến trúc mới không còn hai bản giá trị để mà lệch.
 
 ## Tiêu chí hoàn thành
 
@@ -181,6 +266,12 @@ Mọi motion phải bị vô hiệu dưới `@media (prefers-reduced-motion: red
 - [x] `npm run typecheck` và `npm run lint` pass
 - [ ] Cả hai dev đã review và chốt contract trước khi bất kỳ track nào bắt đầu
   (nhân bước này — cần review thủ công từ cả hai dev, không tự động hoá được)
+- [ ] **[Mở lại 06/08/2026]** Token dùng `@theme inline` alias vào ba file CSS chép nguyên văn;
+      không còn giá trị token chép tay trong `styles.css`
+- [ ] Đổi `data-theme` trên `<body>` là utility Tailwind đổi màu theo (kiểm cả hai chiều)
+- [ ] `border-error/30` (`message-bubble.tsx:34`) render đúng sau khi chuyển sang alias `var()`
+- [ ] Comment đầu `styles.css` mô tả đúng kiến trúc hiện tại, không còn giải thích cũ
+- [ ] `npm run check:tokens` pass — ba file CSS khớp từng byte với bản gốc của design
 
 Font stack thực tế dùng "Inter", "Be Vietnam Pro" — quyết định của người dùng, ghi đè
 gợi ý SF Pro trong "Kiến trúc" ở trên. `--font-display` giữ nguyên Hanken Grotesk.

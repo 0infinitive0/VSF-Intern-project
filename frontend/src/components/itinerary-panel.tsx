@@ -17,7 +17,7 @@ export default function ItineraryPanel({
   width: number
 }) {
   const dayRefs = useRef<Record<number, HTMLDivElement | null>>({})
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
 
   function scrollToDay(dayNumber: number) {
     dayRefs.current[dayNumber]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -82,7 +82,7 @@ export default function ItineraryPanel({
 
   const { hotel, days = [], adjustments = [], status, destination, start_date, end_date, number_of_adults } =
     tripPlan
-  const dateRange = formatTripDateRange(start_date, end_date)
+  const dateRange = formatTripDateRange(start_date, end_date, i18n.language)
 
   return (
     <aside

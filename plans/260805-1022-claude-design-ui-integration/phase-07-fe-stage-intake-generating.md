@@ -113,7 +113,7 @@ không đổi gì khác. Ghi điều này lại trong component.
 - [ ] Không còn component trùng chức năng với `trip-parameters-card`
 - [ ] Chuyển stage mượt, không nhảy layout
 - [ ] Mọi chuỗi được dịch ở cả hai catalog
-- [ ] `npm run typecheck` và `npm run lint` pass
+- [ ] `npm run typecheck`, `npm run lint`, `npm run check:tokens` pass
 
 ## Đánh giá rủi ro
 

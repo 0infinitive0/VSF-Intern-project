@@ -178,6 +178,10 @@ VI/EN trong sidebar, vẫn là component đó với class mới và vị trí m�
   kéo đổi kích thước panel
 - [x] Responsive ở `sm` / `md` / `lg` / `xl`, không có scroll ngang toàn trang
 - [x] `npm run typecheck` và `npm run lint` pass; thêm `npm run test` (vitest)
+- [ ] **Mở lại sau audit 06/08/2026:** `design-fidelity-checklist.md` §Phase 5 (nền gradient,
+      sidebar, HistoryRow). Phase này đã đánh Done trước khi có cơ chế nghiệm thu thị giác, và
+      audit tìm thấy `app-shell.tsx:90` phủ `bg-surface-background` đặc lên `--gradient-page` —
+      giết toàn bộ hệ glass của app. Sửa nằm ở Phase 6 bước 11 mục 1; tick lại dòng này sau đó
   cho `derive-stage.ts`
 
 Review vòng đầu (code-reviewer subagent) phát hiện 3 bug thật do thiếu

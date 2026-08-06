@@ -21,7 +21,8 @@ Mode. Tiêu thụ `trip_plan` đã có sẵn (không đổi contract) cộng `GE
 ## Yêu cầu
 
 **Chức năng**
-- Header chuyến đi: tên, khoảng ngày, số ngày/đêm, số người, ngân sách, nút Tạo lại / Chia sẻ
+- Header chuyến đi: tên, khoảng ngày, số ngày/đêm, số người, ngân sách, nút Tạo lại
+  (**không** có nút Chia sẻ — xem §Đối chiếu design)
 - Tab: Tổng quan + mỗi ngày một tab
 - Tab Tổng quan: các ô thống kê, danh sách ngày, phần điều chỉnh (`adjustments`)
 - Tab ngày: timeline theo giờ, mỗi item có thumbnail, tên, loại, ghi chú, metadata
@@ -136,6 +137,50 @@ Thời lượng luôn có tiền tố `~` — route được tính lúc lập l�
 
 `lib/geo.ts` (haversine) chỉ dùng cho nhánh fallback. Logic đặt ở Phase 10 và dùng chung.
 
+## Đối chiếu design (rà 06/08/2026)
+
+File đối chiếu: `data/trip_planner/trip_planner_components/TimelineItem.dc.html`,
+`DayCard.dc.html`, `PlaceDetail.dc.html`, và khối workspace ở
+`trip_planner_components/V-OTA Planner.dc.html:192-250`.
+
+### Phần của design bị bỏ
+
+| Vùng design | Mục | Xử lý |
+|---|---|---|
+| `PlaceDetail` §`facilities` — chip tiện ích của địa điểm | 20 (mới) | Bỏ khối. `attractions` không có cột tiện ích |
+| `PlaceDetail` §`topReviews` | 6 | Bỏ. Chỉ hiện `rating` + `review_count` |
+| `PlaceDetail` §`nearby` — danh sách địa điểm lân cận bấm được | 7 | Bỏ khối |
+| `PlaceDetail` §`whyPlace` — "AI đề xuất địa điểm này vì..." | 5 | Bỏ. `match_reasons` chỉ có cho khách sạn |
+| Ô thống kê tổng chi phí | 13 | Bỏ ô |
+
+### Phần của design **vẫn làm**, cần nêu rõ nguồn
+
+- **Badge hero của `PlaceDetail`**: `{{ det.kind }}` + `Ngày {{ det.dayN }} · {{ det.time }}`.
+  Số ngày và giờ **không** đến từ `GET /attractions/{id}` — chúng là ngữ cảnh của item trong
+  timeline. Panel phải nhận thêm `{ dayNumber, startTime }` từ chỗ mở nó. `start_time` null →
+  chỉ hiện "Ngày N", không bịa giờ.
+- **`det.route`** — ba ô thông tin di chuyển ở panel địa điểm. Nguồn là `route_to_next` của
+  item **liền trước** trong cùng ngày (phương tiện · khoảng cách · thời lượng). Áp dụng đúng
+  bảng bốn trạng thái ở mục Timeline bên dưới: item đầu ngày hoặc `route` null thì **ẩn cả
+  hàng ba ô**, không hiện ô rỗng.
+- **`DayCard`** (tab Tổng quan) — chấm màu 9px có halo 4px theo màu ngày, tiêu đề, dòng phụ,
+  mũi tên `→`, hover nâng 2px. Màu ngày dùng chung `lib/map-colors.ts` của Phase 10 để card
+  ngày và route trên map **không bao giờ lệch màu nhau**. Component này nằm trong
+  `trip-overview-tab.tsx`; file `day-card.tsx` cũ vẫn bị xoá vì nó là thứ khác.
+
+### Chi tiết trình bày dễ bỏ sót
+
+- `TimelineItem`: cột trái 44px (giờ `tabular-nums` + chấm số thứ tự 24px có glow), thumbnail
+  52×52 bo 14px, badge loại `--fill` bo tròn, ghi chú `text-wrap:pretty`, vào bằng `vIn` lệch pha.
+- Leg pill: vạch dọc 2×22px + pill `--g1` viền `{{ legColor }}44`, chấm 7px, số km
+  `tabular-nums`. Nằm **dưới** item, thụt trái 52px.
+- Header workspace là panel glass bo 26px riêng (`margin:14px 14px 0`). Chỉ có **một** nút:
+  "Tạo lại" (viền `--stroke`, nền `--g2`) — gửi tin nhắn ngôn ngữ tự nhiên đã dịch qua đúng
+  `onSend`, giống cách `regenerate` của design làm, không phải verb mới.
+  **Nút "Chia sẻ" của design bị bỏ** (quyết định người dùng, 06/08/2026): nó không có hành vi
+  nào trong design và không có gì để chia sẻ — session chưa có URL công khai. Không ship nút
+  bấm vào không làm gì. Ghi ở mục 22 bảng "Phần chưa làm".
+
 ## File liên quan
 
 - Tạo: `frontend/src/components/stage-workspace.tsx` — header, tab, bố cục
@@ -155,6 +200,8 @@ Thời lượng luôn có tiền tố `~` — route được tính lúc lập l�
 ## Các bước thực hiện
 
 1. `lib/geo.ts` — `parseCoordinates("lat,lng") -> {lat,lng} | null` và `haversineKm(a, b)`.
+   Haversine lấy từ `trip_planner_components/scripts/utils/geo.js` → `kmFrom()` (hàm thuần,
+   ~6 dòng). **Không** lấy `curve()` cùng file — xem `plan.md` §Lấy gì từ bản design prototype.
    Phải xử lý được cả định dạng WKT nếu backend trả dạng đó (comment `types.ts:46-48` cảnh
    báo `coordinates` là chuỗi WKT/tự do — kiểm tra giá trị thật từ mock và từ DB trước khi
    giả định định dạng `"lat,lng"`).
@@ -188,9 +235,16 @@ Thời lượng luôn có tiền tố `~` — route được tính lúc lập l�
 - [ ] Item đang xem được highlight; timeline vẫn cuộn được khi focus
 - [ ] Đóng focus khôi phục chat + map + tab + vị trí cuộn
 - [ ] Giá vé `0` hiện "Miễn phí"; `null` thì ẩn dòng
+- [ ] Panel địa điểm không có khối tiện ích, review, lân cận, "AI đề xuất vì"
+- [ ] Badge hero nhận `dayNumber`/`startTime` từ timeline; `start_time` null thì chỉ hiện ngày
+- [ ] Hàng ba ô thông tin di chuyển bị ẩn cả hàng khi item đầu ngày hoặc route `null`
+- [ ] Màu ngày của `DayCard` và của route trên map dùng chung một bảng màu
+- [ ] Header workspace không có nút "Chia sẻ"; nút "Tạo lại" gửi tin nhắn thật qua `onSend`
 - [ ] `start_time` null không sinh ra giờ bịa
 - [ ] `itinerary-panel.tsx` và `day-card.tsx` đã xoá, không còn component trùng chức năng
-- [ ] `npm run typecheck` và `npm run lint` pass
+- [ ] `npm run typecheck`, `npm run lint`, `npm run check:tokens` pass
+- [ ] `design-fidelity-checklist.md` §Phase 9 đã tick hết (header workspace, DayCard,
+      TimelineItem, PlaceDetail); dòng bỏ tick có ghi lý do
 
 ## Đánh giá rủi ro
 

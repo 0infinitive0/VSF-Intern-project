@@ -22,6 +22,25 @@ Tích hợp bản export Claude Design tại `data/design/` vào dự án hiện
 - 7 tài liệu yêu cầu tiếng Việt trong `data/design/uploads/`
 - 5 ảnh tham chiếu trong `data/design/screenshots/`
 
+### Nguồn design chuẩn để đối chiếu
+
+`data/trip_planner/trip_planner_components/` là **bản refactor thành component của chính
+design đó** — cùng markup, cùng token, nhưng tách ra 16 file `*.dc.html` (một file một
+component) cộng `styles/*.css` chứa toàn bộ token. Khi cần đối chiếu một thành phần cụ thể,
+**dùng file component đó** thay vì đếm dòng trong file monolith 2613 dòng:
+
+| Vùng UI | File đối chiếu | Phase |
+|---|---|---|
+| Chat panel, bong bóng, 5 picker intake | `ChatPanel/ChatMessage/DestinationPicker/PeoplePicker/DatePicker/BudgetSlider/InterestPicker.dc.html` | 6 |
+| Sidebar, dòng lịch sử | `Sidebar.dc.html`, `HistoryRow.dc.html` | 5 |
+| Card khách sạn, panel chi tiết, card phòng | `HotelCard.dc.html`, `HotelDetail.dc.html`, `RoomCard.dc.html` | 8 |
+| Timeline, card ngày, panel địa điểm | `TimelineItem.dc.html`, `DayCard.dc.html`, `PlaceDetail.dc.html` | 9 |
+| Token màu / motion | `styles/variables.css`, `theme.css`, `animation.css` | 1 |
+
+Các tham chiếu dạng `V-OTA Planner.dc.html:NNN` còn lại trong các phase file vẫn trỏ đúng vào
+`data/design/V-OTA Planner.dc.html` (bản monolith) — giữ được, nhưng ưu tiên file component
+khi viết code.
+
 Design này **không phải một sản phẩm mới** — nó là một bản re-skin cộng thêm ba thay đổi
 cấu trúc trên chính ứng dụng đang chạy:
 
@@ -148,18 +167,27 @@ thay đổi contract: phải được cả hai dev đồng ý và phải sửa k
 
 | # | Phase | Track | Trạng thái | Phụ thuộc |
 |---|-------|-------|--------|-----------|
-| 1 | [API Contract & Design Tokens](./phase-01-api-contract-and-design-tokens.md) | Chung | Pending | — |
+| 1 | [API Contract & Design Tokens](./phase-01-api-contract-and-design-tokens.md) | Chung | Pending² | — |
 | 2 | [Mở rộng payload khách sạn](./phase-02-be-hotel-option-payload.md) | Backend | Pending | 1 |
 | 3 | [Endpoint chi tiết khách sạn & địa điểm](./phase-03-be-detail-endpoints.md) | Backend | Pending | 1 |
 | 4 | [Persist session & lịch sử hội thoại](./phase-04-be-session-persistence.md) | Backend | Pending | 1 |
 | 12 | [Chuyển OSRM → Mapbox Directions](./phase-12-be-mapbox-routing.md) | Backend | Pending | 1 |
-| 5 | [Design system & App Shell](./phase-05-fe-design-system-and-shell.md) | Frontend | Done | 1 |
-| 6 | [Chat panel cố định](./phase-06-fe-chat-panel.md) | Frontend | Pending | 5 |
+| 5 | [Design system & App Shell](./phase-05-fe-design-system-and-shell.md) | Frontend | Done¹ | 1 |
+| 6 | [Chat panel cố định](./phase-06-fe-chat-panel.md) | Frontend | Done | 5 |
 | 7 | [Stage: Intake & Generating](./phase-07-fe-stage-intake-generating.md) | Frontend | Pending | 5 |
 | 8 | [Stage: Khách sạn & Hotel Focus](./phase-08-fe-stage-hotels-focus.md) | Frontend | Pending | 5 |
 | 9 | [Stage: Workspace & Place Focus](./phase-09-fe-stage-workspace-focus.md) | Frontend | Pending | 5 |
 | 10 | [Leaflet Map & Route](./phase-10-fe-map.md) | Frontend | Pending | 9 |
 | 11 | [Tích hợp & Kiểm thử](./phase-11-integration-verification.md) | Chung | Pending | 2,3,4,6,7,8,9,10,12 |
+
+> ² Phần token của Phase 1 đã ship (chép tay giá trị vào `@theme`). Rà 06/08/2026 phát hiện
+> Tailwind v4 có `@theme inline` — giải đúng bài toán mà bản đầu phải né bằng cách chép tay.
+> Bốn tiêu chí đã mở lại: chuyển sang chép file design nguyên văn + alias `inline`. Ròng lại
+> là **ít việc hơn** (xoá ~120 dòng chép tay, script gác đơn giản đi hẳn).
+
+> ¹ Phase 5 đã đánh Done **trước khi** có cơ chế nghiệm thu thị giác. Audit 06/08/2026 tìm
+> thấy `app-shell.tsx:90` phủ màu đặc lên `--gradient-page`, giết toàn bộ hệ glass. Một tiêu
+> chí đã được mở lại; sửa nằm ở Phase 6 bước 11 mục 1.
 
 > Phase 12 nằm ở track backend, **chạy song song với Phase 2** (không phụ thuộc nhau):
 > Phase 2 chuyển route từ item sang payload, Phase 12 đổi thứ tạo ra route. Đánh số 12 để
@@ -208,7 +236,12 @@ Phục vụ Hotel Detail Focus Mode. Đọc `hotels` + `rooms` + `room_prices`. 
   "amenities": [], "amenity_groups": {},
   "review_score", "review_count", "category_scores": {},
   "check_in_time", "check_in_until", "check_out_time", "reception_open_until",
-  "nearby_attractions": [], "nearby_essentials": [],
+  // shape đã xác nhận 06/08/2026 — KHÔNG có thời lượng, chỉ có khoảng cách.
+  // distance_text/category là chuỗi VI đã format trong DB: truyền qua nguyên vẹn,
+  // frontend dựng lại từ distance_km cho đúng locale.
+  // Tên field là "attractions" nhưng nội dung gồm cả sân bay, bến xe...
+  "nearby_attractions": [{ "name", "category", "coordinates", "distance_km", "distance_text" }],
+  "nearby_essentials": [],
   "lowest_price", "currency",
   "rooms": [{
     "id", "name", "bed_description", "room_size_sqm", "max_guests", "view",
@@ -304,6 +337,115 @@ và đơn giá cần được kiểm tra trên trang giá Mapbox trước khi l�
 giá thay đổi theo thời gian nên plan này không ghi con số cụ thể. Nhớ bật cảnh báo quota
 trong dashboard Mapbox, cho **cả** Directions API lẫn map loads (tile).
 
+## Lấy gì từ bản design prototype
+
+`data/trip_planner/trip_planner_components/` là app chạy được, nên câu hỏi "có copy code từ
+đó không" là câu hỏi thật. Trả lời: **có, ba thứ cụ thể — và có một thứ tuyệt đối không.**
+
+Bản thân các file `.dc.html` **không port được**: chúng là markup inline-style với binding
+`{{ }}`/`sc-if`/`sc-for` chạy trên runtime riêng (`support.js`), không phải React, không
+TypeScript, không build step. Cái lấy được nằm ở `scripts/` và `styles/`.
+
+### Được lấy
+
+| Nguồn | Dùng ở | Ghi chú |
+|---|---|---|
+| `styles/variables.css`, `theme.css`, `animation.css` | Phase 1 | **Chép nguyên văn** vào `frontend/src/styles/`, alias bằng `@theme inline`. Không dịch tay giá trị — xem Phase 1 §Nguồn token |
+| `styles/global.css`, `layout.css` | — | **Không chép.** `global.css` đè font stack đã chọn; `layout.css` chứa hack `filter:var(--tile)` giả dark mode mà Phase 10 loại bỏ |
+| Inline style trong `*.dc.html` | Phase 6-10 | **Giá trị** thì lấy (đã trích sẵn vào `design-fidelity-checklist.md`); **chuỗi `style=""`** thì không chép vào JSX — mở rộng bộ `@utility` glass của Phase 1 thay vì lặp công thức ~20 lần như bản export |
+| `constants/config.js` → `DAY_COLORS`, `LEG_COLORS` | Phase 10 `lib/map-colors.ts` | Bảng màu chuẩn của design; Phase 9 `DayCard` dùng chung đúng bảng này |
+| `utils/geo.js` → `kmFrom()` (haversine) | Phase 9 `lib/geo.ts` | Hàm thuần, ~6 dòng |
+| `constants/i18n.js` (276 dòng vi/en) | Phase 6-11 catalog | **Lọc trước khi lấy** — lẫn chuỗi kịch bản hội thoại mock, không phải chuỗi UI |
+
+### Không được lấy
+
+| Nguồn | Vì sao |
+|---|---|
+| `constants/mock-data.js` | **Rủi ro số một.** Hotels/days/landmarks/convos giả, trông rất thật, nằm ngay cạnh thứ được lấy. Copy nó thì mọi tiêu chí "giống design" đều pass trong khi vi phạm nguyên tắc **không bịa dữ liệu** — và sẽ không ai phát hiện cho tới lúc demo với dữ liệu thật |
+| `services/*.js` | Chúng đọc `window.VOTA.MockData` (xem `BACKEND_INTEGRATION.md` §1). Port service là kéo mock về theo cửa sau |
+| `support.js` | Runtime của framework khác, 1911 dòng, vô nghĩa với React |
+| `store/app-store.js`, `api/http-client.js` | Dự án đã có `use-theme`, `chat-client.ts`. Thêm lớp thứ hai là trùng lặp |
+| `utils/geo.js` → **`curve()`** | Xem cảnh báo dưới |
+
+### Cảnh báo: `curve()` là đồ hoạ nói dối
+
+`geo.js:curve()` bẻ đoạn thẳng A→B thành cung bezier để "trông giống tuyến đường". Trong
+prototype điều đó vô hại vì **mọi** route đều là giả.
+
+Ở đây thì không. Phase 10 vẽ polyline Mapbox **thật**, và yêu cầu chặng fallback phải **nhìn
+khác** chặng thật để người dùng phân biệt được. Dùng `curve()` cho nhánh fallback sẽ khiến một
+đường nối ước lượng trông y hệt một tuyến đường có thật. Đó là bịa bằng đồ hoạ thay vì bằng
+số — cùng loại với hệ số `× 2.5` (mục 2) và danh sách 6 bước tick (mục 14) mà plan đã loại bỏ.
+
+Fallback vẽ **đường thẳng**, nét đứt thưa, màu nhạt. Đúng như Phase 10 §Route đã quy định.
+
+### Hai lệch giá trị đã phát hiện trong `utils/formatters.js`
+
+Ai port file này phải biết trước:
+
+1. **Tiền tệ khác tài liệu i18n.** `formatters.vnd()` trả `"3.000.000đ"` (chữ `đ` dính liền),
+   trong khi `Internationalization.md` và Phase 6 bước 2 quy định `"1.500.000 ₫"` (ký hiệu `₫`
+   có khoảng trắng). `frontend/src/lib/format-currency.ts` **đã implement theo plan** — giữ
+   nguyên. Bản design tự mâu thuẫn với tài liệu của chính nó ở điểm này.
+2. **`countNights()` đếm sai theo tên của nó.** Nó trả `diff + 1` — tức là số **ngày**, không
+   phải số đêm; trong khi `fmtNights()` cùng file lại tính đúng (n đêm / n+1 ngày). Port thẳng
+   `countNights` là mang bug về. Số đêm dùng cho giá tổng khách sạn (Phase 8) nên sai chỗ này
+   ra sai tiền.
+
+## Nghiệm thu thị giác (3 lớp)
+
+Tiêu chí dạng "khớp design" **không kiểm chứng được** — nó là ý kiến, do chính người viết code
+tự chấm. Phase 6 đã chứng minh hậu quả: implement xong, typecheck sạch, lint sạch, 43/43 test
+pass, mọi tiêu chí dữ liệu đạt — **và cột chat không có bề mặt glass nào cả**, còn shell thì
+phủ màu đặc lên `--gradient-page`. Nội dung đúng, bề mặt biến mất, không tiêu chí nào bắt được.
+
+Ba lớp dưới đây biến "khớp design" thành thứ đếm được.
+
+### Lớp 1 — Token là **một bản gốc duy nhất**, gác bằng diff file
+
+Cách chắc chắn nhất để giá trị token không lệch design là **không có bản thứ hai để mà lệch**.
+Ba file CSS của design được chép vào `frontend/src/styles/` **nguyên văn**, rồi alias sang
+namespace Tailwind bằng **`@theme inline`** (chi tiết + lý do `inline` là bắt buộc: Phase 1
+§Nguồn token):
+
+```css
+@import "./styles/design-variables.css";   /* :root — token light */
+@import "./styles/design-theme.css";       /* body[data-theme="dark"] — override dark */
+@theme inline { --color-glass-1: var(--g1); --color-primary: var(--acc); /* … */ }
+```
+
+Gate `npm run check:tokens` (Phase 1 bước 8) vì vậy chỉ là **diff từng byte** ba file chép về
+với bản gốc — không parse, không ánh xạ, không ngoại lệ. File chép mà bị sửa là sai theo định
+nghĩa; muốn đổi giá trị thì đổi ở bản design rồi chép lại.
+
+Script kiểm thêm một điều mà mắt không thấy: mọi `var(--xxx)` trong `@theme inline` phải tồn
+tại thật trong `design-variables.css`. Alias trỏ vào biến không có là lỗi **im lặng** —
+utility ra rỗng, không ai báo.
+
+### Lớp 2 — Checklist bề mặt từng component (gate mỗi phase FE)
+
+[`design-fidelity-checklist.md`](./design-fidelity-checklist.md) — trích từ chính các file
+`.dc.html`, mỗi component một nhóm tick: token nền, blur, viền, shadow, radius, cỡ chữ chủ đạo,
+animation vào.
+
+Tick **trước khi** đánh dấu phase xong. Sai lệch có chủ đích thì ghi lý do ngay tại dòng đó,
+không tick bừa. **Đây là lớp đáng giá nhất** — nó nhắm đúng loại lỗi Phase 6 vừa mắc: nội dung
+đúng nhưng bề mặt không tồn tại.
+
+### Lớp 3 — Ảnh cạnh nhau (Phase 11)
+
+Bản design **chạy được**: `cd data/trip_planner/trip_planner_components && npm run dev` (server
+node zero-dependency, mặc định `http://localhost:5173`). Không phải ảnh tĩnh — là app sống.
+
+Chạy song song design và app thật, cùng viewport, cùng theme, cùng stage; chụp và đối chiếu ở
+**4 breakpoint × 2 theme × 4 stage**. Ảnh tham chiếu có sẵn trong
+`trip_planner_components/screenshots/` (`sb.png`, `hotel-focus.png`, `01-focus.png`,
+`02-focus.png`, `dark.png`).
+
+**Không** làm pixel-diff tự động: dữ liệu thật khác mock của design nên diff sẽ nhiễu tới mức
+vô dụng. Mục tiêu là bắt lệch **cấu trúc** (thiếu panel, sai bố cục, sai thang bậc chữ), không
+phải lệch từng pixel.
+
 ## Phần chưa làm (Not Implemented Register)
 
 Ghi nhận theo yêu cầu: những gì design đòi hỏi mà plan này **không** làm. Không phần nào
@@ -326,6 +468,17 @@ là bỏ sót — mỗi phần đều thiếu nguồn dữ liệu hoặc là ran
 | 13 | Ô thống kê **tổng ngân sách / tổng chi phí** ở tab Tổng quan | `V-OTA_Frontend_Design_Specification.md` §Panel 2 Tab Tổng quan | `TripPlanPayload` không có trường chi phí nào (`schemas.py:121-133`). Giá chỉ tồn tại trên `hotel_options[]` trong lúc chọn khách sạn và không được chuyển sang `trip_plan`. Không suy ra được sau khi đã chốt lịch trình | Bỏ hẳn ô đó. Các ô còn lại (số ngày, số điểm, khách sạn, tổng quãng đường `≈`) đều tính được từ dữ liệu thật |
 | 14 | Danh sách **6 bước AI Searching có dấu tick tuần tự** ("✓ Phân tích điểm đến", "✓ Tìm khách sạn phù hợp", …) | `Yêu cầu cập nhật thiết kế.md` §AI Searching State | Backend không phát ra tiến độ theo bước — chỉ có `pending: true` và thời gian đã trôi. Tick tuần tự sẽ là tuyên bố tiến độ bịa. Cùng tiền lệ đã loại bỏ "DeepDive Thinking" trong plan Stitch trước đó | Một trạng thái đang xử lý + số giây thật đã trôi + skeleton card + progress vô hạn (indeterminate). Nếu backend sau này phát ra tiến độ thật thì thêm vào được mà không đổi gì khác |
 | 15 | Route **chặng đầu tiên mỗi ngày** (khách sạn → điểm đầu) sau khi đọc lại từ DB | — (lỗ hổng phát hiện khi rà `routing.py`) | `recalculate_itinerary_routes` **có** tính `route_from_hotel` (`routing.py:127`), nhưng `ITEM_RPC_FIELDS` (`itinerary_store.py:47-60`) **không chứa** `route_from_hotel` nên nó bị lọc bỏ trước khi persist. Chỉ `route_to_next` được lưu. Sau một vòng round-trip DB, chặng đầu mỗi ngày mất route | Chặng đầu ngày dùng **fallback đường thẳng** như mọi chặng lỗi routing khác. **Sửa được rất rẻ** — thêm `route_from_hotel` vào `ITEM_RPC_FIELDS` — nhưng cần migration/RPC phía DB nên để ngoài phạm vi plan này. Ghi lại thành việc tiếp theo |
+| 16 | Chip/textarea chọn **đi cùng ai, nhịp độ, nhịp sinh hoạt, ghi chú** trong khối intake ("Tuỳ chọn khác" ở form cũ) | — (có trong bản pre-Phase-6 của `intake-parameters-form.tsx`, không có tài liệu design riêng) | Phase 6 chỉ định nghĩa 5 component progressive-disclosure (destination/people/dates/budget/preferences) khớp 5 field trong `intake.missing` + budget. Bốn field này không nằm trong bộ đó và không có card thay thế nào được dựng. Phát hiện sau khi refactor xong, không phải quyết định trước. | `composeIntakeMessage()` (không đổi) vẫn phát đúng câu `Đi cùng:` / `Nhịp độ:` / `Nhịp sinh hoạt:` / `Ghi chú:` nếu 4 field đó có giá trị — chỉ là không còn UI chip/textarea để set trực tiếp. Người dùng vẫn khai báo được qua chat tự do; nếu backend NLU trích xuất được vào `intake.companions/pace/day_rhythm/notes`, form sẽ seed lại đúng giá trị đó (`intake-parameters-form.tsx` seed effect) và câu composed vẫn giữ nguyên. Khôi phục UI có cấu trúc cho 4 field này là việc tiếp theo nếu cần |
+
+| 17 | **"Đánh giá nổi bật" của khách sạn** — card review có avatar, tên người, thời điểm, điểm, nội dung | `HotelDetail.dc.html` §`dict.topReviews` | `hotels` chỉ select `review_score` + `review_count` (`hotel_selection.py:50`); **không có bảng/cột nào chứa nội dung review**. Mục 6 trước đây chỉ ghi cho *địa điểm*, bỏ sót panel khách sạn | Chỉ hiển thị điểm tổng + số lượt, giống hệt cách xử lý ở panel địa điểm |
+| 18 | **Khối "Liên hệ"** của khách sạn (2 ô label/value ở cuối panel) | `HotelDetail.dc.html` §`hDet.contact` | Không có cột điện thoại/email/website trong `hotels`, và `GET /hotels/{id}` (Phase 3) không định nghĩa field nào cho việc này | Bỏ cả khối. Không suy ra từ `address` |
+| 19 | **"cách trung tâm X km"** trên card và trên hero panel khách sạn | `HotelCard.dc.html`, `HotelDetail.dc.html` | Không có `distance_to_center`, và cũng **không có toạ độ "trung tâm"** của từng điểm đến trong DB. Tự chọn một điểm làm tâm rồi tính haversine là bịa một con số nghe như dữ liệu thật | Hiển thị `area_name` (dữ liệu thật) ở đúng chỗ đó. **`distToSights` trong panel chi tiết vẫn làm** vì nó dựa trên `nearby_attractions` thật — xem Phase 8 |
+| 20 | **Khối "Tiện ích"** của địa điểm | `PlaceDetail.dc.html` §`dict.facilities` | `attractions` không có cột tiện ích/tiện nghi; `GET /attractions/{id}` (Phase 3) không có field tương ứng. Tiện nghi là dữ liệu của khách sạn, không phải của điểm tham quan | Bỏ khối. Panel địa điểm giữ mô tả, giờ mở cửa, giá vé, thời lượng — đều là thật |
+| 21 | **Chính sách huỷ / thanh toán của từng phòng**, và ô "Phòng đã chọn" ở header panel | `RoomCard.dc.html` §`r.cancel`/`r.pay`, `HotelDetail.dc.html` §`dict.roomChosen` | `rooms`/`room_prices` không có cột chính sách huỷ hay thanh toán. Ô "Phòng đã chọn" là hệ quả trực tiếp của mục 4 (không có verb chọn phòng) | Badge tình trạng phòng **vẫn làm** — nó ánh xạ từ `price.sold_out` thật. Hai ô chính sách và ô "Phòng đã chọn" bị bỏ |
+
+| 22 | **Nút "Chia sẻ"** ở header workspace | `V-OTA Planner.dc.html:207` | Nút không gắn với hành vi nào ngay trong design, và không có gì để chia sẻ: session không có URL công khai, `GET /chat/{session_id}/restore` (Phase 4) yêu cầu biết `session_id` và không có tầng phân quyền. Ship một nút bấm vào không làm gì là hứa hẹn suông. **Quyết định của người dùng 06/08/2026** | Bỏ nút. Header chỉ còn "Tạo lại". Khi nào có link chia sẻ thật (URL công khai + phân quyền) thì thêm lại rất rẻ |
+
+| 23 | **Cột thời lượng** trong danh sách "khoảng cách tới điểm nổi bật" của panel khách sạn | `HotelDetail.dc.html` §`d.mins` | `nearby_attractions` chỉ có `distance_km`/`distance_text`, **không có thời lượng** (shape xác nhận 06/08/2026). Suy ra phút từ km đòi hỏi giả định tốc độ — đúng loại hệ số bịa mà Phase 12 vừa xoá khỏi `routing.py` | Render hai cột (tên · km) thay vì ba. Gọi routing cho từng mục lân cận là việc tiếp theo nếu thật sự cần |
 
 ## Rủi ro
 
@@ -357,6 +510,9 @@ là bỏ sót — mỗi phần đều thiếu nguồn dữ liệu hoặc là ran
 - [ ] Mọi chuỗi đều được dịch; catalog `en` và `vi` đầy đủ; không còn text hardcode
 - [ ] Hành vi cũ nguyên vẹn: vòng đời session, giá trị wire intake NLU, chọn khách sạn theo số thứ tự, xử lý lỗi
 - [ ] `npm run typecheck`, `npm run lint` và test suite backend đều pass
+- [ ] `check-design-tokens` pass; mọi lệch token còn lại đều có lý do được khai báo
+- [ ] `design-fidelity-checklist.md` đã tick hết cho phase 5-10; dòng bỏ tick có ghi lý do
+- [ ] Đã đối chiếu ảnh cạnh nhau với bản design đang chạy ở 4 breakpoint × 2 theme
 - [ ] Mọi mục trong bảng "Phần chưa làm" hoặc đã được làm, hoặc vẫn còn liệt kê chính xác
 
 <!-- slug: claude-design-ui-integration -->

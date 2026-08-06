@@ -67,6 +67,28 @@ Các field trả về đúng danh sách trong contract. `amenity_groups`, `categ
 quyết định hiển thị gì. `awards` / `warnings` cũng trả luôn (rẻ, và đã ghi trong bảng
 "Phần chưa làm" là có-sẵn-nhưng-chưa-dùng).
 
+Shape thật của `nearby_attractions` (đã xác nhận 06/08/2026):
+
+```jsonc
+{ "name": "Sân bay Quốc tế Đà Nẵng (DAD)",
+  "category": "Sân bay lân cận",        // nhãn tiếng Việt lưu trong DB
+  "coordinates": "16.056327,108.200833",
+  "distance_km": 4.81,                  // số — nguồn chuẩn để frontend tự format
+  "distance_text": "4,81 km" }          // chuỗi đã format sẵn tiếng Việt
+```
+
+Ba điều Dev B cần biết vì nó ảnh hưởng frontend:
+
+1. **Không có thời lượng di chuyển** — chỉ có khoảng cách. Đừng thêm vào bằng cách gọi routing
+   cho từng mục; nó không nằm trong phạm vi phase này.
+2. `distance_text` và `category` là **chuỗi tiếng Việt đã format trong DB**. Truyền qua nguyên
+   vẹn (không dịch, không format lại ở backend) — frontend sẽ dựng lại từ `distance_km` cho
+   đúng locale. Cùng nguyên tắc với `match_reasons`: backend không sinh chuỗi hiển thị.
+3. Tên field là `nearby_attractions` nhưng nội dung **không chỉ có điểm tham quan** — mẫu trên
+   là sân bay. Đừng lọc theo giả định đó; trả tất cả.
+
+Xác nhận `nearby_essentials` có cùng shape hay không, và báo lại ở bước 7.
+
 ### `GET /api/v1/attractions/{attraction_id}`
 
 Một query trên bảng `attractions`. Frontend resolve id từ

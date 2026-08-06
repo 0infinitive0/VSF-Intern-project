@@ -54,7 +54,7 @@ function reducer(state: ChatState, action: Action): ChatState {
         error: null,
         messages: [
           ...state.messages,
-          { id: action.id, role: 'user', text: action.text, stage: null },
+          { id: action.id, role: 'user', text: action.text, stage: null, at: new Date().toISOString() },
         ],
         // Freeze chips so they aren't clickable while in-flight
         suggestions: [],
@@ -70,6 +70,7 @@ function reducer(state: ChatState, action: Action): ChatState {
         text: data.reply,
         stage: data.stage,
         isError,
+        at: new Date().toISOString(),
       }
       return {
         ...state,
@@ -98,6 +99,7 @@ function reducer(state: ChatState, action: Action): ChatState {
             text: action.error,
             stage: 'error',
             isError: true,
+            at: new Date().toISOString(),
           },
         ],
         suggestions: [],

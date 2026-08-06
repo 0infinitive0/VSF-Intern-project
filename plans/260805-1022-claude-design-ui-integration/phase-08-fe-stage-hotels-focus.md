@@ -42,13 +42,11 @@ tính năng đinh của bản design. Tiêu thụ `hotel_options[]` đã mở r�
 
 ### Chọn khách sạn — không đổi verb
 
-Bấm chọn vẫn gửi `String(hotel.index)` như một tin nhắn thường, đúng như
-`hotel-option-card.tsx:97` đang làm. **Không có endpoint mới cho việc chọn.** Toàn bộ phase
-này chỉ đổi cách trình bày quanh đúng hành động đó.
+Hành động chốt khách sạn vẫn là gửi `String(hotel.index)` như một tin nhắn thường, đúng chuỗi
+mà `hotel-option-card.tsx:97` đang gửi. **Không có endpoint mới, không có verb mới.**
 
-`selectedIndex` vẫn là state UI lạc quan tạm thời — `hotel_options` bị xoá ở lượt kế tiếp
-bất kể kết quả, nên không có khái niệm "đã chọn" phía server để lưu. Comment ở
-`hotel-option-card.tsx:112-115` đã ghi rõ điều này; giữ nguyên hành vi.
+Cái **đổi** là thời điểm gửi: xem §"Chọn khách sạn: hai bước (đã chốt)" bên dưới — bấm card
+chỉ đánh dấu cục bộ, nút xác nhận ở header stage mới gửi. Byte gửi lên backend giống hệt.
 
 ### Vòng AI Match Score
 
@@ -123,6 +121,98 @@ chung:
 
 Đây là component sẽ dùng lại ở Phase 9 cho ảnh địa điểm.
 
+## Đối chiếu design (rà 06/08/2026)
+
+File đối chiếu: `data/trip_planner/trip_planner_components/HotelCard.dc.html`,
+`HotelDetail.dc.html`, `RoomCard.dc.html`, và khối stage khách sạn ở
+`trip_planner_components/V-OTA Planner.dc.html:157-190`.
+
+### Chọn khách sạn: hai bước (đã chốt)
+
+**Quyết định của người dùng, 06/08/2026: làm hai bước theo design.**
+
+Đây là **thay đổi hành vi** so với hiện tại. `hotel-option-card.tsx` đang gửi
+`String(hotel.index)` ngay khi bấm; sau phase này nó không gửi gì cả.
+
+| Bước | Hành động | Gửi gì lên backend |
+|---|---|---|
+| 1 | Bấm nút "Chọn" trên card | **không gì cả** — chỉ set `selectedIndex` cục bộ |
+| 2 | Bấm "Tạo lịch trình từ khách sạn này" ở header stage | `String(hotel.index)` của card đang chọn, qua đúng `onSend` như một tin nhắn thường |
+
+**Wire protocol không đổi** — vẫn đúng chuỗi đó, đúng đường đi đó, chỉ hoãn thời điểm gửi.
+Không có verb mới, không có endpoint mới.
+
+Ba vùng bấm trên card là **ba việc khác nhau**, đúng như design (`HotelCard.dc.html`):
+bấm **thân card** hoặc nút "Xem chi tiết" → mở focus mode; bấm nút **"Chọn"** → đánh dấu.
+Nút "Chọn" phải `stopPropagation` để không mở luôn panel chi tiết.
+
+Header stage (`V-OTA Planner.dc.html:160-168`) gồm:
+
+- Nút xác nhận `L.buildFromHotel`: nền `--btn` khi đã chọn, `--fill2`/`--t4` khi chưa; **vô
+  hiệu hoá khi chưa chọn** — không gửi tin nhắn rỗng.
+- Badge trạng thái bên trái nút: chưa chọn → "Chọn một khách sạn để xem khoảng cách tới các
+  điểm nổi bật"; đã chọn → "*Tên khách sạn* — điểm xuất phát & kết thúc mỗi ngày". Cả hai đều
+  mô tả trạng thái thật, dịch qua i18n.
+
+Hệ quả cần xử lý:
+
+- `selectedIndex` giờ là state **có ý nghĩa với người dùng** (nó điều khiển nút xác nhận),
+  không còn chỉ là phản hồi lạc quan. Vẫn không có khái niệm "đã chọn" phía server — nhưng
+  bây giờ nó sống đủ lâu để người dùng mở chi tiết, so sánh, rồi mới chốt. Đó chính là giá
+  trị của hai bước.
+- Sau khi gửi, `hotel_options` bị xoá ở lượt kế tiếp như cũ; reset `selectedIndex` khi đó.
+- Comment ở `hotel-option-card.tsx:112-115` (giải thích vì sao `selectedIndex` là tạm thời)
+  phải viết lại cho khớp hành vi mới — đừng để lại lời giải thích của cơ chế cũ.
+
+### Phần của design bị bỏ (đã ghi vào bảng "Phần chưa làm")
+
+| Vùng design | Mục | Xử lý |
+|---|---|---|
+| `HotelDetail` §`topReviews` — card review có tên/thời điểm/nội dung | 17 | Bỏ. Chỉ hiện `review_score` + `review_count` |
+| `HotelDetail` §`contact` — 2 ô liên hệ | 18 | Bỏ cả khối |
+| "cách trung tâm X" trên card và hero | 19 | Thay bằng `area_name` thật |
+| `HotelDetail` ô "Phòng đã chọn" | 21 | Bỏ — hệ quả của mục 4, không có verb chọn phòng |
+| `RoomCard` 2 ô chính sách huỷ / thanh toán | 21 | Bỏ |
+| `RoomCard` nút "Chọn phòng" | 4 | Bỏ — card phòng chỉ đọc |
+
+### Phần của design **vẫn làm**, cần nêu rõ nguồn
+
+- **Badge tình trạng phòng** (`r.avail`) — ánh xạ từ `price.sold_out` thật, không phải bịa.
+  `sold_out: true` → nhãn "hết phòng"; `false` → "còn phòng"; `price: null` → **không hiện
+  badge** (không biết tình trạng thì không tuyên bố).
+- **`distToSights`** — nguồn là `nearby_attractions` từ `GET /hotels/{id}`. Shape đã xác nhận
+  06/08/2026:
+
+  ```jsonc
+  { "name": "Sân bay Quốc tế Đà Nẵng (DAD)", "category": "Sân bay lân cận",
+    "coordinates": "16.056327,108.200833", "distance_km": 4.81, "distance_text": "4,81 km" }
+  ```
+
+  Ba hệ quả:
+
+  1. **Bỏ cột phút.** Design có ba cột (tên · km · phút) nhưng dữ liệu **không có thời lượng**.
+     Không suy ra từ km — tốc độ di chuyển là thứ bịa. Render hai cột. Mục 23 bảng "Phần chưa làm".
+  2. **Format km từ `distance_km` (số), không dùng `distance_text`.** `distance_text` là chuỗi
+     tiếng Việt đã format sẵn trong DB (`"4,81 km"` — dấu phẩy thập phân) và sẽ hiện tiếng Việt
+     kể cả khi UI đang tiếng Anh. Dùng `distance_km` qua `Intl.NumberFormat` như mọi con số
+     khác. Đây đúng cái bẫy mà `intake.people` đã mắc phải (xem Phase 7).
+  3. **`category` cũng là nhãn tiếng Việt của DB** — hiển thị được (nó là dữ liệu, không phải
+     chuỗi UI), nhưng đừng đặt tiêu đề section là "địa điểm tham quan lân cận": danh sách này
+     gồm cả sân bay và bến xe. Đặt tiêu đề trung tính, ví dụ "Khoảng cách tới các điểm chính".
+- **Giá "tổng"** trên card (`mỗi đêm · {{ h.total }}`) — cần số đêm. Lấy từ
+  `intake.start_date`/`end_date` (đã có ở `ChatState`), **không** từ hằng số. Thiếu một trong
+  hai ngày → chỉ hiện giá mỗi đêm, bỏ phần tổng.
+
+### Chi tiết trình bày dễ bỏ sót
+
+- Card có **hai nút** ở đáy: "Chọn" (nền `--btn`/`--fill2` theo trạng thái) và "Xem chi tiết"
+  (viền `--stroke`, nền `--g2`).
+- Ảnh khách sạn 112×112 bo 20px, có overlay `vSheen` chạy vô hạn; card vào bằng `vFade` lệch
+  pha theo `delay`; hover có ring + transform.
+- Vòng match: `conic-gradient` 62px ngoài / 50px trong (card) và 58/46 (panel chi tiết).
+- Panel chi tiết là **flex sibling thứ ba** (danh sách | map | chi tiết), không phải overlay —
+  khớp với yêu cầu "không phải modal".
+
 ## File liên quan
 
 - Tạo: `frontend/src/components/stage-hotels.tsx` — split view danh sách + chỗ cho map
@@ -142,9 +232,12 @@ chung:
 1. `remote-image.tsx` với ba trạng thái (tải / lỗi / có ảnh). Làm trước vì mọi thứ khác dùng nó.
 2. `match-score-ring.tsx` — vòng SVG, ẩn hoàn toàn khi `match_score` vắng mặt.
 3. `match-reasons.tsx` — ánh xạ mã → khoá i18n, bỏ qua mã lạ.
-4. Restyle `hotel-option-card.tsx` theo card design đầy đủ. **Giữ nguyên** `onPick` gửi
-   `String(hotel.index)`. Mọi field mới đều optional — card phải render đẹp cả khi backend
-   chưa lên Phase 2.
+4. Restyle `hotel-option-card.tsx` theo card design đầy đủ, và **đổi `onPick` thành đánh dấu
+   cục bộ** (`selectedIndex`) thay vì gửi ngay — hai bước, xem §"Chọn khách sạn". Mọi field
+   mới đều optional — card phải render đẹp cả khi backend chưa lên Phase 2.
+4b. Header stage với nút xác nhận `buildFromHotel` (vô hiệu khi chưa chọn) + badge trạng thái.
+   Nút này là **chỗ duy nhất** gửi `String(hotel.index)`. Ghi lại baseline chuỗi gửi trước và
+   sau khi đổi, diff để chắc chắn byte giống hệt.
 5. `stage-hotels.tsx` — split view; cột map để chỗ trống cho Phase 10 (dùng `MapPanel` hiện
    tại làm tạm).
 6. `place-client.ts` + `use-hotel-detail.ts` với cache theo id và xử lý lỗi (404 → panel báo
@@ -162,18 +255,29 @@ chung:
 ## Tiêu chí hoàn thành
 
 - [ ] Card khách sạn khớp design với dữ liệu thật (ảnh, tiện nghi, đánh giá, match score)
-- [ ] Chọn khách sạn vẫn gửi `String(hotel.index)`, không có verb mới
+- [ ] Chốt khách sạn vẫn gửi `String(hotel.index)` byte giống hệt, không có verb mới
+- [ ] Bấm card **không** gửi gì; chỉ nút xác nhận ở header gửi
+- [ ] Nút xác nhận vô hiệu khi chưa chọn khách sạn nào
+- [ ] Badge header đổi đúng theo trạng thái chọn; cả hai chuỗi đều qua i18n
 - [ ] Vòng match score ẩn hoàn toàn khi không có `match_score`
 - [ ] Lý do đề xuất dựng từ catalog i18n; mã lạ bị bỏ qua im lặng
 - [ ] Focus mode là chuyển đổi layout, không phải modal/popup
 - [ ] Đang focus vẫn đổi được khách sạn mà không đóng focus mode
 - [ ] Đóng focus khôi phục chat + map + vị trí cuộn, không tải lại dữ liệu
 - [ ] Card phòng chỉ đọc, không có nút "Chọn phòng"
+- [ ] Không có khối review khách sạn, khối liên hệ, ô "Phòng đã chọn", ô chính sách phòng
+- [ ] Không hiển thị "cách trung tâm"; chỗ đó là `area_name` thật
+- [ ] Badge tình trạng phòng chỉ hiện khi có `price`; ánh xạ từ `sold_out`, không đoán
+- [ ] Giá tổng chỉ hiện khi có đủ `start_date` + `end_date`; không có số đêm mặc định
+- [ ] Danh sách lân cận có hai cột (tên · km), **không** có cột phút
+- [ ] Km format từ `distance_km` theo locale; **không** render `distance_text` của DB
 - [ ] `room.price = null` hiện "giá theo yêu cầu", không hiện 0, không mượn giá khách sạn
 - [ ] Mọi ô ảnh có placeholder dự phòng khi lỗi
 - [ ] Section vắng dữ liệu bị ẩn cả section, không có tiêu đề rỗng
 - [ ] Toàn bộ render đẹp với backend **chưa** có Phase 2/3 (mọi field mới đều optional)
-- [ ] `npm run typecheck` và `npm run lint` pass
+- [ ] `npm run typecheck`, `npm run lint`, `npm run check:tokens` pass
+- [ ] `design-fidelity-checklist.md` §Phase 8 đã tick hết (HotelCard, HotelDetail, RoomCard);
+      dòng bỏ tick có ghi lý do
 
 ## Đánh giá rủi ro
 
