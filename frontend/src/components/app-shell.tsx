@@ -91,6 +91,47 @@ export default function AppShell({
 
   return (
     <div className="h-screen overflow-hidden flex text-on-surface font-sans">
+      {/* Ambient background blobs (design dc.html:53-55): float behind all
+          glass panels via negative z-index; pointer-events pass through. */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed -z-10 rounded-full"
+        style={{
+          top: '-14%',
+          left: '-6%',
+          width: '46vw',
+          height: '46vw',
+          background: 'radial-gradient(circle at 35% 35%, rgba(47,124,246,.34), rgba(47,124,246,0) 68%)',
+          filter: 'blur(20px)',
+          animation: 'vFloat 22s ease-in-out infinite',
+        }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none fixed -z-10 rounded-full"
+        style={{
+          bottom: '-22%',
+          right: '-8%',
+          width: '52vw',
+          height: '52vw',
+          background: 'radial-gradient(circle at 50% 50%, rgba(238,139,60,.26), rgba(238,139,60,0) 66%)',
+          filter: 'blur(24px)',
+          animation: 'vFloat 28s ease-in-out infinite reverse',
+        }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none fixed -z-10 rounded-full"
+        style={{
+          top: '22%',
+          right: '18%',
+          width: '26vw',
+          height: '26vw',
+          background: 'radial-gradient(circle at 50% 50%, rgba(18,165,148,.22), rgba(18,165,148,0) 68%)',
+          filter: 'blur(20px)',
+          animation: 'vFloat 19s ease-in-out infinite',
+        }}
+      />
       <SidebarRail
         theme={theme}
         onToggleTheme={toggleTheme}

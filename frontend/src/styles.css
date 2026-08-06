@@ -234,6 +234,32 @@ body {
   border-radius: 999px;
 }
 
+/* Shimmer skeleton block — exact formula from the design's generating-state
+   skeletons (V-OTA Planner.dc.html:150). Shared by stage-generating (Phase 7)
+   and the hotel cards (Phase 8) via skeleton-card.tsx. */
+@utility shimmer-block {
+  background: linear-gradient(
+    100deg,
+    var(--color-fill) 30%,
+    var(--color-glass-3) 50%,
+    var(--color-fill) 70%
+  );
+  background-size: 900px 100%;
+  animation: vShimmer 1.5s linear infinite;
+}
+
+/* Indeterminate progress segment (generating stage). Honest by design: moving
+   endlessly, never a fake percentage. Kept out of design-animation.css — that
+   file is byte-locked to the design source. */
+@keyframes indeterminate-segment {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(340%);
+  }
+}
+
 /* prefers-reduced-transparency: replace the blur with a solid surface instead of a
    translucent one — same tokens elsewhere still apply, only the blur/translucency
    itself is removed. */

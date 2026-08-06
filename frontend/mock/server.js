@@ -25,7 +25,7 @@
 
 import { createServer } from 'node:http'
 
-const PORT = 8000
+const PORT = Number(process.env.MOCK_PORT ?? 8000)
 const SESSION_ID = 'mock-session-00000000-0000-0000-0000-000000000001'
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────

@@ -3,20 +3,19 @@ import { useTranslation } from 'react-i18next'
 import ItineraryPanel from './itinerary-panel'
 import MapPanel from './map-panel'
 import PanelResizer from './panel-resizer'
+import StageGenerating from './stage-generating'
+import StageIntake from './stage-intake'
 import type { useFocusMode } from '../hooks/use-focus-mode'
 import type { StageView } from '../lib/derive-stage'
 import type { ChatState } from '../types'
 
 type FocusModeApi = ReturnType<typeof useFocusMode>
 
-function StagePlaceholder({ icon, title, body, pending }: { icon: string; title: string; body: string; pending?: boolean }) {
+function StagePlaceholder({ icon, title, body }: { icon: string; title: string; body: string }) {
   return (
     <div className="flex-1 flex items-center justify-center p-6">
       <div className="text-center text-on-surface-variant max-w-xs">
-        <span
-          className={`material-symbols-outlined text-4xl ${pending ? 'animate-pulse' : ''}`}
-          aria-hidden="true"
-        >
+        <span className="material-symbols-outlined text-4xl" aria-hidden="true">
           {icon}
         </span>
         <div className="font-medium text-on-surface mt-2">{title}</div>
@@ -27,8 +26,9 @@ function StagePlaceholder({ icon, title, body, pending }: { icon: string; title:
 }
 
 /**
- * StageRouter — renders one of the 4 stage views. intake/generating/hotels
- * are placeholders in Phase 5 (real content lands in Phase 7-8); workspace
+ * StageRouter — renders one of the 4 stage views. intake/generating are real
+ * since Phase 7 (hero + live intake checklist; processing state + real elapsed
+ * seconds + skeletons); hotels stays a placeholder until Phase 8; workspace
  * reuses the existing ItineraryPanel + MapPanel so the app stays fully
  * runnable between phases.
  *
@@ -38,6 +38,10 @@ function StagePlaceholder({ icon, title, body, pending }: { icon: string; title:
  * that exists in this phase. `focusMode` carries the full
  * open/close/setFocus API so a future phase's hotel/place cards can call it
  * from further down this tree without app-shell.tsx changing again.
+ *
+ * Stage swaps keep the outer flex-1 container stable and let each stage own
+ * its entrance animation (vRise), so intake → generating → hotels transitions
+ * don't jump layout.
  */
 export default function StageRouter({
   stage,
@@ -55,13 +59,11 @@ export default function StageRouter({
   const { t } = useTranslation()
 
   if (stage === 'intake') {
-    return <StagePlaceholder icon="explore" title={t('stageIntakeTitle')} body={t('stageIntakeBody')} />
+    return <StageIntake intake={state.intake} />
   }
 
   if (stage === 'generating') {
-    return (
-      <StagePlaceholder icon="auto_awesome" title={t('stageGeneratingTitle')} body={t('stageGeneratingBody')} pending />
-    )
+    return <StageGenerating elapsedMs={state.elapsedMs} />
   }
 
   if (stage === 'hotels') {

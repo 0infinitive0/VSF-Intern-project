@@ -1,7 +1,7 @@
 ---
 phase: 7
 title: "[FE] Stage: Intake & Generating"
-status: pending
+status: done
 priority: P2
 effort: "1-1.5 ngày"
 dependencies: [5]
@@ -105,15 +105,39 @@ không đổi gì khác. Ghi điều này lại trong component.
 
 ## Tiêu chí hoàn thành
 
-- [ ] Stage intake hiển thị hero + checklist với giá trị `intake` thật
-- [ ] Dòng chưa có hiện `—`, không có giá trị đoán hay điền sẵn
-- [ ] Stage generating hiện trạng thái đang xử lý + số giây thật + skeleton
-- [ ] Không có danh sách bước tick tuần tự giả
-- [ ] `intake.people` hiển thị nguyên văn, không parse lại
-- [ ] Không còn component trùng chức năng với `trip-parameters-card`
-- [ ] Chuyển stage mượt, không nhảy layout
-- [ ] Mọi chuỗi được dịch ở cả hai catalog
-- [ ] `npm run typecheck`, `npm run lint`, `npm run check:tokens` pass
+- [x] Stage intake hiển thị hero + checklist với giá trị `intake` thật
+- [x] Dòng chưa có hiện `—`, không có giá trị đoán hay điền sẵn
+- [x] Stage generating hiện trạng thái đang xử lý + số giây thật + skeleton
+- [x] Không có danh sách bước tick tuần tự giả
+- [x] `intake.people` hiển thị nguyên văn, không parse lại
+- [x] Không còn component trùng chức năng với `trip-parameters-card` — quyết định 06/08/2026:
+      **giữ cả hai**, không trùng chức năng (trip-parameters-card: chat rail ở stage hotels, 2
+      giá trị dạng card; intake-checklist: bảng 5 dòng có trạng thái thiếu ở stage intake)
+- [x] Chuyển stage mượt, không nhảy layout (container flex-1 ổn định + entrance vRise mỗi stage)
+- [x] Mọi chuỗi được dịch ở cả hai catalog
+- [x] `npm run typecheck`, `npm run lint`, `npm run check:tokens` pass (+52/52 vitest)
+
+## Quyết định trong lúc làm (06/08/2026)
+
+1. **Dòng Ngân sách hiển thị `—` thường trực.** Contract đóng băng (`types.ts` +
+   `docs/chat_api_contract.md` + mock) không có field "mức ngân sách đã chọn" — backend
+   chỉ phát `min_price`/`max_price` ở `schemas.py` nhưng hai field đó chưa từng được khai
+   báo trong contract phía frontend. Hiển thị một nhãn mức sẽ là bịa dữ liệu. Ghi chú tại
+   `intake-checklist-rows.ts` header; nếu contract sau này khai báo chosen-tier, dòng này
+   sáng lên mà không đổi gì khác.
+2. **`trip-parameters-card` giữ nguyên** (xem tiêu chí đã tick ở trên).
+3. Generating: sub panel là caption **số giây thật** (tránh trùng thông điệp "30–60 giây"
+   khi title chuyển sang `pendingBuildingPlan` sau 10s — code review M1).
+4. `mock/server.js` nhận `MOCK_PORT` (mặc định 8000) để chạy song song với backend thật.
+
+## Nghiệm thu
+
+- Mock (lượt 1-2-3): intake hero + checklist điền dần (Điểm đến tick sau lượt 2); độ trễ 3s
+  lượt 3 → stage generating (giây thật đếm lên, bar vô hạn, skeleton hotel) → hotels.
+  Ảnh: /tmp/phase7/m*.png
+- Backend thật (docker :5173 + :8000): checklist điền "Đà Nẵng" + "2 người" nguyên văn sau
+  lượt đầu; stage chuyển intake → generating → hotels mượt, không nhảy layout.
+- Code review subagent: approve-with-notes (9/9 tiêu chí pass); 4 minor M1-M4 đã sửa cùng ngày.
 
 ## Đánh giá rủi ro
 

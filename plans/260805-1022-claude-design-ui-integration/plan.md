@@ -174,7 +174,7 @@ thay đổi contract: phải được cả hai dev đồng ý và phải sửa k
 | 12 | [Chuyển OSRM → Mapbox Directions](./phase-12-be-mapbox-routing.md) | Backend | Pending | 1 |
 | 5 | [Design system & App Shell](./phase-05-fe-design-system-and-shell.md) | Frontend | Done¹ | 1 |
 | 6 | [Chat panel cố định](./phase-06-fe-chat-panel.md) | Frontend | Done | 5 |
-| 7 | [Stage: Intake & Generating](./phase-07-fe-stage-intake-generating.md) | Frontend | Pending | 5 |
+| 7 | [Stage: Intake & Generating](./phase-07-fe-stage-intake-generating.md) | Frontend | Done | 5 |
 | 8 | [Stage: Khách sạn & Hotel Focus](./phase-08-fe-stage-hotels-focus.md) | Frontend | Pending | 5 |
 | 9 | [Stage: Workspace & Place Focus](./phase-09-fe-stage-workspace-focus.md) | Frontend | Pending | 5 |
 | 10 | [Leaflet Map & Route](./phase-10-fe-map.md) | Frontend | Pending | 9 |
