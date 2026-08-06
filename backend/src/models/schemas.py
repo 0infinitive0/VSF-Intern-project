@@ -88,6 +88,16 @@ class HotelOption(BaseModel):
     stay_night_count: int | None = Field(default=None, description="Số đêm đã báo giá")
     currency: str | None = Field(default=None, description="Đơn vị tiền tệ của báo giá")
     coordinates: str | None = Field(default=None, description="Tọa độ lat,lng của khách sạn")
+    address: str | None = None
+    area_name: str | None = None
+    image_url: str | None = None
+    images: list[str] = Field(default_factory=list)
+    amenities: list[str] = Field(default_factory=list)
+    review_score: float | None = None
+    review_count: int | None = None
+    match_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    match_reasons: list[dict[str, float | str]] = Field(default_factory=list)
+    city: str | None = None
 
 
 class RouteInfoPayload(BaseModel):
@@ -105,6 +115,8 @@ class ItineraryItem(BaseModel):
     reference_type: str | None = None
     reference_id: str | None = None
     coordinates: str | None = None
+    route_to_next: RouteInfoPayload | None = None
+    route_from_hotel: RouteInfoPayload | None = None
 
 
 class DayPlan(BaseModel):
@@ -394,6 +406,16 @@ def to_hotel_options_payload(pending: dict[str, Any] | None) -> list[HotelOption
                 stay_night_count=option.get("stay_night_count"),
                 currency=option.get("currency"),
                 coordinates=str(coords) if coords else None,
+                address=option.get("address"),
+                area_name=option.get("area_name"),
+                image_url=option.get("image_url"),
+                images=list(option.get("images") or []),
+                amenities=list(option.get("amenities") or []),
+                review_score=option.get("review_score"),
+                review_count=option.get("review_count"),
+                match_score=option.get("match_score"),
+                match_reasons=list(option.get("match_reasons") or []),
+                city=option.get("city"),
             )
         )
     return options

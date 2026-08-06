@@ -96,6 +96,50 @@ def test_rank_hotel_candidates_missing_optional_fields_do_not_crash():
     assert ranked[0][0]["recommendation_score"] >= 0.0
 
 
+def test_rank_hotel_candidates_keeps_a_bounded_match_score_and_machine_reasons():
+    data, candidate = _option(
+        "matched",
+        "Matched Hotel",
+        similarity=0.8,
+        star_rating=4,
+        review_score=8.5,
+        lowest_price=1_000_000,
+    )
+    data.update({"amenities": ["Pool"], "area_name": "Downtown"})
+
+    ranked = rank_hotel_candidates(
+        [(data, candidate)], target_price=1_000_000, amenity_prefs=("pool",)
+    )
+
+    result = ranked[0][0]
+    assert 0.0 <= result["match_score"] <= 1.0
+    assert {reason["code"] for reason in result["match_reasons"]} == {
+        "budget_fit",
+        "high_rating",
+        "star_rating",
+        "amenity_match",
+        "strong_similarity",
+        "near_center",
+    }
+    assert all(set(reason) == {"code", "value"} for reason in result["match_reasons"])
+
+
+def test_select_hotel_candidates_preserves_images_and_city_from_hydration(monkeypatch):
+    canonical = [{**_CANONICAL_ROWS[0], "images": ["https://example.com/1.jpg"], "city": "Đà Nẵng"}]
+
+    monkeypatch.setattr(
+        hotel_selection_module,
+        "search_hotels_with_rooms",
+        lambda **_kwargs: [{"id": "hotel-1", "similarity": 0.7}],
+    )
+    monkeypatch.setattr(hotel_selection_module, "_get_supabase_client", lambda: _FakeSupabaseClient(canonical))
+
+    data, _candidate = select_hotel_candidates("Đà Nẵng", "dest-1", "2 người")[0]
+
+    assert data["images"] == ["https://example.com/1.jpg"]
+    assert data["city"] == "Đà Nẵng"
+
+
 def test_rank_hotel_candidates_assigns_sequential_rank():
     options = [_option("a", "A", similarity=0.3), _option("b", "B", similarity=0.8), _option("c", "C", similarity=0.5)]
 

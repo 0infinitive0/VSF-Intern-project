@@ -185,6 +185,81 @@ def test_to_hotel_options_payload_includes_date_aware_price_fields():
     assert payload[0]["currency"] == "VND"
 
 
+def test_to_hotel_options_payload_includes_expanded_contract_fields_and_safe_defaults():
+    payload = to_hotel_options_payload(
+        {
+            "options": [
+                {
+                    "id": "hotel-1",
+                    "name": "Beach Hotel",
+                    "coordinates": "16.05,108.2",
+                    "address": "123 Beach Road",
+                    "area_name": "Downtown",
+                    "image_url": "https://example.com/cover.jpg",
+                    "images": None,
+                    "amenities": None,
+                    "review_score": None,
+                    "review_count": None,
+                    "match_score": 0.875,
+                    "match_reasons": [{"code": "high_rating", "value": 8.8}],
+                    "city": "Đà Nẵng",
+                }
+            ]
+        }
+    )
+
+    assert payload[0] == {
+        "index": 1,
+        "id": "hotel-1",
+        "name": "Beach Hotel",
+        "star_rating": None,
+        "description": None,
+        "matched_rooms": [],
+        "coordinates": "16.05,108.2",
+        "address": "123 Beach Road",
+        "area_name": "Downtown",
+        "image_url": "https://example.com/cover.jpg",
+        "images": [],
+        "amenities": [],
+        "review_score": None,
+        "review_count": None,
+        "match_score": 0.875,
+        "match_reasons": [{"code": "high_rating", "value": 8.8}],
+        "city": "Đà Nẵng",
+    }
+
+
+def test_to_trip_plan_payload_preserves_route_objects_and_nulls():
+    bundle = {
+        "hotel": {},
+        "itineraries": [{"duration_days": 1, "status": "Draft"}],
+        "itinerary_items": [
+            {
+                "day_number": 1,
+                "order_index": 1,
+                "activity": "Hotel to beach",
+                "route_from_hotel": None,
+                "route_to_next": {
+                    "distance_km": 0.0,
+                    "duration_mins": 0.0,
+                    "polyline": "",
+                    "profile": None,
+                },
+            }
+        ],
+    }
+
+    item = to_trip_plan_payload(bundle)["days"][0]["items"][0]
+
+    assert item["route_from_hotel"] is None
+    assert item["route_to_next"] == {
+        "distance_km": 0.0,
+        "duration_mins": 0.0,
+        "polyline": "",
+        "profile": None,
+    }
+
+
 def test_format_hotel_options_shows_average_nightly_and_total_stay_price():
     hotel = {
         "id": "hotel-1",
@@ -208,7 +283,7 @@ def test_to_hotel_options_payload_shape_from_real_bundle():
     payload = to_hotel_options_payload(PENDING_HOTEL_SELECTION_FIXTURE)
 
     assert len(payload) == 2
-    assert payload[0] == {
+    assert {key: payload[0][key] for key in ("index", "id", "name", "star_rating", "description", "matched_rooms")} == {
         "index": 1,
         "id": "11111111-1111-1111-1111-111111111111",
         "name": "Muong Thanh Grand Đà Nẵng",
@@ -216,6 +291,8 @@ def test_to_hotel_options_payload_shape_from_real_bundle():
         "description": "Khách sạn trung tâm gần biển",
         "matched_rooms": ["Deluxe Ocean View", "Family Suite"],
     }
+    assert payload[0]["images"] == []
+    assert payload[0]["review_score"] is None
     assert payload[1]["index"] == 2
     assert payload[1]["id"] == "66666666-6666-6666-6666-666666666666"
 

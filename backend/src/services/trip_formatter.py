@@ -330,6 +330,8 @@ def to_trip_plan_payload(trip_data: dict[str, Any] | None) -> dict[str, Any] | N
                             if isinstance(item.get("coordinates"), (list, tuple)) and len(item.get("coordinates")) == 2
                             else str(item.get("coordinates")) if item.get("coordinates") else None
                         ),
+                        "route_to_next": item.get("route_to_next"),
+                        "route_from_hotel": item.get("route_from_hotel"),
                     }
                     for item in day_items
                 ],
@@ -375,6 +377,17 @@ def to_hotel_options_payload(
             "star_rating": option.get("star_rating"),
             "description": option.get("description"),
             "matched_rooms": option.get("matched_rooms") or option.get("matched_room_names") or [],
+            "coordinates": option.get("coordinates"),
+            "address": option.get("address"),
+            "area_name": option.get("area_name"),
+            "image_url": option.get("image_url"),
+            "images": option.get("images") or [],
+            "amenities": option.get("amenities") or [],
+            "review_score": option.get("review_score"),
+            "review_count": option.get("review_count"),
+            "match_score": option.get("match_score"),
+            "match_reasons": option.get("match_reasons") or [],
+            "city": option.get("city"),
         }
         for price_field in (
             "average_nightly_price",
