@@ -108,7 +108,7 @@ def select_hotel(request: SelectHotelRequest) -> PlannerChatResponse:
             result = handle_frontend_hotel_selection(session, request.hotel_id)
             
             safe_reply = sanitize_system_error(result.text, session_id=session_id)
-            suggestions = suggestions_for(derive_stage(session, result.tool))
+            suggestions = suggestions_for(session)
             hotel_options = to_hotel_options_payload(session.pending_hotel_selection)
             trip_plan = to_trip_plan_payload(session.trip_data)
             intake = IntakeStatus.from_state(session.intake_state, session.hotel_pref_state)
@@ -124,7 +124,7 @@ def select_hotel(request: SelectHotelRequest) -> PlannerChatResponse:
                 session_id=session_id,
                 reply=safe_reply,
                 suggestions=suggestions,
-                stage=derive_stage(session, result.tool),
+                stage=derive_stage(result, session),
                 hotel_options=hotel_options,
                 trip_plan=trip_plan,
                 intake=intake,
@@ -132,7 +132,7 @@ def select_hotel(request: SelectHotelRequest) -> PlannerChatResponse:
             )
         except Exception as exc:
             logger.exception("Chat error for session %s", session_id)
-            raise HTTPException(status_code=500, detail="Lỗi xử lý yêu cầu.") from exc
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/planner_chat", response_model=PlannerChatResponse)
@@ -178,7 +178,7 @@ def planner_chat(request: PlannerChatRequest) -> PlannerChatResponse:
     # error level (keyed by session_id) whenever it replaces the text.
     safe_reply = sanitize_system_error(result.text, session_id=session_id, language=request.language)
 
-    stage = derive_stage(result)
+    stage = derive_stage(result, session)
 
     hotel_options = to_hotel_options_payload(session.pending_hotel_selection)
     suggestions = [{"label": s["label"], "value": s["value"]} for s in suggestions_raw]
@@ -289,18 +289,34 @@ def hotels_search(request: LoadMoreHotelsRequest):
     
     with session.lock:
         try:
-            from src.agents.session import _clear_pending_hotel_selection
-            from src.services.supabase_search import match_hotels_with_rooms
+            from src.services.hotel_selection import select_hotel_candidates
             from src.models.schemas import to_hotel_options_payload
             
-            budget = session.hotel_pref_state.target_price or 1500000
+            existing = session.pending_hotel_selection.get("options", []) if session.pending_hotel_selection else []
+            exclude_ids = [opt["id"] for opt in existing if "id" in opt]
             
-            params = {
-                "dest": session.intake_state.destination,
-                "price": budget,
-                "amenities": list(session.intake_state.preferences),
-            }
-            results = match_hotels_with_rooms(**params, match_count=10)
+            dest_id = session.pending_hotel_selection.get("destination_id") if session.pending_hotel_selection else None
+            print(f"DEBUG: pending_hotel_selection destination_id = {dest_id}")
+            if not dest_id:
+                from src.services.trip_planner import _get_destination_id
+                dest_id = _get_destination_id(session.intake_state.destination)
+                print(f"DEBUG: _get_destination_id({session.intake_state.destination}) = {dest_id}")
+                
+            final_dest_id = str(dest_id) if dest_id else ""
+            print(f"DEBUG: calling select_hotel_candidates with destination_id = {final_dest_id}")
+            
+            results = select_hotel_candidates(
+                destination=session.intake_state.destination or "",
+                destination_id=final_dest_id,
+                people=session.intake_state.people or "2",
+                hotel_query=",".join(session.intake_state.preferences) if session.intake_state.preferences else None,
+                match_count=5,
+                max_price=session.hotel_pref_state.target_price,
+                start_date=session.intake_state.start_date,
+                end_date=session.intake_state.end_date,
+                exclude_hotel_ids=exclude_ids
+            )
+            results = [item[0] for item in results]
             
             # Identify which hotels we already have
             existing = session.pending_hotel_selection.get("options", []) if session.pending_hotel_selection else []

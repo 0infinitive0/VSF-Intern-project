@@ -25,7 +25,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from src.i18n import t
-from src.services.llm import get_reasoning_llm as get_llm
+from src.services.llm import get_fast_llm as get_llm
 
 logger = logging.getLogger(__name__)
 
@@ -126,14 +126,14 @@ class TripPreferenceUpdate:
             else set()
         )
         preferences = (
-            tuple(label for label in _PREFERENCE_LABELS if label in label_set)
+            tuple(label_set)
             if "preferences" in changed_fields
             else None
         )
 
         invalid_fields = []
         if "destination" in changed_fields and destination is None:
-            invalid_fields.append("điểm đến")
+            changed_fields.remove("destination")
         if "duration" in changed_fields and duration is None:
             invalid_fields.append("số ngày")
         if "start_date" in changed_fields and start_date is None:
@@ -463,7 +463,7 @@ Return ONLY valid JSON (no markdown fences) matching this schema:
   "end_date": "YYYY-MM-DD or null - only when the user explicitly provided the exclusive trip end/check-out date; it must be after start_date",
   "duration_days": "integer or null - trip length in days (convert weeks/months to days, e.g. '1 tuần' = 7)",
   "people_count": "integer or null - number of travelers (e.g. 'vợ chồng tôi' = 2, 'một mình' = 1)",
-  "preference_labels": "array of zero or more of these exact strings only: {allowed_labels}",
+  "preference_labels": "array of strings - extracts the user's explicit preferences or requirements (e.g. 'ẩm thực', 'Spa', 'bể bơi', 'yên tĩnh'). Can include any unstructured request.",
   "companions": "string or null - exactly one of these exact strings: {allowed_companions} (or null when none is stated)",
   "pace": "string or null - exactly one of these exact strings: {allowed_paces} (or null when none is stated)",
   "day_rhythm": "array of zero or more of these exact strings only: {allowed_day_rhythms}",
@@ -491,8 +491,9 @@ Message: "{message}"
         if content.endswith("```"):
             content = content[:-3]
         parsed = json.loads(content.strip())
+        print(f"DEBUG LLM EXTRACTED FACTS: {parsed}", flush=True)
         return parsed if isinstance(parsed, dict) else {}
-    except Exception:
+    except Exception as exc:
         logger.warning("Intake fact extraction failed for message %r", message, exc_info=True)
         return {}
 

@@ -274,9 +274,17 @@ def resolve_hotel_selection(
         return None
 
     stripped = selection.strip()
-    match = re.match(r"\d+", stripped)
-    if match:
-        rank = int(match.group())
+    
+    # 1. Exact ID match (used by frontend API)
+    for data, candidate in options:
+        if str(data.get("id")) == stripped:
+            return data, candidate
+
+    # 2. Number/rank match (used by LLM)
+    # Require full match or strict integer, not just a leading digit,
+    # to avoid falsely matching UUIDs like "8bf60c4b..." as "8".
+    if stripped.isdigit():
+        rank = int(stripped)
         for data, candidate in options:
             if data.get("rank") == rank:
                 return data, candidate

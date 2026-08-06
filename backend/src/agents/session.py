@@ -82,7 +82,7 @@ _STAGE_MAP: dict[str | None, str] = {
 }
 
 
-def derive_stage(result: TurnResult) -> str:
+def derive_stage(result: TurnResult, session: TripSession | None = None) -> str:
     """Derive the `stage` value from a TurnResult.
 
     Keeps stage derivation in one place — do NOT re-derive it in the endpoint
@@ -90,6 +90,11 @@ def derive_stage(result: TurnResult) -> str:
     """
     if result.text.startswith("SYSTEM ERROR:"):
         return "error"
+    if session and (result.tool == "agent_stream" or result.tool is None or result.tool == "chat"):
+        if getattr(session, "initial_plan_complete", False):
+            return "modified" if getattr(session, "pending_trip_edit_request", None) else "planned"
+        if getattr(session, "pending_hotel_selection", None):
+            return "hotel_options"
     return _STAGE_MAP.get(result.tool, "intake")
 
 
@@ -444,6 +449,8 @@ _SUPPORTED_VIBE_WORDS = re.compile(
 
 
 def _looks_like_trip_preference_change(user_input: str) -> bool:
+    if "?" in user_input:
+        return False
     normalized = _normalize_intent_text(user_input)
     if _TRIP_PREFERENCE_CHANGE_WORDS.search(normalized) and _TRIP_PREFERENCE_FIELD_WORDS.search(normalized):
         return True
@@ -670,7 +677,6 @@ def process_chat_turn(
             response += "\nBạn đã chỉnh sửa xong chưa? (Báo lại để mình tìm khách sạn mới nhé)."
         except TripPreferenceUpdateError as exc:
             session.pending_trip_preference_request = request
-            _clear_pending_hotel_selection(session)
             return TurnResult(
                 text=t(
                     "Mình chưa thể xác nhận {exc} Hãy chọn một sở thích được hỗ trợ hoặc nói rõ thông tin muốn đổi.",
@@ -746,8 +752,9 @@ def handle_frontend_hotel_selection(session: TripSession, hotel_id: str) -> Turn
     ]
     resolved = resolve_hotel_selection(hotel_id, options)
     if not resolved:
+        ids = [str(data.get("id")) for data, _ in options]
         return TurnResult(
-            text="SYSTEM ERROR: Không tìm thấy khách sạn đã chọn.",
+            text=f"SYSTEM ERROR: Không tìm thấy khách sạn đã chọn. Looking for {hotel_id}, available: {ids}",
             tool="select_hotel"
         )
 
@@ -853,6 +860,25 @@ def _run_finalize(session: TripSession) -> TurnResult:
     return TurnResult(text=str(tool_response), tool="finalize_trip_plan")
 
 
+_BUDGET_KEYWORDS = re.compile(
+    r"ng[aâ]n s[aá]ch|budget|gi[aá] ph[oò]ng|ti[eề]n ph[oò]ng|gi[aá] ti[eề]n"
+    r"|chi ph[ií]|ph[ií] l[uư]u tr[uú]|ph[ií] ph[oò]ng|t[oố]i [dđ]a|ph[ií] [dđ][eê]m"
+    r"|300k|300\.000|500k|500\.000|1 tri[eệ]u|2 tri[eệ]u|\d+[kK] ?vnd|\d+ ?tri[eệ]u",
+    re.IGNORECASE,
+)
+_BUDGET_CHANGE_VERBS = re.compile(
+    r"\b(?:[dđ][oổ]i|thay|gi[aả]m|h[aạ]|c[aâ]p nh[aậ]t|change|lower|reduce|update)\b",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_budget_change(text: str) -> bool:
+    """Heuristic: True when the user is clearly asking to change the hotel
+    budget / price ceiling on an existing trip — used as the deterministic
+    fallback when the LLM edit planner fails to classify the request."""
+    return bool(_BUDGET_KEYWORDS.search(text) and _BUDGET_CHANGE_VERBS.search(text))
+
+
 def _run_edit_draft(session: TripSession, user_input: str) -> TurnResult | None:
     """Returns None when `plan_trip_edit` decides `not_edit` — the caller falls
     through to the general chat agent, same as today."""
@@ -864,6 +890,23 @@ def _run_edit_draft(session: TripSession, user_input: str) -> TurnResult | None:
         edit_plan = plan_trip_edit(planner_request, current_data)
     except TripEditPlanError as exc:
         logger.warning("Saved-trip edit planner failed safely: %s", exc)
+        # Deterministic fallback: when the LLM fails but the message is clearly
+        # a budget change, directly invoke change_hotel without relying on the
+        # local model reliably mapping the request to an operation name.
+        if _looks_like_budget_change(user_input):
+            logger.info("Budget-change detected deterministically; falling back to change_hotel path")
+            from src.services.trip_edit_planner import EditOperation, TripEditPlan
+            synthetic_plan = TripEditPlan(
+                decision="apply",
+                summary="Thay đổi ngân sách khách sạn",
+                operations=(EditOperation(operation="change_hotel", hotel_query=user_input),),
+                raw_request=user_input,
+            )
+            tool_response = execute_trip_edit_request(session, user_input, synthetic_plan)
+            tool_name = "execute_trip_edit_request"
+            if session.pending_hotel_selection:
+                tool_name = "recommend_hotels"
+            return TurnResult(text=str(tool_response or t("SYSTEM ERROR: Không thể tìm khách sạn phù hợp với ngân sách mới.", session.language)), tool=tool_name)
         return TurnResult(
             text=t(
                 "SYSTEM ERROR: Không thể hiểu an toàn yêu cầu chỉnh sửa này. Vui lòng diễn đạt cụ thể hơn.",
@@ -954,13 +997,13 @@ def _run_intake(session: TripSession, user_input: str) -> TurnResult:
     # 2. Ask for hotel budget BEFORE asking for dates
     if not session.hotel_pref_state.is_complete:
         # Trip facts (destination/duration/start_date/people) are already locked in
-        # by this point, but the optional taxonomy fields (companions/pace/day_rhythm/
-        # notes) may still be unset if the form's first submission left them blank —
-        # the pre-filled form lets a user add them alongside the budget answer on
-        # this turn. Re-run intake extraction so that addition isn't silently
-        # dropped; with_message's own merge rules keep the already-locked required
-        # facts untouched (grounded values for an already-set field never win).
-        session.intake_state = session.intake_state.with_message(user_input, _get_destination_names())
+        # by this point (via the with_message call above), but the optional taxonomy
+        # fields (companions/pace/day_rhythm/notes) may still be unset if the form's
+        # first submission left them blank — the pre-filled form lets a user add them
+        # alongside the budget answer on this turn. with_message's own merge rules
+        # keep the already-locked required facts untouched (grounded values for an
+        # already-set field never win). NOTE: we do NOT call with_message again here
+        # to avoid sending the same prompt to the LLM twice in one turn.
         session.hotel_pref_state = session.hotel_pref_state.with_message(user_input)
         missing_pref_question = session.hotel_pref_state.next_question(session.language)
         if missing_pref_question:
@@ -974,15 +1017,92 @@ def _run_intake(session: TripSession, user_input: str) -> TurnResult:
             logger.info("Deterministic intake response (dates): %s", missing_question)
             return TurnResult(text=str(missing_question), tool=None)
 
-    return _run_recommend_hotels(session)
+    # 4. If we haven't shown hotels yet, force the first recommend_hotels call
+    if not session.pending_hotel_selection:
+        return _run_recommend_hotels(session)
+
+    # 5. If we already showed hotels, we are in the hotel options chat phase. Let the agent handle questions and re-searches.
+    return _run_chat_agent(session, user_input)
+
+
+def _compact_history(session: TripSession) -> None:
+    """Check checkpointer history and compact if too large to save tokens."""
+    try:
+        state = session.agent.get_state(session.config)
+        messages = state.values.get("messages", [])
+        if not messages:
+            return
+
+        # Rough token approximation (characters / 4)
+        total_chars = sum(len(str(getattr(m, "content", str(m)))) for m in messages)
+        approx_tokens = total_chars // 4
+        
+        # Compact if exceeding 70% threshold (e.g., ~5500 tokens)
+        if approx_tokens <= 5500:
+            return
+            
+        older_messages = messages[:-4]
+        recent_messages = messages[-4:]
+        
+        if not older_messages:
+            return
+            
+        logger.info(f"History exceeds {approx_tokens} tokens. Compacting...")
+        from src.services.llm import get_fast_llm
+        from langchain_core.messages import HumanMessage, SystemMessage, RemoveMessage, AIMessage
+        
+        llm = get_fast_llm(temperature=0.0)
+        summary_prompt = (
+            "Tóm tắt ngắn gọn nhưng đầy đủ lịch sử cuộc trò chuyện sau. "
+            "Ghi nhớ các yêu cầu chính, sở thích, thông tin chuyến đi và quyết định của người dùng.\n"
+            f"Lịch sử:\n{older_messages}"
+        )
+        
+        response = llm.invoke([HumanMessage(content=summary_prompt)])
+        summary = str(response.content)
+        
+        # 1. Remove all old messages
+        deletes = [RemoveMessage(id=m.id) for m in messages if hasattr(m, "id") and m.id]
+        
+        # 2. Re-create recent messages without IDs to append them cleanly
+        new_messages = [SystemMessage(content=f"Tóm tắt lịch sử cuộc trò chuyện:\n{summary}")]
+        for m in recent_messages:
+            if isinstance(m, HumanMessage):
+                new_messages.append(HumanMessage(content=m.content))
+            elif isinstance(m, AIMessage):
+                new_messages.append(AIMessage(content=m.content, tool_calls=getattr(m, "tool_calls", [])))
+            else:
+                new_messages.append(m)
+                
+        # 3. Update checkpointer state
+        session.agent.update_state(session.config, {"messages": deletes + new_messages})
+        logger.info("History successfully compacted.")
+        
+    except Exception as e:
+        logger.warning(f"History compaction failed: {e}")
 
 
 def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:
     for attempt in range(2):
         agent_input = user_input
+        
+        # Inject context so the chat agent knows the intake is complete if we are in the hotel selection stage.
+        # This is needed because Step 2 bypasses the chat agent, leaving its memory empty.
+        if not session.initial_plan_complete and session.intake_state.is_complete:
+            context_prefix = (
+                f"[System: The user has already provided the required info: "
+                f"Destination={session.intake_state.destination}, "
+                f"Duration={session.intake_state.duration}, "
+                f"People={session.intake_state.people}, "
+                f"StartDate={session.intake_state.start_date}, "
+                f"EndDate={session.intake_state.end_date}. "
+                f"Do NOT ask for this info again. You may call recommend_hotels if the user wants to refine their search or budget, or just answer their questions directly.]\n\n"
+            )
+            agent_input = context_prefix + agent_input
+
         if attempt:
             agent_input = (
-                f"{user_input}\n"
+                f"{agent_input}\n"
                 "Trả lời người dùng bằng văn bản tiếng Việt. Không xuất JSON hoặc mô phỏng lời gọi công cụ."
             )
         try:
@@ -994,8 +1114,10 @@ def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:
             # then sync the final event back afterward so session.state picks
             # up whatever the tool actually changed. Verified empirically:
             # without the seed, a fresh thread has no TripState keys at all
-            # and a tool reading runtime.state raises KeyError.
-            config_with_limit = {**session.config, "recursion_limit": 5}
+            config_with_limit = {**session.config, "recursion_limit": 15}
+            
+            _compact_history(session)
+            
             events = session.agent.stream(
                 {**session.state, "messages": [("user", agent_input)]},
                 config=config_with_limit,
@@ -1024,7 +1146,30 @@ def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:
 
             if last_event is not None:
                 session.state.update({key: value for key, value in last_event.items() if key != "messages"})
-        except Exception:
+                if "pending_hotel_selection" in last_event and last_event["pending_hotel_selection"]:
+                    ph = last_event["pending_hotel_selection"]
+                    from src.services.trip_intake import TripIntakeState
+                    new_prefs = [p.strip() for p in str(ph.get("preferences_text") or "").split(",") if p.strip()]
+                    session.intake_state = TripIntakeState(
+                        destination=ph.get("destination") or session.intake_state.destination,
+                        duration=ph.get("duration") or session.intake_state.duration,
+                        start_date=ph.get("start_date") or session.intake_state.start_date,
+                        stay_end_date=ph.get("end_date") or session.intake_state.stay_end_date,
+                        people=ph.get("people") or session.intake_state.people,
+                        preferences=tuple(new_prefs) if new_prefs else session.intake_state.preferences,
+                        companions=session.intake_state.companions,
+                        pace=session.intake_state.pace,
+                        day_rhythm=session.intake_state.day_rhythm,
+                        notes=session.intake_state.notes
+                    )
+        except Exception as exc:
+            if "Recursion limit" in str(exc) or "recursion" in str(exc).lower() or type(exc).__name__ == "GraphRecursionError":
+                logger.error("Agent hit recursion limit of 3 loops and was stopped.")
+                return TurnResult(
+                    text="Xin lỗi, tôi cần thêm thông tin để làm rõ yêu cầu của bạn, hiện tại tôi đang gặp một chút khó khăn khi tự động phân tích.",
+                    tool="agent_stream"
+                )
+            
             logger.exception("Agent provider request failed")
             return TurnResult(
                 text=(
@@ -1034,12 +1179,21 @@ def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:
                 tool="agent_stream",
             )
 
+        # Prefer the final AI reply when the agent actually answered the user's
+        # question in prose — e.g. "Hotel X does have parking" — over the canned
+        # ToolMessage string from recommend_hotels. Fall back to tool_output_response
+        # only when the agent produced no non-tool-call prose reply.
+        if final_ai_response and not _looks_like_textual_tool_call(final_ai_response):
+            logger.info("Final AI Response: %s", final_ai_response)
+            # If a tool also ran (e.g. recommend_hotels), keep that state update
+            # (already synced via last_event) but return the agent's prose reply.
+            return TurnResult(
+                text=str(final_ai_response),
+                tool="recommend_hotels" if tool_output_response else "agent_stream",
+            )
         if tool_output_response:
             logger.info("Final Tool Response Output:\n%s", tool_output_response)
             return TurnResult(text=str(tool_output_response), tool="agent_stream")
-        if final_ai_response and not _looks_like_textual_tool_call(final_ai_response):
-            logger.info("Final AI Response: %s", final_ai_response)
-            return TurnResult(text=str(final_ai_response), tool="agent_stream")
         if final_ai_response:
             logger.warning("Discarded textual tool-call JSON from agent (attempt %s)", attempt + 1)
     return TurnResult(

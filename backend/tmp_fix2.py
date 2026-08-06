@@ -1,4 +1,6 @@
-"""LLM router that picks one of six route labels for a chat turn.
+import re
+
+clean_content = '''"""LLM router that picks one of six route labels for a chat turn.
 
 `decide_route_by_llm` runs the supervisor and extracts the first tool call's
 route label. It never raises: any exception, timeout, or turn that produces no
@@ -71,15 +73,15 @@ def _state_summary(session: Any) -> str:
         return "có" if value else "chưa"
 
     return (
-        "[Trạng thái phiên hiện tại — chỉ để chọn tuyến, không phải sự thật chuyến đi]\n"
-        f"- Danh sách khách sạn đang chờ người dùng chọn: {pending_hotels}\n"
-        f"- Đã có lịch trình đã lưu: {_yn(context.has_trip_data)}\n"
-        f"- Lịch trình đã được chốt (finalized): {_yn(context.is_trip_finalized)}\n"
-        f"- Đang trong quá trình lên một chuyến đi mới: {_yn(context.planning_new_trip)}\n"
-        f"- Đã hoàn tất thông tin điểm đến/thời gian/số người: {_yn(context.intake_complete)}\n"
-        f"- Đã hoàn tất ngân sách khách sạn: {_yn(context.hotel_prefs_complete)}\n"
+        "[Trạng thái phiên hiện tại — chỉ để chọn tuyến, không phải sự thật chuyến đi]\\n"
+        f"- Danh sách khách sạn đang chờ người dùng chọn: {pending_hotels}\\n"
+        f"- Đã có lịch trình đã lưu: {_yn(context.has_trip_data)}\\n"
+        f"- Lịch trình đã được chốt (finalized): {_yn(context.is_trip_finalized)}\\n"
+        f"- Đang trong quá trình lên một chuyến đi mới: {_yn(context.planning_new_trip)}\\n"
+        f"- Đã hoàn tất thông tin điểm đến/thời gian/số người: {_yn(context.intake_complete)}\\n"
+        f"- Đã hoàn tất ngân sách khách sạn: {_yn(context.hotel_prefs_complete)}\\n"
         f"- Đang chờ người dùng làm rõ một yêu cầu chỉnh sửa trước đó: "
-        f"{_yn(context.has_pending_edit_clarification)}\n"
+        f"{_yn(context.has_pending_edit_clarification)}\\n"
     )
 
 
@@ -90,7 +92,7 @@ def decide_route_by_llm(session: Any, user_input: str) -> str | None:
         llm = get_llm(temperature=0)
         llm_with_tools = llm.bind_tools(_ROUTE_TOOLS)
         
-        message = f"{_state_summary(session)}\nTin nhắn người dùng: {user_input}"
+        message = f"{_state_summary(session)}\\nTin nhắn người dùng: {user_input}"
         
         messages = [
             SystemMessage(content=SUPERVISOR_ROUTER_PROMPT),
@@ -106,3 +108,9 @@ def decide_route_by_llm(session: Any, user_input: str) -> str | None:
     except Exception:
         logger.exception("Supervisor router failed; falling back to regex routing")
         return None
+'''
+
+with open('src/agents/supervisor.py', 'w', encoding='utf-8') as f:
+    f.write(clean_content)
+
+print('Rewrite complete.')

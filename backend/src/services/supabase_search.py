@@ -96,7 +96,7 @@ def _execute_rpc(rpc_name: str, params: dict) -> list:
     return res.data or []
 
 
-from src.services.llm import get_embeddings as factory_get_embeddings, get_reasoning_llm as get_llm
+from src.services.llm import get_embeddings as factory_get_embeddings, get_fast_llm as get_llm
 
 
 @lru_cache
@@ -231,8 +231,7 @@ def search_hotels_with_rooms(
                 continue
             if normalized_id not in valid_excluded_ids:
                 valid_excluded_ids.append(normalized_id)
-        if valid_excluded_ids:
-            params["filter_exclude_hotel_ids"] = valid_excluded_ids
+    params["filter_exclude_hotel_ids"] = valid_excluded_ids if valid_excluded_ids else None
     if stay_dates is not None:
         params["filter_start_date"], params["filter_end_date"] = stay_dates
     if radius is not None:

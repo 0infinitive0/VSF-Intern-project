@@ -183,6 +183,7 @@ def get_llm(
                 "api_key": openrouter_key,
                 "base_url": target_base or "https://openrouter.ai/api/v1",
                 "temperature": target_temp,
+                "max_tokens": 2000,
             }
             return ChatOpenAI(**kwargs)
         except Exception as exc:
@@ -255,8 +256,8 @@ def get_reasoning_llm(
     return get_llm(
         model=_get_role_model(
             explicit_model=model,
-            environment_key="LLM_REASONING_MODEL",
-            settings_key="llm_reasoning_model",
+            environment_key="LLM_MODEL",
+            settings_key="llm_model",
         ),
         temperature=temperature,
     )

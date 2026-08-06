@@ -18,8 +18,8 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      # Only used when profile local-llm is active; ignored when LLM_PROVIDER != ollama
-      - OLLAMA_URL=http://ollama:11434
+      # Use host's Ollama
+      - OLLAMA_URL=http://host.docker.internal:11434
     volumes:
       - ./backend/data:/app/data
       - ./backend/logs:/app/logs
