@@ -16,9 +16,12 @@ from __future__ import annotations
 
 import logging
 
-from langchain.tools import ToolRuntime, tool
+from langchain.tools import tool
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
+from typing import Annotated
+from langchain_core.tools import InjectedToolCallId
+from langgraph.prebuilt import InjectedState
 
 from src.agents.state import TripState
 from src.i18n import t
@@ -31,18 +34,30 @@ logger = logging.getLogger(__name__)
 
 
 def _reply(text: str, tool_call_id: str | None, **extra_updates: object) -> Command:
-    return Command(update={**extra_updates, "messages": [ToolMessage(text, tool_call_id=tool_call_id)]})
+    return Command(
+        goto="__end__",
+        update={**extra_updates, "messages": [ToolMessage(text, tool_call_id=tool_call_id)]}
+    )
 
 
-@tool
-def select_hotel(selection: str, runtime: ToolRuntime[None, TripState]) -> Command:
+from langchain_core.tools import InjectedToolCallId
+from langgraph.prebuilt import InjectedState
+
+@tool(return_direct=True)
+def select_hotel(selection: str, state: Annotated[dict, InjectedState], tool_call_id: Annotated[str, InjectedToolCallId]) -> Command:
     """
     Use this tool whenever a numbered hotel list has just been shown and the user's reply is their
     choice (a number like "2" or a hotel name). Pass their reply text verbatim as `selection`.
     """
-    pending = runtime.state["pending_hotel_selection"]
-    session_id = (runtime.config.get("configurable") or {}).get("thread_id") or "poc_trip_planner_1"
-    language = str(runtime.state.get("language") or "vi")
+    logger.warning("Inside select_hotel! state keys: %s", state.keys())
+    pending = state.get("pending_hotel_selection")
+    logger.warning("Inside select_hotel! pending_hotel_selection is None: %s", pending is None)
+    if pending:
+        logger.warning("Inside select_hotel! pending keys: %s", pending.keys())
+        logger.warning("Inside select_hotel! pending options count: %s", len(pending.get("options") or []))
+
+    session_id = "poc_trip_planner_1"
+    language = str(state.get("language") or "vi")
 
     if not pending:
         return _reply(
@@ -50,7 +65,7 @@ def select_hotel(selection: str, runtime: ToolRuntime[None, TripState]) -> Comma
                 "SYSTEM ERROR: Chưa có danh sách khách sạn nào để chọn. Hãy tạo gợi ý khách sạn trước.",
                 language,
             ),
-            runtime.tool_call_id,
+            tool_call_id,
         )
 
     raw_options = pending.get("options") or []
@@ -67,7 +82,7 @@ def select_hotel(selection: str, runtime: ToolRuntime[None, TripState]) -> Comma
             language,
             options=format_hotel_options(options, language),
         )
-        return _reply(reply, runtime.tool_call_id)
+        return _reply(reply, tool_call_id)
 
     hotel_data, _candidate = resolved
     mode = pending.get("mode", "new_trip")
@@ -83,12 +98,13 @@ def select_hotel(selection: str, runtime: ToolRuntime[None, TripState]) -> Comma
         stay_kwargs = {"start_date": start_date, "end_date": end_date}
 
     if mode in {"change_hotel", "replace_trip_preferences"}:
-        trip_data = runtime.state["trip_data"]
+        trip_data = state.get("trip_data")
         if trip_data is None:
             return _reply(
                 t("SYSTEM ERROR: Không còn kế hoạch chuyến đi để đổi khách sạn.", language),
-                runtime.tool_call_id,
+                tool_call_id,
                 pending_hotel_selection=None,
+            initial_plan_complete=True,
             )
 
         saved_itinerary = (trip_data.get("itineraries") or [{}])[0]
@@ -98,8 +114,9 @@ def select_hotel(selection: str, runtime: ToolRuntime[None, TripState]) -> Comma
                     "Kế hoạch đã xác nhận không thể chỉnh sửa. Hãy tạo một kế hoạch mới nếu cần thay đổi.",
                     language,
                 ),
-                runtime.tool_call_id,
+                tool_call_id,
                 pending_hotel_selection=None,
+            initial_plan_complete=True,
             )
 
         planning_constraints = pending.get("planning_constraints") or {} if mode == "change_hotel" else {}
@@ -118,7 +135,7 @@ def select_hotel(selection: str, runtime: ToolRuntime[None, TripState]) -> Comma
             )
         except Exception as exc:
             logger.exception("Hotel change failed")
-            return _reply(f"SYSTEM ERROR: {exc}", runtime.tool_call_id)
+            return _reply(f"SYSTEM ERROR: {exc}", tool_call_id)
 
         adjustment = t(
             "Đã đổi khách sạn và lập lại toàn bộ các cụm địa điểm theo vị trí mới.",
@@ -137,9 +154,10 @@ def select_hotel(selection: str, runtime: ToolRuntime[None, TripState]) -> Comma
                 updated_data.setdefault("adjustments", []).extend(_reapply_planning_constraints(updated_data))
         return _reply(
             format_trip_response_from_json(updated_data, language),
-            runtime.tool_call_id,
+            tool_call_id,
             trip_data=updated_data,
             pending_hotel_selection=None,
+            initial_plan_complete=True,
         )
 
     captured: dict[str, object] = {}
@@ -160,10 +178,11 @@ def select_hotel(selection: str, runtime: ToolRuntime[None, TripState]) -> Comma
         **stay_kwargs,
     )
     if str(reply).startswith("SYSTEM ERROR:"):
-        return _reply(str(reply), runtime.tool_call_id)
+        return _reply(str(reply), tool_call_id)
     return _reply(
         str(reply),
-        runtime.tool_call_id,
+        tool_call_id,
         trip_data=captured.get("trip_data"),
         pending_hotel_selection=None,
+            initial_plan_complete=True,
     )

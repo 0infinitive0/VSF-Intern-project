@@ -281,14 +281,14 @@ def resolve_hotel_selection(
             return data, candidate
 
     # 2. Number/rank match (used by LLM)
-    # Require full match or strict integer, not just a leading digit,
-    # to avoid falsely matching UUIDs like "8bf60c4b..." as "8".
-    if stripped.isdigit():
-        rank = int(stripped)
+    # Check if the string is just a digit, or extract the digit if the string contains exactly one digit
+    import re
+    digits = re.findall(r'\d+', stripped)
+    if len(digits) == 1:
+        rank = int(digits[0])
         for data, candidate in options:
             if data.get("rank") == rank:
                 return data, candidate
-        return None
 
     normalized_selection = _normalize_for_match(stripped)
     if not normalized_selection:

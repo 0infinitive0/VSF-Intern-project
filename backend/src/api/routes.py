@@ -105,7 +105,7 @@ def select_hotel(request: SelectHotelRequest) -> PlannerChatResponse:
         try:
             from src.agents.session import handle_frontend_hotel_selection, derive_stage, suggestions_for
             
-            result = handle_frontend_hotel_selection(session, request.hotel_id)
+            result = handle_frontend_hotel_selection(session, str(request.hotel_id))
             
             safe_reply = sanitize_system_error(result.text, session_id=session_id)
             suggestions = suggestions_for(session)

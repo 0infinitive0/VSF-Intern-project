@@ -726,6 +726,8 @@ def process_chat_turn(
     if not session.initial_plan_complete and not is_saved_plan_edit:
         return _run_intake(session, user_input)
 
+    logger.warning("BEFORE STREAM, state keys: %s", session.state.keys())
+    logger.warning("BEFORE STREAM, pending_hotel_selection is None: %s", session.state.get("pending_hotel_selection") is None)
     return _run_chat_agent(session, user_input)
 
 
@@ -1083,6 +1085,11 @@ def _compact_history(session: TripSession) -> None:
 
 
 def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:
+    """Invokes the LangGraph supervisor ReAct agent for conversational turns
+    (questions, hotel drill-down, complex saved-plan edits). Supports 
+    streaming responses directly via callbacks."""
+    logger.warning("Inside _run_chat_agent! state keys: %s", session.state.keys())
+    logger.warning("Inside _run_chat_agent! pending_hotel_selection is None: %s", session.state.get("pending_hotel_selection") is None)
     for attempt in range(2):
         agent_input = user_input
         
@@ -1099,6 +1106,15 @@ def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:
                 f"Do NOT ask for this info again. You may call recommend_hotels if the user wants to refine their search or budget, or just answer their questions directly.]\n\n"
             )
             agent_input = context_prefix + agent_input
+            
+        if session.pending_hotel_selection:
+            hotel_context = (
+                f"[System: You have just presented a list of hotel options to the user. "
+                f"Wait for the user to explicitly select one of the options by name or number (e.g. '1', 'the second one', 'Hotel ABC'). "
+                f"Once they do, you MUST use the `select_hotel` tool with their exact selection text to build the itinerary. "
+                f"DO NOT try to build the itinerary yourself. ONLY use the tool.]\n\n"
+            )
+            agent_input = hotel_context + agent_input
 
         if attempt:
             agent_input = (
@@ -1136,10 +1152,12 @@ def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:
                 if latest_message.type == "ai" and latest_message.tool_calls:
                     tool_names = ", ".join(tc["name"] for tc in latest_message.tool_calls)
                     logger.info("Delegating to tools: %s", tool_names)
+                    logger.warning("AI Message tool_calls: %s", latest_message.tool_calls)
                 elif latest_message.type == "tool":
                     if "SYSTEM ERROR:" not in str(latest_message.content):
                         tool_output_response = latest_message.content
                     logger.info("Tool returned: %s", latest_message.name)
+                    logger.warning("Tool output: %s...", str(latest_message.content)[:500])
                     
                     # If tool signals anti-loop, abort immediately to prevent LLM from spinning
                     if "ĐỪNG gọi lại" in str(latest_message.content) or "DO NOT CALL IT AGAIN" in str(latest_message.content):

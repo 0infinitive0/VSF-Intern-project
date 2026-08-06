@@ -48,7 +48,7 @@ class AttractionPayload(BaseModel):
 
 
 class HotelPayload(BaseModel):
-    hotel_id: str = Field(..., description="UUID từ bảng hotels")
+    hotel_id: str | int = Field(..., description="UUID từ bảng hotels")
     name: str = Field(..., description="Tên khách sạn")
     destination_id: str | None = Field(default=None, description="UUID trỏ về điểm đến")
     star_rating: float | None = Field(default=None, description="Hạng sao")
@@ -58,7 +58,7 @@ class HotelPayload(BaseModel):
 
 class RoomPayload(BaseModel):
     room_id: str = Field(..., description="UUID từ bảng rooms")
-    hotel_id: str = Field(..., description="UUID trỏ về bảng hotels")
+    hotel_id: str | int = Field(..., description="UUID trỏ về bảng hotels")
     name: str = Field(..., description="Tên phòng")
     max_guests: int | None = Field(default=None, description="Số khách tối đa")
     room_size_sqm: float | None = Field(default=None, description="Diện tích phòng")
@@ -255,7 +255,7 @@ class PlannerChatRequest(BaseModel):
 
 class SelectHotelRequest(BaseModel):
     session_id: UUID
-    hotel_id: str
+    hotel_id: str | int
 
 
 class PlannerChatResponse(BaseModel):

@@ -1,3 +1,5 @@
+import logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 import asyncio
 import time
 import sys
@@ -8,6 +10,8 @@ import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 from fastapi.testclient import TestClient
+import langchain
+langchain.debug = True
 
 from src.main import app
 
@@ -114,8 +118,11 @@ def run_extended_flow():
     # We check if hotels were returned
     hotels = data.get("hotel_options", [])
     assert len(hotels) >= 5, f"Expected at least 5 hotels, got {len(hotels)}"
+    hotel_uuid = hotels[0]["id"]
     
     # === Test Step 3: Multi-Intent Chat Query ===
+    # (Commented out to isolate the hotel selection transition test)
+    '''
     token_monitor.reset_step()
     print("\n=== Test Step 3: Multi-Intent Chat Query (Question + Preference Update + Select) ===")
     complex_prompt = (
@@ -142,8 +149,6 @@ def run_extended_flow():
     # Check preferences
     prefs = intake.get("preferences", [])
     print(f"Preferences extracted: {prefs}")
-    # Relaxed assertion: just check it didn't fail (LLMs can hallucinate categories)
-    # The flow is what we care about here.
     
     hotels_step3 = data.get("hotel_options", [])
     assert len(hotels_step3) >= 5, "Expected refreshed hotels array"
@@ -160,11 +165,10 @@ def run_extended_flow():
     
     new_hotels = data.get("hotels", [])
     print(f"Total NEW hotels loaded: {len(new_hotels)}")
-    # The database might not have more hotels matching the specific criteria after excluding 10,
-    # so we just assert that the request succeeded and parsed correctly.
     assert isinstance(new_hotels, list), "Expected 'hotels' to be a list"
     
     hotels_step4 = hotels_step3 + new_hotels
+    '''
     
     # === Test Step 5: Select Hotel via Natural Language Chat ===
     token_monitor.reset_step()

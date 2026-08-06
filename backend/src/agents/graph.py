@@ -22,12 +22,13 @@ from src.agents.tools.modify_itinerary import modify_trip_plan
 from src.agents.tools.query_hotel import query_hotel
 from src.agents.tools.query_hotel_rooms import query_hotel_rooms
 from src.agents.tools.recommend_hotels import recommend_hotels
+from src.agents.tools.select_hotel import select_hotel
 from src.services.llm import get_reasoning_llm as get_llm
 
 if TYPE_CHECKING:
     from src.agents.session import TripSession
 
-_AGENT_TOOLS = [recommend_hotels, modify_trip_plan, finalize_trip_plan, query_hotel, query_hotel_rooms]
+_AGENT_TOOLS = [recommend_hotels, modify_trip_plan, finalize_trip_plan, query_hotel, query_hotel_rooms, select_hotel]
 
 
 class _ToolAdapter:
