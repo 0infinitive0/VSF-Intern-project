@@ -237,6 +237,8 @@ def build_chat_response(session, result, session_id: str, language: str, suggest
         requires_stay_dates=requires_stay_dates,
         compound_min_price=session.pending_hotel_selection.get("compound_min_price") if session.pending_hotel_selection else None,
         compound_max_price=session.pending_hotel_selection.get("compound_max_price") if session.pending_hotel_selection else None,
+        all_preferences=session.pending_hotel_selection.get("all_preferences") or [] if session.pending_hotel_selection else [],
+        active_preferences=session.pending_hotel_selection.get("active_preferences") or [] if session.pending_hotel_selection else [],
     )
 
 
@@ -280,6 +282,8 @@ def select_hotel(request: SelectHotelRequest) -> PlannerChatResponse:
                 requires_stay_dates=requires_stay_dates,
                 compound_min_price=session.pending_hotel_selection.get("compound_min_price") if session.pending_hotel_selection else None,
                 compound_max_price=session.pending_hotel_selection.get("compound_max_price") if session.pending_hotel_selection else None,
+                all_preferences=session.pending_hotel_selection.get("all_preferences") or [] if session.pending_hotel_selection else [],
+                active_preferences=session.pending_hotel_selection.get("active_preferences") or [] if session.pending_hotel_selection else [],
             )
         except Exception as exc:
             logger.exception("Chat error for session %s", session_id)

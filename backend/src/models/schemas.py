@@ -338,6 +338,11 @@ class SelectHotelRequest(BaseModel):
     hotel_id: str | int
 
 
+class PreferencePayload(BaseModel):
+    id: str
+    label: str
+
+
 class PlannerChatResponse(BaseModel):
     session_id: str
     reply: str
@@ -349,6 +354,8 @@ class PlannerChatResponse(BaseModel):
     requires_stay_dates: bool = False
     compound_min_price: float | None = None
     compound_max_price: float | None = None
+    all_preferences: list[PreferencePayload] = Field(default_factory=list)
+    active_preferences: list[PreferencePayload] = Field(default_factory=list)
 
 
 class SessionSummaryPayload(BaseModel):

@@ -34,6 +34,7 @@ from src.services.itinerary_store import ItineraryStore, ItineraryStoreError
 from src.services.llm import get_reasoning_llm as get_llm
 from src.services.supabase_search import (
     search_attractions as rpc_search_attractions,
+    search_attractions_tiered as rpc_search_attractions_tiered,
 )
 from src.services.trip_edit_planner import EditOperation, NewItemRequirements, TripEditPlan
 from src.services.trip_formatter import format_hotel_options, format_trip_response_from_json, parse_duration_to_days
@@ -47,6 +48,7 @@ from src.services.trip_scheduler import (
     ScheduledItem,
     TripChange,
     apply_latest_outing_start,
+    build_itinerary,
     build_itinerary_with_hotel_reselection,
     default_duration_minutes,
     fits_opening_hours,
@@ -230,6 +232,97 @@ def _search_attraction_candidates(
         ),
     )
     return _to_place_candidates(hydrated)
+
+
+def _search_attraction_candidates_tiered(
+    query: str,
+    destination_id: str,
+    hotel: PlaceCandidate,
+    *,
+    required_count: int,
+) -> list[PlaceCandidate]:
+    """Hydrate explicitly tiered attraction results rooted at one hotel."""
+    coordinates = hotel.coordinate_pair
+    if not coordinates:
+        raise ValueError("A hotel with coordinates is required for tiered attraction search.")
+    compact_results = rpc_search_attractions_tiered(
+        query,
+        required_count=required_count,
+        filter_destination_id=destination_id,
+        root_latitude=coordinates[0],
+        root_longitude=coordinates[1],
+    )
+    hydrated = _hydrate_records(
+        "attractions",
+        compact_results,
+        (
+            "id,destination_id,name,description,category,is_tour,estimated_duration_minutes,"
+            "opening_time,closing_time,rating,coordinates"
+        ),
+    )
+    return _to_place_candidates(hydrated)
+
+
+def _build_tiered_candidate_pools(
+    destination: str,
+    destination_id: str,
+    themes: list[DayTheme],
+    hotel: PlaceCandidate,
+) -> tuple[
+    dict[int, list[PlaceCandidate]],
+    list[PlaceCandidate],
+    list[PlaceCandidate],
+    list[PlaceCandidate],
+    list[PlaceCandidate],
+]:
+    """Fetch final schedule pools from the hotel selected for this itinerary."""
+    themed_candidates = {
+        theme.day_number: _search_attraction_candidates_tiered(
+            f"{theme.query}. Destination: {destination}",
+            destination_id,
+            hotel,
+            required_count=3,
+        )
+        for theme in themes
+    }
+    meal_pool_size = max(len(themes) + 2, 5)
+    restaurants = (
+        _search_attraction_candidates_tiered(
+            f"local restaurant lunch Vietnamese food in {destination}",
+            destination_id,
+            hotel,
+            required_count=meal_pool_size,
+        )
+        if "lunch" not in hotel.covered_meals
+        else []
+    )
+    cafes = _search_attraction_candidates_tiered(
+        f"coffee shop cafe relaxation in {destination}",
+        destination_id,
+        hotel,
+        required_count=meal_pool_size,
+    )
+    breakfasts = (
+        _search_attraction_candidates_tiered(
+            f"breakfast restaurant cafe morning food in {destination}",
+            destination_id,
+            hotel,
+            required_count=meal_pool_size,
+        )
+        if "breakfast" not in hotel.covered_meals
+        else []
+    )
+    dinners = (
+        _search_attraction_candidates_tiered(
+            f"dinner restaurant evening dining in {destination}",
+            destination_id,
+            hotel,
+            required_count=meal_pool_size,
+        )
+        if "dinner" not in hotel.covered_meals
+        else []
+    )
+    return themed_candidates, restaurants, cafes, breakfasts, dinners
 
 
 def _select_real_hotel(
@@ -436,42 +529,73 @@ def _build_trip_data(
         categories = sorted({str(row.get("category")) for row in category_rows if row.get("category")})
         themes = _generate_day_themes(destination, number_of_days, categories, preferences, context=intake_context)
 
-    themed_candidates: dict[int, list[PlaceCandidate]] = {}
-    for theme in themes:
-        themed_candidates[theme.day_number] = _search_attraction_candidates(
-            f"{theme.query}. Destination: {destination}",
-            destination_id,
-            match_count=20,
+    if preselected_hotel is not None:
+        hotel_candidate = hotel_candidates[0]
+    else:
+        # Keep the established broad semantic pass only for choosing a viable
+        # hotel. The itinerary shown to the user is rebuilt from GPS-rooted
+        # pools after this selection completes.
+        themed_candidates = {
+            theme.day_number: _search_attraction_candidates(
+                f"{theme.query}. Destination: {destination}",
+                destination_id,
+                match_count=20,
+            )
+            for theme in themes
+        }
+        pool_size = min(max(number_of_days * 3, 15), 50)
+        restaurants = (
+            _search_attraction_candidates(
+                f"local restaurant lunch Vietnamese food in {destination}",
+                destination_id,
+                match_count=pool_size,
+            )
+            if any("lunch" not in hotel.covered_meals for hotel in hotel_candidates)
+            else []
         )
-    pool_size = min(max(number_of_days * 3, 15), 50)
-    restaurants = []
-    if any("lunch" not in hotel.covered_meals for hotel in hotel_candidates):
-        restaurants = _search_attraction_candidates(
-            f"local restaurant lunch Vietnamese food in {destination}",
-            destination_id,
-            match_count=pool_size,
-        )
-    cafes = _search_attraction_candidates(
-        f"coffee shop cafe relaxation in {destination}",
-        destination_id,
-        match_count=pool_size,
-    )
-    breakfasts = []
-    if any("breakfast" not in hotel.covered_meals for hotel in hotel_candidates):
-        breakfasts = _search_attraction_candidates(
-            f"breakfast restaurant cafe morning food in {destination}",
-            destination_id,
-            match_count=pool_size,
-        )
-    dinners = []
-    if any("dinner" not in hotel.covered_meals for hotel in hotel_candidates):
-        dinners = _search_attraction_candidates(
-            f"dinner restaurant evening dining in {destination}",
+        cafes = _search_attraction_candidates(
+            f"coffee shop cafe relaxation in {destination}",
             destination_id,
             match_count=pool_size,
         )
-    hotel_candidate, schedule = build_itinerary_with_hotel_reselection(
-        hotel_candidates,
+        breakfasts = (
+            _search_attraction_candidates(
+                f"breakfast restaurant cafe morning food in {destination}",
+                destination_id,
+                match_count=pool_size,
+            )
+            if any("breakfast" not in hotel.covered_meals for hotel in hotel_candidates)
+            else []
+        )
+        dinners = (
+            _search_attraction_candidates(
+                f"dinner restaurant evening dining in {destination}",
+                destination_id,
+                match_count=pool_size,
+            )
+            if any("dinner" not in hotel.covered_meals for hotel in hotel_candidates)
+            else []
+        )
+        hotel_candidate, _ = build_itinerary_with_hotel_reselection(
+            hotel_candidates,
+            themes,
+            themed_candidates,
+            restaurants,
+            cafes,
+            breakfasts=breakfasts,
+            dinners=dinners,
+            child_focused=child_focused,
+        )
+
+    (
+        themed_candidates,
+        restaurants,
+        cafes,
+        breakfasts,
+        dinners,
+    ) = _build_tiered_candidate_pools(destination, destination_id, themes, hotel_candidate)
+    schedule = build_itinerary(
+        hotel_candidate,
         themes,
         themed_candidates,
         restaurants,

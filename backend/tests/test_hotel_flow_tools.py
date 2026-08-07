@@ -323,6 +323,90 @@ def test_generate_full_itinerary_without_hotel_id_uses_legacy_path(monkeypatch):
     assert not result.startswith("SYSTEM ERROR:")
 
 
+def test_tiered_candidate_adapter_uses_selected_hotel_coordinates_and_preserves_tier(monkeypatch):
+    hotel = PlaceCandidate(
+        id="hotel-1",
+        name="Selected Hotel",
+        category="Hotel",
+        coordinates="16.0544,108.2022",
+    )
+    captured: dict = {}
+
+    def fake_tiered_search(query, **kwargs):
+        captured["query"] = query
+        captured.update(kwargs)
+        return [{"id": "museum", "retrieval_tier": 2, "similarity": 0.7}]
+
+    monkeypatch.setattr(trip_planner_module, "rpc_search_attractions_tiered", fake_tiered_search)
+    monkeypatch.setattr(
+        trip_planner_module,
+        "_hydrate_records",
+        lambda *_args, **_kwargs: [
+            {
+                "id": "museum",
+                "name": "Museum",
+                "category": "Museums & culture",
+                "coordinates": "16.055,108.203",
+                "retrieval_tier": 2,
+                "similarity": 0.7,
+            }
+        ],
+    )
+
+    candidates = trip_planner_module._search_attraction_candidates_tiered(
+        "culture museum",
+        "destination-id",
+        hotel,
+        required_count=3,
+    )
+
+    assert captured == {
+        "query": "culture museum",
+        "required_count": 3,
+        "filter_destination_id": "destination-id",
+        "root_latitude": 16.0544,
+        "root_longitude": 108.2022,
+    }
+    assert candidates[0].id == "museum"
+    assert candidates[0].retrieval_tier == 2
+
+
+def test_preselected_hotel_builds_final_pools_from_its_coordinates(monkeypatch):
+    hotel_data, _ = _fake_option("hotel-1", "Selected Hotel", 1)
+    captured: dict = {}
+
+    monkeypatch.setattr(trip_planner_module, "_get_destination_id", lambda _destination: "destination-id")
+
+    def fake_tiered_pools(destination, destination_id, themes, hotel):
+        captured.update(
+            destination=destination,
+            destination_id=destination_id,
+            hotel_id=hotel.id,
+            coordinates=hotel.coordinate_pair,
+            theme_count=len(themes),
+        )
+        return {1: []}, [], [], [], []
+
+    monkeypatch.setattr(trip_planner_module, "_build_tiered_candidate_pools", fake_tiered_pools)
+
+    result = trip_planner_module._build_trip_data(
+        "Đà Nẵng",
+        "1 ngày",
+        "2 người",
+        themes_override=[{"day_number": 1, "title": "Culture", "query": "culture"}],
+        preselected_hotel=hotel_data,
+    )
+
+    assert captured == {
+        "destination": "Đà Nẵng",
+        "destination_id": "destination-id",
+        "hotel_id": "hotel-1",
+        "coordinates": (16.05, 108.2),
+        "theme_count": 1,
+    }
+    assert result["hotel"]["id"] == "hotel-1"
+
+
 def test_recommend_hotels_threads_budget_and_amenity_prefs_into_ranking(monkeypatch):
     options = [_fake_option("h1", "Khách sạn Một", 1)]
     captured_rank_kwargs: dict = {}
