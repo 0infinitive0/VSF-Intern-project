@@ -284,16 +284,50 @@ def rank_hotel_candidates(
             + _amenity_bonus(data, amenity_prefs, sea_view_hotel_ids)
         )
 
+    def _realistic_match_score(hotel_data: Dict[str, Any], cand: PlaceCandidate) -> float:
+        star_rating = _clamp(float(hotel_data.get("star_rating") or 0.0) / 5.0)
+        review_raw = float(hotel_data.get("review_score") or 0.0)
+        review_score = _clamp(review_raw / 10.0) if review_raw > 0 else 0.7 # Default to 7/10 if missing to avoid heavy penalization
+        base_quality = 0.4 * star_rating + 0.6 * review_score
+        
+        components = []
+        if target_price and target_price > 0:
+            price = hotel_data.get("average_nightly_price", hotel_data.get("lowest_price"))
+            if price is None:
+                components.append(0.5)
+            else:
+                diff_ratio = max(0.0, (float(price) - target_price) / target_price)
+                components.append(_clamp(1.0 - (diff_ratio / 0.5)))
+                
+        prefs_list = list(amenity_prefs)
+        if prefs_list:
+            matched = sum(1 for tag in prefs_list if hotel_matches_amenity_tag(hotel_data, tag, sea_view_hotel_ids))
+            components.append(matched / len(prefs_list))
+            
+        if not components:
+            similarity = float(hotel_data.get("similarity") or cand.similarity or 0.0)
+            # A more forgiving curve for baseline semantic searches since raw cosines rarely exceed 0.65
+            scaled_sim = min(1.0, (similarity ** 0.5) * 1.15)
+            return base_quality * 0.3 + scaled_sim * 0.7
+            
+        return (sum(components) / len(components)) * 0.85 + base_quality * 0.15
+
     ranked = sorted(
         options,
-        key=lambda option: _final_score(option[0], option[1]),
+        key=lambda option: _realistic_match_score(option[0], option[1]),
         reverse=True,
     )
+
+
     for index, (data, _candidate) in enumerate(ranked, start=1):
         final_score = _final_score(data, _candidate)
         data["rank"] = index
         data["recommendation_score"] = final_score
-        data["match_score"] = round(min(1.0, final_score), 4)
+        
+        # Calculate a realistic match score based on actual user constraints met
+        display_score = _realistic_match_score(data, _candidate)
+        data["match_score"] = round(_clamp(display_score), 4)
+        
         data["match_reasons"] = _match_reasons(
             data, _candidate, target_price, amenity_prefs, sea_view_hotel_ids
         )
