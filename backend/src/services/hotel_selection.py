@@ -48,7 +48,7 @@ def _hydrate_hotel_records(search_results: List[Dict[str, Any]]) -> List[Dict[st
             supabase.table("hotels")
             .select(
                 "id,destination_id,name,star_rating,description,coordinates,amenities,amenity_groups,"
-                "review_score,review_count,address,area_name,lowest_price,currency,image_url"
+                "review_score,review_count,address,area_name,lowest_price,currency,image_url,images,city"
             )
             .in_("id", result_ids)
             .execute()
@@ -153,6 +153,8 @@ def select_hotel_candidates(
             "priced_room_name": hotel.get("priced_room_name"),
             "currency": hotel.get("currency"),
             "image_url": hotel.get("image_url"),
+            "images": hotel.get("images") or [],
+            "city": hotel.get("city"),
             "similarity": hotel.get("similarity"),
             "amenities": hotel.get("amenities") or [],
         }
@@ -201,6 +203,39 @@ def _amenity_bonus(
         1 for tag in amenity_prefs if hotel_matches_amenity_tag(data, tag, sea_view_hotel_ids)
     )
     return _AMENITY_MATCH_BONUS * matched
+
+
+def _match_reasons(
+    data: Dict[str, Any],
+    candidate: PlaceCandidate,
+    target_price: float | None,
+    amenity_prefs: Iterable[str],
+    sea_view_hotel_ids: Collection[str],
+) -> list[dict[str, float | str]]:
+    """Return raw ranking evidence for the UI; display text remains frontend-owned."""
+    reasons: list[dict[str, float | str]] = []
+    price = data.get("average_nightly_price", data.get("lowest_price"))
+    if _budget_bonus(data, target_price) > 0 and price is not None and target_price:
+        reasons.append({"code": "budget_fit", "value": round(float(price) / target_price, 4)})
+    if (review_score := data.get("review_score")) is not None and float(review_score) >= 8.0:
+        reasons.append({"code": "high_rating", "value": float(review_score)})
+    if (star_rating := data.get("star_rating")) is not None and float(star_rating) >= 4.0:
+        reasons.append({"code": "star_rating", "value": float(star_rating)})
+    matched_amenities = [
+        tag
+        for tag in amenity_prefs
+        if hotel_matches_amenity_tag(data, tag, sea_view_hotel_ids)
+    ]
+    if matched_amenities:
+        reasons.append({"code": "amenity_match", "value": ",".join(matched_amenities)})
+    similarity = float(data.get("similarity") or candidate.similarity or 0.0)
+    if similarity >= 0.75:
+        reasons.append({"code": "strong_similarity", "value": round(similarity, 4)})
+    area_name = str(data.get("area_name") or "").strip()
+    normalized_area = _normalize_for_match(area_name)
+    if area_name and any(term in normalized_area for term in ("downtown", "central", "trung tam", "city center")):
+        reasons.append({"code": "near_center", "value": area_name})
+    return reasons
 
 
 def rank_hotel_candidates(
@@ -255,8 +290,13 @@ def rank_hotel_candidates(
         reverse=True,
     )
     for index, (data, _candidate) in enumerate(ranked, start=1):
+        final_score = _final_score(data, _candidate)
         data["rank"] = index
-        data["recommendation_score"] = _final_score(data, _candidate)
+        data["recommendation_score"] = final_score
+        data["match_score"] = round(min(1.0, final_score), 4)
+        data["match_reasons"] = _match_reasons(
+            data, _candidate, target_price, amenity_prefs, sea_view_hotel_ids
+        )
     return ranked
 
 
@@ -347,6 +387,8 @@ def fetch_hotel_by_id(
         "lowest_price": hotel.get("lowest_price"),
         "currency": hotel.get("currency"),
         "image_url": hotel.get("image_url"),
+        "images": hotel.get("images") or [],
+        "city": hotel.get("city"),
         "amenities": hotel.get("amenities") or [],
     }
     return hotel_data, candidate

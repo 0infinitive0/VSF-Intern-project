@@ -208,6 +208,27 @@ class TestToHotelOptionsPayload:
                 f"hotel_options[].index={hotel_opt.index} != int(suggestions[].value={chip['value']!r})"
             )
 
+    def test_extended_fields_are_serialized_with_safe_defaults(self):
+        result = to_hotel_options_payload(
+            {
+                "options": [
+                    {
+                        "id": "h1",
+                        "name": "Hotel A",
+                        "images": None,
+                        "amenities": None,
+                        "match_reasons": None,
+                        "city": "Đà Nẵng",
+                    }
+                ]
+            }
+        )
+
+        assert result[0].images == []
+        assert result[0].amenities == []
+        assert result[0].match_reasons == []
+        assert result[0].city == "Đà Nẵng"
+
 
 # ---------------------------------------------------------------------------
 # to_trip_plan_payload
@@ -217,6 +238,35 @@ class TestToHotelOptionsPayload:
 class TestToTripPlanPayload:
     def test_none_returns_none(self):
         assert to_trip_plan_payload(None) is None
+
+    def test_route_objects_survive_model_validation(self):
+        trip_data = {
+            "hotel": {},
+            "itineraries": [{"duration_days": 1, "status": "Draft"}],
+            "itinerary_items": [
+                {
+                    "day_number": 1,
+                    "order_index": 1,
+                    "route_to_next": {
+                        "distance_km": 0.0,
+                        "duration_mins": 0.0,
+                        "polyline": "",
+                        "profile": None,
+                    },
+                }
+            ],
+        }
+
+        result = to_trip_plan_payload(trip_data)
+
+        assert result is not None
+        assert result.days[0].items[0].route_from_hotel is None
+        assert result.days[0].items[0].route_to_next.model_dump() == {
+            "distance_km": 0.0,
+            "duration_mins": 0.0,
+            "polyline": "",
+            "profile": None,
+        }
 
     def test_empty_dict_returns_payload_with_none_fields(self):
         result = to_trip_plan_payload({})
@@ -534,6 +584,40 @@ class TestStageDerivationHTTP:
 # ---------------------------------------------------------------------------
 # HTTP — intake gate
 # ---------------------------------------------------------------------------
+
+
+class TestTripPlanHTTP:
+    @pytest.mark.asyncio
+    async def test_plan_endpoint_returns_route_object_unchanged(self, client, fresh_registry):
+        session = fresh_registry.create()
+        session.trip_data = {
+            "hotel": {},
+            "itineraries": [{"duration_days": 1, "status": "Draft"}],
+            "itinerary_items": [
+                {
+                    "day_number": 1,
+                    "order_index": 1,
+                    "route_to_next": {
+                        "distance_km": 0.0,
+                        "duration_mins": 0.0,
+                        "polyline": "",
+                        "profile": None,
+                    },
+                }
+            ],
+        }
+
+        response = await client.get(f"/api/v1/chat/{session.session_id}/plan")
+
+        assert response.status_code == 200
+        item = response.json()["trip_plan"]["days"][0]["items"][0]
+        assert item["route_to_next"] == {
+            "distance_km": 0.0,
+            "duration_mins": 0.0,
+            "polyline": "",
+            "profile": None,
+        }
+        assert item["route_from_hotel"] is None
 
 
 class TestIntakeGateHTTP:

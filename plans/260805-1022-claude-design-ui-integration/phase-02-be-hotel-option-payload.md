@@ -1,7 +1,7 @@
 ---
 phase: 2
 title: "[BE] Mở rộng payload khách sạn & route"
-status: pending
+status: done
 priority: P1
 effort: "1-1.5 ngày"
 dependencies: [1]
@@ -177,6 +177,12 @@ Ba điểm phải giữ đúng nguyên trạng, **không "dọn dẹp"**:
 - [ ] Test suite backend pass
 
 ## Đánh giá rủi ro
+
+## Hoàn thành 2026-08-06
+
+- Implemented the additive hotel-option fields, bounded `match_score`, and machine-readable `match_reasons` without adding a Supabase round trip.
+- Preserved `route_to_next` and `route_from_hotel` verbatim through the formatter, Pydantic payload, and `GET /api/v1/chat/{session_id}/plan` response.
+- Focused regression coverage passed (7 tests). The live read-only Supabase sample returned images for 1000 of 1000 hotels; the frontend should still retain its image placeholder for external URL failures.
 
 **Hai chỗ dựng option dict khác nhau.** `hotel_selection.py` dựng option dict ở hai nơi
 (tìm kiếm ~:139, chọn lại ~:329). Chỉ sửa một chỗ sẽ tạo payload khác nhau âm thầm theo
