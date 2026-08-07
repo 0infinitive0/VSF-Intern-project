@@ -47,14 +47,8 @@ def recommend_hotels(
     start_date: str = "",
     end_date: str = "",
     people: str = "",
-    preferences: str = Field(
-        default="",
-        description="General trip preferences. MUST be a JSON array of objects as a string, e.g. \"[{'id': '...', 'label': '...'}]\". Do NOT include budget info here."
-    ),
-    hotel_preferences: str = Field(
-        default="",
-        description="Specific hotel preferences. MUST be a JSON array of objects as a string, e.g. \"[{'id': 'swimming_pool', 'label': 'Hồ bơi'}]\". Do NOT include budget info here."
-    ),
+    preferences: str = "",
+    hotel_preferences: str = "",
     target_price: str = "",
     min_price: str = "",
     max_price: str = "",
@@ -81,6 +75,21 @@ def recommend_hotels(
     the intake form, carried through to itinerary theme generation; leave it empty when unset.
     After this returns, the user's next reply must be handled by `select_hotel`, not by calling this
     tool or generate_full_itinerary again.
+    
+    Args:
+        destination: The destination city.
+        duration: The duration of the trip (e.g. '3 ngày').
+        start_date: The start date (YYYY-MM-DD).
+        end_date: The end date (YYYY-MM-DD).
+        people: Number of people.
+        preferences: General trip preferences. MUST be a JSON array of objects as a string, e.g. '[{"id": "...", "label": "..."}]'. Do NOT include budget or price info here.
+        hotel_preferences: Specific hotel preferences. MUST be a JSON array of objects as a string, e.g. '[{"id": "swimming_pool", "label": "Hồ bơi"}]'. Do NOT include budget or price info here.
+        target_price: Target budget per night.
+        min_price: Minimum budget per night.
+        max_price: Maximum budget per night.
+        hotel_amenity_prefs: Pre-resolved amenity preferences.
+        intake_context: Additional intake context.
+        exclude_hotel_ids: List of hotel IDs to exclude.
     """
     clean_destination, error = validate_trip_basics(destination, duration, people)
     if error:
@@ -243,16 +252,26 @@ def recommend_hotels(
 
     parsed_hotel_prefs = parse_prefs(hotel_preferences)
     parsed_general_prefs = parse_prefs(preferences)
+    
+    def is_valid_pref(p_dict: dict) -> bool:
+        if not p_dict or not p_dict.get("id") or not p_dict.get("label"):
+            return False
+        # Filter out budget-related text that the LLM mistakenly includes
+        text_to_check = str(p_dict["id"]).lower() + " " + str(p_dict["label"]).lower()
+        invalid_keywords = ["ngân sách", "triệu", "vnd", "usd", "giá", "rẻ", "đắt", "budget", "price"]
+        if any(kw in text_to_check for kw in invalid_keywords):
+            return False
+        return True
 
     # Determine current preference objects
     current_prefs_dict = {}
     for p in parsed_hotel_prefs:
         p_dict = p.model_dump() if hasattr(p, "model_dump") else p if isinstance(p, dict) else None
-        if p_dict and p_dict.get("id") and p_dict.get("label"):
+        if is_valid_pref(p_dict):
             current_prefs_dict[str(p_dict["id"])] = p_dict
     for p in parsed_general_prefs:
         p_dict = p.model_dump() if hasattr(p, "model_dump") else p if isinstance(p, dict) else None
-        if p_dict and p_dict.get("id") and p_dict.get("label"):
+        if is_valid_pref(p_dict):
             current_prefs_dict[str(p_dict["id"])] = p_dict
             
     # For hotel amenity string, we don't have a good label, so we use the id for both
@@ -293,7 +312,8 @@ def recommend_hotels(
     all_prefs_dict = {}
     for p in existing_pending.get("all_preferences", []):
         if isinstance(p, dict) and "id" in p:
-            all_prefs_dict[p["id"]] = p
+            if is_valid_pref(p):
+                all_prefs_dict[p["id"]] = p
             
     # Add new current prefs
     all_prefs_dict.update(current_prefs_dict)
