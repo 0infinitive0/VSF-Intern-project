@@ -107,6 +107,14 @@ Submits a new chat message to the trip planner agent.
 - `stage`, `hotel_options`, `trip_plan`, `intake` — added in Phase 3. `stage` is
   **derived, not routed** (see section below). `hotel_options` is populated only when
   `stage="hotel_options"`.
+- `hotel_options[].display_amenities` — a stable, ordered list of at most four
+  notable amenities for the compact selection card. Active user preferences are
+  resolved in preference order and take priority over category limits. Without a
+  matching meal preference, breakfast, lunch, dinner, restaurant, buffet, bar, and
+  room-service amenities share one meal category and contribute at most one item;
+  distinct requested meals may each appear. Remaining slots favor category-diverse
+  distinctive amenities. `hotel_options[].amenities` remains the complete list for
+  compatible clients and detail views.
 - `session_id` — currently accepted unvalidated by the request and auto-creates a
   session if unknown (`routes.py:29-32`, tracked as a red-team finding, not fixed in
   this phase).

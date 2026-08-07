@@ -229,6 +229,182 @@ class TestToHotelOptionsPayload:
         assert result[0].match_reasons == []
         assert result[0].city == "Đà Nẵng"
 
+    def test_display_amenities_are_bounded_and_prioritize_active_preferences(self):
+        result = to_hotel_options_payload(
+            {
+                "options": [
+                    {
+                        "id": "h1",
+                        "name": "Hotel A",
+                        "amenities": ["Wi-Fi", "Spa", "Hồ bơi", "Gym", "Nhà hàng"],
+                    }
+                ],
+                "active_preferences": ["pool", "spa"],
+            }
+        )
+
+        assert result[0].amenities == ["Wi-Fi", "Spa", "Hồ bơi", "Gym", "Nhà hàng"]
+        assert result[0].display_amenities == ["Hồ bơi", "Spa", "Nhà hàng", "Gym"]
+
+    def test_display_amenities_ignore_invalid_values_and_semantic_duplicates(self):
+        result = to_hotel_options_payload(
+            {
+                "options": [
+                    {
+                        "id": "h1",
+                        "name": "Hotel A",
+                        "amenities": [None, "", "  Wi-Fi  ", "wi-fi", "Pool", "Spa", "Gym", "Parking"],
+                    }
+                ]
+            }
+        )
+
+        assert result[0].display_amenities == ["Pool", "Spa", "Gym", "Wi-Fi"]
+
+    def test_display_amenities_prioritize_preference_objects_before_distinctive_fallbacks(self):
+        result = to_hotel_options_payload(
+            {
+                "options": [
+                    {
+                        "id": "h1",
+                        "name": "Hotel A",
+                        "amenities": ["Hồ bơi", "Đưa đón sân bay", "Spa", "Wi-Fi", "Gym"],
+                    }
+                ],
+                "active_preferences": [{"id": "airport_transfer", "label": "đưa đón sân bay"}],
+            }
+        )
+
+        assert result[0].display_amenities == ["Đưa đón sân bay", "Hồ bơi", "Spa", "Gym"]
+
+    def test_display_amenities_collapse_meals_without_meal_preferences(self):
+        result = to_hotel_options_payload(
+            {
+                "options": [
+                    {
+                        "id": "h1",
+                        "name": "Hotel A",
+                        "amenities": ["Nhà hàng", "Breakfast buffet", "Bữa tối", "Hồ bơi", "Spa", "Gym"],
+                        "covered_meals": ["breakfast"],
+                    }
+                ]
+            }
+        )
+
+        assert result[0].display_amenities == ["Hồ bơi", "Spa", "Breakfast buffet", "Gym"]
+
+    def test_display_amenities_allow_distinct_requested_meals_to_override_meal_limit(self):
+        result = to_hotel_options_payload(
+            {
+                "options": [
+                    {
+                        "id": "h1",
+                        "name": "Hotel A",
+                        "amenities": ["Nhà hàng", "Bữa tối", "Breakfast buffet", "Hồ bơi", "Spa"],
+                    }
+                ],
+                "active_preferences": [
+                    {"id": "breakfast", "label": "bữa sáng"},
+                    {"id": "dinner", "label": "bữa tối"},
+                ],
+            }
+        )
+
+        assert result[0].display_amenities == ["Breakfast buffet", "Bữa tối", "Hồ bơi", "Spa"]
+
+    def test_display_amenities_choose_one_label_for_synonymous_preference_intent(self):
+        result = to_hotel_options_payload(
+            {
+                "options": [
+                    {
+                        "id": "h1",
+                        "name": "Hotel A",
+                        "amenities": [
+                            "Breakfast buffet",
+                            "Bữa sáng miễn phí",
+                            "Bữa tối",
+                            "Hồ bơi",
+                            "Spa",
+                            "Gym",
+                        ],
+                        "covered_meals": ["breakfast"],
+                    }
+                ],
+                "active_preferences": ["breakfast", {"id": "breakfast", "label": "bữa sáng"}],
+            }
+        )
+
+        assert result[0].display_amenities == ["Breakfast buffet", "Hồ bơi", "Spa", "Gym"]
+
+    def test_display_amenities_cap_preference_matches_in_active_preference_order(self):
+        result = to_hotel_options_payload(
+            {
+                "options": [
+                    {
+                        "id": "h1",
+                        "name": "Hotel A",
+                        "amenities": ["Breakfast", "Airport transfer", "Gym", "Spa", "Pool"],
+                    }
+                ],
+                "active_preferences": ["pool", "spa", "gym", "airport_transfer", "breakfast"],
+            }
+        )
+
+        assert result[0].display_amenities == ["Pool", "Spa", "Gym", "Airport transfer"]
+
+    def test_display_amenities_match_vietnamese_preferences_without_diacritics(self):
+        result = to_hotel_options_payload(
+            {
+                "options": [
+                    {
+                        "id": "h1",
+                        "name": "Hotel A",
+                        "amenities": ["Spa", "Ho boi ngoai troi", "Wi-Fi", "Gym", "Parking"],
+                    }
+                ],
+                "active_preferences": [{"id": "swimming_pool", "label": "hồ bơi"}],
+            }
+        )
+
+        assert result[0].display_amenities[0] == "Ho boi ngoai troi"
+
+    def test_display_amenities_use_stable_category_diverse_fallbacks(self):
+        result = to_hotel_options_payload(
+            {
+                "options": [
+                    {
+                        "id": "h1",
+                        "name": "Hotel A",
+                        "amenities": [
+                            "Hồ bơi trong nhà",
+                            "Hồ bơi ngoài trời",
+                            "Spa",
+                            "Phòng gia đình",
+                            "Đưa đón sân bay",
+                            "Wi-Fi",
+                        ],
+                    }
+                ]
+            }
+        )
+
+        assert result[0].display_amenities == ["Hồ bơi trong nhà", "Spa", "Phòng gia đình", "Đưa đón sân bay"]
+
+    def test_display_amenities_treat_pool_and_beach_view_as_distinct_fallback_categories(self):
+        result = to_hotel_options_payload(
+            {
+                "options": [
+                    {
+                        "id": "h1",
+                        "name": "Hotel A",
+                        "amenities": ["Private beach", "Pool", "Sea view", "Spa", "Wi-Fi"],
+                    }
+                ]
+            }
+        )
+
+        assert result[0].display_amenities == ["Private beach", "Pool", "Spa", "Wi-Fi"]
+
 
 # ---------------------------------------------------------------------------
 # to_trip_plan_payload

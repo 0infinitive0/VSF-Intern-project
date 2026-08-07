@@ -16,7 +16,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 from src.agents.prompts import SUPERVISOR_ROUTER_PROMPT
 from src.agents.routing_decision import route_context_from_state
-from src.services.llm import get_reasoning_llm as get_llm
+from src.services.llm import get_fast_llm as get_llm
 
 logger = logging.getLogger(__name__)
 

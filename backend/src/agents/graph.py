@@ -23,7 +23,7 @@ from src.agents.tools.query_hotel import query_hotel
 from src.agents.tools.query_hotel_rooms import query_hotel_rooms
 from src.agents.tools.recommend_hotels import recommend_hotels
 from src.agents.tools.select_hotel import select_hotel
-from src.services.llm import get_reasoning_llm as get_llm
+from src.services.llm import get_fast_llm as get_llm
 
 if TYPE_CHECKING:
     from src.agents.session import TripSession

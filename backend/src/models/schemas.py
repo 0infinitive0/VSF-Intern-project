@@ -15,13 +15,15 @@ Phase 3 additions:
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from datetime import date
 from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
-from src.i18n import t, DEFAULT_LANGUAGE
+from src.i18n import DEFAULT_LANGUAGE, t
 from src.observability import log_sanitized_system_error
 
 # ---------------------------------------------------------------------------
@@ -160,6 +162,10 @@ class HotelOption(BaseModel):
     area_name: str | None = None
     image_url: str | None = None
     amenities: list[str] = Field(default_factory=list)
+    display_amenities: list[str] = Field(
+        default_factory=list,
+        description="Tối đa bốn tiện ích nổi bật để hiển thị trên thẻ khách sạn",
+    )
     review_score: float | None = None
     review_count: int | None = None
     match_score: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -486,10 +492,190 @@ def sanitize_system_error(text: str, *, session_id: str | None = None, language:
     log_sanitized_system_error(session_id=session_id, raw_text=text)
     return f"SYSTEM ERROR: {t(_GENERIC_ERROR_MSG, language)}"
 
+_DISPLAY_AMENITY_LIMIT = 4
+_AMENITY_INTENT_ALIASES: dict[str, tuple[str, ...]] = {
+    "pool": ("pool", "swimming pool", "ho boi", "be boi"),
+    "private_beach": ("private beach", "bai bien rieng"),
+    "sea_view": ("sea view", "ocean view", "nhin ra bien", "view bien"),
+    "spa": ("spa", "sauna", "massage", "xong hoi"),
+    "gym": ("gym", "fitness", "yoga"),
+    "family": ("family room", "kids club", "playground", "phong gia dinh", "tre em"),
+    "accessibility": ("wheelchair", "accessible", "tro nang", "xe lan"),
+    "airport_transfer": ("airport transfer", "airport shuttle", "dua don san bay"),
+    "breakfast": ("breakfast", "bua sang", "an sang"),
+    "lunch": ("lunch", "bua trua", "an trua"),
+    "dinner": ("dinner", "evening meal", "bua toi", "an toi"),
+    "meal": ("restaurant", "dining", "buffet", "bar", "room service", "nha hang", "quan bar", "dich vu phong"),
+    "wifi": ("wifi", "wi fi", "wireless internet"),
+    "parking": ("parking", "bai do xe", "cho do xe"),
+    "air_conditioning": ("air conditioning", "air conditioner", "dieu hoa"),
+    "laundry": ("laundry", "giat ui"),
+    "reception": ("reception", "front desk", "le tan"),
+}
+
+_AMENITY_DISPLAY_RULES: dict[str, tuple[str, int]] = {
+    "pool": ("pool", 0),
+    "private_beach": ("beach_view", 0),
+    "sea_view": ("beach_view", 0),
+    "spa": ("wellness", 0),
+    "family": ("family", 1),
+    "accessibility": ("accessibility", 1),
+    "airport_transfer": ("transport", 1),
+    "breakfast": ("meal", 2),
+    "lunch": ("meal", 2),
+    "dinner": ("meal", 2),
+    "meal": ("meal", 2),
+    "gym": ("fitness", 3),
+    "wifi": ("connectivity", 4),
+    "parking": ("convenience", 5),
+    "air_conditioning": ("convenience", 5),
+    "laundry": ("convenience", 5),
+    "reception": ("convenience", 5),
+}
+_MEAL_INTENTS = frozenset({"breakfast", "lunch", "dinner", "meal"})
+
+
+def _normalize_amenity(value: Any) -> str:
+    text = unicodedata.normalize("NFD", str(value or ""))
+    text = "".join(char for char in text if not unicodedata.combining(char)).casefold().replace("đ", "d")
+    return re.sub(r"[^a-z0-9]+", " ", text).strip()
+
+
+def _contains_amenity_term(value: str, term: str) -> bool:
+    return value == term or f" {term} " in f" {value} "
+
+
+def _amenity_intents(value: Any) -> tuple[str, ...]:
+    normalized = _normalize_amenity(value)
+    return tuple(
+        intent
+        for intent, aliases in _AMENITY_INTENT_ALIASES.items()
+        if any(_contains_amenity_term(normalized, alias) for alias in aliases)
+    )
+
+
+def _preference_intents(active_preferences: Any) -> list[str]:
+    intents: list[str] = []
+    seen: set[str] = set()
+    for preference in active_preferences or []:
+        if isinstance(preference, dict):
+            values = (preference.get("id"), preference.get("label"))
+        else:
+            values = (preference,)
+
+        recognized = next(
+            (intent for value in values for intent in _amenity_intents(value)),
+            None,
+        )
+        fallback = next((_normalize_amenity(value) for value in reversed(values) if _normalize_amenity(value)), "")
+        intent = recognized or fallback
+        if intent and intent not in seen:
+            seen.add(intent)
+            intents.append(intent)
+    return intents
+
+
+def _amenity_category(intents: tuple[str, ...], normalized: str) -> str:
+    for intent in intents:
+        if rule := _AMENITY_DISPLAY_RULES.get(intent):
+            return rule[0]
+    return f"other:{normalized}"
+
+
+def _fallback_priority(intents: tuple[str, ...], *, covered_meals: set[str]) -> tuple[int, int]:
+    intent_set = set(intents)
+    meal_intents = intent_set & _MEAL_INTENTS
+    if meal_intents:
+        covered = bool(meal_intents & covered_meals)
+        specific = bool(meal_intents & {"breakfast", "lunch", "dinner"})
+        return (2, 0 if covered else 1 if specific else 2)
+    rank = min((_AMENITY_DISPLAY_RULES[intent][1] for intent in intents if intent in _AMENITY_DISPLAY_RULES), default=6)
+    return (rank, 0)
+
+
+def _display_amenities(option: dict[str, Any], active_preferences: Any) -> list[str]:
+    """Return a preference-first, category-diverse summary for a hotel card."""
+    unique_amenities: list[str] = []
+    seen: set[str] = set()
+    raw_amenities = option.get("amenities")
+    if not isinstance(raw_amenities, (list, tuple)):
+        return []
+    for amenity in raw_amenities:
+        if not isinstance(amenity, str):
+            continue
+        label = amenity.strip()
+        normalized = _normalize_amenity(label)
+        if label and normalized and normalized not in seen:
+            seen.add(normalized)
+            unique_amenities.append(label)
+
+    candidates = [
+        {
+            "label": label,
+            "normalized": _normalize_amenity(label),
+            "intents": _amenity_intents(label),
+            "index": index,
+        }
+        for index, label in enumerate(unique_amenities)
+    ]
+    selected: list[dict[str, Any]] = []
+    selected_labels: set[str] = set()
+
+    for preference_intent in _preference_intents(active_preferences):
+        match = next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate["normalized"] not in selected_labels
+                and (
+                    preference_intent in candidate["intents"]
+                    or _contains_amenity_term(candidate["normalized"], preference_intent)
+                    or _contains_amenity_term(preference_intent, candidate["normalized"])
+                )
+            ),
+            None,
+        )
+        if match is not None:
+            selected.append(match)
+            selected_labels.add(match["normalized"])
+        if len(selected) == _DISPLAY_AMENITY_LIMIT:
+            return [candidate["label"] for candidate in selected]
+
+    covered_meals = {
+        intent
+        for value in option.get("covered_meals") or []
+        for intent in _amenity_intents(value)
+        if intent in _MEAL_INTENTS
+    }
+    used_categories = {
+        _amenity_category(candidate["intents"], candidate["normalized"])
+        for candidate in selected
+    }
+    fallback_candidates = sorted(
+        (candidate for candidate in candidates if candidate["normalized"] not in selected_labels),
+        key=lambda candidate: (
+            _fallback_priority(candidate["intents"], covered_meals=covered_meals),
+            candidate["index"],
+        ),
+    )
+    for candidate in fallback_candidates:
+        category = _amenity_category(candidate["intents"], candidate["normalized"])
+        if category in used_categories:
+            continue
+        selected.append(candidate)
+        selected_labels.add(candidate["normalized"])
+        used_categories.add(category)
+        if len(selected) == _DISPLAY_AMENITY_LIMIT:
+            break
+
+    return [candidate["label"] for candidate in selected]
+
+
 def to_hotel_options_payload(pending: dict[str, Any] | None) -> list[HotelOption]:
     """Convert session.pending_hotel_selection to a list of HotelOption."""
     if not pending or not isinstance(pending, dict):
         return []
+    active_preferences = pending.get("active_preferences") or []
     options = []
     for index, option in enumerate(pending.get("options") or [], start=1):
         name = str(option.get("name") or "").strip()
@@ -498,6 +684,12 @@ def to_hotel_options_payload(pending: dict[str, Any] | None) -> list[HotelOption
         coords = option.get("coordinates")
         if not coords and option.get("latitude") and option.get("longitude"):
             coords = f"{option.get('latitude')},{option.get('longitude')}"
+        raw_amenities = option.get("amenities")
+        amenities = (
+            [item for item in raw_amenities if isinstance(item, str)]
+            if isinstance(raw_amenities, (list, tuple))
+            else []
+        )
         options.append(
             HotelOption(
                 index=index,
@@ -514,7 +706,8 @@ def to_hotel_options_payload(pending: dict[str, Any] | None) -> list[HotelOption
                 address=option.get("address"),
                 area_name=option.get("area_name"),
                 image_url=option.get("image_url"),
-                amenities=list(option.get("amenities") or []),
+                amenities=amenities,
+                display_amenities=_display_amenities(option, active_preferences),
                 review_score=option.get("review_score"),
                 review_count=option.get("review_count"),
                 match_score=option.get("match_score"),
