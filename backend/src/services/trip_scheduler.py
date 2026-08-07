@@ -24,6 +24,9 @@ class PlanningPolicy:
     lunch_window_start: str = "11:00:00"
     lunch_preferred_time: str = "11:30:00"
     lunch_window_end: str = "12:30:00"
+    rest_start_time: str = "13:00:00"
+    rest_duration_minutes: int = 90
+    nature_pois_per_day: int = 1
     beach_morning_cutoff: str = "10:30:00"
     beach_afternoon_start: str = "15:30:00"
 
@@ -42,6 +45,7 @@ class PlaceCandidate:
     is_tour: bool = False
     description: str | None = None
     covered_meals: frozenset[str] = field(default_factory=frozenset)
+    retrieval_tier: int = 1
 
     @classmethod
     def from_mapping(cls, value: dict[str, Any]) -> PlaceCandidate:
@@ -61,6 +65,7 @@ class PlaceCandidate:
             ),
             is_tour=bool(value.get("is_tour")),
             description=value.get("description"),
+            retrieval_tier=max(1, int(value.get("retrieval_tier") or 1)),
             covered_meals=(
                 frozenset(str(meal) for meal in value.get("covered_meals") or [])
                 or detect_covered_hotel_meals(value.get("amenities"), value.get("amenity_groups"))
@@ -590,6 +595,7 @@ def build_itinerary(
 
     for theme in themes:
         day_playgrounds = 0
+        day_nature_pois = 0
         day_pool = [candidate for candidate in themed_candidates.get(theme.day_number, []) if candidate.id]
         attraction_pool = [candidate for candidate in day_pool if not _is_food(candidate)]
 
@@ -627,7 +633,7 @@ def build_itinerary(
 
         morning_start = max(8 * 60 + 15, _time_to_minutes(breakfast_item.end_time))
         morning = _select_candidate(
-            attraction_pool,
+            _limit_nature_candidates(attraction_pool, day_nature_pois, policy),
             used_ids,
             hotel,
             anchor=None,
@@ -657,12 +663,14 @@ def build_itinerary(
             if morning_item.is_playground:
                 playground_trip_count += 1
                 day_playgrounds += 1
+            if is_nature(morning):
+                day_nature_pois += 1
         else:
-            morning_item = _hotel_item(
-                theme.day_number, 2, hotel, "rest", _minutes_to_time(morning_start), 90
+            morning_item = _local_exploration_item(
+                theme.day_number, 2, hotel, "attraction", _minutes_to_time(morning_start), 90
             )
             day_items.append(morning_item)
-            adjustments.append(f"Ngày {theme.day_number}: không có điểm sáng hợp lệ, chuyển thành nghỉ tại khách sạn.")
+            adjustments.append(f"Ngày {theme.day_number}: không có điểm sáng hợp lệ, dành thời gian khám phá khu vực quanh khách sạn.")
 
         lunch_start = _next_start(
             day_items[-1],
@@ -674,6 +682,7 @@ def build_itinerary(
             max(lunch_start, _time_to_minutes(policy.lunch_window_start)),
             _time_to_minutes(policy.lunch_window_end),
         )
+        rest_start = _time_to_minutes(policy.rest_start_time)
         lunch_covered = "lunch" in hotel.covered_meals
         lunch_candidate = None
         if not lunch_covered:
@@ -691,21 +700,39 @@ def build_itinerary(
             )
         if lunch_candidate:
             lunch_start = _next_start(day_items[-1], lunch_candidate.coordinate_pair, lunch_start, policy)
+            lunch_duration = default_duration_minutes(lunch_candidate, "lunch")
             if not fits_opening_hours(
                 lunch_candidate,
                 _minutes_to_time(lunch_start),
-                default_duration_minutes(lunch_candidate, "lunch"),
+                lunch_duration,
             ):
                 lunch_candidate = None
-        if lunch_covered:
-            lunch_item = _hotel_item(
+            elif (
+                lunch_start
+                + lunch_duration
+                + estimated_travel_minutes(lunch_candidate.coordinate_pair, hotel.coordinate_pair, policy)
+                > rest_start
+            ):
+                lunch_candidate = None
+        def hotel_lunch_item() -> ScheduledItem:
+            hotel_lunch_start = _next_start(day_items[-1], hotel.coordinate_pair, lunch_start, policy)
+            available_before_rest = rest_start - hotel_lunch_start
+            if available_before_rest >= 30:
+                lunch_duration = min(75, available_before_rest)
+            else:
+                hotel_lunch_start = rest_start + policy.rest_duration_minutes
+                lunch_duration = 75
+            return _hotel_item(
                 theme.day_number,
                 3,
                 hotel,
                 "lunch",
-                _minutes_to_time(_next_start(day_items[-1], hotel.coordinate_pair, lunch_start, policy)),
-                75,
+                _minutes_to_time(hotel_lunch_start),
+                lunch_duration,
             )
+
+        if lunch_covered:
+            lunch_item = hotel_lunch_item()
             adjustments.append(f"Ngày {theme.day_number}: bữa trưa đã được khách sạn bao gồm.")
         elif lunch_candidate:
             lunch_item = ScheduledItem.from_candidate(
@@ -713,24 +740,23 @@ def build_itinerary(
             )
             used_ids.add(lunch_candidate.id)
         else:
-            lunch_item = _hotel_item(
-                theme.day_number,
-                3,
-                hotel,
-                "lunch",
-                _minutes_to_time(_next_start(day_items[-1], hotel.coordinate_pair, lunch_start, policy)),
-                75,
-            )
+            lunch_item = hotel_lunch_item()
             adjustments.append(f"Ngày {theme.day_number}: không có nhà hàng hợp lệ, dùng bữa tại khách sạn.")
         day_items.append(lunch_item)
 
-        rest_start = _next_start(day_items[-1], hotel.coordinate_pair, 13 * 60, policy)
-        rest_item = _hotel_item(theme.day_number, 4, hotel, "rest", _minutes_to_time(rest_start), 90)
+        rest_item = _hotel_item(
+            theme.day_number,
+            4,
+            hotel,
+            "rest",
+            policy.rest_start_time,
+            policy.rest_duration_minutes,
+        )
         day_items.append(rest_item)
 
         afternoon_start = max(15 * 60 + 30, _time_to_minutes(rest_item.end_time))
         afternoon = _select_candidate(
-            attraction_pool,
+            _limit_nature_candidates(attraction_pool, day_nature_pois, policy),
             used_ids,
             hotel,
             anchor=morning,
@@ -759,11 +785,13 @@ def build_itinerary(
             if afternoon_item.is_playground:
                 playground_trip_count += 1
                 day_playgrounds += 1
+            if is_nature(afternoon):
+                day_nature_pois += 1
         else:
-            afternoon_item = _hotel_item(
-                theme.day_number, 5, hotel, "rest", _minutes_to_time(afternoon_start), 90
+            afternoon_item = _local_exploration_item(
+                theme.day_number, 5, hotel, "attraction", _minutes_to_time(afternoon_start), 90
             )
-            adjustments.append(f"Ngày {theme.day_number}: không có điểm chiều đủ gần, chuyển thành nghỉ tại khách sạn.")
+            adjustments.append(f"Ngày {theme.day_number}: không có điểm chiều đủ gần, dành thời gian khám phá khu vực quanh khách sạn.")
         day_items.append(afternoon_item)
 
         coffee_start = max(17 * 60 + 45, _time_to_minutes(afternoon_item.end_time))
@@ -792,7 +820,7 @@ def build_itinerary(
             )
             used_ids.add(coffee_candidate.id)
         else:
-            coffee_item = _hotel_item(
+            coffee_item = _local_exploration_item(
                 theme.day_number,
                 6,
                 hotel,
@@ -800,7 +828,7 @@ def build_itinerary(
                 _minutes_to_time(_next_start(afternoon_item, hotel.coordinate_pair, coffee_start, policy)),
                 45,
             )
-            adjustments.append(f"Ngày {theme.day_number}: không có quán cà phê hợp lệ, chuyển thành nghỉ tại khách sạn.")
+            adjustments.append(f"Ngày {theme.day_number}: không có quán cà phê hợp lệ, dành thời gian khám phá khu vực quanh khách sạn.")
         day_items.append(coffee_item)
 
         dinner_start = max(18 * 60 + 45, _time_to_minutes(coffee_item.end_time))
@@ -857,7 +885,7 @@ def build_itinerary(
 
         evening_start = max(20 * 60 + 15, _time_to_minutes(dinner_item.end_time))
         evening = _select_candidate(
-            attraction_pool,
+            _limit_nature_candidates(attraction_pool, day_nature_pois, policy),
             used_ids,
             hotel,
             anchor=afternoon or morning,
@@ -881,6 +909,8 @@ def build_itinerary(
                 used_ids.add(evening.id)
                 if evening_item.is_playground:
                     playground_trip_count += 1
+                if is_nature(evening):
+                    day_nature_pois += 1
 
         repaired, day_adjustments = validate_or_repair_day(
             day_items,
@@ -1009,7 +1039,30 @@ def validate_or_repair_day(
     adjustments: list[str] = []
     kept: list[ScheduledItem] = []
     playgrounds = 0
+    nature_pois = 0
+    rest_seen = False
     for item in items:
+        if item.kind == "rest":
+            if rest_seen:
+                adjustments.append("Đã bỏ thời gian nghỉ tại khách sạn vượt giới hạn một lần mỗi ngày.")
+                continue
+            rest_seen = True
+            kept.append(
+                _hotel_item(
+                    item.day_number,
+                    item.order_index,
+                    hotel,
+                    "rest",
+                    policy.rest_start_time,
+                    policy.rest_duration_minutes,
+                )
+            )
+            continue
+        if item.reference_type == "Attraction" and item.category.casefold().strip() == "nature & outdoor":
+            if nature_pois >= policy.nature_pois_per_day:
+                adjustments.append(f"Đã bỏ điểm thiên nhiên vượt giới hạn trong ngày: {item.place_name}.")
+                continue
+            nature_pois += 1
         if item.is_playground:
             if playgrounds >= allowance:
                 adjustments.append(f"Đã bỏ khu vui chơi trẻ em vượt giới hạn: {item.place_name}.")
@@ -1020,13 +1073,13 @@ def validate_or_repair_day(
     normalized: list[ScheduledItem] = []
     for item in sorted(kept, key=lambda current: current.start_time):
         start = _time_to_minutes(item.start_time)
-        if _is_beach_text(f"{item.place_name} {item.category}"):
+        if item.kind != "rest" and _is_beach_text(f"{item.place_name} {item.category}"):
             cutoff = _time_to_minutes(policy.beach_morning_cutoff)
             afternoon = _time_to_minutes(policy.beach_afternoon_start)
             if cutoff <= start < afternoon:
                 start = afternoon
                 adjustments.append(f"Đã chuyển hoạt động biển {item.place_name} ra khỏi khung giờ giữa trưa.")
-        if normalized:
+        if normalized and item.kind != "rest":
             previous = normalized[-1]
             earliest = _time_to_minutes(previous.end_time) + estimated_travel_minutes(
                 previous.coordinates, item.coordinates, policy
@@ -1052,12 +1105,8 @@ def validate_or_repair_day(
                     shifted_to_opening = True
                     adjustments.append(f"Đã dời {item.place_name} sang thời điểm mở cửa.")
             if not shifted_to_opening:
-                fallback_kind: ItemKind = (
-                    item.kind
-                    if item.kind in {"breakfast", "lunch", "coffee", "dinner"}
-                    else "rest"
-                )
-                fallback_duration = item.duration_minutes if fallback_kind != "rest" else 90
+                fallback_kind: ItemKind = item.kind
+                fallback_duration = item.duration_minutes
                 if normalized:
                     previous = normalized[-1]
                     start = max(
@@ -1065,16 +1114,26 @@ def validate_or_repair_day(
                         _time_to_minutes(previous.end_time)
                         + estimated_travel_minutes(previous.coordinates, hotel.coordinate_pair, policy),
                     )
-                scheduled_item = ScheduledItem.from_candidate(
-                    item.day_number,
-                    item.order_index,
-                    hotel,
-                    fallback_kind,
-                    _minutes_to_time(start),
-                    fallback_duration,
-                )
+                if fallback_kind in {"breakfast", "lunch", "dinner"}:
+                    scheduled_item = ScheduledItem.from_candidate(
+                        item.day_number,
+                        item.order_index,
+                        hotel,
+                        fallback_kind,
+                        _minutes_to_time(start),
+                        fallback_duration,
+                    )
+                else:
+                    scheduled_item = _local_exploration_item(
+                        item.day_number,
+                        item.order_index,
+                        hotel,
+                        fallback_kind,
+                        _minutes_to_time(start),
+                        fallback_duration,
+                    )
                 adjustments.append(
-                    f"Đã thay {item.place_name} bằng thời gian tại khách sạn vì giờ mở cửa không phù hợp."
+                    f"Đã thay {item.place_name} bằng thời gian khám phá khu vực quanh khách sạn vì giờ mở cửa không phù hợp."
                 )
         normalized.append(
             replace(
@@ -1093,6 +1152,20 @@ def is_playground(candidate: PlaceCandidate) -> bool:
         term in normalized
         for term in ("playground", "kids play", "children play", "khu vui choi tre em", "san choi tre em")
     )
+
+
+def is_nature(candidate: PlaceCandidate) -> bool:
+    return candidate.category.casefold().strip() == "nature & outdoor"
+
+
+def _limit_nature_candidates(
+    candidates: Sequence[PlaceCandidate],
+    nature_count: int,
+    policy: PlanningPolicy,
+) -> list[PlaceCandidate]:
+    if nature_count < policy.nature_pois_per_day:
+        return list(candidates)
+    return [candidate for candidate in candidates if not is_nature(candidate)]
 
 
 def _select_candidate(
@@ -1146,6 +1219,8 @@ def _select_candidate(
                 break
         if not clustered:
             return None
+    lowest_tier = min(candidate.retrieval_tier for candidate in eligible)
+    eligible = [candidate for candidate in eligible if candidate.retrieval_tier == lowest_tier]
     return max(
         eligible,
         key=lambda candidate: _candidate_score(
@@ -1230,6 +1305,19 @@ def _hotel_item(
     duration_minutes: int,
 ) -> ScheduledItem:
     return ScheduledItem.from_candidate(day_number, order_index, hotel, kind, start_time, duration_minutes)
+
+
+def _local_exploration_item(
+    day_number: int,
+    order_index: int,
+    hotel: PlaceCandidate,
+    kind: ItemKind,
+    start_time: str,
+    duration_minutes: int,
+) -> ScheduledItem:
+    """Keep a failed non-meal slot useful without inventing an attraction ID."""
+    item = ScheduledItem.from_candidate(day_number, order_index, hotel, kind, start_time, duration_minutes)
+    return replace(item, activity=f"Tự do khám phá khu vực quanh {hotel.name}")
 
 
 def _activity_label(candidate: PlaceCandidate, kind: ItemKind) -> str:

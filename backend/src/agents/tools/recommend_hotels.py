@@ -34,7 +34,6 @@ from src.services.trip_planner import _get_destination_id
 
 logger = logging.getLogger(__name__)
 
-
 class PreferenceItem(BaseModel):
     id: str = Field(description="English identifier (e.g. 'swimming_pool', 'near_center')")
     label: str = Field(description="Vietnamese display name (e.g. 'Hồ bơi', 'Gần trung tâm')")
@@ -82,8 +81,8 @@ def recommend_hotels(
         start_date: The start date (YYYY-MM-DD).
         end_date: The end date (YYYY-MM-DD).
         people: Number of people.
-        preferences: General trip preferences. MUST be a JSON array of objects as a string, e.g. '[{"id": "...", "label": "..."}]'. Do NOT include budget or price info here.
-        hotel_preferences: Specific hotel preferences. MUST be a JSON array of objects as a string, e.g. '[{"id": "swimming_pool", "label": "Hồ bơi"}]'. Do NOT include budget or price info here.
+        preferences: General trip preferences. MUST be a JSON array of objects as a string. For 'label', extract the EXACT Vietnamese keyword from the user's message without altering spelling (e.g., '[{"id": "...", "label": "..."}]'). Do NOT include budget or price info.
+        hotel_preferences: Specific hotel preferences. MUST be a JSON array of objects as a string. For 'label', extract the EXACT Vietnamese keyword from the user's message without altering spelling (e.g., '[{"id": "swimming_pool", "label": "hồ bơi"}]'). Do NOT include budget or price info.
         target_price: Target budget per night.
         min_price: Minimum budget per night.
         max_price: Maximum budget per night.
@@ -235,24 +234,6 @@ def recommend_hotels(
     if hotel_preferences is None:
         hotel_preferences = ""
 
-    def parse_prefs(pref_str: str) -> list[dict]:
-        pref_str = pref_str.strip()
-        if not pref_str:
-            return []
-        try:
-            # If it's a JSON array string like '[{"id": "x", "label": "y"}]'
-            parsed = json.loads(pref_str)
-            if isinstance(parsed, list):
-                return parsed
-        except Exception:
-            pass
-        # Fallback for LLMs that just return a normal string instead of a JSON array
-        # E.g., "khách sạn có hồ bơi"
-        return [{"id": pref_str, "label": pref_str}]
-
-    parsed_hotel_prefs = parse_prefs(hotel_preferences)
-    parsed_general_prefs = parse_prefs(preferences)
-    
     def is_valid_pref(p_dict: dict) -> bool:
         if not p_dict or not p_dict.get("id") or not p_dict.get("label"):
             return False
@@ -263,15 +244,38 @@ def recommend_hotels(
             return False
         return True
 
+    def parse_prefs(pref_str: str) -> list[dict]:
+        pref_str = pref_str.strip()
+        if not pref_str:
+            return []
+        try:
+            # If it's a JSON array string like '[{"id": "x", "label": "y"}]'
+            parsed = json.loads(pref_str)
+            if isinstance(parsed, list):
+                clean_prefs = []
+                for p in parsed:
+                    if isinstance(p, dict) and "id" in p and "label" in p:
+                        if is_valid_pref(p):
+                            clean_prefs.append(p)
+                return clean_prefs
+        except Exception:
+            pass
+        # Fallback for LLMs that just return a normal string instead of a JSON array
+        # E.g., "khách sạn có hồ bơi"
+        return [{"id": pref_str, "label": pref_str}]
+
+    parsed_hotel_prefs = parse_prefs(hotel_preferences)
+    parsed_general_prefs = parse_prefs(preferences)
+    
     # Determine current preference objects
     current_prefs_dict = {}
     for p in parsed_hotel_prefs:
         p_dict = p.model_dump() if hasattr(p, "model_dump") else p if isinstance(p, dict) else None
-        if is_valid_pref(p_dict):
+        if p_dict and is_valid_pref(p_dict):
             current_prefs_dict[str(p_dict["id"])] = p_dict
     for p in parsed_general_prefs:
         p_dict = p.model_dump() if hasattr(p, "model_dump") else p if isinstance(p, dict) else None
-        if is_valid_pref(p_dict):
+        if p_dict and is_valid_pref(p_dict):
             current_prefs_dict[str(p_dict["id"])] = p_dict
             
     # For hotel amenity string, we don't have a good label, so we use the id for both
@@ -315,8 +319,10 @@ def recommend_hotels(
             if is_valid_pref(p):
                 all_prefs_dict[p["id"]] = p
             
-    # Add new current prefs
-    all_prefs_dict.update(current_prefs_dict)
+    # Add new current prefs, preserving existing labels if the ID is already known
+    for pref_id, p_dict in current_prefs_dict.items():
+        if pref_id not in all_prefs_dict:
+            all_prefs_dict[pref_id] = p_dict
     
     # Rebuild all_preferences by gathering every preference ID assigned to any hotel
     final_all_prefs = []

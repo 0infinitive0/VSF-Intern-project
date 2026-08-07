@@ -26,6 +26,14 @@ class RadiusFilter:
         self.max_radius_km = max_radius_km
 
 
+ATTRACTION_SEARCH_TIERS: tuple[tuple[float, float], ...] = (
+    (3.0, 0.40),
+    (3.0, 0.25),
+    (8.0, 0.40),
+    (12.0, 0.25),
+)
+
+
 def validate_radius_filter(
     root_latitude: Any = None,
     root_longitude: Any = None,
@@ -343,4 +351,55 @@ def search_attractions(
         return data[:match_count]
 
     return filtered_data[:match_count]
+
+
+def search_attractions_tiered(
+    query: str,
+    *,
+    required_count: int,
+    filter_destination_id: str,
+    root_latitude: float,
+    root_longitude: float,
+) -> List[Dict[str, Any]]:
+    """Return unique semantic attraction matches from explicit GPS search tiers.
+
+    The public ``search_attractions`` contract remains the general-purpose
+    attraction search API. This helper is intentionally planner-specific: it
+    embeds once, keeps every call rooted at the selected hotel, and only
+    expands the radius when a closer tier cannot supply enough unique records.
+    """
+    if required_count <= 0:
+        return []
+    if not filter_destination_id:
+        raise ValueError("tiered_attraction_search_requires_destination")
+
+    validate_radius_filter(root_latitude, root_longitude, ATTRACTION_SEARCH_TIERS[0][0])
+    query_vector = get_embeddings().embed_query(query)
+    per_tier_count = max(required_count * 2, 10)
+    seen_ids: set[str] = set()
+    collected: List[Dict[str, Any]] = []
+
+    for tier_number, (radius_km, match_threshold) in enumerate(ATTRACTION_SEARCH_TIERS, start=1):
+        data = _execute_rpc(
+            "match_attractions",
+            {
+                "query_embedding": query_vector,
+                "match_threshold": match_threshold,
+                "match_count": per_tier_count,
+                "filter_destination_id": filter_destination_id,
+                "root_latitude": float(root_latitude),
+                "root_longitude": float(root_longitude),
+                "max_radius_km": radius_km,
+            },
+        )
+        for row in data:
+            attraction_id = str(row.get("id") or "")
+            if not attraction_id or attraction_id in seen_ids:
+                continue
+            seen_ids.add(attraction_id)
+            collected.append({**row, "retrieval_tier": tier_number})
+            if len(collected) >= required_count:
+                return collected
+
+    return collected
 

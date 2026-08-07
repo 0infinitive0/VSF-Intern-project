@@ -151,6 +151,28 @@ def test_lunch_moves_later_when_the_morning_activity_needs_more_time() -> None:
     assert "11:30:00" < lunch.start_time <= "12:30:00"
 
 
+def test_lunch_never_overlaps_the_fixed_rest_window() -> None:
+    theme = DayTheme(1, "Culture", "culture")
+    long_morning = place(
+        "a1",
+        "Extended Museum Visit",
+        "Museums & culture",
+        16.055,
+        108.203,
+        estimated_duration_minutes=225,
+        similarity=1.0,
+    )
+
+    schedule = build_itinerary(HOTEL, [theme], {1: [long_morning]}, [], [])
+    day = schedule.items_for_day(1)
+    lunch = next(item for item in day if item.kind == "lunch")
+    rest = next(item for item in day if item.kind == "rest")
+
+    assert rest.start_time == "13:00:00"
+    assert rest.end_time == "14:30:00"
+    assert lunch.end_time <= rest.start_time
+
+
 def test_category_duration_defaults_and_travel_time_are_deterministic() -> None:
     tour = place("tour", "Island Tour", "Sightseeing tours", 16.05, 108.22, is_tour=True)
     restaurant = place("food", "Local Restaurant", "Restaurants & cafes", 16.05, 108.22)
@@ -182,6 +204,41 @@ def test_same_day_places_prefer_five_kilometre_cluster_over_far_match() -> None:
     assert "anchor" in ids
     assert "nearby" in ids
     assert "far" not in ids
+
+
+def test_scheduler_prefers_the_lowest_retrieval_tier_before_scoring() -> None:
+    theme = DayTheme(1, "Culture", "culture")
+    close_tier_one = place(
+        "tier-one",
+        "Nearby Museum",
+        "Museums & culture",
+        16.055,
+        108.203,
+        similarity=0.1,
+        rating=3.0,
+        retrieval_tier=1,
+    )
+    strong_tier_two = place(
+        "tier-two",
+        "High Rated Museum",
+        "Museums & culture",
+        16.056,
+        108.204,
+        similarity=1.0,
+        rating=5.0,
+        retrieval_tier=2,
+    )
+
+    schedule = build_itinerary(
+        HOTEL,
+        [theme],
+        {1: [close_tier_one, strong_tier_two]},
+        [],
+        [],
+    )
+
+    morning = next(item for item in schedule.items_for_day(1) if item.order_index == 2)
+    assert morning.reference_id == "tier-one"
 
 
 def test_lunch_prefers_the_route_from_current_stop_back_to_hotel() -> None:
@@ -364,6 +421,35 @@ def test_missing_meal_and_cafe_records_fall_back_to_hotel_not_random_attraction(
     assert coffee.reference_type == "Hotel" and coffee.reference_id == HOTEL.id
     assert breakfast.reference_type == "Hotel" and breakfast.reference_id == HOTEL.id
     assert dinner.reference_type == "Hotel" and dinner.reference_id == HOTEL.id
+
+
+def test_empty_attraction_pools_create_one_fixed_rest_and_local_exploration_placeholders() -> None:
+    schedule = build_itinerary(HOTEL, [DayTheme(1, "Culture", "culture")], {1: []}, [], [])
+    day = schedule.items_for_day(1)
+
+    rests = [item for item in day if item.kind == "rest"]
+    assert len(rests) == 1
+    assert rests[0].start_time == "13:00:00"
+    assert rests[0].end_time == "14:30:00"
+
+    activity_slots = [item for item in day if item.order_index in {2, 5}]
+    assert all(item.kind == "attraction" for item in activity_slots)
+    assert all(item.reference_type == "Hotel" and item.reference_id == HOTEL.id for item in activity_slots)
+    assert all("Tự do khám phá" in item.activity for item in activity_slots)
+
+
+def test_scheduler_limits_nature_attractions_to_one_per_day() -> None:
+    theme = DayTheme(1, "Nature and culture", "nature culture")
+    nature_one = place("nature-one", "City Park", "Nature & outdoor", 16.055, 108.203, similarity=0.95)
+    nature_two = place("nature-two", "Riverside Walk", "Nature & outdoor", 16.056, 108.204, similarity=0.9)
+    museum = place("museum", "History Museum", "Museums & culture", 16.057, 108.205, similarity=0.7)
+
+    schedule = build_itinerary(HOTEL, [theme], {1: [nature_one, nature_two, museum]}, [], [])
+    day = schedule.items_for_day(1)
+
+    nature_items = [item for item in day if item.category == "Nature & outdoor"]
+    assert len(nature_items) == 1
+    assert any(item.reference_id == "museum" for item in day)
 
 
 def test_explicit_hotel_meal_coverage_takes_priority_over_outside_venues() -> None:
@@ -660,7 +746,21 @@ def test_validate_replaces_a_venue_when_known_hours_cannot_fit() -> None:
     assert len(repaired) == 1
     assert repaired[0].reference_type == "Hotel"
     assert repaired[0].reference_id == HOTEL.id
-    assert repaired[0].kind == "rest"
+    assert repaired[0].kind == "attraction"
+    assert "Tự do khám phá" in repaired[0].activity
+    assert adjustments
+
+
+def test_day_repair_keeps_one_rest_at_the_fixed_daily_window() -> None:
+    early_rest = ScheduledItem.from_candidate(1, 1, HOTEL, "rest", "11:00:00", 90)
+    late_rest = ScheduledItem.from_candidate(1, 2, HOTEL, "rest", "17:00:00", 90)
+
+    repaired, adjustments = validate_or_repair_day([early_rest, late_rest], HOTEL)
+
+    rests = [item for item in repaired if item.kind == "rest"]
+    assert len(rests) == 1
+    assert rests[0].start_time == "13:00:00"
+    assert rests[0].end_time == "14:30:00"
     assert adjustments
 
 
