@@ -51,7 +51,7 @@ export default function IntakePreferenceChips({
         className={`mt-3 w-full py-2.5 rounded-[13px] text-[13px] font-semibold tracking-[-0.12px] transition-colors ${
           selected.length > 0 ? 'bg-button text-on-button' : 'bg-fill2 text-on-surface-faint'
         }`}
-        disabled={disabled || selected.length === 0}
+        disabled={disabled}
         onClick={onSubmit}
       >
         {t('findHotels')}

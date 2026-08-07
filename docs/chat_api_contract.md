@@ -409,3 +409,113 @@ re-derivation of this machine that drops 1c reintroduces that bug.
   to replace `detail=str(e)` with a generic 5xx body; not fixed in Phase 1.
 - No endpoint should raise an unhandled `TypeError` on a normal request (Phase 1 success
   criterion, verified via manual walkthrough — see phase notes).
+
+## New endpoints (Pending — `260805-1022-claude-design-ui-integration`)
+
+None of the four endpoints below exist in `backend/src/api/routes.py` yet. Shapes are
+frozen here so the frontend can build against `frontend/mock/server.js` fixtures now and
+swap to the real backend without a contract change once each phase ships.
+
+### `GET /api/v1/hotels/{hotel_id}` (Phase 3)
+
+Serves the Hotel Detail Focus Mode. Reads `hotels` + `rooms` + `room_prices`. `404` with
+`{"detail": "..."}` if `hotel_id` doesn't exist.
+
+```jsonc
+{
+  "id": "uuid", "name": "...", "star_rating": 5, "description": "...",
+  "address": "...", "city": "...", "area_name": "...", "location_highlight": "...",
+  "coordinates": "16.0544,108.2022",
+  "image_url": "https://…", "images": ["https://…"],
+  "amenities": ["..."], "amenity_groups": { "Hồ bơi": ["..."] },
+  "review_score": 8.9, "review_count": 1284, "category_scores": { "Vị trí": 9.1 },
+  "check_in_time": "14:00", "check_in_until": "22:00",
+  "check_out_time": "12:00", "reception_open_until": "23:00",
+  // nearby_attractions shape confirmed 06/08/2026 against real DB rows — objects,
+  // NOT free strings. The rows include airports and bus stations, not only sights.
+  // distance_text/category are pre-formatted VI strings from the DB: pass through,
+  // but the frontend rebuilds the km figure from distance_km for the UI locale.
+  "nearby_attractions": [{
+    "name": "Sân bay Quốc tế Đà Nẵng (DAD)", "category": "Sân bay lân cận",
+    "coordinates": "16.056327,108.200833", "distance_km": 4.81, "distance_text": "4,81 km"
+  }],
+  "nearby_essentials": ["..."],
+  "lowest_price": 1800000, "currency": "VND",
+  "rooms": [{
+    "id": "uuid", "name": "Superior Ocean View", "bed_description": "1 giường đôi lớn",
+    "room_size_sqm": 32, "max_guests": 2, "view": "Hướng biển",
+    "room_facilities": ["..."], "images": ["https://…"],
+    "price": {
+      "amount": 2200000, "currency": "VND",
+      "check_in_date": "2026-10-12", "check_out_date": "2026-10-14",
+      "sold_out": false, "package_details": null
+    } // | null — no room_prices row matches the requested stay
+  }]
+}
+```
+
+Read-only. There is no "select this room" action — `select_hotel` only accepts a hotel
+index, and there is no per-room price-recalculation logic to hang a selection off of
+(`plan.md` "Phần chưa làm" #4).
+
+### `GET /api/v1/attractions/{attraction_id}` (Phase 3)
+
+Serves the Place Detail Focus Mode. The frontend gets the id from
+`trip_plan.days[].items[].reference_id` when `reference_type == "attraction"`. `404` if
+`attraction_id` doesn't exist.
+
+```jsonc
+{
+  "id": "uuid", "name": "...", "description": "...", "category": "Biển", "is_tour": false,
+  "estimated_duration_minutes": 120,
+  "opening_time": "06:00", "closing_time": "22:00",
+  "ticket_price_adult": 100000, "ticket_price_child": 50000,
+  "rating": 4.6, "review_count": 892,
+  "coordinates": "16.0490,108.2493",
+  "images": ["https://…"]
+}
+```
+
+No review-quote field exists — `attractions` has `rating`/`review_count` but no review
+text rows (`plan.md` "Phần chưa làm" #6). No nearby-attractions field either — there is no
+attraction-to-attraction adjacency data (#7); that relation only exists for hotels
+(`hotels.nearby_attractions`).
+
+### `GET /api/v1/chat/sessions` (Phase 4)
+
+Serves the conversation-history sidebar rail.
+
+```jsonc
+{
+  "sessions": [{
+    "session_id": "uuid",
+    "title": "Đà Nẵng – Hội An 4N3Đ",      // inferred from destination + duration_days
+    "destination": "Đà Nẵng", "duration_days": 3,
+    "status": "draft",                        // "completed" once trip_data exists
+    "created_at": "2026-08-01T09:12:00Z", "updated_at": "2026-08-01T09:40:00Z",
+    "thumbnail_url": "https://…"              // chosen hotel's image_url, or null
+  }]
+}
+```
+
+Never `404` — an empty `sessions: []` list is the correct response when a user has no
+saved conversations. The frontend treats a `404` from this endpoint (e.g. before Phase 4
+ships) as "history feature not available" and hides the rail, not as an error state.
+
+### `GET /api/v1/chat/{session_id}/restore` (Phase 4)
+
+Reopens a past conversation. Same shape as `PlannerChatResponse`, plus the message
+timeline. `404` if `session_id` doesn't exist or was never persisted.
+
+```jsonc
+{
+  "session_id": "uuid",
+  "messages": [
+    { "role": "user", "text": "Tôi muốn đi Đà Nẵng 3 ngày", "stage": "intake", "at": "2026-08-01T09:12:00Z" },
+    { "role": "ai", "text": "...", "stage": "hotel_options", "at": "2026-08-01T09:13:30Z" }
+  ],
+  "suggestions": [], "stage": "planned",
+  "hotel_options": [], "trip_plan": { "...same shape as PlannerChatResponse.trip_plan..." },
+  "intake": { "...same shape as PlannerChatResponse.intake..." }
+}
+```

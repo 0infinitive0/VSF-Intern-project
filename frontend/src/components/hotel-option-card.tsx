@@ -1,152 +1,222 @@
-import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import MatchScoreRing from './match-score-ring'
+import MatchReasons from './match-reasons'
+import RemoteImage from './remote-image'
+import { formatCurrency } from '../lib/format-currency'
+import { formatHotelStars } from '../lib/format-stars'
 import type { HotelOption } from '../types'
 
+const PRICE_LOCALE = (lang: string) => (lang === 'vi' ? 'vi-VN' : 'en-US')
+
 /**
- * HotelOptionCard — shown when stage === "hotel_options".
- * Clicking sends String(hotel.index) as the next message, which is the ordinal
- * already expected by select_hotel on the backend — no new verb needed.
+ * HotelOptionCard — the full-design premium glass card (HotelCard.dc.html).
+ * Three distinct click zones, exactly as the design intends:
+ *   card body / "Xem chi tiết" → onOpen (opens Hotel Detail Focus Mode)
+ *   "Chọn"                     → onSelect — marks the card LOCALLY only
+ *                                (stopPropagation so it never opens the panel)
+ *
+ * Phase 8 two-step pick: marking here sends NOTHING to the backend. The only
+ * sender is the stage header's confirm button in stage-hotels.tsx, which posts
+ * String(hotel.index) over the exact same wire as before (no new verb).
+ *
+ * HotelOption.id only exists once Phase 2 ships — without it there is no
+ * /hotels/{id} to fetch, so the card simply doesn't open (cursor + detail
+ * button hidden) while everything else still renders.
  */
 function HotelOptionCard({
   hotel,
-  onPick,
-  disabled,
   selected,
+  focused,
+  delay,
+  nights,
+  onSelect,
+  onOpen,
 }: {
   hotel: HotelOption
-  onPick: (value: string) => void
-  disabled: boolean
   selected: boolean
+  focused: boolean
+  delay: string
+  nights: number | null
+  onSelect: (hotel: HotelOption) => void
+  onOpen: (hotel: HotelOption) => void
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const numFmt = new Intl.NumberFormat(PRICE_LOCALE(i18n.language))
+  const canOpen = Boolean(hotel.id)
+
+  // null/undefined and 0 all mean "no price known" — hide the price block
+  // instead of rendering "0 ₫" (Number() coercion turns null into 0, so the
+  // explicit nullish check matters).
+  const hasNightly =
+    hotel.average_nightly_price != null &&
+    Number.isFinite(hotel.average_nightly_price) &&
+    hotel.average_nightly_price > 0
+  const showTotal = hasNightly && nights != null && nights > 0
+
   const stars =
-    '★'.repeat(hotel.star_rating || 0) + '☆'.repeat(Math.max(0, 5 - (hotel.star_rating || 0)))
-  const currency = hotel.currency || 'VND'
-  const formatPrice = (value: number) =>
-    new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(value)
-  const hasStayPrice = Number.isFinite(Number(hotel.average_nightly_price))
+    formatHotelStars(hotel.star_rating || 0) +
+    '☆'.repeat(Math.max(0, 5 - (hotel.star_rating || 0)))
 
   return (
     <div
-      className={`relative bg-surface-background border rounded-xl p-3 transition-shadow ${
-        selected ? 'border-primary ring-1 ring-primary' : 'border-outline-variant hover:shadow-md'
-      }`}
+      onClick={canOpen ? () => onOpen(hotel) : undefined}
+      className="hotel-card rounded-[26px] p-4 border"
+      data-selected={selected ? 'true' : undefined}
+      data-focused={focused ? 'true' : undefined}
+      style={{
+        cursor: canOpen ? 'pointer' : 'default',
+        animation: `vFade .55s ${delay} ease both`,
+      }}
     >
-      {selected && (
-        <span
-          className="material-symbols-outlined absolute -top-2 -right-2 text-primary bg-surface-background rounded-full text-[20px]"
-          aria-hidden="true"
-        >
-          check_circle
-        </span>
-      )}
-      <div className="flex gap-3">
-        <div className="w-16 h-16 rounded-lg bg-surface-container-high shrink-0 flex items-center justify-center">
-          <span className="material-symbols-outlined text-on-surface-variant" aria-hidden="true">
-            hotel
-          </span>
-        </div>
+      <div className="flex gap-3.5">
+        <RemoteImage
+          src={hotel.image_url}
+          alt={t('hotelImgAlt', { name: hotel.name })}
+          className="w-[112px] h-[112px] rounded-[20px] flex-none"
+          sheen="vSheen 6s 1.2s ease-in-out infinite"
+        />
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="w-5 h-5 shrink-0 rounded-full bg-primary-container text-on-primary-container text-[10px] font-semibold flex items-center justify-center">
-              {hotel.index}
-            </span>
-            <span className="font-display font-medium text-sm text-on-surface truncate">
-              {hotel.name}
-            </span>
-          </div>
-          <div className="text-xs text-primary mt-1">{stars}</div>
-          {hasStayPrice && (
-            <div
-              className="text-sm text-on-surface mt-1"
-              aria-label={t('hotelAverageNightly', {
-                price: formatPrice(hotel.average_nightly_price!),
-                currency,
-              })}
-            >
-              {t('hotelAverageNightly', {
-                price: formatPrice(hotel.average_nightly_price!),
-                currency,
-              })}
-              {Number.isFinite(Number(hotel.total_stay_price)) && (hotel.stay_night_count ?? 0) > 0 && (
-                <span className="text-xs text-on-surface-variant ml-1">
-                  ({t('hotelTotalStay', {
-                    nights: hotel.stay_night_count!,
-                    price: formatPrice(hotel.total_stay_price!),
-                    currency,
-                  })})
-                </span>
+          <div className="flex items-start gap-2.5">
+            <div className="flex-1 min-w-0">
+              <div className="text-[16px] font-[590] tracking-[-0.32px] text-on-surface truncate">
+                {hotel.name}
+              </div>
+              {hotel.area_name && (
+                <div className="text-[11.5px] text-on-surface-muted font-normal mt-0.5">
+                  {hotel.area_name}
+                </div>
               )}
+              <div className="flex items-center gap-2 mt-1.5">
+                {hotel.star_rating != null && (
+                  <div className="text-[11px] text-warning tracking-[1px]" aria-hidden="true">
+                    {stars}
+                  </div>
+                )}
+                {hotel.review_score != null && (
+                  <div className="text-[11.5px] font-[590] text-on-surface">
+                    {new Intl.NumberFormat(PRICE_LOCALE(i18n.language), {
+                      minimumFractionDigits: 1,
+                      maximumFractionDigits: 1,
+                    }).format(hotel.review_score)}
+                  </div>
+                )}
+                {hotel.review_count != null && (
+                  <div className="text-[11px] text-on-surface-muted font-normal">
+                    {t('hotelReviewCount', { count: numFmt.format(hotel.review_count) })}
+                  </div>
+                )}
+              </div>
             </div>
-          )}
-          {hotel.matched_rooms && hotel.matched_rooms.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1.5">
-              {hotel.matched_rooms.map((room, i) => (
+            {hasNightly && (
+              <div className="flex-none text-right">
+                <div className="text-[17px] font-normal tracking-[-0.5px] text-on-surface">
+                  {formatCurrency(hotel.average_nightly_price!, i18n.language)}
+                </div>
+                <div className="text-[10.5px] font-normal tracking-[0.01em] text-on-surface-muted">
+                  {showTotal
+                    ? t('hotelNightlyTotal', {
+                        total: formatCurrency(hotel.average_nightly_price! * nights!, i18n.language),
+                      })
+                    : t('perNight')}
+                </div>
+              </div>
+            )}
+          </div>
+          {hotel.amenities && hotel.amenities.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-[9px]">
+              {hotel.amenities.map((amenity) => (
                 <span
-                  key={i}
-                  className="px-2 py-0.5 bg-surface-muted text-on-surface-variant text-[10px] rounded-full"
+                  key={amenity}
+                  className="text-[10.5px] px-[9px] py-[3px] rounded-full bg-fill text-on-surface-variant"
                 >
-                  {room}
+                  {amenity}
                 </span>
               ))}
             </div>
           )}
-          <button
-            className="mt-2 bg-surface-container-high text-on-surface px-3 py-1 rounded-md text-xs hover:bg-primary hover:text-on-primary disabled:opacity-60 transition-colors"
-            disabled={disabled}
-            onClick={() => onPick(String(hotel.index))}
-            type="button"
-          >
-            {t('hotelPickBtn')}
-          </button>
         </div>
+      </div>
+
+      {(hotel.match_score != null || (hotel.match_reasons?.length ?? 0) > 0) && (
+        <div className="flex gap-3.5 items-start mt-3.5 pt-3.5 border-t border-line">
+          <MatchScoreRing score={hotel.match_score} />
+          <div className="flex-1 min-w-0">
+            <MatchReasons reasons={hotel.match_reasons} />
+          </div>
+        </div>
+      )}
+
+      <div className="flex gap-2 mt-[13px]">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onSelect(hotel)
+          }}
+          className="flex-1 p-[11px] rounded-[15px] border-none text-[13px] font-[590] tracking-[-0.12px] cursor-pointer transition-all duration-200"
+          style={{
+            background: selected ? 'var(--btn)' : 'var(--fill)',
+            color: selected ? 'var(--btn-fg)' : 'var(--t2)',
+          }}
+        >
+          {selected ? t('hotelPickBtnSelected') : t('hotelPickBtn')}
+        </button>
+        {canOpen && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpen(hotel)
+            }}
+            className="flex-none px-[15px] py-[11px] rounded-[15px] border border-stroke bg-glass-2 text-on-surface-variant text-[13px] font-[530] tracking-[-0.1px] cursor-pointer transition-all duration-200 hover:bg-glass-3 hover:text-on-surface"
+          >
+            {t('viewDetail')}
+          </button>
+        )}
       </div>
     </div>
   )
 }
 
 /**
- * HotelOptionCards — renders the full hotel list.
- * Shown *instead of* plain chips when stage === "hotel_options".
- * Both views post an ordinal as a plain message — same backend verb.
- *
- * `selectedIndex` is a transient, optimistic UI state — hotel_options clears
- * on the next turn regardless of outcome, so there is no server-backed
- * "selected" concept to persist here.
+ * HotelOptionCards — the controlled card list for the hotels stage. The stage
+ * (stage-hotels.tsx) owns selectedIndex because the header confirm button
+ * reads it: the selection is now user-meaningful state that lives long enough
+ * to open details, compare, then commit — not a transient optimistic flash.
+ * (This comment supersedes the pre-Phase-8 "transient" note; the wire itself
+ * is unchanged: only the header confirm posts String(hotel.index).)
  */
 export default function HotelOptionCards({
-  hotelOptions,
-  onPick,
-  disabled,
+  hotels,
+  selectedIndex,
+  focusedId,
+  nights,
+  onSelect,
+  onOpen,
 }: {
-  hotelOptions: HotelOption[]
-  onPick: (value: string) => void
-  disabled: boolean
+  hotels: HotelOption[]
+  selectedIndex: number | null
+  focusedId?: string | null
+  nights: number | null
+  onSelect: (hotel: HotelOption) => void
+  onOpen: (hotel: HotelOption) => void
 }) {
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
-
-  useEffect(() => {
-    setSelectedIndex(null)
-  }, [hotelOptions])
-
-  if (!hotelOptions || hotelOptions.length === 0) return null
-
-  function handlePick(hotel: HotelOption) {
-    setSelectedIndex(hotel.index)
-    onPick(String(hotel.index))
-  }
+  if (!hotels || hotels.length === 0) return null
 
   return (
-    <div className="flex flex-col gap-3">
-      {hotelOptions.map((hotel) => (
+    <>
+      {hotels.map((hotel, i) => (
         <HotelOptionCard
-          key={hotel.index}
+          key={hotel.id ?? hotel.index}
           hotel={hotel}
-          onPick={() => handlePick(hotel)}
-          disabled={disabled}
           selected={selectedIndex === hotel.index}
+          focused={focusedId != null && hotel.id === focusedId}
+          delay={`${i * 90}ms`}
+          nights={nights}
+          onSelect={onSelect}
+          onOpen={onOpen}
         />
       ))}
-    </div>
+    </>
   )
 }
