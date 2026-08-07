@@ -4,6 +4,9 @@
  * Replays fixtures for all eight contract endpoints (docs/chat_api_contract.md):
  *   POST   /api/v1/chat/session
  *   POST   /api/v1/planner_chat
+ *   POST   /api/v1/planner_chat/stream    (SSE — docs/chat_api_contract.md §Streaming;
+ *                                        message ":stream ..." forces an agent turn
+ *                                        with real delta chunks)
  *   GET    /api/v1/chat/:sid/plan
  *   DELETE /api/v1/chat/:sid
  *   GET    /api/v1/hotels/:id            (Phase 3, mocked here for frontend Phase 8)
@@ -518,6 +521,50 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms))
 }
 
+// ── SSE helpers (POST /api/v1/planner_chat/stream) ────────────────────────────
+// Contract: docs/chat_api_contract.md §Streaming (plan 260806-1602 Phase 1).
+// Phase scripts mirror the phase key table: per-turn realistic key sequences,
+// spread across the fixture's _delay so progress visibly arrives before `final`.
+// Dev hook: a message starting with `:stream ` forces a free-chat turn that
+// emits real `delta` chunks (agent branch), regardless of the turn counter.
+
+const PHASE_SCRIPTS = {
+  1: ['received', 'routing', 'route_decided', 'intake_check'],
+  2: ['received', 'routing', 'route_decided', 'intake_check'],
+  3: ['received', 'routing', 'route_decided', 'intake_check', 'hotel_search'],
+  4: ['received', 'routing', 'route_decided', 'itinerary_build', 'routing_legs', 'persisting'],
+  5: ['received', 'routing', 'route_decided', 'itinerary_build', 'routing_legs'],
+  6: ['received', 'routing', 'route_decided', 'persisting'],
+}
+
+const STREAM_CHAT_REPLY =
+  'Đà Nẵng nổi tiếng với bãi biển Mỹ Khê, cầu Rồng phun lửa vào cuối tuần ' +
+  'và ẩm thực đường phố phong phú. Bạn có muốn mình gợi ý thêm vài quán ăn ' +
+  'địa phương gần khách sạn không?'
+
+const PHASE_EXTRA_DATA = {
+  route_decided: { route: 'recommend' },
+  hotel_search: { tool: 'recommend_hotels' },
+}
+
+function sseHeaders(res) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'X-Accel-Buffering': 'no',
+    Connection: 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+  })
+}
+
+function sendSse(res, event, data) {
+  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+}
+
+function sendPhase(res, key, extra) {
+  sendSse(res, 'phase', { key, at: Date.now() / 1000, ...(extra ?? PHASE_EXTRA_DATA[key] ?? {}) })
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 
 const server = createServer(async (req, res) => {
@@ -541,6 +588,69 @@ const server = createServer(async (req, res) => {
       session_id: SESSION_ID,
       created_at: new Date().toISOString(),
     })
+    return
+  }
+
+  // POST /api/v1/planner_chat/stream — SSE variant (contract §Streaming)
+  if (req.method === 'POST' && path === '/api/v1/planner_chat/stream') {
+    const body = await readBody(req)
+    const sid = body.session_id || SESSION_ID
+
+    // Dev hook: force a free-chat agent turn (with real delta chunks) without
+    // consuming the scripted turn counter — e.g. message ":stream test".
+    const forceChatTurn = typeof body.message === 'string' && body.message.startsWith(':stream ')
+
+    if (!turnCounters[sid]) turnCounters[sid] = 0
+    if (!forceChatTurn) turnCounters[sid]++
+    const turn = turnCounters[sid]
+
+    const fixture = forceChatTurn
+      ? {
+          reply: STREAM_CHAT_REPLY,
+          suggestions: [],
+          stage: 'modified',
+          hotel_options: [],
+          trip_plan: TRIP_PLAN,
+        }
+      : TURNS[turn] || {
+          reply: 'SYSTEM ERROR: Lịch trình đã hoàn tất. Hãy bắt đầu hội thoại mới để lên kế hoạch chuyến đi tiếp theo!',
+          suggestions: [],
+          stage: 'error',
+          hotel_options: [],
+          trip_plan: null,
+        }
+
+    sseHeaders(res)
+    res.write(': open\n\n') // forces proxies to flush headers immediately
+
+    const script = forceChatTurn
+      ? ['received', 'routing', 'route_decided', 'generating']
+      : PHASE_SCRIPTS[turn] || ['received', 'routing', 'route_decided']
+    const totalDelay = fixture._delay ?? Math.min(script.length * 150, 600)
+    const step = totalDelay / script.length
+
+    for (const key of script) {
+      // `generating` is emitted right before the first delta below, not here.
+      if (key === 'generating') continue
+      sendPhase(res, key)
+      await sleep(step)
+    }
+
+    if (forceChatTurn) {
+      sendPhase(res, 'generating')
+      // Real token stream: chunks of the exact final reply, so joining all
+      // `delta.text` equals `final.reply` (contract invariant — trailing word
+      // carries no space).
+      const words = STREAM_CHAT_REPLY.split(' ')
+      for (let i = 0; i < words.length; i++) {
+        sendSse(res, 'delta', { text: i < words.length - 1 ? words[i] + ' ' : words[i] })
+        await sleep(80)
+      }
+    }
+
+    const { _delay, ...response } = fixture
+    sendSse(res, 'final', { session_id: sid, ...response })
+    res.end()
     return
   }
 
@@ -639,6 +749,7 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`\n🌿 VSF Trip Planner mock server running at http://localhost:${PORT}`)
   console.log('   Endpoints: POST /api/v1/chat/session | POST /api/v1/planner_chat')
+  console.log('              POST /api/v1/planner_chat/stream (SSE; ":stream ..." → delta chunks)')
   console.log('              GET  /api/v1/chat/:sid/plan | DELETE /api/v1/chat/:sid')
   console.log('              GET  /api/v1/hotels/:id | GET /api/v1/attractions/:id')
   console.log('              GET  /api/v1/chat/sessions | GET /api/v1/chat/:sid/restore')

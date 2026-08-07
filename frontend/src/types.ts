@@ -163,6 +163,13 @@ export interface ChatState {
   pending: boolean
   elapsedMs: number
   error: string | null
+  // ── Streaming (Phase 5, transient — cleared by SEND_SUCCESS/SEND_ERROR) ──
+  // Accumulated `delta` text for the in-flight turn; '' when not streaming.
+  streamingText: string
+  // Growing list of `phase` events received for the in-flight turn; never
+  // pre-populated with placeholder steps — a branch that doesn't emit a key
+  // simply never adds that row (contract §Streaming).
+  phases: TurnPhase[]
 }
 
 export interface PlannerChatResponse {
@@ -289,3 +296,42 @@ export interface SessionRestore {
   trip_plan: TripPlan | null
   intake?: IntakeStatus | null
 }
+
+// ── SSE streaming contract (POST /planner_chat/stream) ──────────────────────
+// Frozen in docs/chat_api_contract.md §Streaming (plan 260806-1602-streaming-chat-messages,
+// Phase 1). Event names are the shipped subset; `cancelled` exists in the plan but is
+// NOT shipped (turn cancellation / phase-04 is paused), so it is intentionally absent.
+
+// Opaque backend progress keys — each maps 1:1 to a real code position (see the
+// contract's phase key table). Never rendered raw; the frontend owns the i18n
+// labels (own the keys: unknown keys must be ignored silently).
+export type PhaseKey =
+  | 'received'
+  | 'routing'
+  | 'route_decided'
+  | 'compacting_history'
+  | 'intake_check'
+  | 'hotel_search'
+  | 'tool_start'
+  | 'tool_end'
+  | 'itinerary_build'
+  | 'routing_legs'
+  | 'persisting'
+  | 'generating'
+
+// One entry of the growing progress list shown while a turn streams.
+export interface TurnPhase {
+  key: PhaseKey
+  at: number // epoch seconds from the backend
+}
+
+export type StreamEvent =
+  // `tool` present on hotel_search/tool_start/tool_end; `route` on route_decided.
+  | { event: 'phase'; data: { key: PhaseKey; at: number; tool?: string; route?: string } }
+  | { event: 'delta'; data: { text: string } } // only on the agent-chat branch
+  | { event: 'reset'; data: { reason: string } } // discard buffered delta text
+  | { event: 'final'; data: PlannerChatResponse } // same dict as POST /planner_chat
+  | { event: 'error'; data: { detail: string } }
+
+// Every stream ends with exactly one of these terminal events.
+export type TerminalStreamEvent = Extract<StreamEvent, { event: 'final' | 'error' }>

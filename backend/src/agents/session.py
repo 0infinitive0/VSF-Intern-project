@@ -36,6 +36,7 @@ from src.agents.routing_decision import (
 )
 from src.agents.state import TripState, initial_state
 from src.agents.supervisor import decide_route_by_llm
+from src.api.streaming import _DeltaGate, emit_phase, emit_reset
 from src.config import get_settings
 from src.i18n import SUPPORTED_LANGUAGES, t
 from src.services.hotel_selection import HotelPreferenceState, _has_budget_signal
@@ -620,6 +621,7 @@ def _process_chat_turn(
     user_input: str,
     stay_dates: tuple[str, str] | None = None,
     language: str = "vi",
+    stream: bool = False,
 ) -> TurnResult:
     """Handle exactly one chat turn and return a TurnResult. Mutates `session`
     in place. Callers own their own input loop / HTTP request cycle — this
@@ -632,7 +634,12 @@ def _process_chat_turn(
     `language` ("vi" | "en") is stored on `session.state["language"]` and
     drives every deterministic (non-LLM) reply via `t(..., language)`. An
     unrecognized value falls back to "vi" through the setter.
+
+    `stream=True` (POST /planner_chat/stream only) enables token streaming on
+    the `_run_chat_agent` branch; every other callers' default False keeps
+    their behavior byte-identical to before.
     """
+    emit_phase("received")
     logger.info("User Input: %s", user_input)
     session.last_seen_at = time.time()
     session.language = language
@@ -714,7 +721,13 @@ def _process_chat_turn(
         return TurnResult(text=response, tool=tool)
 
     context = route_context_from_state(session.state)
+    # `routing` only when the LLM supervisor actually runs — with the flag off
+    # routing is a sub-millisecond rules call, and emitting it would be fake
+    # progress (phase keys = real code positions only).
+    if get_settings().trip_supervisor_router:
+        emit_phase("routing")
     route = _decide_route(session, context, user_input)
+    emit_phase("route_decided", route=route)
 
     if route == "finalize":
         return _run_finalize(session)
@@ -736,14 +749,14 @@ def _process_chat_turn(
                 return result
             # edit_plan.decision == "not_edit": the saved-plan edit path is done
             # with this turn — go straight to the general agent, same as today.
-            return _run_chat_agent(session, user_input)
+            return _run_chat_agent(session, user_input, stream=stream)
 
     if not session.initial_plan_complete and not is_saved_plan_edit:
-        return _run_intake(session, user_input)
+        return _run_intake(session, user_input, stream=stream)
 
     logger.warning("BEFORE STREAM, state keys: %s", session.state.keys())
     logger.warning("BEFORE STREAM, pending_hotel_selection is None: %s", session.state.get("pending_hotel_selection") is None)
-    return _run_chat_agent(session, user_input)
+    return _run_chat_agent(session, user_input, stream=stream)
 
 
 
@@ -894,9 +907,15 @@ def process_chat_turn(
     user_input: str,
     stay_dates: tuple[str, str] | None = None,
     language: str = "vi",
+    stream: bool = False,
 ) -> TurnResult:
-    """Run one turn, then persist its business state and visible message pair."""
-    result = _process_chat_turn(session, user_input, stay_dates=stay_dates, language=language)
+    """Run one turn, then persist its business state and visible message pair.
+
+    `stream` forwards to `_process_chat_turn` (POST /planner_chat/stream only —
+    enables token streaming on the `_run_chat_agent` branch); every other
+    caller's default False keeps behavior byte-identical to before.
+    """
+    result = _process_chat_turn(session, user_input, stay_dates=stay_dates, language=language, stream=stream)
     return _persist_turn(session, result, user_input)
 
 
@@ -1029,12 +1048,14 @@ def _run_recommend_hotels(session: TripSession) -> TurnResult:
     if intake_context:
         verified_arguments.setdefault("intake_context", intake_context)
     logger.info("Deterministic intake complete: %s", verified_arguments)
+    emit_phase("hotel_search", tool="recommend_hotels")
     tool_response = session.tools.recommend_hotels.invoke(verified_arguments)
     logger.info("Final Tool Response Output:\n%s", tool_response)
     return TurnResult(text=str(tool_response), tool="recommend_hotels")
 
 
-def _run_intake(session: TripSession, user_input: str) -> TurnResult:
+def _run_intake(session: TripSession, user_input: str, stream: bool = False) -> TurnResult:
+    emit_phase("intake_check")
     destination_names = _get_destination_names()
     session.intake_state = session.intake_state.with_message(user_input, destination_names)
 
@@ -1073,7 +1094,7 @@ def _run_intake(session: TripSession, user_input: str) -> TurnResult:
         return _run_recommend_hotels(session)
 
     # 5. If we already showed hotels, we are in the hotel options chat phase. Let the agent handle questions and re-searches.
-    return _run_chat_agent(session, user_input)
+    return _run_chat_agent(session, user_input, stream=stream)
 
 
 def _compact_history(session: TripSession) -> None:
@@ -1099,6 +1120,10 @@ def _compact_history(session: TripSession) -> None:
             return
             
         logger.info(f"History exceeds {approx_tokens} tokens. Compacting...")
+        # Emitted HERE, not at function entry: most calls return early at the
+        # threshold check above without compacting — a key at entry would be
+        # fake progress.
+        emit_phase("compacting_history")
         from src.services.llm import get_fast_llm
         from langchain_core.messages import HumanMessage, SystemMessage, RemoveMessage, AIMessage
         
@@ -1133,10 +1158,30 @@ def _compact_history(session: TripSession) -> None:
         logger.warning(f"History compaction failed: {e}")
 
 
-def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:
+def _run_chat_agent(session: TripSession, user_input: str, stream: bool = False) -> TurnResult:
     """Invokes the LangGraph supervisor ReAct agent for conversational turns
-    (questions, hotel drill-down, complex saved-plan edits). Supports 
-    streaming responses directly via callbacks."""
+    (questions, hotel drill-down, complex saved-plan edits).
+
+    `stream=True` (POST /planner_chat/stream only) additionally emits the
+    agent node's own prose tokens as `delta` SSE events through a per-attempt
+    `_DeltaGate` (plan 260806-1602-streaming-chat-messages, phase-03).
+    `stream=False` (every other caller, including the plain POST endpoint)
+    still calls `session.agent.stream(..., stream_mode=["values","messages"])`
+    but never inspects the "messages" items — same `session.state` sync,
+    same return values, byte-identical behavior to before this phase.
+
+    `stream_mode` tuple shape verified empirically against the installed
+    langgraph (1.2.9) with a throwaway stub streaming chat model, per this
+    repo's existing empirical-first precedent (see state.py docstring): each
+    item from the combined-mode stream is `(mode, payload)`. For
+    `mode == "values"`, `payload` is the same event dict this loop always
+    consumed. For `mode == "messages"`, `payload` is `(chunk, meta)` — chunk
+    is an `AIMessageChunk` (`.content`, `.tool_calls`, `.tool_call_chunks`),
+    meta is a dict whose `langgraph_node` key names the emitting node; the
+    ReAct agent's own prose node is `"agent"` (tool-call token chunks carry
+    non-empty `tool_call_chunks`/`tool_calls` and are filtered out below —
+    they are the model calling a tool, not prose for the user).
+    """
     logger.warning("Inside _run_chat_agent! state keys: %s", session.state.keys())
     logger.warning("Inside _run_chat_agent! pending_hotel_selection is None: %s", session.state.get("pending_hotel_selection") is None)
     for attempt in range(2):
@@ -1170,6 +1215,10 @@ def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:
                 f"{agent_input}\n"
                 "Trả lời người dùng bằng văn bản tiếng Việt. Không xuất JSON hoặc mô phỏng lời gọi công cụ."
             )
+        # One gate per attempt (never reused across attempts — a discarded
+        # attempt's gate state must not leak into the retry). None when this
+        # turn isn't streaming: feed() is simply never called on it.
+        gate = _DeltaGate() if stream else None
         try:
             # Tools are now module-level and write TripState via Command
             # (Phase 4) — the compiled agent's own checkpointer state is keyed
@@ -1180,19 +1229,55 @@ def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:
             # up whatever the tool actually changed. Verified empirically:
             # without the seed, a fresh thread has no TripState keys at all
             config_with_limit = {**session.config, "recursion_limit": 15}
-            
+
             _compact_history(session)
-            
+
+            # Including "messages" in stream_mode is not a free / ignorable
+            # extra channel: LangGraph attaches a StreamMessagesHandler
+            # callback to drive it, and BaseChatModel._should_stream() treats
+            # ANY attached _StreamingCallbackHandler as reason enough to call
+            # the provider's streaming API instead of its plain generate call
+            # — verified empirically against the installed langchain-core: a
+            # recording fake model hits `_generate` under stream_mode="values"
+            # and `_stream` under stream_mode=["values","messages"], with
+            # nothing else different. So this must stay gated on `stream`:
+            # ungated, EVERY turn (including plain POST) would silently start
+            # issuing streaming requests to Ollama/OpenRouter/Cloudflare,
+            # changing how tool-call arguments get reassembled provider-side.
+            stream_mode = ["values", "messages"] if stream else "values"
             events = session.agent.stream(
                 {**session.state, "messages": [("user", agent_input)]},
                 config=config_with_limit,
-                stream_mode="values",
+                stream_mode=stream_mode,
             )
 
             final_ai_response = None
             tool_output_response = None
             last_event = None
-            for event in events:
+            for item in events:
+                # stream_mode="values" (stream=False) yields bare event dicts,
+                # exactly as before this phase; stream_mode as a list
+                # (stream=True) yields (mode, payload) tuples. Normalize both
+                # to the same (mode, payload) shape for one shared loop body.
+                mode, payload = item if stream else ("values", item)
+                if mode == "messages":
+                    if gate is None:
+                        continue  # not streaming this turn — messages items are free to ignore
+                    msg, meta = payload
+                    if getattr(msg, "tool_call_chunks", None) or getattr(msg, "tool_calls", None):
+                        continue  # tool-call token, not prose for the user
+                    if meta.get("langgraph_node") != "agent":
+                        continue  # not the agent's own generation node
+                    # AIMessageChunk.content is usually a plain str, but some
+                    # providers (content-block style, e.g. newer Anthropic/
+                    # OpenAI-compatible chunk shapes) can hand back a list of
+                    # content blocks instead — feeding that straight into the
+                    # gate's str-join would raise and abort the whole turn.
+                    if isinstance(msg.content, str) and msg.content:
+                        gate.feed(msg.content)
+                    continue
+
+                event = payload
                 if "messages" not in event:
                     continue
                 last_event = event
@@ -1201,16 +1286,26 @@ def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:
                 if latest_message.type == "ai" and latest_message.tool_calls:
                     tool_names = ", ".join(tc["name"] for tc in latest_message.tool_calls)
                     logger.info("Delegating to tools: %s", tool_names)
+                    emit_phase("tool_start", tool=tool_names)
                     logger.warning("AI Message tool_calls: %s", latest_message.tool_calls)
+                    # The agent can emit prose BEFORE deciding to call a tool
+                    # (e.g. "Let me check that for you...") — that prose has
+                    # `tool_call_chunks`/`tool_calls` empty while it's being
+                    # generated, so the gate already streamed it as delta.
+                    # It is scratch commentary, not part of the eventual
+                    # answer (final_ai_response only ever keeps the LAST ai
+                    # message). Reset it and start a fresh gate for whatever
+                    # prose follows this tool round, so a multi-tool-call
+                    # attempt's delta stream can't drift from final.reply.
+                    if gate is not None and gate.flushed_any:
+                        emit_reset("tool_error")
+                        gate = _DeltaGate()
                 elif latest_message.type == "tool":
                     if "SYSTEM ERROR:" not in str(latest_message.content):
                         tool_output_response = latest_message.content
                     logger.info("Tool returned: %s", latest_message.name)
+                    emit_phase("tool_end", tool=str(latest_message.name))
                     logger.warning("Tool output: %s...", str(latest_message.content)[:500])
-                    
-                    if tool_output_response:
-                        logger.warning("Enforcing 1-tool-call limit per user message. Breaking stream.")
-                        break
                     
                     # If tool signals anti-loop, abort immediately to prevent LLM from spinning
                     if "ĐỪNG gọi lại" in str(latest_message.content) or "DO NOT CALL IT AGAIN" in str(latest_message.content):
@@ -1221,10 +1316,15 @@ def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:
                             "Xin lỗi, tôi không tìm thấy thông tin này để trả lời bạn.",
                             lang,
                         ) if lang == "vi" else "I'm sorry, I couldn't find this information."
+                        if gate is not None and gate.flushed_any:
+                            emit_reset("tool_error")
                         break
 
                 if latest_message.type == "ai" and not latest_message.tool_calls:
                     final_ai_response = latest_message.content
+
+            if gate is not None:
+                gate.close()
 
             if last_event is not None:
                 session.state.update({key: value for key, value in last_event.items() if key != "messages"})
@@ -1245,13 +1345,18 @@ def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:
                         notes=session.intake_state.notes
                     )
         except Exception as exc:
+            # The stream broke mid-flight after already flushing prose to the
+            # client — the reply below replaces that partial text, so the
+            # client must discard whatever it already rendered.
+            if gate is not None and gate.flushed_any:
+                emit_reset("provider_error")
             if "Recursion limit" in str(exc) or "recursion" in str(exc).lower() or type(exc).__name__ == "GraphRecursionError":
                 logger.error("Agent hit recursion limit of 15 loops and was stopped.")
                 return TurnResult(
                     text="Xin lỗi, tôi cần thêm thông tin để làm rõ yêu cầu của bạn, hiện tại tôi đang gặp một chút khó khăn khi tự động phân tích.",
                     tool="agent_stream"
                 )
-            
+
             logger.exception("Agent provider request failed")
             return TurnResult(
                 text=(
@@ -1275,9 +1380,23 @@ def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:
             )
         if tool_output_response:
             logger.info("Final Tool Response Output:\n%s", tool_output_response)
+            # Defense in depth alongside the tool_calls-detection reset above:
+            # if anything still ended up flushed on this gate (e.g.
+            # final_ai_response existed but read as a textual tool call), the
+            # tool's own canned text wins as the reply — any streamed prose
+            # must be discarded, not left dangling in the client's buffer.
+            if gate is not None and gate.flushed_any:
+                emit_reset("superseded_by_tool_response")
             return TurnResult(text=str(tool_output_response), tool="agent_stream")
         if final_ai_response:
             logger.warning("Discarded textual tool-call JSON from agent (attempt %s)", attempt + 1)
+            # Safety net for late detection: the gate's own 16-char prefix
+            # probe already mutes attempts that OPEN with `{`/`[`/"SYSTEM
+            # ERROR:", so in practice flushed_any should be False here — this
+            # only fires if `_looks_like_textual_tool_call` catches something
+            # the probe didn't (plan 260806-1602 phase-03 risk table).
+            if gate is not None and gate.flushed_any:
+                emit_reset("discarded_tool_call_json")
     return TurnResult(
         text="SYSTEM ERROR: Không nhận được phản hồi từ agent.",
         tool="agent_stream",

@@ -12,8 +12,9 @@
 
 import { useReducer, useEffect, useRef, useCallback } from 'react'
 import { createSession, sendMessage, resetSession } from '../api/chat-client'
+import { sendMessageStream, StreamUnsupported } from '../api/stream-client'
 import i18n from '../i18n'
-import type { ChatState, PlannerChatResponse } from '../types'
+import type { ChatState, PlannerChatResponse, PhaseKey } from '../types'
 
 const SESSION_KEY = 'vsf_trip_planner_session_id'
 
@@ -27,6 +28,8 @@ const INITIAL_STATE: ChatState = {
   pending: false,
   elapsedMs: 0,
   error: null,
+  streamingText: '',
+  phases: [],
 }
 
 // ── Action types ─────────────────────────────────────────────────────────────
@@ -38,6 +41,9 @@ type Action =
   | { type: 'SEND_ERROR'; id: string; error: string }
   | { type: 'TICK' }
   | { type: 'RESET'; sessionId: string }
+  | { type: 'STREAM_PHASE'; key: PhaseKey; at: number }
+  | { type: 'STREAM_DELTA'; text: string }
+  | { type: 'STREAM_RESET' }
 
 // ── Reducer ───────────────────────────────────────────────────────────────────
 
@@ -59,8 +65,16 @@ function reducer(state: ChatState, action: Action): ChatState {
         // Freeze chips so they aren't clickable while in-flight
         suggestions: [],
         hotelOptions: [],
+        streamingText: '',
+        phases: [],
       }
 
+    // Unchanged shape on purpose: `final` (stream) and the plain POST body
+    // are the exact same PlannerChatResponse dict (contract §Streaming), so
+    // both paths dispatch this one action and everything downstream —
+    // hotelOptions, tripPlan, intake, suggestions — behaves identically
+    // whether the reply streamed or not. Also the point where transient
+    // streaming state is cleared.
     case 'SEND_SUCCESS': {
       const { data } = action
       const isError = data.stage === 'error'
@@ -82,6 +96,8 @@ function reducer(state: ChatState, action: Action): ChatState {
         tripPlan: data.trip_plan || state.tripPlan,
         intake: data.intake || state.intake,
         error: null,
+        streamingText: '',
+        phases: [],
       }
     }
 
@@ -103,6 +119,8 @@ function reducer(state: ChatState, action: Action): ChatState {
           },
         ],
         suggestions: [],
+        streamingText: '',
+        phases: [],
       }
 
     case 'TICK':
@@ -110,6 +128,19 @@ function reducer(state: ChatState, action: Action): ChatState {
 
     case 'RESET':
       return { ...INITIAL_STATE, sessionId: action.sessionId }
+
+    case 'STREAM_PHASE':
+      return { ...state, phases: [...state.phases, { key: action.key, at: action.at }] }
+
+    case 'STREAM_DELTA':
+      return { ...state, streamingText: state.streamingText + action.text }
+
+    // Agent discarded this attempt (textual tool-call JSON / SYSTEM ERROR
+    // caught late, or a retry) — drop whatever text was flushed so far. The
+    // growing phase list is deliberately left alone: those steps really did
+    // happen and stay true regardless of which attempt's prose wins.
+    case 'STREAM_RESET':
+      return { ...state, streamingText: '' }
 
     default:
       return state
@@ -183,6 +214,14 @@ export function useChatSession() {
   }, [])
 
   // ── send ─────────────────────────────────────────────────────────────────
+  // Streams by default (POST /planner_chat/stream); downgrades to the plain
+  // POST endpoint ONLY when the stream request itself never succeeded
+  // (StreamUnsupported — network failure, 404/415, wrong content-type). Once
+  // the server has returned a 200 text/event-stream response, the turn is
+  // already running server-side regardless of whether any frame was actually
+  // read — replaying via POST would send the same message twice, so any
+  // later failure (including a first-frame timeout) surfaces as a plain
+  // network error instead of retrying. See stream-client.ts's StreamUnsupported.
   const send = useCallback(
     async (text: string) => {
       const trimmed = String(text).trim()
@@ -191,10 +230,37 @@ export function useChatSession() {
       const id = String(++idCounter.current)
       dispatch({ type: 'SEND_START', id, text: trimmed })
 
+      const controller = new AbortController()
       try {
-        const data = await sendMessage(state.sessionId, trimmed, i18n.language)
+        const data = await sendMessageStream(
+          state.sessionId,
+          trimmed,
+          i18n.language,
+          {
+            onPhase: (key, at) => dispatch({ type: 'STREAM_PHASE', key: key as PhaseKey, at }),
+            onDelta: (deltaText) => dispatch({ type: 'STREAM_DELTA', text: deltaText }),
+            onReset: () => dispatch({ type: 'STREAM_RESET' }),
+          },
+          controller.signal,
+        )
         dispatch({ type: 'SEND_SUCCESS', id, data })
       } catch (err) {
+        if (err instanceof StreamUnsupported) {
+          try {
+            const data = await sendMessage(state.sessionId, trimmed, i18n.language)
+            dispatch({ type: 'SEND_SUCCESS', id, data })
+            return
+          } catch (postErr) {
+            dispatch({
+              type: 'SEND_ERROR',
+              id,
+              error: i18n.t('errorNetwork', {
+                msg: postErr instanceof Error ? postErr.message : String(postErr),
+              }),
+            })
+            return
+          }
+        }
         dispatch({
           type: 'SEND_ERROR',
           id,

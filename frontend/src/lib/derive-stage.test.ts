@@ -12,6 +12,8 @@ const BASE: ChatState = {
   pending: false,
   elapsedMs: 0,
   error: null,
+  streamingText: '',
+  phases: [],
 }
 
 const SOME_TRIP_PLAN: ChatState['tripPlan'] = {

@@ -8,14 +8,18 @@ Phase 3 changes:
   DELETE /chat/{session_id}.
 - All handlers are plain `def` (not async def) so FastAPI runs them in the
   worker thread pool — Supabase/Ollama calls are blocking and must not stall
-  the event loop.
+  the event loop. The one exception is POST /planner_chat/stream: it is
+  `async def` (required to yield SSE frames) but runs the blocking turn in
+  the worker pool via run_in_executor, so the rule above still holds.
 """
 
+import asyncio
 import logging
 from datetime import UTC, date
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 
 from src.agents.session import (
     SessionRegistry,
@@ -26,6 +30,7 @@ from src.agents.session import (
     supabase_persist_hook,
     suggestions_for,
 )
+from src.api.streaming import STREAM_HEADERS, TurnEmitter, emitting_to, sse_stream
 from src.config import get_settings
 from src.models.schemas import (
     AttractionDetailPayload,
@@ -173,6 +178,68 @@ def delete_session(session_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _prepare_turn_inputs(session, request: PlannerChatRequest) -> tuple[str, str] | None:
+    """Apply the optional price-preference override and derive the stay_dates
+    tuple. Shared by planner_chat and planner_chat_stream so the two endpoints
+    cannot drift apart."""
+    if request.min_price is not None or request.max_price is not None:
+        from src.services.hotel_selection import HotelPreferenceState
+
+        session.hotel_pref_state = HotelPreferenceState(
+            stage="done",
+            min_price=request.min_price,
+            max_price=request.max_price,
+            target_price=request.max_price or request.min_price,
+        )
+
+    return (
+        (request.stay_dates.start_date.isoformat(), request.stay_dates.end_date.isoformat())
+        if request.stay_dates is not None
+        else None
+    )
+
+
+def build_chat_response(session, result, session_id: str, language: str, suggestions_raw) -> PlannerChatResponse:
+    """Single source for assembling PlannerChatResponse. Both planner_chat and
+    planner_chat_stream go through here — Phase 6 of plan
+    260806-1602-streaming-chat-messages tests the two endpoints match
+    byte-for-byte on the same scenario, so they must never assemble responses
+    independently.
+
+    Sanitize any SYSTEM ERROR: text that might carry internal detail before it
+    reaches the browser. sanitize_system_error() logs the original at error
+    level (keyed by session_id) whenever it replaces the text.
+    """
+    safe_reply = sanitize_system_error(result.text, session_id=session_id, language=language)
+
+    stage = derive_stage(result, session)
+
+    hotel_options = to_hotel_options_payload(session.pending_hotel_selection)
+    suggestions = [{"label": s["label"], "value": s["value"]} for s in suggestions_raw]
+
+    trip_plan = to_trip_plan_payload(session.trip_data)
+    intake = IntakeStatus.from_state(session.intake_state, session.hotel_pref_state)
+    requires_stay_dates = bool(
+        session.intake_state.destination
+        and session.intake_state.people
+        and session.hotel_pref_state.is_complete
+        and not session.intake_state.has_explicit_stay_dates
+    )
+
+    return PlannerChatResponse(
+        session_id=session_id,
+        reply=safe_reply,
+        suggestions=suggestions,
+        stage=stage,
+        hotel_options=hotel_options,
+        trip_plan=trip_plan,
+        intake=intake,
+        requires_stay_dates=requires_stay_dates,
+        compound_min_price=session.pending_hotel_selection.get("compound_min_price") if session.pending_hotel_selection else None,
+        compound_max_price=session.pending_hotel_selection.get("compound_max_price") if session.pending_hotel_selection else None,
+    )
+
+
 
 @router.post("/chat/select_hotel", response_model=PlannerChatResponse)
 @router.post("/hotels/select", response_model=PlannerChatResponse)
@@ -182,19 +249,19 @@ def select_hotel(request: SelectHotelRequest) -> PlannerChatResponse:
     session = registry.get(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
-        
+
     with session.lock:
         try:
-            from src.agents.session import handle_frontend_hotel_selection, derive_stage, suggestions_for
-            
+            from src.agents.session import derive_stage, handle_frontend_hotel_selection, suggestions_for
+
             result = handle_frontend_hotel_selection(session, str(request.hotel_id))
-            
+
             safe_reply = sanitize_system_error(result.text, session_id=session_id)
             suggestions = suggestions_for(session)
             hotel_options = to_hotel_options_payload(session.pending_hotel_selection)
             trip_plan = to_trip_plan_payload(session.trip_data)
             intake = IntakeStatus.from_state(session.intake_state, session.hotel_pref_state)
-            
+
             requires_stay_dates = bool(
                 session.intake_state.destination
                 and session.intake_state.people
@@ -222,7 +289,12 @@ def select_hotel(request: SelectHotelRequest) -> PlannerChatResponse:
 @router.post("/planner_chat", response_model=PlannerChatResponse)
 @router.post("/chat", response_model=PlannerChatResponse)
 def planner_chat(request: PlannerChatRequest) -> PlannerChatResponse:
-    """Chat với trip planner thật."""
+    """Chat với trip planner thật.
+
+    Giữ nguyên hành vi cho mọi client hiện có — endpoint này là fallback khi
+    SSE bị proxy chặn và là đường mà toàn bộ test hiện có đang đi. Mọi thay
+    đổi dựng response phải qua build_chat_response() dùng chung.
+    """
     session_id = str(request.session_id)
 
     registry.evict_expired()
@@ -232,20 +304,7 @@ def planner_chat(request: PlannerChatRequest) -> PlannerChatResponse:
 
     with session.lock:
         try:
-            if request.min_price is not None or request.max_price is not None:
-                from src.services.hotel_selection import HotelPreferenceState
-                session.hotel_pref_state = HotelPreferenceState(
-                    stage="done",
-                    min_price=request.min_price,
-                    max_price=request.max_price,
-                    target_price=request.max_price or request.min_price,
-                )
-
-            stay_dates = (
-                (request.stay_dates.start_date.isoformat(), request.stay_dates.end_date.isoformat())
-                if request.stay_dates is not None
-                else None
-            )
+            stay_dates = _prepare_turn_inputs(session, request)
             result = process_chat_turn(
                 session,
                 request.message or "",
@@ -257,36 +316,69 @@ def planner_chat(request: PlannerChatRequest) -> PlannerChatResponse:
             logger.exception("Unexpected error in planner_chat for session %s", session_id)
             raise HTTPException(status_code=500, detail="Đã xảy ra lỗi máy chủ. Vui lòng thử lại.")
 
-    # Sanitize any SYSTEM ERROR: text that might carry internal detail before
-    # it reaches the browser. sanitize_system_error() logs the original at
-    # error level (keyed by session_id) whenever it replaces the text.
-    safe_reply = sanitize_system_error(result.text, session_id=session_id, language=request.language)
+    return build_chat_response(session, result, session_id, request.language, suggestions_raw)
 
-    stage = derive_stage(result, session)
 
-    hotel_options = to_hotel_options_payload(session.pending_hotel_selection)
-    suggestions = [{"label": s["label"], "value": s["value"]} for s in suggestions_raw]
+@router.post("/planner_chat/stream")
+async def planner_chat_stream(request: PlannerChatRequest) -> StreamingResponse:
+    """SSE variant of planner_chat: same PlannerChatRequest body, streams
+    `phase` / `final` / `error` frames (contract: docs/chat_api_contract.md
+    §Streaming). The `final` frame carries the exact dict the POST endpoint
+    would have returned — both go through build_chat_response().
 
-    trip_plan = to_trip_plan_payload(session.trip_data)
-    intake = IntakeStatus.from_state(session.intake_state, session.hotel_pref_state)
-    requires_stay_dates = bool(
-        session.intake_state.destination
-        and session.intake_state.people
-        and session.hotel_pref_state.is_complete
-        and not session.intake_state.has_explicit_stay_dates
-    )
+    The turn itself runs blocking in a worker thread (identical to the POST
+    endpoint); this async handler only bridges its events over SSE via a
+    TurnEmitter queue (see src/api/streaming.py).
+    """
+    session_id = str(request.session_id)
 
-    return PlannerChatResponse(
-        session_id=session_id,
-        reply=safe_reply,
-        suggestions=suggestions,
-        stage=stage,
-        hotel_options=hotel_options,
-        trip_plan=trip_plan,
-        intake=intake,
-        requires_stay_dates=requires_stay_dates,
-        compound_min_price=session.pending_hotel_selection.get("compound_min_price") if session.pending_hotel_selection else None,
-        compound_max_price=session.pending_hotel_selection.get("compound_max_price") if session.pending_hotel_selection else None,
+    registry.evict_expired()
+    session = registry.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
+
+    loop = asyncio.get_running_loop()
+    emitter = TurnEmitter(loop)
+
+    def _run_turn() -> None:
+        try:
+            try:
+                with session.lock:
+                    stay_dates = _prepare_turn_inputs(session, request)
+                    # emitting_to MUST run inside this worker thread, not in the
+                    # async handler — ContextVar values are per-context and
+                    # run_in_executor doesn't propagate the handler's context.
+                    # From here on, every emit_phase inside the pipeline lands
+                    # on this turn's stream (`received` fires at the head of
+                    # process_chat_turn itself); emit_phase is a no-op on the
+                    # plain POST path, which is never wrapped.
+                    with emitting_to(emitter):
+                        result = process_chat_turn(
+                            session,
+                            request.message or "",
+                            stay_dates=stay_dates,
+                            language=request.language,
+                            stream=True,
+                        )
+                    suggestions_raw = suggestions_for(session)
+
+                # Assemble outside the lock — mirrors planner_chat exactly.
+                payload = build_chat_response(session, result, session_id, request.language, suggestions_raw)
+                emitter.emit("final", **payload.model_dump(mode="json"))
+            except Exception:
+                logger.exception("Unexpected error in planner_chat_stream for session %s", session_id)
+                emitter.emit("error", detail="Đã xảy ra lỗi máy chủ. Vui lòng thử lại.")
+        finally:
+            # Always terminate the stream; a terminal frame (final | error) is
+            # always enqueued above before close() — contract invariant.
+            emitter.close()
+
+    loop.run_in_executor(None, _run_turn)
+
+    return StreamingResponse(
+        sse_stream(emitter),
+        media_type="text/event-stream",
+        headers=STREAM_HEADERS,
     )
 
 
@@ -361,6 +453,7 @@ async def search_hotels(q: str, k: int = 10):
 
 from pydantic import BaseModel
 
+
 class LoadMoreHotelsRequest(BaseModel):
     session_id: str
     load_more: bool
@@ -372,25 +465,24 @@ def hotels_search(request: LoadMoreHotelsRequest):
     session = registry.get(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
-    
+
     with session.lock:
         try:
             from src.services.hotel_selection import select_hotel_candidates
-            from src.models.schemas import to_hotel_options_payload
-            
+
             existing = session.pending_hotel_selection.get("options", []) if session.pending_hotel_selection else []
             exclude_ids = [opt["id"] for opt in existing if "id" in opt]
-            
+
             dest_id = session.pending_hotel_selection.get("destination_id") if session.pending_hotel_selection else None
             print(f"DEBUG: pending_hotel_selection destination_id = {dest_id}")
             if not dest_id:
                 from src.services.trip_planner import _get_destination_id
                 dest_id = _get_destination_id(session.intake_state.destination)
                 print(f"DEBUG: _get_destination_id({session.intake_state.destination}) = {dest_id}")
-                
+
             final_dest_id = str(dest_id) if dest_id else ""
             print(f"DEBUG: calling select_hotel_candidates with destination_id = {final_dest_id}")
-            
+
             results = select_hotel_candidates(
                 destination=session.intake_state.destination or "",
                 destination_id=final_dest_id,
@@ -403,21 +495,21 @@ def hotels_search(request: LoadMoreHotelsRequest):
                 exclude_hotel_ids=exclude_ids
             )
             results = [item[0] for item in results]
-            
+
             # Identify which hotels we already have
             existing = session.pending_hotel_selection.get("options", []) if session.pending_hotel_selection else []
             existing_names = {h.get("name") for h in existing if isinstance(h, dict)}
-            
+
             new_hotels = []
             for r in results:
                 if r.get("name") not in existing_names:
                     new_hotels.append(r)
                 if len(new_hotels) == 5:
                     break
-                    
+
             if not session.pending_hotel_selection:
                 session.pending_hotel_selection = {"options": []}
-                
+
             start_idx = len(existing) + 1
             added_hotels = []
             for i, h in enumerate(new_hotels):
@@ -426,12 +518,12 @@ def hotels_search(request: LoadMoreHotelsRequest):
                 hotel_dict["index"] = start_idx + i
                 session.pending_hotel_selection["options"].append(hotel_dict)
                 added_hotels.append(hotel_dict)
-                
+
             return {
                 "hotels": added_hotels,
                 "has_more": len(results) >= 10
             }
-        except Exception as exc:
+        except Exception:
             logger.exception("Error in hotels_search")
             raise HTTPException(status_code=500, detail="Error fetching more hotels")
 
@@ -442,19 +534,19 @@ def itineraries_generate(request: PlannerChatRequest):
     session = registry.get(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
-        
+
     with session.lock:
         if session.trip_data and session.trip_data.get("itineraries"):
             # Already generated during select_hotel
             trip_plan = to_trip_plan_payload(session.trip_data)
             return {"status": "success", "trip_plan": trip_plan}
-            
+
         try:
             from src.agents.session import process_chat_turn
             result = process_chat_turn(session, "Tạo lịch trình", language=request.language)
             trip_plan = to_trip_plan_payload(session.trip_data)
             return {"status": "success", "trip_plan": trip_plan}
-        except Exception as exc:
+        except Exception:
             logger.exception("Error generating itinerary")
             raise HTTPException(status_code=500, detail="Error generating itinerary")
 

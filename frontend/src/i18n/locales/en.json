@@ -1,5 +1,5 @@
 {
-  "navBrand": "V-OTA AI",
+  "navBrand": "V-OTA",
 
   "sidebarLabel": "Main navigation",
   "sidebarCollapseHint": "Collapse sidebar",
@@ -32,9 +32,6 @@
   "intakeStep3Num": "STEP 3",
   "intakeStep3Title": "Itinerary & map",
   "intakeStep3Desc": "A day-by-day timeline with the route optimised around your hotel.",
-
-  "generatingElapsed_one": "{{seconds}} second elapsed",
-  "generatingElapsed_other": "{{seconds}} seconds elapsed",
 
   "chatPanelTitle": "AI Assistant",
   "chatPanelMoreHint": "Options (not yet supported)",
@@ -69,8 +66,20 @@
 
   "pendingDefault": "Processing...",
   "pendingSearchingHotels": "Looking for matching hotels...",
-  "pendingBuildingPlan": "Building your itinerary — this usually takes 30–60 seconds...",
-  "elapsedSuffix": "seconds",
+  "pendingBuildingPlan": "Building your itinerary...",
+
+  "phaseReceived": "Request received",
+  "phaseRouting": "Deciding how to handle this",
+  "phaseRouteDecided": "Decided how to handle this",
+  "phaseCompactingHistory": "Summarizing conversation history",
+  "phaseIntakeCheck": "Checking trip details",
+  "phaseHotelSearch": "Searching for matching hotels",
+  "phaseToolStart": "Running a task",
+  "phaseToolEnd": "Task finished",
+  "phaseItineraryBuild": "Building the itinerary",
+  "phaseRoutingLegs": "Calculating travel routes",
+  "phasePersisting": "Saving the itinerary",
+  "phaseGenerating": "Writing a reply",
 
   "itineraryTitle": "Planned itinerary",
   "hotelLabel": "Hotel",
@@ -93,11 +102,6 @@
   "kindAttraction": "Sightseeing",
   "kindRest": "Rest",
   "kindEvening": "Evening",
-
-  "tripParamsTitle": "Trip parameters",
-  "tripParamsDatesLabel": "Dates",
-  "tripParamsGuestsLabel": "Guests",
-  "tripParamsAdultsSuffix": "adults",
 
   "intakeDestinationLabel": "Destination",
   "intakeDestinationPlaceholder": "Choose a destination",

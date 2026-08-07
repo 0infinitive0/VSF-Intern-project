@@ -42,38 +42,50 @@ install_api_error_logging(app)
 import time
 from datetime import datetime
 
+# SSE endpoints: collecting the response body below would hold the ENTIRE
+# stream until it closes — the client would receive nothing until the turn
+# ends, killing SSE completely. Matched by exact path (not prefix) so no other
+# endpoint's logging behaviour can change.
+_STREAMING_PATHS = frozenset({"/api/v1/planner_chat/stream"})
+
 @app.middleware("http")
 async def log_api_io(request: Request, call_next):
     # Only log API routes
     if not request.url.path.startswith("/api/"):
         return await call_next(request)
-        
+
     start_time = time.time()
     current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-    # Read and restore request body
+
+    # Read the request body for logging. starlette's _CachedRequest caches it
+    # on the request object and replays it to the downstream app from that
+    # cache, so no receive-stubbing is needed — and stubbing would actively
+    # break StreamingResponse (its disconnect listener must observe a real
+    # `http.disconnect` from the raw channel, never a replayed http.request).
     req_body = await request.body()
-    
-    async def receive():
-        return {"type": "http.request", "body": req_body}
-        
-    request._receive = receive
-    
+
     req_str = req_body.decode('utf-8', errors='replace')
     print(f"\n[{current_time_str}] [API INPUT] {request.method} {request.url.path}\nPayload: {req_str}")
-    
+
+    if request.url.path in _STREAMING_PATHS:
+        # Early exit BEFORE touching response.body_iterator: log input only and
+        # hand the StreamingResponse straight through to the server.
+        response = await call_next(request)
+        print(f"[{current_time_str}] [API STREAM] {request.method} {request.url.path} (Status: {response.status_code}) — SSE passthrough, body not logged")
+        return response
+
     response = await call_next(request)
-    
+
     duration_ms = (time.time() - start_time) * 1000
-    
+
     # Capture response body
     res_body = b""
     async for chunk in response.body_iterator:
         res_body += chunk
-        
+
     res_str = res_body.decode('utf-8', errors='replace')
     print(f"[{current_time_str}] [API OUTPUT] {request.method} {request.url.path} (Status: {response.status_code}, Duration: {duration_ms:.2f}ms)\nPayload: {res_str[:2000]}" + ("..." if len(res_str) > 2000 else ""))
-    
+
     from fastapi.responses import Response
     return Response(
         content=res_body,

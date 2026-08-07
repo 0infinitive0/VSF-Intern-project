@@ -3,7 +3,6 @@ import MessageList from './message-list'
 import Composer from './composer'
 import StepNavigator from './step-navigator'
 import SuggestionChips from './suggestion-chips'
-import TripParametersCard from './trip-parameters-card'
 import IntakeParametersForm from './intake-parameters-form'
 import { deriveStageView } from '../lib/derive-stage'
 import type { ChatState } from '../types'
@@ -34,7 +33,7 @@ export default function ChatPanel({
   onSend: (text: string) => void
   width: number
 }) {
-  const { messages, suggestions, hotelOptions, tripPlan, intake, pending } = state
+  const { messages, suggestions, hotelOptions, tripPlan, intake, pending, streamingText } = state
   const { t } = useTranslation()
 
   const stage = deriveStageView(state)
@@ -109,7 +108,11 @@ export default function ChatPanel({
         onSend={onSend}
       />
 
-      <MessageList messages={messages} pending={pending} elapsedMs={state.elapsedMs} />
+      <MessageList
+        messages={messages}
+        pending={pending}
+        streamingText={streamingText}
+      />
 
       {/* Widget rail — fixed above the composer, never inside the scroll */}
       {!pending && (showIntakeForm || inHotelStage || suggestions.length > 0) && (
@@ -118,7 +121,6 @@ export default function ChatPanel({
             <IntakeParametersForm intake={intake!} onSubmit={onSend} disabled={false} />
           ) : (
             <>
-              {inHotelStage && <TripParametersCard tripPlan={tripPlan} intake={intake} />}
               {lastStage !== 'intake' && (
                 <SuggestionChips
                   suggestions={suggestions}

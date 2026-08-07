@@ -15,6 +15,7 @@
 @keyframes vPinIn{0%{opacity:0;transform:translateY(-14px) scale(.4)}70%{transform:translateY(0) scale(1.14)}100%{opacity:1;transform:scale(1)}}
 @keyframes vHero{from{opacity:0;transform:scale(1.08);filter:blur(12px)}to{opacity:1;transform:none;filter:blur(0)}}
 @keyframes vSheen{0%{transform:translateX(-130%) skewX(-14deg)}55%,100%{transform:translateX(240%) skewX(-14deg)}}
+@keyframes vBlink{0%,50%{opacity:1}50.01%,100%{opacity:0}}
 .v-walk{stroke-dasharray:2 9;stroke-linecap:round;animation:vDash 1.6s linear infinite}
 .v-air{stroke-dasharray:9 8;animation:vDash 2.2s linear infinite}
 .v-flow{stroke-dasharray:14 120;stroke-linecap:round;animation:vDash 3.4s linear infinite}

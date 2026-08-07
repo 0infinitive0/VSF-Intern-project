@@ -15,6 +15,7 @@ from datetime import datetime
 from functools import lru_cache
 from typing import Any
 
+from src.api.streaming import emit_phase
 from src.config import get_settings
 from src.i18n import t
 from src.services.hotel_selection import (
@@ -310,6 +311,11 @@ def _persist_itinerary_metadata(trip_data: dict[str, Any]) -> None:
     itinerary = itineraries[0] if isinstance(itineraries, list) else itineraries
     if not isinstance(itinerary, dict) or not itinerary.get("id"):
         return
+    # Emitted right before the FIRST external write (sessions.upsert below) —
+    # this is also the point-of-no-return anchor for Phase 4 cancellation: a
+    # key placed any earlier (before the guard) would sometimes fire without
+    # any write happening at all.
+    emit_phase("persisting")
     session_id = itinerary.get("session_id")
     if session_id:
         try:
@@ -1704,6 +1710,7 @@ def _generate_and_save_itinerary(
     the select_hotel tool. `save` defaults to the module's own file-backed
     _save_trip_data for direct/programmatic callers; a session-bound tool
     passes its own session-aware save callback instead."""
+    emit_phase("itinerary_build")
     try:
         build_kwargs: dict[str, Any] = {
             "hotel_query": hotel_query,

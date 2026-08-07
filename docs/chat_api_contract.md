@@ -13,6 +13,7 @@ so Phase 3 (backend) and Phase 4 (React frontend) can build against it independe
 | `GET` | `/api/v1/chat/{session_id}/plan` | — | `{trip_plan}` or 404 | Phase 3 (Alias: `/session/{session_id}/state`) |
 | `DELETE` | `/api/v1/chat/{session_id}` | — | `204` | Phase 3 |
 | `POST` | `/api/v1/planner_chat` | `{message, session_id, language, stay_dates, min_price, max_price}` | `PlannerChatResponse` | Shipped (extended in Phase 3) |
+| `POST` | `/api/v1/planner_chat/stream` | same as `/planner_chat` | `text/event-stream` (SSE) | Shipped (plan 260806-1602, Phase 1) |
 | `POST` | `/api/v1/hotels/search` | `{session_id, load_more}` | `{hotels, has_more}` | Phase 3 |
 | `POST` | `/api/v1/hotels/select` | `{session_id, hotel_id}` | `PlannerChatResponse` | Alias: `/chat/select_hotel` |
 | `POST` | `/api/v1/itineraries/generate` | `{session_id, language}` | `{status, trip_plan}` | Phase 3 |
@@ -109,6 +110,104 @@ Submits a new chat message to the trip planner agent.
 - `session_id` — currently accepted unvalidated by the request and auto-creates a
   session if unknown (`routes.py:29-32`, tracked as a red-team finding, not fixed in
   this phase).
+
+### Streaming Conversation (`POST /planner_chat/stream`)
+
+Added by plan `260806-1602-streaming-chat-messages` (Phase 1). A parallel SSE channel
+for the same chat turn — the plain `POST /planner_chat` above is kept **unchanged**
+and remains the fallback when SSE is unavailable (e.g. a proxy strips/chokes
+streaming). Both endpoints serve the identical payload: the stream's `final` frame is
+the exact dict the POST endpoint serializes (both assemble via
+`build_chat_response()` in `src/api/routes.py`; Phase 6 asserts byte-for-byte equality).
+
+**Request Body:** identical to `/planner_chat`.
+
+**Response:** `200`, `Content-Type: text/event-stream`, `Cache-Control: no-cache`,
+`X-Accel-Buffering: no`, `Connection: keep-alive`. Unknown session → plain `404`
+(not an SSE stream), exactly like the POST endpoint — clients treat that as "SSE
+unsupported" and fall back to `POST /planner_chat`.
+
+**Wire format** — one frame per event, frames separated by a blank line; lines
+starting with `:` are comments (open probe / heartbeat) and must be ignored by
+parsers. JSON is UTF-8 unescaped (`ensure_ascii=False` — Vietnamese text is not
+ASCII-escaped):
+
+```
+: open
+
+event: phase
+data: {"key":"hotel_search","tool":"recommend_hotels","at":1754...}
+
+event: delta
+data: {"text":"Khách sạn này "}
+
+event: reset
+data: {"reason":"discarded_tool_call_json"}
+
+event: final
+data: {"session_id":"...","reply":"...","suggestions":[...],"stage":"hotel_options",
+       "hotel_options":[...],"trip_plan":null,"intake":{...},"requires_stay_dates":false}
+
+event: error
+data: {"detail":"Đã xảy ra lỗi máy chủ. Vui lòng thử lại."}
+
+: heartbeat
+```
+
+- `: open` — comment frame sent immediately, forcing proxies to flush headers.
+- `: heartbeat` — comment frame every 15s of silence, guarding proxy idle timeouts.
+- `phase` — real pipeline progress (see key table below). `key` is **opaque**:
+  the backend never sends display text; the frontend owns i18n labels.
+- `delta` — real LLM tokens, only on the `_run_chat_agent` branch (Phase 3).
+  Clients must NOT assume every turn has deltas.
+- `reset` — safety net telling the client to discard buffered delta text
+  (an agent attempt was dropped after streaming had started) (Phase 3).
+- `final` — terminal frame carrying the full `PlannerChatResponse` dict.
+- `error` — terminal frame for turn failures; `detail` is sanitized, no internals.
+
+**Invariants:**
+
+- Every stream ends with EXACTLY ONE terminal frame: `final` or `error`. Never both,
+  never zero (`emitter.close()` is in the worker's `finally`).
+- `final.data` is the same dict `POST /planner_chat` serializes for the same
+  scenario — no extra/missing/renamed fields.
+- Concatenating all `delta.text` (after the most recent `reset`) equals
+  `final.reply` on turns that streamed tokens. Asserted by tests, not hoped for.
+- `delta` only appears on the `_run_chat_agent` branch.
+- `phase.key` is an opaque key — no display text crosses the wire.
+
+**`phase` key table** (every key = a real code position it is emitted at; nothing is
+emitted on a schedule — if a branch doesn't pass through a position, the key does not
+exist for that turn, and UIs must tolerate missing steps):
+
+| `key` | Emitted at | Deterministic or LLM |
+|---|---|---|
+| `received` | start of the turn (stream endpoint worker, `routes.py`) | — |
+| `routing` | immediately before `_decide_route` (`agents/session.py`) — only when the supervisor router is enabled | LLM supervisor |
+| `route_decided` | after `_decide_route`, carries `route` | — |
+| `compacting_history` | inside `_compact_history`, only when compaction actually runs (`agents/session.py`) | LLM |
+| `intake_check` | entry of `_run_intake` (`agents/session.py`) | deterministic |
+| `hotel_search` | before `tools.recommend_hotels.invoke` (`agents/session.py`) | DB + vector |
+| `tool_start` / `tool_end` | agent event loop (`agents/session.py`), carries `tool` | — |
+| `itinerary_build` | entry of `_generate_and_save_itinerary` (`services/trip_planner.py`) | LLM + scheduler |
+| `routing_legs` | inside `recalculate_itinerary_routes` (`services/routing.py`), once before the day loop, carries `days` | HTTP routing |
+| `persisting` | right before the first external DB write — inside BOTH `_persist_itinerary_metadata` (`services/trip_planner.py`) and `ItineraryStore.finalize_trip_data` (`services/itinerary_store.py`) | DB write |
+| `generating` | first prose token of the agent (Phase 3) | LLM |
+
+**Not shipped:** turn cancellation (`POST /chat/{session_id}/cancel`, a `cancelled`
+terminal frame, and the "Dừng" stop control). This is plan `260806-1602`'s Phase 4,
+paused after Phase 1-3/5/6 shipped. Every stream in this ship runs to one of the two
+terminal frames documented above; there is no server-side way to interrupt one.
+
+Observed key order follows the real call graph, not a schedule. Example: on the
+hotel-selection build turn the order is `itinerary_build` → `persisting` →
+`routing_legs`, because route recalculation runs INSIDE
+`persist_itinerary_bundle` (`itinerary_store.py`) which sits between the
+`persisting` key and the RPC write. (The plan's illustration `itinerary_build
+→ routing_legs → persisting` assumed the opposite nesting; truthful emission
+positions win, and `persisting` must stay right before the first external
+write — that position is the Phase 4 point-of-no-return anchor.) Clients must
+never rely on a fixed order beyond `received` first and the terminal frame last.
 
 ### Hotel Selection & Itinerary Flow
 

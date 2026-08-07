@@ -15,6 +15,7 @@ from json import JSONDecodeError
 from pathlib import Path
 from typing import Any
 
+from src.api.streaming import emit_phase
 from src.services.itinerary_reuse import (
     EMBEDDING_DIMENSION,
     ItineraryReuseQuery,
@@ -248,6 +249,10 @@ class ItineraryStore:
             "p_itinerary_id": itinerary["id"],
             "p_summary": summary,
         }
+        # Same `persisting` key as trip_planner._persist_itinerary_metadata —
+        # emitted right before the first external write of this call, and the
+        # aligned Phase 4 point-of-no-return anchor.
+        emit_phase("persisting")
         try:
             response = self._client.rpc("finalize_itinerary", params).execute()
             result = _first(getattr(response, "data", None)) or {}

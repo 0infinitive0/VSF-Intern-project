@@ -203,6 +203,9 @@ def test_route_chat(monkeypatch):
 
     class _FakeAgent:
         def stream(self, *_args, **_kwargs):
+            # stream=False (default, no `stream=True` passed here) ->
+            # stream_mode="values" -> bare event dicts, same shape as before
+            # phase-03 (the list/tuple shape only applies when stream=True).
             yield {"messages": [_FakeMessage("ai", content="Đang xử lý...", tool_calls=[{"name": "modify_trip_plan"}])]}
             yield {"messages": [_FakeMessage("ai", content="Đây là câu trả lời chung.")]}
 
@@ -418,6 +421,7 @@ def test_measure_and_write_latency_baseline(monkeypatch):
 
         class _FakeAgent:
             def stream(self, *_args, **_kwargs):
+                # stream=False here (no `stream=True` passed) -> bare dicts.
                 yield {"messages": [_FakeMessage()]}
 
         session = _session(agent=_FakeAgent(), initial_plan_complete=True)

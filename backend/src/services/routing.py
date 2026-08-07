@@ -4,6 +4,7 @@ import requests
 from typing import Optional, Dict, Any, Tuple
 from functools import lru_cache
 
+from src.api.streaming import emit_phase
 from src.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -211,6 +212,12 @@ def recalculate_itinerary_routes(trip_data: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(item, dict):
             day = item.get("day_number", 1)
             by_day.setdefault(day, []).append(item)
+
+    # Emitted once with the honest scope of work (days × items) — no fabricated
+    # leg counts: which legs actually resolve depends on per-item coordinates,
+    # only known while looping below.
+    if by_day:
+        emit_phase("routing_legs", days=len(by_day))
 
     for day, day_items in by_day.items():
         # Sort items by order_index if present

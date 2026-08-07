@@ -1,5 +1,5 @@
 {
-  "navBrand": "V-OTA AI",
+  "navBrand": "V-OTA",
 
   "sidebarLabel": "Điều hướng chính",
   "sidebarCollapseHint": "Thu gọn thanh bên",
@@ -32,8 +32,6 @@
   "intakeStep3Num": "BƯỚC 3",
   "intakeStep3Title": "Lịch trình & bản đồ",
   "intakeStep3Desc": "Timeline theo ngày, lộ trình tối ưu quanh khách sạn.",
-
-  "generatingElapsed": "{{seconds}} giây đã trôi",
 
   "chatPanelTitle": "AI Assistant",
   "chatPanelMoreHint": "Tùy chọn (chưa hỗ trợ)",
@@ -68,8 +66,20 @@
 
   "pendingDefault": "Đang xử lý...",
   "pendingSearchingHotels": "Đang tìm khách sạn phù hợp...",
-  "pendingBuildingPlan": "Đang lên lịch trình — thường mất 30–60 giây...",
-  "elapsedSuffix": "giây",
+  "pendingBuildingPlan": "Đang lên lịch trình...",
+
+  "phaseReceived": "Đã nhận yêu cầu",
+  "phaseRouting": "Đang xác định hướng xử lý",
+  "phaseRouteDecided": "Đã xác định hướng xử lý",
+  "phaseCompactingHistory": "Đang tóm tắt lịch sử hội thoại",
+  "phaseIntakeCheck": "Đang kiểm tra thông tin chuyến đi",
+  "phaseHotelSearch": "Đang tìm khách sạn phù hợp",
+  "phaseToolStart": "Đang thực hiện tác vụ",
+  "phaseToolEnd": "Đã hoàn tất tác vụ",
+  "phaseItineraryBuild": "Đang dựng lịch trình",
+  "phaseRoutingLegs": "Đang tính quãng đường di chuyển",
+  "phasePersisting": "Đang lưu lịch trình",
+  "phaseGenerating": "Đang soạn câu trả lời",
 
   "itineraryTitle": "Lịch trình dự kiến",
   "hotelLabel": "Khách sạn",
@@ -92,11 +102,6 @@
   "kindAttraction": "Tham quan",
   "kindRest": "Nghỉ ngơi",
   "kindEvening": "Buổi tối",
-
-  "tripParamsTitle": "Thông số chuyến đi",
-  "tripParamsDatesLabel": "Ngày đi",
-  "tripParamsGuestsLabel": "Số khách",
-  "tripParamsAdultsSuffix": "người lớn",
 
   "intakeDestinationLabel": "Điểm đến",
   "intakeDestinationPlaceholder": "Chọn điểm đến",

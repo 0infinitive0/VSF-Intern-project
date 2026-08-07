@@ -9,7 +9,15 @@ import type { ChatMessage } from '../types'
  *   - 24px "V" avatar on AI turns; timestamp caption beneath the bubble
  *   - bubbles cap at 44ch; the backend's pre-formatted text is preserved
  */
-export default function MessageBubble({ message }: { message: ChatMessage }) {
+export default function MessageBubble({
+  message,
+  streaming = false,
+}: {
+  message: ChatMessage
+  /** True while this bubble is the live target of `delta` events — renders a
+   * blinking cursor after the text (Phase 5, plan 260806-1602). */
+  streaming?: boolean
+}) {
   const { role, text, isError } = message
   const isUser = role === 'user'
 
@@ -35,6 +43,9 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
           className={`max-w-[44ch] px-3.5 py-2.5 text-[14px] leading-[1.58] tracking-[-0.08px] whitespace-pre-wrap ${radiusClass} ${bubbleClass}`}
         >
           {text}
+          {streaming && (
+            <span className="inline-block w-[2px] h-[1em] ml-0.5 -mb-0.5 bg-current animate-[vBlink_1s_step-end_infinite]" aria-hidden="true" />
+          )}
         </div>
       </div>
     </div>
