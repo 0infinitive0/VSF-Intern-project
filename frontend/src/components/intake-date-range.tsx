@@ -17,6 +17,9 @@ function fromISODate(value: string | undefined): Date | undefined {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed
 }
 
+// Initial month shown when the user hasn't picked a start date yet.
+const DEFAULT_CALENDAR_MONTH = fromISODate('2026-07-01')!
+
 /**
  * IntakeDateRange — a range-picker calendar with month+year navigation, from/to
  * summary chips and a confirm button (design dc.html:226-256).
@@ -38,7 +41,7 @@ export default function IntakeDateRange({
   disabled: boolean
 }) {
   const { t, i18n } = useTranslation()
-  const [month, setMonth] = useState<Date>(() => fromISODate(start) ?? new Date())
+  const [month, setMonth] = useState<Date>(() => fromISODate(start) ?? DEFAULT_CALENDAR_MONTH)
   const [pending, setPending] = useState<{ start: string; end: string }>({ start, end })
   const locale = i18n.language === 'vi' ? viLocale : enLocale
   const calendarRef = useRef<HTMLDivElement>(null)
@@ -131,7 +134,6 @@ export default function IntakeDateRange({
             const nextEnd = selectedRange.to ? toISODate(selectedRange.to) : nextStart
             setPending({ start: nextStart, end: nextEnd })
           }}
-          disabled={{ before: new Date() }}
           numberOfMonths={1}
         />
       </div>
