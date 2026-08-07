@@ -18,6 +18,10 @@ so Phase 3 (backend) and Phase 4 (React frontend) can build against it independe
 | `POST` | `/api/v1/itineraries/generate` | `{session_id, language}` | `{status, trip_plan}` | Phase 3 |
 | `GET` | `/api/v1/search_attractions` | `?q=...&k=10` | `{status, results}` | Phase 3 |
 | `GET` | `/api/v1/search_hotels` | `?q=...&k=10` | `{status, results}` | Phase 3 |
+| `GET` | `/api/v1/hotels/{hotel_id}` | `?check_in=YYYY-MM-DD&check_out=YYYY-MM-DD` | `HotelDetail` | Phase 3 |
+| `GET` | `/api/v1/attractions/{attraction_id}` | â€” | `AttractionDetail` | Phase 3 |
+| `GET` | `/api/v1/chat/sessions` | â€” | `SessionSummary[]` | Phase 4, opt-in persistence |
+| `GET` | `/api/v1/chat/{session_id}/restore` | â€” | `SessionRestore` | Phase 4, opt-in persistence |
 
 `message` stays required with `min_length=1`, and `session_id` stays required on
 `planner_chat`, so `tests/test_api/test_routes.py` passes unchanged (backwards
@@ -181,6 +185,58 @@ Forces the generation of an itinerary based on the current session state. Call t
   }
 }
 ```
+
+### Detail Lookups
+
+#### `GET /hotels/{hotel_id}`
+
+Returns one hotel, its rooms, and at most one `price` per room. `hotel_id` is a UUID;
+malformed IDs return FastAPI validation `422`, unknown IDs return `404`, and database
+failures return a generic `500`. This endpoint is sessionless and read-only.
+
+`check_in` and `check_out` are optional ISO dates, but must be supplied together with
+checkout after check-in. When supplied, `price` is a non-sold-out row matching exactly
+that stay; otherwise it is the latest non-sold-out room price. `price: null` means no
+matching price exists. The API never substitutes `hotels.lowest_price` for a room price.
+The current `room_prices` schema has no package-details column, so
+`rooms[].price.package_details` is currently `null`.
+
+#### `GET /attractions/{attraction_id}`
+
+Returns one attraction with nullable ticket prices preserved exactly: `0` means free and
+`null` means unknown. `opening_time` and `closing_time` serialize as `HH:MM:SS` strings.
+
+Live verification on 2026-08-06 found itinerary `reference_type` values only `Hotel`
+and `Attraction` (765 sampled rows: 127 and 638 respectively). Therefore the two detail
+routes cover all currently persisted itinerary references; there is no separate tour
+reference type or endpoint requirement.
+
+### Persisted Session History
+
+Session persistence is opt-in through `SESSION_PERSISTENCE_ENABLED=true`. When disabled,
+all existing session behavior remains in-memory and `GET /chat/sessions` returns an empty
+list. When enabled, each completed turn stores the serializable business state in
+`sessions.context_data`; persistence failures are logged and the in-memory chat turn still
+completes.
+
+The existing `chat_messages` table is not used for restoration because its current shape
+only stores sender/content/timestamp and cannot preserve LangChain message metadata or the
+frontend stage. Converted LangChain messages are instead stored under
+`context_data.messages`. Runtime-only `remaining_steps`, agent/tool instances, and locks
+are never persisted; rehydration constructs a fresh runtime session before attaching the
+saved state.
+
+#### `GET /chat/sessions`
+
+Returns persisted sessions newest first. `title` is the first real user message when one
+exists (otherwise `null`); the frontend owns any translated fallback. `status` is
+`completed` when a trip exists and `draft` otherwise.
+
+#### `GET /chat/{session_id}/restore`
+
+Returns the same structured planning state used by `planner_chat`, plus the restored
+`messages` stream. An in-memory miss rehydrates from `sessions` when persistence is
+enabled; unknown sessions return `404`.
 
 ### Semantic Search Utility
 

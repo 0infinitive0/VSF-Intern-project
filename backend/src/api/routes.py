@@ -12,27 +12,36 @@ Phase 3 changes:
 """
 
 import logging
-from datetime import UTC
+from datetime import UTC, date
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 
 from src.agents.session import (
     SessionRegistry,
+    TurnResult,
     debug_persist_hook,
     derive_stage,
     process_chat_turn,
+    supabase_persist_hook,
     suggestions_for,
 )
 from src.config import get_settings
 from src.models.schemas import (
+    AttractionDetailPayload,
+    HotelDetailPayload,
     IntakeStatus,
     PlannerChatRequest,
     PlannerChatResponse,
+    SessionRestorePayload,
+    SessionSummaryPayload,
     SelectHotelRequest,
     sanitize_system_error,
     to_hotel_options_payload,
     to_trip_plan_payload,
 )
+from src.services import session_store
+from src.services.place_details import get_attraction_detail, get_hotel_detail
 
 logger = logging.getLogger(__name__)
 
@@ -44,13 +53,55 @@ router = APIRouter()
 
 _settings = get_settings()
 
-_persist_hook = debug_persist_hook if _settings.debug_trip_plan_file else None
+_persistence_enabled = _settings.session_persistence_enabled
+_persist_hook = (
+    supabase_persist_hook
+    if _persistence_enabled
+    else debug_persist_hook if _settings.debug_trip_plan_file else None
+)
 
 registry = SessionRegistry(
     ttl_seconds=_settings.session_ttl_seconds,
     cap=_settings.max_sessions,
     persist_hook=_persist_hook,
+    load_hook=session_store.load if _persistence_enabled else None,
+    delete_hook=session_store.delete if _persistence_enabled else None,
 )
+
+
+# ---------------------------------------------------------------------------
+# Sessionless detail endpoints (Phase 3)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/hotels/{hotel_id}", response_model=HotelDetailPayload)
+def hotel_detail(
+    hotel_id: UUID, check_in: date | None = None, check_out: date | None = None
+) -> HotelDetailPayload:
+    if (check_in is None) != (check_out is None) or (
+        check_in is not None and check_out is not None and check_out <= check_in
+    ):
+        raise HTTPException(status_code=422, detail="check_in and check_out must form a valid stay.")
+    try:
+        detail = get_hotel_detail(str(hotel_id), check_in, check_out)
+    except Exception:
+        logger.exception("hotel_detail lookup failed for %s", hotel_id)
+        raise HTTPException(status_code=500, detail="Unable to retrieve hotel detail.")
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Hotel not found.")
+    return HotelDetailPayload.model_validate(detail)
+
+
+@router.get("/attractions/{attraction_id}", response_model=AttractionDetailPayload)
+def attraction_detail(attraction_id: UUID) -> AttractionDetailPayload:
+    try:
+        detail = get_attraction_detail(str(attraction_id))
+    except Exception:
+        logger.exception("attraction_detail lookup failed for %s", attraction_id)
+        raise HTTPException(status_code=500, detail="Unable to retrieve attraction detail.")
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Attraction not found.")
+    return AttractionDetailPayload.model_validate(detail)
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +119,37 @@ def create_session() -> dict:
         "session_id": session.session_id,
         "created_at": datetime.fromtimestamp(session.created_at, tz=UTC).isoformat(),
     }
+
+
+@router.get("/chat/sessions", response_model=list[SessionSummaryPayload])
+def list_persisted_sessions() -> list[SessionSummaryPayload]:
+    if not _persistence_enabled:
+        return []
+    try:
+        return [SessionSummaryPayload.model_validate(session_store.summarize(row)) for row in session_store.list_sessions()]
+    except Exception:
+        logger.exception("Unable to list persisted sessions")
+        raise HTTPException(status_code=500, detail="Unable to retrieve session history.")
+
+
+@router.get("/chat/{session_id}/restore", response_model=SessionRestorePayload)
+def restore_session(session_id: str) -> SessionRestorePayload:
+    session = registry.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    context = session_store.serialize(session)
+    stage = derive_stage(
+        TurnResult(text=str(session.state.get("reply") or ""), tool=session.state.get("tool_ran")), session
+    )
+    return SessionRestorePayload(
+        session_id=session.session_id,
+        messages=session_store.restored_messages(context),
+        suggestions=suggestions_for(session),
+        stage=stage,
+        hotel_options=to_hotel_options_payload(session.pending_hotel_selection),
+        trip_plan=to_trip_plan_payload(session.trip_data),
+        intake=IntakeStatus.from_state(session.intake_state, session.hotel_pref_state),
+    )
 
 
 @router.get("/chat/{session_id}/plan")
@@ -129,6 +211,8 @@ def select_hotel(request: SelectHotelRequest) -> PlannerChatResponse:
                 trip_plan=trip_plan,
                 intake=intake,
                 requires_stay_dates=requires_stay_dates,
+                compound_min_price=session.pending_hotel_selection.get("compound_min_price") if session.pending_hotel_selection else None,
+                compound_max_price=session.pending_hotel_selection.get("compound_max_price") if session.pending_hotel_selection else None,
             )
         except Exception as exc:
             logger.exception("Chat error for session %s", session_id)
@@ -201,6 +285,8 @@ def planner_chat(request: PlannerChatRequest) -> PlannerChatResponse:
         trip_plan=trip_plan,
         intake=intake,
         requires_stay_dates=requires_stay_dates,
+        compound_min_price=session.pending_hotel_selection.get("compound_min_price") if session.pending_hotel_selection else None,
+        compound_max_price=session.pending_hotel_selection.get("compound_max_price") if session.pending_hotel_selection else None,
     )
 
 

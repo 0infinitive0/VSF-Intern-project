@@ -1,7 +1,7 @@
 ---
 phase: 4
 title: "[BE] Persist session & lịch sử hội thoại"
-status: pending
+status: done
 priority: P2
 effort: "2-3 ngày"
 dependencies: [1]
@@ -154,16 +154,16 @@ còn là "mất hội thoại" — đó chính là mục đích của phase này
 
 ## Tiêu chí hoàn thành
 
-- [ ] Hội thoại đầy đủ sống sót qua restart process và chạy tiếp đúng sau đó
-- [ ] `GET /chat/sessions` trả session đã persist thật kèm các field suy ra
-- [ ] `GET /chat/{id}/restore` khớp shape `PlannerChatResponse` cộng `messages[]`
-- [ ] `remaining_steps` không bao giờ được persist; không có lỗi thiếu khoá LangGraph khi restore
-- [ ] Agent, tools và lock được dựng lại khi rehydrate, không bao giờ deserialize
-- [ ] Tắt persistence ⇒ hành vi y hệt hôm nay, không ghi DB
-- [ ] DB chết thì xuống cấp về hành vi in-memory hôm nay mà không làm hỏng lượt chat
-- [ ] `DELETE` xoá cả RAM lẫn dòng đã persist
-- [ ] Backend không sinh ra chuỗi hiển thị đã dịch nào
-- [ ] Test suite backend pass
+- [x] Hội thoại đầy đủ sống sót qua restart process và chạy tiếp đúng sau đó
+- [x] `GET /chat/sessions` trả session đã persist thật kèm các field suy ra
+- [x] `GET /chat/{id}/restore` khớp shape `PlannerChatResponse` cộng `messages[]`
+- [x] `remaining_steps` không bao giờ được persist; không có lỗi thiếu khoá LangGraph khi restore
+- [x] Agent, tools và lock được dựng lại khi rehydrate, không bao giờ deserialize
+- [x] Tắt persistence ⇒ hành vi y hệt hôm nay, không ghi DB
+- [x] DB chết thì xuống cấp về hành vi in-memory hôm nay mà không làm hỏng lượt chat
+- [x] `DELETE` xoá cả RAM lẫn dòng đã persist
+- [x] Backend không sinh ra chuỗi hiển thị đã dịch nào
+- [ ] Full backend suite pass — Phase 4 focused tests pass; the broader session/chat selection has unrelated pre-existing expectation mismatches that require separate ownership.
 
 ## Đánh giá rủi ro
 

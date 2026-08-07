@@ -16,8 +16,11 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from langchain_core.messages import AIMessage, HumanMessage
 
 from src.agents.graph import build_trip_agent
 from src.agents.routing_decision import (
@@ -358,6 +361,18 @@ def debug_persist_hook(session: TripSession) -> None:
         pending_file.unlink()
 
 
+def supabase_persist_hook(session: TripSession) -> None:
+    """Best-effort persistence: database outages must not fail a chat turn."""
+    try:
+        if not _SESSION_ID_PATTERN.fullmatch(session.session_id):
+            raise ValueError("Unsafe session id for persistent storage.")
+        from src.services.session_store import upsert
+
+        upsert(session)
+    except Exception:
+        logger.exception("Unable to persist session %s; continuing in memory", session.session_id)
+
+
 def suggestions_for(session: TripSession) -> list[dict[str, str]]:
     """Tappable quick-reply chips for the state the conversation is now in, as
     [{"label", "value"}] — `value` is what to send when tapped.
@@ -600,7 +615,7 @@ def _decide_route(session: TripSession, context: RouteContext, user_input: str) 
     return validated
 
 
-def process_chat_turn(
+def _process_chat_turn(
     session: TripSession,
     user_input: str,
     stay_dates: tuple[str, str] | None = None,
@@ -732,7 +747,7 @@ def process_chat_turn(
 
 
 
-def handle_frontend_hotel_selection(session: TripSession, hotel_id: str) -> TurnResult:
+def _handle_frontend_hotel_selection(session: TripSession, hotel_id: str) -> TurnResult:
     """Handles direct hotel selection from the frontend API."""
     pending = session.pending_hotel_selection
     if not pending:
@@ -854,6 +869,40 @@ def handle_frontend_hotel_selection(session: TripSession, hotel_id: str) -> Turn
         text=str(reply),
         tool="select_hotel"
     )
+
+
+def _persist_turn(session: TripSession, result: TurnResult, user_input: str | None = None) -> TurnResult:
+    """Persist after a completed turn without changing the turn's outcome."""
+    session.state["reply"] = result.text
+    session.state["tool_ran"] = result.tool
+    if user_input:
+        now = datetime.now(UTC).isoformat()
+        stage = derive_stage(result, session)
+        session.state["messages"].extend(
+            [
+                HumanMessage(content=user_input, additional_kwargs={"stage": stage, "at": now}),
+                AIMessage(content=result.text, additional_kwargs={"stage": stage, "at": now}),
+            ]
+        )
+    if session.persist_hook:
+        session.persist_hook(session)
+    return result
+
+
+def process_chat_turn(
+    session: TripSession,
+    user_input: str,
+    stay_dates: tuple[str, str] | None = None,
+    language: str = "vi",
+) -> TurnResult:
+    """Run one turn, then persist its business state and visible message pair."""
+    result = _process_chat_turn(session, user_input, stay_dates=stay_dates, language=language)
+    return _persist_turn(session, result, user_input)
+
+
+def handle_frontend_hotel_selection(session: TripSession, hotel_id: str) -> TurnResult:
+    """Run a direct hotel-selection action and persist its changed state."""
+    return _persist_turn(session, _handle_frontend_hotel_selection(session, hotel_id))
 
 def _run_finalize(session: TripSession) -> TurnResult:
     tool_response = session.tools.finalize_trip_plan.invoke({})
@@ -1159,6 +1208,10 @@ def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:
                     logger.info("Tool returned: %s", latest_message.name)
                     logger.warning("Tool output: %s...", str(latest_message.content)[:500])
                     
+                    if tool_output_response:
+                        logger.warning("Enforcing 1-tool-call limit per user message. Breaking stream.")
+                        break
+                    
                     # If tool signals anti-loop, abort immediately to prevent LLM from spinning
                     if "ĐỪNG gọi lại" in str(latest_message.content) or "DO NOT CALL IT AGAIN" in str(latest_message.content):
                         logger.warning("Anti-loop signal received from tool. Breaking execution loop.")
@@ -1249,12 +1302,16 @@ class SessionRegistry:
         ttl_seconds: float = DEFAULT_SESSION_TTL_SECONDS,
         cap: int = DEFAULT_SESSION_CAP,
         persist_hook: Callable[[TripSession], None] | None = None,
+        load_hook: Callable[[str], dict[str, Any] | None] | None = None,
+        delete_hook: Callable[[str], None] | None = None,
     ) -> None:
         self._sessions: dict[str, TripSession] = {}
         self._registry_lock = threading.Lock()
         self._ttl_seconds = ttl_seconds
         self._cap = cap
         self._persist_hook = persist_hook
+        self._load_hook = load_hook
+        self._delete_hook = delete_hook
 
     def create(self) -> TripSession:
         """The only way a session comes into being with a server-generated id."""
@@ -1277,7 +1334,29 @@ class SessionRegistry:
             session = self._sessions.get(session_id)
             if session is not None:
                 session.last_seen_at = time.time()
-            return session
+                return session
+            if self._load_hook is None:
+                return None
+            try:
+                row = self._load_hook(session_id)
+                if row is None:
+                    return None
+                from src.services.session_store import deserialize
+
+                session = create_chat_session(session_id, persist_hook=self._persist_hook)
+                session.state = deserialize(session_id, row.get("context_data"))
+                created_at = row.get("created_at")
+                if isinstance(created_at, str):
+                    try:
+                        session.created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00")).timestamp()
+                    except ValueError:
+                        logger.warning("Ignoring invalid created_at for session %s", session_id)
+                session.last_seen_at = time.time()
+                self._sessions[session_id] = session
+                return session
+            except Exception:
+                logger.exception("Unable to rehydrate session %s; treating as unavailable", session_id)
+                return None
 
     def resolve(self, session_id: str) -> TripSession:
         """Atomically look up or create a session for a caller-supplied id.
@@ -1300,6 +1379,11 @@ class SessionRegistry:
     def drop(self, session_id: str) -> None:
         with self._registry_lock:
             self._sessions.pop(session_id, None)
+            if self._delete_hook is not None:
+                try:
+                    self._delete_hook(session_id)
+                except Exception:
+                    logger.exception("Unable to delete persisted session %s", session_id)
 
     def __len__(self) -> int:
         with self._registry_lock:

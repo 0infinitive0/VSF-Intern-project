@@ -65,6 +65,74 @@ class RoomPayload(BaseModel):
     view: str | None = Field(default=None, description="Hướng nhìn")
 
 
+class RoomPricePayload(BaseModel):
+    amount: float | None = None
+    currency: str | None = None
+    check_in_date: date | None = None
+    check_out_date: date | None = None
+    sold_out: bool | None = None
+    package_details: str | None = None
+
+
+class RoomDetailPayload(BaseModel):
+    id: str
+    name: str
+    bed_description: str | None = None
+    room_size_sqm: float | None = None
+    max_guests: int | None = None
+    view: str | None = None
+    room_facilities: list[str] | None = None
+    images: list[str] | None = None
+    price: RoomPricePayload | None = None
+
+
+class HotelDetailPayload(BaseModel):
+    id: str
+    name: str
+    star_rating: float | None = None
+    description: str | None = None
+    address: str | None = None
+    city: str | None = None
+    area_name: str | None = None
+    location_highlight: str | None = None
+    coordinates: str | None = None
+    image_url: str | None = None
+    images: list[str] | None = None
+    amenities: list[str] | None = None
+    amenity_groups: dict[str, Any] | None = None
+    awards: list[str] | None = None
+    warnings: list[str] | None = None
+    review_score: float | None = None
+    review_count: int | None = None
+    category_scores: dict[str, Any] | None = None
+    check_in_time: str | None = None
+    check_in_until: str | None = None
+    check_out_time: str | None = None
+    reception_open_until: str | None = None
+    nearby_attractions: Any | None = None
+    nearby_essentials: Any | None = None
+    lowest_price: float | None = None
+    currency: str | None = None
+    rooms: list[RoomDetailPayload] = Field(default_factory=list)
+
+
+class AttractionDetailPayload(BaseModel):
+    id: str
+    name: str
+    description: str | None = None
+    category: str | None = None
+    is_tour: bool | None = None
+    estimated_duration_minutes: int | None = None
+    opening_time: str | None = None
+    closing_time: str | None = None
+    ticket_price_adult: float | None = None
+    ticket_price_child: float | None = None
+    rating: float | None = None
+    review_count: int | None = None
+    coordinates: str | None = None
+    images: list[str] | None = None
+
+
 # ---------------------------------------------------------------------------
 # Phase 3 payload models
 # ---------------------------------------------------------------------------
@@ -91,13 +159,13 @@ class HotelOption(BaseModel):
     address: str | None = None
     area_name: str | None = None
     image_url: str | None = None
-    images: list[str] = Field(default_factory=list)
     amenities: list[str] = Field(default_factory=list)
     review_score: float | None = None
     review_count: int | None = None
     match_score: float | None = Field(default=None, ge=0.0, le=1.0)
     match_reasons: list[dict[str, float | str]] = Field(default_factory=list)
     city: str | None = None
+    preferences: list[str] = Field(default_factory=list)
 
 
 class RouteInfoPayload(BaseModel):
@@ -279,6 +347,36 @@ class PlannerChatResponse(BaseModel):
     trip_plan: TripPlanPayload | None = None
     intake: IntakeStatus | None = None
     requires_stay_dates: bool = False
+    compound_min_price: float | None = None
+    compound_max_price: float | None = None
+
+
+class SessionSummaryPayload(BaseModel):
+    session_id: str
+    title: str | None = None
+    destination: str | None = None
+    duration_days: int | None = None
+    status: Literal["draft", "completed"]
+    created_at: str | None = None
+    updated_at: str | None = None
+    thumbnail_url: str | None = None
+
+
+class RestoredMessagePayload(BaseModel):
+    role: Literal["user", "assistant"]
+    text: str
+    stage: str
+    at: str
+
+
+class SessionRestorePayload(BaseModel):
+    session_id: str
+    messages: list[RestoredMessagePayload] = Field(default_factory=list)
+    suggestions: list[SuggestionPayload] = Field(default_factory=list)
+    stage: str
+    hotel_options: list[HotelOption] = Field(default_factory=list)
+    trip_plan: TripPlanPayload | None = None
+    intake: IntakeStatus | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -409,13 +507,13 @@ def to_hotel_options_payload(pending: dict[str, Any] | None) -> list[HotelOption
                 address=option.get("address"),
                 area_name=option.get("area_name"),
                 image_url=option.get("image_url"),
-                images=list(option.get("images") or []),
                 amenities=list(option.get("amenities") or []),
                 review_score=option.get("review_score"),
                 review_count=option.get("review_count"),
                 match_score=option.get("match_score"),
                 match_reasons=list(option.get("match_reasons") or []),
                 city=option.get("city"),
+                preferences=list(option.get("preferences") or []),
             )
         )
     return options

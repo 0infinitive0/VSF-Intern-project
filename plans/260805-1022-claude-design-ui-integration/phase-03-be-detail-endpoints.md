@@ -1,7 +1,7 @@
 ---
 phase: 3
 title: "[BE] Endpoint chi tiết khách sạn & địa điểm"
-status: pending
+status: done
 priority: P1
 effort: "1.5-2 ngày"
 dependencies: [1]
@@ -141,14 +141,14 @@ chưa làm" — **không được** âm thầm trả 404 cho một item hợp l�
 
 ## Tiêu chí hoàn thành
 
-- [ ] Cả hai endpoint trả đúng shape contract Phase 1
-- [ ] `404` khi id không tồn tại, `422` khi id sai định dạng, `500` khi DB lỗi — ba đường phân biệt
-- [ ] `price` của phòng là `null` khi không có dòng khớp; không bao giờ lấp bằng `hotels.lowest_price`
-- [ ] `ticket_price = 0` và `ticket_price = null` vẫn phân biệt được trong response
-- [ ] Đã rà và ghi lại bộ giá trị `reference_type`
-- [ ] Không đụng đến session, lock hay state của agent
-- [ ] Chi tiết khách sạn ≤ 3 query
-- [ ] Test pass; đã bàn giao báo cáo mức phủ field cho Dev F
+- [x] Cả hai endpoint trả đúng shape contract Phase 1
+- [x] `404` khi id không tồn tại, `422` khi id sai định dạng, `500` khi DB lỗi — ba đường phân biệt
+- [x] `price` của phòng là `null` khi không có dòng khớp; không bao giờ lấp bằng `hotels.lowest_price`
+- [x] `ticket_price = 0` và `ticket_price = null` vẫn phân biệt được trong response
+- [x] Đã rà và ghi lại bộ giá trị `reference_type`
+- [x] Không đụng đến session, lock hay state của agent
+- [x] Chi tiết khách sạn ≤ 3 query
+- [x] Test pass; đã bàn giao báo cáo mức phủ field cho Dev F
 
 ## Đánh giá rủi ro
 
