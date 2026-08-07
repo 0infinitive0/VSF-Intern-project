@@ -107,10 +107,24 @@ def recommend_hotels(
     # A follow-up search must start beyond the hotels already shown to the user.
     # Keep an explicit list too so callers that already know prior IDs can use the
     # same contract without depending on session state.
-    existing_options = (runtime.state.get("pending_hotel_selection") or {}).get("options", [])
-    existing_ids = [str(option.get("id", "")).strip() for option in existing_options if option.get("id")]
+    existing_pending = runtime.state.get("pending_hotel_selection") or {}
+    existing_options = existing_pending.get("options", [])
+    
+    # Check if core parameters changed. If so, we must discard the old list.
+    if existing_pending:
+        old_dest = existing_pending.get("destination", "")
+        old_people = existing_pending.get("people", "")
+        old_start = existing_pending.get("start_date", "")
+        old_end = existing_pending.get("end_date", "")
+        
+        if (old_dest != clean_destination or 
+            old_people != people or 
+            old_start != start_date or 
+            old_end != end_date):
+            existing_options = []
+
     requested_ids = [str(hotel_id).strip() for hotel_id in (exclude_hotel_ids or []) if str(hotel_id).strip()]
-    excluded_ids = list(dict.fromkeys([*existing_ids, *requested_ids]))
+    excluded_ids = list(dict.fromkeys(requested_ids))
 
     try:
         selection_kwargs = {
@@ -151,14 +165,41 @@ def recommend_hotels(
         )
         return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
 
-    # Keep the old options visible and defensively remove any duplicate returned
-    # by an out-of-date database function.
-    existing_id_set = set(existing_ids)
-    new_options = [data for data, _candidate in options if str(data.get("id", "")) not in existing_id_set]
+    # Determine current preference strings
+    current_prefs = []
+    if hotel_preferences.strip():
+        current_prefs.append(hotel_preferences.strip())
+    if hotel_amenity_prefs.strip():
+        current_prefs.extend([p.strip() for p in hotel_amenity_prefs.split(",") if p.strip()])
     
-    combined_options = existing_options + new_options
+    # Compare and merge with existing options
+    existing_by_id = {str(opt.get("id")): opt for opt in existing_options if opt.get("id")}
+    
+    for data, _candidate in options:
+        hotel_id = str(data.get("id"))
+        if not hotel_id:
+            continue
+        
+        if hotel_id in existing_by_id:
+            prefs = existing_by_id[hotel_id].get("preferences", [])
+            for cp in current_prefs:
+                if cp not in prefs:
+                    prefs.append(cp)
+            existing_by_id[hotel_id]["preferences"] = prefs
+        else:
+            data["preferences"] = list(current_prefs)
+            existing_by_id[hotel_id] = data
+            
+    combined_options = list(existing_by_id.values())
+    
+    # Sort by number of matched preferences (DESC) and lowest_price (ASC)
+    combined_options.sort(key=lambda x: (-len(x.get("preferences", [])), float(x.get("lowest_price", 0) or 0)))
+    
+    all_prefs = set()
     for idx, opt in enumerate(combined_options, start=1):
         opt["rank"] = idx
+        for p in opt.get("preferences", []):
+            all_prefs.add(p)
 
     pending_payload = {
         "mode": "new_trip",
@@ -173,6 +214,7 @@ def recommend_hotels(
         "intake_context": intake_context,
         "created_at": datetime.now().isoformat(),
         "options": combined_options,
+        "all_preferences": list(all_prefs),
     }
     reply = t(
         "Mình đã tìm được danh sách khách sạn phù hợp. Bạn xem và chọn trực tiếp khách sạn mong muốn trong tab Khách sạn để tạo lịch trình nhé!",

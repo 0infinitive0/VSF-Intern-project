@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     # Session registry (Phase 3)
     session_ttl_seconds: int = Field(default=7200, ge=60, description="TTL per session in seconds (default 2h)")
     max_sessions: int = Field(default=200, ge=1, description="Hard cap on concurrent in-memory sessions")
+    session_persistence_enabled: bool = Field(
+        default=False,
+        description="Persist chat sessions to Supabase and rehydrate them after in-memory eviction.",
+    )
     debug_trip_plan_file: bool = Field(
         default=False,
         description="If True, writes trip plan JSON to debug/{session_id}/ for debugging (never global paths)",
