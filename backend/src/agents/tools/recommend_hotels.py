@@ -15,6 +15,8 @@ import logging
 from datetime import date, datetime
 from typing import Any
 
+from pydantic import BaseModel, Field
+
 from langchain.tools import ToolRuntime, tool
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
@@ -33,6 +35,11 @@ from src.services.trip_planner import _get_destination_id
 logger = logging.getLogger(__name__)
 
 
+class PreferenceItem(BaseModel):
+    id: str = Field(description="English identifier (e.g. 'swimming_pool', 'near_center')")
+    label: str = Field(description="Vietnamese display name (e.g. 'Hồ bơi', 'Gần trung tâm')")
+
+
 @tool
 def recommend_hotels(
     destination: str = "",
@@ -40,8 +47,14 @@ def recommend_hotels(
     start_date: str = "",
     end_date: str = "",
     people: str = "",
-    preferences: str = "",
-    hotel_preferences: str = "",
+    preferences: str = Field(
+        default="",
+        description="General trip preferences. MUST be a JSON array of objects as a string, e.g. \"[{'id': '...', 'label': '...'}]\". Do NOT include budget info here."
+    ),
+    hotel_preferences: str = Field(
+        default="",
+        description="Specific hotel preferences. MUST be a JSON array of objects as a string, e.g. \"[{'id': 'swimming_pool', 'label': 'Hồ bơi'}]\". Do NOT include budget info here."
+    ),
     target_price: str = "",
     min_price: str = "",
     max_price: str = "",
@@ -54,7 +67,9 @@ def recommend_hotels(
     """
     CRITICAL: Use this tool whenever you need to search for hotels, recommend hotels, or when the user updates their hotel preferences (e.g., "khách sạn có hồ bơi"). Destination, duration, and number of people must be known. This is the ONLY way to start planning a new trip — never
     call `generate_full_itinerary` yourself. If the user mentioned specific hotel wants (star rating,
-    view, amenities...), pass them in `hotel_preferences`. `target_price`/`min_price`/`max_price`/
+    view, amenities...), pass them in `hotel_preferences` as a list of dicts with 'id' and 'label'.
+    DO NOT include budget or price information (like '1-2 triệu') in `preferences` or `hotel_preferences`. Use `min_price` and `max_price` for budget.
+    `target_price`/`min_price`/`max_price`/
     `hotel_amenity_prefs` are usually pre-resolved by the guided budget/amenity intake in
     terminal_chat.py (a tier pick like "tầm trung" resolves to a real min/max range, e.g. 800000/
     2500000) — but if you are handling trip planning yourself (e.g. a second trip request later in
@@ -86,9 +101,9 @@ def recommend_hotels(
                 if last_calls[0]["args"] == current_calls[0]["args"]:
                     logger.warning("[recommend_hotels] ANTI-LOOP TRIGGERED!")
                     reply = t(
-                        "Lỗi: Bạn đã gọi công cụ này với cùng tham số rồi. ĐỪNG gọi lại. Hãy trả lời người dùng bằng kết quả đã tìm được.",
+                        "SYSTEM ERROR: Lỗi: Bạn đã gọi công cụ này với cùng tham số rồi. ĐỪNG gọi lại. Hãy trả lời người dùng bằng kết quả đã tìm được.",
                         language
-                    ) if language == "vi" else "Error: You already called this tool with the same args. DO NOT CALL IT AGAIN. Answer the user with the result."
+                    ) if language == "vi" else "SYSTEM ERROR: Error: You already called this tool with the same args. DO NOT CALL IT AGAIN. Answer the user with the result."
                     return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
 
     clean_destination = destination.strip()
@@ -144,7 +159,7 @@ def recommend_hotels(
         old_start = existing_pending.get("start_date", "")
         old_end = existing_pending.get("end_date", "")
         
-        if (old_dest != clean_destination or 
+        if (old_dest != target_destination or 
             old_start != start_date or 
             old_end != end_date):
             existing_options = []
@@ -203,14 +218,51 @@ def recommend_hotels(
         )
         return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
 
-    # Determine current preference strings
-    current_prefs = []
-    if hotel_preferences.strip():
-        current_prefs.append(hotel_preferences.strip())
-    if preferences.strip():
-        current_prefs.extend([p.strip() for p in preferences.split(",") if p.strip()])
+    import json
+
+    # Fallback initialization
+    if preferences is None:
+        preferences = ""
+    if hotel_preferences is None:
+        hotel_preferences = ""
+
+    def parse_prefs(pref_str: str) -> list[dict]:
+        pref_str = pref_str.strip()
+        if not pref_str:
+            return []
+        try:
+            # If it's a JSON array string like '[{"id": "x", "label": "y"}]'
+            parsed = json.loads(pref_str)
+            if isinstance(parsed, list):
+                return parsed
+        except Exception:
+            pass
+        # Fallback for LLMs that just return a normal string instead of a JSON array
+        # E.g., "khách sạn có hồ bơi"
+        return [{"id": pref_str, "label": pref_str}]
+
+    parsed_hotel_prefs = parse_prefs(hotel_preferences)
+    parsed_general_prefs = parse_prefs(preferences)
+
+    # Determine current preference objects
+    current_prefs_dict = {}
+    for p in parsed_hotel_prefs:
+        p_dict = p.model_dump() if hasattr(p, "model_dump") else p if isinstance(p, dict) else None
+        if p_dict and p_dict.get("id") and p_dict.get("label"):
+            current_prefs_dict[str(p_dict["id"])] = p_dict
+    for p in parsed_general_prefs:
+        p_dict = p.model_dump() if hasattr(p, "model_dump") else p if isinstance(p, dict) else None
+        if p_dict and p_dict.get("id") and p_dict.get("label"):
+            current_prefs_dict[str(p_dict["id"])] = p_dict
+            
+    # For hotel amenity string, we don't have a good label, so we use the id for both
     if hotel_amenity_prefs.strip():
-        current_prefs.extend([p.strip() for p in hotel_amenity_prefs.split(",") if p.strip()])
+        for tag in hotel_amenity_prefs.split(","):
+            tag = tag.strip()
+            if tag:
+                current_prefs_dict[tag] = {"id": tag, "label": tag}
+    
+    current_pref_ids = list(current_prefs_dict.keys())
     
     # Compare and merge with existing options
     existing_by_id = {str(opt.get("id")): opt for opt in existing_options if opt.get("id")}
@@ -222,12 +274,12 @@ def recommend_hotels(
         
         if hotel_id in existing_by_id:
             prefs = existing_by_id[hotel_id].get("preferences", [])
-            for cp in current_prefs:
-                if cp not in prefs:
-                    prefs.append(cp)
+            for cp_id in current_pref_ids:
+                if cp_id not in prefs:
+                    prefs.append(cp_id)
             existing_by_id[hotel_id]["preferences"] = prefs
         else:
-            data["preferences"] = list(current_prefs)
+            data["preferences"] = list(current_pref_ids)
             existing_by_id[hotel_id] = data
             
     combined_options = list(existing_by_id.values())
@@ -235,11 +287,27 @@ def recommend_hotels(
     # Sort by number of matched preferences (DESC) and lowest_price (ASC)
     combined_options.sort(key=lambda x: (-len(x.get("preferences", [])), float(x.get("lowest_price", 0) or 0)))
     
-    all_prefs = set()
+    # We maintain all_preferences dict to ensure we have labels for all previously saved IDs
+    # But wait, existing_pending only has active_preferences and all_preferences in the payload.
+    # We should merge them.
+    all_prefs_dict = {}
+    for p in existing_pending.get("all_preferences", []):
+        if isinstance(p, dict) and "id" in p:
+            all_prefs_dict[p["id"]] = p
+            
+    # Add new current prefs
+    all_prefs_dict.update(current_prefs_dict)
+    
+    # Rebuild all_preferences by gathering every preference ID assigned to any hotel
+    final_all_prefs = []
+    seen_prefs = set()
     for idx, opt in enumerate(combined_options, start=1):
         opt["rank"] = idx
-        for p in opt.get("preferences", []):
-            all_prefs.add(p)
+        for p_id in opt.get("preferences", []):
+            if p_id not in seen_prefs:
+                seen_prefs.add(p_id)
+                # Fallback to id as label if we somehow lost the label
+                final_all_prefs.append(all_prefs_dict.get(p_id, {"id": p_id, "label": p_id}))
 
     compound_min_price = existing_pending.get("compound_min_price")
     if parsed_min_price is not None:
@@ -257,7 +325,7 @@ def recommend_hotels(
 
     pending_payload = {
         "mode": "new_trip",
-        "destination": clean_destination,
+        "destination": target_destination,
         "destination_id": destination_id,
         "duration": duration,
         "start_date": start_date,
@@ -268,7 +336,8 @@ def recommend_hotels(
         "intake_context": intake_context,
         "created_at": datetime.now().isoformat(),
         "options": combined_options,
-        "all_preferences": list(all_prefs),
+        "all_preferences": final_all_prefs,
+        "active_preferences": list(current_prefs_dict.values()),
         "compound_min_price": compound_min_price,
         "compound_max_price": compound_max_price,
     }
