@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime
+from typing import Any
 
 from langchain.tools import ToolRuntime, tool
 from langchain_core.messages import ToolMessage
@@ -46,13 +47,12 @@ def recommend_hotels(
     max_price: str = "",
     hotel_amenity_prefs: str = "",
     intake_context: str = "",
-    exclude_hotel_ids: list[str] | None = None,
+    exclude_hotel_ids: Any = None,
     *,
     runtime: ToolRuntime[None, TripState],
 ) -> Command:
     """
-    CRITICAL: Use this tool ONCE destination, duration, and number of people are all known, to show
-    a ranked list of real hotel options. This is the ONLY way to start planning a new trip — never
+    CRITICAL: Use this tool whenever you need to search for hotels, recommend hotels, or when the user updates their hotel preferences (e.g., "khách sạn có hồ bơi"). Destination, duration, and number of people must be known. This is the ONLY way to start planning a new trip — never
     call `generate_full_itinerary` yourself. If the user mentioned specific hotel wants (star rating,
     view, amenities...), pass them in `hotel_preferences`. `target_price`/`min_price`/`max_price`/
     `hotel_amenity_prefs` are usually pre-resolved by the guided budget/amenity intake in
@@ -71,6 +71,27 @@ def recommend_hotels(
     if error:
         return Command(update={"messages": [ToolMessage(error, tool_call_id=runtime.tool_call_id)]})
     language = str(runtime.state.get("language") or "vi")
+
+    # Anti-loop mechanism: restrict tool to 1 call per user message if args are identical
+    messages = runtime.state.get("messages", [])
+    if len(messages) >= 3 and getattr(messages[-2], "type", "") == "tool" and getattr(messages[-3], "type", "") == "ai":
+        last_ai_msg = messages[-3]
+        curr_ai_msg = messages[-1]
+        
+        if hasattr(last_ai_msg, "tool_calls") and last_ai_msg.tool_calls and hasattr(curr_ai_msg, "tool_calls") and curr_ai_msg.tool_calls:
+            last_calls = last_ai_msg.tool_calls
+            current_calls = curr_ai_msg.tool_calls
+            if last_calls[0]["name"] == "recommend_hotels" and current_calls[0]["name"] == "recommend_hotels":
+                # Compare args (excluding id)
+                if last_calls[0]["args"] == current_calls[0]["args"]:
+                    logger.warning("[recommend_hotels] ANTI-LOOP TRIGGERED!")
+                    reply = t(
+                        "Lỗi: Bạn đã gọi công cụ này với cùng tham số rồi. ĐỪNG gọi lại. Hãy trả lời người dùng bằng kết quả đã tìm được.",
+                        language
+                    ) if language == "vi" else "Error: You already called this tool with the same args. DO NOT CALL IT AGAIN. Answer the user with the result."
+                    return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
+
+    clean_destination = destination.strip()
     try:
         parsed_start_date = date.fromisoformat(start_date)
         parsed_end_date = date.fromisoformat(end_date)
@@ -84,15 +105,22 @@ def recommend_hotels(
         reply = t("SYSTEM ERROR: Ngày kết thúc phải sau ngày bắt đầu.", language)
         return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
 
-    destination_id = _get_destination_id(clean_destination)
-    if not destination_id:
-        reply = t(
-            "SYSTEM ERROR: Không tìm thấy dữ liệu điểm đến cho {dest}.",
-            language,
-            dest=clean_destination,
-        )
-        return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
-    destination_id = str(destination_id)
+    trip_data = runtime.state.get("trip_data")
+    if trip_data and trip_data.destination and trip_data.destination.id:
+        destination_id = str(trip_data.destination.id)
+    else:
+        intake = runtime.state.get("intake") or {}
+        intake_destination = intake.get("destination")
+        target_destination = intake_destination if intake_destination else clean_destination
+        destination_id = _get_destination_id(target_destination)
+        if not destination_id:
+            reply = t(
+                "SYSTEM ERROR: Không tìm thấy dữ liệu điểm đến cho {dest}.",
+                language,
+                dest=target_destination,
+            )
+            return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
+        destination_id = str(destination_id)
 
     hotel_query = hotel_preferences.strip() or None
     parsed_target_price = float(target_price) if target_price.strip() else None
@@ -113,17 +141,27 @@ def recommend_hotels(
     # Check if core parameters changed. If so, we must discard the old list.
     if existing_pending:
         old_dest = existing_pending.get("destination", "")
-        old_people = existing_pending.get("people", "")
         old_start = existing_pending.get("start_date", "")
         old_end = existing_pending.get("end_date", "")
         
         if (old_dest != clean_destination or 
-            old_people != people or 
             old_start != start_date or 
             old_end != end_date):
             existing_options = []
 
-    requested_ids = [str(hotel_id).strip() for hotel_id in (exclude_hotel_ids or []) if str(hotel_id).strip()]
+    if isinstance(exclude_hotel_ids, str):
+        if exclude_hotel_ids.lower() in ("null", "none", "[]", ""):
+            exclude_hotel_ids = []
+        else:
+            try:
+                import json
+                exclude_hotel_ids = json.loads(exclude_hotel_ids)
+            except Exception:
+                exclude_hotel_ids = [exclude_hotel_ids]
+    if not isinstance(exclude_hotel_ids, list):
+        exclude_hotel_ids = []
+
+    requested_ids = [str(hotel_id).strip() for hotel_id in exclude_hotel_ids if str(hotel_id).strip()]
     excluded_ids = list(dict.fromkeys(requested_ids))
 
     try:
@@ -169,6 +207,8 @@ def recommend_hotels(
     current_prefs = []
     if hotel_preferences.strip():
         current_prefs.append(hotel_preferences.strip())
+    if preferences.strip():
+        current_prefs.extend([p.strip() for p in preferences.split(",") if p.strip()])
     if hotel_amenity_prefs.strip():
         current_prefs.extend([p.strip() for p in hotel_amenity_prefs.split(",") if p.strip()])
     
@@ -201,6 +241,20 @@ def recommend_hotels(
         for p in opt.get("preferences", []):
             all_prefs.add(p)
 
+    compound_min_price = existing_pending.get("compound_min_price")
+    if parsed_min_price is not None:
+        if compound_min_price is None:
+            compound_min_price = parsed_min_price
+        else:
+            compound_min_price = min(compound_min_price, parsed_min_price)
+            
+    compound_max_price = existing_pending.get("compound_max_price")
+    if parsed_max_price is not None:
+        if compound_max_price is None:
+            compound_max_price = parsed_max_price
+        else:
+            compound_max_price = max(compound_max_price, parsed_max_price)
+
     pending_payload = {
         "mode": "new_trip",
         "destination": clean_destination,
@@ -215,6 +269,8 @@ def recommend_hotels(
         "created_at": datetime.now().isoformat(),
         "options": combined_options,
         "all_preferences": list(all_prefs),
+        "compound_min_price": compound_min_price,
+        "compound_max_price": compound_max_price,
     }
     reply = t(
         "Mình đã tìm được danh sách khách sạn phù hợp. Bạn xem và chọn trực tiếp khách sạn mong muốn trong tab Khách sạn để tạo lịch trình nhé!",

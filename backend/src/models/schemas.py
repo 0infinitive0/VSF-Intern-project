@@ -165,6 +165,7 @@ class HotelOption(BaseModel):
     match_score: float | None = Field(default=None, ge=0.0, le=1.0)
     match_reasons: list[dict[str, float | str]] = Field(default_factory=list)
     city: str | None = None
+    preferences: list[str] = Field(default_factory=list)
 
 
 class RouteInfoPayload(BaseModel):
@@ -346,6 +347,8 @@ class PlannerChatResponse(BaseModel):
     trip_plan: TripPlanPayload | None = None
     intake: IntakeStatus | None = None
     requires_stay_dates: bool = False
+    compound_min_price: float | None = None
+    compound_max_price: float | None = None
 
 
 class SessionSummaryPayload(BaseModel):
@@ -510,6 +513,7 @@ def to_hotel_options_payload(pending: dict[str, Any] | None) -> list[HotelOption
                 match_score=option.get("match_score"),
                 match_reasons=list(option.get("match_reasons") or []),
                 city=option.get("city"),
+                preferences=list(option.get("preferences") or []),
             )
         )
     return options

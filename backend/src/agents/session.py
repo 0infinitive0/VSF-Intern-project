@@ -1208,6 +1208,10 @@ def _run_chat_agent(session: TripSession, user_input: str) -> TurnResult:
                     logger.info("Tool returned: %s", latest_message.name)
                     logger.warning("Tool output: %s...", str(latest_message.content)[:500])
                     
+                    if tool_output_response:
+                        logger.warning("Enforcing 1-tool-call limit per user message. Breaking stream.")
+                        break
+                    
                     # If tool signals anti-loop, abort immediately to prevent LLM from spinning
                     if "ĐỪNG gọi lại" in str(latest_message.content) or "DO NOT CALL IT AGAIN" in str(latest_message.content):
                         logger.warning("Anti-loop signal received from tool. Breaking execution loop.")
