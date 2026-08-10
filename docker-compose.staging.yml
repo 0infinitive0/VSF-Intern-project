@@ -24,6 +24,11 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        # Public Mapbox token (pk.*, URL-restricted) — read from a root .env
+        # or the shell environment. Blank is fine: MapView falls back to an
+        # honest "map unavailable" state rather than a broken map.
+        VITE_MAPBOX_TOKEN: ${VITE_MAPBOX_TOKEN:-}
     ports:
       - "5173:5173"
     depends_on:
