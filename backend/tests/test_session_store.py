@@ -18,7 +18,7 @@ def _session(session_id="persisted-session", persist_hook=None):
     )
 
 
-def test_serialize_round_trip_preserves_business_state_and_excludes_remaining_steps():
+def test_serialize_creates_compact_v2_checkpoint_without_messages_or_full_trip_data():
     session = _session()
     session.state.update(
         {
@@ -37,11 +37,42 @@ def test_serialize_round_trip_preserves_business_state_and_excludes_remaining_st
     context = session_store.serialize(session)
     restored = session_store.deserialize(session.session_id, context)
 
+    assert context["schema_version"] == 2
     assert "remaining_steps" not in context
+    assert "messages" not in context
+    assert "trip_data" not in context
     assert restored["intake"]["destination"] == "Da Nang"
     assert restored["hotel_prefs"]["max_price"] == 2_000_000
-    assert restored["trip_data"]["duration_days"] == 3
-    assert [message.content for message in restored["messages"]] == ["Plan a trip", "Where would you like to go?"]
+    assert restored["trip_data"] is None
+    assert context["current_trip"] == {"itinerary_id": None, "hotel_id": None, "status": None}
+
+
+def test_upsert_uses_existing_chat_message_columns_without_schema_metadata(monkeypatch):
+    session = _session()
+    session.state["messages"] = [
+        HumanMessage(content="Plan a trip", additional_kwargs={"stage": "intake"}),
+        AIMessage(content="Where would you like to go?", additional_kwargs={"stage": "intake"}),
+    ]
+    calls = []
+
+    class FakeRpc:
+        def execute(self):
+            return SimpleNamespace(data={"ok": True})
+
+    class FakeSupabase:
+        def rpc(self, name, params):
+            calls.append((name, params))
+            return FakeRpc()
+
+    monkeypatch.setattr(session_store, "_get_supabase_client", lambda: FakeSupabase())
+
+    session_store.upsert(session)
+
+    name, params = calls[0]
+    assert name == "persist_session_checkpoint"
+    assert params["p_context_data"]["schema_version"] == 2
+    assert [message["sender_type"] for message in params["p_messages"]] == ["user", "assistant"]
+    assert all("turn_id" not in message and "message_index" not in message for message in params["p_messages"])
 
 
 def test_registry_rehydrates_only_when_loader_is_enabled(monkeypatch):
@@ -66,6 +97,57 @@ def test_registry_rehydrates_only_when_loader_is_enabled(monkeypatch):
     assert created == ["persisted-session"]
 
 
+def test_legacy_context_restores_then_rewrites_as_v2_checkpoint():
+    session = _session()
+    legacy = {
+        "intake": {"destination": "Nha Trang"},
+        "trip_data": {"itineraries": [{"id": "itinerary-1", "hotel_id": "hotel-1", "status": "Draft"}]},
+        "messages": [{"type": "human", "data": {"content": "hello", "additional_kwargs": {}}}],
+    }
+
+    session.state = session_store.deserialize(session.session_id, legacy)
+    checkpoint = session_store.serialize(session)
+
+    assert session.state["intake"]["destination"] == "Nha Trang"
+    assert checkpoint["schema_version"] == 2
+    assert checkpoint["current_trip"]["itinerary_id"] == "itinerary-1"
+    assert "messages" not in checkpoint
+
+
+def test_list_sessions_fetches_one_extra_row_for_stable_pagination(monkeypatch):
+    rows = [
+        {"session_id": f"session-{index:02d}", "context_data": {}, "created_at": "", "updated_at": ""}
+        for index in range(11)
+    ]
+
+    class FakeQuery:
+        def order(self, *_args, **_kwargs):
+            return self
+
+        def range(self, start, end):
+            assert (start, end) == (10, 20)
+            return self
+
+        def execute(self):
+            return SimpleNamespace(data=rows)
+
+    class FakeSupabase:
+        def table(self, name):
+            assert name == "sessions"
+            return self
+
+        def select(self, *_args):
+            return FakeQuery()
+
+    monkeypatch.setattr(session_store, "_get_supabase_client", lambda: FakeSupabase())
+
+    page = session_store.list_sessions(page=2, page_size=10)
+
+    assert len(page.rows) == 10
+    assert page.rows[0]["session_id"] == "session-00"
+    assert page.has_more is True
+
+
 def test_persistence_failure_is_swallowed_and_turn_still_returns(monkeypatch):
     session = _session(persist_hook=session_module.supabase_persist_hook)
     monkeypatch.setattr(session_module, "_process_chat_turn", lambda *_args, **_kwargs: TurnResult("reply", "chat"))
@@ -75,6 +157,20 @@ def test_persistence_failure_is_swallowed_and_turn_still_returns(monkeypatch):
 
     assert result.text == "reply"
     assert [message.content for message in session.state["messages"]] == ["hello", "reply"]
+
+
+def test_persist_turn_stores_sanitized_assistant_error(monkeypatch):
+    session = _session()
+    monkeypatch.setattr(
+        session_module,
+        "_process_chat_turn",
+        lambda *_args, **_kwargs: TurnResult("SYSTEM ERROR: secret upstream traceback", "chat"),
+    )
+
+    result = session_module.process_chat_turn(session, "hello")
+
+    assert "secret upstream traceback" not in result.text
+    assert "secret upstream traceback" not in session.state["messages"][-1].content
 
 
 def test_drop_deletes_persisted_row_and_swallows_delete_failure():
@@ -98,13 +194,20 @@ async def test_list_and_restore_routes_use_persisted_payload_contract(client, mo
     monkeypatch.setattr(
         session_store,
         "list_sessions",
-        lambda: [{"session_id": session.session_id, "context_data": session_store.serialize(session), "created_at": "2026-08-07T00:00:00Z", "updated_at": "2026-08-07T00:00:01Z"}],
+        lambda page=1, page_size=10: session_store.SessionPage(
+            rows=[{"session_id": session.session_id, "context_data": session_store.serialize(session), "created_at": "2026-08-07T00:00:00Z", "updated_at": "2026-08-07T00:00:01Z"}],
+            page=page,
+            page_size=page_size,
+            has_more=True,
+        ),
     )
 
     listed = await client.get("/api/v1/chat/sessions")
     restored = await client.get(f"/api/v1/chat/{session.session_id}/restore")
 
     assert listed.status_code == 200
-    assert listed.json()[0]["status"] == "draft"
+    assert listed.json()["sessions"][0]["status"] == "draft"
+    assert listed.json()["page_size"] == 10
+    assert listed.json()["has_more"] is True
     assert restored.status_code == 200
     assert restored.json()["messages"][0]["text"] == "hello"

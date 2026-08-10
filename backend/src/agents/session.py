@@ -39,6 +39,7 @@ from src.agents.supervisor import decide_route_by_llm
 from src.api.streaming import _DeltaGate, emit_phase, emit_reset
 from src.config import get_settings
 from src.i18n import SUPPORTED_LANGUAGES, t
+from src.models.schemas import sanitize_system_error
 from src.services.hotel_selection import HotelPreferenceState, _has_budget_signal
 from src.services.trip_edit_planner import TripEditPlan, TripEditPlanError, plan_trip_edit
 from src.services.trip_intake import (
@@ -364,14 +365,26 @@ def debug_persist_hook(session: TripSession) -> None:
 
 def supabase_persist_hook(session: TripSession) -> None:
     """Best-effort persistence: database outages must not fail a chat turn."""
-    try:
-        if not _SESSION_ID_PATTERN.fullmatch(session.session_id):
-            raise ValueError("Unsafe session id for persistent storage.")
-        from src.services.session_store import upsert
+    for attempt in range(2):
+        try:
+            if not _SESSION_ID_PATTERN.fullmatch(session.session_id):
+                raise ValueError("Unsafe session id for persistent storage.")
+            from src.services.session_store import upsert
 
-        upsert(session)
-    except Exception:
-        logger.exception("Unable to persist session %s; continuing in memory", session.session_id)
+            upsert(session)
+            return
+        except Exception:
+            if attempt == 0:
+                logger.warning(
+                    "Session persistence failed; retrying once",
+                    extra={"session_id": session.session_id, "attempt": attempt + 1},
+                    exc_info=True,
+                )
+                continue
+            logger.exception(
+                "Unable to persist session; continuing in memory",
+                extra={"session_id": session.session_id, "attempt": attempt + 1},
+            )
 
 
 def suggestions_for(session: TripSession) -> list[dict[str, str]]:
@@ -886,20 +899,28 @@ def _handle_frontend_hotel_selection(session: TripSession, hotel_id: str) -> Tur
 
 def _persist_turn(session: TripSession, result: TurnResult, user_input: str | None = None) -> TurnResult:
     """Persist after a completed turn without changing the turn's outcome."""
-    session.state["reply"] = result.text
+    safe_text = sanitize_system_error(result.text, session_id=session.session_id, language=session.language)
+    persisted_result = TurnResult(text=safe_text, tool=result.tool)
+    session.state["reply"] = safe_text
     session.state["tool_ran"] = result.tool
     if user_input:
         now = datetime.now(UTC).isoformat()
-        stage = derive_stage(result, session)
+        stage = derive_stage(persisted_result, session)
         session.state["messages"].extend(
             [
-                HumanMessage(content=user_input, additional_kwargs={"stage": stage, "at": now}),
-                AIMessage(content=result.text, additional_kwargs={"stage": stage, "at": now}),
+                HumanMessage(
+                    content=user_input,
+                    additional_kwargs={"stage": stage, "at": now},
+                ),
+                AIMessage(
+                    content=safe_text,
+                    additional_kwargs={"stage": stage, "at": now},
+                ),
             ]
         )
     if session.persist_hook:
         session.persist_hook(session)
-    return result
+    return persisted_result
 
 
 def process_chat_turn(
@@ -1460,10 +1481,17 @@ class SessionRegistry:
                 row = self._load_hook(session_id)
                 if row is None:
                     return None
+                from src.services.itinerary_store import ItineraryStore
                 from src.services.session_store import deserialize
 
                 session = create_chat_session(session_id, persist_hook=self._persist_hook)
-                session.state = deserialize(session_id, row.get("context_data"))
+                session.state = deserialize(session_id, row.get("context_data"), row.get("messages"))
+                current_trip = (row.get("context_data") or {}).get("current_trip") or {}
+                itinerary_id = current_trip.get("itinerary_id")
+                if itinerary_id:
+                    session.state["trip_data"] = ItineraryStore.from_default().load_session_trip_data(
+                        str(itinerary_id)
+                    )
                 created_at = row.get("created_at")
                 if isinstance(created_at, str):
                     try:

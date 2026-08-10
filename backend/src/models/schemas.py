@@ -379,6 +379,13 @@ class SessionSummaryPayload(BaseModel):
     thumbnail_url: str | None = None
 
 
+class SessionListPayload(BaseModel):
+    sessions: list[SessionSummaryPayload] = Field(default_factory=list)
+    page: int
+    page_size: int
+    has_more: bool
+
+
 class RestoredMessagePayload(BaseModel):
     role: Literal["user", "assistant"]
     text: str

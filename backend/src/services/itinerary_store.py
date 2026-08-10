@@ -189,6 +189,69 @@ class ItineraryStore:
             raise ItineraryStoreError(f"Itinerary bundle load failed: {exc}") from exc
         return LoadedItineraryBundle(self._template(itinerary, items), hotel)
 
+    def load_session_trip_data(self, itinerary_id: str) -> dict[str, Any] | None:
+        """Hydrate the canonical itinerary rows into the active planner shape.
+
+        A session checkpoint deliberately stores only the itinerary and hotel IDs.
+        This keeps a restored planner editable after a process restart without
+        duplicating a full trip plan in ``sessions.context_data``.
+        """
+        try:
+            itinerary_response = self._client.table("itineraries").select("*").eq("id", itinerary_id).execute()
+            itinerary = _first(getattr(itinerary_response, "data", None))
+            if not itinerary:
+                return None
+            item_response = (
+                self._client.table("itinerary_items")
+                .select("*")
+                .eq("itinerary_id", itinerary_id)
+                .order("day_number")
+                .order("order_index")
+                .execute()
+            )
+            items = _rows(getattr(item_response, "data", None))
+            hotel: dict[str, Any] = {}
+            hotel_id = itinerary.get("hotel_id")
+            if hotel_id:
+                hotel_response = self._client.table("hotels").select("*").eq("id", hotel_id).execute()
+                hotel = _first(getattr(hotel_response, "data", None)) or {}
+
+            attraction_ids = [
+                str(item["reference_id"])
+                for item in items
+                if str(item.get("reference_type") or "").casefold() == "attraction" and item.get("reference_id")
+            ]
+            attractions_by_id: dict[str, dict[str, Any]] = {}
+            if attraction_ids:
+                attraction_response = (
+                    self._client.table("attractions")
+                    .select("id,name,coordinates,images")
+                    .in_("id", attraction_ids)
+                    .execute()
+                )
+                attractions_by_id = {
+                    str(row.get("id")): row for row in _rows(getattr(attraction_response, "data", None))
+                }
+        except Exception as exc:
+            raise ItineraryStoreError(f"Session itinerary hydration failed: {exc}") from exc
+
+        hydrated_items = []
+        for item in items:
+            hydrated = dict(item)
+            if str(hydrated.get("reference_type") or "").casefold() == "hotel":
+                hydrated.setdefault("activity", hotel.get("name") or "Hotel")
+                hydrated.setdefault("image_url", hotel.get("image_url"))
+                hydrated.setdefault("coordinates", hotel.get("coordinates"))
+            else:
+                attraction = attractions_by_id.get(str(hydrated.get("reference_id"))) or {}
+                hydrated.setdefault("activity", attraction.get("name") or "")
+                hydrated.setdefault("coordinates", attraction.get("coordinates"))
+                images = attraction.get("images") or []
+                if images and isinstance(images, list):
+                    hydrated.setdefault("image_url", images[0])
+            hydrated_items.append(hydrated)
+        return {"hotel": hotel, "itineraries": [itinerary], "itinerary_items": hydrated_items}
+
     @staticmethod
     def _itinerary_record(trip_data: Mapping[str, Any]) -> dict[str, Any]:
         itineraries = trip_data.get("itineraries") or []

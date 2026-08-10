@@ -18,7 +18,7 @@ import logging
 from datetime import UTC, date
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from src.agents.session import (
@@ -38,6 +38,7 @@ from src.models.schemas import (
     IntakeStatus,
     PlannerChatRequest,
     PlannerChatResponse,
+    SessionListPayload,
     SessionRestorePayload,
     SessionSummaryPayload,
     SelectHotelRequest,
@@ -118,6 +119,8 @@ def attraction_detail(attraction_id: UUID) -> AttractionDetailPayload:
 def create_session() -> dict:
     """Tạo một phiên chat mới và trả về session_id do server cấp."""
     session = registry.create()
+    if session.persist_hook:
+        session.persist_hook(session)
     from datetime import datetime
 
     return {
@@ -126,12 +129,21 @@ def create_session() -> dict:
     }
 
 
-@router.get("/chat/sessions", response_model=list[SessionSummaryPayload])
-def list_persisted_sessions() -> list[SessionSummaryPayload]:
+@router.get("/chat/sessions", response_model=SessionListPayload)
+def list_persisted_sessions(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
+) -> SessionListPayload:
     if not _persistence_enabled:
-        return []
+        return SessionListPayload(sessions=[], page=page, page_size=page_size, has_more=False)
     try:
-        return [SessionSummaryPayload.model_validate(session_store.summarize(row)) for row in session_store.list_sessions()]
+        persisted = session_store.list_sessions(page=page, page_size=page_size)
+        return SessionListPayload(
+            sessions=[SessionSummaryPayload.model_validate(session_store.summarize(row)) for row in persisted.rows],
+            page=persisted.page,
+            page_size=persisted.page_size,
+            has_more=persisted.has_more,
+        )
     except Exception:
         logger.exception("Unable to list persisted sessions")
         raise HTTPException(status_code=500, detail="Unable to retrieve session history.")
@@ -142,13 +154,12 @@ def restore_session(session_id: str) -> SessionRestorePayload:
     session = registry.get(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found.")
-    context = session_store.serialize(session)
     stage = derive_stage(
         TurnResult(text=str(session.state.get("reply") or ""), tool=session.state.get("tool_ran")), session
     )
     return SessionRestorePayload(
         session_id=session.session_id,
-        messages=session_store.restored_messages(context),
+        messages=session_store.restored_messages(session.state.get("messages")),
         suggestions=suggestions_for(session),
         stage=stage,
         hotel_options=to_hotel_options_payload(session.pending_hotel_selection),

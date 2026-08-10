@@ -34,6 +34,9 @@ class Query:
     def order(self, *_: object, **__: object) -> Query:
         return self
 
+    def in_(self, *_: object) -> Query:
+        return self
+
     def update(self, *_: object) -> Query:
         return self
 
@@ -66,6 +69,7 @@ class FakeSupabase:
                 for index in range(1, 8)
             ],
             "hotels": {"id": "hotel-1", "coordinates": "16.05,108.2"},
+            "attractions": [{"id": "place-1", "name": "Museum", "coordinates": "16.1,108.3", "images": ["museum.jpg"]}],
         }
 
     def rpc(self, name: str, params: dict[str, object]) -> Query:
@@ -342,6 +346,18 @@ def test_load_bundle_keeps_hotel_and_all_item_rows() -> None:
     assert bundle is not None
     assert bundle.hotel["id"] == "hotel-1"
     assert len(bundle.template.items) == 7
+
+
+def test_load_session_trip_data_hydrates_hotel_and_attraction_display_fields() -> None:
+    store = ItineraryStore(FakeSupabase(), lambda _: [0.1] * 1024)
+
+    trip_data = store.load_session_trip_data("template-1")
+
+    assert trip_data is not None
+    assert trip_data["hotel"]["id"] == "hotel-1"
+    assert trip_data["itinerary_items"][0]["activity"] == "Museum"
+    assert trip_data["itinerary_items"][0]["image_url"] == "museum.jpg"
+    assert trip_data["itinerary_items"][3]["activity"] == "Hotel"
 
 
 def test_finalization_saves_embedding_after_the_atomic_status_transition() -> None:
