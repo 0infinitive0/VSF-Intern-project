@@ -43,7 +43,7 @@ const DEFAULT_CENTER: [number, number] = [108.2208, 16.0544]
 const DEFAULT_ZOOM = 11
 
 const STYLE_URL: Record<Theme, string> = {
-  light: 'mapbox://styles/mapbox/light-v11',
+  light: 'mapbox://styles/mapbox/streets-v12',
   dark: 'mapbox://styles/mapbox/dark-v11',
 }
 

@@ -33,7 +33,7 @@ là thiết kế mới cho GL JS, khác hẳn `L.polyline`/`L.marker`/`L.divIcon
 ## Yêu cầu
 
 **Chức năng**
-- Bản đồ Mapbox GL JS với style chính thức (`light-v11`/`dark-v11`), chrome dạng glass theo design
+- Bản đồ Mapbox GL JS với style chính thức (`streets-v12`/`dark-v11`), chrome dạng glass theo design
 - Stage `hotels`: marker cho từng khách sạn; hover card ↔ hover marker; click marker → mở
   Hotel Detail Focus Mode
 - Stage `workspace` tab Tổng quan: route toàn chuyến, mỗi ngày một màu, có legend
@@ -48,7 +48,7 @@ là thiết kế mới cho GL JS, khác hẳn `L.polyline`/`L.marker`/`L.divIcon
 - Bản đồ thu gọn mượt khi vào focus mode, không remount
 - Attribution Mapbox hiển thị đầy đủ theo điều khoản sử dụng (GL JS tự render qua
   `AttributionControl` mặc định — không cần markup tay như bản Leaflet)
-- Đổi style bản đồ theo theme bằng style URL thật (`light-v11`/`dark-v11`), không dùng bộ lọc
+- Đổi style bản đồ theo theme bằng style URL thật (`streets-v12`/`dark-v11`), không dùng bộ lọc
   CSS giả dark mode — với GL JS điều này **tự động đúng**, không phải việc phải làm thêm
 
 ## Kiến trúc
@@ -196,7 +196,7 @@ không gọi `resize()` hàng chục lần.
 Dùng **style URL chính thức** của Mapbox:
 
 ```
-light: mapbox://styles/mapbox/light-v11
+light: mapbox://styles/mapbox/streets-v12
 dark:  mapbox://styles/mapbox/dark-v11
 ```
 
@@ -299,7 +299,7 @@ lệ đã ghi ở phase-08): các mục dưới đã đối chiếu trực tiế
 `lint`/`test` (tất cả pass) + `npm run dev`/`npm run mock` khởi động sạch. Mục thị giác cần
 người dùng tự kiểm bằng mắt trước khi coi phase đóng hoàn toàn.
 
-- [x] Map Mapbox GL JS thật với style `light-v11`/`dark-v11` theo theme và attribution GL JS mặc định
+- [x] Map Mapbox GL JS thật với style `streets-v12`/`dark-v11` theo theme và attribution GL JS mặc định
 - [x] Marker vẽ từ `coordinates` thật; toạ độ hỏng bị bỏ, không có marker ở `(0,0)`
 - [x] Route vẽ từ `polyline` Mapbox đã giải mã — **bám đường thật**, không phải đường thẳng
 - [x] Fallback đường thẳng hoạt động khi `route_to_next` là `null` hoặc polyline hỏng
