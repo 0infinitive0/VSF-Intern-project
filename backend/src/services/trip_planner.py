@@ -286,16 +286,50 @@ def _build_tiered_candidate_pools(
     search_kwargs: dict[str, Any] = {}
     if exclude_attraction_ids is not None:
         search_kwargs["exclude_attraction_ids"] = exclude_attraction_ids
+    # A single itinerary needs several non-duplicate places across its days.
+    # Three results per theme often overlap with the preceding day's selected
+    # places, which leaves a later afternoon slot empty before tiered search
+    # can lower its threshold or widen its radius.
+    theme_pool_size = max(6, len(themes) + 4)
     themed_candidates = {
         theme.day_number: _search_attraction_candidates_tiered(
             f"{theme.query}. Destination: {destination}",
             destination_id,
             hotel,
-            required_count=3,
+            required_count=theme_pool_size,
             **search_kwargs,
         )
         for theme in themes
     }
+    # Keep theme matches as the primary source for every day.  If all eligible
+    # themed candidates have already been used (or cannot fit the slot's
+    # opening-hour/cluster constraints), the scheduler may use this nearby,
+    # non-theme pool instead of emitting a local-exploration placeholder.
+    nearby_fallbacks = _search_attraction_candidates_tiered(
+        f"nearby local attractions landmarks museums parks sightseeing in {destination}",
+        destination_id,
+        hotel,
+        required_count=theme_pool_size,
+        **search_kwargs,
+    )
+    fallback_tier = (
+        max(
+            (
+                candidate.retrieval_tier
+                for candidates in themed_candidates.values()
+                for candidate in candidates
+            ),
+            default=4,
+        )
+        + 1
+    )
+    for day_number, candidates in themed_candidates.items():
+        themed_ids = {candidate.id for candidate in candidates if candidate.id}
+        candidates.extend(
+            replace(candidate, retrieval_tier=fallback_tier)
+            for candidate in nearby_fallbacks
+            if candidate.id and candidate.id not in themed_ids
+        )
     meal_pool_size = max(len(themes) + 2, 5)
     restaurants = (
         _search_attraction_candidates_tiered(

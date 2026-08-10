@@ -510,6 +510,80 @@ def test_tiered_candidate_adapter_uses_selected_hotel_coordinates_and_preserves_
     assert candidates[0].retrieval_tier == 2
 
 
+def test_final_theme_pools_fetch_overflow_for_later_days(monkeypatch):
+    """A later day needs alternatives after earlier days consume overlapping hits."""
+    hotel = PlaceCandidate(
+        id="hotel-1",
+        name="Selected Hotel",
+        category="Hotel",
+        coordinates="16.0544,108.2022",
+    )
+    calls: list[tuple[str, int]] = []
+
+    def fake_search(query, _destination_id, _hotel, *, required_count, **_kwargs):
+        calls.append((query, required_count))
+        return []
+
+    monkeypatch.setattr(trip_planner_module, "_search_attraction_candidates_tiered", fake_search)
+
+    trip_planner_module._build_tiered_candidate_pools(
+        "Nha Trang",
+        "destination-id",
+        [
+            trip_planner_module.DayTheme(1, "Beach", "beach"),
+            trip_planner_module.DayTheme(2, "Culture", "culture"),
+        ],
+        hotel,
+    )
+
+    theme_counts = [count for query, count in calls if ". Destination:" in query]
+    assert theme_counts == [6, 6]
+
+
+def test_final_theme_pools_append_nearby_non_theme_fallbacks(monkeypatch):
+    """Nearby attractions are a last resort, never preferred over theme matches."""
+    hotel = PlaceCandidate(
+        id="hotel-1",
+        name="Selected Hotel",
+        category="Hotel",
+        coordinates="16.0544,108.2022",
+    )
+    theme_candidate = PlaceCandidate(
+        id="theme-1",
+        name="Theme match",
+        category="Museums & culture",
+        coordinates="16.055,108.203",
+        retrieval_tier=2,
+    )
+    fallback_candidate = PlaceCandidate(
+        id="nearby-1",
+        name="Nearby landmark",
+        category="Sightseeing",
+        coordinates="16.056,108.204",
+        retrieval_tier=1,
+    )
+
+    def fake_search(query, _destination_id, _hotel, *, required_count, **_kwargs):
+        if ". Destination:" in query:
+            return [theme_candidate]
+        if query.startswith("nearby local attractions"):
+            return [fallback_candidate]
+        return []
+
+    monkeypatch.setattr(trip_planner_module, "_search_attraction_candidates_tiered", fake_search)
+
+    themed_candidates, *_ = trip_planner_module._build_tiered_candidate_pools(
+        "Nha Trang",
+        "destination-id",
+        [trip_planner_module.DayTheme(1, "Culture", "culture")],
+        hotel,
+    )
+
+    assert [candidate.id for candidate in themed_candidates[1]] == ["theme-1", "nearby-1"]
+    assert themed_candidates[1][0].retrieval_tier == 2
+    assert themed_candidates[1][1].retrieval_tier == 3
+
+
 def test_preselected_hotel_builds_final_pools_from_its_coordinates(monkeypatch):
     hotel_data, _ = _fake_option("hotel-1", "Selected Hotel", 1)
     captured: dict = {}

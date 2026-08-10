@@ -443,6 +443,20 @@ def test_missing_meal_and_cafe_records_fall_back_to_hotel_not_random_attraction(
     assert dinner.reference_type == "Hotel" and dinner.reference_id == HOTEL.id
 
 
+def test_failed_meal_fallbacks_do_not_claim_hotel_meal_inclusion() -> None:
+    theme = DayTheme(1, "Culture", "culture")
+    attractions = [
+        place("a1", "Museum", "Museums & culture", 16.06, 108.22),
+        place("a2", "Pagoda", "Museums & culture", 16.061, 108.221),
+    ]
+
+    schedule = build_itinerary(HOTEL, [theme], {1: attractions}, [], [])
+
+    assert "Ngày 1: không tìm được địa điểm ăn sáng phù hợp; bạn có thể dùng bữa tại khách sạn hoặc tự chọn địa điểm gần đó." in schedule.adjustments
+    assert "Ngày 1: không tìm được nhà hàng phù hợp; bạn có thể dùng bữa tại khách sạn hoặc tự chọn nhà hàng gần đó." in schedule.adjustments
+    assert "Ngày 1: không tìm được địa điểm ăn tối phù hợp; bạn có thể dùng bữa tại khách sạn hoặc tự chọn nhà hàng gần đó." in schedule.adjustments
+
+
 def test_empty_attraction_pools_create_one_fixed_rest_and_local_exploration_placeholders() -> None:
     schedule = build_itinerary(HOTEL, [DayTheme(1, "Culture", "culture")], {1: []}, [], [])
     day = schedule.items_for_day(1)

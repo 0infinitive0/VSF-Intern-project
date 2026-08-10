@@ -643,7 +643,8 @@ def build_itinerary(
         else:
             breakfast_item = _hotel_item(theme.day_number, 1, hotel, "breakfast", "07:00:00", 60)
             adjustments.append(
-                f"Ngày {theme.day_number}: không có điểm ăn sáng mở cửa phù hợp, dùng bữa tại khách sạn."
+                f"Ngày {theme.day_number}: không tìm được địa điểm ăn sáng phù hợp; "
+                "bạn có thể dùng bữa tại khách sạn hoặc tự chọn địa điểm gần đó."
             )
         day_items.append(breakfast_item)
 
@@ -760,7 +761,10 @@ def build_itinerary(
             used_ids.add(lunch_candidate.id)
         else:
             lunch_item = hotel_lunch_item()
-            adjustments.append(f"Ngày {theme.day_number}: không có nhà hàng hợp lệ, dùng bữa tại khách sạn.")
+            adjustments.append(
+                f"Ngày {theme.day_number}: không tìm được nhà hàng phù hợp; "
+                "bạn có thể dùng bữa tại khách sạn hoặc tự chọn nhà hàng gần đó."
+            )
         day_items.append(lunch_item)
 
         rest_item = _hotel_item(
@@ -898,7 +902,8 @@ def build_itinerary(
                 75,
             )
             adjustments.append(
-                f"Ngày {theme.day_number}: không có điểm ăn tối mở cửa phù hợp, dùng bữa tại khách sạn."
+                f"Ngày {theme.day_number}: không tìm được địa điểm ăn tối phù hợp; "
+                "bạn có thể dùng bữa tại khách sạn hoặc tự chọn nhà hàng gần đó."
             )
         day_items.append(dinner_item)
 
