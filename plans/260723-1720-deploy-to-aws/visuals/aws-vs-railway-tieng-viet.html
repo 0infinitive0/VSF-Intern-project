@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>So sánh kiến trúc Railway và AWS</title>
+  <style>
+    :root{--bg:#f5f1e8;--card:#fffdf8;--text:#29251f;--muted:#756d61;--line:#ddd4c5;--rail:#28734d;--aws:#9b6500;--accent:#8b4d27;--soft:#f0e9dc}
+    [data-theme="dark"]{--bg:#1d211f;--card:#292e2a;--text:#f2eee5;--muted:#bdb5a8;--line:#4b514b;--rail:#86c59d;--aws:#e5b657;--accent:#e99b6e;--soft:#343a34}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.theme-toggle{position:fixed;top:16px;right:16px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--text);width:36px;height:36px;cursor:pointer;font-size:16px}.page{max-width:1120px;margin:auto;padding:52px 24px 64px}header{border-bottom:1px solid var(--line);padding-bottom:25px}h1{margin:8px 0;font-size:clamp(32px,6vw,58px);line-height:1.05;letter-spacing:-1.5px}h2{margin:0 0 14px;font-size:25px}h3{margin:6px 0;font-size:19px}.eyebrow,.tag{font:600 11px/1.2 ui-monospace,SFMono-Regular,monospace;text-transform:uppercase;letter-spacing:1.2px;color:var(--accent)}.intro{max-width:820px;color:var(--muted);font-size:17px;margin:0}.note{margin-top:18px;padding:13px 16px;border-left:3px solid var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent)}section{padding-top:34px}.cards{display:grid;grid-template-columns:1fr 1fr;gap:16px}.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:20px}.card.railway{border-top:4px solid var(--rail)}.card.aws{border-top:4px solid var(--aws)}.railway h3{color:var(--rail)}.aws h3{color:var(--aws)}ul{margin:12px 0 0;padding-left:21px}li{margin:7px 0}.architecture{display:grid;grid-template-columns:1fr 1fr;gap:16px}.stack{display:grid;gap:8px;margin-top:14px}.service{padding:11px 13px;border:1px solid var(--line);border-radius:7px;background:var(--soft)}.service strong{display:block}.service small{color:var(--muted)}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:10px;background:var(--card)}table{border-collapse:collapse;width:100%;min-width:850px}th,td{padding:12px 14px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}th{font-size:12px;color:var(--muted);background:color-mix(in srgb,var(--line) 35%,transparent)}tr:last-child td{border-bottom:0}.rail{color:var(--rail);font-weight:600}.awst{color:var(--aws);font-weight:600}.choice{display:grid;grid-template-columns:1fr 1fr;gap:16px}.choice .card{min-height:150px}.choice strong{display:block;margin-bottom:5px}.footer{margin-top:36px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);padding-top:15px}@media(max-width:760px){.page{padding:48px 16px}.cards,.architecture,.choice{grid-template-columns:1fr}h1{font-size:40px}}
+  </style>
+</head>
+<body>
+  <button class="theme-toggle" id="themeToggle" aria-label="Đổi giao diện sáng tối" title="Đổi giao diện">☾</button>
+  <main class="page">
+    <header>
+      <div class="eyebrow">V-OTA · Preview kiến trúc · 24/07/2026</div>
+      <h1>Railway hay AWS?</h1>
+      <p class="intro">So sánh đầy đủ các thành phần triển khai: frontend, backend, database, lưu trữ file và Airflow/data pipeline.</p>
+      <div class="note"><strong>Kết luận ngắn:</strong> Railway đơn giản và nhanh cho demo. AWS có nhiều lựa chọn hơn: S3 cho frontend/file, RDS cho database, và EC2 hoặc App Runner/ECS cho backend.</div>
+    </header>
+
+    <section><h2>Kiến trúc đề xuất</h2>
+      <div class="architecture">
+        <article class="card railway"><div class="tag">Đơn giản · đã dùng cho API</div><h3>Railway</h3><div class="stack">
+          <div class="service"><strong>Frontend</strong><small>Railway service riêng hoặc nền tảng frontend hiện có</small></div>
+          <div class="service"><strong>Backend</strong><small>FastAPI từ root Dockerfile · Railway service</small></div>
+          <div class="service"><strong>Database</strong><small>Railway PostgreSQL nếu cần; hiện API mặc định SQLite</small></div>
+          <div class="service"><strong>File / data pipeline</strong><small>Volume/object storage hoặc service riêng; Airflow chưa deploy</small></div>
+        </div></article>
+        <article class="card aws"><div class="tag">Linh hoạt · production</div><h3>AWS</h3><div class="stack">
+          <div class="service"><strong>Frontend</strong><small>S3 Static Website + CloudFront + Route 53</small></div>
+          <div class="service"><strong>Backend</strong><small>App Runner/ECS Fargate; hoặc EC2 chạy Docker</small></div>
+          <div class="service"><strong>Database</strong><small>RDS PostgreSQL, private subnet, backup tự động</small></div>
+          <div class="service"><strong>File / data pipeline</strong><small>S3 lưu file; ECS/EC2 cho Airflow nếu thật sự cần</small></div>
+        </div></article>
+      </div>
+    </section>
+
+    <section><h2>Hai cách chạy backend trên AWS</h2>
+      <div class="cards">
+        <div class="card aws"><div class="tag">Khuyến nghị production</div><h3>App Runner hoặc ECS Fargate</h3><p>Không phải quản lý server trực tiếp. Phù hợp khi muốn backend tự scale, có health check và deploy container từ ECR.</p><p><strong>Đổi lại:</strong> cần cấu hình ECR, IAM, networking và secret reference.</p></div>
+        <div class="card aws"><div class="tag">Đơn giản hơn để bắt đầu</div><h3>EC2 + Docker Compose</h3><p>Chạy frontend/backend/Airflow bằng Docker trên một EC2. Có thể dùng S3 cho frontend build và file dữ liệu, RDS cho database.</p><p><strong>Đổi lại:</strong> phải tự quản lý server, cập nhật OS, scale, SSL, backup và monitoring.</p></div>
+      </div>
+      <div class="note"><strong>Gợi ý thực tế:</strong> nếu nhóm muốn AWS dễ hiểu và chi phí ban đầu thấp, dùng <strong>S3 + CloudFront</strong> cho frontend, <strong>EC2 + Docker</strong> cho backend/Airflow và <strong>RDS PostgreSQL</strong> cho database. Nếu cần vận hành production tốt hơn, thay EC2 bằng App Runner/ECS.</div>
+    </section>
+
+    <section><h2>Plan deploy Airflow</h2>
+      <div class="cards">
+        <div class="card aws"><div class="tag">Giai đoạn đầu</div><h3>EC2 + Docker Compose</h3><ul><li>Airflow API, scheduler, DAG processor, worker và triggerer chạy trên EC2.</li><li>RDS PostgreSQL lưu metadata Airflow và dữ liệu V-OTA.</li><li>Redis chạy trong private network cho CeleryExecutor.</li><li>S3 lưu raw data, file lớn và artifact.</li><li>Truy cập UI qua SSM tunnel hoặc private gateway.</li></ul></div>
+        <div class="card aws"><div class="tag">Nâng cấp sau</div><h3>ECS Fargate</h3><ul><li>Tách Airflow components thành ECS services/tasks.</li><li>Dùng managed Redis/ElastiCache khi cần.</li><li>CloudWatch lưu log; ALB private + auth cho UI.</li><li>Chỉ nâng cấp khi EC2 không đủ uptime, capacity hoặc scale.</li><li>Không deploy Adminer public.</li></ul></div>
+      </div>
+      <div class="note"><strong>Thứ tự Airflow:</strong> ECR images → Secrets Manager/SSM → RDS + S3 → EC2 private → chạy một DAG mẫu → kiểm tra dashboard/log/rollback → đánh giá chuyển ECS.</div>
+    </section>
+
+    <section><h2>So sánh theo service</h2>
+      <div class="table-wrap"><table><thead><tr><th>Thành phần</th><th class="rail">Railway</th><th class="awst">AWS</th><th>Nhận xét</th></tr></thead><tbody>
+        <tr><td>Frontend</td><td>Service frontend riêng hoặc nền tảng khác</td><td>S3 + CloudFront + Route 53</td><td>AWS rẻ và ổn định cho static frontend, nhưng cần cấu hình nhiều hơn.</td></tr>
+        <tr><td>Backend</td><td>Một service từ Dockerfile; API đã chạy</td><td>App Runner/ECS hoặc EC2 + Docker</td><td>Railway nhanh; AWS nhiều quyền kiểm soát hơn.</td></tr>
+        <tr><td>Database</td><td>Railway PostgreSQL; hiện code mặc định SQLite</td><td>RDS PostgreSQL private, backup</td><td>RDS phù hợp dữ liệu production lâu dài.</td></tr>
+        <tr><td>File và dataset</td><td>Volume/service storage tùy cấu hình</td><td>S3 cho file, dataset, backup export</td><td>S3 phù hợp file lớn và dữ liệu không phải transaction.</td></tr>
+        <tr><td>Airflow</td><td>Chưa deploy trong plan Railway</td><td>EC2/ECS Fargate; hoặc giữ local/admin-only</td><td>Không nên public Airflow/Adminer mặc định.</td></tr>
+        <tr><td>Secret</td><td>Railway service variables</td><td>Secrets Manager/SSM + IAM role</td><td>AWS chặt chẽ hơn nhưng phức tạp hơn.</td></tr>
+        <tr><td>Vận hành</td><td>Ít thành phần, dễ deploy</td><td>Phải quản lý nhiều service và quyền truy cập</td><td>Chọn AWS khi lợi ích production đáng với công sức.</td></tr>
+      </tbody></table></div>
+    </section>
+
+    <section><h2>Khuyến nghị cho V-OTA</h2><div class="choice">
+      <div class="card railway"><strong class="rail">Nếu ưu tiên demo nhanh</strong><p>Frontend ở nền tảng frontend hiện có, backend trên Railway, database chỉ dùng khi đã provision PostgreSQL. Giữ Airflow local.</p></div>
+      <div class="card aws"><strong class="awst">Nếu ưu tiên AWS đầy đủ</strong><p>Frontend: S3 + CloudFront. Backend: EC2 + Docker ở giai đoạn đầu hoặc App Runner/ECS khi production. Database: RDS PostgreSQL. File: S3.</p></div>
+    </div><div class="note"><strong>Thứ tự triển khai AWS:</strong> S3/CloudFront cho frontend → RDS PostgreSQL → backend trên EC2 hoặc App Runner → Airflow EC2 → secret/log/monitoring → ECS nếu cần.</div></section>
+
+    <div class="footer">Nguồn: kế hoạch AWS <code>plans/260723-1720-deploy-to-aws</code>, plan Airflow <code>plans/260724-0900-deploy-airflow-aws</code>, kế hoạch Railway <code>plans/260723-1223-deploy-api-to-railway</code>, <code>railway.json</code> và <code>Dockerfile</code>.</div>
+  </main>
+  <script>(function(){var b=document.getElementById('themeToggle'),s=localStorage.getItem('theme');if(s)document.documentElement.setAttribute('data-theme',s);function u(){b.textContent=document.documentElement.getAttribute('data-theme')==='dark'?'☀':'☾'}u();b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);localStorage.setItem('theme',n);u()}})();</script>
+</body>
+</html>

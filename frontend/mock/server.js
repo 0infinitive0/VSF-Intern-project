@@ -64,6 +64,7 @@ const TRIP_PLAN = {
         // route_to_next: walking profile, short leg.
         {
           order_index: 2, start_time: '10:00', end_time: '12:00', activity: 'Tắm biển Mỹ Khê', kind: 'attraction',
+          reference_type: 'Attraction', reference_id: 'attraction-my-khe',
           coordinates: '16.0490,108.2493',
           route_to_next: { distance_km: 1.9, duration_mins: 22.0, polyline: 'gq}`BcmusSwLjqB', profile: 'walking' },
         },
@@ -125,6 +126,7 @@ const TRIP_PLAN = {
           route_from_hotel: null,
         },
         { order_index: 2, start_time: '09:30', end_time: '15:30', activity: 'Cáp treo Bà Nà Hills, Cầu Vàng, Fantasy Park', kind: 'attraction',
+          reference_type: 'Attraction', reference_id: 'attraction-ba-na',
           coordinates: '15.9977,107.9967',
         },
         { order_index: 3, start_time: '16:00', end_time: '17:00', activity: 'Mua quà lưu niệm, chụp ảnh cầu Sông Hàn', kind: 'attraction',

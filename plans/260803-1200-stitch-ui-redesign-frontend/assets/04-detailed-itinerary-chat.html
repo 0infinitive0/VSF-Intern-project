@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Horizon Voyager - Itinerary Generation</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "outline-variant": "#c3c5d8",
+                      "on-primary-container": "#ffffff",
+                      "inverse-surface": "#2a303f",
+                      "on-error": "#ffffff",
+                      "on-tertiary-fixed": "#191c1f",
+                      "surface-background": "#FFFFFF",
+                      "surface": "#faf8ff",
+                      "on-primary-fixed": "#001551",
+                      "on-secondary-fixed": "#161c28",
+                      "surface-container-highest": "#dde2f6",
+                      "on-tertiary-fixed-variant": "#44474a",
+                      "on-secondary-fixed-variant": "#414754",
+                      "surface-tint": "#2c61fe",
+                      "on-secondary": "#ffffff",
+                      "secondary": "#585e6d",
+                      "secondary-container": "#dadff0",
+                      "error-container": "#ffdad6",
+                      "tertiary-container": "#6d7074",
+                      "surface-dim": "#d4d9ed",
+                      "surface-container-lowest": "#ffffff",
+                      "on-tertiary": "#ffffff",
+                      "on-surface-variant": "#434656",
+                      "tertiary": "#55585b",
+                      "surface-container": "#e9edff",
+                      "on-primary-fixed-variant": "#0039b5",
+                      "error": "#ba1a1a",
+                      "surface-variant": "#dde2f6",
+                      "border-subtle": "#EBEDF1",
+                      "surface-bright": "#faf8ff",
+                      "secondary-fixed-dim": "#c1c6d7",
+                      "secondary-fixed": "#dde2f3",
+                      "background": "#faf8ff",
+                      "tertiary-fixed-dim": "#c4c7ca",
+                      "on-tertiary-container": "#f3f5f9",
+                      "surface-container-high": "#e2e8fc",
+                      "on-surface": "#151b29",
+                      "primary-fixed": "#dce1ff",
+                      "inverse-on-surface": "#edf0ff",
+                      "on-error-container": "#93000a",
+                      "outline": "#737687",
+                      "surface-muted": "#F5F7FA",
+                      "on-primary": "#ffffff",
+                      "on-background": "#151b29",
+                      "surface-container-low": "#f1f3ff",
+                      "tertiary-fixed": "#e0e2e6",
+                      "inverse-primary": "#b7c4ff",
+                      "primary": "#2c61fe",
+                      "text-primary": "#121826",
+                      "text-secondary": "#4F5563",
+                      "primary-container": "#dce1ff",
+                      "on-secondary-container": "#5d6371",
+                      "primary-fixed-dim": "#b7c4ff"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "margin-mobile": "16px",
+                      "gutter": "16px",
+                      "base": "4px",
+                      "xl": "32px",
+                      "margin-desktop": "48px",
+                      "lg": "24px",
+                      "sm": "8px",
+                      "xs": "4px",
+                      "md": "16px"
+              },
+              "fontFamily": {
+                      "display-lg": [
+                              "Hanken Grotesk"
+                      ],
+                      "label-sm": [
+                              "Inter"
+                      ],
+                      "headline-lg": [
+                              "Hanken Grotesk"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "label-md": [
+                              "Inter"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ],
+                      "headline-md": [
+                              "Hanken Grotesk"
+                      ],
+                      "headline-lg-mobile": [
+                              "Hanken Grotesk"
+                      ]
+              },
+              "fontSize": {
+                      "display-lg": [
+                              "40px",
+                              {
+                                      "lineHeight": "48px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "label-sm": [
+                              "11px",
+                              {
+                                      "lineHeight": "14px",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-lg": [
+                              "32px",
+                              {
+                                      "lineHeight": "40px",
+                                      "letterSpacing": "-0.01em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "body-lg": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-md": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-md": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-lg-mobile": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "700"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+<style>
+        .map-bg {
+            background-color: #f1f3ff;
+            background-image: url("data:image/svg+xml,%3Csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3E%3Cdefs%3E%3Cpattern id='a' patternUnits='userSpaceOnUse' width='40' height='40'%3E%3Cpath d='M0 40L40 0M-10 10L10 -10M30 50L50 30' stroke='%23dde2f6' stroke-width='2' fill='none'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23a)'/%3E%3C/svg%3E");
+        }
+        /* Custom scrollbar for columns */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #dde2f6;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #c3c5d8;
+        }
+      </style>
+</head>
+<body class="bg-surface-background text-text-primary font-body-md h-screen flex flex-col overflow-hidden font-sans">
+<!-- Top Navigation -->
+<nav class="flex items-center justify-between px-6 lg:px-margin-desktop w-full h-[72px] bg-surface-background border-b border-border-subtle z-50 shrink-0">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary cursor-pointer hover:bg-surface-container-high p-2 rounded-full transition-colors duration-200" data-icon="menu">menu</span>
+<span class="font-headline-md text-headline-md font-bold text-primary tracking-tight">V-OTA AI</span>
+</div>
+<div class="hidden md:flex items-center gap-8 h-full">
+<a class="text-on-surface-variant hover:text-primary h-full flex items-center px-2 transition-all font-body-lg" href="#">Explorer</a>
+<a class="text-primary border-b-2 border-primary font-semibold h-full flex items-center px-2 transition-all font-body-lg" href="#">Trips</a>
+<a class="text-on-surface-variant hover:text-primary h-full flex items-center px-2 transition-all font-body-lg" href="#">Concierge</a>
+</div>
+<div class="flex items-center gap-4">
+<button class="hidden md:flex items-center gap-2 bg-primary text-on-primary px-5 py-2.5 rounded-lg font-label-md text-label-md hover:bg-opacity-90 transition-colors shadow-sm">
+<span class="material-symbols-outlined text-[18px]" data-icon="add">add</span>
+                Generate Itinerary
+            </button>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:bg-surface-container-high p-2 rounded-full transition-colors" data-icon="notifications">notifications</span>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:bg-surface-container-high p-2 rounded-full transition-colors" data-icon="help">help</span>
+</div>
+<img alt="User Profile" class="w-9 h-9 rounded-full border border-border-subtle cursor-pointer object-cover" data-alt="A small circular profile picture of a professional user." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDxXlH9f9m500ZWQhs4auXH5UKXyfYhuVLRN7eXdIijwhLw_JOoUzNUQD3zaHEIaWYzPAVXOZsqUEoMdkEnKAQnkseKdM-doQecVc_SuEHKYN-ix0nvFeQui_5EPNhdam3BbNmeMRGoCk_kRf7fwx64vj1MgZ4gwWKLjbwdy1kR3BNbHDKkfsbIzz2tOUiPaRNdnkRZ8MfgA9_qL-Jr02y-2-iyLCBpu00qR8GMF8ERRH_3nJeeBlQO"/>
+</div>
+</nav>
+<!-- Main Content - 3 Column Layout -->
+<main class="flex-1 flex overflow-hidden">
+<!-- Left Column: Chat Assistant -->
+<div class="w-[360px] flex flex-col border-r border-border-subtle bg-surface-background shrink-0 relative z-20">
+<!-- Header -->
+<div class="px-6 py-5 flex justify-between items-center bg-surface-background">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-[22px]" data-icon="auto_awesome">auto_awesome</span>
+<h2 class="font-headline-md text-[18px] font-bold text-on-surface">AI Assistant</h2>
+</div>
+<div class="flex gap-1">
+<button class="p-1.5 text-on-surface-variant hover:bg-surface-muted rounded-md transition-colors"><span class="material-symbols-outlined text-[18px]" data-icon="more_horiz">more_horiz</span></button>
+<button class="p-1.5 text-on-surface-variant hover:bg-surface-muted rounded-md transition-colors"><span class="material-symbols-outlined text-[18px]" data-icon="open_in_full">open_in_full</span></button>
+</div>
+</div>
+<!-- Chat History -->
+<div class="flex-1 overflow-y-auto px-6 pb-6 space-y-6">
+<!-- User Message -->
+<div class="flex flex-col items-end gap-1">
+<div class="bg-surface-muted text-on-surface rounded-2xl rounded-tr-sm px-4 py-3 max-w-[85%] font-body-md text-body-md">
+                        Great, I'll go with The Grand View.
+                    </div>
+</div>
+<!-- AI Message -->
+<div class="flex flex-col items-start gap-1">
+<div class="flex items-center gap-2 mb-1 pl-1">
+<div class="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+<span class="material-symbols-outlined text-on-primary text-[14px]" data-icon="auto_awesome">auto_awesome</span>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">V-OTA Assistant</span>
+</div>
+<div class="bg-surface-container-low text-on-surface rounded-2xl rounded-tl-sm px-4 py-3 max-w-[95%] font-body-md text-body-md">
+                        Đã xác nhận! Tôi đang tạo lịch trình hoàn hảo cho bạn dựa trên khách sạn The Grand View.
+                    </div>
+</div>
+<!-- DeepDive Thinking Widget -->
+<div class="bg-surface-background border border-border-subtle rounded-xl p-4 shadow-sm">
+<div class="flex items-center justify-between mb-4 cursor-pointer">
+<span class="font-label-md text-[13px] font-semibold text-on-surface">DeepDive Thinking</span>
+<span class="material-symbols-outlined text-on-surface-variant text-[18px]" data-icon="expand_less">expand_less</span>
+</div>
+<div class="space-y-3 font-body-md text-[13px] text-on-surface-variant">
+<div class="flex items-center gap-3 text-primary">
+<span class="material-symbols-outlined text-[18px]" data-icon="check_circle">check_circle</span>
+<span>Analyze User Preference</span>
+</div>
+<div class="flex items-center gap-3 text-primary">
+<span class="material-symbols-outlined text-[18px]" data-icon="check_circle">check_circle</span>
+<span>Hotel Confirmed: The Grand View</span>
+</div>
+<div class="flex items-center gap-3">
+<div class="w-[18px] h-[18px] rounded-full border-[2.5px] border-primary border-t-transparent animate-spin"></div>
+<span class="text-on-surface font-medium">Analyzing location...</span>
+</div>
+<div class="flex items-center gap-3 opacity-50">
+<span class="material-symbols-outlined text-[18px]" data-icon="radio_button_unchecked">radio_button_unchecked</span>
+<span>Finding attractions...</span>
+</div>
+<div class="flex items-center gap-3 opacity-50">
+<span class="material-symbols-outlined text-[18px]" data-icon="radio_button_unchecked">radio_button_unchecked</span>
+<span>Optimizing route...</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Chat Input area -->
+<div class="p-6 bg-surface-background">
+<div class="relative flex items-center">
+<input class="w-full bg-surface-muted border-none rounded-full py-3.5 pl-5 pr-14 focus:outline-none focus:ring-2 focus:ring-primary font-body-md text-body-md placeholder:text-on-surface-variant transition-shadow" placeholder="Ask anything about the trip..." type="text"/>
+<button class="absolute right-2 p-2 bg-primary text-on-primary rounded-full hover:bg-opacity-90 transition-colors flex items-center justify-center">
+<span class="material-symbols-outlined text-[20px]" data-icon="stop">stop</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Center Column: Full Itinerary -->
+<div class="w-[500px] flex flex-col border-r border-border-subtle bg-surface-background shrink-0 relative z-10 shadow-[4px_0_24px_rgba(0,0,0,0.03)]">
+<!-- Header -->
+<div class="p-8 border-b border-border-subtle sticky top-0 bg-surface-background/95 backdrop-blur-sm z-10">
+<div class="flex items-center justify-between mb-6">
+<h1 class="font-headline-lg text-[32px] font-bold text-on-surface">Hanoi 3-Day Tour</h1>
+<div class="flex gap-2">
+<button class="p-2.5 border border-border-subtle rounded-lg text-on-surface-variant hover:bg-surface-muted transition-colors"><span class="material-symbols-outlined text-[20px]" data-icon="edit">edit</span></button>
+<button class="p-2.5 border border-border-subtle rounded-lg text-on-surface-variant hover:bg-surface-muted transition-colors"><span class="material-symbols-outlined text-[20px]" data-icon="share">share</span></button>
+</div>
+</div>
+<!-- Date Picker / Summary -->
+<div class="flex items-center gap-5 text-on-surface-variant font-body-md text-[14px] bg-surface-muted p-3.5 rounded-lg border border-border-subtle/50">
+<div class="flex items-center gap-2.5">
+<span class="material-symbols-outlined text-[18px]" data-icon="calendar_month">calendar_month</span>
+<span>Oct 12 - Oct 14</span>
+</div>
+<div class="w-px h-5 bg-outline-variant"></div>
+<div class="flex items-center gap-2.5">
+<span class="material-symbols-outlined text-[18px]" data-icon="group">group</span>
+<span>2 Adults</span>
+</div>
+</div>
+<!-- Tabs -->
+<div class="flex gap-8 mt-8">
+<button class="pb-3 font-label-md text-[13px] text-primary border-b-2 border-primary font-semibold">Itinerary</button>
+<button class="pb-3 font-label-md text-[13px] text-on-surface-variant hover:text-on-surface transition-colors font-medium border-b-2 border-transparent">Ideas</button>
+<button class="pb-3 font-label-md text-[13px] text-on-surface-variant hover:text-on-surface transition-colors font-medium border-b-2 border-transparent">Bookings</button>
+</div>
+</div>
+<!-- Itinerary Content -->
+<div class="flex-1 overflow-y-auto p-8 pt-6 space-y-10">
+<!-- Day 1 -->
+<div>
+<h3 class="font-headline-md text-[20px] font-bold text-on-surface mb-6">Day 1: Arrival &amp; Culture</h3>
+<div class="relative pl-7 space-y-6">
+<!-- Timeline connector -->
+<div class="absolute left-[13px] top-6 bottom-6 w-[2px] bg-secondary-fixed"></div>
+<!-- Activity: Check-in -->
+<div class="relative">
+<div class="absolute left-[-28px] top-4 w-6 h-6 rounded-md bg-surface-container-high flex items-center justify-center z-10 text-primary">
+<span class="material-symbols-outlined text-[14px]" data-icon="bed">bed</span>
+</div>
+<div class="bg-surface-background border border-border-subtle rounded-xl p-4 hover:border-outline-variant hover:shadow-sm transition-all group">
+<div class="flex gap-4">
+<div class="w-20 h-20 rounded-lg bg-surface-muted shrink-0 overflow-hidden" data-alt="A luxury hotel facade with modern architecture and palm trees in the foreground." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAuI89mbdG_Lidufco9OhCYOBGjYTLaoLrOmCLKFmGPhKpo423jstB59-2_sz3eJWWplfLRqSp5L_ZDsGlqROrDlmHcWutwa5fcbf7z8Lg9JRohoeKiiy679PyI18gGhC9L61Trk97nSf951yKBZerv1WKeNV9hw8lekwE70kbz4K79qirJnXqKfo1gl8e1KIaLdE1l0qySmmf_r_ihsqcTcnbu3oJudJjJ1yBEr80MEFu1zO2XEmbq'); background-size: cover; background-position: center;"></div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<div>
+<span class="font-label-sm text-[11px] text-primary uppercase tracking-wider font-semibold">14:00 • CHECK-IN</span>
+<h4 class="font-body-lg text-[16px] text-on-surface mt-1 font-medium">The Grand View Hotel</h4>
+</div>
+<span class="bg-surface-container-high text-on-surface-variant text-[11px] px-2.5 py-1 rounded-md font-medium">Hotel</span>
+</div>
+<p class="font-body-md text-[14px] text-on-surface-variant mt-2 leading-relaxed">Settle in and freshen up after your arrival.</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Activity: Sightseeing -->
+<div class="relative">
+<div class="absolute left-[-28px] top-4 w-6 h-6 rounded-md bg-surface-container-high flex items-center justify-center z-10 text-tertiary">
+<span class="material-symbols-outlined text-[14px]" data-icon="attractions">attractions</span>
+</div>
+<div class="bg-surface-background border border-primary rounded-xl p-4 shadow-sm border-l-4 cursor-pointer">
+<div class="flex gap-4">
+<div class="w-20 h-20 rounded-lg bg-surface-muted shrink-0 overflow-hidden" data-alt="A historic temple with traditional architecture, featuring curved roofs and stone pillars in Hanoi." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDY-bwi1tPctaMjoPsmPY1CyJv7H3BqBYall6pdybgWv2RPSSshHHl0uZP0PLJpQupSP-u52UtMHUeFWnBBfoz7XXN8Dt5I9UQmTG-e1Zh7EwdGC-L2JdlppRtEu4dM53GIg-TQYKQD-4BCP9fQleTdTiZahTfFYkQVck5ADFzh51Qf_x5wYinhAFGHM27TzyPQczlRrzRF3ym6banSkgqCUscbqjj5K_MMwfenuK4JiIoBYw_0shdg'); background-size: cover; background-position: center;"></div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<div>
+<span class="font-label-sm text-[11px] text-on-surface-variant uppercase tracking-wider font-semibold">16:00 • 2 HRS</span>
+<h4 class="font-body-lg text-[16px] text-on-surface mt-1 font-medium">Temple of Literature</h4>
+</div>
+<span class="bg-surface-container-high text-on-surface-variant text-[11px] px-2.5 py-1 rounded-md font-medium">Sight</span>
+</div>
+<p class="font-body-md text-[14px] text-on-surface-variant mt-2 leading-relaxed">Explore Vietnam's first national university.</p>
+<div class="mt-3">
+<button class="text-primary font-label-md text-[13px] hover:underline flex items-center gap-1.5"><span class="material-symbols-outlined text-[16px]" data-icon="map">map</span> View Map</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Activity: Dinner -->
+<div class="relative">
+<div class="absolute left-[-28px] top-4 w-6 h-6 rounded-md bg-surface-container-high flex items-center justify-center z-10 text-tertiary">
+<span class="material-symbols-outlined text-[14px]" data-icon="restaurant">restaurant</span>
+</div>
+<div class="bg-surface-background border border-border-subtle border-dashed rounded-xl p-4">
+<div class="flex items-center justify-center h-[72px] bg-surface-muted/50 rounded-lg">
+<div class="flex flex-col items-center gap-1.5 text-on-surface-variant">
+<span class="material-symbols-outlined text-[20px] animate-pulse" data-icon="search">search</span>
+<span class="font-body-md text-[13px]">Finding dinner spots nearby...</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Generating overlay for Day 2 -->
+<div class="opacity-60">
+<h3 class="font-headline-md text-[20px] font-bold text-on-surface mb-6">Day 2: City Highlights</h3>
+<div class="h-32 bg-surface-muted/50 rounded-xl border border-border-subtle flex items-center justify-center">
+<div class="flex flex-col items-center gap-3 text-on-surface-variant">
+<div class="w-7 h-7 rounded-full border-[2.5px] border-outline-variant border-t-transparent animate-spin"></div>
+<span class="font-body-md text-[14px]">Planning itinerary...</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Column: Map Area -->
+<div class="flex-1 relative bg-surface-muted overflow-hidden flex flex-col map-bg" data-location="Hanoi" style="">
+<!-- Map Controls overlay -->
+<div class="absolute top-6 left-6 right-6 flex justify-between z-10 pointer-events-none">
+<!-- Filter Chips -->
+<div class="flex gap-2.5 pointer-events-auto">
+<button class="bg-surface-background text-on-surface px-4 py-2 rounded-full border border-border-subtle shadow-sm font-label-md text-[13px] hover:bg-surface-muted transition flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px] text-primary" data-icon="attractions">attractions</span> Attractions
+                    </button>
+<button class="bg-surface-background text-on-surface px-4 py-2 rounded-full border border-border-subtle shadow-sm font-label-md text-[13px] hover:bg-surface-muted transition flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px] text-primary" data-icon="bed">bed</span> Properties
+                    </button>
+<button class="bg-surface-background text-on-surface px-4 py-2 rounded-full border border-border-subtle shadow-sm font-label-md text-[13px] hover:bg-surface-muted transition flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px] text-tertiary" data-icon="restaurant">restaurant</span> Food
+                    </button>
+</div>
+</div>
+<!-- Simulated Map Elements -->
+<div class="absolute inset-0 z-0">
+<!-- Polyline connecting points -->
+<svg class="w-full h-full" style="position: absolute; top:0; left:0; pointer-events:none;">
+<path class="opacity-80" d="M 350 450 L 520 380 L 600 550" fill="none" stroke="#2c61fe" stroke-dasharray="6 6" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"></path>
+</svg>
+<!-- Marker 1: Hotel -->
+<div class="absolute top-[435px] left-[335px] z-10 cursor-pointer group">
+<div class="w-9 h-9 bg-surface-background rounded-full shadow-md flex items-center justify-center border-[2.5px] border-primary text-primary">
+<span class="material-symbols-outlined text-[18px]" data-icon="bed">bed</span>
+</div>
+</div>
+<!-- Marker 2: Active Attraction -->
+<div class="absolute top-[365px] left-[505px] z-20 cursor-pointer">
+<div class="w-11 h-11 bg-primary text-on-primary rounded-full shadow-lg flex items-center justify-center ring-4 ring-primary/20">
+<span class="material-symbols-outlined text-[22px]" data-icon="attractions">attractions</span>
+</div>
+<!-- Expanded Card Preview (Simulated active state) -->
+<div class="absolute top-14 left-1/2 transform -translate-x-1/2 w-[220px] bg-surface-background rounded-xl shadow-lg border border-border-subtle overflow-hidden pointer-events-none">
+<div class="h-28 bg-surface-muted overflow-hidden" data-alt="A small preview image of the Temple of Literature in Hanoi, showing traditional Vietnamese architecture." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAfahppOUTSyuqsNAobGHk6xPVyIgl1BgHU9qv1JizVZARr7naRBtb1-W7Y1NxHq6oE5SlUdQNwk-N7sNiQUId_ngGseFpx7OxjwKrXGhgWCOJLUCLTWvX4_1yT7kKN20oY6NN7AkHwxwQ1lAackDdB_QqC9TVQdgnWaMmKrmId1umOckFAoUxjnb46up8mWVLMIFoc9UONA7e0v5VdCpOy_bpIRb8aYRMx-v4YKc-UYTHK8OUIQ7rY'); background-size: cover; background-position: center;"></div>
+<div class="p-3">
+<p class="font-body-lg text-[14px] font-medium text-on-surface truncate">Temple of Literature</p>
+<p class="font-body-md text-[12px] text-on-surface-variant mt-0.5">Day 1 • 16:00</p>
+</div>
+</div>
+</div>
+<!-- Marker 3: Unplanned (Generating) -->
+<div class="absolute top-[535px] left-[585px] z-10">
+<div class="w-9 h-9 bg-surface-background rounded-full shadow-md flex items-center justify-center border-[2.5px] border-outline-variant opacity-60">
+<span class="material-symbols-outlined text-[18px] text-tertiary animate-pulse" data-icon="restaurant">restaurant</span>
+</div>
+</div>
+</div>
+<!-- Floating Map Controls (Bottom Right) -->
+<div class="absolute bottom-8 right-8 flex flex-col gap-3 z-10 pointer-events-auto">
+<button class="w-11 h-11 bg-surface-background rounded-full shadow-md border border-border-subtle flex items-center justify-center text-on-surface-variant hover:bg-surface-muted transition-colors">
+<span class="material-symbols-outlined text-[22px]" data-icon="layers">layers</span>
+</button>
+<button class="w-11 h-11 bg-surface-background rounded-full shadow-md border border-border-subtle flex items-center justify-center text-on-surface-variant hover:bg-surface-muted transition-colors">
+<span class="material-symbols-outlined text-[22px]" data-icon="my_location">my_location</span>
+</button>
+<div class="bg-surface-background rounded-xl shadow-md border border-border-subtle flex flex-col overflow-hidden mt-2">
+<button class="w-11 h-11 flex items-center justify-center text-on-surface-variant hover:bg-surface-muted transition-colors border-b border-border-subtle">
+<span class="material-symbols-outlined text-[22px]" data-icon="add">add</span>
+</button>
+<button class="w-11 h-11 flex items-center justify-center text-on-surface-variant hover:bg-surface-muted transition-colors">
+<span class="material-symbols-outlined text-[22px]" data-icon="remove">remove</span>
+</button>
+</div>
+</div>
+</div>
+</main>
+</body></html>

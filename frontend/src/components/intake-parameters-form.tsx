@@ -1,115 +1,74 @@
-import { useEffect, useRef, useState } from 'react'
-import {
-  composeIntakeMessage,
-  type IntakeFormState,
-} from '../lib/compose-intake-message'
-import {
-  companionKeyFromWireValueVi,
-  dayRhythmKeyFromWireValueVi,
-  paceKeyFromWireValueVi,
-  preferenceKeyFromWireValueVi,
-  type DayRhythmKey,
-  type PreferenceKey,
-} from '../lib/intake-options'
-import { currentIntakeField } from '../lib/next-intake-field'
+import { useTranslation } from 'react-i18next'
+import type { IntakeFormState } from '../lib/compose-intake-message'
+import { composeIntakeMessage } from '../lib/compose-intake-message'
+import type { PreferenceKey } from '../lib/intake-options'
+import { currentIntakeField, type IntakeField } from '../lib/next-intake-field'
 import type { IntakeStatus } from '../types'
 import IntakeDestinationChips from './intake-destination-chips'
 import IntakePeopleStepper from './intake-people-stepper'
 import IntakeDateRange from './intake-date-range'
-import IntakeBudgetTiers from './intake-budget-tiers'
+import IntakeBudgetSlider from './intake-budget-slider'
 import IntakePreferenceChips from './intake-preference-chips'
-
-// intake.people is a formatted string like "2 người" (trip_intake.py), not a
-// bare number — pull the leading count back out.
-function parseLeadingCount(value: string | null | undefined): number | null {
-  if (!value) return null
-  const match = /^\d+/.exec(value)
-  return match ? Number(match[0]) : null
-}
+import MessageBubble from './message-bubble'
 
 /**
  * IntakeParametersForm — thin orchestrator (phase-06). Renders exactly ONE
- * intake widget at a time, driven by `currentIntakeField` (which walks the real
- * `intake.missing` keys in widget order and surfaces optional budget/
+ * intake widget at a time, driven by `currentIntakeField` (which walks the
+ * real `intake.missing` keys in widget order and surfaces optional budget/
  * preferences only once the required fields are filled). The widgets collect
- * locally; the final widget's button submits ONE full composeIntakeMessage
- * sentence — byte-identical to the pre-refactor wire protocol (regression
- * guarded by compose-intake-message.test.ts).
+ * into `form` (owned by the caller via useIntakeForm — lifted so IntakeChecklist
+ * can reflect the same in-progress answers); the final widget's button submits
+ * ONE full composeIntakeMessage sentence — byte-identical to the pre-refactor
+ * wire protocol (regression guarded by compose-intake-message.test.ts).
  *
- * Pre-fills from the `intake` snapshot once (a user who already answered via
- * plain chat before the form loaded is not asked to redo those fields).
+ * `editingField` (set by IntakeChecklist's "Sửa" button, via App.tsx's
+ * useIntakeForm) overrides `currentIntakeField` and forces that one widget
+ * open, pre-filled with the current value. A commit made while editing does
+ * not fall through to the next progressive-disclosure field — there is
+ * nothing "next" about a correction — it resends the full intake sentence
+ * immediately (same composeIntakeMessage the initial flow uses) and calls
+ * `onDoneEditing`. The backend's existing trip-preference-update path
+ * (`_looks_like_trip_preference_change` / `TripPreferenceUpdate`,
+ * backend/src/agents/session.py) is what actually applies the change and
+ * decides whether hotels/itinerary need rerunning — this component never
+ * fabricates that verdict itself.
  */
 export default function IntakeParametersForm({
   intake,
+  form,
+  setForm,
+  togglePreference,
   onSubmit,
   disabled,
+  editingField = null,
+  onDoneEditing,
 }: {
   intake: IntakeStatus | null
+  form: IntakeFormState
+  setForm: (updater: (prev: IntakeFormState) => IntakeFormState) => void
+  togglePreference: (key: PreferenceKey) => void
   onSubmit: (message: string) => void
   disabled: boolean
+  editingField?: IntakeField | null
+  onDoneEditing?: () => void
 }) {
-  const [form, setForm] = useState<IntakeFormState>({
-    destination: '',
-    startDate: '',
-    endDate: '',
-    guests: 0,
-    budget: '',
-    preferences: [],
-    companions: '',
-    pace: '',
-    dayRhythm: [],
-    notes: '',
-  })
-  const seededRef = useRef(false)
-
-  // Pre-fill from the intake snapshot once (null → non-null first time), never
-  // on every render — re-seeding would clobber in-progress edits.
-  useEffect(() => {
-    if (!intake || seededRef.current) return
-    seededRef.current = true
-    const guests = parseLeadingCount(intake.people)
-    setForm((prev) => ({
-      destination: intake.destination || prev.destination,
-      startDate: intake.start_date || prev.startDate,
-      endDate: intake.end_date || prev.endDate,
-      guests: guests ?? prev.guests,
-      budget: prev.budget,
-      preferences:
-        (intake.preferences?.length ?? 0) > 0
-          ? intake.preferences
-              .map(preferenceKeyFromWireValueVi)
-              .filter((key): key is PreferenceKey => key !== null)
-          : prev.preferences,
-      companions:
-        companionKeyFromWireValueVi(intake.companions || '') || prev.companions,
-      pace: paceKeyFromWireValueVi(intake.pace || '') || prev.pace,
-      dayRhythm:
-        (intake.day_rhythm?.length ?? 0) > 0
-          ? intake.day_rhythm
-              .map(dayRhythmKeyFromWireValueVi)
-              .filter((key): key is DayRhythmKey => key !== null)
-          : prev.dayRhythm,
-      notes: intake.notes || prev.notes,
-    }))
-  }, [intake])
+  const { t } = useTranslation()
 
   const destinations = intake?.available_destinations ?? []
-  const budgetOptions = intake?.budget_options ?? []
 
-  const activeField = currentIntakeField(intake, form)
-
-  const togglePreference = (key: PreferenceKey) => {
-    setForm((prev) => ({
-      ...prev,
-      preferences: prev.preferences.includes(key)
-        ? prev.preferences.filter((p) => p !== key)
-        : [...prev.preferences, key],
-    }))
-  }
+  const activeField = editingField ?? currentIntakeField(intake, form)
 
   // Required fields are filled and the final optional card is confirmed — submit
   // the full sentence through the unchanged composeIntakeMessage.
   const submitAll = () => onSubmit(composeIntakeMessage(form))
+
+  // A single-field correction: apply it to `form`, resend the whole sentence
+  // right away (there's no next widget to advance to), and close edit mode.
+  const commitEdit = (next: IntakeFormState) => {
+    setForm(() => next)
+    onSubmit(composeIntakeMessage(next))
+    onDoneEditing?.()
+  }
 
   // The preferences card is terminal and stays mounted (with its own submit
   // button) until submitAll actually sends — see currentIntakeField's doc.
@@ -122,7 +81,11 @@ export default function IntakeParametersForm({
         <IntakeDestinationChips
           destinations={destinations}
           selected={form.destination}
-          onPick={(destination) => setForm((prev) => ({ ...prev, destination }))}
+          onPick={(destination) =>
+            editingField
+              ? commitEdit({ ...form, destination })
+              : setForm((prev) => ({ ...prev, destination }))
+          }
           disabled={false}
         />
       )
@@ -130,7 +93,9 @@ export default function IntakeParametersForm({
       return (
         <IntakePeopleStepper
           value={form.guests}
-          onCommit={(guests) => setForm((prev) => ({ ...prev, guests }))}
+          onCommit={(guests) =>
+            editingField ? commitEdit({ ...form, guests }) : setForm((prev) => ({ ...prev, guests }))
+          }
           disabled={false}
         />
       )
@@ -140,26 +105,45 @@ export default function IntakeParametersForm({
           start={form.startDate}
           end={form.endDate}
           onCommit={({ start, end }) =>
-            setForm((prev) => ({ ...prev, startDate: start, endDate: end }))
+            editingField
+              ? commitEdit({ ...form, startDate: start, endDate: end })
+              : setForm((prev) => ({ ...prev, startDate: start, endDate: end }))
           }
           disabled={false}
         />
       )
     case 'budget':
       return (
-        <IntakeBudgetTiers
-          options={budgetOptions}
-          selected={form.budget}
-          onCommit={(budget) => setForm((prev) => ({ ...prev, budget }))}
-          disabled={false}
-        />
+        <>
+          <MessageBubble
+            message={{ id: 'budget-prompt', role: 'ai', stage: 'intake', text: t('intakeBudgetQuestion') }}
+          />
+          <IntakeBudgetSlider
+            min={form.budgetMinVnd}
+            max={form.budgetMaxVnd}
+            onCommit={(min, max) =>
+              editingField
+                ? commitEdit({ ...form, budgetMinVnd: min, budgetMaxVnd: max, budgetSkipped: false })
+                : setForm((prev) => ({ ...prev, budgetMinVnd: min, budgetMaxVnd: max, budgetSkipped: false }))
+            }
+            onSkip={() =>
+              editingField
+                ? commitEdit({ ...form, budgetMinVnd: null, budgetMaxVnd: null, budgetSkipped: true })
+                : setForm((prev) => ({ ...prev, budgetMinVnd: null, budgetMaxVnd: null, budgetSkipped: true }))
+            }
+            disabled={false}
+          />
+        </>
       )
     case 'preferences':
       return (
         <IntakePreferenceChips
           selected={form.preferences}
           onToggle={togglePreference}
-          onSubmit={submitAll}
+          onSubmit={() => {
+            submitAll()
+            if (editingField) onDoneEditing?.()
+          }}
           disabled={false}
         />
       )

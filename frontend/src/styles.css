@@ -171,6 +171,10 @@ body {
   background-color: var(--color-primary-fixed);
   border-radius: 20px;
 }
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-primary-fixed) transparent;
+}
 
 .composer-scrollbar::-webkit-scrollbar {
   width: 8px;
@@ -189,6 +193,42 @@ body {
 .composer-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: var(--color-outline-variant) var(--color-surface-muted);;
+}
+
+/* Two overlapped <input type="range"> forming one dual-thumb slider
+   (intake-budget-slider.tsx): only the thumb is interactive — the native
+   track/fill is hidden and pointer-events disabled so it never blocks the
+   other input's thumb underneath it. */
+.range-thumb {
+  pointer-events: none;
+}
+.range-thumb::-webkit-slider-runnable-track {
+  background: transparent;
+}
+.range-thumb::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  pointer-events: auto;
+  width: 18px;
+  height: 18px;
+  margin-top: -1px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  border: 2px solid var(--color-surface-background);
+  box-shadow: 0 2px 6px -2px rgb(var(--shadow-rgb) / 0.6);
+  cursor: pointer;
+}
+.range-thumb::-moz-range-track {
+  background: transparent;
+}
+.range-thumb::-moz-range-thumb {
+  pointer-events: auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  border: 2px solid var(--color-surface-background);
+  box-shadow: 0 2px 6px -2px rgb(var(--shadow-rgb) / 0.6);
+  cursor: pointer;
 }
 
 @keyframes spin {
@@ -306,6 +346,48 @@ body {
 .hotel-card[data-focused='true'] {
   --hc-border: var(--acc);
   --hc-ring: 0 0 0 3px var(--acc-soft);
+}
+
+/* Phase 9 timeline item — card-state table from TimelineItem.dc.html:1384-1387.
+   Same custom-property pattern as .hotel-card so the later state rules always win
+   when set: default g2/edge, hover lifts + blue border (clickable only), focused
+   swaps to the accent ring. Non-clickable items never set data-clickable, so the
+   :hover rule can't elevate them (phase-09: no affordance for unopenable items). */
+.timeline-item {
+  background: var(--ti-bg, var(--g2));
+  border-color: var(--ti-border, var(--edge));
+  box-shadow:
+    var(--ti-shadow, 0 6px 16px -14px rgba(var(--sh), 0.6)),
+    var(--ti-ring, 0 0 0 0 transparent);
+  transform: var(--ti-transform, none);
+  transition: all 0.3s cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+.timeline-item[data-clickable='true']:hover {
+  --ti-bg: var(--g3);
+  --ti-border: rgba(58, 115, 222, 0.45);
+  --ti-shadow: 0 16px 34px -18px rgba(var(--sh), 0.6);
+  --ti-transform: translateY(-2px);
+}
+.timeline-item[data-focused='true'] {
+  --ti-bg: var(--g3);
+  --ti-border: var(--acc);
+  --ti-ring: 0 0 0 3px var(--acc-soft);
+  --ti-shadow: 0 18px 38px -18px rgba(var(--sh), 0.6);
+  --ti-transform: translateY(-2px);
+}
+
+/* Phase 9 DayCard (tab Tổng quan) — DayCard.dc.html. Static surface is g2/edge;
+   hover lifts 2px with the design's exact shadow. The vFade entrance delay is
+   applied inline (per-index) by the component. */
+.day-card {
+  background: var(--g2);
+  border-color: var(--edge);
+  transition: all 0.26s cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+.day-card:hover {
+  background: var(--g3);
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px -18px rgba(var(--sh), 0.55);
 }
 
 /* Keyframes (vRise, vPop, vShimmer, …) now live in the imported

@@ -1,7 +1,7 @@
 ---
 phase: 12
 title: "[BE] Chuyển OSRM → Mapbox Directions"
-status: pending
+status: done
 priority: P1
 effort: "1-1.5 ngày"
 dependencies: [1]

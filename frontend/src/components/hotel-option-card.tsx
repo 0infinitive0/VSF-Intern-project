@@ -122,9 +122,9 @@ function HotelOptionCard({
               </div>
             )}
           </div>
-          {hotel.amenities && hotel.amenities.length > 0 && (
+          {hotel.display_amenities && hotel.display_amenities.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-[9px]">
-              {hotel.amenities.map((amenity) => (
+              {hotel.display_amenities.map((amenity) => (
                 <span
                   key={amenity}
                   className="text-[10.5px] px-[9px] py-[3px] rounded-full bg-fill text-on-surface-variant"

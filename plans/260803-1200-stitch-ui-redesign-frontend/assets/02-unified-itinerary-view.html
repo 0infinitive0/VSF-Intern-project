@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>V-OTA AI - Trip Planner</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Hanken+Grotesk:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-bright": "#faf8ff",
+                        "surface-container-high": "#e2e8fc",
+                        "surface-tint": "#004cec",
+                        "background": "#faf8ff",
+                        "tertiary": "#55585b",
+                        "on-tertiary-fixed": "#191c1f",
+                        "on-error-container": "#93000a",
+                        "primary-container": "#2c61fe",
+                        "inverse-on-surface": "#edf0ff",
+                        "outline": "#737687",
+                        "inverse-surface": "#2a303f",
+                        "surface-container-highest": "#dde2f6",
+                        "on-primary-fixed": "#001551",
+                        "secondary-fixed-dim": "#c1c6d7",
+                        "inverse-primary": "#b7c4ff",
+                        "surface-muted": "#F5F7FA",
+                        "secondary-fixed": "#dde2f3",
+                        "error-container": "#ffdad6",
+                        "on-surface-variant": "#434656",
+                        "on-surface": "#151b29",
+                        "tertiary-fixed": "#e0e2e6",
+                        "secondary": "#585e6d",
+                        "primary-fixed": "#dce1ff",
+                        "surface-background": "#FFFFFF",
+                        "tertiary-fixed-dim": "#c4c7ca",
+                        "surface-dim": "#d4d9ed",
+                        "on-secondary-container": "#5d6371",
+                        "on-primary-fixed-variant": "#0039b5",
+                        "primary-fixed-dim": "#b7c4ff",
+                        "secondary-container": "#dadff0",
+                        "on-secondary": "#ffffff",
+                        "surface-variant": "#dde2f6",
+                        "on-error": "#ffffff",
+                        "tertiary-container": "#6d7074",
+                        "surface": "#faf8ff",
+                        "on-primary-container": "#f5f4ff",
+                        "on-tertiary-fixed-variant": "#44474a",
+                        "text-primary": "#121826",
+                        "primary": "#0047dd",
+                        "on-secondary-fixed": "#161c28",
+                        "on-secondary-fixed-variant": "#414754",
+                        "on-background": "#151b29",
+                        "outline-variant": "#c3c5d8",
+                        "text-secondary": "#4F5563",
+                        "error": "#ba1a1a",
+                        "on-tertiary": "#ffffff",
+                        "on-primary": "#ffffff",
+                        "border-subtle": "#EBEDF1",
+                        "surface-container": "#e9edff",
+                        "surface-container-low": "#f1f3ff",
+                        "surface-container-lowest": "#ffffff",
+                        "on-tertiary-container": "#f3f5f9"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "md": "16px",
+                        "margin-desktop": "48px",
+                        "gutter": "16px",
+                        "xs": "4px",
+                        "lg": "24px",
+                        "base": "4px",
+                        "margin-mobile": "16px",
+                        "sm": "8px",
+                        "xl": "32px"
+                    },
+                    "fontFamily": {
+                        "label-md": ["Inter"],
+                        "headline-lg-mobile": ["Hanken Grotesk"],
+                        "display-lg": ["Hanken Grotesk"],
+                        "body-md": ["Inter"],
+                        "label-sm": ["Inter"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "headline-lg": ["Hanken Grotesk"],
+                        "body-lg": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "600"}],
+                        "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "700"}],
+                        "display-lg": ["40px", {"lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "label-sm": ["11px", {"lineHeight": "14px", "fontWeight": "500"}],
+                        "headline-md": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #dde2f6; border-radius: 20px; }
+        body { width: 1920px; height: 1080px; margin: 0 auto; overflow: hidden; }
+        * { font-family: 'Hanken Grotesk', sans-serif; }
+    </style>
+</head>
+<body class="bg-surface-background text-on-surface flex flex-col font-headline-lg">
+<!-- TopNavBar -->
+<header class="h-[72px] bg-surface-background border-b border-border-subtle flex items-center justify-between px-lg shrink-0">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-primary-container text-[28px]" data-icon="explore">explore</span>
+<span class="font-display-lg text-[24px] font-bold text-text-primary tracking-tight">V-OTA AI</span>
+</div>
+<nav class="flex items-center gap-xl h-full">
+<a class="font-headline-md text-body-lg text-text-secondary hover:text-primary-container transition-colors h-full flex items-center" href="#">Explorer</a>
+<a class="font-headline-md text-body-lg text-primary-container border-b-[3px] border-primary-container h-full flex items-center font-bold" href="#">Trips</a>
+<a class="font-headline-md text-body-lg text-text-secondary hover:text-primary-container transition-colors h-full flex items-center" href="#">Concierge</a>
+</nav>
+<div class="flex items-center gap-md">
+<button class="p-2 text-text-secondary hover:bg-surface-muted rounded-full transition-colors flex items-center justify-center">
+<span class="material-symbols-outlined text-[24px]" data-icon="notifications">notifications</span>
+</button>
+<button class="p-2 text-text-secondary hover:bg-surface-muted rounded-full transition-colors flex items-center justify-center">
+<span class="material-symbols-outlined text-[24px]" data-icon="help">help</span>
+</button>
+<button class="w-10 h-10 rounded-full bg-surface-dim overflow-hidden flex items-center justify-center border border-border-subtle hover:border-primary-container transition-colors">
+<span class="material-symbols-outlined text-text-secondary" data-icon="person">person</span>
+</button>
+<button class="bg-primary-container hover:bg-[#1a4de5] text-white px-lg py-2.5 rounded-full font-headline-md text-body-md transition-colors shadow-sm ml-sm">
+            Generate Itinerary
+        </button>
+</div>
+</header>
+<!-- Main Workspace -->
+<main class="flex-1 flex overflow-hidden bg-background">
+<!-- Left Column: AI Assistant (Proportionally sized for 1920px) -->
+<section class="w-[480px] bg-surface-background border-r border-border-subtle flex flex-col shrink-0">
+<div class="p-lg flex justify-between items-center border-b border-border-subtle shrink-0">
+<div class="flex items-center gap-sm text-text-primary font-headline-md text-headline-md">
+<span class="material-symbols-outlined text-primary-container" data-icon="temp_preferences_custom">temp_preferences_custom</span>
+                    AI Assistant
+                </div>
+<div class="flex gap-xs text-text-secondary">
+<button class="p-xs hover:bg-surface-muted rounded transition-colors"><span class="material-symbols-outlined text-[18px]" data-icon="more_horiz">more_horiz</span></button>
+<button class="p-xs hover:bg-surface-muted rounded transition-colors"><span class="material-symbols-outlined text-[18px]" data-icon="open_in_full">open_in_full</span></button>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto custom-scrollbar p-lg flex flex-col gap-lg">
+<!-- User Message -->
+<div class="bg-surface-container text-on-surface p-lg rounded-xl rounded-tr-none self-end max-w-[90%] text-body-md shadow-sm font-headline-lg">
+                    I want to travel to Hanoi for 3 days. Please help me design a detailed travel itinerary.
+                </div>
+<!-- AI Status -->
+<div class="flex items-center gap-xs text-text-secondary text-sm font-medium px-xs">
+                    DeepDive Thinking Finished
+                    <span class="material-symbols-outlined text-[16px]" data-icon="keyboard_arrow_down">keyboard_arrow_down</span>
+</div>
+<!-- AI Response -->
+<div class="bg-surface-background border border-border-subtle p-lg rounded-xl shadow-sm flex flex-col gap-md">
+<h2 class="font-headline-lg text-headline-lg text-text-primary">Hanoi in 3 Days: Culture, History, and City Life</h2>
+<p class="text-body-lg text-text-secondary leading-relaxed font-headline-md">
+                        This curated three-day Hanoi itinerary is designed to immerse you in the city's vibrant history, scenic lakes, and local neighborhoods. You'll enjoy a balanced mix of landmarks, classic experiences, and authentic urban life, all arranged for comfortable pacing. Each evening brings you back to a central hotel, making it easy to explore and unwind.
+                    </p>
+<div class="border-t border-border-subtle pt-lg mt-sm flex flex-col gap-sm">
+<div class="flex items-center justify-between">
+<h3 class="font-headline-md text-headline-md text-text-primary">Route Overview</h3>
+<button class="w-8 h-8 rounded-full border border-border-subtle flex items-center justify-center hover:bg-surface-muted">
+<span class="material-symbols-outlined text-[18px]" data-icon="arrow_downward">arrow_downward</span>
+</button>
+</div>
+<p class="text-body-md text-text-secondary leading-relaxed font-headline-md">
+                            The journey unfolds entirely within Hanoi, allowing you to focus on the city's central cultural landmarks and lakes...
+                        </p>
+</div>
+</div>
+</div>
+<!-- Chat Input -->
+<div class="p-lg border-t border-border-subtle bg-surface-background shrink-0">
+<div class="relative flex items-center">
+<input class="w-full bg-surface-muted border border-border-subtle rounded-full py-3 pl-lg pr-14 focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all shadow-inner font-headline-lg" placeholder="Ask anything about the trip" type="text"/>
+<button class="absolute right-2 w-10 h-10 bg-primary-container text-white hover:bg-[#1a4de5] rounded-full flex items-center justify-center transition-colors shadow-md">
+<span class="material-symbols-outlined text-[20px]" data-icon="send">send</span>
+</button>
+</div>
+</div>
+</section>
+<!-- Center Column: Itinerary (Proportionally sized for 1920px) -->
+<section class="w-[540px] bg-surface-background border-r border-border-subtle flex flex-col shrink-0">
+<!-- Tabs -->
+<div class="flex items-center justify-between px-lg pt-md border-b border-border-subtle shrink-0">
+<div class="flex gap-xl">
+<button class="font-headline-md text-headline-md text-text-primary border-b-2 border-primary-container pb-sm px-xs">Itinerary</button>
+<button class="font-headline-md text-headline-md text-text-secondary hover:text-text-primary pb-sm px-xs transition-colors">Ideas</button>
+</div>
+<button class="p-xs hover:bg-surface-muted rounded text-text-secondary transition-colors mb-sm"><span class="material-symbols-outlined text-[18px]" data-icon="open_in_full">open_in_full</span></button>
+</div>
+<!-- Filters/Pills -->
+<div class="p-lg flex gap-sm overflow-x-auto custom-scrollbar shrink-0 items-center border-b border-border-subtle bg-surface-background z-10 sticky top-0">
+<button class="px-md py-2 bg-on-surface text-surface-background rounded-full font-label-md whitespace-nowrap shadow-sm">Overview</button>
+<button class="px-md py-2 bg-surface-background border border-border-subtle text-text-secondary hover:bg-surface-muted rounded-full font-label-md whitespace-nowrap transition-colors">To be planned</button>
+<button class="px-md py-2 bg-surface-background border border-border-subtle text-text-secondary hover:bg-surface-muted rounded-full font-label-md whitespace-nowrap transition-colors">Day 1</button>
+<button class="px-md py-2 bg-surface-background border border-border-subtle text-text-secondary hover:bg-surface-muted rounded-full font-label-md whitespace-nowrap transition-colors">Day 2</button>
+<span class="material-symbols-outlined text-text-secondary cursor-pointer px-xs" data-icon="chevron_right">chevron_right</span>
+<button class="w-8 h-8 bg-primary-container text-white rounded-full flex items-center justify-center hover:bg-[#1a4de5] transition-colors shrink-0 ml-auto shadow-sm">
+<span class="material-symbols-outlined text-[20px]" data-icon="add">add</span>
+</button>
+</div>
+<!-- Itinerary Content -->
+<div class="flex-1 overflow-y-auto custom-scrollbar p-lg flex flex-col gap-lg">
+<h3 class="font-headline-md text-headline-md text-text-primary mb-xs">Overview</h3>
+<!-- To be planned -->
+<div class="bg-surface-background border border-border-subtle rounded-xl p-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+<h4 class="font-headline-md text-headline-md text-text-primary relative inline-block">
+                        To be planned
+                        <div class="absolute bottom-1 left-0 w-full h-[4px] bg-primary-fixed-dim -z-10 rounded-full opacity-50"></div>
+</h4>
+</div>
+<!-- Day 1 -->
+<div class="bg-surface-background border border-border-subtle rounded-xl p-lg shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+<div class="absolute left-0 top-0 bottom-0 w-[4px] bg-primary-container group-hover:w-[6px] transition-all"></div>
+<h4 class="font-headline-md text-headline-md text-text-primary mb-sm">Day 1 · Hanoi</h4>
+<p class="text-body-md text-text-secondary leading-relaxed font-headline-lg">
+                        Ho Chi Minh's Mausoleum <span class="text-border-subtle mx-1">➝</span> Ba Dinh Square <span class="text-border-subtle mx-1">➝</span> One Pillar Pagoda <span class="text-border-subtle mx-1">➝</span> Imperial Citadel of Thang Long <span class="text-border-subtle mx-1">➝</span> Hoan Kiem Lake <span class="text-border-subtle mx-1">➝</span> 36 Pho Phuong <span class="text-border-subtle mx-1">➝</span> Thang Long Water Puppet Theatre <span class="text-border-subtle mx-1">➝</span> <span class="inline-flex items-center text-primary-container font-medium"><span class="material-symbols-outlined text-[16px] mr-xs" data-icon="bed">bed</span> Aurora Premium - A Lifestyle Hotel</span>
+</p>
+</div>
+<!-- Day 2 -->
+<div class="bg-surface-background border border-border-subtle rounded-xl p-lg shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+<div class="absolute left-0 top-0 bottom-0 w-[4px] bg-[#00a6ed] group-hover:w-[6px] transition-all"></div>
+<h4 class="font-headline-md text-headline-md text-text-primary mb-sm">Day 2 · Hanoi</h4>
+<p class="text-body-md text-text-secondary leading-relaxed font-headline-lg">
+                        Hoa Lo Prison <span class="text-border-subtle mx-1">➝</span> Hanoi Train Street <span class="text-border-subtle mx-1">➝</span> 36 Pho Phuong <span class="text-border-subtle mx-1">➝</span> Hanoi Sky Lotte Observation Deck <span class="text-border-subtle mx-1">➝</span> Hanoi Sightseeing Bus <span class="text-border-subtle mx-1">➝</span> <span class="inline-flex items-center text-primary-container font-medium"><span class="material-symbols-outlined text-[16px] mr-xs" data-icon="bed">bed</span> Aurora Premium - A Lifestyle Hotel</span>
+</p>
+</div>
+<!-- Day 3 -->
+<div class="bg-surface-background border border-border-subtle rounded-xl p-lg shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+<div class="absolute left-0 top-0 bottom-0 w-[4px] bg-[#00d084] group-hover:w-[6px] transition-all"></div>
+<h4 class="font-headline-md text-headline-md text-text-primary mb-sm">Day 3 · Hanoi</h4>
+<p class="text-body-md text-text-secondary leading-relaxed font-headline-lg">
+                        Temple of Literature <span class="text-border-subtle mx-1">➝</span> Vietnam Museum of Ethnology <span class="text-border-subtle mx-1">➝</span> West Lake <span class="text-border-subtle mx-1">➝</span> Tran Quoc Pagoda <span class="text-border-subtle mx-1">➝</span> Dong Xuan Market
+                    </p>
+</div>
+</div>
+</section>
+<!-- Right Column: Map (Remaining width for 1920px) -->
+<section class="flex-1 relative bg-[#f1f3f4] overflow-hidden">
+<!-- Map Background Placeholder -->
+<div class="absolute inset-0 w-full h-full bg-[#e8eaed] bg-opacity-80" data-alt="A highly detailed top-down digital map view of Hanoi city center featuring West Lake and Hoan Kiem Lake. The map uses a light-mode corporate aesthetic with subtle gray streets, soft green parks, and light blue water bodies. Bright blue vector route lines connect various points of interest, demonstrating a clear, modern travel planner interface layout." data-location="Hanoi" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDjxOrgyOlRxE0QjVjSorN8p16Uwjw3RO_Jcepu9mkAhxocbd0oyjdEQSkyYJ0wPziYFKyj7tV2CtUCn3gWNIYyKNGn0DvKQJhTaZUKOwEfxSiZSfhj3jUUh2vtr8RHgdtg9SHJtnimopFPEiH8K1a_zQIzNzbV98I54EYrPq3vOIOpDiuTgoig9nZmf1qLAgZw0bXrfuIhkXdGfKtzpiHt7N1nNhUTsDPv49W3_nVkk3aMAzsiePnd"); background-size: cover; background-position: center center;'>
+<!-- Overlay Pattern for map texture -->
+<div class="absolute inset-0 opacity-10" style="background-image: radial-gradient(#151b29 1px, transparent 1px); background-size: 24px 24px;"></div>
+</div>
+<!-- Map Top Floating Bar -->
+<div class="absolute top-lg left-lg right-lg flex gap-sm z-10 overflow-x-auto custom-scrollbar pb-xs">
+<button class="bg-surface-background text-text-primary px-md py-2 rounded-lg flex items-center gap-xs shadow-md font-label-md border border-border-subtle hover:bg-surface-muted transition-all">
+<span class="material-symbols-outlined text-[18px] text-[#00a6ed]" data-icon="attractions">attractions</span> Attractions
+                </button>
+<button class="bg-surface-background text-text-primary px-md py-2 rounded-lg flex items-center gap-xs shadow-md font-label-md border border-border-subtle hover:bg-surface-muted transition-all">
+<span class="material-symbols-outlined text-[18px] text-primary-container" data-icon="bed">bed</span> Properties
+                </button>
+<button class="bg-surface-background text-text-primary px-md py-2 rounded-lg flex items-center gap-xs shadow-md font-label-md border border-border-subtle hover:bg-surface-muted transition-all">
+<span class="material-symbols-outlined text-[18px] text-[#ff8a65]" data-icon="restaurant">restaurant</span> Food
+                </button>
+<button class="bg-surface-background text-text-primary px-md py-2 rounded-lg flex items-center gap-xs shadow-md font-label-md border border-border-subtle hover:bg-surface-muted transition-all">
+<span class="material-symbols-outlined text-[18px] text-[#f48fb1]" data-icon="local_mall">local_mall</span> Shopping
+                </button>
+<button class="bg-surface-background text-text-primary px-md py-2 rounded-lg flex items-center gap-xs shadow-md font-label-md border border-border-subtle hover:bg-surface-muted transition-all">
+<span class="material-symbols-outlined text-[18px] text-[#9575cd]" data-icon="flight">flight</span> Airports
+                    <span class="material-symbols-outlined text-[18px] text-text-secondary ml-xs" data-icon="chevron_right">chevron_right</span>
+</button>
+<div class="flex-1"></div>
+<button class="bg-surface-background text-text-secondary w-10 h-10 rounded-lg flex items-center justify-center shadow-md border border-border-subtle hover:bg-surface-muted transition-all">
+<span class="material-symbols-outlined text-[20px]" data-icon="open_in_full">open_in_full</span>
+</button>
+</div>
+<!-- Map Controls Bottom Right -->
+<div class="absolute bottom-lg right-lg flex flex-col gap-sm z-10">
+<div class="bg-surface-background rounded-xl shadow-lg border border-border-subtle flex flex-col overflow-hidden">
+<button class="w-12 h-12 flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface-muted transition-colors border-b border-border-subtle">
+<span class="material-symbols-outlined" data-icon="layers">layers</span>
+</button>
+<button class="w-12 h-12 flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface-muted transition-colors">
+<span class="material-symbols-outlined" data-icon="my_location">my_location</span>
+</button>
+</div>
+<div class="bg-surface-background rounded-xl shadow-lg border border-border-subtle flex flex-col overflow-hidden">
+<button class="w-12 h-12 flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface-muted transition-colors border-b border-border-subtle">
+<span class="material-symbols-outlined" data-icon="add">add</span>
+</button>
+<button class="w-12 h-12 flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface-muted transition-colors">
+<span class="material-symbols-outlined" data-icon="remove">remove</span>
+</button>
+</div>
+</div>
+<!-- Simulated Route Elements -->
+<div class="absolute inset-0 pointer-events-none flex items-center justify-center">
+<!-- Day 1 Route Marker -->
+<div class="absolute top-[52%] left-[54%] transform">
+<div class="bg-primary-container text-white font-label-sm px-3 py-1.5 rounded-full shadow-lg whitespace-nowrap border-2 border-white">Day 1</div>
+<div class="w-4 h-4 bg-white border-[3px] border-primary-container rounded-full absolute -top-1 -left-1 shadow-sm"></div>
+</div>
+<!-- Day 2 Route Marker -->
+<div class="absolute top-[62%] left-[48%]">
+<div class="bg-[#00a6ed] text-white font-label-sm px-3 py-1.5 rounded-full shadow-lg whitespace-nowrap border-2 border-white">Day 2</div>
+<div class="w-4 h-4 bg-white border-[3px] border-[#00a6ed] rounded-full absolute -top-1 -left-1 shadow-sm"></div>
+</div>
+<!-- Day 3 Route Marker -->
+<div class="absolute top-[42%] left-[58%]">
+<div class="bg-[#00d084] text-white font-label-sm px-3 py-1.5 rounded-full shadow-lg whitespace-nowrap border-2 border-white">Day 3</div>
+<div class="w-4 h-4 bg-white border-[3px] border-[#00d084] rounded-full absolute -top-1 -left-1 shadow-sm"></div>
+</div>
+</div>
+<!-- Mapbox attribution mock -->
+<div class="absolute bottom-sm left-sm text-[12px] text-text-secondary bg-surface-background/80 px-2 py-0.5 rounded-md shadow-sm border border-border-subtle">
+                © Mapbox © OpenStreetMap
+            </div>
+</section>
+</main>
+</body></html>

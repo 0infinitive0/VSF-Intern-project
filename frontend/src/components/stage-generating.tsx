@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { phaseLabelKey } from '../lib/phase-labels'
 import SkeletonCard from './skeleton-card'
 import TurnPhases from './turn-phases'
 import type { TurnPhase } from '../types'
@@ -28,8 +29,14 @@ export default function StageGenerating({
 }): ReactNode {
   const { t } = useTranslation()
   const seconds = Math.floor(elapsedMs / 1000)
-  const copy =
-    seconds >= 10
+  // Title must track the same phase the checklist below is currently
+  // spinning on — never an independent elapsed-time guess that can drift
+  // from what's actually happening (e.g. still reading "lên lịch trình"
+  // while the list has already moved on to "soạn câu trả lời").
+  const currentPhaseLabelKey = [...phases].reverse().map((p) => phaseLabelKey(p.key)).find((key) => key !== null)
+  const copy = currentPhaseLabelKey
+    ? t(currentPhaseLabelKey)
+    : seconds >= 10
       ? t('pendingBuildingPlan')
       : seconds >= 3
         ? t('pendingSearchingHotels')

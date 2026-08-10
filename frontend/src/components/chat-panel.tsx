@@ -5,6 +5,9 @@ import StepNavigator from './step-navigator'
 import SuggestionChips from './suggestion-chips'
 import IntakeParametersForm from './intake-parameters-form'
 import { deriveStageView } from '../lib/derive-stage'
+import type { IntakeFormState } from '../lib/compose-intake-message'
+import type { PreferenceKey } from '../lib/intake-options'
+import type { IntakeField } from '../lib/next-intake-field'
 import type { ChatState } from '../types'
 
 function lastAiStage(messages: ChatState['messages']): string | null {
@@ -28,10 +31,20 @@ export default function ChatPanel({
   state,
   onSend,
   width,
+  intakeForm,
+  setIntakeForm,
+  toggleIntakePreference,
+  editingIntakeField,
+  onDoneEditingIntakeField,
 }: {
   state: ChatState
   onSend: (text: string) => void
   width: number
+  intakeForm: IntakeFormState
+  setIntakeForm: (updater: (prev: IntakeFormState) => IntakeFormState) => void
+  toggleIntakePreference: (key: PreferenceKey) => void
+  editingIntakeField: IntakeField | null
+  onDoneEditingIntakeField: () => void
 }) {
   const { messages, suggestions, hotelOptions, tripPlan, intake, pending, streamingText } = state
   const { t } = useTranslation()
@@ -118,7 +131,16 @@ export default function ChatPanel({
       {!pending && (showIntakeForm || inHotelStage || suggestions.length > 0) && (
         <div className="flex-none max-h-[56vh] overflow-y-auto custom-scrollbar px-4 pb-1 flex flex-col gap-2.5">
           {showIntakeForm ? (
-            <IntakeParametersForm intake={intake!} onSubmit={onSend} disabled={false} />
+            <IntakeParametersForm
+              intake={intake!}
+              form={intakeForm}
+              setForm={setIntakeForm}
+              togglePreference={toggleIntakePreference}
+              onSubmit={onSend}
+              disabled={false}
+              editingField={editingIntakeField}
+              onDoneEditing={onDoneEditingIntakeField}
+            />
           ) : (
             <>
               {lastStage !== 'intake' && (

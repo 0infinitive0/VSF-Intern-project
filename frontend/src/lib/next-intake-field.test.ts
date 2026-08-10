@@ -34,7 +34,9 @@ function form(overrides: Record<string, unknown> = {}): Record<string, unknown> 
     startDate: '',
     endDate: '',
     guests: 0,
-    budget: '',
+    budgetMinVnd: null,
+    budgetMaxVnd: null,
+    budgetSkipped: false,
     preferences: [],
     ...overrides,
   }
@@ -117,7 +119,20 @@ describe('currentIntakeField', () => {
 
   it('surfaces preferences only after budget is answered', () => {
     const intake = intakeWith([])
-    const f = form({ destination: 'Đà Nẵng', guests: 2, startDate: 'a', endDate: 'b', budget: 'X' })
+    const f = form({
+      destination: 'Đà Nẵng',
+      guests: 2,
+      startDate: 'a',
+      endDate: 'b',
+      budgetMinVnd: 800_000,
+      budgetMaxVnd: 2_500_000,
+    })
+    expect(currentIntakeField(intake, f)).toBe('preferences')
+  })
+
+  it('treats a skipped budget as answered too', () => {
+    const intake = intakeWith([])
+    const f = form({ destination: 'Đà Nẵng', guests: 2, startDate: 'a', endDate: 'b', budgetSkipped: true })
     expect(currentIntakeField(intake, f)).toBe('preferences')
   })
 
@@ -128,7 +143,8 @@ describe('currentIntakeField', () => {
       guests: 2,
       startDate: 'a',
       endDate: 'b',
-      budget: 'X',
+      budgetMinVnd: 800_000,
+      budgetMaxVnd: 2_500_000,
       preferences: ['amusement'],
     })
     expect(currentIntakeField(intake, f)).toBe('preferences')
@@ -136,7 +152,14 @@ describe('currentIntakeField', () => {
 
   it('keeps required fields in front of optional ones even when optional are pre-filled', () => {
     const intake = intakeWith(['destination'])
-    const f = form({ budget: 'X', preferences: ['amusement'], startDate: 'a', endDate: 'b', guests: 2 })
+    const f = form({
+      budgetMinVnd: 800_000,
+      budgetMaxVnd: 2_500_000,
+      preferences: ['amusement'],
+      startDate: 'a',
+      endDate: 'b',
+      guests: 2,
+    })
     expect(currentIntakeField(intake, f)).toBe('destination')
   })
 })

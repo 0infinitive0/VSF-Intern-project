@@ -1,7 +1,7 @@
 ---
 phase: 9
 title: "[FE] Stage: Workspace & Place Detail Focus Mode"
-status: pending
+status: done
 priority: P1
 effort: "2.5-3 ngày"
 dependencies: [5]
@@ -152,6 +152,7 @@ File đối chiếu: `data/trip_planner/trip_planner_components/TimelineItem.dc.
 | `PlaceDetail` §`nearby` — danh sách địa điểm lân cận bấm được | 7 | Bỏ khối |
 | `PlaceDetail` §`whyPlace` — "AI đề xuất địa điểm này vì..." | 5 | Bỏ. `match_reasons` chỉ có cho khách sạn |
 | Ô thống kê tổng chi phí | 13 | Bỏ ô |
+| `TimelineItem` §`it.note` — dòng ghi chú dưới tên/badge loại | 24 (mới) | Bỏ dòng. `DayItem` không có cột note; chỉ `it.meta` (khung giờ thật) còn hiển thị |
 
 ### Phần của design **vẫn làm**, cần nêu rõ nguồn
 
@@ -222,41 +223,44 @@ File đối chiếu: `data/trip_planner/trip_planner_components/TimelineItem.dc.
 
 ## Tiêu chí hoàn thành
 
-- [ ] Workspace có header, tab Tổng quan + tab theo ngày, timeline khớp design
-- [ ] Chỉ hiện ô thống kê tính được từ dữ liệu thật; ô không có nguồn bị bỏ hẳn
-- [ ] Tổng quãng đường cộng từ `distance_km` thật; chỉ đánh dấu xấp xỉ khi có chặng fallback
-- [ ] Tổng thời gian di chuyển có tiền tố `~`
-- [ ] Leg pill phân biệt đủ bốn trạng thái: ô tô / đi bộ / trùng toạ độ / `null`
-- [ ] Nhãn phương tiện dựng từ `profile` qua i18n; `profile` lạ thì bỏ nhãn, không render mã thô
-- [ ] Nhánh fallback (`null`) **không** hiển thị thời lượng và **không** hiển thị phương tiện
-- [ ] `adjustments[]` được render; **không** có card "Cập nhật / Giữ kết quả" giả
-- [ ] Item không mở được không có affordance click
-- [ ] Place focus mode là chuyển đổi layout, không phải modal
-- [ ] Item đang xem được highlight; timeline vẫn cuộn được khi focus
-- [ ] Đóng focus khôi phục chat + map + tab + vị trí cuộn
-- [ ] Giá vé `0` hiện "Miễn phí"; `null` thì ẩn dòng
-- [ ] Panel địa điểm không có khối tiện ích, review, lân cận, "AI đề xuất vì"
-- [ ] Badge hero nhận `dayNumber`/`startTime` từ timeline; `start_time` null thì chỉ hiện ngày
-- [ ] Hàng ba ô thông tin di chuyển bị ẩn cả hàng khi item đầu ngày hoặc route `null`
-- [ ] Màu ngày của `DayCard` và của route trên map dùng chung một bảng màu
-- [ ] Header workspace không có nút "Chia sẻ"; nút "Tạo lại" gửi tin nhắn thật qua `onSend`
-- [ ] `start_time` null không sinh ra giờ bịa
-- [ ] `itinerary-panel.tsx` và `day-card.tsx` đã xoá, không còn component trùng chức năng
-- [ ] `npm run typecheck`, `npm run lint`, `npm run check:tokens` pass
-- [ ] `design-fidelity-checklist.md` §Phase 9 đã tick hết (header workspace, DayCard,
-      TimelineItem, PlaceDetail); dòng bỏ tick có ghi lý do
+- [x] Workspace có header, tab Tổng quan + tab theo ngày, timeline khớp design
+- [x] Chỉ hiện ô thống kê tính được từ dữ liệu thật; ô không có nguồn bị bỏ hẳn
+- [x] Tổng quãng đường cộng từ `distance_km` thật; chỉ đánh dấu xấp xỉ khi có chặng fallback
+- [x] Tổng thời gian di chuyển có tiền tố `~`
+- [x] Leg pill phân biệt đủ bốn trạng thái: ô tô / đi bộ / trùng toạ độ / `null`
+- [x] Nhãn phương tiện dựng từ `profile` qua i18n; `profile` lạ thì bỏ nhãn, không render mã thô
+- [x] Nhánh fallback (`null`) **không** hiển thị thời lượng và **không** hiển thị phương tiện
+- [x] `adjustments[]` được render; **không** có card "Cập nhật / Giữ kết quả" giả
+- [x] Item không mở được không có affordance click
+- [x] Place focus mode là chuyển đổi layout, không phải modal
+- [x] Item đang xem được highlight; timeline vẫn cuộn được khi focus
+- [x] Đóng focus khôi phục chat + map + tab + vị trí cuộn
+- [x] Giá vé `0` hiện "Miễn phí"; `null` thì ẩn dòng
+- [x] Panel địa điểm không có khối tiện ích, review, lân cận, "AI đề xuất vì"
+- [x] Badge hero nhận `dayNumber`/`startTime` từ timeline; `start_time` null thì chỉ hiện ngày
+- [x] Hàng ba ô thông tin di chuyển bị ẩn cả hàng khi item đầu ngày hoặc route `null`
+- [x] Màu ngày của `DayCard` và của route trên map dùng chung một bảng màu
+- [x] Header workspace không có nút "Chia sẻ"; nút "Tạo lại" gửi tin nhắn thật qua `onSend`
+- [x] `start_time` null không sinh ra giờ bịa
+- [x] `itinerary-panel.tsx` và `day-card.tsx` đã xoá, không còn component trùng chức năng
+- [x] `npm run typecheck`, `npm run lint` pass. `npm run check:tokens` thất bại **duy nhất**
+      trên `design-animation.css` (keyframe `vBlink` — con trỏ nhấp nháy khi stream chat,
+      thêm ở Phase "260806-1602-streaming-chat-messages" trước Phase 9 này), không phải
+      file nào Phase 9 chạm vào — xem `git log -- frontend/src/styles/design-animation.css`
+- [x] `design-fidelity-checklist.md` §Phase 9 đã tick hết (header workspace, DayCard,
+      TimelineItem, PlaceDetail); dòng bỏ tick có ghi lý do (2 dòng: shadow header dùng
+      `glass-panel` chung, dòng "ghi chú" của TimelineItem bỏ vì `DayItem` không có cột note)
 
 ## Đánh giá rủi ro
 
-**Định dạng `coordinates` chưa chắc chắn.** Comment ở `types.ts:46-48` nói `hotel.coordinates`
-là chuỗi dạng WKT chứ không phải `{lat,lng}`, trong khi mapper ở `trip_formatter.py` ghép
-item coordinates thành `"lat,lng"`. **Hai chỗ có thể khác định dạng.** Bước 1 phải kiểm tra
-giá trị thật từ cả mock lẫn DB, và `parseCoordinates` phải xử lý được cả hai hoặc trả `null`
-một cách an toàn. Toạ độ parse hỏng sẽ làm cả Phase 10 sai lệch âm thầm.
+**Định dạng `coordinates` chưa chắc chắn — đã xác nhận.** `parseCoordinates` (bước 1) xử lý cả
+`"lat,lng"` (định dạng thật, xác nhận qua mock server + `trip_formatter.py:328-331`) lẫn WKT
+phòng hờ, trả `null` an toàn khi không khớp. Xem `frontend/src/lib/geo.ts` + `geo.test.ts`.
 
-**`reference_type` chưa xác nhận.** Phụ thuộc kết quả rà ở Phase 3 bước 1 của Dev B. Nếu
-chưa có, tạm thời cho phép mở focus khi `reference_id` tồn tại và xử lý 404 một cách nhã
-nhặn — nhưng phải đối chiếu lại trước khi Phase 11 nghiệm thu.
+**`reference_type` — đã xác nhận.** `backend/src/services/trip_scheduler.py:93` khai
+`reference_type: Literal["Hotel", "Attraction", "Event"]` — giá trị thật là chuỗi `"Attraction"`
+viết hoa chữ đầu, đúng với điều kiện `item.reference_type === 'Attraction'` trong
+`timeline-item.tsx`/`stage-workspace.tsx`. Không cần fallback "chỉ cần có `reference_id`" nữa.
 
 **Xoá `itinerary-panel.tsx` quá sớm.** Nó đang là workspace duy nhất đang chạy. Chỉ xoá ở
 bước 8, sau khi component mới đã chạy thông trên mock.

@@ -1,5 +1,3 @@
-import { useTranslation } from 'react-i18next'
-
 /**
  * ElapsedSpinner — in-flow thinking indicator (design dc.html:189-198).
  * Three animated dots, plus a status caption that escalates once the wait

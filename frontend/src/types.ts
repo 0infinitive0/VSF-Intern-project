@@ -37,6 +37,9 @@ export interface HotelOption {
   area_name?: string
   image_url?: string | null
   amenities?: string[]
+  // Preference-first, category-diverse, max 4 (schemas.py:_display_amenities) —
+  // what the hotel card renders. `amenities` above is the full raw list.
+  display_amenities?: string[]
   review_score?: number // 0..10
   review_count?: number
   match_score?: number // 0..1, real composite ranking score (hotel_selection.py:_composite_score)

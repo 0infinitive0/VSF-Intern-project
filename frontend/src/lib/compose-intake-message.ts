@@ -11,8 +11,10 @@
  *   - preferences/companions/pace/day_rhythm: the closed-set labels verbatim
  *                        (stored as canonical keys, mapped to wire strings via
  *                        lib/intake-options.ts)
- *   - budget tier:       `_parse_free_text_budget()` qualitative phrases
- *                        (hotel_selection.py:320-378) via budgetPhraseFromLabel
+ *   - budget range:      `_parse_free_text_budget()`'s explicit-range branch
+ *                        (hotel_selection.py:_PRICE_RANGE_RE), fed by
+ *                        budgetRangePhrase — "từ X đến Y triệu" keeps its true
+ *                        min/max (not collapsed to a midpoint)
  *   - budget skip:       `_NO_BUDGET_PREFERENCE_PHRASES` (hotel_selection.py:383)
  */
 
@@ -32,7 +34,9 @@ export interface IntakeFormState {
   startDate: string // YYYY-MM-DD (native date input format)
   endDate: string // YYYY-MM-DD (native date input format)
   guests: number
-  budget: string // one of IntakeStatus.budget_options, '' = unset
+  budgetMinVnd: number | null // VND/night, from the budget range slider
+  budgetMaxVnd: number | null
+  budgetSkipped: boolean // "Bỏ qua ngân sách" — a real answer, not unset
   preferences: PreferenceKey[]
   companions: CompanionKey | ''
   pace: PaceKey | ''
@@ -53,21 +57,19 @@ export function durationDaysBetween(startDate: string, endDate: string): number 
   return Math.round((end - start) / 86_400_000)
 }
 
+// The exact skip phrase `_NO_BUDGET_PREFERENCE_PHRASES` recognises
+// (hotel_selection.py:383) — "no filter", a real answer, not a parse failure.
+export const BUDGET_SKIP_PHRASE = 'không quan tâm giá khách sạn'
+
 /**
- * Map a budget tier label (one of the backend's `budget_option_labels()`) to the
- * qualitative phrase `_parse_free_text_budget()` recognises. The three tier labels'
- * leading tokens map to their tier phrase; the skip option ("Bỏ qua, không cần lọc
- * theo giá") maps to the no-preference phrase; anything else — including an empty
- * unset value — maps to '' so the sentence omits the budget entirely (a blank
- * budget must not become a "no preference" answer that skips the budget question).
- * Source of truth: src/services/hotel_selection.py:509-531.
+ * Render a VND min–max range (from the budget slider) as the sentence
+ * `_parse_free_text_budget()`'s explicit-range branch matches — "từ X đến Y
+ * triệu" — which now keeps its true (min, max), not a collapsed midpoint.
+ * Source of truth: src/services/hotel_selection.py:_PRICE_RANGE_RE.
  */
-export function budgetPhraseFromLabel(label: string): string {
-  if (/Tiết kiệm/.test(label)) return 'tiết kiệm'
-  if (/Tầm trung/.test(label)) return 'tầm trung'
-  if (/Cao cấp/.test(label)) return 'cao cấp'
-  if (/Bỏ qua/.test(label)) return 'không quan tâm giá khách sạn'
-  return ''
+export function budgetRangePhrase(minVnd: number, maxVnd: number): string {
+  const million = (value: number) => value / 1_000_000
+  return `từ ${million(minVnd)} đến ${million(maxVnd)} triệu`
 }
 
 export function composeIntakeMessage(form: IntakeFormState): string {
@@ -80,8 +82,11 @@ export function composeIntakeMessage(form: IntakeFormState): string {
     )
   }
 
-  const budget = budgetPhraseFromLabel(form.budget)
-  if (budget) sentences.push(`Ngân sách khách sạn: ${budget}.`)
+  if (form.budgetSkipped) {
+    sentences.push(`Ngân sách khách sạn: ${BUDGET_SKIP_PHRASE}.`)
+  } else if (form.budgetMinVnd != null && form.budgetMaxVnd != null) {
+    sentences.push(`Ngân sách khách sạn: ${budgetRangePhrase(form.budgetMinVnd, form.budgetMaxVnd)}.`)
+  }
 
   if (form.preferences.length > 0) {
     const labels = form.preferences.map((key) => PREFERENCE_WIRE_VALUE_VI[key])

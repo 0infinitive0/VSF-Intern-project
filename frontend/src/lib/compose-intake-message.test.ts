@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  budgetPhraseFromLabel,
+  budgetRangePhrase,
   composeIntakeMessage,
   durationDaysBetween,
   type IntakeFormState,
@@ -19,7 +19,9 @@ const MINIMAL: IntakeFormState = {
   startDate: '2026-08-10',
   endDate: '2026-08-13',
   guests: 2,
-  budget: '',
+  budgetMinVnd: null,
+  budgetMaxVnd: null,
+  budgetSkipped: false,
   preferences: [],
   companions: '',
   pace: '',
@@ -41,18 +43,10 @@ describe('durationDaysBetween', () => {
   })
 })
 
-describe('budgetPhraseFromLabel', () => {
-  it('maps tier labels to the phrases the backend budget parser recognises', () => {
-    expect(budgetPhraseFromLabel('Tiết kiệm ...')).toBe('tiết kiệm')
-    expect(budgetPhraseFromLabel('Tầm trung ...')).toBe('tầm trung')
-    expect(budgetPhraseFromLabel('Cao cấp ...')).toBe('cao cấp')
-  })
-  it('maps the skip label to the no-preference phrase', () => {
-    expect(budgetPhraseFromLabel('Bỏ qua, không cần lọc theo giá')).toBe('không quan tâm giá khách sạn')
-  })
-  it('maps unknown/blank to "" (budget omitted entirely, not answered "no")', () => {
-    expect(budgetPhraseFromLabel('')).toBe('')
-    expect(budgetPhraseFromLabel('whatever')).toBe('')
+describe('budgetRangePhrase', () => {
+  it('renders a VND min-max as the range phrase the backend budget parser keeps intact', () => {
+    expect(budgetRangePhrase(800_000, 2_500_000)).toBe('từ 0.8 đến 2.5 triệu')
+    expect(budgetRangePhrase(1_000_000, 2_000_000)).toBe('từ 1 đến 2 triệu')
   })
 })
 
@@ -63,16 +57,21 @@ describe('composeIntakeMessage', () => {
     )
   })
 
-  it('adds the budget sentence when a tier is chosen', () => {
-    const message = composeIntakeMessage(fill({ budget: 'Khách sạn Tầm trung' }))
+  it('adds the budget sentence when a range is chosen', () => {
+    const message = composeIntakeMessage(fill({ budgetMinVnd: 800_000, budgetMaxVnd: 2_500_000 }))
     expect(message).toBe(
-      'Tôi muốn đi Đà Nẵng trong 3 ngày từ 2026-08-10 cho 2 người. Ngân sách khách sạn: tầm trung.',
+      'Tôi muốn đi Đà Nẵng trong 3 ngày từ 2026-08-10 cho 2 người. Ngân sách khách sạn: từ 0.8 đến 2.5 triệu.',
     )
   })
 
-  it('adds the budget skip phrase for the "Bỏ qua" label', () => {
-    const message = composeIntakeMessage(fill({ budget: 'Bỏ qua, không cần lọc theo giá' }))
+  it('adds the budget skip phrase when budget is skipped', () => {
+    const message = composeIntakeMessage(fill({ budgetSkipped: true }))
     expect(message).toContain('Ngân sách khách sạn: không quan tâm giá khách sạn.')
+  })
+
+  it('omits the budget sentence when neither a range nor skip is set', () => {
+    const message = composeIntakeMessage(fill({}))
+    expect(message).not.toContain('Ngân sách')
   })
 
   it('adds preferences with the exact wire labels, joined by ", "', () => {

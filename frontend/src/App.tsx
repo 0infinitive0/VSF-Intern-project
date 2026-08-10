@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useChatSession } from './hooks/use-chat-session'
+import { useIntakeForm } from './hooks/use-intake-form'
 import { usePanelResize } from './hooks/use-panel-resize'
 import { deriveStageView } from './lib/derive-stage'
 import AppShell from './components/app-shell'
@@ -14,15 +15,22 @@ import AppShell from './components/app-shell'
 export default function App() {
   const { t } = useTranslation()
   const { state, send, reset } = useChatSession()
+  const {
+    form: intakeForm,
+    setForm: setIntakeForm,
+    togglePreference: toggleIntakePreference,
+    resetForm: resetIntakeForm,
+    editingField: editingIntakeField,
+    setEditingField: setEditingIntakeField,
+  } = useIntakeForm(state.intake)
   const [chatWidth, setChatWidth] = useState(380)
-  const [itineraryWidth, setItineraryWidth] = useState(420)
   const chatResize = usePanelResize(chatWidth, setChatWidth, { min: 300, max: 560 })
-  const itineraryResize = usePanelResize(itineraryWidth, setItineraryWidth, { min: 320, max: 640 })
   const stage = deriveStageView(state)
 
   async function handleReset() {
     if (!window.confirm(t('newChatConfirm'))) return
     await reset()
+    resetIntakeForm()
   }
 
   return (
@@ -33,8 +41,12 @@ export default function App() {
       stage={stage}
       chatWidth={chatWidth}
       onChatResizeStart={chatResize}
-      itineraryWidth={itineraryWidth}
-      onItineraryResizeStart={itineraryResize}
+      intakeForm={intakeForm}
+      setIntakeForm={setIntakeForm}
+      toggleIntakePreference={toggleIntakePreference}
+      editingIntakeField={editingIntakeField}
+      onEditIntakeField={setEditingIntakeField}
+      onDoneEditingIntakeField={() => setEditingIntakeField(null)}
     />
   )
 }

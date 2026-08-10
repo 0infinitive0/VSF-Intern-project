@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
-import { buildIntakeChecklistRows } from '../lib/intake-checklist-rows'
+import { buildIntakeChecklistRows, type IntakeChecklistRowKey } from '../lib/intake-checklist-rows'
+import type { IntakeFormState } from '../lib/compose-intake-message'
 import type { IntakeStatus } from '../types'
 
 const ROW_LABEL_KEY = {
@@ -17,19 +18,39 @@ const ROW_LABEL_KEY = {
  * prefilled value (phase-07 acceptance criteria). Row derivation lives in the
  * pure lib/intake-checklist-rows.ts; this component only owns markup + i18n.
  *
+ * Per-row edit affordance (design's `r.onPick`/`r.editLabel`): a collected row
+ * shows a real "Sửa" button that calls `onEditField(row.key)`. That is a real
+ * send path now — the caller (App.tsx, via useIntakeForm's editingField) forces
+ * IntakeParametersForm to reopen that one widget pre-filled with the current
+ * value; picking a new answer resends the full intake sentence through the
+ * same chat pipeline the initial collection uses (composeIntakeMessage), which
+ * the backend's existing trip-preference-update path
+ * (`_looks_like_trip_preference_change` / `TripPreferenceUpdate`,
+ * backend/src/agents/session.py) already knows how to re-parse. No fabricated
+ * "affected fields" preview is shown — that would require the backend to
+ * compute impact data it doesn't expose; the AI's own reply text says what
+ * happens next.
+ *
  * Deliberate deviations from the design source:
- *  - No per-row edit affordance (`r.onPick`/`r.editLabel`): the stage has no
- *    send path in this phase, so a "Sửa" link would be an inert promise. The
- *    chat widgets remain the honest editing surface.
  *  - Preferences render as translated chips (canonical keys →
  *    intake.preferenceOptions.*) instead of one joined string — per phase-07.
- *  - Budget row is permanently "—": the frozen contract carries no chosen-tier
- *    field (see intake-checklist-rows.ts header). Not an omission — a contract
- *    decision recorded in the phase-07 plan.
+ *  - Budget row lights up from the slider's local answer (the backend never
+ *    gates or echoes a chosen budget — see intake-checklist-rows.ts header).
  */
-export default function IntakeChecklist({ intake }: { intake: IntakeStatus | null }) {
+export default function IntakeChecklist({
+  intake,
+  form,
+  onEditField,
+}: {
+  intake: IntakeStatus | null
+  form: IntakeFormState
+  onEditField?: (key: IntakeChecklistRowKey) => void
+}) {
   const { t, i18n } = useTranslation()
-  const rows = buildIntakeChecklistRows(intake, i18n.language)
+  const rows = buildIntakeChecklistRows(intake, i18n.language, form, {
+    peopleWord: t('peopleWord'),
+    budgetSkipped: t('budgetSkippedValue'),
+  })
 
   return (
     <div className="glass-panel rounded-[28px] p-5">
@@ -75,6 +96,15 @@ export default function IntakeChecklist({ intake }: { intake: IntakeStatus | nul
                 (row.value ?? '—')
               )}
             </div>
+            {row.collected && onEditField && (
+              <button
+                type="button"
+                onClick={() => onEditField(row.key)}
+                className="flex-none text-[12px] font-[590] text-primary hover:underline"
+              >
+                {t('intakeRowEdit')}
+              </button>
+            )}
           </div>
         ))}
       </div>

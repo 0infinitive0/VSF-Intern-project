@@ -1,23 +1,29 @@
 /**
  * intake-checklist-rows.ts — pure derivation of the five "THÔNG TIN AI ĐANG THU
- * THẬP" checklist rows from the frozen IntakeStatus contract (phase-07).
+ * THẬP" checklist rows from the frozen IntakeStatus contract (phase-07), plus
+ * the widget form's own in-progress local state (phase — checklist live-update).
  *
- * Collected state is derived from `intake.missing` exactly as the phase-07 plan
- * specifies ("Trạng thái chưa có suy ra từ intake.missing"). The backend only
- * ever emits the four gated keys — 'destination', 'people', 'start_date',
- * 'duration' (schemas.py IntakeStatus.from_state) — so for those rows `missing`
- * and "value present" are equivalent signals; budget/preferences are NEVER in
- * `missing` (the backend does not gate them, see next-intake-field.ts) and are
- * handled explicitly below.
+ * Server-collected state is derived from `intake.missing` exactly as the
+ * phase-07 plan specifies. The backend only ever emits the four gated keys —
+ * 'destination', 'people', 'start_date', 'duration' (schemas.py
+ * IntakeStatus.from_state) — so for those rows `missing` and "value present"
+ * are equivalent signals; budget/preferences are NEVER in `missing` (the
+ * backend does not gate them, see next-intake-field.ts) and are handled
+ * explicitly below.
  *
- * Budget row: always uncollected. The frozen contract carries no "chosen budget
- * tier" field (the chosen tier only exists inside the free-text chat message
- * and, on the real backend, as min_price/max_price — integers that are not part
- * of types.ts / docs/chat_api_contract.md / mock fixtures). Showing a tier name
- * would be inventing data; "—" is the honest render. If the contract later
- * declares a chosen-tier field, this row can light up with no other change.
+ * people/dates/budget also light up from `form` the moment the user answers
+ * the widget locally — IntakeParametersForm only round-trips ONE combined
+ * message at the very last step, so waiting for server confirmation left
+ * these rows stuck on "—" the entire time the user was stepping through them.
+ * `isFieldFilled` (next-intake-field.ts) is reused as the single source of
+ * truth for "is this field answered locally" — no separate logic invented
+ * here. Once the server confirms a row, its formatted value wins (it's the
+ * more authoritative string); the local value is just a placeholder for the
+ * gap between "user answered" and "backend round-tripped it".
  */
+import { formatCurrency } from './format-currency'
 import { formatTripDateRange } from './format-trip-dates'
+import { isFieldFilled, type IntakeFormShape } from './next-intake-field'
 import type { IntakeStatus } from '../types'
 
 export type IntakeChecklistRowKey =
@@ -37,27 +43,50 @@ export interface IntakeChecklistRow {
   preferenceKeys: string[]
 }
 
-const MISSING_KEYS: Record<IntakeChecklistRowKey, readonly string[]> = {
+/** Translated fragments the pure lib needs but shouldn't own — sourced from
+ * i18n by the caller (IntakeChecklist), same reasoning as the `locale` param. */
+export interface IntakeChecklistLabels {
+  /** "người" / "people" — appended to the local guest count. */
+  peopleWord: string
+  /** Shown for the budget row when the user picked "Bỏ qua ngân sách". */
+  budgetSkipped: string
+}
+
+const MISSING_KEYS: Record<'destination' | 'people' | 'dates', readonly string[]> = {
   destination: ['destination'],
   people: ['people'],
   dates: ['start_date', 'duration'],
-  budget: [],
-  preferences: [],
 }
 
 export function buildIntakeChecklistRows(
   intake: IntakeStatus | null,
   locale: string,
+  form: IntakeFormShape | null = null,
+  labels: IntakeChecklistLabels = { peopleWord: '', budgetSkipped: '' },
 ): IntakeChecklistRow[] {
   const missing = intake?.missing ?? []
   const missingAny = (keys: readonly string[]) => keys.some((key) => missing.includes(key))
 
-  const dateRange = formatTripDateRange(intake?.start_date, intake?.end_date, locale)
+  const serverDateRange = formatTripDateRange(intake?.start_date, intake?.end_date, locale)
   const preferenceKeys = intake?.preferences ?? []
 
   const destinationCollected = Boolean(intake?.destination) && !missingAny(MISSING_KEYS.destination)
-  const peopleCollected = Boolean(intake?.people) && !missingAny(MISSING_KEYS.people)
-  const datesCollected = dateRange != null && !missingAny(MISSING_KEYS.dates)
+
+  const peopleServerCollected = Boolean(intake?.people) && !missingAny(MISSING_KEYS.people)
+  const peopleLocalCollected = isFieldFilled(form ?? {}, 'people')
+
+  const datesServerCollected = serverDateRange != null && !missingAny(MISSING_KEYS.dates)
+  const datesLocalCollected = isFieldFilled(form ?? {}, 'dates')
+  const localDateRange = datesLocalCollected
+    ? formatTripDateRange(form?.startDate, form?.endDate, locale)
+    : null
+
+  const budgetCollected = isFieldFilled(form ?? {}, 'budget')
+  const budgetValue = form?.budgetSkipped
+    ? labels.budgetSkipped
+    : form?.budgetMinVnd != null && form?.budgetMaxVnd != null
+      ? `${formatCurrency(form.budgetMinVnd, locale)} – ${formatCurrency(form.budgetMaxVnd, locale)}`
+      : null
 
   // Values are gated on `collected` even though the backend never emits a
   // contradictory payload (value present AND key in `missing`) — the gated
@@ -73,21 +102,27 @@ export function buildIntakeChecklistRows(
       key: 'people',
       // intake.people is a backend-formatted string ("2 người") — display
       // verbatim, never re-parse (types.ts comment; phase-07 acceptance).
-      collected: peopleCollected,
-      value: peopleCollected ? (intake?.people ?? null) : null,
+      // Falls back to the local guest count + peopleWord until the backend
+      // confirms it.
+      collected: peopleServerCollected || peopleLocalCollected,
+      value: peopleServerCollected
+        ? (intake?.people ?? null)
+        : peopleLocalCollected
+          ? `${form?.guests} ${labels.peopleWord}`.trim()
+          : null,
       preferenceKeys: [],
     },
     {
       key: 'dates',
-      collected: datesCollected,
-      value: datesCollected ? dateRange : null,
+      collected: datesServerCollected || datesLocalCollected,
+      value: datesServerCollected ? serverDateRange : localDateRange,
       preferenceKeys: [],
     },
     {
-      // See file header — no chosen-tier signal exists in the frozen contract.
+      // Never gated by the backend (see file header) — local-only signal.
       key: 'budget',
-      collected: false,
-      value: null,
+      collected: budgetCollected,
+      value: budgetValue,
       preferenceKeys: [],
     },
     {

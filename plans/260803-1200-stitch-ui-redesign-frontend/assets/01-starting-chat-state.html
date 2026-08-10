@@ -1,0 +1,290 @@
+<!DOCTYPE html><html class="h-full" lang="en" style=""><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Horizon Voyager - Start Planning</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<!-- Google Fonts: Inter & Hanken Grotesk -->
+<link href="https://fonts.googleapis.com" rel="preconnect">
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Config -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary": "#0047dd",
+                        "surface-bright": "#faf8ff",
+                        "outline": "#737687",
+                        "secondary-fixed-dim": "#c1c6d7",
+                        "on-tertiary-fixed": "#191c1f",
+                        "text-primary": "#121826",
+                        "on-tertiary": "#ffffff",
+                        "on-error": "#ffffff",
+                        "surface-tint": "#004cec",
+                        "border-subtle": "#EBEDF1",
+                        "on-secondary-fixed": "#161c28",
+                        "error": "#ba1a1a",
+                        "surface-container-highest": "#dde2f6",
+                        "surface-container-low": "#f1f3ff",
+                        "error-container": "#ffdad6",
+                        "secondary-container": "#dadff0",
+                        "tertiary-container": "#6d7074",
+                        "on-tertiary-fixed-variant": "#44474a",
+                        "on-primary": "#ffffff",
+                        "on-primary-fixed-variant": "#0039b5",
+                        "surface": "#faf8ff",
+                        "on-surface-variant": "#434656",
+                        "surface-container-lowest": "#ffffff",
+                        "surface-container": "#e9edff",
+                        "on-secondary-fixed-variant": "#414754",
+                        "on-error-container": "#93000a",
+                        "tertiary": "#55585b",
+                        "on-primary-container": "#f5f4ff",
+                        "inverse-surface": "#2a303f",
+                        "on-tertiary-container": "#f3f5f9",
+                        "inverse-on-surface": "#edf0ff",
+                        "on-primary-fixed": "#001551",
+                        "inverse-primary": "#b7c4ff",
+                        "primary-container": "#2c61fe",
+                        "secondary-fixed": "#dde2f3",
+                        "text-secondary": "#4F5563",
+                        "surface-variant": "#dde2f6",
+                        "surface-container-high": "#e2e8fc",
+                        "surface-muted": "#F5F7FA",
+                        "on-background": "#151b29",
+                        "on-secondary": "#ffffff",
+                        "surface-background": "#FFFFFF",
+                        "surface-dim": "#d4d9ed",
+                        "tertiary-fixed-dim": "#c4c7ca",
+                        "background": "#faf8ff",
+                        "on-surface": "#151b29",
+                        "primary-fixed-dim": "#b7c4ff",
+                        "on-secondary-container": "#5d6371",
+                        "tertiary-fixed": "#e0e2e6",
+                        "outline-variant": "#c3c5d8",
+                        "primary-fixed": "#dce1ff",
+                        "secondary": "#585e6d"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "base": "4px",
+                        "lg": "24px",
+                        "sm": "8px",
+                        "margin-mobile": "16px",
+                        "margin-desktop": "48px",
+                        "gutter": "16px",
+                        "xl": "32px",
+                        "md": "16px",
+                        "xs": "4px"
+                    },
+                    "fontFamily": {
+                        "display-lg": ["Hanken Grotesk"],
+                        "headline-lg-mobile": ["Hanken Grotesk"],
+                        "headline-lg": ["Hanken Grotesk"],
+                        "body-md": ["Inter"],
+                        "label-sm": ["Inter"],
+                        "label-md": ["Inter"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "body-lg": ["Inter"]
+                    },
+                    "fontSize": {
+                        "display-lg": ["40px", { "lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "headline-lg-mobile": ["24px", { "lineHeight": "32px", "fontWeight": "700" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "label-sm": ["11px", { "lineHeight": "14px", "fontWeight": "500" }],
+                        "label-md": ["12px", { "lineHeight": "16px", "fontWeight": "600" }],
+                        "headline-md": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-outlined.fill {
+            font-variation-settings: 'FILL' 1;
+        }
+        
+        /* Custom scrollbar for sidebar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #dde2f6;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #c1c6d7;
+        }
+    </style>
+</head>
+<body class="bg-surface h-full flex flex-col font-body-md text-text-primary overflow-hidden">
+<!-- TopNavBar Shell -->
+<header class="fixed top-0 w-full z-50 flex justify-between items-center px-lg h-16 w-full bg-surface-bright dark:bg-inverse-surface border-b border-border-subtle shadow-sm dark:shadow-none">
+<div class="flex items-center gap-lg">
+<h1 class="font-headline-md text-headline-md font-bold text-primary dark:text-primary-fixed-dim">Horizon Voyager</h1>
+<!-- Desktop Nav -->
+<nav class="hidden md:flex items-center gap-md">
+<!-- Assuming "Explorer" is the AI planner starting point -->
+<a class="text-primary dark:text-primary-fixed-dim border-b-2 border-primary dark:border-primary-fixed-dim pb-1 font-label-md text-label-md hover:text-primary dark:hover:text-primary-fixed-dim transition-colors duration-200" href="#">Explorer</a>
+<a class="text-text-secondary dark:text-on-surface-variant font-label-md text-label-md hover:text-primary dark:hover:text-primary-fixed-dim transition-colors duration-200" href="#">Trips</a>
+<a class="text-text-secondary dark:text-on-surface-variant font-label-md text-label-md hover:text-primary dark:hover:text-primary-fixed-dim transition-colors duration-200" href="#">Concierge</a>
+</nav>
+</div>
+<div class="flex items-center gap-md">
+<!-- Search Bar (on_left in JSON, but visually makes sense here or in middle) -->
+<div class="relative hidden lg:block w-64">
+<span class="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-outline text-[18px]">search</span>
+<input class="w-full pl-8 pr-sm py-1.5 bg-surface-muted border-none rounded focus:ring-2 focus:ring-primary focus:bg-surface-background transition-all font-body-md text-body-md" placeholder="Search destinations..." type="text">
+</div>
+<button class="bg-primary text-on-primary font-label-md text-label-md px-md py-sm rounded-lg hover:bg-surface-tint transition-colors">
+                Generate Itinerary
+            </button>
+<button class="w-8 h-8 rounded-full overflow-hidden border border-border-subtle bg-surface-container-high focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+<img alt="User profile" class="w-full h-full object-cover" data-alt="A small, professional portrait photograph of a smiling user in a modern corporate headshot style, featuring bright lighting, a clean white background, and high resolution. The image functions as a subtle UI profile avatar." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCW5o99zUY3SjVWKMhGT_K817rNJl7L3kPZreWl9pi1AjAN9WVUQCmVDZzsF7y7s9ZSdn4Wo76rtILurnh1uIRFy38qpj7xTnw-fWcXl416bCSO80uhY1mwWDGHdGxNTRBrQNDobY7HaNSqsZIpAqDkIw5bVN2VWOe2nckwKXfXeSdWmSPivkNnarPGrFZ6SwbVnE4vFpxCkaz1KNSUSxqjqn-GVSubIAS-Z5Ef9aXuzeS5o__VDRu3">
+</button>
+</div>
+</header>
+<!-- Main Workspace -->
+<main class="flex-1 flex pt-16 h-full overflow-hidden">
+<!-- SideNavBar / AI Assistant Column (400px fixed) -->
+<aside class="flex flex-col h-full py-md px-sm w-[400px] border-r border-border-subtle dark:border-outline-variant bg-surface dark:bg-surface-dim flex-shrink-0 z-10 relative shadow-[1px_0_12px_rgba(0,0,0,0.03)]">
+<!-- Sidebar Header / Tabs (from JSON SideNavBar) -->
+<div class="flex items-center gap-sm px-sm mb-lg">
+<div class="w-10 h-10 rounded bg-primary-container flex items-center justify-center text-on-primary-container shrink-0">
+<span class="material-symbols-outlined">smart_toy</span>
+</div>
+<div>
+<h2 class="font-headline-md text-headline-md text-text-primary leading-tight">Voyager AI</h2>
+<p class="font-label-sm text-label-sm text-text-secondary">Your Travel Partner</p>
+</div>
+</div>
+<!-- Tab Navigation for Sidebar -->
+<div class="flex gap-2 mb-md px-sm overflow-x-auto pb-2 scrollbar-hide">
+<button class="flex items-center gap-xs px-sm py-1.5 bg-surface-container rounded-lg text-primary font-bold font-label-sm text-label-sm scale-95 duration-150 transition-all">
+<span class="material-symbols-outlined text-[16px]">smart_toy</span>
+                    AI Assistant
+                </button>
+<button class="flex items-center gap-xs px-sm py-1.5 text-text-secondary font-label-sm text-label-sm hover:bg-surface-container rounded-lg transition-all">
+<span class="material-symbols-outlined text-[16px]">event_note</span>
+                    Itineraries
+                </button>
+<button class="flex items-center gap-xs px-sm py-1.5 text-text-secondary font-label-sm text-label-sm hover:bg-surface-container rounded-lg transition-all">
+<span class="material-symbols-outlined text-[16px]">bookmark</span>
+                    Saved
+                </button>
+</div>
+<button class="mx-sm mb-lg flex items-center justify-center gap-sm py-2 px-md border border-border-subtle bg-surface-background rounded-lg text-text-primary font-label-md text-label-md hover:bg-surface-muted transition-colors shadow-sm">
+<span class="material-symbols-outlined text-[18px]">add</span>
+                New Chat
+            </button>
+<!-- AI Chat Area (Empty State) -->
+<div class="flex-1 flex flex-col justify-between overflow-y-auto px-sm">
+<div class="flex flex-col items-center justify-center h-full text-center px-4 mt-8">
+<div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary-fixed to-primary-container flex items-center justify-center mb-6 shadow-md">
+<span class="material-symbols-outlined text-[32px] text-on-primary-container">travel_explore</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-text-primary mb-2">Ready to explore?</h3>
+<p class="font-body-md text-body-md text-text-secondary mb-8">Tell me your destination, budget, or interests, and I'll craft the perfect itinerary.</p>
+<div class="w-full space-y-3">
+<p class="font-label-sm text-label-sm text-outline text-left uppercase tracking-wider mb-2">Suggested Prompts</p>
+<button class="w-full text-left p-3 rounded-lg border border-border-subtle bg-surface-background hover:border-primary hover:shadow-sm transition-all group flex items-start gap-3">
+<span class="material-symbols-outlined text-primary-container group-hover:text-primary transition-colors text-[20px] mt-0.5">map</span>
+<div>
+<p class="font-label-md text-label-md text-text-primary">Plan a 3-day trip to Hanoi</p>
+<p class="font-label-sm text-label-sm text-text-secondary">Focus on street food and culture</p>
+</div>
+</button>
+<button class="w-full text-left p-3 rounded-lg border border-border-subtle bg-surface-background hover:border-primary hover:shadow-sm transition-all group flex items-start gap-3">
+<span class="material-symbols-outlined text-primary-container group-hover:text-primary transition-colors text-[20px] mt-0.5">beach_access</span>
+<div>
+<p class="font-label-md text-label-md text-text-primary">Find beach resorts in Nha Trang</p>
+<p class="font-label-sm text-label-sm text-text-secondary">Luxury stay with ocean views</p>
+</div>
+</button>
+<button class="w-full text-left p-3 rounded-lg border border-border-subtle bg-surface-background hover:border-primary hover:shadow-sm transition-all group flex items-start gap-3">
+<span class="material-symbols-outlined text-primary-container group-hover:text-primary transition-colors text-[20px] mt-0.5">hiking</span>
+<div>
+<p class="font-label-md text-label-md text-text-primary">Adventure in Patagonia</p>
+<p class="font-label-sm text-label-sm text-text-secondary">Hiking trails and logistics</p>
+</div>
+</button>
+</div>
+</div>
+<!-- Chat Input Fixed at Bottom of Sidebar -->
+<div class="pt-4 pb-2 bg-surface mt-4 sticky bottom-0 border-t border-border-subtle md:border-t-0">
+<div class="relative rounded-lg shadow-[0_4px_12px_rgba(0,0,0,0.05)] bg-surface-background border border-border-subtle">
+<textarea class="w-full pl-3 pr-12 py-3 rounded-lg border-none focus:ring-0 bg-transparent resize-none font-body-md text-body-md text-text-primary placeholder:text-outline h-[60px]" placeholder="Ask Voyager AI to plan your trip..." rows="2"></textarea>
+<button class="absolute right-2 bottom-2 w-8 h-8 flex items-center justify-center rounded-md bg-primary text-on-primary hover:bg-surface-tint transition-colors">
+<span class="material-symbols-outlined text-[18px]">send</span>
+</button>
+</div>
+<p class="text-center font-label-sm text-label-sm text-text-secondary mt-2 opacity-70">AI can make mistakes. Verify important info.</p>
+</div>
+</div>
+</aside>
+<!-- Middle Column: Inspiration / Placeholder (Fluid) -->
+<section class="flex-1 hidden lg:flex flex-col relative bg-surface-muted overflow-hidden z-0 shadow-inner">
+<!-- Top Ambient Gradient overlay for readability -->
+<div class="absolute inset-0 bg-gradient-to-b from-surface-muted/80 via-transparent to-surface-muted/40 z-10 pointer-events-none"></div>
+<div class="absolute inset-0 flex flex-col items-center justify-center z-20 p-xl text-center">
+<h2 class="font-display-lg text-display-lg text-text-primary mb-4">Where will you go next?</h2>
+<p class="font-body-lg text-body-lg text-text-secondary max-w-md">Start a conversation with Voyager AI to begin crafting a personalized, interactive itinerary that syncs seamlessly with your map.</p>
+</div>
+<!-- Background Inspiration Image -->
+<div class="absolute inset-0 w-full h-full object-cover opacity-60 mix-blend-multiply" data-alt="A stunning, high-resolution aerial photograph of a winding coastal road running alongside dramatic cliffs and a deep blue ocean. The image embodies a modern, light-mode corporate aesthetic with bright, clear natural lighting, crisp details, and subtle white and blue tones, conveying a sense of limitless professional travel inspiration." style="background-image: url(&quot;https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&amp;fit=crop&amp;w=2000&amp;q=80&quot;); background-size: cover; background-position: center center; background-repeat: no-repeat;"></div>
+</section>
+<!-- Right Column: Interactive Map (Fluid, takes remaining space) -->
+<section class="flex-1 relative bg-[#e5e3df] hidden md:block">
+<!-- Simulated Map Texture/Background -->
+
+<img alt="Map of Vietnam" class="absolute inset-0 w-full h-full object-cover opacity-100" data-alt="A highly stylized, minimalist vector map of Vietnam for a corporate UI. The map highlights the S-shaped coastline of Vietnam with subtle muted blues and soft grays on a pale background. Major cities like Hanoi, Da Nang, and Ho Chi Minh City are indicated with clean, professional markers. The aesthetic is bright, modern, and functional." data-location="Vietnam" src="https://images.unsplash.com/photo-1555944805-68239726f4d4?auto=format&amp;fit=crop&amp;w=2000&amp;q=80">
+<!-- Map UI Overlay Controls -->
+<div class="absolute right-md bottom-md flex flex-col gap-sm z-30">
+<button class="w-10 h-10 bg-surface-background border border-border-subtle rounded-lg shadow-[0_4px_12px_rgba(0,0,0,0.05)] flex items-center justify-center text-text-primary hover:bg-surface-muted transition-colors">
+<span class="material-symbols-outlined">add</span>
+</button>
+<button class="w-10 h-10 bg-surface-background border border-border-subtle rounded-lg shadow-[0_4px_12px_rgba(0,0,0,0.05)] flex items-center justify-center text-text-primary hover:bg-surface-muted transition-colors">
+<span class="material-symbols-outlined">remove</span>
+</button>
+<button class="w-10 h-10 mt-sm bg-surface-background border border-border-subtle rounded-lg shadow-[0_4px_12px_rgba(0,0,0,0.05)] flex items-center justify-center text-primary hover:bg-surface-muted transition-colors">
+<span class="material-symbols-outlined">my_location</span>
+</button>
+</div>
+<!-- Floating Search/Filter on Map -->
+<div class="absolute top-md left-md right-md lg:right-auto lg:w-[320px] z-30">
+<div class="bg-surface-background rounded-lg shadow-[0_8px_24px_rgba(0,0,0,0.12)] border border-border-subtle flex items-center px-3 py-2">
+<span class="material-symbols-outlined text-outline mr-2">search</span>
+<input class="bg-transparent border-none focus:ring-0 p-0 font-body-md text-body-md flex-1 text-text-primary placeholder:text-outline" placeholder="Search map..." type="text">
+<button class="ml-2 text-primary hover:bg-surface-container p-1 rounded transition-colors">
+<span class="material-symbols-outlined text-[20px]">filter_list</span>
+</button>
+</div>
+</div>
+<!-- Default Map Markers (Decorative for empty state) -->
+<div class="absolute top-1/3 left-1/4 transform -translate-x-1/2 -translate-y-1/2 z-20 group cursor-pointer"><div class="w-4 h-4 bg-primary rounded-full border-2 border-surface-background shadow-md"></div><div class="absolute top-full left-1/2 -translate-x-1/2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity bg-surface-background px-2 py-1 rounded text-[10px] font-bold shadow-sm whitespace-nowrap">Hanoi</div></div>
+<div class="absolute top-1/2 left-2/3 transform -translate-x-1/2 -translate-y-1/2 z-20 group cursor-pointer"><div class="w-4 h-4 bg-outline rounded-full border-2 border-surface-background shadow-md"></div><div class="absolute top-full left-1/2 -translate-x-1/2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity bg-surface-background px-2 py-1 rounded text-[10px] font-bold shadow-sm whitespace-nowrap">Da Nang</div></div>
+<div class="absolute bottom-1/3 left-1/3 transform -translate-x-1/2 -translate-y-1/2 z-20 group cursor-pointer"><div class="w-4 h-4 bg-outline rounded-full border-2 border-surface-background shadow-md"></div><div class="absolute top-full left-1/2 -translate-x-1/2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity bg-surface-background px-2 py-1 rounded text-[10px] font-bold shadow-sm whitespace-nowrap">Ho Chi Minh City</div></div>
+</section>
+</main>
+
+
+</body></html>

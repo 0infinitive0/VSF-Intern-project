@@ -1,0 +1,198 @@
+import { useTranslation } from 'react-i18next'
+import { formatHotelStars } from '../lib/format-stars'
+import { dayRouteMetrics, tripRouteMetrics } from '../lib/leg'
+import { dayColor } from '../lib/map-colors'
+import type { Day, TripPlan } from '../types'
+
+const NUM_LOCALE = (lang: string) => (lang === 'vi' ? 'vi-VN' : 'en-US')
+
+// Nights from the real trip dates — duration_days - 1 is only a fallback for
+// when the dates are missing/unusable (never invented).
+function nightsFrom(start?: string | null, end?: string | null, fallbackDays?: number): number | null {
+  if (start && end) {
+    const s = new Date(start).getTime()
+    const e = new Date(end).getTime()
+    if (Number.isFinite(s) && Number.isFinite(e)) {
+      const n = Math.round((e - s) / 86_400_000)
+      if (n > 0) return n
+    }
+  }
+  return fallbackDays != null && fallbackDays > 1 ? fallbackDays - 1 : null
+}
+
+/**
+ * TripOverviewTab — the workspace "Tổng quan" tab (V-OTA Planner.dc.html:223+).
+ * Only stats computable from trip_plan render; anything without a source is
+ * dropped entirely (phase-09 §Các ô thống kê): days·nights, places, route km
+ * (≈ when any leg used the haversine fallback), travel time (~ prefix, hidden
+ * when no real routed minutes exist). Cost is never shown — trip_plan has no
+ * cost field.
+ *
+ * Sections: stat grid → hotel card (stayLabel + real hotel fields) → route-by-day
+ * DayCard list (colors from lib/map-colors.ts, shared with the map) → applied
+ * adjustments. The budget-split block is not rendered: trip_plan has no budget
+ * data (plan.md "Phần chưa làm" #13).
+ */
+export default function TripOverviewTab({
+  tripPlan,
+  onPickDay,
+}: {
+  tripPlan: TripPlan
+  onPickDay: (dayNumber: number) => void
+}) {
+  const { t, i18n } = useTranslation()
+  const numFmt = new Intl.NumberFormat(NUM_LOCALE(i18n.language), { maximumFractionDigits: 1 })
+
+  const { hotel, days = [], adjustments = [], duration_days, start_date, end_date } = tripPlan
+
+  const m = tripRouteMetrics(days)
+  const placeCount = days.reduce((n, d) => n + d.items.length, 0)
+  const nights = nightsFrom(start_date, end_date, duration_days)
+
+  const stats: { value: string; label: string; key: string }[] = []
+  if (duration_days != null && duration_days > 0) {
+    stats.push({
+      key: 'days',
+      value: String(duration_days),
+      label: nights != null ? `${t('statDays')} · ${nights} ${t('statNights')}` : t('statDays'),
+    })
+  }
+  if (placeCount > 0) stats.push({ key: 'places', value: String(placeCount), label: t('statPlaces') })
+  if (m.distanceKm > 0) {
+    stats.push({
+      key: 'km',
+      value: `${m.approximate ? '≈ ' : ''}${numFmt.format(m.distanceKm)}`,
+      label: t('statKm'),
+    })
+  }
+  if (m.durationMins > 0) {
+    stats.push({
+      key: 'duration',
+      value: `~${numFmt.format(m.durationMins)}`,
+      label: t('statTravelTime'),
+    })
+  }
+
+  return (
+    <div
+      className="flex flex-col gap-[14px]"
+      style={{ animation: 'vRise .5s cubic-bezier(.22,1,.36,1) both' }}
+    >
+      {stats.length > 0 && (
+        <div className="grid grid-cols-4 gap-[10px]">
+          {stats.map((s, i) => (
+            <div
+              key={s.key}
+              className="p-[13px_12px] rounded-[18px]"
+              style={{
+                background: 'var(--g2)',
+                border: '1px solid var(--edge)',
+                boxShadow: '0 8px 20px -16px rgba(var(--sh),.5)',
+                animation: `vFade .5s ${60 + i * 55}ms cubic-bezier(.22,1,.36,1) both`,
+              }}
+            >
+              <div className="text-[20px] font-normal tracking-[-0.7px] text-on-surface">{s.value}</div>
+              <div className="text-[10.5px] font-[450] tracking-[0.01em] text-on-surface-muted mt-[2px]">
+                {s.label}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {hotel && hotel.name && (
+        <div className="p-[14px] rounded-[20px] bg-glass-2 border border-edge flex gap-[13px] items-center">
+          <div
+            className="w-[62px] h-[62px] flex-none rounded-[16px]"
+            style={{ background: 'repeating-linear-gradient(115deg, rgba(42,145,135,.18) 0 8px, rgba(42,145,135,.06) 8px 16px)' }}
+          />
+          <div className="flex-1 min-w-0">
+            <div className="text-[10px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
+              {t('stayLabel')}
+            </div>
+            <div className="text-[15px] font-[590] tracking-[-0.3px] text-on-surface mt-[2px] truncate">
+              {hotel.name}
+            </div>
+            {hotel.star_rating != null && (
+              <div className="text-[12px] text-warning tracking-[1px] mt-[2px]" aria-hidden="true">
+                {formatHotelStars(hotel.star_rating)}
+              </div>
+            )}
+            {hotel.description && (
+              <div className="text-[12px] text-on-surface-muted font-normal mt-[2px]">{hotel.description}</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {days.length > 0 && (
+        <div>
+          <div className="text-[10px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted mb-[9px]">
+            {t('routeByDay')}
+          </div>
+          <div className="flex flex-col gap-2">
+            {days.map((day, i) => (
+              <DayCard
+                key={day.day_number}
+                day={day}
+                index={i}
+                onPick={() => onPickDay(day.day_number)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {adjustments.length > 0 && (
+        <div className="p-[15px] rounded-[20px] bg-glass-2 border border-edge">
+          <div className="text-[10px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted mb-[12px]">
+            {t('adjustmentsApplied')}
+          </div>
+          <ul className="flex flex-col gap-[9px]">
+            {adjustments.map((adj, i) => (
+              <li key={i} className="text-[12.5px] font-normal text-on-surface">
+                {adj}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Local DayCard (DayCard.dc.html) — lives inside this file per phase-09; the
+ *  old day-card.tsx is deleted. Day color comes from lib/map-colors.ts so the
+ *  overview card and the Phase 10 map route never drift apart. */
+function DayCard({ day, index, onPick }: { day: Day; index: number; onPick: () => void }) {
+  const { t, i18n } = useTranslation()
+  const numFmt = new Intl.NumberFormat(NUM_LOCALE(i18n.language), { maximumFractionDigits: 1 })
+
+  const color = dayColor(day.day_number)
+  const m = dayRouteMetrics(day.items)
+  const kmPart = `${m.approximate ? '≈ ' : ''}${t('legDistanceKm', { km: numFmt.format(m.distanceKm) })}`
+  const routePart =
+    m.durationMins > 0 ? `${kmPart} · ${t('legDurationMins', { mins: numFmt.format(m.durationMins) })}` : kmPart
+  const sub = m.distanceKm > 0 || m.durationMins > 0 ? routePart : ''
+
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      className="day-card text-left flex items-center gap-3 rounded-[18px] p-[12px_14px] cursor-pointer border"
+      style={{ animation: `vFade .5s ${120 + index * 70}ms ease both` }}
+    >
+      <span className="w-[9px] h-[9px] rounded-full flex-none" style={{ background: color, boxShadow: `0 0 0 4px ${color}2e` }} />
+      <span className="flex-1 min-w-0">
+        <span className="block text-[13.5px] font-[590] tracking-[-0.16px] text-on-surface truncate">
+          {t('dayWord')} {day.day_number}
+          {day.theme ? ` · ${day.theme}` : ''}
+        </span>
+        {sub && <span className="block text-[11.5px] text-on-surface-muted font-normal mt-[1px] truncate">{sub}</span>}
+      </span>
+      <span className="text-[12px] text-on-surface-faint" aria-hidden="true">
+        →
+      </span>
+    </button>
+  )
+}

@@ -176,7 +176,7 @@ thay đổi contract: phải được cả hai dev đồng ý và phải sửa k
 | 6 | [Chat panel cố định](./phase-06-fe-chat-panel.md) | Frontend | Done | 5 |
 | 7 | [Stage: Intake & Generating](./phase-07-fe-stage-intake-generating.md) | Frontend | Done | 5 |
 | 8 | [Stage: Khách sạn & Hotel Focus](./phase-08-fe-stage-hotels-focus.md) | Frontend | Pending | 5 |
-| 9 | [Stage: Workspace & Place Focus](./phase-09-fe-stage-workspace-focus.md) | Frontend | Pending | 5 |
+| 9 | [Stage: Workspace & Place Focus](./phase-09-fe-stage-workspace-focus.md) | Frontend | Done | 5 |
 | 10 | [Leaflet Map & Route](./phase-10-fe-map.md) | Frontend | Pending | 9 |
 | 11 | [Tích hợp & Kiểm thử](./phase-11-integration-verification.md) | Chung | Pending | 2,3,4,6,7,8,9,10,12 |
 
@@ -482,6 +482,8 @@ là bỏ sót — mỗi phần đều thiếu nguồn dữ liệu hoặc là ran
 | 22 | **Nút "Chia sẻ"** ở header workspace | `V-OTA Planner.dc.html:207` | Nút không gắn với hành vi nào ngay trong design, và không có gì để chia sẻ: session không có URL công khai, `GET /chat/{session_id}/restore` (Phase 4) yêu cầu biết `session_id` và không có tầng phân quyền. Ship một nút bấm vào không làm gì là hứa hẹn suông. **Quyết định của người dùng 06/08/2026** | Bỏ nút. Header chỉ còn "Tạo lại". Khi nào có link chia sẻ thật (URL công khai + phân quyền) thì thêm lại rất rẻ |
 
 | 23 | **Cột thời lượng** trong danh sách "khoảng cách tới điểm nổi bật" của panel khách sạn | `HotelDetail.dc.html` §`d.mins` | `nearby_attractions` chỉ có `distance_km`/`distance_text`, **không có thời lượng** (shape xác nhận 06/08/2026). Suy ra phút từ km đòi hỏi giả định tốc độ — đúng loại hệ số bịa mà Phase 12 vừa xoá khỏi `routing.py` | Render hai cột (tên · km) thay vì ba. Gọi routing cho từng mục lân cận là việc tiếp theo nếu thật sự cần |
+
+| 24 | **Dòng "ghi chú"** (`it.note`) của mỗi item timeline — mô tả ngắn dưới tên/badge loại | `TimelineItem.dc.html:14` | `DayItem` không có cột note/description nào (`schemas.py`, `trip_formatter.py:320-331` chỉ phát `activity`, `kind`, `start_time`/`end_time`, toạ độ, `route_to_next`) | Bỏ dòng ghi chú. Dòng `it.meta` (khung giờ `start_time – end_time`, dữ liệu thật) vẫn hiển thị |
 
 ## Rủi ro
 

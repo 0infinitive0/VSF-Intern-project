@@ -1,11 +1,11 @@
-import type { MouseEvent, ReactNode } from 'react'
-import ItineraryPanel from './itinerary-panel'
-import MapPanel from './map-panel'
-import PanelResizer from './panel-resizer'
+import type { ReactNode } from 'react'
 import StageGenerating from './stage-generating'
 import StageHotels from './stage-hotels'
 import StageIntake from './stage-intake'
+import StageWorkspace from './stage-workspace'
 import type { useFocusMode } from '../hooks/use-focus-mode'
+import type { IntakeFormState } from '../lib/compose-intake-message'
+import type { IntakeChecklistRowKey } from '../lib/intake-checklist-rows'
 import type { StageView } from '../lib/derive-stage'
 import type { ChatState } from '../types'
 
@@ -15,38 +15,35 @@ type FocusModeApi = ReturnType<typeof useFocusMode>
  * StageRouter — renders one of the 4 stage views. intake/generating are real
  * since Phase 7 (hero + live intake checklist; processing state + real elapsed
  * seconds + skeletons); hotels is the Phase 8 split view (card list | map |
- * detail) with the two-step pick wired to onSend; workspace reuses the
- * existing ItineraryPanel + MapPanel so the app stays fully runnable between
- * phases.
+ * detail) with the two-step pick wired to onSend; workspace is the Phase 9
+ * trip view (header, Tổng quan/day tabs, timeline) with Place Detail Focus
+ * Mode — the map and detail panel live inside StageWorkspace, which owns its
+ * own focus transforms so app-shell.tsx never changes again for Phase 10.
  *
- * The map is wrapped in a transform-only container reacting to
- * `focusMode.focus` (scale/opacity, never unmount) — the same mechanism
- * app-shell.tsx uses for chat, applied here to the one real map instance
- * that exists in this phase. `focusMode` carries the full
- * open/close/setFocus API so a future phase's hotel/place cards can call it
- * from further down this tree without app-shell.tsx changing again.
+ * `focusMode` carries the full open/close/setFocus API so future phases can
+ * call it from deeper in the stage tree without touching app-shell.tsx.
  *
  * Stage swaps keep the outer flex-1 container stable and let each stage own
- * its entrance animation (vRise), so intake → generating → hotels transitions
- * don't jump layout.
+ * its entrance animation (vRise), so intake → generating → hotels → workspace
+ * transitions don't jump layout.
  */
 export default function StageRouter({
   stage,
   state,
-  itineraryWidth,
-  onItineraryResizeStart,
   focusMode,
   onSend,
+  intakeForm,
+  onEditIntakeField,
 }: {
   stage: StageView
   state: ChatState
-  itineraryWidth: number
-  onItineraryResizeStart: (e: MouseEvent) => void
   focusMode: FocusModeApi
   onSend: (text: string) => void
+  intakeForm: IntakeFormState
+  onEditIntakeField?: (key: IntakeChecklistRowKey) => void
 }): ReactNode {
   if (stage === 'intake') {
-    return <StageIntake intake={state.intake} />
+    return <StageIntake intake={state.intake} form={intakeForm} onEditField={onEditIntakeField} />
   }
 
   if (stage === 'generating') {
@@ -57,23 +54,5 @@ export default function StageRouter({
     return <StageHotels state={state} focusMode={focusMode} onSend={onSend} />
   }
 
-  const focused = focusMode.focus !== null
-
-  return (
-    <div className="flex-1 flex overflow-hidden min-w-0">
-      <ItineraryPanel tripPlan={state.tripPlan} width={itineraryWidth} />
-      <PanelResizer onMouseDown={onItineraryResizeStart} />
-      <div
-        className="flex-1 min-w-0"
-        style={{
-          transform: focused ? 'scale(.94)' : 'none',
-          opacity: focused ? 0 : 1,
-          pointerEvents: focused ? 'none' : 'auto',
-          transition: 'transform .5s var(--ease-glide), opacity .38s ease',
-        }}
-      >
-        <MapPanel />
-      </div>
-    </div>
-  )
+  return <StageWorkspace state={state} focusMode={focusMode} onSend={onSend} />
 }

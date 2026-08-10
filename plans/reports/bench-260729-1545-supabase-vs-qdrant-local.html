@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>So s&aacute;nh Supabase pgvector vs Qdrant local</title>
+            <style>
+/* From extension vscode.github */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.vscode-dark img[src$=\#gh-light-mode-only],
+.vscode-light img[src$=\#gh-dark-mode-only],
+.vscode-high-contrast:not(.vscode-high-contrast-light) img[src$=\#gh-light-mode-only],
+.vscode-high-contrast-light img[src$=\#gh-dark-mode-only] {
+	display: none;
+}
+
+/* From extension coyote-studios.vscode-md-preview-plus */
+::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+}
+
+.github-alert {
+  border-left: 0.25em solid var(--border-color);
+  margin-block: 1rem;
+  padding: 0.5rem 1rem;
+
+  &:first-child {
+    margin-top: 0;
+  }
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  & > .ga-title {
+    display: flex;
+    align-items: center;
+    color: var(--title-color);
+    font-weight: bold;
+    line-height: 1;
+    margin-block: 0 0.5em;
+
+    & > svg {
+      display: inline-block;
+      overflow: visible;
+      vertical-align: text-bottom;
+      margin-right: 0.5rem;
+      fill: currentColor;
+    }
+  }
+
+  & > .ga-content {
+    margin-block: 0;
+
+    & > p {
+      margin-block: 0;
+    }
+  }
+
+  &[theme="light"] {
+    color-scheme: light;
+    --border-color: #d0d7de;
+    --title-color: #1f2328;
+
+    &.ga-note {
+      --border-color: #0969da;
+      --title-color: #0969da;
+    }
+
+    &.ga-tip {
+      --border-color: #1a7f37;
+      --title-color: #1a7f37;
+    }
+
+    &.ga-important {
+      --border-color: #8250df;
+      --title-color: #8250df;
+    }
+
+    &.ga-warning {
+      --border-color: #bf8700;
+      --title-color: #9a6700;
+    }
+
+    &.ga-caution {
+      --border-color: #cf222e;
+      --title-color: #d1242f;
+    }
+  }
+
+  &[theme="dark"] {
+    color-scheme: dark;
+    --border-color: #30363d;
+    --title-color: #e6edf3;
+
+    &.ga-note {
+      --border-color: #1f6feb;
+      --title-color: #4493f8;
+    }
+
+    &.ga-tip {
+      --border-color: #238636;
+      --title-color: #3fb950;
+    }
+
+    &.ga-important {
+      --border-color: #8957e5;
+      --title-color: #a371f7;
+    }
+
+    &.ga-warning {
+      --border-color: #9e6a03;
+      --title-color: #d29922;
+    }
+
+    &.ga-caution {
+      --border-color: #da3633;
+      --title-color: #f85149;
+    }
+  }
+}
+
+.obsidian-callout {
+  overflow: hidden;
+  border-style: solid;
+  border-color: rgba(var(--oc-color), 0.25);
+  border-width: 0;
+  border-radius: 4px;
+  margin: 1em 0;
+  mix-blend-mode: var(--oc-blend-mode);
+  user-select: text;
+  background-color: rgba(var(--oc-color), 0.1);
+  padding: 0.75rem 0.75rem 0.75rem 1.5rem;
+
+  & .oc-heading {
+    padding: 0;
+    display: flex;
+    gap: 0.25rem;
+    font-size: inherit;
+    color: rgb(var(--oc-color));
+    line-height: 1.3;
+    align-items: flex-start;
+
+    &:is(.is-collapsible > &) {
+      cursor: default;
+
+      &:hover {
+        cursor: pointer;
+      }
+    }
+
+    & > input {
+      display: none;
+    }
+  }
+
+  & .oc-icon {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+
+    &::after {
+      content: '\200B';
+    }
+
+    & > svg {
+      color: rgb(var(--oc-color));
+      height: 1em;
+      width: 1em;
+    }
+  }
+
+  & .oc-title {
+    font-weight: bold;
+    color: inherit;
+  }
+
+  & .oc-fold {
+    display: none;
+    align-items: center;
+    padding-right: 0.5rem;
+
+    &::after {
+      content: '\200B';
+    }
+
+    &:is(.is-collapsible > * > &) {
+      display: flex;
+    }
+
+    & > svg {
+      height: 18px;
+      width: 18px;
+      transition: transform 100ms ease-in-out;
+      margin-block: 0 -1px;
+
+      &:is(:has(:checked) > .oc-fold > &) {
+        transform: rotate3d(0, 0, -1, 90deg);
+      }
+    }
+  }
+
+  & .oc-content {
+    overflow: auto hidden;
+    padding: 0;
+    background-color: transparent;
+    transition: all 100ms cubic-bezier(0.02, 0.01, 0.47, 1) 0s;
+    /* height: 56px; */
+
+    &:is(:has(:checked) > &) {
+      height: 0;
+    }
+
+    & > p {
+      margin-block: 0.5rem 0.125rem;
+      overflow-wrap: break-word;
+      line-height: 1.5;
+    }
+  }
+
+  &[theme="light"] {
+    color-scheme: light;
+    --oc-blend-mode: darken;
+
+    &.oc-info,
+    &.oc-todo,
+    &.oc-note,
+    &.oc-custom {
+      --oc-color: 8, 109, 221;
+    }
+  
+    &.oc-abstract,
+    &.oc-summary,
+    &.oc-tldr,
+    &.oc-important,
+    &.oc-tip,
+    &.oc-hint {
+      --oc-color: 0, 191, 188;
+    }
+  
+    &.oc-example {
+      --oc-color: 120, 82, 238;
+    }
+  
+    &.oc-success,
+    &.oc-check,
+    &.oc-done {
+      --oc-color: 8, 185, 78;
+    }
+  
+    &.oc-question,
+    &.oc-help,
+    &.oc-faq,
+    &.oc-warning,
+    &.oc-caution,
+    &.oc-attention {
+      --oc-color: 236, 117, 0;
+    }
+  
+    &.oc-failure,
+    &.oc-fail,
+    &.oc-missing,
+    &.oc-danger,
+    &.oc-error,
+    &.oc-bug {
+      --oc-color: 233, 49, 71;
+    }
+  
+    &.oc-quote,
+    &.oc-cite {
+      --oc-color: 158, 158, 158;
+    }
+  }
+
+  &[theme="dark"] {
+    color-scheme: dark;
+    --oc-blend-mode: lighten;
+
+    &.oc-info,
+    &.oc-todo,
+    &.oc-note,
+    &.oc-custom {
+      --oc-color: 2, 122, 255;
+    }
+  
+    &.oc-abstract,
+    &.oc-summary,
+    &.oc-tldr,
+    &.oc-important,
+    &.oc-tip,
+    &.oc-hint {
+      --oc-color: 83, 223, 221;
+    }
+  
+    &.oc-example {
+      --oc-color: 168, 130, 255;
+    }
+  
+    &.oc-success,
+    &.oc-check,
+    &.oc-done {
+      --oc-color: 68, 207, 110;
+    }
+  
+    &.oc-question,
+    &.oc-help,
+    &.oc-faq,
+    &.oc-warning,
+    &.oc-caution,
+    &.oc-attention {
+      --oc-color: 233, 151, 63;
+    }
+  
+    &.oc-failure,
+    &.oc-fail,
+    &.oc-missing,
+    &.oc-danger,
+    &.oc-error,
+    &.oc-bug {
+      --oc-color: 251, 70, 76;
+    }
+  
+    &.oc-quote,
+    &.oc-cite {
+      --oc-color: 158, 158, 158;
+    }
+  }
+}
+
+.footnote {
+  top: -0.5em;
+  margin-inline: 0.2em;
+  font-size: 75%;
+  line-height: 0;
+  position: relative;
+  vertical-align: baseline;
+
+  & .fn-label {
+    text-decoration: underline;
+    text-underline-offset: 0.2rem;
+  }
+}
+
+hr {
+  height: 0.25em;
+  background-color: #ffffff2e;
+  border-bottom: 0;
+  border-radius: 2px;
+
+  &:has(+ .footnotes) {
+    height: 0.1em;
+  }
+}
+
+.footnotes {
+  &:not(hr + &) {
+    position: relative;
+    padding-top: 0.6em;
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      height: 0.1em;
+      width: 100%;
+      background-color: #ffffff2e;
+      border-radius: 2px;
+    }
+  }
+
+  & .fn-list {
+    padding-left: 1rem;
+    opacity: 0.8;
+  }
+
+  & .fn-label {
+    text-decoration: underline;
+    text-underline-offset: 0.2rem;
+  }
+}
+
+.color-tag {
+  &[theme="light"] {
+    color-scheme: light;
+    --bg-color: #afb8c133;
+    --border-color: #d0d7deb3;
+  }
+
+  &[theme="dark"] {
+    color-scheme: dark;
+    --bg-color: #6e768166;
+    --border-color: #30363db3;
+  }
+
+  padding: 0.2em 0.4em;
+  background-color: var(--bg-color);
+  border-radius: 6px;
+
+  & .color-swatch {
+    display: inline-block;
+    margin-left: 0.25rem;
+    border-radius: 624.9375rem;
+    border: max(1px, 0.0625rem) solid var(--border-color);
+    height: 0.55rem;
+    width: 0.55rem;
+  }
+}
+
+mark.highlighter {
+  &.hl-01 {
+    margin: 0 -0.4em;
+    padding: 0.1em 0.4em;
+    border-radius: 0.8em 0.3em;
+    background: transparent;
+    background-image: linear-gradient(
+      to right,
+      rgba(255, 225, 0, 0.1),
+      rgba(255, 225, 0, 0.7) 4%,
+      rgba(255, 225, 0, 0.3)
+    );
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+
+  &.hl-02 {
+    background-image: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjwhRE9DVFlQRSBzdmcgUFVCTElDICItLy9XM0MvL0RURCBTVkcgMjAwMTA5MDQvL0VOIgogICAgICAgICAgICAgICJodHRwOi8vd3d3LnczLm9yZy9UUi8yMDAxL1JFQy1TVkctMjAwMTA5MDQvRFREL3N2ZzEwLmR0ZCI+Cgo8c3ZnIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIKICAgICB3aWR0aD0iMWluIiBoZWlnaHQ9IjAuNWluIgogICAgIHZpZXdCb3g9IjAgMCAzMDAgMTUwIj4KICA8cGF0aAogICAgICAgIGZpbGw9IiNmZmUwMDAiIHN0cm9rZT0ibm9uZSIKICAgICAgICBkPSJNIDEyLjAwLDQ4LjAwCiAgICAgICAgICAgQyAxMi4wMCw1MC4wOSAxMS43OSw1NC45OSAxMi42MCw1Ni43MgogICAgICAgICAgICAgMTUuNTksNjMuMTggMjYuMDksNTYuNjQgMzMuMDAsNjMuMDAKICAgICAgICAgICAgIDMwLjg0LDYzLjE4IDIzLjA1LDYzLjg3IDIxLjgwLDY1LjAyCiAgICAgICAgICAgICAxOC4wMiw2Ny44OCAyMS4yOSw3Ni4zNSAyMS44MCw4MC4wMAogICAgICAgICAgICAgMjEuODAsODAuMDAgMjEuODAsODYuMDAgMjEuODAsODYuMDAKICAgICAgICAgICAgIDIxLjgwLDg2LjAwIDQwLjAwLDg3LjAwIDQwLjAwLDg3LjAwCiAgICAgICAgICAgICAzOS45Myw4OC44OCA0MC4wNiw5MS4wNCAzOC45OCw5Mi42OQogICAgICAgICAgICAgMzcuNTEsOTQuOTMgMzUuMTUsOTQuNzUgMzIuNTksOTYuMjAKICAgICAgICAgICAgIDI4LjMzLDk4LjYxIDI2Ljg3LDEwMi4yMiAyNy4zNCwxMDcuMDAKICAgICAgICAgICAgIDI3LjM0LDEwNy4wMCAzMC4wMiwxMjMuNDEgMzAuMDIsMTIzLjQxCiAgICAgICAgICAgICAzMS44MiwxMjUuNzUgNDAuMDEsMTI3Ljk1IDQzLjAwLDEyOC4wMAogICAgICAgICAgICAgNDMuMDAsMTI4LjAwIDg3LjAwLDEyOC4wMCA4Ny4wMCwxMjguMDAKICAgICAgICAgICAgIDg4LjA4LDEyMS41NiA5MS4xNiwxMjEuODAgOTcuMDAsMTIyLjA0CiAgICAgICAgICAgICA5Ny4wMCwxMjIuMDQgMTA5LjAwLDEyMy4wMCAxMDkuMDAsMTIzLjAwCiAgICAgICAgICAgICAxMDkuMDAsMTIzLjAwIDEyOC4wMCwxMjMuMDAgMTI4LjAwLDEyMy4wMAogICAgICAgICAgICAgMTI4LjAwLDEyMy4wMCAxODIuMDAsMTIyLjAwIDE4Mi4wMCwxMjIuMDAKICAgICAgICAgICAgIDE5NC41OCwxMjEuOTcgMTg4LjQyLDExOS4wMyAyMDEuMDAsMTE5LjAwCiAgICAgICAgICAgICAyMDEuMDAsMTE5LjAwIDI0My4wMCwxMTkuMDAgMjQzLjAwLDExOS4wMAogICAgICAgICAgICAgMjQzLjAwLDExOS4wMCAyNTguMDAsMTE4LjAwIDI1OC4wMCwxMTguMDAKICAgICAgICAgICAgIDI1OS41MywxMDkuMTAgMjY2LjAxLDExMy4zNyAyNzAuNDAsMTA5LjE1CiAgICAgICAgICAgICAyNzIuNjEsMTA3LjAzIDI3Mi4zMCwxMDAuODUgMjcyLjAwLDk4LjAwCiAgICAgICAgICAgICAyNzIuMDAsOTguMDAgMjgwLjAwLDk3LjAwIDI4MC4wMCw5Ny4wMAogICAgICAgICAgICAgMjgwLjAwLDk0LjEwIDI4MC4yNiw4OC41NSAyNzkuMjYsODYuMDIKICAgICAgICAgICAgIDI3Ni40OSw3OC45OCAyNjQuNjMsNzYuODggMjU4LjAwLDc2LjAwCiAgICAgICAgICAgICAyNjUuMTUsNjkuMTkgMjc2LjQwLDczLjAzIDI3NC44NSw2Mi4wNAogICAgICAgICAgICAgMjc0LjQ3LDU5LjM1IDI3My43Myw1OC44NSAyNzIuMDAsNTcuMDAKICAgICAgICAgICAgIDI4MS42OCw1My43NyAyODEuMDAsNTQuMjggMjgxLjAwLDQ0LjAwCiAgICAgICAgICAgICAyODEuMDAsNDQuMDAgMjU4LjAwLDQyLjM4IDI1OC4wMCw0Mi4zOAogICAgICAgICAgICAgMjUwLjAwLDQwLjg0IDI1MS40OCwzOC4wMyAyMzUuMDAsMzguMDAKICAgICAgICAgICAgIDIzNS4wMCwzOC4wMCAxODkuMDAsMzkuMDAgMTg5LjAwLDM5LjAwCiAgICAgICAgICAgICAxODkuMDAsMzkuMDAgMTc3LjAwLDM5LjgyIDE3Ny4wMCwzOS44MgogICAgICAgICAgICAgMTc3LjAwLDM5LjgyIDE1OS4wMCwzOC4wMCAxNTkuMDAsMzguMDAKICAgICAgICAgICAgIDE1OS4wMCwzOC4wMCAxMjguMDAsMzguMDAgMTI4LjAwLDM4LjAwCiAgICAgICAgICAgICAxMTYuOTAsMzguMDIgMTIwLjE2LDM5LjQwIDExMy4wMCw0MC42NwogICAgICAgICAgICAgMTEzLjAwLDQwLjY3IDk3LjAwLDQyLjE3IDk3LjAwLDQyLjE3CiAgICAgICAgICAgICA5Ny4wMCw0Mi4xNyA4Ny4wMCw0My44MyA4Ny4wMCw0My44MwogICAgICAgICAgICAgODcuMDAsNDMuODMgNTcuMDAsNDUuMDAgNTcuMDAsNDUuMDAKICAgICAgICAgICAgIDU3LjAwLDQ1LjAwIDMyLjAwLDQ4LjAwIDMyLjAwLDQ4LjAwCiAgICAgICAgICAgICAzMi4wMCw0OC4wMCAxMi4wMCw0OC4wMCAxMi4wMCw0OC4wMCBaIiAvPgo8L3N2Zz4K');
+    background-position: 50% 50%;
+    padding: 0.3125em 1.25em 0 1.25em;
+    background-repeat: no-repeat;
+    background-size: cover;
+  }
+
+  &.hl-03 {
+    font-weight: bolder;
+    line-height: 1.8em;
+    background:
+      linear-gradient(
+        104deg,
+        rgba(130, 255, 173, 0) 0.9%,
+        rgba(130, 255, 173, 1) 2.4%,
+        rgba(130, 255, 173, 0.5) 5.8%,
+        rgba(130, 255, 173, 0.1) 93%,
+        rgba(130, 255, 173, 0.7) 96%,
+        rgba(130, 255, 173, 0) 98%
+      ),
+      linear-gradient(
+        183deg,
+        rgba(130, 255, 173, 0) 0%,
+        rgba(130, 255, 173, 0.3) 7.9%,
+        rgba(130, 255, 173, 0) 15%
+      );
+    margin: 0;
+    padding: 0.4em;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+    border-radius: 0.3em;
+    text-shadow:
+      -0.5em 0.5em 0.42em #82ffadb3,
+      0.9em -0.78em 0.32em #fff,
+      -0.78em 1.19em 1.3em #fff;
+  }
+}
+
+.task-list {
+  padding-inline: 1.2em 0;
+
+  & .tl-item {
+    list-style: none;
+    tab-size: 2.25em;
+    margin: 0;
+    padding: 0.075em 0;
+    position: relative;
+    max-width: 700px;
+    color: rgb(218, 218, 218);
+
+    &::marker {
+      content: '';
+    }
+
+    &:has(.tl-checkbox:checked) {
+      color: #b3b3b3;
+
+      &:has(.tl-content.is-strikethrough) {
+        text-decoration: line-through;
+      }
+    }
+  }
+
+  & .tl-marker {
+    outline: none;
+    text-indent: 0;
+    margin-inline-start: -0.25em;
+    padding: 0;
+
+    &.is-static,
+    &.is-static > & {
+      pointer-events: none;
+    }
+  }
+
+  & .tl-checkbox {
+    top: -0.1em;
+    vertical-align: middle;
+    margin-inline: 0.85em 0.25em;
+    -webkit-appearance: none;
+    appearance: none;
+    border-radius: 4px;
+    border: 1px solid #666;
+    flex-shrink: 0;
+    padding: 0;
+    margin: 0 6px 0 0;
+    width: 16px;
+    height: 16px;
+    position: relative;
+    transition: box-shadow 150ms ease-in-out;
+
+    &:hover {
+      outline: 0;
+      border-color: #b3b3b3;
+    }
+
+    &:checked {
+      background-color: hsl(258, 88%, 66%);
+      border-color: hsl(258, 88%, 66%);
+
+      &::after {
+        content: '';
+        top: -1px;
+        left: -1px;
+        position: absolute;
+        width: 16px;
+        height: 16px;
+        display: block;
+        background-color: #1e1e1e;
+        -webkit-mask-position: 52% 52%;
+        mask-position: 52% 52%;
+        -webkit-mask-size: 65%;
+        mask-size: 65%;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        --checkbox-mask-image: url('data:image/svg+xml; utf8, <svg width="12px" height="10px" viewBox="0 0 12 8" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"><g transform="translate(-4.000000, -6.000000)" fill="%23000000"><path d="M8.1043257,14.0367999 L4.52468714,10.5420499 C4.32525014,10.3497722 4.32525014,10.0368095 4.52468714,9.8424863 L5.24777413,9.1439454 C5.44721114,8.95166768 5.77142411,8.95166768 5.97086112,9.1439454 L8.46638057,11.5903727 L14.0291389,6.1442083 C14.2285759,5.95193057 14.5527889,5.95193057 14.7522259,6.1442083 L15.4753129,6.84377194 C15.6747499,7.03604967 15.6747499,7.35003511 15.4753129,7.54129009 L8.82741268,14.0367999 C8.62797568,14.2290777 8.3037627,14.2290777 8.1043257,14.0367999"></path></g></g></svg>');
+        -webkit-mask-image: var(--checkbox-mask-image);
+        mask-image: var(--checkbox-mask-image);
+      }
+
+      &:hover {
+        background-color: hsl(calc(258 - 3), calc(88% * 1.02), calc(66% * 1.15));
+        border-color: hsl(calc(258 - 3), calc(88% * 1.02), calc(66% * 1.15));
+      }
+    }
+  }
+
+  & .tl-content {
+    text-indent: 0;
+  }
+}
+
+</style>
+            
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/markdown.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/highlight.css">
+<style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', system-ui, 'Ubuntu', 'Droid Sans', sans-serif;
+                font-size: 14px;
+                line-height: 1.6;
+            }
+        </style>
+        <style>
+.task-list-item {
+    list-style-type: none;
+}
+
+.task-list-item-checkbox {
+    margin-left: -20px;
+    vertical-align: middle;
+    pointer-events: none;
+}
+</style>
+<style>
+:root {
+  --color-note: #0969da;
+  --color-tip: #1a7f37;
+  --color-warning: #9a6700;
+  --color-severe: #bc4c00;
+  --color-caution: #d1242f;
+  --color-important: #8250df;
+}
+
+</style>
+<style>
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-note: #2f81f7;
+    --color-tip: #3fb950;
+    --color-warning: #d29922;
+    --color-severe: #db6d28;
+    --color-caution: #f85149;
+    --color-important: #a371f7;
+  }
+}
+
+</style>
+<style>
+.markdown-alert {
+  padding: 0.5rem 1rem;
+  margin-bottom: 16px;
+  color: inherit;
+  border-left: .25em solid #888;
+}
+
+.markdown-alert>:first-child {
+  margin-top: 0
+}
+
+.markdown-alert>:last-child {
+  margin-bottom: 0
+}
+
+.markdown-alert .markdown-alert-title {
+  display: flex;
+  font-weight: 500;
+  align-items: center;
+  line-height: 1
+}
+
+.markdown-alert .markdown-alert-title .octicon {
+  margin-right: 0.5rem;
+  display: inline-block;
+  overflow: visible !important;
+  vertical-align: text-bottom;
+  fill: currentColor;
+}
+
+.markdown-alert.markdown-alert-note {
+  border-left-color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-note .markdown-alert-title {
+  color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-important {
+  border-left-color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-important .markdown-alert-title {
+  color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-warning {
+  border-left-color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-warning .markdown-alert-title {
+  color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-tip {
+  border-left-color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-tip .markdown-alert-title {
+  color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-caution {
+  border-left-color: var(--color-caution);
+}
+
+.markdown-alert.markdown-alert-caution .markdown-alert-title {
+  color: var(--color-caution);
+}
+
+</style>
+        
+        </head>
+        <body class="vscode-body vscode-light">
+            <span id="markdown-mermaid" aria-hidden="true" data-config="{&quot;darkModeTheme&quot;:&quot;vscode&quot;,&quot;lightModeTheme&quot;:&quot;vscode&quot;,&quot;maxTextSize&quot;:50000,&quot;clickDrag&quot;:&quot;alt&quot;,&quot;showControls&quot;:&quot;onHoverOrFocus&quot;,&quot;resizable&quot;:true,&quot;maxHeight&quot;:&quot;&quot;}"></span>
+				<hr>
+<h2 id="title-benchmark-supabase-pgvector-vs-qdrant-localdate-2026-07-29scope-vector-search-thuần--vector-search-có-filter-bỏ-qua-yếu-tố-latency-mạng">title: &quot;Benchmark: Supabase (pgvector) vs Qdrant local&quot;
+date: 2026-07-29
+scope: &quot;Vector search thuần + vector search có filter, bỏ qua yếu tố latency mạng&quot;</h2>
+<h1 id="so-sánh-supabase-pgvector-vs-qdrant-local">So sánh Supabase pgvector vs Qdrant local</h1>
+<h2 id="điều-kiện-đo">Điều kiện đo</h2>
+<ul>
+<li>Corpus: 1103 hotels, 2171 rooms, 1013 attractions (bge-m3, 1024-dim)</li>
+<li>Parity đã verify: cả 2 store cùng ID, cùng vector (cosine 1.00000 sau khi fix staleness)</li>
+<li>Ground truth: brute-force kNN bằng numpy trên toàn bộ corpus đã dump từ Qdrant local</li>
+<li><strong>Bỏ qua latency</strong> — Supabase là managed cloud, Qdrant là local, so thời gian không công bằng và không phản ánh năng lực thuật toán</li>
+<li>Nhánh Supabase đo là <strong>S-current</strong> (RPC production hiện tại): pre-filter <code>destination_id</code> trong SQL, <code>star_rating</code>/giá lọc sau trong Python, over-fetch 3×</li>
+<li>Chưa có nhánh S-sql (RPC mới đẩy filter vào WHERE) — xem mục &quot;Giới hạn&quot; cuối file</li>
+</ul>
+<h2 id="bảng-1--vector-search-thuần-20-query-tiếng-việt">Bảng 1 — Vector search thuần (20 query tiếng Việt)</h2>
+<p><strong>Đã sửa sau khi đọc được thân hàm <code>match_hotels_with_rooms</code> thật</strong> (bản đầu tiên của bảng
+này dùng ground truth chỉ so hotel-doc embedding — so sai đối tượng, xem &quot;Lịch sử sửa&quot; cuối
+mục). RPC thật tính similarity trên <strong>UNION(hotel-doc, mọi room-doc thuộc hotel đó)</strong> rồi
+<code>GROUP BY hotel_id, MAX(sim)</code> — tức một hotel có thể vào top-k nhờ một phòng cụ thể khớp cao,
+không chỉ nhờ mô tả hotel. Ground truth đã sửa để max-pool đúng như vậy cho phía Supabase,
+giữ nguyên hotel-doc-only cho phía Qdrant vì collection <code>hotels_vector</code> chỉ chứa hotel-doc.</p>
+<table>
+<thead>
+<tr>
+<th>Tiêu chí</th>
+<th>Qdrant local</th>
+<th>Supabase pgvector</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Mean Recall@10</td>
+<td><strong>1.000</strong></td>
+<td><strong>1.000</strong></td>
+</tr>
+<tr>
+<td>Query đạt recall thấp</td>
+<td>0/20</td>
+<td>0/20</td>
+</tr>
+<tr>
+<td>Ground truth so với</td>
+<td>hotel-doc thuần</td>
+<td>MAX(hotel-doc, room-doc) theo hotel_id</td>
+</tr>
+<tr>
+<td>Cách tính</td>
+<td>ANN trên <code>hotels_vector</code></td>
+<td>RPC <code>match_hotels_with_rooms</code>, <code>match_threshold=0.0</code></td>
+</tr>
+<tr>
+<td>Latency p50/p95 (tham khảo, không dùng để kết luận)</td>
+<td>44.7 / 104.9 ms</td>
+<td>479.2 / 4655.1 ms</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nhận xét:</strong> Sau khi ground truth khớp đúng hàm mục tiêu thật của mỗi store, <strong>cả hai đạt
+recall@10 = 1.000 tuyệt đối trên toàn bộ 20 query</strong> — không có khác biệt về chất lượng ANN ở
+kịch bản vector search thuần. Kết luận trước đó (&quot;Supabase 0.840&quot;) là <strong>artifact của benchmark
+sai</strong>, không phải giới hạn thật của pgvector — đã sửa lại đúng.</p>
+<h3 id="lịch-sử-sửa">Lịch sử sửa</h3>
+<p>Bản đầu: ground truth chỉ so <code>query_vec</code> với <code>hotels.npy</code> (hotel-doc), thấy Supabase recall
+0.840, tụt ở 3 query liên quan &quot;phòng&quot; (room). Đọc thân hàm RPC thật mới phát hiện nó search
+cả <code>rooms.embedding</code> rồi gộp theo <code>MAX(sim)</code> per hotel — ground truth cũ không phản ánh đúng
+domain retrieval của Supabase nên đánh giá sai. Đã sửa <code>bench_pure.py</code> thêm
+<code>brute_force_topk_hotel_or_room_max()</code>, dùng <code>rooms.npy</code> + <code>rooms.json</code> (đã có sẵn từ
+<code>dump_vectors.py</code>) để tính lại.</p>
+<h2 id="bảng-2--vector-search--filter-8-query-filter-theo-destination--star_rating">Bảng 2 — Vector search + filter (8 query, filter theo destination + star_rating)</h2>
+<table>
+<thead>
+<tr>
+<th>Tiêu chí</th>
+<th>Qdrant local (Q-native)</th>
+<th>Supabase pgvector (S-current)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Mean Filtered Recall@10</td>
+<td><strong>1.000</strong></td>
+<td>0.728</td>
+</tr>
+<tr>
+<td>Shortfall rate (trả về &lt; k dù đủ ứng viên)</td>
+<td>0/8</td>
+<td><strong>2/8</strong></td>
+</tr>
+<tr>
+<td>Constraint-violation rate</td>
+<td>0</td>
+<td><strong>1</strong></td>
+</tr>
+<tr>
+<td>Fallback trả kết quả không lọc</td>
+<td>—</td>
+<td>0/8</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nhận xét:</strong></p>
+<ul>
+<li>Qdrant dùng <code>Filter</code> + payload index (<code>metadata.destination_id</code>, <code>metadata.star_rating</code>) —
+pre-filter thật trong ANN, đúng tuyệt đối trên cả 8 query.</li>
+<li>Supabase shortfall nặng nhất ở 2 query filter <strong>chặt</strong> (5 sao): &quot;resort sang trọng&quot; Đà Nẵng
+(n_eligible=15) → recall 0.50; &quot;khách sạn bình dân&quot; Hà Nội (n_eligible=9) → recall 0.22.
+Đây là hệ quả trực tiếp của kiến trúc over-fetch 3×-rồi-lọc-Python: khi filter chặt, 30 kết
+quả gần nhất theo semantic (chưa lọc sao) không đủ chứa hết top-10 đúng.</li>
+<li>1 vi phạm filter ở &quot;khách sạn gia đình&quot; (3★ Nha Trang) — khớp bug đã biết
+<code>int(star_rating)</code> cắt nửa sao (<code>supabase_search.py:218</code>), 2.5★ có thể lọt qua 3★.</li>
+</ul>
+<h2 id="tổng-hợp">Tổng hợp</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Qdrant local</th>
+<th>Supabase pgvector</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Recall thuần</td>
+<td>1.000</td>
+<td>1.000 (đã sửa ground truth, xem Bảng 1)</td>
+</tr>
+<tr>
+<td>Recall có filter</td>
+<td>1.000</td>
+<td>0.728</td>
+</tr>
+<tr>
+<td>Shortfall khi filter chặt</td>
+<td>Không</td>
+<td>Có, tăng theo độ chọn lọc</td>
+</tr>
+<tr>
+<td>Vi phạm filter</td>
+<td>Không</td>
+<td>Có (nửa sao)</td>
+</tr>
+<tr>
+<td>Payload index cho filter</td>
+<td>Có sẵn (destination_id, star_rating, price_tier, ...)</td>
+<td>Không — filter numeric làm trong Python</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Điểm mấu chốt:</strong> hai store <strong>không khác nhau về năng lực ANN thuần</strong> (Bảng 1: cả hai
+recall=1.000). Toàn bộ khoảng cách chất lượng nằm ở <strong>Bảng 2 — khi có filter</strong>, đúng như
+plan gốc dự đoán (&quot;chính bất đối xứng ở filter là lý do tách riêng tiêu chí&quot;). Đây là tín
+hiệu quan trọng: vấn đề không phải &quot;Qdrant tốt hơn pgvector nói chung&quot;, mà là &quot;kiến trúc
+filter hiện tại của Supabase (post-filter Python) kém hơn filter native của Qdrant&quot; — một
+vấn đề có thể sửa bằng SQL, không nhất thiết phải đổi store (xem Giới hạn #1).</p>
+<h2 id="giới-hạn-của-benchmark-này">Giới hạn của benchmark này</h2>
+<ol>
+<li><strong>Chỉ đo S-current, chưa đo S-sql.</strong> Nếu viết lại RPC đẩy <code>star_rating</code>/giá vào mệnh đề
+WHERE trước ANN (thay vì post-filter Python), khoảng cách filtered-recall có thể thu hẹp
+đáng kể — không tách được &quot;chi phí sửa 1 câu SQL&quot; khỏi &quot;giới hạn kiến trúc thật của
+pgvector&quot;. Đây là điểm quan trọng nhất chưa trả lời được.</li>
+<li><strong>Đã bỏ latency theo yêu cầu</strong> — không dùng bảng này để kết luận về tốc độ phục vụ
+production.</li>
+<li><strong>8 query filter</strong> là mẫu nhỏ — đủ để phát hiện xu hướng (shortfall tăng theo độ chọn
+lọc) nhưng chưa đủ để tính ngưỡng quyết định đáng tin cậy như plan gốc yêu cầu (≥60 query
+phân tầng).</li>
+<li><strong>Chưa test attractions/rooms filter</strong> — chỉ test trên hotels.</li>
+</ol>
+<h2 id="nguồn-script">Nguồn script</h2>
+<ul>
+<li><code>eval/vector_bench/dump_vectors.py</code> — fixture ground truth</li>
+<li><code>eval/vector_bench/bench_pure.py</code> — Bảng 1</li>
+<li><code>eval/vector_bench/bench_filtered.py</code> — Bảng 2</li>
+<li>Raw JSONL: <code>eval/results/vector_bench/raw/bench_pure.jsonl</code>, <code>bench_filtered.jsonl</code></li>
+</ul>
+
+            
+            <script async type="text/javascript">
+/* From extension coyote-studios.vscode-md-preview-plus */
+/* Error */
+</script>
+
+        </body>
+        </html>

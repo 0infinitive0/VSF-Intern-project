@@ -5,6 +5,10 @@ import SidebarRail from './sidebar-rail'
 import StageRouter from './stage-router'
 import { useFocusMode } from '../hooks/use-focus-mode'
 import { useTheme } from '../hooks/use-theme'
+import type { IntakeFormState } from '../lib/compose-intake-message'
+import type { IntakeChecklistRowKey } from '../lib/intake-checklist-rows'
+import type { PreferenceKey } from '../lib/intake-options'
+import type { IntakeField } from '../lib/next-intake-field'
 import type { StageView } from '../lib/derive-stage'
 import type { ChatState } from '../types'
 
@@ -56,8 +60,12 @@ export default function AppShell({
   stage,
   chatWidth,
   onChatResizeStart,
-  itineraryWidth,
-  onItineraryResizeStart,
+  intakeForm,
+  setIntakeForm,
+  toggleIntakePreference,
+  editingIntakeField,
+  onEditIntakeField,
+  onDoneEditingIntakeField,
 }: {
   state: ChatState
   onSend: (text: string) => void
@@ -65,12 +73,26 @@ export default function AppShell({
   stage: StageView
   chatWidth: number
   onChatResizeStart: (e: MouseEvent) => void
-  itineraryWidth: number
-  onItineraryResizeStart: (e: MouseEvent) => void
+  intakeForm: IntakeFormState
+  setIntakeForm: (updater: (prev: IntakeFormState) => IntakeFormState) => void
+  toggleIntakePreference: (key: PreferenceKey) => void
+  editingIntakeField: IntakeField | null
+  onEditIntakeField: (key: IntakeChecklistRowKey) => void
+  onDoneEditingIntakeField: () => void
 }) {
   const { theme, toggleTheme } = useTheme()
   const focusMode = useFocusMode()
+  const { closeFocus } = focusMode
   const focused = focusMode.focus !== null
+
+  // A stage change (e.g. picking a hotel moves hotels → generating → workspace)
+  // must not carry a focus panel from the previous stage along with it — the
+  // panel it pointed at (a hotel card) no longer exists in the new stage's
+  // tree, which would otherwise leave chat/map permanently collapsed with no
+  // way back (review finding H3). `closeFocus` is a stable useCallback ref.
+  useEffect(() => {
+    closeFocus()
+  }, [stage, closeFocus])
   const viewportWidth = useViewportWidth()
   const isDesktop = viewportWidth >= DESKTOP_BREAKPOINT_PX
   const isLgUp = viewportWidth >= SIDEBAR_PUSH_BREAKPOINT_PX
@@ -153,7 +175,16 @@ export default function AppShell({
             transition: 'transform .62s var(--ease-glide), opacity .38s ease',
           }}
         >
-          <ChatPanel state={state} onSend={onSend} width={effectiveChatWidth} />
+          <ChatPanel
+            state={state}
+            onSend={onSend}
+            width={effectiveChatWidth}
+            intakeForm={intakeForm}
+            setIntakeForm={setIntakeForm}
+            toggleIntakePreference={toggleIntakePreference}
+            editingIntakeField={editingIntakeField}
+            onDoneEditingIntakeField={onDoneEditingIntakeField}
+          />
         </div>
 
         <div
@@ -175,10 +206,10 @@ export default function AppShell({
           <StageRouter
             stage={stage}
             state={state}
-            itineraryWidth={itineraryWidth}
-            onItineraryResizeStart={onItineraryResizeStart}
             focusMode={focusMode}
             onSend={onSend}
+            intakeForm={intakeForm}
+            onEditIntakeField={onEditIntakeField}
           />
         </div>
       </div>

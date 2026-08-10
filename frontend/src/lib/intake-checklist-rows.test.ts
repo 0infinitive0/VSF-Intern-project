@@ -18,6 +18,8 @@ const FULL_INTAKE: IntakeStatus = {
   missing: [],
 }
 
+const LABELS = { peopleWord: 'người', budgetSkipped: 'Không giới hạn' }
+
 describe('buildIntakeChecklistRows', () => {
   it('renders five rows in the design order', () => {
     const rows = buildIntakeChecklistRows(FULL_INTAKE, 'en')
@@ -68,13 +70,6 @@ describe('buildIntakeChecklistRows', () => {
     expect(dates?.value).toBeNull()
   })
 
-  it('budget is always uncollected: the frozen contract has no chosen-tier field', () => {
-    const rows = buildIntakeChecklistRows(FULL_INTAKE, 'en')
-    const budget = rows.find((row) => row.key === 'budget')
-    expect(budget?.collected).toBe(false)
-    expect(budget?.value).toBeNull()
-  })
-
   it('passes preference wire keys through untranslated for the chips row', () => {
     const rows = buildIntakeChecklistRows(FULL_INTAKE, 'vi')
     const prefs = rows.find((row) => row.key === 'preferences')
@@ -90,5 +85,62 @@ describe('buildIntakeChecklistRows', () => {
     const people = rows.find((row) => row.key === 'people')
     expect(people?.collected).toBe(false)
     expect(people?.value).toBeNull()
+  })
+
+  // ---- local form fallback (checklist live-update) -------------------------
+
+  it('lights up people from the local form before the server confirms it', () => {
+    const rows = buildIntakeChecklistRows(
+      { ...FULL_INTAKE, people: null, missing: ['people'] },
+      'en',
+      { guests: 3 },
+      LABELS,
+    )
+    const people = rows.find((row) => row.key === 'people')
+    expect(people?.collected).toBe(true)
+    expect(people?.value).toBe('3 người')
+  })
+
+  it('server-confirmed people wins over the local guest count once both exist', () => {
+    const rows = buildIntakeChecklistRows(FULL_INTAKE, 'en', { guests: 9 }, LABELS)
+    expect(rows.find((row) => row.key === 'people')?.value).toBe('2 người')
+  })
+
+  it('lights up dates from the local form before the server confirms it', () => {
+    const rows = buildIntakeChecklistRows(
+      { ...FULL_INTAKE, start_date: null, missing: ['start_date'] },
+      'en',
+      { startDate: '2026-10-12', endDate: '2026-10-14' },
+      LABELS,
+    )
+    const dates = rows.find((row) => row.key === 'dates')
+    expect(dates?.collected).toBe(true)
+    expect(dates?.value).toBe('Oct 12 - Oct 14')
+  })
+
+  it('budget lights up once a local range is confirmed (never server-gated)', () => {
+    const rows = buildIntakeChecklistRows(
+      FULL_INTAKE,
+      'vi',
+      { budgetMinVnd: 800_000, budgetMaxVnd: 2_500_000 },
+      LABELS,
+    )
+    const budget = rows.find((row) => row.key === 'budget')
+    expect(budget?.collected).toBe(true)
+    expect(budget?.value).toBe('800.000 ₫ – 2.500.000 ₫')
+  })
+
+  it('budget shows the skipped label when the user skipped it locally', () => {
+    const rows = buildIntakeChecklistRows(FULL_INTAKE, 'vi', { budgetSkipped: true }, LABELS)
+    const budget = rows.find((row) => row.key === 'budget')
+    expect(budget?.collected).toBe(true)
+    expect(budget?.value).toBe('Không giới hạn')
+  })
+
+  it('budget stays uncollected with no local answer', () => {
+    const rows = buildIntakeChecklistRows(FULL_INTAKE, 'en')
+    const budget = rows.find((row) => row.key === 'budget')
+    expect(budget?.collected).toBe(false)
+    expect(budget?.value).toBeNull()
   })
 })

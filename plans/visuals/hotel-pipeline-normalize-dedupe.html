@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pipeline khách sạn Agoda + Booking — Normalize & Dedupe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Azeret+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --font-body: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-mono: 'Azeret Mono', 'SF Mono', monospace;
+  --bg: #faf6f0;
+  --surface: #ffffff;
+  --surface2: #f6f1e9;
+  --surface-elevated: #fffdf5;
+  --border: rgba(60, 40, 20, 0.08);
+  --text: #2c2a25;
+  --text-dim: #7c756a;
+  --accent: #c2410c;
+  --accent-dim: rgba(194, 65, 12, 0.08);
+  --sage: #65a30d;
+  --sage-dim: rgba(101, 163, 13, 0.1);
+  --amber: #b45309;
+  --amber-dim: rgba(180, 83, 9, 0.1);
+  --teal: #0f766e;
+  --teal-dim: rgba(15, 118, 110, 0.1);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1916; --surface: #262220; --surface2: #2f2a26;
+    --surface-elevated: #3a3430; --border: rgba(200, 180, 160, 0.1);
+    --text: #f0e8dc; --text-dim: #a09888; --accent: #e85d2a;
+    --accent-dim: rgba(232, 93, 42, 0.12);
+    --sage: #a3d34a; --sage-dim: rgba(163, 211, 74, 0.12);
+    --amber: #e0a44a; --amber-dim: rgba(224, 164, 74, 0.12);
+    --teal: #4bbdb0; --teal-dim: rgba(75, 189, 176, 0.12);
+  }
+}
+[data-theme="light"] {
+  --bg: #faf6f0; --surface: #ffffff; --surface2: #f6f1e9;
+  --surface-elevated: #fffdf5; --border: rgba(60, 40, 20, 0.08);
+  --text: #2c2a25; --text-dim: #7c756a; --accent: #c2410c;
+  --accent-dim: rgba(194, 65, 12, 0.08);
+  --sage: #65a30d; --sage-dim: rgba(101, 163, 13, 0.1);
+  --amber: #b45309; --amber-dim: rgba(180, 83, 9, 0.1);
+  --teal: #0f766e; --teal-dim: rgba(15, 118, 110, 0.1);
+}
+[data-theme="dark"] {
+  --bg: #1c1916; --surface: #262220; --surface2: #2f2a26;
+  --surface-elevated: #3a3430; --border: rgba(200, 180, 160, 0.1);
+  --text: #f0e8dc; --text-dim: #a09888; --accent: #e85d2a;
+  --accent-dim: rgba(232, 93, 42, 0.12);
+  --sage: #a3d34a; --sage-dim: rgba(163, 211, 74, 0.12);
+  --amber: #e0a44a; --amber-dim: rgba(224, 164, 74, 0.12);
+  --teal: #4bbdb0; --teal-dim: rgba(75, 189, 176, 0.12);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--font-body); font-size: 16px; line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 940px; margin: 0 auto; padding: 56px 24px 96px; }
+
+.theme-toggle {
+  position: fixed; top: 16px; right: 16px; z-index: 300;
+  width: 36px; height: 36px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-dim); cursor: pointer; display: flex;
+  align-items: center; justify-content: center; font-size: 16px;
+  transition: background .15s, color .15s; box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+.theme-toggle:hover { background: var(--surface2); color: var(--text); }
+
+/* Header */
+.eyebrow {
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 12px;
+}
+h1 { font-size: 40px; line-height: 1.15; margin: 0 0 12px; letter-spacing: -.02em; }
+.lede { font-size: 18px; color: var(--text-dim); max-width: 62ch; margin: 0 0 8px; }
+.src { font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); margin-top: 18px; }
+.src span { color: var(--accent); }
+
+/* Sections */
+section { margin-top: 64px; }
+.section-label {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--text-dim);
+  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+}
+.section-label::before {
+  content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+}
+h2 { font-size: 27px; margin: 0 0 8px; letter-spacing: -.015em; }
+h3 { font-size: 18px; margin: 32px 0 10px; }
+p { margin: 0 0 14px; }
+.hint { color: var(--text-dim); font-size: 15px; }
+
+code {
+  font-family: var(--font-mono); font-size: .88em;
+  background: var(--accent-dim); color: var(--accent);
+  padding: 1px 5px; border-radius: 4px;
+}
+
+/* Cards */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 18px 22px;
+}
+.card--hero {
+  background: color-mix(in srgb, var(--surface) 92%, var(--accent) 8%);
+  border-color: color-mix(in srgb, var(--border) 50%, var(--accent) 50%);
+  box-shadow: 0 4px 20px rgba(0,0,0,.06);
+  padding: 22px 26px;
+}
+.card--flat { background: var(--surface2); }
+
+/* Flow strip */
+.flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; margin: 22px 0 8px; }
+.step {
+  flex: 1 1 120px; min-width: 0; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 9px; padding: 12px 13px;
+}
+.step.hot { border-color: var(--accent); background: var(--accent-dim); }
+.step b { display: block; font-size: 15px; }
+.step small { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+
+/* Tables */
+.tablewrap { overflow-x: auto; margin: 16px 0; border: 1px solid var(--border); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; min-width: 560px; background: var(--surface); }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th {
+  font-family: var(--font-mono); font-size: 12px; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--text-dim); background: var(--surface2);
+  font-weight: 500; white-space: nowrap;
+}
+td { font-size: 14.5px; }
+tr:last-child td { border-bottom: none; }
+td.mono, .mono { font-family: var(--font-mono); font-size: 13px; }
+.arrow { color: var(--accent); font-family: var(--font-mono); }
+
+/* Before/after */
+.ba { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+.ba > div { min-width: 0; }
+.ba .lbl {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px;
+}
+pre {
+  margin: 0; background: color-mix(in srgb, var(--bg) 70%, var(--surface) 30%);
+  border: 1px solid var(--border); border-radius: 9px; padding: 14px 16px;
+  overflow-x: auto; font-family: var(--font-mono); font-size: 13px; line-height: 1.6;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,.05);
+}
+pre .c { color: var(--text-dim); }
+pre .k { color: var(--accent); }
+@media (max-width: 640px) { .ba { grid-template-columns: 1fr; } }
+
+/* Key/value list */
+.kv { display: grid; grid-template-columns: 180px 1fr; gap: 6px 18px; margin: 12px 0; }
+.kv dt { font-family: var(--font-mono); font-size: 13px; color: var(--accent); }
+.kv dd { margin: 0; font-size: 15px; }
+@media (max-width: 640px) { .kv { grid-template-columns: 1fr; } .kv dd { margin-bottom: 8px; } }
+
+/* Badges */
+.badge {
+  display: inline-block; font-family: var(--font-mono); font-size: 12px;
+  padding: 2px 8px; border-radius: 20px; white-space: nowrap;
+}
+.b-green { background: var(--sage-dim); color: var(--sage); }
+.b-amber { background: var(--amber-dim); color: var(--amber); }
+.b-teal { background: var(--teal-dim); color: var(--teal); }
+.b-accent { background: var(--accent-dim); color: var(--accent); }
+
+/* Callout */
+.callout {
+  border-left: 3px solid var(--accent); background: var(--accent-dim);
+  padding: 14px 18px; border-radius: 0 9px 9px 0; margin: 20px 0; font-size: 15.5px;
+}
+.callout b { color: var(--accent); }
+
+/* Score bar */
+.bars { display: grid; gap: 8px; margin: 16px 0; }
+.bar { display: grid; grid-template-columns: 130px 1fr 44px; gap: 12px; align-items: center; }
+.bar .n { font-family: var(--font-mono); font-size: 13px; }
+.bar .t { height: 9px; background: var(--surface2); border-radius: 5px; overflow: hidden; }
+.bar .f { height: 100%; background: var(--accent); border-radius: 5px; }
+.bar .v { font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); text-align: right; }
+@media (max-width: 640px) { .bar { grid-template-columns: 100px 1fr 40px; } }
+
+/* Bands */
+.bands { display: grid; gap: 10px; margin: 18px 0; }
+.band { display: grid; grid-template-columns: 128px 1fr; gap: 16px; padding: 13px 16px; border-radius: 9px; border: 1px solid var(--border); }
+.band .r { font-family: var(--font-mono); font-size: 13px; font-weight: 500; }
+.band.g { background: var(--sage-dim); border-color: color-mix(in srgb, var(--border) 40%, var(--sage) 60%); }
+.band.g .r { color: var(--sage); }
+.band.a { background: var(--amber-dim); border-color: color-mix(in srgb, var(--border) 40%, var(--amber) 60%); }
+.band.a .r { color: var(--amber); }
+.band.n { background: var(--surface2); }
+.band.n .r { color: var(--text-dim); }
+@media (max-width: 640px) { .band { grid-template-columns: 1fr; gap: 4px; } }
+
+footer {
+  margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--border);
+  font-family: var(--font-mono); font-size: 12px; color: var(--text-dim);
+}
+</style>
+</head>
+<body>
+<button class="theme-toggle" id="themeToggle" title="Đổi giao diện" aria-label="Toggle light/dark theme"></button>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Data Pipeline / Hotels</div>
+  <h1>Agoda + Booking → một bảng khách sạn sạch</h1>
+  <p class="lede">Hai nguồn JSON, hai kiểu viết dữ liệu khác nhau. Trang này giải thích đơn giản: <b>normalize</b> nắn từng trường về một chuẩn, <b>dedupe</b> loại bản ghi trùng.</p>
+  <div class="src">nguồn: <span>src/airflow/dags/data_pipeline/hotel_pipeline.py</span></div>
+</header>
+
+<section>
+  <div class="section-label">Toàn cảnh</div>
+  <h2>6 bước, chạy tuần tự</h2>
+  <p class="hint">Hàm <code>run_hotel_pipeline()</code> gọi đúng thứ tự này. Hai bước tô màu là trọng tâm của trang.</p>
+
+  <div class="flow">
+    <div class="step"><b>1. Extract</b><small>đọc 2 file JSON</small></div>
+    <div class="step"><b>2. Validate</b><small>loại bản ghi hỏng</small></div>
+    <div class="step hot"><b>3. Normalize</b><small>nắn từng trường</small></div>
+    <div class="step hot"><b>4. Dedupe</b><small>gộp bản ghi trùng</small></div>
+    <div class="step"><b>5. Load</b><small>upsert vào Postgres</small></div>
+    <div class="step"><b>6. Quality</b><small>báo cáo .md</small></div>
+  </div>
+
+  <div class="callout">
+    <b>Nguyên tắc xuyên suốt:</b> một khách sạn thật đăng trên cả Agoda và Booking vẫn là <b>2 dòng</b> trong bảng <code>hotels</code>. Giá và chính sách khác nhau theo OTA, chatbot cần so sánh được.
+  </div>
+</section>
+
+<section>
+  <div class="section-label">Bước 1 — Extract</div>
+  <h2>Chuẩn hoá Unicode ngay từ đầu</h2>
+  <p>Agoda ghi tiếng Việt kiểu <span class="mono">NFC</span> (ký tự dựng sẵn), Booking ghi kiểu <span class="mono">NFD</span> (chữ cái + dấu rời). Nhìn trên màn hình giống hệt nhau nhưng máy so sánh ra <b>khác nhau</b> — sẽ hỏng hết bước map thành phố và khoá dedupe ở sau.</p>
+
+  <div class="ba">
+    <div>
+      <div class="lbl">Booking gửi lên (NFD)</div>
+      <pre>"city": "Hò<span class="c">̀</span> Chí Minh"
+<span class="c"># H + o + ̀ + ...  (12 ký tự)</span></pre>
+    </div>
+    <div>
+      <div class="lbl">Sau <span class="mono">_nfc_deep()</span></div>
+      <pre>"city": "Hồ Chí Minh"
+<span class="c"># dựng sẵn      (11 ký tự)</span></pre>
+    </div>
+  </div>
+  <p class="hint"><code>_nfc_deep()</code> đi đệ quy qua mọi string, list, dict — kể cả <b>khoá</b> của dict. Sau đó gắn thêm <code>source_platform</code> = <span class="mono">"agoda"</span> / <span class="mono">"booking"</span> vào từng bản ghi để biết dòng này từ đâu ra.</p>
+</section>
+
+<section>
+  <div class="section-label">Bước 2 — Validate</div>
+  <h2>Chặn trước những gì DB sẽ từ chối</h2>
+  <p>Cả lô load trong <b>một transaction</b>. Chỉ cần 1 bản ghi vi phạm ràng buộc DB là toàn bộ lô rollback. Nên bước này loại nó ra sớm, ghi vào log, và chạy tiếp.</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Kiểm tra</th><th>Vì sao</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">hotel_id là int</td><td>khoá định danh listing, không được thiếu</td></tr>
+      <tr><td class="mono">hotel_name khác rỗng</td><td>cột NOT NULL</td></tr>
+      <tr><td class="mono">0 ≤ star_rating ≤ 5</td><td>ràng buộc CHECK trên bảng <span class="mono">hotels</span></td></tr>
+      <tr><td class="mono">room_id là int</td><td>khoá phòng trong listing</td></tr>
+      <tr><td class="mono">room.name khác rỗng</td><td>cột NOT NULL trên bảng <span class="mono">rooms</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section>
+  <div class="section-label">Bước 3 — Normalize · phần chính</div>
+  <h2>Mỗi trường được xử lý thế nào</h2>
+  <p>Đây là nơi hai nguồn được kéo về cùng một hình dạng. Chia làm 4 nhóm việc.</p>
+
+  <h3>a. Tra bảng — text tự do về giá trị chuẩn</h3>
+  <p class="hint">Dùng dictionary tra cứu. Không khớp thì <b>giữ nguyên bản gốc đã trim</b>, không đoán bừa.</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Trường</th><th>Agoda</th><th>Booking</th><th>Kết quả</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">country</td><td>"Việt Nam"</td><td>"vietnam"</td><td><span class="badge b-green">VN</span></td></tr>
+      <tr><td class="mono">city → destination_name</td><td>"TP. Hồ Chí Minh"</td><td>"ho chi minh"</td><td><span class="badge b-green">Hồ Chí Minh</span></td></tr>
+      <tr><td class="mono">accommodation_type</td><td>"khách sạn"</td><td>"hotel"</td><td><span class="badge b-green">hotel</span></td></tr>
+      <tr><td class="mono">accommodation_type</td><td>"căn hộ dịch vụ"</td><td>"apartment"</td><td><span class="badge b-green">apartment</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="hint">Hai bảng map riêng cho từng OTA vì Agoda gửi tiếng Việt, Booking gửi mã tiếng Anh.</p>
+
+  <h3>b. Bóc số ra khỏi chuỗi</h3>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Trường</th><th>Đầu vào</th><th>Xử lý</th><th>Đầu ra</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">room_size_sqm</td><td class="mono">"25 m²"</td><td>regex <span class="mono">([\d.]+)\s*m</span></td><td class="mono">25.0</td></tr>
+      <tr><td class="mono">coordinates</td><td class="mono">"10.77,106.70"</td><td>tách + kiểm tra dải hợp lệ</td><td class="mono">lat=10.77, lon=106.70</td></tr>
+      <tr><td class="mono">check_in / check_out</td><td class="mono">"2026-07-20"</td><td><span class="mono">date.fromisoformat</span></td><td class="mono">date(2026,7,20)</td></tr>
+      <tr><td class="mono">rooms_available</td><td class="mono">true</td><td>Agoda: đã là bool</td><td class="mono">True</td></tr>
+      <tr><td class="mono">rooms_available</td><td class="mono">3</td><td>Booking: int <span class="arrow">→</span> <span class="mono">&gt; 0</span></td><td class="mono">True</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="callout">
+    <b>Sai lệch cố ý được ghi lại:</b> <code>max_guests</code> ở Agoda là <b>số người lớn</b> bóc từ câu chữ, ở Booking là <b>tổng số khách</b>. Cùng đổ vào một cột nhưng <b>không so sánh chéo nguồn được</b> — đã ghi rõ ở <span class="mono">docs/data_dictionary.md §1.3</span>. Toạ độ sai định dạng hoặc ngoài dải thì trả <span class="mono">None</span> + log cảnh báo, chứ không đoán.
+  </div>
+
+  <h3>c. Làm sạch danh sách</h3>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Hàm</th><th>Làm gì</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">normalize_text_list</td><td>trim, bỏ rỗng, bỏ trùng — <b>giữ nguyên thứ tự xuất hiện đầu tiên</b></td></tr>
+      <tr><td class="mono">normalize_url_list</td><td>bỏ trùng, chỉ giữ <span class="mono">http(s)://</span>, có thể giới hạn số lượng</td></tr>
+      <tr><td class="mono">flatten_amenity_groups</td><td>Agoda nhóm tiện nghi theo mục <span class="arrow">→</span> ép phẳng thành 1 list, bỏ trùng</td></tr>
+      <tr><td class="mono">_select_nearby_names</td><td>Agoda gửi <span class="mono">list[str]</span>, Booking gửi <span class="mono">list[{name:...}]</span> <span class="arrow">→</span> cùng ra list tên</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>d. Sinh trường phái sinh cho lọc &amp; tìm kiếm</h3>
+  <p>Không có trong JSON gốc — pipeline tự tính, để trong khối <code>canonical</code> và <code>retrieval</code>. Hai khối này <b>không ghi vào DB</b> (không nằm trong danh sách cột), chỉ phục vụ dedupe và vector search.</p>
+  <dl class="kv">
+    <dt>name_key</dt><dd>bỏ dấu → chữ thường → bỏ ký tự đặc biệt → bỏ từ vô nghĩa (<span class="mono">hotel, resort, khach, san, the...</span>). <span class="mono">"Khách Sạn Hòa Bình"</span> <span class="arrow">→</span> <span class="mono">"hoa binh"</span>. Đây là khoá để bắt trùng chéo OTA.</dd>
+    <dt>price_tier</dt><dd>VND: &lt;800k = <span class="badge b-teal">budget</span>, ≤2.5tr = <span class="badge b-teal">mid_range</span>, trên đó = <span class="badge b-teal">luxury</span>. Tiền tệ khác trả <span class="mono">None</span> — thà không có bậc còn hơn bậc sai thang đo.</dd>
+    <dt>amenity_keys</dt><dd>bỏ dấu + nối gạch dưới để lọc: <span class="mono">"Hồ bơi"</span> <span class="arrow">→</span> <span class="mono">"ho_boi"</span>. Tối đa 20 khoá.</dd>
+    <dt>embedding_text</dt><dd>văn bản để embed, ghép từ tên / địa điểm / loại / mô tả (cắt 500 ký tự) / 10 tiện nghi / 5 điểm nổi bật / 5 địa điểm gần. <b>Cố ý loại</b> giá, URL, thời điểm crawl — dữ liệu biến động sẽ làm vector đổi liên tục.</dd>
+    <dt>payload</dt><dd>gói nhỏ để Qdrant lọc: id, địa điểm, sao, price_tier, amenity_keys, lat/lon. Không kèm JSON thô.</dd>
+    <dt>grounding_facts</dt><dd>sự thật chính xác để AI trích dẫn: URL nguồn, giá, ngày nhận/trả, điểm đánh giá, thời điểm crawl.</dd>
+  </dl>
+</section>
+
+<section>
+  <div class="section-label">Bước 4 — Dedupe · phần chính</div>
+  <h2>Hai loại "trùng" hoàn toàn khác nhau</h2>
+  <p>Đây là chỗ dễ nhầm nhất. Pipeline tách rõ: một loại <b>xoá dòng</b>, một loại <b>chỉ gắn nhãn</b>.</p>
+
+  <div class="flow">
+    <div class="step hot"><b>4a. Dedupe trong lô</b><small>CÓ xoá bản ghi</small></div>
+    <div class="step hot"><b>4b. Gom khách sạn vật lý</b><small>KHÔNG xoá gì cả</small></div>
+  </div>
+
+  <h3>4a. Dedupe trong lô — cùng nguồn, trùng id</h3>
+  <p>Chạy 3 tầng, tầng nào cũng cùng một luật: <b>gặp trùng thì giữ bản có <span class="mono">crawled_at</span> / <span class="mono">scraped_at</span> mới hơn</b>. Nếu bản mới không có mốc thời gian thì giữ bản cũ.</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Tầng</th><th>Khoá trùng</th><th>Đếm vào</th></tr></thead>
+    <tbody>
+      <tr><td>Khách sạn</td><td class="mono">(source_platform, source_hotel_id)</td><td class="mono">hotels_removed</td></tr>
+      <tr><td>Phòng</td><td class="mono">source_room_id</td><td class="mono">rooms_removed</td></tr>
+      <tr><td>Giá</td><td class="mono">(check_in, check_out, source_url, package_details)</td><td class="mono">prices_removed</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="hint">Vì khoá khách sạn <b>có kèm <span class="mono">source_platform</span></b>, cùng một khách sạn trên Agoda và Booking không bao giờ đụng nhau ở đây. Đúng như thiết kế.</p>
+
+  <h3>4b. Gom khách sạn vật lý — chéo OTA</h3>
+  <p>Mục tiêu: biết listing Agoda #123 và Booking #456 <i>là cùng một toà nhà</i>, để AI không trả lời trùng lặp. Nhưng <b>2 dòng DB vẫn giữ nguyên</b> — chỉ gắn thêm <code>canonical_hotel_key</code> và <code>review_status</code>.</p>
+
+  <p><b>Bước lọc ứng viên (blocking).</b> So từng cặp trong n khách sạn là O(n²), quá chậm. Nên chỉ đem ra chấm điểm những cặp <b>cùng destination</b> và <b>chia sẻ ít nhất một token tên</b>. Token trùng với tên thành phố bị loại khỏi việc bắt cặp — bằng không mọi khách sạn ở Sài Gòn đều thành ứng viên của nhau. Kết quả: <b>không cặp nào được sinh ra chỉ dựa trên toạ độ gần nhau.</b></p>
+
+  <p><b>Chấm điểm.</b> 6 tín hiệu, cộng có trọng số:</p>
+  <div class="bars">
+    <div class="bar"><span class="n">tên</span><span class="t"><span class="f" style="width:100%"></span></span><span class="v">0.45</span></div>
+    <div class="bar"><span class="n">toạ độ</span><span class="t"><span class="f" style="width:55.5%"></span></span><span class="v">0.25</span></div>
+    <div class="bar"><span class="n">địa chỉ</span><span class="t"><span class="f" style="width:26.7%"></span></span><span class="v">0.12</span></div>
+    <div class="bar"><span class="n">sao + loại</span><span class="t"><span class="f" style="width:17.8%"></span></span><span class="v">0.08</span></div>
+    <div class="bar"><span class="n">tiện nghi</span><span class="t"><span class="f" style="width:11.1%"></span></span><span class="v">0.05</span></div>
+    <div class="bar"><span class="n">độ đầy đủ</span><span class="t"><span class="f" style="width:11.1%"></span></span><span class="v">0.05</span></div>
+  </div>
+  <p class="hint">Tên lấy điểm cao nhất trong 3 cách so (chuỗi / Jaccard theo token / tập con). Toạ độ: ≤30m được 1.0, giảm tuyến tính, ≥250m còn 0. Toạ độ <b>cố tình chỉ là tín hiệu phụ</b> — nhiều khách sạn cùng toà nhà, cùng con hẻm.</p>
+
+  <p><b>Chia dải điểm:</b></p>
+  <div class="bands">
+    <div class="band g"><span class="r">≥ 0.86</span><span>Tự động gom nhóm. <span class="badge b-green">auto_approved</span></span></div>
+    <div class="band a"><span class="r">0.72 – 0.86</span><span>Treo chờ người duyệt. <span class="badge b-amber">pending_review</span> — <i>trừ khi</i> tên khớp tuyệt đối và cách nhau ≤80m thì nâng thẳng lên tự động gom.</span></div>
+    <div class="band n"><span class="r">&lt; 0.72</span><span>Bỏ qua, coi như hai khách sạn khác nhau. <span class="badge">ungrouped</span></span></div>
+  </div>
+
+  <p>Các cặp đã gom được nối lại bằng <b>union-find</b> thành cụm (A↔B và B↔C thì A, B, C cùng một nhóm), mỗi cụm nhận một khoá <span class="mono">grp-000001</span>. Nhóm auto luôn thắng: nếu một listing đã nằm trong nhóm auto, cặp <span class="mono">pending_review</span> chạm vào nó bị bỏ qua.</p>
+
+  <div class="callout">
+    Kết quả cuối cùng chỉ ghi vào <code>hotel["canonical"]</code>: <span class="mono">canonical_hotel_key</span>, <span class="mono">group_review_status</span>, <span class="mono">group_confidence</span>. <b>Không dòng nào bị xoá, không dòng nào bị trộn.</b> Chạy lại cùng một lô đầu vào cho ra cùng kết quả.
+  </div>
+</section>
+
+<section>
+  <div class="section-label">Bước 5 &amp; 6</div>
+  <h2>Load và báo cáo</h2>
+  <p><b>Load</b> — upsert 3 tầng trong một transaction: <code>hotels</code> (conflict trên <span class="mono">source_platform + source_hotel_id</span>) <span class="arrow">→</span> <code>rooms</code> <span class="arrow">→</span> <code>room_prices</code>. Chạy lại pipeline thì cập nhật chứ không nhân bản.</p>
+  <p class="hint">Lưu ý kiểu dữ liệu: <span class="mono">amenities, awards, warnings, images, room_facilities</span> là mảng <span class="mono">TEXT[]</span> gốc của Postgres, không bọc <span class="mono">Json()</span>. Còn <span class="mono">amenity_groups, category_scores, nearby_*</span> mới là JSONB.</p>
+  <p><b>Quality check</b> — xuất file <span class="mono">.md</span> gồm: số bản ghi bị loại ở validate, số bản trùng đã xoá ở mỗi tầng, số nhóm auto vs chờ duyệt, số bản thiếu toạ độ, kích thước payload, và độ phủ mô tả theo từng nguồn.</p>
+</section>
+
+<footer>
+  hotel_pipeline.py · extract → validate → normalize → dedupe → group → load → quality_check
+</footer>
+
+</div>
+
+<script>
+(function() {
+  var toggle = document.getElementById('themeToggle');
+  var saved = localStorage.getItem('theme');
+  var initial = saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  if (saved) document.documentElement.setAttribute('data-theme', initial);
+  toggle.textContent = initial === 'dark' ? '☀' : '☾';
+  toggle.addEventListener('click', function() {
+    var current = document.documentElement.getAttribute('data-theme')
+      || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    var next = current === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+    toggle.textContent = next === 'dark' ? '☀' : '☾';
+  });
+})();
+</script>
+</body>
+</html>

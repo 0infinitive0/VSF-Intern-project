@@ -494,6 +494,11 @@ def _tier_budget(tier: str) -> tuple[float | None, float | None, float | None]:
     return min_price, max_price, _BUDGET_TIER_TARGET_VND[tier]
 
 
+_PRICE_RANGE_RE = re.compile(
+    rf"(\d+(?:[.,]\d+)?)\s*(?:-|den|toi|đen)\s*(\d+(?:[.,]\d+)?)\s*{_MILLION_UNIT}"
+)
+
+
 def _parse_free_text_price(text: str) -> float | None:
     """Best-effort Vietnamese money parser: "4 triệu" -> 4_000_000, "500 nghìn"/"500k"
     -> 500_000, "1tr5"/"1 triệu rưỡi" -> 1_500_000, a range like "2-3 triệu" -> its
@@ -503,11 +508,11 @@ def _parse_free_text_price(text: str) -> float | None:
 
     # A range ("2-3 triệu", "từ 1 đến 2 triệu") means the whole span, so aim at its
     # middle. Taking the last number instead — what a plain search does — silently
-    # pins the user to the top of the range they gave.
-    range_match = re.search(
-        rf"(\d+(?:[.,]\d+)?)\s*(?:-|den|toi|đen)\s*(\d+(?:[.,]\d+)?)\s*{_MILLION_UNIT}",
-        normalized,
-    )
+    # pins the user to the top of the range they gave. (_parse_free_text_budget
+    # checks the same _PRICE_RANGE_RE first and keeps the true bounds instead of
+    # collapsing to this midpoint — this scalar is only for callers, like the
+    # trip-modification re-price flow, that want a single target number.)
+    range_match = _PRICE_RANGE_RE.search(normalized)
     if range_match:
         low = float(range_match.group(1).replace(",", "."))
         high = float(range_match.group(2).replace(",", "."))
@@ -548,16 +553,27 @@ def _parse_free_text_budget(reply: str) -> tuple[float | None, float | None, flo
     from the suggested tiers, or a qualitative phrase like "khách sạn sang trọng".
 
     Returns (min_price, max_price, target_price): a qualitative phrase resolves to
-    its tier's real (min, max) bounds via _tier_budget; an explicit number has no
-    natural range, so it becomes an open-floor ceiling (None, price, price).
+    its tier's real (min, max) bounds via _tier_budget; an explicit range ("2-3
+    triệu") keeps its true (min, max) with the midpoint as target; a single
+    explicit number has no natural range, so it becomes an open-floor ceiling
+    (None, price, price).
 
     The tier phrase is checked FIRST: it is a stronger signal than a bare number,
     and the bare-number branch of _parse_free_text_price otherwise lets a date
-    year like "2026" win over "tầm trung" in a combined message."""
+    year like "2026" win over "tầm trung" in a combined message. The range check
+    is next, ahead of _parse_free_text_price, because that helper only returns a
+    single collapsed-to-midpoint float and can't tell this caller "this was a
+    range" from "this was one number" — collapsing here would silently drop the
+    floor a slider/range answer explicitly set."""
     normalized = _normalize_for_match(reply)
     for tier, phrases in _QUALITATIVE_BUDGET_PHRASES.items():
         if any(phrase in normalized for phrase in phrases):
             return _tier_budget(tier)
+    range_match = _PRICE_RANGE_RE.search(normalized)
+    if range_match:
+        low = float(range_match.group(1).replace(",", ".")) * 1_000_000
+        high = float(range_match.group(2).replace(",", ".")) * 1_000_000
+        return low, high, (low + high) / 2
     price = _parse_free_text_price(reply)
     if price is not None:
         return None, price, price

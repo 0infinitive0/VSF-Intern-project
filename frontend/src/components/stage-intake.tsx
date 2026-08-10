@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import IntakeChecklist from './intake-checklist'
+import type { IntakeFormState } from '../lib/compose-intake-message'
+import type { IntakeChecklistRowKey } from '../lib/intake-checklist-rows'
 import type { IntakeStatus } from '../types'
 
 const STEP_NUMBERS = [1, 2, 3] as const
@@ -18,8 +20,12 @@ const STEP_NUMBERS = [1, 2, 3] as const
  */
 export default function StageIntake({
   intake,
+  form,
+  onEditField,
 }: {
   intake: IntakeStatus | null
+  form: IntakeFormState
+  onEditField?: (key: IntakeChecklistRowKey) => void
 }): ReactNode {
   const { t } = useTranslation()
 
@@ -31,7 +37,7 @@ export default function StageIntake({
             {t('intakeHeroTagline')}
           </div>
           <h1 className="text-[42px] font-[590] tracking-[-1.9px] leading-[1.06] text-on-surface text-pretty">
-            {t('intakeHeroA')}{' '}
+            {t('intakeHeroA')}<br/>
             <span
               className="font-[530] bg-clip-text text-transparent animate-[vHue_12s_ease-in-out_infinite]"
               style={{
@@ -48,7 +54,7 @@ export default function StageIntake({
           </p>
         </div>
 
-        <IntakeChecklist intake={intake} />
+        <IntakeChecklist intake={intake} form={form} onEditField={onEditField} />
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
           {STEP_NUMBERS.map((n) => (

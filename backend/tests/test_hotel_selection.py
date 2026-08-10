@@ -417,10 +417,12 @@ def test_parse_free_text_budget_half_million_shorthand():
     assert _parse_free_text_budget("1tr500") == (None, 1_500_000, 1_500_000)
 
 
-def test_parse_free_text_budget_range_uses_midpoint():
-    """A range means the whole span; taking its last number pins the user to the top."""
-    assert _parse_free_text_budget("khoảng 2-3 triệu") == (None, 2_500_000, 2_500_000)
-    assert _parse_free_text_budget("từ 1 đến 2 triệu") == (None, 1_500_000, 1_500_000)
+def test_parse_free_text_budget_range_keeps_min_and_max():
+    """A range means the whole span; it must keep its true floor and ceiling, not
+    collapse to an open-floor midpoint (which would silently drop hotels below it
+    that the user's own range explicitly allowed)."""
+    assert _parse_free_text_budget("khoảng 2-3 triệu") == (2_000_000, 3_000_000, 2_500_000)
+    assert _parse_free_text_budget("từ 1 đến 2 triệu") == (1_000_000, 2_000_000, 1_500_000)
 
 
 def test_parse_free_text_budget_more_cheap_phrasings():

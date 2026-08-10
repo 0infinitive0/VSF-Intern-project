@@ -31,7 +31,9 @@ export interface IntakeFormShape {
   guests?: number
   startDate?: string
   endDate?: string
-  budget?: string
+  budgetMinVnd?: number | null
+  budgetMaxVnd?: number | null
+  budgetSkipped?: boolean
   preferences?: unknown[]
 }
 
@@ -87,7 +89,7 @@ export function isFieldFilled(
         form.startDate && form.endDate && String(form.endDate) > String(form.startDate),
       )
     case 'budget':
-      return form.budget !== ''
+      return Boolean(form.budgetSkipped) || (form.budgetMinVnd != null && form.budgetMaxVnd != null)
     case 'preferences':
       return Array.isArray(form.preferences) && form.preferences.length > 0
   }
