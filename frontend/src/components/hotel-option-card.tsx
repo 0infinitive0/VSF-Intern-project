@@ -121,12 +121,14 @@ function HotelOptionCard({
             {hasNightly && (
               <div className="flex-none text-right">
                 <div className="text-[17px] font-normal tracking-[-0.5px] text-on-surface">
-                  {formatCurrency(hotel.average_nightly_price!, i18n.language)}
+                  {showTotal
+                    ? formatCurrency(hotel.average_nightly_price! * nights!, i18n.language)
+                    : formatCurrency(hotel.average_nightly_price!, i18n.language)}
                 </div>
                 <div className="text-[10.5px] font-normal tracking-[0.01em] text-on-surface-muted">
                   {showTotal
                     ? t('hotelNightlyTotal', {
-                        total: formatCurrency(hotel.average_nightly_price! * nights!, i18n.language),
+                        nightly: formatCurrency(hotel.average_nightly_price!, i18n.language),
                       })
                     : t('perNight')}
                 </div>

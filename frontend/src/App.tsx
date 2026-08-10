@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { deleteSession } from './api/session-client'
 import { useChatSession } from './hooks/use-chat-session'
 import { useIntakeForm } from './hooks/use-intake-form'
 import { usePanelResize } from './hooks/use-panel-resize'
 import { useSessionHistory } from './hooks/use-session-history'
-import { deriveStageView } from './lib/derive-stage'
+import { deriveStageView, type StageView } from './lib/derive-stage'
 import AppShell from './components/app-shell'
 
 /**
@@ -26,6 +26,19 @@ export default function App() {
   const [chatWidth, setChatWidth] = useState(380)
   const chatResize = usePanelResize(chatWidth, setChatWidth, { min: 300, max: 560 })
   const stage = deriveStageView(state)
+
+  // StepNavigator can jump to a step whose data is already sitting in `state`
+  // (e.g. hopping back to "Thông tin" while hotel options are still loaded)
+  // as a pure client-side view swap — no chat turn. `viewOverride` holds that
+  // choice; it's cleared whenever the real derived stage moves (a genuine
+  // backend turn happened), so the view always snaps back to following the
+  // live conversation once one does.
+  const [viewOverride, setViewOverride] = useState<StageView | null>(null)
+  useEffect(() => {
+    setViewOverride(null)
+  }, [stage])
+  const displayStage = viewOverride ?? stage
+
   const { sessions, removeLocal, refresh } = useSessionHistory(state.sessionId, state.pending)
 
   // No confirm() (design has none — a fresh trip destroys nothing now that
@@ -73,7 +86,8 @@ export default function App() {
       state={state}
       onSend={send}
       onNewTrip={handleNewTrip}
-      stage={stage}
+      stage={displayStage}
+      onViewStage={setViewOverride}
       chatWidth={chatWidth}
       onChatResizeStart={chatResize}
       intakeForm={intakeForm}

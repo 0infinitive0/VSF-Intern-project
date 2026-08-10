@@ -313,7 +313,7 @@ def test_sequential_intake_uses_mocked_llm_facts_across_turns(monkeypatch) -> No
 
     state = state.with_message("10/08/2026", DESTINATIONS)
     assert state.start_date == "2026-08-10"
-    assert state.next_question() == "Chuyến đi có bao nhiêu người?"
+    assert state.next_question() == "Tuyệt vời. Chuyến đi này có bao nhiêu người tham gia?"
 
     state = state.with_message(
         "tôi đi cùng vợ của tôi, tập trung tắm biển và du lịch lịch sử", DESTINATIONS

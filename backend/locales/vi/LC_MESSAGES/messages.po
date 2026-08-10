@@ -198,7 +198,7 @@ msgstr ""
 msgid "Bạn dự định bắt đầu chuyến đi vào ngày nào?"
 msgstr ""
 
-msgid "Chuyến đi có bao nhiêu người?"
+msgid "Tuyệt vời. Chuyến đi này có bao nhiêu người tham gia?"
 msgstr ""
 
 #, python-brace-format

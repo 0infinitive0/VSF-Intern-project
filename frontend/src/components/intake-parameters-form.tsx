@@ -101,16 +101,21 @@ export default function IntakeParametersForm({
       )
     case 'dates':
       return (
-        <IntakeDateRange
-          start={form.startDate}
-          end={form.endDate}
-          onCommit={({ start, end }) =>
-            editingField
-              ? commitEdit({ ...form, startDate: start, endDate: end })
-              : setForm((prev) => ({ ...prev, startDate: start, endDate: end }))
-          }
-          disabled={false}
-        />
+        <>
+          <MessageBubble
+            message={{ id: 'dates-prompt', role: 'ai', stage: 'intake', text: t('intakeDatesQuestion') }}
+          />
+          <IntakeDateRange
+            start={form.startDate}
+            end={form.endDate}
+            onCommit={({ start, end }) =>
+              editingField
+                ? commitEdit({ ...form, startDate: start, endDate: end })
+                : setForm((prev) => ({ ...prev, startDate: start, endDate: end }))
+            }
+            disabled={false}
+          />
+        </>
       )
     case 'budget':
       return (
@@ -137,15 +142,20 @@ export default function IntakeParametersForm({
       )
     case 'preferences':
       return (
-        <IntakePreferenceChips
-          selected={form.preferences}
-          onToggle={togglePreference}
-          onSubmit={() => {
-            submitAll()
-            if (editingField) onDoneEditing?.()
-          }}
-          disabled={false}
-        />
+        <>
+          <MessageBubble
+            message={{ id: 'preferences-prompt', role: 'ai', stage: 'intake', text: t('intakePreferencesQuestion') }}
+          />
+          <IntakePreferenceChips
+            selected={form.preferences}
+            onToggle={togglePreference}
+            onSubmit={() => {
+              submitAll()
+              if (editingField) onDoneEditing?.()
+            }}
+            disabled={false}
+          />
+        </>
       )
     default:
       return null

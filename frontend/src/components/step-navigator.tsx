@@ -12,37 +12,55 @@ function stepFromStage(stage: StageView): StepKey {
 /**
  * StepNavigator — three-step rail (design dc.html:139-145, 2507-2518).
  *
- * Derived from the SAME `deriveStageView` the shell uses — a single source of
- * truth, so the rail can never disagree with the middle panel.
+ * `stage` is whatever the middle panel is currently showing — the live
+ * backend-derived stage, or a client-side view override (see App.tsx) — so
+ * the rail's "current" highlight always agrees with the middle panel.
  *
- * Backward navigation is done truthfully: a completed step is clickable and
- * sends ONE translated natural-language message through the ordinary send path
+ * Backward navigation prefers a pure client-side view swap: if the target
+ * step's data is already sitting in `state` (intake is always collected by
+ * the time another step exists; hotel options only while `hotelOptionsAvailable`),
+ * clicking it just re-renders that panel via `onViewStage` — no chat turn, no
+ * AI reply. Only when the data genuinely isn't loaded anymore (e.g. hotel
+ * options were superseded by a trip plan) does the click fall back to sending
+ * ONE translated natural-language message through the ordinary send path
  * (e.g. "Tôi muốn đổi khách sạn") — that is what the backend actually supports
- * (session.py edit flow). There is no rollback verb, and we don't pretend there
- * is. Steps not yet reached are inert.
+ * (session.py edit flow). There is no rollback verb, and we don't pretend
+ * there is. Steps not yet reached are inert.
  */
 export default function StepNavigator({
   stage,
   intakeComplete,
   hotelPicked,
+  hotelOptionsAvailable,
   onSend,
+  onViewStage,
 }: {
   stage: StageView
   /** intake collection is done (all real missing keys answered) */
   intakeComplete: boolean
   /** a hotel has been picked (trip_plan exists) */
   hotelPicked: boolean
+  /** hotel options are still loaded in state — hotels can be viewed without a chat turn */
+  hotelOptionsAvailable: boolean
   onSend: (text: string) => void
+  onViewStage: (stage: StageView) => void
 }) {
   const { t } = useTranslation()
   const current = stepFromStage(stage)
 
-  const steps: { key: StepKey; n: string; label: string; open: boolean; message: string | null }[] = [
-    { key: 'intake', n: '1', label: t('stepDetails'), open: true, message: t('stepNavBackIntake') },
-    { key: 'hotels', n: '2', label: t('stepHotel'), open: intakeComplete, message: t('stepNavBackHotels') },
+  const steps: { key: StepKey; n: string; label: string; open: boolean; message: string | null; viewable: boolean }[] = [
+    { key: 'intake', n: '1', label: t('stepDetails'), open: true, message: t('stepNavBackIntake'), viewable: true },
+    {
+      key: 'hotels',
+      n: '2',
+      label: t('stepHotel'),
+      open: intakeComplete,
+      message: t('stepNavBackHotels'),
+      viewable: hotelOptionsAvailable,
+    },
     // workspace is the terminal step — nothing is ever "behind" it, so it is never
     // a backward target; it is only ever current (or a disabled forward state).
-    { key: 'workspace', n: '3', label: t('stepItinerary'), open: hotelPicked, message: null },
+    { key: 'workspace', n: '3', label: t('stepItinerary'), open: hotelPicked, message: null, viewable: false },
   ]
 
   return (
@@ -52,9 +70,14 @@ export default function StepNavigator({
     >
       {steps.map((step) => {
         const isCurrent = current === step.key
-        const clickable = step.open && !isCurrent && step.message !== null
+        const clickable = step.open && !isCurrent && (step.viewable || step.message !== null)
         const handleClick = () => {
-          if (clickable && step.message) onSend(step.message)
+          if (!clickable) return
+          if (step.viewable) {
+            onViewStage(step.key)
+            return
+          }
+          if (step.message) onSend(step.message)
         }
         return (
           <button

@@ -67,6 +67,7 @@
   "messageTimestampLabel": "Gửi lúc {{time}}",
 
   "greeting": "Xin chào 👋 Mình là V-OTA. Bạn muốn đi đâu lần này?",
+  "quickSuggestionsHint": "Gợi ý nhanh hoặc gõ tự do trong chat",
   "itineraryEmptyTitle": "Lịch trình của bạn",
   "itineraryEmptyBody": "Lịch trình sẽ hiển thị ở đây sau khi bạn chọn khách sạn.",
 
@@ -149,7 +150,7 @@
   "intakeNoBudgetOptions": "Không có tùy chọn ngân sách.",
 
   "intakeQuickHint": "Nhanh chóng: chọn điểm đến có sẵn",
-  "intakePeopleLabel": "Số người đi",
+  "intakePeopleLabel": "Số người",
   "intakeConfirm": "Xác nhận",
   "dateFrom": "Từ ngày",
   "dateTo": "Đến ngày",
@@ -160,7 +161,9 @@
   "budgetSkippedValue": "Không giới hạn",
   "budgetMinLabel": "Ngân sách tối thiểu",
   "budgetMaxLabel": "Ngân sách tối đa",
-  "intakeBudgetQuestion": "Ngân sách bạn muốn dành cho khách sạn khoảng bao nhiêu mỗi đêm?",
+  "intakeDatesQuestion": "Bạn dự định đi và về ngày nào?",
+  "intakeBudgetQuestion": "Ngân sách bạn muốn dành cho cả chuyến là khoảng bao nhiêu?",
+  "intakePreferencesQuestion": "Cuối cùng - bạn thích kiểu trải nghiệm nào? Chọn vài mục nhé.",
   "interests": "Sở thích của bạn",
   "findHotels": "Tìm khách sạn phù hợp",
   "ttPrevYear": "Năm trước",
@@ -205,7 +208,7 @@
   "viewDetail": "Xem chi tiết",
   "perNight": "mỗi đêm",
   "perNightSep": "/ đêm",
-  "hotelNightlyTotal": "mỗi đêm · {{total}}",
+  "hotelNightlyTotal": "mỗi đêm · {{nightly}}",
   "hotelReviewCount": "{{count}} đánh giá",
   "matchWord": "PHÙ HỢP",
   "matchScoreAria": "Điểm khớp {{pct}} phần trăm",

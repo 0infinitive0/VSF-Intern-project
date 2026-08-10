@@ -208,8 +208,8 @@ msgstr "How long do you plan to travel?"
 msgid "Bạn dự định bắt đầu chuyến đi vào ngày nào?"
 msgstr "When do you plan to start your trip?"
 
-msgid "Chuyến đi có bao nhiêu người?"
-msgstr "How many people are in the trip?"
+msgid "Tuyệt vời. Chuyến đi này có bao nhiêu người tham gia?"
+msgstr "Great! How many people are joining this trip?"
 
 #, python-brace-format
 msgid "Không tìm thấy dữ liệu điểm đến cho {destination}."

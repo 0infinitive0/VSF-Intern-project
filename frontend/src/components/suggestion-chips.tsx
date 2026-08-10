@@ -28,7 +28,7 @@ export default function SuggestionChips({
       {suggestions.map((s, i) => (
         <button
           key={i}
-          className="rounded-full px-[11px] py-[7px] text-[11.5px] font-normal text-on-surface-variant bg-glass-2 border border-stroke hover:bg-button hover:text-on-button hover:border-on-surface transition-all disabled:opacity-60"
+          className="rounded-full px-[13px] py-2 text-[12.5px] font-normal text-on-surface bg-glass-2 border border-stroke hover:bg-primary! hover:text-on-primary! hover:border-primary! hover:-translate-y-0.5! transition-all duration-[220ms] ease-[cubic-bezier(0.34,1.4,0.64,1)] disabled:opacity-60 cursor-pointer"
           disabled={disabled}
           onClick={() => onSelect(s.value)}
           type="button"

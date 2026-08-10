@@ -4,10 +4,11 @@ import Composer from './composer'
 import StepNavigator from './step-navigator'
 import SuggestionChips from './suggestion-chips'
 import IntakeParametersForm from './intake-parameters-form'
-import { deriveStageView } from '../lib/derive-stage'
+import { QUICK_START_DESTINATIONS } from '../lib/quick-start-destinations'
 import type { IntakeFormState } from '../lib/compose-intake-message'
 import type { PreferenceKey } from '../lib/intake-options'
 import type { IntakeField } from '../lib/next-intake-field'
+import type { StageView } from '../lib/derive-stage'
 import type { ChatState } from '../types'
 
 function lastAiStage(messages: ChatState['messages']): string | null {
@@ -30,6 +31,8 @@ function lastAiStage(messages: ChatState['messages']): string | null {
 export default function ChatPanel({
   state,
   onSend,
+  stage,
+  onViewStage,
   width,
   intakeForm,
   setIntakeForm,
@@ -39,6 +42,10 @@ export default function ChatPanel({
 }: {
   state: ChatState
   onSend: (text: string) => void
+  /** What's currently displayed in the stage panel — may be a client-side
+   * view override (see App.tsx) rather than the live backend-derived stage. */
+  stage: StageView
+  onViewStage: (stage: StageView) => void
   width: number
   intakeForm: IntakeFormState
   setIntakeForm: (updater: (prev: IntakeFormState) => IntakeFormState) => void
@@ -49,10 +56,12 @@ export default function ChatPanel({
   const { messages, suggestions, hotelOptions, tripPlan, intake, pending, streamingText } = state
   const { t } = useTranslation()
 
-  const stage = deriveStageView(state)
   const lastStage = lastAiStage(messages)
-  const intakeComplete = stage === 'hotels' || stage === 'workspace'
+  // Real backend truth — independent of what's currently being viewed —
+  // gates which steps are reachable at all.
+  const intakeComplete = hotelOptions.length > 0 || tripPlan != null
   const hotelPicked = Boolean(tripPlan)
+  const hotelOptionsAvailable = hotelOptions.length > 0
 
   // Header step label — design dc.html:2506 (stepEditing not tracked client-side;
   // the intake form pre-fills instead, so "step1Full" is the honest label).
@@ -81,7 +90,16 @@ export default function ChatPanel({
   // selectedIndex owner. The rail keeps the one-step path unchanged: the
   // suggestion chips ("1".."3") still pick a hotel in one tap.
   const inHotelStage = lastStage === 'hotel_options' && hotelOptions.length > 0
-  const showIntakeForm = lastStage === 'intake' && Boolean(intake) && !pending
+  // `lastStage === 'intake'` covers the live collection flow; `editingIntakeField`
+  // covers a "Sửa" tap on the intake checklist while viewing it via a client-side
+  // stage override (e.g. jumped back from Khách sạn to Thông tin) — the backend's
+  // last stage there is whatever it actually was (e.g. 'hotel_options'), so that
+  // alone would hide the edit widget the tap is supposed to open.
+  const showIntakeForm = Boolean(intake) && !pending && (lastStage === 'intake' || editingIntakeField != null)
+  // Before the first turn, offer the real, currently-covered destinations
+  // (data/UX-improvements-doc #1) so the user isn't stuck facing a blank
+  // composer — same tap-or-type-freely chip pattern as server suggestions.
+  const isEmptyConversation = messages.length === 0
 
   return (
     <section
@@ -118,7 +136,9 @@ export default function ChatPanel({
         stage={stage}
         intakeComplete={intakeComplete}
         hotelPicked={hotelPicked}
+        hotelOptionsAvailable={hotelOptionsAvailable}
         onSend={onSend}
+        onViewStage={onViewStage}
       />
 
       <MessageList
@@ -128,7 +148,7 @@ export default function ChatPanel({
       />
 
       {/* Widget rail — fixed above the composer, never inside the scroll */}
-      {!pending && (showIntakeForm || inHotelStage || suggestions.length > 0) && (
+      {!pending && (showIntakeForm || inHotelStage || suggestions.length > 0 || isEmptyConversation) && (
         <div className="flex-none max-h-[56vh] overflow-y-auto custom-scrollbar px-4 pb-1 flex flex-col gap-2.5">
           {showIntakeForm ? (
             <IntakeParametersForm
@@ -141,6 +161,17 @@ export default function ChatPanel({
               editingField={editingIntakeField}
               onDoneEditing={onDoneEditingIntakeField}
             />
+          ) : isEmptyConversation ? (
+            <>
+              <div className="text-[10.5px] font-normal text-on-surface-muted pl-1">
+                {t('quickSuggestionsHint')}
+              </div>
+              <SuggestionChips
+                suggestions={QUICK_START_DESTINATIONS}
+                onSelect={onSend}
+                disabled={false}
+              />
+            </>
           ) : (
             <>
               {lastStage !== 'intake' && (

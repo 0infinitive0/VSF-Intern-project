@@ -369,7 +369,7 @@ class TripIntakeState:
                 )
             return t("Bạn muốn đi đâu?", language)
         if not self.people:
-            return t("Chuyến đi có bao nhiêu người?", language)
+            return t("Tuyệt vời. Chuyến đi này có bao nhiêu người tham gia?", language)
         if not self.start_date:
             return t("Bạn dự định bắt đầu chuyến đi vào ngày nào?", language)
         if not self.has_explicit_stay_dates:

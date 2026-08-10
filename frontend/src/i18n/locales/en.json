@@ -67,6 +67,7 @@
   "messageTimestampLabel": "Sent at {{time}}",
 
   "greeting": "Hi 👋 I'm V-OTA. Where would you like to go this time?",
+  "quickSuggestionsHint": "Quick suggestions or type freely in chat",
   "itineraryEmptyTitle": "Your itinerary",
   "itineraryEmptyBody": "Your itinerary will appear here once you pick a hotel.",
 
@@ -160,7 +161,9 @@
   "budgetSkippedValue": "No limit",
   "budgetMinLabel": "Minimum budget",
   "budgetMaxLabel": "Maximum budget",
-  "intakeBudgetQuestion": "About how much would you like to spend on a hotel per night?",
+  "intakeDatesQuestion": "When do you plan to depart and return?",
+  "intakeBudgetQuestion": "About how much would you like to budget for the whole trip?",
+  "intakePreferencesQuestion": "Last thing - what kind of experiences do you like? Pick a few.",
   "interests": "Your interests",
   "findHotels": "Find matching hotels",
   "ttPrevYear": "Previous year",
@@ -205,7 +208,7 @@
   "viewDetail": "View details",
   "perNight": "per night",
   "perNightSep": "/ night",
-  "hotelNightlyTotal": "per night · {{total}}",
+  "hotelNightlyTotal": "per night · {{nightly}}",
   "hotelReviewCount": "{{count}} reviews",
   "matchWord": "match",
   "matchScoreAria": "Match score {{pct}} percent",

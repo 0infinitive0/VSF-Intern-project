@@ -58,6 +58,7 @@ export default function AppShell({
   onSend,
   onNewTrip,
   stage,
+  onViewStage,
   chatWidth,
   onChatResizeStart,
   intakeForm,
@@ -76,6 +77,7 @@ export default function AppShell({
   onSend: (text: string) => void
   onNewTrip: () => void
   stage: StageView
+  onViewStage: (stage: StageView) => void
   chatWidth: number
   onChatResizeStart: (e: MouseEvent) => void
   intakeForm: IntakeFormState
@@ -193,6 +195,8 @@ export default function AppShell({
           <ChatPanel
             state={state}
             onSend={onSend}
+            stage={stage}
+            onViewStage={onViewStage}
             width={effectiveChatWidth}
             intakeForm={intakeForm}
             setIntakeForm={setIntakeForm}

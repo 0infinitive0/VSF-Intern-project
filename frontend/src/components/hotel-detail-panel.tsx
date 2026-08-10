@@ -70,7 +70,7 @@ export default function HotelDetailPanel({
   ].filter((p) => p.value)
 
   return (
-    <div className="flex-none w-[430px] max-w-full min-w-0 animate-[vRise_0.6s_cubic-bezier(0.22,1,0.36,1)_both]">
+    <div className="flex-1 min-w-0 animate-[vRise_0.6s_cubic-bezier(0.22,1,0.36,1)_both]">
       <div className="glass-panel relative h-full overflow-y-auto custom-scrollbar rounded-[26px]">
         {status === 'error' ? (
           <div className="h-full flex flex-col items-center justify-center gap-3 p-8 text-center">
