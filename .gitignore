@@ -95,6 +95,5 @@ frontend/dist/
 .ai-log/*.jsonl
 .ai-log/archive/
 CLAUDE.md
-plans/
 .agents/
 backend/scratch/
