@@ -34,6 +34,7 @@ from src.agents.state import initial_state
 from src.agents.tools.direct_invoke import invoke_tool_directly
 from src.agents.tools.recommend_hotels import recommend_hotels
 from src.agents.tools.select_hotel import select_hotel
+from src.services.trip_edit_planner import EditOperation, TripEditPlan
 from src.services.trip_scheduler import PlaceCandidate
 
 
@@ -210,6 +211,51 @@ def test_recommend_hotels_keeps_original_list_when_preferences_change(monkeypatc
         "stale-hotel",
         "fresh-hotel",
     ]
+
+
+def test_change_hotel_reuses_archived_hotel_options_without_rendering_them_in_chat(monkeypatch):
+    archived_option = _fake_option("old-hotel", "Khách sạn cũ", 1)[0]
+    trip_data = {
+        "itineraries": [
+            {
+                "destination_id": "dest-1",
+                "duration_days": 3,
+                "number_of_adults": 2,
+                "preferences": ["Đà Nẵng", "biển"],
+                "planning_constraints": {},
+            }
+        ],
+        "hotel_selection_options": {
+            "destination": "Đà Nẵng",
+            "destination_id": "dest-1",
+            "duration": "3 ngày",
+            "people": "2 người",
+            "preferences_text": "biển",
+            "all_preferences": [{"id": "beach", "label": "Gần biển"}],
+            "active_preferences": [{"id": "beach", "label": "Gần biển"}],
+            "options": [archived_option],
+        },
+    }
+    plan = TripEditPlan(
+        decision="apply",
+        summary="Đổi khách sạn",
+        operations=(EditOperation(operation="change_hotel", hotel_query="đổi khách sạn"),),
+        raw_request="đổi khách sạn",
+    )
+    monkeypatch.setattr(
+        trip_planner_module,
+        "select_hotel_candidates",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must reuse archived options")),
+    )
+
+    reply, updates = trip_planner_module.resolve_trip_edit_request(
+        trip_data, "đổi khách sạn", plan
+    )
+
+    assert "1." not in reply
+    assert updates["pending_hotel_selection"]["mode"] == "change_hotel"
+    assert updates["pending_hotel_selection"]["options"] == [archived_option]
+    assert updates["pending_hotel_selection"]["active_preferences"] == [{"id": "beach", "label": "Gần biển"}]
 
 
 def test_recommend_hotels_missing_field_returns_system_error():

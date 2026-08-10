@@ -1425,6 +1425,29 @@ def resolve_trip_edit_request(
             if not destination or not destination_id:
                 raise ValueError("Kế hoạch hiện tại thiếu điểm đến để đổi khách sạn.")
             hotel_query = hotel_change.hotel_query or modification_request
+            archived_options = current_data.get("hotel_selection_options")
+            if isinstance(archived_options, Mapping) and archived_options.get("options"):
+                pending_payload = deepcopy(dict(archived_options))
+                pending_payload.update(
+                    {
+                        "mode": "change_hotel",
+                        "destination": destination,
+                        "destination_id": destination_id,
+                        "duration": duration,
+                        "people": people,
+                        "preferences_text": preferences,
+                        "hotel_query": hotel_query,
+                        "planning_constraints": dict(saved_itinerary.get("planning_constraints") or {}),
+                        "created_at": datetime.now().isoformat(),
+                    }
+                )
+                return (
+                    t(
+                        "Mình đã giữ lại danh sách khách sạn trước đó. Bạn hãy chọn khách sạn khác trong tab Khách sạn nhé!",
+                        language,
+                    ),
+                    {"pending_hotel_selection": pending_payload},
+                )
             options = rank_hotel_candidates(
                 select_hotel_candidates(destination, destination_id, people, hotel_query=hotel_query)
             )
@@ -1442,7 +1465,13 @@ def resolve_trip_edit_request(
                 "created_at": datetime.now().isoformat(),
                 "options": [data for data, _candidate in options],
             }
-            return format_hotel_options(options, language), {"pending_hotel_selection": pending_payload}
+            return (
+                t(
+                    "Mình đã tìm danh sách khách sạn phù hợp. Bạn hãy chọn trong tab Khách sạn nhé!",
+                    language,
+                ),
+                {"pending_hotel_selection": pending_payload},
+            )
         except Exception as exc:
             logger.exception("Failed to prepare hotel change")
             return f"SYSTEM ERROR: {exc}", {}

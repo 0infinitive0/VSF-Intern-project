@@ -7,7 +7,7 @@ import src.services.trip_intake as trip_intake_module
 from src.agents.session import TripSession, TurnResult, execute_trip_edit_request, process_chat_turn
 from src.services.hotel_selection import HotelPreferenceState
 from src.services.trip_edit_planner import EditOperation, TripEditPlan, TripEditPlanError
-from src.services.trip_intake import TripIntakeState, TripPreferenceUpdate
+from src.services.trip_intake import DestinationOption, TripIntakeState, TripPreferenceUpdate
 
 
 @pytest.fixture(autouse=True)
@@ -587,6 +587,130 @@ def test_preference_change_replaces_pending_hotel_list_before_selection(monkeypa
     assert session.trip_data is None
 
 
+def test_duration_change_replaces_existing_hotel_candidates(monkeypatch):
+    message = "đi 3 ngày nha"
+    pending = {
+        "mode": "new_trip",
+        "destination": "Hồ Chí Minh",
+        "duration": "2 ngày",
+        "start_date": "2026-07-01",
+        "end_date": "2026-07-03",
+        "people": "2 người",
+        "options": [{"id": "hotel-1", "name": "Khách sạn đang hiển thị"}],
+    }
+    session = _session(
+        intake_state=TripIntakeState(
+            destination="Hồ Chí Minh",
+            duration="2 ngày",
+            start_date="2026-07-01",
+            stay_end_date="2026-07-03",
+            people="2 người",
+        ),
+        hotel_pref_state=HotelPreferenceState(stage="done"),
+        pending_hotel_selection=pending,
+    )
+    monkeypatch.setattr(session_module, "_get_destination_names", lambda: ("Hồ Chí Minh",))
+    _mock_intake_extraction(
+        monkeypatch,
+        {message: {"changed_fields": ["duration"], "duration_days": 3}},
+    )
+    def _recommend(args):
+        session.pending_hotel_selection = {
+            "mode": "new_trip",
+            "duration": args["duration"],
+            "start_date": args["start_date"],
+            "end_date": args["end_date"],
+            "options": [{"id": "hotel-2", "name": "Khách sạn mới"}],
+        }
+        return "Danh sách khách sạn mới"
+
+    session.tools.recommend_hotels = _FakeTool(_recommend)
+    session.tools.select_hotel = _never_called("select_hotel")
+
+    reply = process_chat_turn(session, message)
+
+    assert reply.text == "Danh sách khách sạn mới"
+    assert session.pending_hotel_selection["options"] == [{"id": "hotel-2", "name": "Khách sạn mới"}]
+    assert session.pending_hotel_selection["duration"] == "3 ngày"
+    assert session.pending_hotel_selection["end_date"] == "2026-07-04"
+
+
+def test_destination_change_replaces_pending_hotel_list_before_selection(monkeypatch):
+    """A city named in a natural destination change must not be treated as a hotel pick."""
+    message = "tôi đổi ý rồi, tôi muốn đi tp hcm hơn"
+    session = _session(
+        intake_state=TripIntakeState(
+            destination="Nha Trang",
+            duration="2 ngày",
+            start_date="2026-07-01",
+            people="2 người",
+            preferences=("biển", "lịch sử"),
+        ),
+        hotel_pref_state=HotelPreferenceState(stage="done", min_price=800_000, max_price=2_500_000),
+        pending_hotel_selection={"mode": "new_trip", "options": [{"name": "Khách sạn Nha Trang"}]},
+    )
+    monkeypatch.setattr(
+        session_module,
+        "_get_destination_names",
+        lambda: ("Nha Trang", DestinationOption("Hồ Chí Minh", aliases=("TP HCM",))),
+    )
+    _mock_intake_extraction(
+        monkeypatch,
+        {message: {"changed_fields": ["destination"], "destination": "Hồ Chí Minh"}},
+    )
+    captured = {}
+
+    def _recommend(args):
+        captured.update(args)
+        session.pending_hotel_selection = {
+            "mode": "new_trip",
+            "destination": args["destination"],
+            "options": [{"name": "Khách sạn Hồ Chí Minh"}],
+        }
+        return "Danh sách khách sạn Hồ Chí Minh"
+
+    session.tools.recommend_hotels = _FakeTool(_recommend)
+    session.tools.select_hotel = _never_called("select_hotel")
+
+    reply = process_chat_turn(session, message)
+
+    assert reply.text.startswith("Danh sách khách sạn Hồ Chí Minh")
+    assert reply.tool == "recommend_hotels"
+    assert captured["destination"] == "Hồ Chí Minh"
+    assert session.intake_state.destination == "Hồ Chí Minh"
+    assert session.pending_hotel_selection["options"] == [{"name": "Khách sạn Hồ Chí Minh"}]
+
+
+def test_optional_preference_change_keeps_pending_hotel_list(monkeypatch):
+    message = "tôi muốn ưu tiên thiên nhiên"
+    pending = {"mode": "new_trip", "options": [{"name": "Khách sạn hiện tại"}]}
+    session = _session(
+        intake_state=TripIntakeState(
+            destination="Nha Trang",
+            duration="2 ngày",
+            start_date="2026-07-01",
+            people="2 người",
+            preferences=("biển",),
+        ),
+        hotel_pref_state=HotelPreferenceState(stage="done", min_price=800_000, max_price=2_500_000),
+        pending_hotel_selection=pending,
+    )
+    monkeypatch.setattr(session_module, "_get_destination_names", lambda: ("Nha Trang",))
+    _mock_intake_extraction(
+        monkeypatch,
+        {message: {"changed_fields": ["preferences"], "preference_labels": ["thiên nhiên"]}},
+    )
+    session.tools.recommend_hotels = _never_called("recommend_hotels")
+    session.tools.select_hotel = _never_called("select_hotel")
+
+    reply = process_chat_turn(session, message)
+
+    assert "đã cập nhật sở thích" in reply.text.casefold()
+    assert reply.tool == "recommend_hotels"
+    assert session.intake_state.preferences == ("thiên nhiên",)
+    assert session.pending_hotel_selection is pending
+
+
 def test_invalid_vibe_change_clears_stale_list_and_resumes_after_clarification(monkeypatch):
     message = "đổi vibe thành chill không giới hạn"
     clarification = "thiên nhiên"
@@ -839,7 +963,53 @@ def test_saved_trip_edit_planner_failure_returns_turn_result(monkeypatch):
 
     assert isinstance(result, TurnResult)
     assert result.tool is None
-    assert result.text.startswith("SYSTEM ERROR:")
+    assert not result.text.startswith("SYSTEM ERROR:")
+    assert "chưa thể xử lý" in result.text.casefold()
+
+
+def test_saved_trip_hotel_change_falls_back_when_edit_planner_rejects_request(monkeypatch):
+    session = _session(
+        trip_data={"itineraries": [{"duration_days": 1, "status": "Draft"}], "itinerary_items": []},
+        initial_plan_complete=True,
+    )
+    monkeypatch.setattr(
+        session_module,
+        "plan_trip_edit",
+        lambda *_args: (_ for _ in ()).throw(TripEditPlanError("invalid JSON")),
+    )
+    captured = {}
+
+    def _execute(_session, request, plan):
+        captured["request"] = request
+        captured["operation"] = plan.operations[0].operation
+        _session.pending_hotel_selection = {"mode": "change_hotel", "options": []}
+        return "Mình đã tìm danh sách khách sạn phù hợp."
+
+    monkeypatch.setattr(session_module, "execute_trip_edit_request", _execute)
+
+    result = process_chat_turn(session, "Tôi muốn đổi khách sạn")
+
+    assert result.tool == "recommend_hotels"
+    assert result.text == "Mình đã tìm danh sách khách sạn phù hợp."
+    assert captured == {"request": "Tôi muốn đổi khách sạn", "operation": "change_hotel"}
+
+
+def test_frontend_trip_information_button_gets_a_clarifying_prompt_when_planner_rejects(monkeypatch):
+    session = _session(
+        trip_data={"itineraries": [{"duration_days": 1, "status": "Draft"}], "itinerary_items": []},
+        initial_plan_complete=True,
+    )
+    monkeypatch.setattr(
+        session_module,
+        "plan_trip_edit",
+        lambda *_args: (_ for _ in ()).throw(TripEditPlanError("invalid JSON")),
+    )
+
+    result = process_chat_turn(session, "Tôi muốn đổi thông tin chuyến đi")
+
+    assert result.tool is None
+    assert not result.text.startswith("SYSTEM ERROR:")
+    assert "thông tin nào" in result.text.casefold()
 
 
 def test_saved_trip_edit_clarification_returns_turn_result(monkeypatch):

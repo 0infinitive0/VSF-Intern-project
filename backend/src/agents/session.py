@@ -15,6 +15,7 @@ import re
 import threading
 import time
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -475,13 +476,24 @@ _TRIP_PREFERENCE_FIELD_WORDS = re.compile(
 _SUPPORTED_VIBE_WORDS = re.compile(
     r"\b(?:bien|van hoa|am thuc|thien nhien|lich su|mua sam|cuoc song ve dem|tre em)\b"
 )
+_TRIP_DURATION_VALUE = re.compile(r"\b\d{1,2}\s*(?:ngay|dem|days?|nights?)\b")
 
 
 def _looks_like_trip_preference_change(user_input: str) -> bool:
     if "?" in user_input:
         return False
     normalized = _normalize_intent_text(user_input)
-    if _TRIP_PREFERENCE_CHANGE_WORDS.search(normalized) and _TRIP_PREFERENCE_FIELD_WORDS.search(normalized):
+    if _TRIP_PREFERENCE_CHANGE_WORDS.search(normalized):
+        if _TRIP_PREFERENCE_FIELD_WORDS.search(normalized):
+            return True
+        # People naturally say "đổi ý, muốn đi TP HCM" instead of naming
+        # the field "điểm đến".  A supported city/alias makes that an
+        # unambiguous required-trip change while a hotel list is pending.
+        if _match_known_destination(user_input, _get_destination_names()) is not None:
+            return True
+    # During hotel selection, "đi 3 ngày" is a replacement for the already
+    # confirmed stay length, not a new hotel-search request.
+    if _TRIP_DURATION_VALUE.search(normalized):
         return True
     return bool(
         re.search(r"\b(?:muon|thich|uu tien|prefer)\b", normalized)
@@ -536,8 +548,21 @@ def _recommend_preference_replacement(session: TripSession) -> str:
 def _start_trip_preference_update(session: TripSession, update: TripPreferenceUpdate) -> str:
     updated = update.apply_to(_preference_state_from_session(session), _get_destination_names())
     session.intake_state = updated
-    session.preference_replacement_state = updated
     session.pending_trip_preference_request = None
+    requires_candidate_rebuild = bool(
+        update.changed_fields.intersection({"destination", "duration", "start_date", "people"})
+    )
+
+    # Hotel candidates are tied to these required trip facts.  Preferences are
+    # optional display/filter inputs, so updating them must retain the current
+    # candidate set instead of replacing it with a new search result.
+    if not requires_candidate_rebuild:
+        session.preference_replacement_state = None
+        if session.persist_hook:
+            session.persist_hook(session)
+        return t("Mình đã cập nhật sở thích chuyến đi. Danh sách khách sạn hiện tại được giữ lại.", session.language)
+
+    session.preference_replacement_state = updated
     _clear_pending_hotel_selection(session)
     if not updated.is_complete:
         return updated.next_question(_get_destination_names(), session.language) or t(
@@ -708,8 +733,11 @@ def _process_chat_turn(
                 _get_destination_names(),
             )
             response = _start_trip_preference_update(session, update)
-            session.pending_parameter_confirmation = True
-            response += "\nBạn đã chỉnh sửa xong chưa? (Báo lại để mình tìm khách sạn mới nhé)."
+            if session.pending_hotel_selection is None:
+                session.pending_parameter_confirmation = True
+                response += "\nBạn đã chỉnh sửa xong chưa? (Báo lại để mình tìm khách sạn mới nhé)."
+            else:
+                session.pending_parameter_confirmation = False
         except TripPreferenceUpdateError as exc:
             session.pending_trip_preference_request = request
             return TurnResult(
@@ -861,6 +889,7 @@ def _handle_frontend_hotel_selection(session: TripSession, hotel_id: str) -> Tur
                 updated_data.setdefault("adjustments", []).extend(_reapply_planning_constraints(updated_data))
         
         session.trip_data = updated_data
+        session.trip_data["hotel_selection_options"] = deepcopy(pending)
         _clear_pending_hotel_selection(session)
         session.initial_plan_complete = True
         session.planning_new_trip = False
@@ -888,6 +917,8 @@ def _handle_frontend_hotel_selection(session: TripSession, hotel_id: str) -> Tur
         return TurnResult(text=str(reply), tool="select_hotel")
     
     session.trip_data = captured.get("trip_data")
+    if session.trip_data is not None:
+        session.trip_data["hotel_selection_options"] = deepcopy(pending)
     _clear_pending_hotel_selection(session)
     session.initial_plan_complete = True
     session.planning_new_trip = False
@@ -970,6 +1001,24 @@ def _looks_like_budget_change(text: str) -> bool:
     return bool(_BUDGET_KEYWORDS.search(text) and _BUDGET_CHANGE_VERBS.search(text))
 
 
+def _looks_like_hotel_change(text: str) -> bool:
+    """Recognize an explicit whole-trip accommodation change without an LLM.
+
+    This only runs after the strict edit planner rejects its output, so it
+    requires both an accommodation noun and a change/search verb.
+    """
+    normalized = _normalize_intent_text(text)
+    has_accommodation = bool(re.search(r"\b(?:khach san|resort|cho o|noi o|accommodation)\b", normalized))
+    has_change = bool(re.search(r"\b(?:doi|thay|tim|chon|cap nhat|change|replace)\b", normalized))
+    return has_accommodation and has_change
+
+
+def _is_generic_trip_information_change(text: str) -> bool:
+    """Recognize the frontend's generic trip-info edit button label."""
+    normalized = _normalize_intent_text(text)
+    return bool(re.fullmatch(r"(?:toi muon )?(?:doi|cap nhat) thong tin chuyen di", normalized.strip()))
+
+
 def _run_edit_draft(session: TripSession, user_input: str) -> TurnResult | None:
     """Returns None when `plan_trip_edit` decides `not_edit` — the caller falls
     through to the general chat agent, same as today."""
@@ -984,8 +1033,8 @@ def _run_edit_draft(session: TripSession, user_input: str) -> TurnResult | None:
         # Deterministic fallback: when the LLM fails but the message is clearly
         # a budget change, directly invoke change_hotel without relying on the
         # local model reliably mapping the request to an operation name.
-        if _looks_like_budget_change(user_input):
-            logger.info("Budget-change detected deterministically; falling back to change_hotel path")
+        if _looks_like_budget_change(user_input) or _looks_like_hotel_change(user_input):
+            logger.info("Hotel change detected deterministically; falling back to change_hotel path")
             from src.services.trip_edit_planner import EditOperation, TripEditPlan
             synthetic_plan = TripEditPlan(
                 decision="apply",
@@ -998,9 +1047,14 @@ def _run_edit_draft(session: TripSession, user_input: str) -> TurnResult | None:
             if session.pending_hotel_selection:
                 tool_name = "recommend_hotels"
             return TurnResult(text=str(tool_response or t("SYSTEM ERROR: Không thể tìm khách sạn phù hợp với ngân sách mới.", session.language)), tool=tool_name)
+        if _is_generic_trip_information_change(user_input):
+            return TurnResult(
+                text=t("Bạn muốn thay đổi thông tin nào của chuyến đi: thời gian, số người hay sở thích?", session.language),
+                tool=None,
+            )
         return TurnResult(
             text=t(
-                "SYSTEM ERROR: Không thể hiểu an toàn yêu cầu chỉnh sửa này. Vui lòng diễn đạt cụ thể hơn.",
+                "Mình chưa thể xử lý yêu cầu chỉnh sửa này. Bạn hãy nói rõ phần muốn thay đổi nhé.",
                 session.language,
             ),
             tool=None,

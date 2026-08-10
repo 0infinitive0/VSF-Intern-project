@@ -14,6 +14,8 @@ tool doesn't leak an itinerary through any other path.
 
 from __future__ import annotations
 
+from copy import deepcopy
+
 import logging
 
 from langchain.tools import tool
@@ -156,6 +158,7 @@ def select_hotel(selection: str, state: Annotated[dict, InjectedState], tool_cal
             if mode == "change_hotel" and planning_constraints:
                 updated_itinerary["planning_constraints"] = planning_constraints
                 updated_data.setdefault("adjustments", []).extend(_reapply_planning_constraints(updated_data))
+        updated_data["hotel_selection_options"] = deepcopy(pending)
         return _reply_success(
             adjustment,
             tool_call_id,
@@ -188,10 +191,13 @@ def select_hotel(selection: str, state: Annotated[dict, InjectedState], tool_cal
     )
     if str(generated_reply).startswith("SYSTEM ERROR:"):
         return _reply_error(str(generated_reply), tool_call_id)
+    generated_data = captured.get("trip_data")
+    if isinstance(generated_data, dict):
+        generated_data["hotel_selection_options"] = deepcopy(pending)
     return _reply_success(
         t("Đã chọn khách sạn. Lịch trình của bạn đã sẵn sàng trong tab Lịch trình.", language),
         tool_call_id,
-        trip_data=captured.get("trip_data"),
+        trip_data=generated_data,
         pending_hotel_selection=None,
             initial_plan_complete=True,
     )
