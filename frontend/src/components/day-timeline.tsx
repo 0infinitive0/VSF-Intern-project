@@ -20,10 +20,15 @@ export default function DayTimeline({
   day,
   focusedId,
   onOpen,
+  hoveredId,
+  onHoverChange,
 }: {
   day: Day
   focusedId: string | null
   onOpen: (item: DayItem) => void
+  /** Phase 10 map hover sync — optional so this component still works standalone. */
+  hoveredId?: string | null
+  onHoverChange?: (id: string | null) => void
 }) {
   const { t, i18n } = useTranslation()
   const numFmt = new Intl.NumberFormat(NUM_LOCALE(i18n.language), { maximumFractionDigits: 1 })
@@ -53,6 +58,8 @@ export default function DayTimeline({
             next={day.items[i + 1]}
             focusedId={focusedId}
             onOpen={onOpen}
+            hoveredId={hoveredId}
+            onHoverChange={onHoverChange}
           />
         ))}
       </div>

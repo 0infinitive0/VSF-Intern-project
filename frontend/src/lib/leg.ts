@@ -25,7 +25,7 @@
  * fires when at least one leg actually used the haversine fallback.
  */
 import { parseCoordinates, haversineKm } from './geo'
-import type { DayItem, RouteProfile } from '../types'
+import type { DayItem, RouteInfo, RouteProfile } from '../types'
 
 export type Leg =
   | { kind: 'route'; distanceKm: number; durationMins: number; profile: RouteProfile | null | undefined }
@@ -33,23 +33,40 @@ export type Leg =
   | { kind: 'crow-fly'; distanceKm: number }
   | { kind: 'none' }
 
+/**
+ * Classifies a raw RouteInfo (route_to_next / route_from_hotel) into one of
+ * three shapes, without needing the neighboring item's coordinates. Extracted
+ * out of legBetween so Phase 10's route-segments.ts shares the exact same
+ * "is this the identical-coordinates marker" check instead of re-deriving it
+ * — the magic-value test (routing.py:get_route_to_next's {0,0,"",null}) must
+ * only live in one place.
+ */
+export function classifyRoute(route: RouteInfo | null | undefined): 'route' | 'same-place' | 'missing' {
+  if (!route) return 'missing'
+  // Identical-coordinates marker — a polyline guard keeps a hypothetical
+  // real 0-distance route (non-empty polyline) distinct from "no travel".
+  if ((route.distance_km ?? 0) === 0 && (route.duration_mins ?? 0) === 0 && !route.polyline) {
+    return 'same-place'
+  }
+  return 'route'
+}
+
 export function legBetween(current: DayItem, next: DayItem | null | undefined): Leg {
   if (!next) return { kind: 'none' }
 
   const r = current.route_to_next
-  if (r) {
-    // Identical-coordinates marker from routing.py:get_route_to_next —
-    // {distance_km: 0, duration_mins: 0, polyline: "", profile: null}. A
-    // polyline guard keeps a hypothetical real 0-distance route distinct.
-    if ((r.distance_km ?? 0) === 0 && (r.duration_mins ?? 0) === 0 && !r.polyline) {
+  switch (classifyRoute(r)) {
+    case 'same-place':
       return { kind: 'same-place' }
-    }
-    return {
-      kind: 'route',
-      distanceKm: r.distance_km ?? 0,
-      durationMins: r.duration_mins ?? 0,
-      profile: r.profile,
-    }
+    case 'route':
+      return {
+        kind: 'route',
+        distanceKm: r!.distance_km ?? 0,
+        durationMins: r!.duration_mins ?? 0,
+        profile: r!.profile,
+      }
+    case 'missing':
+      break
   }
 
   const a = parseCoordinates(current.coordinates)

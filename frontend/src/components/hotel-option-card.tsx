@@ -4,6 +4,7 @@ import MatchReasons from './match-reasons'
 import RemoteImage from './remote-image'
 import { formatCurrency } from '../lib/format-currency'
 import { formatHotelStars } from '../lib/format-stars'
+import { hotelOptionSyncId } from '../lib/map-sync-id'
 import type { HotelOption } from '../types'
 
 const PRICE_LOCALE = (lang: string) => (lang === 'vi' ? 'vi-VN' : 'en-US')
@@ -31,6 +32,8 @@ function HotelOptionCard({
   nights,
   onSelect,
   onOpen,
+  hovered,
+  onHoverChange,
 }: {
   hotel: HotelOption
   selected: boolean
@@ -39,10 +42,14 @@ function HotelOptionCard({
   nights: number | null
   onSelect: (hotel: HotelOption) => void
   onOpen: (hotel: HotelOption) => void
+  /** Phase 10 map hover sync — optional so this component still works standalone. */
+  hovered?: boolean
+  onHoverChange?: (id: string | null) => void
 }) {
   const { t, i18n } = useTranslation()
   const numFmt = new Intl.NumberFormat(PRICE_LOCALE(i18n.language))
   const canOpen = Boolean(hotel.id)
+  const syncId = hotelOptionSyncId(hotel)
 
   // null/undefined and 0 all mean "no price known" — hide the price block
   // instead of rendering "0 ₫" (Number() coercion turns null into 0, so the
@@ -63,6 +70,10 @@ function HotelOptionCard({
       className="hotel-card rounded-[26px] p-4 border"
       data-selected={selected ? 'true' : undefined}
       data-focused={focused ? 'true' : undefined}
+      data-hovered={hovered ? 'true' : undefined}
+      data-card={syncId}
+      onMouseEnter={() => onHoverChange?.(syncId)}
+      onMouseLeave={() => onHoverChange?.(null)}
       style={{
         cursor: canOpen ? 'pointer' : 'default',
         animation: `vFade .55s ${delay} ease both`,
@@ -193,6 +204,8 @@ export default function HotelOptionCards({
   nights,
   onSelect,
   onOpen,
+  hoveredId,
+  onHoverChange,
 }: {
   hotels: HotelOption[]
   selectedIndex: number | null
@@ -200,6 +213,9 @@ export default function HotelOptionCards({
   nights: number | null
   onSelect: (hotel: HotelOption) => void
   onOpen: (hotel: HotelOption) => void
+  /** Phase 10 map hover sync (lib/map-sync-id.ts ids) — optional so this component still works standalone. */
+  hoveredId?: string | null
+  onHoverChange?: (id: string | null) => void
 }) {
   if (!hotels || hotels.length === 0) return null
 
@@ -215,6 +231,8 @@ export default function HotelOptionCards({
           nights={nights}
           onSelect={onSelect}
           onOpen={onOpen}
+          hovered={hoveredId != null && hoveredId === hotelOptionSyncId(hotel)}
+          onHoverChange={onHoverChange}
         />
       ))}
     </>

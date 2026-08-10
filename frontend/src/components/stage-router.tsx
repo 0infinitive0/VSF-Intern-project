@@ -4,6 +4,7 @@ import StageHotels from './stage-hotels'
 import StageIntake from './stage-intake'
 import StageWorkspace from './stage-workspace'
 import type { useFocusMode } from '../hooks/use-focus-mode'
+import type { Theme } from '../hooks/use-theme'
 import type { IntakeFormState } from '../lib/compose-intake-message'
 import type { IntakeChecklistRowKey } from '../lib/intake-checklist-rows'
 import type { StageView } from '../lib/derive-stage'
@@ -34,6 +35,7 @@ export default function StageRouter({
   onSend,
   intakeForm,
   onEditIntakeField,
+  theme,
 }: {
   stage: StageView
   state: ChatState
@@ -41,6 +43,8 @@ export default function StageRouter({
   onSend: (text: string) => void
   intakeForm: IntakeFormState
   onEditIntakeField?: (key: IntakeChecklistRowKey) => void
+  /** Phase 10: MapView's tile style follows light/dark. */
+  theme: Theme
 }): ReactNode {
   if (stage === 'intake') {
     return <StageIntake intake={state.intake} form={intakeForm} onEditField={onEditIntakeField} />
@@ -51,8 +55,8 @@ export default function StageRouter({
   }
 
   if (stage === 'hotels') {
-    return <StageHotels state={state} focusMode={focusMode} onSend={onSend} />
+    return <StageHotels state={state} focusMode={focusMode} onSend={onSend} theme={theme} />
   }
 
-  return <StageWorkspace state={state} focusMode={focusMode} onSend={onSend} />
+  return <StageWorkspace state={state} focusMode={focusMode} onSend={onSend} theme={theme} />
 }

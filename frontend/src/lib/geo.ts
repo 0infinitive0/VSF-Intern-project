@@ -55,3 +55,34 @@ export function haversineKm(a: LatLng, b: LatLng): number {
   const x = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x))
 }
+
+/**
+ * {lat,lng} -> Mapbox GL JS's [lng,lat] tuple order (Phase 10). This is the
+ * OPPOSITE of this file's own {lat,lng} convention and of Leaflet's
+ * [lat,lng] — get it backwards and every marker silently lands in the wrong
+ * hemisphere with no error. Always go through this helper at the boundary
+ * where a point is handed to mapboxgl, never inline `[p.lng, p.lat]`.
+ */
+export function toLngLat(point: LatLng): [number, number] {
+  return [point.lng, point.lat]
+}
+
+/**
+ * Bounding box of a set of points, or null when the list is empty. A single
+ * point returns a degenerate box (sw === ne) — callers doing camera fitting
+ * must special-case that (flyTo a center instead of fitBounds).
+ */
+export function boundsOf(points: LatLng[]): { sw: LatLng; ne: LatLng } | null {
+  if (points.length === 0) return null
+  let minLat = points[0].lat
+  let maxLat = points[0].lat
+  let minLng = points[0].lng
+  let maxLng = points[0].lng
+  for (const p of points) {
+    if (p.lat < minLat) minLat = p.lat
+    if (p.lat > maxLat) maxLat = p.lat
+    if (p.lng < minLng) minLng = p.lng
+    if (p.lng > maxLng) maxLng = p.lng
+  }
+  return { sw: { lat: minLat, lng: minLng }, ne: { lat: maxLat, lng: maxLng } }
+}

@@ -13,6 +13,12 @@ COPY . .
 ARG VITE_API_BASE=""
 ENV VITE_API_BASE=${VITE_API_BASE}
 
+# Phase 10 map (Mapbox GL JS). PUBLIC token only (pk.*, URL-restricted) — see
+# frontend/.env.example. Left empty, MapView renders the honest
+# "unavailable" state instead of a broken/blank map.
+ARG VITE_MAPBOX_TOKEN=""
+ENV VITE_MAPBOX_TOKEN=${VITE_MAPBOX_TOKEN}
+
 RUN npm run build
 
 # ---- Stage 2: Serve ----

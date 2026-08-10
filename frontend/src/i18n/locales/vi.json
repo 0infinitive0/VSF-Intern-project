@@ -281,12 +281,12 @@
 
   "resetTitle": "Tạo lại từ đầu",
 
-  "mapPlaceholderTitle": "Bản đồ lộ trình",
-  "mapPlaceholderBody": "Tính năng bản đồ đang được phát triển.",
-  "mapControlDisabledHint": "Tính năng bản đồ đang được phát triển",
-  "mapFilterAttractions": "Tham quan",
-  "mapFilterProperties": "Khách sạn",
-  "mapFilterFood": "Ẩm thực",
-  "mapFilterShopping": "Mua sắm",
-  "mapSearchPlaceholder": "Tìm khu vực..."
+  "mapUnavailableTitle": "Bản đồ chưa khả dụng",
+  "mapUnavailableBody": "Thiếu cấu hình token bản đồ (VITE_MAPBOX_TOKEN).",
+  "mapLegendDriving": "Ô tô",
+  "mapLegendWalking": "Đi bộ",
+  "mapLegendFallback": "Ước lượng",
+  "mapHotelCountLabel": "{{count}} khách sạn",
+  "mapHotelHintEmpty": "Chọn một khách sạn để xem khoảng cách tới các điểm nổi bật",
+  "mapHotelHintSelected": "{{name}} — điểm xuất phát & kết thúc mỗi ngày"
 }

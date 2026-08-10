@@ -101,11 +101,17 @@ payload**, không phải làm mới data model.
      chọn bằng luật khoảng cách haversine cục bộ nên vẫn 1 request/chặng
    - 300 req/phút có SLA và `https://`, thay cho demo server không cam kết
 
-5. **Tile bản đồ: Mapbox raster tiles (`light-v11` / `dark-v11`), thay tile OSM.**
-   Bỏ được hack CSS `invert(.92) hue-rotate(180deg)` mà bản export dùng để giả dark mode.
-   Vẫn dùng **Leaflet**, không chuyển sang Mapbox GL JS — chỉ đổi URL tile, mọi thứ khác
-   trong Phase 10 giữ nguyên. Cần **token thứ hai** (public, có URL restriction) tách biệt
-   với token server của Phase 12.
+5. **Thư viện map: Mapbox GL JS (`mapbox-gl`, vanilla, điều khiển qua ref), không dùng Leaflet.**
+   *Quyết định này đã được sửa 10/08/2026, sau khi nhóm chốt lại dùng thẳng API chính thức
+   của Mapbox thay vì Leaflet + raster tiles.* Bản đầu của mục này ghi "vẫn dùng Leaflet,
+   chỉ đổi URL tile sang raster Mapbox" — điều đó **không còn đúng**. Vì GL JS render vector
+   style thật (`mapbox://styles/mapbox/light-v11` / `dark-v11`), hack CSS
+   `invert(.92) hue-rotate(180deg)` giả dark mode mà bản export dùng **không cần tới nữa** —
+   không phải vì tile raster đổi URL, mà vì không còn tile raster nào để filter. Không dùng
+   `react-map-gl` — điều khiển trực tiếp qua ref (hook `use-mapbox-map.ts`), khớp quy ước hook
+   hiện có và giữ đồng bộ hover đơn giản, đúng tinh thần bản quyết định gốc. Vẫn cần **token
+   thứ hai** (public, có URL restriction) tách biệt với token server của Phase 12 — phần đó
+   không đổi. Chi tiết kiến trúc: `phase-10-fe-map.md`.
 6. **Ngân sách: chip theo mức (glass tier chips), không dùng slider số.** Backend intake
    match nhãn mức ngân sách theo closed-set bằng regex (`hotel_selection.py:509-531`).
    Slider 500k–50M của design sẽ đòi hỏi làm lại NLU. Giữ nguyên giá trị wire hiện tại,
@@ -128,7 +134,7 @@ payload**, không phải làm mới data model.
   Phase 4  session persistence    Phase 7  stage intake + generating
                                   Phase 8  stage hotels + hotel focus
                                   Phase 9  stage workspace + place focus
-                                  Phase 10 Leaflet map
+                                  Phase 10 Mapbox GL JS map
         └───────────────┬───────────────┘
                         ▼
               Phase 11 — TÍCH HỢP & KIỂM THỬ
@@ -177,7 +183,7 @@ thay đổi contract: phải được cả hai dev đồng ý và phải sửa k
 | 7 | [Stage: Intake & Generating](./phase-07-fe-stage-intake-generating.md) | Frontend | Done | 5 |
 | 8 | [Stage: Khách sạn & Hotel Focus](./phase-08-fe-stage-hotels-focus.md) | Frontend | Pending | 5 |
 | 9 | [Stage: Workspace & Place Focus](./phase-09-fe-stage-workspace-focus.md) | Frontend | Done | 5 |
-| 10 | [Leaflet Map & Route](./phase-10-fe-map.md) | Frontend | Pending | 9 |
+| 10 | [Mapbox GL JS Map & Route](./phase-10-fe-map.md) | Frontend | Done³ | 9 |
 | 11 | [Tích hợp & Kiểm thử](./phase-11-integration-verification.md) | Chung | Pending | 2,3,4,6,7,8,9,10,12 |
 
 > ² Phần token của Phase 1 đã ship (chép tay giá trị vào `@theme`). Rà 06/08/2026 phát hiện
@@ -191,6 +197,27 @@ thay đổi contract: phải được cả hai dev đồng ý và phải sửa k
 > ¹ Phase 5 đã đánh Done **trước khi** có cơ chế nghiệm thu thị giác. Audit 06/08/2026 tìm
 > thấy `app-shell.tsx:90` phủ màu đặc lên `--gradient-page`, giết toàn bộ hệ glass. Một tiêu
 > chí đã được mở lại; sửa nằm ở Phase 6 bước 11 mục 1.
+
+> ³ 10/08/2026: code viết theo kiến trúc Mapbox GL JS mới (xem quyết định #5 và
+> `phase-10-fe-map.md`). Môi trường dev ban đầu liên tục làm rơi `node_modules` sau mỗi lần
+> `npm install` — hoá ra không phải rớt file ngẫu nhiên mà là bug thật của npm 10.8.2 trên
+> Windows (npm/cli#4828): binding native của `rolldown`/`oxlint` cho `win32-x64-msvc` không
+> bao giờ được tải dù cài lại bao nhiêu lần. Khắc phục bằng `npm pack` tải trực tiếp gói
+> `@rolldown/binding-win32-x64-msvc`/`@oxlint/binding-win32-x64-msvc` rồi giải nén thủ công
+> vào `node_modules` (đã ghim `@rolldown/binding-win32-x64-msvc` vào `optionalDependencies`
+> của `frontend/package.json` để lần cài sau đỡ gặp lại). Sau đó:
+> `npm run typecheck` sạch, `npm run lint` sạch (chỉ còn 1 warning không liên quan, có sẵn từ
+> trước ở `stay-date-form.jsx`), `npm run test` **113/113 pass**. `npm run check:tokens`
+> **fail**, nhưng vì lý do có từ trước, không phải do phase này: thư mục so khớp
+> `data/trip_planner/trip_planner_components/styles/` không tồn tại trong working tree này
+> (`data/` bị gitignore, chưa từng được giải nén ở máy này) — `git status` xác nhận ba file
+> `design-variables.css`/`design-theme.css`/`design-animation.css` không hề bị sửa. `npm run
+> dev` và `npm run mock` khởi động sạch; `map-view.tsx` qua được transform của Vite không lỗi.
+> **Chưa kiểm chứng bằng mắt qua trình duyệt thật** (marker/route/hover/theme-switch/focus-mode
+> resize) — không có màn hình/trình duyệt trong phiên này, đúng giới hạn mà phase-08 cũng từng
+> ghi lại. Đánh Done cho phần code + 3/4 cổng tự động hoá; bước 14 "Kiểm chứng" còn lại (mục thị
+> giác) cần người dùng tự chạy `npm run dev` + `npm run mock` và tự kiểm bằng mắt trước khi
+> `design-fidelity-checklist.md` §Phase 10 được tick.
 
 > Phase 12 nằm ở track backend, **chạy song song với Phase 2** (không phụ thuộc nhau):
 > Phase 2 chuyển route từ item sang payload, Phase 12 đổi thứ tạo ra route. Đánh số 12 để

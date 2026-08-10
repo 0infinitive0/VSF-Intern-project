@@ -1,9 +1,12 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import HotelOptionCards from './hotel-option-card'
 import HotelDetailPanel from './hotel-detail-panel'
-import MapPanel from './map-panel'
+import MapView, { type MapMarkerSpec } from './map-view'
+import { useMapSync } from '../hooks/use-map-sync'
+import { hotelOptionSyncId } from '../lib/map-sync-id'
 import type { useFocusMode } from '../hooks/use-focus-mode'
+import type { Theme } from '../hooks/use-theme'
 import type { ChatState, HotelOption } from '../types'
 
 type FocusModeApi = ReturnType<typeof useFocusMode>
@@ -45,14 +48,17 @@ export default function StageHotels({
   state,
   focusMode,
   onSend,
+  theme,
 }: {
   state: ChatState
   focusMode: FocusModeApi
   onSend: (text: string) => void
+  theme: Theme
 }) {
   const { t } = useTranslation()
   const hotels = state.hotelOptions
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
+  const mapSync = useMapSync()
 
   useEffect(() => {
     setSelectedIndex(null)
@@ -71,6 +77,29 @@ export default function StageHotels({
     if (!hotel.id) return
     savedScroll.current = listRef.current?.scrollTop ?? 0
     focusMode.openFocus({ kind: 'hotel', id: hotel.id })
+  }
+
+  // Phase 10: one marker per hotel option. hotel.id gates openId exactly like
+  // the card's own canOpen check — a marker for a hotel without an id
+  // scrolls its card into view on click but never opens a focus panel that
+  // has nothing to fetch.
+  const markers: MapMarkerSpec[] = useMemo(
+    () =>
+      hotels.map((hotel) => ({
+        syncId: hotelOptionSyncId(hotel),
+        coordinates: hotel.coordinates,
+        kind: 'hotel' as const,
+        openId: hotel.id,
+      })),
+    [hotels],
+  )
+
+  function handleMarkerClick(marker: MapMarkerSpec) {
+    mapSync.focusOn(marker.syncId)
+    if (marker.openId) {
+      const hotel = hotels.find((h) => h.id === marker.openId)
+      if (hotel) openFocus(hotel)
+    }
   }
 
   useLayoutEffect(() => {
@@ -142,6 +171,8 @@ export default function StageHotels({
             nights={nights}
             onSelect={(hotel) => setSelectedIndex(hotel.index)}
             onOpen={openFocus}
+            hoveredId={mapSync.hoveredId}
+            onHoverChange={mapSync.setHoveredId}
           />
         </div>
 
@@ -155,7 +186,27 @@ export default function StageHotels({
             transition: 'flex .62s cubic-bezier(.22,1,.36,1), opacity .38s ease',
           }}
         >
-          <MapPanel />
+          <MapView
+            theme={theme}
+            markers={markers}
+            segments={[]}
+            hoveredId={mapSync.hoveredId}
+            onHoverChange={mapSync.setHoveredId}
+            onMarkerClick={handleMarkerClick}
+            statusOverlay={
+              <div
+                className="rounded-[18px] border border-edge bg-glass-2 inline-block"
+                style={{ padding: '11px 14px', backdropFilter: 'blur(20px) saturate(1.6)', maxWidth: '280px' }}
+              >
+                <div className="text-[10px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
+                  {t('mapHotelCountLabel', { count: hotels.length })}
+                </div>
+                <div className="text-[11.5px] text-on-surface-variant mt-0.5" style={{ lineHeight: 1.45 }}>
+                  {selectedHotel ? t('mapHotelHintSelected', { name: selectedHotel.name }) : t('mapHotelHintEmpty')}
+                </div>
+              </div>
+            }
+          />
         </div>
 
         {focused && (
