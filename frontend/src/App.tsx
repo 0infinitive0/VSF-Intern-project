@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { useTranslation } from 'react-i18next'
+import { deleteSession } from './api/session-client'
 import { useChatSession } from './hooks/use-chat-session'
 import { useIntakeForm } from './hooks/use-intake-form'
 import { usePanelResize } from './hooks/use-panel-resize'
+import { useSessionHistory } from './hooks/use-session-history'
 import { deriveStageView } from './lib/derive-stage'
 import AppShell from './components/app-shell'
 
@@ -13,8 +14,7 @@ import AppShell from './components/app-shell'
  * or AppShell's structure again.
  */
 export default function App() {
-  const { t } = useTranslation()
-  const { state, send, reset } = useChatSession()
+  const { state, send, startNew, restore } = useChatSession()
   const {
     form: intakeForm,
     setForm: setIntakeForm,
@@ -26,18 +26,53 @@ export default function App() {
   const [chatWidth, setChatWidth] = useState(380)
   const chatResize = usePanelResize(chatWidth, setChatWidth, { min: 300, max: 560 })
   const stage = deriveStageView(state)
+  const { sessions, removeLocal, refresh } = useSessionHistory(state.sessionId, state.pending)
 
-  async function handleReset() {
-    if (!window.confirm(t('newChatConfirm'))) return
-    await reset()
+  // No confirm() (design has none — a fresh trip destroys nothing now that
+  // startNew() doesn't DELETE the old session). POST /chat/session now
+  // persists immediately (routes.py's create_session), so refresh() here
+  // pulls the new draft into the rail right away instead of waiting for the
+  // next pending-edge refetch — otherwise several "+ Chuyến đi mới" clicks in
+  // a row would only ever show the one optimistic row for whichever session
+  // is currently active.
+  async function handleNewTrip() {
+    await startNew()
     resetIntakeForm()
+    refresh()
+  }
+
+  async function handlePickSession(sessionId: string) {
+    if (state.pending || sessionId === state.sessionId) return
+    const restored = await restore(sessionId)
+    if (restored) resetIntakeForm()
+  }
+
+  // deleteConvo semantics (V-OTA Planner.dc.html): closing the open
+  // conversation moves to the next one left in the list, or a fresh trip
+  // when none remain. Local list edit happens before the DELETE call —
+  // deleteSession() is best-effort and never throws. If the fallback
+  // restore() itself fails (that session is gone too), startNew() always
+  // lands on a real session instead of leaving state pointed at nothing.
+  async function handleDeleteSession(sessionId: string) {
+    const wasActive = sessionId === state.sessionId
+    const remaining = (sessions ?? []).filter((s) => s.session_id !== sessionId)
+    removeLocal(sessionId)
+    await deleteSession(sessionId)
+    if (!wasActive) {
+      refresh()
+      return
+    }
+    const restored = remaining.length > 0 && (await restore(remaining[0].session_id))
+    if (!restored) await startNew()
+    resetIntakeForm()
+    refresh()
   }
 
   return (
     <AppShell
       state={state}
       onSend={send}
-      onNewTrip={handleReset}
+      onNewTrip={handleNewTrip}
       stage={stage}
       chatWidth={chatWidth}
       onChatResizeStart={chatResize}
@@ -47,6 +82,11 @@ export default function App() {
       editingIntakeField={editingIntakeField}
       onEditIntakeField={setEditingIntakeField}
       onDoneEditingIntakeField={() => setEditingIntakeField(null)}
+      sessions={sessions}
+      activeSessionId={state.sessionId}
+      onPickSession={handlePickSession}
+      onDeleteSession={handleDeleteSession}
+      turnPending={state.pending}
     />
   )
 }

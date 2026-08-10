@@ -158,6 +158,12 @@ export interface IntakeStatus {
 
 export interface ChatState {
   sessionId: string | null
+  // Bumped on RESET/RESTORE — the reducer's guard against a stale in-flight
+  // turn resolving after the user has switched sessions. sessionId alone
+  // can't do this job: A→B→A leaves sessionId back at "A", but turnId only
+  // ever increases, so a reply captured for the first "A" episode is still
+  // recognizably stale during the second one.
+  turnId: number
   messages: ChatMessage[]
   suggestions: Suggestion[]
   hotelOptions: HotelOption[]
@@ -284,7 +290,7 @@ export interface SessionSummary {
 }
 
 export interface RestoredMessage {
-  role: MessageRole
+  role: 'assistant' | 'user' // wire value (session_store.py); map to MessageRole at the client
   text: string
   stage: Stage
   at: string

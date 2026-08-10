@@ -4,6 +4,7 @@ import type { ChatState } from '../types'
 
 const BASE: ChatState = {
   sessionId: 's1',
+  turnId: 0,
   messages: [],
   suggestions: [],
   hotelOptions: [],

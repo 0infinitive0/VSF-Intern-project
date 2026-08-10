@@ -10,7 +10,7 @@ import type { IntakeChecklistRowKey } from '../lib/intake-checklist-rows'
 import type { PreferenceKey } from '../lib/intake-options'
 import type { IntakeField } from '../lib/next-intake-field'
 import type { StageView } from '../lib/derive-stage'
-import type { ChatState } from '../types'
+import type { ChatState, SessionSummary } from '../types'
 
 const DESKTOP_BREAKPOINT_PX = 768 // Tailwind `md`
 const SIDEBAR_PUSH_BREAKPOINT_PX = 1024 // Tailwind `lg`
@@ -66,6 +66,11 @@ export default function AppShell({
   editingIntakeField,
   onEditIntakeField,
   onDoneEditingIntakeField,
+  sessions,
+  activeSessionId,
+  onPickSession,
+  onDeleteSession,
+  turnPending,
 }: {
   state: ChatState
   onSend: (text: string) => void
@@ -79,6 +84,11 @@ export default function AppShell({
   editingIntakeField: IntakeField | null
   onEditIntakeField: (key: IntakeChecklistRowKey) => void
   onDoneEditingIntakeField: () => void
+  sessions: SessionSummary[] | null
+  activeSessionId: string | null
+  onPickSession: (sessionId: string) => void
+  onDeleteSession: (sessionId: string) => void
+  turnPending: boolean
 }) {
   const { theme, toggleTheme } = useTheme()
   const focusMode = useFocusMode()
@@ -160,6 +170,11 @@ export default function AppShell({
         onNewTrip={onNewTrip}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((c) => !c)}
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        onPickSession={onPickSession}
+        onDeleteSession={onDeleteSession}
+        turnPending={turnPending}
       />
 
       <div

@@ -117,7 +117,12 @@ def attraction_detail(attraction_id: UUID) -> AttractionDetailPayload:
 
 @router.post("/chat/session")
 def create_session() -> dict:
-    """Tạo một phiên chat mới và trả về session_id do server cấp."""
+    """Tạo một phiên chat mới và trả về session_id do server cấp.
+
+    Persists immediately (not just after the first turn) so the session shows
+    up as its own row in the history rail right away — otherwise every
+    never-chatted draft looked identical to any other and clicking
+    "+ Chuyến đi mới" repeatedly appeared to do nothing."""
     session = registry.create()
     if session.persist_hook:
         session.persist_hook(session)

@@ -16,8 +16,9 @@ export async function listSessions(): Promise<SessionSummary[]> {
   try {
     const res = await fetch(`${BASE}/chat/sessions`)
     if (!res.ok) return []
-    const data = (await res.json()) as { sessions: SessionSummary[] }
-    return data.sessions || []
+    const data = await res.json()
+    if (Array.isArray(data)) return data as SessionSummary[]
+    return (data?.sessions as SessionSummary[]) ?? []
   } catch {
     return []
   }

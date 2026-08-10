@@ -3,6 +3,7 @@ import ConversationList from './conversation-list'
 import LanguageToggle from './language-toggle'
 import ThemeToggle from './theme-toggle'
 import type { Theme } from '../hooks/use-theme'
+import type { SessionSummary } from '../types'
 
 /**
  * SidebarRail — logo, new-trip, conversation history, language + theme
@@ -21,12 +22,22 @@ export default function SidebarRail({
   onNewTrip,
   collapsed,
   onToggleCollapsed,
+  sessions,
+  activeSessionId,
+  onPickSession,
+  onDeleteSession,
+  turnPending,
 }: {
   theme: Theme
   onToggleTheme: () => void
   onNewTrip: () => void
   collapsed: boolean
   onToggleCollapsed: () => void
+  sessions: SessionSummary[] | null
+  activeSessionId: string | null
+  onPickSession: (sessionId: string) => void
+  onDeleteSession: (sessionId: string) => void
+  turnPending: boolean
 }) {
   const { t } = useTranslation()
 
@@ -102,7 +113,14 @@ export default function SidebarRail({
         )}
 
         <div className="flex-1 min-h-0">
-          <ConversationList collapsed={collapsed} />
+          <ConversationList
+            collapsed={collapsed}
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            onPickSession={onPickSession}
+            onDeleteSession={onDeleteSession}
+            turnPending={turnPending}
+          />
         </div>
 
         <div className="shrink-0 flex flex-col gap-2">

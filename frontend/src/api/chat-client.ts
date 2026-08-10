@@ -79,11 +79,3 @@ export async function sendMessage(
 export async function getPlan(sessionId: string): Promise<{ trip_plan: TripPlan | null }> {
   return request('GET', `/chat/${encodeURIComponent(sessionId)}/plan`)
 }
-
-/**
- * Delete / reset a session on the server.
- * Returns null on 204.
- */
-export async function resetSession(sessionId: string): Promise<null> {
-  return request('DELETE', `/chat/${encodeURIComponent(sessionId)}`)
-}
