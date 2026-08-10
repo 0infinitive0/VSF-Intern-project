@@ -46,9 +46,15 @@ class PlaceCandidate:
     description: str | None = None
     covered_meals: frozenset[str] = field(default_factory=frozenset)
     retrieval_tier: int = 1
+    image_url: str | None = None
+    ticket_price_adult: float | None = None
 
     @classmethod
     def from_mapping(cls, value: dict[str, Any]) -> PlaceCandidate:
+        images = value.get("images") or []
+        image_url = value.get("image_url")
+        if not image_url and isinstance(images, (list, tuple)):
+            image_url = next((str(image) for image in images if image), None)
         return cls(
             id=str(value.get("id") or ""),
             name=str(value.get("name") or ""),
@@ -65,6 +71,12 @@ class PlaceCandidate:
             ),
             is_tour=bool(value.get("is_tour")),
             description=value.get("description"),
+            image_url=str(image_url) if image_url else None,
+            ticket_price_adult=(
+                float(value["ticket_price_adult"])
+                if value.get("ticket_price_adult") is not None
+                else None
+            ),
             retrieval_tier=max(1, int(value.get("retrieval_tier") or 1)),
             covered_meals=(
                 frozenset(str(meal) for meal in value.get("covered_meals") or [])
@@ -101,6 +113,8 @@ class ScheduledItem:
     opening_time: str | None = None
     closing_time: str | None = None
     is_playground: bool = False
+    image_url: str | None = None
+    ticket_price_adult: float | None = None
 
     @classmethod
     def from_candidate(
@@ -132,6 +146,8 @@ class ScheduledItem:
             opening_time=candidate.opening_time,
             closing_time=candidate.closing_time,
             is_playground=is_playground(candidate),
+            image_url=candidate.image_url,
+            ticket_price_adult=candidate.ticket_price_adult,
         )
 
 

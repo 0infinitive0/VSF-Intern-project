@@ -166,6 +166,52 @@ def test_recommend_hotels_excludes_hotels_already_shown_when_searching_more(monk
     ]
 
 
+def test_recommend_hotels_keeps_original_list_when_preferences_change(monkeypatch):
+    captured_select_kwargs: dict = {}
+    stale_option = _fake_option("stale-hotel", "KhÃ¡ch sáº¡n CÅ©", 1)[0]
+    fresh_options = [_fake_option("fresh-hotel", "KhÃ¡ch sáº¡n PhÃ¹ Há»£p", 1)]
+
+    def _select(*_args, **kwargs):
+        captured_select_kwargs.update(kwargs)
+        return fresh_options
+
+    stale_option["match_score"] = 0.99
+    fresh_options[0][0]["match_score"] = 0.81
+
+    monkeypatch.setattr(recommend_hotels_module, "_get_destination_id", lambda _destination: "dest-1")
+    monkeypatch.setattr(recommend_hotels_module, "select_hotel_candidates", _select)
+    monkeypatch.setattr(recommend_hotels_module, "rank_hotel_candidates", lambda options, **_kwargs: options)
+    state = initial_state("test-session")
+    state["pending_hotel_selection"] = {
+        "destination": "ÄÃ  Náºµng",
+        "start_date": "2026-08-10",
+        "end_date": "2026-08-13",
+        "preferences_text": "biá»ƒn",
+        "hotel_query": "biá»ƒn",
+        "options": [stale_option],
+    }
+
+    _, updates = invoke_tool_directly(
+        recommend_hotels,
+        state,
+        session_id="test-session",
+        destination="ÄÃ  Náºµng",
+        duration="3 ngÃ y",
+        start_date="2026-08-10",
+        end_date="2026-08-13",
+        people="2 ngÆ°á»i",
+        preferences="vÄƒn hÃ³a",
+        hotel_preferences="",
+    )
+
+    assert captured_select_kwargs["hotel_query"] == "vÄƒn hÃ³a"
+    assert captured_select_kwargs["exclude_hotel_ids"] == ["stale-hotel"]
+    assert [option["id"] for option in updates["pending_hotel_selection"]["options"]] == [
+        "stale-hotel",
+        "fresh-hotel",
+    ]
+
+
 def test_recommend_hotels_missing_field_returns_system_error():
     state = initial_state("test-session")
     reply, updates = invoke_tool_directly(
@@ -206,6 +252,44 @@ def test_select_hotel_with_valid_rank_builds_itinerary_and_clears_pending(monkey
     assert captured["preselected_hotel"]["id"] == "h2"
     assert updates["pending_hotel_selection"] is None
     assert not reply.startswith("SYSTEM ERROR:")
+    assert reply != "Hotel: ok"
+    assert updates["trip_data"]["hotel"]["id"] == "h2"
+
+
+def test_select_hotel_calculates_routes_before_returning_the_trip_plan(monkeypatch):
+    options = [_fake_option("h1", "KhÃ¡ch sáº¡n Má»™t", 1)]
+    state = initial_state("test-session")
+    state["pending_hotel_selection"] = {
+        "mode": "new_trip",
+        "destination": "ÄÃ  Náºµng",
+        "duration": "3 ngÃ y",
+        "people": "2 ngÆ°á»i",
+        "preferences_text": "",
+        "options": [data for data, _candidate in options],
+    }
+    generated = {
+        "hotel": {"coordinates": [16.05, 108.2]},
+        "itineraries": [{"id": "itinerary-1", "status": "Draft"}],
+        "itinerary_items": [{"id": "item-1", "coordinates": [16.06, 108.21]}],
+    }
+
+    def _generate(*_args, **kwargs):
+        kwargs["save"](generated)
+        return "Hotel: ok"
+
+    def _routes(trip_data):
+        trip_data["itinerary_items"][0]["route_from_hotel"] = {"distance_km": 1.5}
+        trip_data["itinerary_items"][0]["route_to_next"] = {"distance_km": 1.5}
+        return trip_data
+
+    monkeypatch.setattr(select_hotel_module, "_generate_and_save_itinerary", _generate)
+    monkeypatch.setattr("src.services.routing.recalculate_itinerary_routes", _routes)
+
+    _, updates = invoke_tool_directly(select_hotel, state, session_id="test-session", selection="1")
+
+    item = updates["trip_data"]["itinerary_items"][0]
+    assert item["route_from_hotel"]["distance_km"] == 1.5
+    assert item["route_to_next"]["distance_km"] == 1.5
 
 
 def test_select_hotel_unresolved_selection_reshows_list_and_keeps_pending():

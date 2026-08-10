@@ -189,6 +189,7 @@ class ItineraryItem(BaseModel):
     reference_type: str | None = None
     reference_id: str | None = None
     coordinates: str | None = None
+    image_url: str | None = None
     route_to_next: RouteInfoPayload | None = None
     route_from_hotel: RouteInfoPayload | None = None
 
@@ -206,6 +207,7 @@ class TripPlanHotel(BaseModel):
     description: str | None = None
     matched_rooms: list[str] = Field(default_factory=list)
     coordinates: str | None = None
+    image_url: str | None = None
 
 
 class TripPlanPayload(BaseModel):
@@ -217,6 +219,8 @@ class TripPlanPayload(BaseModel):
     start_date: str | None = None
     end_date: str | None = None
     number_of_adults: int | None = None
+    budget: float | None = None
+    budget_currency: str | None = None
     hotel: TripPlanHotel | None = None
     days: list[DayPlan] = Field(default_factory=list)
     adjustments: list[str] = Field(default_factory=list)

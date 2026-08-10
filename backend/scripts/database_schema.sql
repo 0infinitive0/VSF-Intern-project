@@ -233,6 +233,7 @@ CREATE TABLE itinerary_items (
     estimated_cost DECIMAL(12, 2), -- Chi phí dự tính
     item_kind VARCHAR(20) CHECK (item_kind IN ('breakfast', 'attraction', 'lunch', 'rest', 'coffee', 'dinner', 'evening')),
     route_to_next JSONB, -- Lưu tuyến đường đến điểm tiếp theo {"distance_km": float, "duration_mins": float, "polyline": string}
+    route_from_hotel JSONB, -- Lưu tuyến đường từ khách sạn đến điểm đầu tiên
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

@@ -26,7 +26,7 @@ from langgraph.prebuilt import InjectedState
 from src.agents.state import TripState
 from src.i18n import t
 from src.services.hotel_selection import resolve_hotel_selection
-from src.services.trip_formatter import format_hotel_options, format_trip_response_from_json
+from src.services.trip_formatter import format_hotel_options
 from src.services.trip_planner import _build_trip_data, _generate_and_save_itinerary, _reapply_planning_constraints
 from src.services.trip_scheduler import PlaceCandidate
 
@@ -157,7 +157,7 @@ def select_hotel(selection: str, state: Annotated[dict, InjectedState], tool_cal
                 updated_itinerary["planning_constraints"] = planning_constraints
                 updated_data.setdefault("adjustments", []).extend(_reapply_planning_constraints(updated_data))
         return _reply_success(
-            format_trip_response_from_json(updated_data, language),
+            adjustment,
             tool_call_id,
             trip_data=updated_data,
             pending_hotel_selection=None,
@@ -167,9 +167,14 @@ def select_hotel(selection: str, state: Annotated[dict, InjectedState], tool_cal
     captured: dict[str, object] = {}
 
     def _capture_save(trip_data: dict) -> None:
+        # The chat tool returns this in-memory bundle directly instead of using
+        # the persistence path, so calculate its route fields here as well.
+        from src.services.routing import recalculate_itinerary_routes
+
+        recalculate_itinerary_routes(trip_data)
         captured["trip_data"] = trip_data
 
-    reply = _generate_and_save_itinerary(
+    generated_reply = _generate_and_save_itinerary(
         destination,
         duration,
         people,
@@ -181,10 +186,10 @@ def select_hotel(selection: str, state: Annotated[dict, InjectedState], tool_cal
         language=language,
         **stay_kwargs,
     )
-    if str(reply).startswith("SYSTEM ERROR:"):
-        return _reply_error(str(reply), tool_call_id)
+    if str(generated_reply).startswith("SYSTEM ERROR:"):
+        return _reply_error(str(generated_reply), tool_call_id)
     return _reply_success(
-        str(reply),
+        t("Đã chọn khách sạn. Lịch trình của bạn đã sẵn sàng trong tab Lịch trình.", language),
         tool_call_id,
         trip_data=captured.get("trip_data"),
         pending_hotel_selection=None,

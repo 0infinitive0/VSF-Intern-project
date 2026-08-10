@@ -13,7 +13,7 @@ from copy import deepcopy
 from dataclasses import replace
 from datetime import datetime
 from functools import lru_cache
-from typing import Any
+from typing import Any, Mapping, Sequence
 
 from src.api.streaming import emit_phase
 from src.config import get_settings
@@ -228,7 +228,7 @@ def _search_attraction_candidates(
         compact_results,
         (
             "id,destination_id,name,description,category,is_tour,estimated_duration_minutes,"
-            "opening_time,closing_time,rating,coordinates"
+            "opening_time,closing_time,rating,coordinates,images,ticket_price_adult"
         ),
     )
     return _to_place_candidates(hydrated)
@@ -257,7 +257,7 @@ def _search_attraction_candidates_tiered(
         compact_results,
         (
             "id,destination_id,name,description,category,is_tour,estimated_duration_minutes,"
-            "opening_time,closing_time,rating,coordinates"
+            "opening_time,closing_time,rating,coordinates,images,ticket_price_adult"
         ),
     )
     return _to_place_candidates(hydrated)
@@ -378,7 +378,14 @@ def _serialize_schedule_item(
     item: ScheduledItem,
     itinerary_id: str,
     timestamp: str,
+    number_of_adults: int = 1,
 ) -> dict[str, Any]:
+    estimated_cost = None
+    if item.ticket_price_adult is not None:
+        try:
+            estimated_cost = round(float(item.ticket_price_adult) * max(1, int(number_of_adults)), 2)
+        except (TypeError, ValueError):
+            estimated_cost = None
     return {
         "id": str(uuid.uuid4()),
         "itinerary_id": itinerary_id,
@@ -388,14 +395,52 @@ def _serialize_schedule_item(
         "end_time": item.end_time,
         "reference_type": item.reference_type,
         "reference_id": item.reference_id,
-        "estimated_cost": None,
+        "estimated_cost": estimated_cost,
         "created_at": timestamp,
         "updated_at": timestamp,
         "activity": item.activity,
         "kind": item.kind,
         "item_kind": item.kind,
         "coordinates": item.coordinates,
+        "image_url": item.image_url,
     }
+
+
+def _calculate_trip_budget(hotel: Mapping[str, Any], items: Sequence[Mapping[str, Any]]) -> float | None:
+    """Return the known trip total without inventing meal or missing activity prices."""
+    total = 0.0
+    has_known_cost = False
+
+    hotel_total = hotel.get("total_stay_price")
+    if hotel_total is None:
+        nightly = hotel.get("average_nightly_price", hotel.get("lowest_price"))
+        nights = hotel.get("stay_night_count")
+        if nightly is not None and nights is not None:
+            try:
+                hotel_total = float(nightly) * max(0, int(nights))
+            except (TypeError, ValueError):
+                hotel_total = None
+    if hotel_total is not None:
+        try:
+            total += max(0.0, float(hotel_total))
+            has_known_cost = True
+        except (TypeError, ValueError):
+            pass
+
+    for item in items:
+        try:
+            cost = item.get("estimated_cost")
+        except AttributeError:
+            continue
+        if cost is None:
+            continue
+        try:
+            total += max(0.0, float(cost))
+            has_known_cost = True
+        except (TypeError, ValueError):
+            continue
+
+    return round(total, 2) if has_known_cost else None
 
 
 def _persist_itinerary_metadata(trip_data: dict[str, Any]) -> None:
@@ -640,12 +685,14 @@ def _build_trip_data(
         "created_at": now_iso,
         "updated_at": now_iso,
     }
+    serialized_items = [
+        _serialize_schedule_item(item, itinerary_id, now_iso, number_of_people) for item in schedule.items
+    ]
+    itinerary_record["budget"] = _calculate_trip_budget(hotel_data, serialized_items)
     return {
         "hotel": hotel_data,
         "itineraries": [itinerary_record],
-        "itinerary_items": [
-            _serialize_schedule_item(item, itinerary_id, now_iso) for item in schedule.items
-        ],
+        "itinerary_items": serialized_items,
         "adjustments": [
             *schedule.adjustments,
             *(["Đã dùng chủ đề từ lịch trình tương tự và lập lại lịch mới theo dữ liệu hiện tại."] if reusable_template else []),
@@ -1326,6 +1373,10 @@ def apply_trip_edit_plan(current_data: dict[str, Any], plan: TripEditPlan) -> li
         raise ValueError(f"Thao tác {operation.operation} chưa thể áp dụng.")
 
     itinerary = _itinerary_record(working)
+    itinerary["budget"] = _calculate_trip_budget(
+        dict(working.get("hotel") or {}),
+        list(working.get("itinerary_items") or []),
+    )
     itinerary["status"] = "Draft"
     itinerary["updated_at"] = datetime.now().isoformat()
     itinerary.pop("summary", None)
@@ -1401,7 +1452,8 @@ def resolve_trip_edit_request(
         current_data.setdefault("adjustments", []).extend(adjustments)
         _persist_itinerary_metadata(current_data)
         logger.info("Applied LLM edit plan: %s", [operation.operation for operation in plan.operations])
-        return format_trip_response_from_json(current_data, language), {"trip_data": current_data}
+        reply = "Adjustment applied." if language == "en" else "Điều chỉnh đã áp dụng."
+        return reply, {"trip_data": current_data}
     except Exception as exc:
         logger.exception("Failed to apply LLM edit plan")
         return f"SYSTEM ERROR: {exc}", {}
@@ -1589,7 +1641,8 @@ def _replace_day_in_json(
     for scheduled in scheduled_items:
         key = (scheduled.reference_id, scheduled.kind)
         old = existing_by_key.get(key, []).pop(0) if existing_by_key.get(key) else None
-        record = _serialize_schedule_item(scheduled, itinerary_id, now_iso)
+        number_of_adults = int((current_data.get("itineraries") or [{}])[0].get("number_of_adults") or 1)
+        record = _serialize_schedule_item(scheduled, itinerary_id, now_iso, number_of_adults)
         if old:
             record["id"] = old.get("id") or record["id"]
             record["created_at"] = old.get("created_at") or record["created_at"]

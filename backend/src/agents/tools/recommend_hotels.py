@@ -145,7 +145,11 @@ def recommend_hotels(
             return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
         destination_id = str(destination_id)
 
-    hotel_query = hotel_preferences.strip() or None
+    # General trip preferences (for example, beach or culture) are a valid
+    # hotel-location intent when the user did not specify a narrower hotel-only
+    # request. Supplying them to search refreshes the similarity that powers the
+    # realistic match score instead of reusing the previous preference's score.
+    hotel_query = hotel_preferences.strip() or preferences.strip() or None
     parsed_target_price = float(target_price) if target_price.strip() else None
     parsed_min_price = float(min_price) if min_price.strip() else None
     parsed_max_price = float(max_price) if max_price.strip() else None
@@ -160,13 +164,10 @@ def recommend_hotels(
     # same contract without depending on session state.
     existing_pending = runtime.state.get("pending_hotel_selection") or {}
     existing_options = existing_pending.get("options", [])
-    shown_ids = [
-        str(option.get("id")).strip()
-        for option in existing_options
-        if isinstance(option, dict) and option.get("id")
-    ]
     
-    # Check if core parameters changed. If so, we must discard the old list.
+    # A destination or stay-date change invalidates the source hotel set.  A
+    # preference change does not: keep the complete original list so clients
+    # can filter it, while the follow-up search adds any new matching hotels.
     if existing_pending:
         old_dest = existing_pending.get("destination", "")
         old_start = existing_pending.get("start_date", "")
@@ -178,6 +179,12 @@ def recommend_hotels(
             or (old_end and old_end != end_date)
         ):
             existing_options = []
+
+    shown_ids = [
+        str(option.get("id")).strip()
+        for option in existing_options
+        if isinstance(option, dict) and option.get("id")
+    ]
 
     if isinstance(exclude_hotel_ids, str):
         if exclude_hotel_ids.lower() in ("null", "none", "[]", ""):
@@ -314,8 +321,20 @@ def recommend_hotels(
             
     combined_options = list(existing_by_id.values())
     
-    # Sort by number of matched preferences (DESC) and lowest_price (ASC)
-    combined_options.sort(key=lambda x: (-len(x.get("preferences", [])), float(x.get("lowest_price", 0) or 0)))
+    # Preserve the score order shown to the user after merging retained and
+    # newly found hotels. Preference count and price only settle score ties.
+    def _combined_sort_key(option: dict) -> tuple[float, int, float]:
+        try:
+            match_score = float(option.get("match_score") or 0.0)
+        except (TypeError, ValueError):
+            match_score = 0.0
+        try:
+            lowest_price = float(option.get("lowest_price") or 0.0)
+        except (TypeError, ValueError):
+            lowest_price = 0.0
+        return (-match_score, -len(option.get("preferences", [])), lowest_price)
+
+    combined_options.sort(key=_combined_sort_key)
     
     # We maintain all_preferences dict to ensure we have labels for all previously saved IDs
     # But wait, existing_pending only has active_preferences and all_preferences in the payload.
@@ -366,6 +385,10 @@ def recommend_hotels(
         "people": people,
         "preferences_text": preferences,
         "hotel_query": hotel_query,
+        "target_price": parsed_target_price,
+        "min_price": parsed_min_price,
+        "max_price": parsed_max_price,
+        "hotel_amenity_prefs": hotel_amenity_prefs,
         "intake_context": intake_context,
         "created_at": datetime.now().isoformat(),
         "options": combined_options,

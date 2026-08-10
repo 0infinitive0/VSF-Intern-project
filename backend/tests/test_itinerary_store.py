@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+import src.services.routing as routing_module
 from src.services.itinerary_reuse import ItineraryReuseQuery
 from src.services.itinerary_store import (
     ItineraryStore,
@@ -224,8 +225,34 @@ def test_persist_whitelists_rpc_payload_and_keeps_route_metadata() -> None:
         "estimated_cost",
         "item_kind",
         "route_to_next",
+        "route_from_hotel",
     }
     assert params["p_items"][0]["route_to_next"]["distance_km"] == 1.2
+
+
+def test_persist_keeps_calculated_routes_on_the_generated_trip_data(monkeypatch) -> None:
+    client = FakeSupabase()
+    store = ItineraryStore(client, lambda _: [0.1] * 1024)
+    trip_data = {
+        "hotel": {"id": "hotel-1", "destination_id": "destination-1", "coordinates": [16.0, 108.0]},
+        "itineraries": [{"id": "draft-1", "duration_days": 1, "budget": 2_250_000, "day_themes": []}],
+        "itinerary_items": [{"id": "item-1", "kind": "attraction", "coordinates": [16.01, 108.01]}],
+    }
+
+    def _routes(data):
+        item = data["itinerary_items"][0]
+        item["route_from_hotel"] = {"distance_km": 1.5, "duration_mins": 5, "profile": "walking"}
+        item["route_to_next"] = {"distance_km": 1.5, "duration_mins": 5, "profile": "walking"}
+        return data
+
+    monkeypatch.setattr(routing_module, "recalculate_itinerary_routes", _routes)
+
+    store.persist_itinerary_bundle(trip_data)
+
+    assert trip_data["itinerary_items"][0]["route_from_hotel"]["distance_km"] == 1.5
+    assert trip_data["itinerary_items"][0]["route_to_next"]["distance_km"] == 1.5
+    _, params = client.rpc_calls[0]
+    assert params["p_items"][0]["route_from_hotel"]["profile"] == "walking"
 
 
 def test_persist_rpc_failure_never_falls_back_to_partial_table_writes() -> None:
@@ -258,7 +285,9 @@ def test_push_current_trip_plan_file_persists_the_complete_bundle() -> None:
     store = ItineraryStore(client, lambda _: [0.1] * 1024)
     trip_data = {
         "hotel": {"id": "hotel-1", "destination_id": "destination-1"},
-        "itineraries": [{"id": "draft-1", "duration_days": 1, "day_themes": []}],
+        "itineraries": [
+            {"id": "draft-1", "duration_days": 1, "day_themes": [], "budget": 2_250_000}
+        ],
         "itinerary_items": [
             {"id": "item-1", "kind": "breakfast", "reference_id": "hotel-1"},
             {"id": "item-2", "kind": "attraction", "reference_id": "place-1"},
@@ -273,6 +302,7 @@ def test_push_current_trip_plan_file_persists_the_complete_bundle() -> None:
     assert itinerary_id == "draft-1"
     rpc_name, params = client.rpc_calls[0]
     assert rpc_name == "persist_itinerary_bundle"
+    assert params["p_itinerary"]["budget"] == 2_250_000
     assert len(params["p_items"]) == 2
     assert params["p_items"][0]["item_kind"] == "breakfast"
 

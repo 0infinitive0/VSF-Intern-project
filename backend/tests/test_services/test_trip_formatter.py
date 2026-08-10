@@ -21,6 +21,8 @@ TRIP_PLAN_FIXTURE = {
         "description": "Khách sạn trung tâm gần biển",
         "matched_rooms": ["Deluxe Ocean View", "Family Suite"],
         "coordinates": "16.054,108.24",
+        "image_url": "https://example.com/hotel.jpg",
+        "currency": "VND",
     },
     "itineraries": [
         {
@@ -30,7 +32,7 @@ TRIP_PLAN_FIXTURE = {
             "duration_days": 2,
             "number_of_adults": 2,
             "number_of_children": 0,
-            "budget": None,
+            "budget": 2_250_000,
             "preferences": ["Đà Nẵng", "biển"],
             "day_themes": [
                 {"day_number": 1, "title": "Khám phá bãi biển", "query": "beach"},
@@ -52,6 +54,7 @@ TRIP_PLAN_FIXTURE = {
             "item_kind": "breakfast",
             "reference_type": "Hotel",
             "reference_id": "11111111-1111-1111-1111-111111111111",
+            "image_url": "https://example.com/breakfast.jpg",
         },
         {
             "id": "item-2",
@@ -64,6 +67,7 @@ TRIP_PLAN_FIXTURE = {
             "item_kind": "attraction",
             "reference_type": "Attraction",
             "reference_id": "44444444-4444-4444-4444-444444444444",
+            "image_url": "https://example.com/beach.jpg",
         },
         {
             "id": "item-3",
@@ -125,7 +129,10 @@ def test_to_trip_plan_payload_shape_from_real_bundle():
     assert payload["destination"] == "Đà Nẵng"
     assert payload["duration_days"] == 2
     assert payload["number_of_adults"] == 2
+    assert payload["budget"] == 2_250_000
+    assert payload["budget_currency"] == "VND"
     assert payload["hotel"]["id"] == "11111111-1111-1111-1111-111111111111"
+    assert payload["hotel"]["image_url"] == "https://example.com/hotel.jpg"
     assert payload["hotel"]["name"] == "Muong Thanh Grand Đà Nẵng"
     assert payload["hotel"]["matched_rooms"] == ["Deluxe Ocean View", "Family Suite"]
     assert len(payload["days"]) == 2
@@ -135,7 +142,9 @@ def test_to_trip_plan_payload_shape_from_real_bundle():
     assert day_one["theme"] == "Khám phá bãi biển"
     assert [item["order_index"] for item in day_one["items"]] == [1, 2]
     assert day_one["items"][0]["kind"] == "breakfast"
+    assert day_one["items"][0]["image_url"] == "https://example.com/breakfast.jpg"
     assert day_one["items"][1]["reference_type"] == "Attraction"
+    assert day_one["items"][1]["image_url"] == "https://example.com/beach.jpg"
 
     day_two = payload["days"][1]
     assert day_two["day_number"] == 2

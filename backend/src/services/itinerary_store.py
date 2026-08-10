@@ -57,6 +57,7 @@ ITEM_RPC_FIELDS = frozenset(
         "estimated_cost",
         "item_kind",
         "route_to_next",
+        "route_from_hotel",
     }
 )
 
@@ -218,6 +219,17 @@ class ItineraryStore:
         mutable_trip_data["itinerary_items"] = routing_items
         from src.services.routing import recalculate_itinerary_routes
         recalculate_itinerary_routes(mutable_trip_data)
+
+        # The chat response is built from ``trip_data`` immediately after this
+        # persistence call. Propagate the calculated routes from the RPC-safe
+        # copies so that response is not one request behind the stored plan.
+        source_items = trip_data.get("itinerary_items") or []
+        for source, routed in zip(source_items, routing_items):
+            if not isinstance(source, dict):
+                continue
+            for field in ("route_from_hotel", "route_to_next"):
+                if field in routed:
+                    source[field] = routed[field]
 
         items = [
             {key: value for key, value in row.items() if key in ITEM_RPC_FIELDS}

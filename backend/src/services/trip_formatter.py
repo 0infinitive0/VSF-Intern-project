@@ -332,6 +332,7 @@ def to_trip_plan_payload(trip_data: dict[str, Any] | None) -> dict[str, Any] | N
                         ),
                         "route_to_next": item.get("route_to_next"),
                         "route_from_hotel": item.get("route_from_hotel"),
+                        "image_url": item.get("image_url"),
                     }
                     for item in day_items
                 ],
@@ -345,6 +346,8 @@ def to_trip_plan_payload(trip_data: dict[str, Any] | None) -> dict[str, Any] | N
         "start_date": itinerary.get("start_date"),
         "end_date": itinerary.get("end_date"),
         "number_of_adults": itinerary.get("number_of_adults"),
+        "budget": itinerary.get("budget"),
+        "budget_currency": hotel.get("currency") or "VND",
         "hotel": {
             "id": hotel.get("id"),
             "name": hotel.get("name"),
@@ -352,6 +355,7 @@ def to_trip_plan_payload(trip_data: dict[str, Any] | None) -> dict[str, Any] | N
             "description": hotel.get("description"),
             "matched_rooms": hotel.get("matched_rooms") or hotel.get("matched_room_names") or [],
             "coordinates": hotel.get("coordinates"),
+            "image_url": hotel.get("image_url"),
         },
         "days": days,
         "adjustments": [str(value) for value in trip_data.get("adjustments") or [] if value],

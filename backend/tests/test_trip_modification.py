@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import src.services.trip_planner as trip_builder_svc
 from src.services.trip_edit_planner import parse_trip_edit_plan
-from src.services.trip_planner import _apply_local_trip_change, _reapply_planning_constraints, apply_trip_edit_plan
+from src.services.trip_formatter import to_trip_plan_payload
+from src.services.trip_planner import (
+    _apply_local_trip_change,
+    _reapply_planning_constraints,
+    apply_trip_edit_plan,
+    resolve_trip_edit_request,
+)
 from src.services.trip_scheduler import PlaceCandidate, TripChange
 
 
@@ -93,6 +99,33 @@ def test_remove_item_leave_blank_does_not_add_a_hotel_rest_block() -> None:
     assert [item["id"] for item in trip_data["itinerary_items"]] == ["breakfast-1", "breakfast-2", "park-2"]
     assert all(item.get("item_kind") != "rest" for item in trip_data["itinerary_items"])
     assert any("bỏ" in adjustment.casefold() for adjustment in adjustments)
+
+
+def test_trip_edit_reply_confirms_update_without_rendering_the_trip_plan(monkeypatch) -> None:
+    trip_data = _trip_data()
+    monkeypatch.setattr(trip_builder_svc, "_persist_itinerary_metadata", lambda _trip_data: None)
+    plan = parse_trip_edit_plan(
+        {
+            "decision": "apply",
+            "summary": "Remove the museum on day 1",
+            "operations": [
+                {
+                    "operation": "remove_item",
+                    "target": {"item_id": "museum-1"},
+                    "gap_policy": "leave_blank",
+                }
+            ],
+        },
+        trip_data,
+    )
+
+    reply, updates = resolve_trip_edit_request(trip_data, "remove the museum", plan)
+
+    assert reply == "Điều chỉnh đã áp dụng."
+    assert "Ngày 1" not in reply
+    assert updates["trip_data"] is trip_data
+    assert updates["trip_data"]["itinerary_items"]
+    assert to_trip_plan_payload(updates["trip_data"])["days"][0]["items"]
 
 
 def test_breakfast_replacement_uses_real_nearby_breakfast_candidate(monkeypatch) -> None:
