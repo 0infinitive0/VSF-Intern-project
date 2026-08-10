@@ -44,7 +44,7 @@ jobs:
             docker compose -f docker-compose.staging.yml exec -T caddy caddy reload --config /etc/caddy/Caddyfile
             docker image prune -f
         env:
-          EXPOSE_SWAGGER: ${{ inputs.expose_swagger }}
+          EXPOSE_SWAGGER: ${{ inputs.expose_swagger || vars.EXPOSE_SWAGGER }}
 
       - name: Health check backend + frontend
         env:
