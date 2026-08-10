@@ -686,7 +686,10 @@ def build_itinerary(
                 theme.day_number, 2, hotel, "attraction", _minutes_to_time(morning_start), 90
             )
             day_items.append(morning_item)
-            adjustments.append(f"Ngày {theme.day_number}: không có điểm sáng hợp lệ, dành thời gian khám phá khu vực quanh khách sạn.")
+            adjustments.append(
+                f"Ngày {theme.day_number}: không có địa điểm tham quan buổi sáng phù hợp, "
+                "dành thời gian khám phá khu vực quanh khách sạn."
+            )
 
         lunch_start = _next_start(
             day_items[-1],

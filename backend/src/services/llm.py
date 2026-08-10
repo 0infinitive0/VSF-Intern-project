@@ -21,6 +21,13 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
+def _openai_model_supports_temperature(model: str) -> bool:
+    """Return whether an OpenAI model accepts an explicit temperature value."""
+    # GPT-5 currently accepts only its server-side default. Sending 0.0 (the
+    # deterministic value used by intake and edit extraction) causes a 400.
+    return not model.casefold().startswith("gpt-5")
+
+
 class _CloudflareChatOpenAI(ChatOpenAI):
     """ChatOpenAI variant for Cloudflare Workers AI's OpenAI-compatible endpoint.
 
@@ -127,8 +134,9 @@ def get_llm(
             kwargs: dict[str, Any] = {
                 "model": target_model or "gpt-4o-mini",
                 "api_key": openai_key,
-                "temperature": target_temp,
             }
+            if _openai_model_supports_temperature(str(kwargs["model"])):
+                kwargs["temperature"] = target_temp
             if target_base:
                 kwargs["base_url"] = target_base
             return ChatOpenAI(**kwargs)
@@ -256,7 +264,7 @@ def get_reasoning_llm(
     return get_llm(
         model=_get_role_model(
             explicit_model=model,
-            environment_key="LLM_MODEL",
+            environment_key="LLM_REASONING_MODEL",
             settings_key="llm_model",
         ),
         temperature=temperature,

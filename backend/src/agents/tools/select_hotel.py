@@ -29,7 +29,12 @@ from src.agents.state import TripState
 from src.i18n import t
 from src.services.hotel_selection import resolve_hotel_selection
 from src.services.trip_formatter import format_hotel_options
-from src.services.trip_planner import _build_trip_data, _generate_and_save_itinerary, _reapply_planning_constraints
+from src.services.trip_planner import (
+    _build_trip_data,
+    _generate_and_save_itinerary,
+    _reapply_planning_constraints,
+    _scheduled_attraction_ids,
+)
 from src.services.trip_scheduler import PlaceCandidate
 
 logger = logging.getLogger(__name__)
@@ -134,6 +139,7 @@ def select_hotel(selection: str, state: Annotated[dict, InjectedState], tool_cal
                 preferences,
                 preselected_hotel=hotel_data,
                 planning_constraints=planning_constraints,
+                exclude_attraction_ids=_scheduled_attraction_ids(trip_data),
                 session_id=session_id,
                 intake_context=intake_context,
                 language=language,

@@ -302,6 +302,7 @@ def test_replan_day_changes_only_the_requested_theme_and_day_items(monkeypatch) 
     def _build(*_args, **kwargs):
         captured["preferences"] = _args[3]
         captured["themes"] = kwargs["themes_override"]
+        captured["exclude_attraction_ids"] = kwargs["exclude_attraction_ids"]
         return rebuilt
 
     monkeypatch.setattr(trip_builder_svc, "_build_trip_data", _build)
@@ -327,3 +328,4 @@ def test_replan_day_changes_only_the_requested_theme_and_day_items(monkeypatch) 
     assert trip_data["itineraries"][0]["day_themes"][1]["title"] == "Ẩm thực"
     assert captured["preferences"] == "văn hóa"
     assert "markets" in captured["themes"][1]["query"]
+    assert captured["exclude_attraction_ids"] == ["old-day-one", "old-day-two"]

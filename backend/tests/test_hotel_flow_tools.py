@@ -76,6 +76,7 @@ def _fake_build_trip_data(captured: dict):
         session_id="poc_trip_planner_1",
         intake_context="",
         language="vi",
+        exclude_attraction_ids=None,
     ):
         captured["destination"] = destination
         captured["hotel_query"] = hotel_query
@@ -83,6 +84,7 @@ def _fake_build_trip_data(captured: dict):
         captured["planning_constraints"] = planning_constraints
         captured["session_id"] = session_id
         captured["intake_context"] = intake_context
+        captured["exclude_attraction_ids"] = exclude_attraction_ids
         return {
             "hotel": preselected_hotel or {},
             "itineraries": [{"id": "itinerary-1", "status": "Draft"}],
@@ -367,7 +369,13 @@ def test_select_hotel_replacement_mode_builds_fresh_dated_draft(monkeypatch):
     old_trip = {
         "hotel": {"id": "hotel-old"},
         "itineraries": [{"id": "trip-old", "status": "Draft"}],
-        "itinerary_items": [{"id": "old-item"}],
+        "itinerary_items": [
+            {
+                "id": "old-item",
+                "reference_type": "Attraction",
+                "reference_id": "9a6c6e89-328f-4d49-b171-2f1beef7ea01",
+            }
+        ],
     }
     state = initial_state("test-session")
     state["trip_data"] = old_trip
@@ -406,6 +414,7 @@ def test_select_hotel_replacement_mode_builds_fresh_dated_draft(monkeypatch):
     assert captured["end_date"] == "2026-08-15"
     assert captured["people"] == "4 người"
     assert captured["planning_constraints"] == {}
+    assert captured["exclude_attraction_ids"] == ["9a6c6e89-328f-4d49-b171-2f1beef7ea01"]
     assert updates["trip_data"]["itineraries"][0]["id"] == "trip-new"
     assert updates["trip_data"]["itinerary_items"] == [{"id": "new-item"}]
     assert updates["pending_hotel_selection"] is None

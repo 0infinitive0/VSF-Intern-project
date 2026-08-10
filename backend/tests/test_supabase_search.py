@@ -224,6 +224,71 @@ def test_search_attractions_forwards_radius_params(monkeypatch):
     assert client.captured_params["max_radius_km"] == 5.0
 
 
+def test_search_attractions_forwards_only_valid_excluded_ids(monkeypatch):
+    client = _patch_client_and_embeddings(monkeypatch, data=[])
+    excluded_id = "9a6c6e89-328f-4d49-b171-2f1beef7ea01"
+
+    supabase_search_module.search_attractions(
+        "museum",
+        use_llm_filter=False,
+        exclude_attraction_ids=[excluded_id, "not-a-uuid", excluded_id],
+    )
+
+    assert client.captured_params["filter_exclude_attraction_ids"] == [excluded_id]
+
+
+def test_tiered_attraction_search_excludes_only_requested_scheduled_ids(monkeypatch):
+    excluded_id = "9a6c6e89-328f-4d49-b171-2f1beef7ea01"
+    retained_id = "d1227682-d9f3-42c1-8848-9bd592a7b781"
+    calls = []
+    monkeypatch.setattr(supabase_search_module, "get_embeddings", lambda: _FakeEmbeddings())
+
+    def fake_execute_rpc(_name, params):
+        calls.append(params.copy())
+        return [{"id": excluded_id}, {"id": retained_id}]
+
+    monkeypatch.setattr(supabase_search_module, "_execute_rpc", fake_execute_rpc)
+
+    results = supabase_search_module.search_attractions_tiered(
+        "museum culture",
+        required_count=1,
+        filter_destination_id="destination-id",
+        root_latitude=16.0544,
+        root_longitude=108.2022,
+        exclude_attraction_ids=[excluded_id],
+    )
+
+    assert [result["id"] for result in results] == [retained_id]
+    assert calls[0]["filter_exclude_attraction_ids"] == [excluded_id]
+
+
+def test_attraction_search_falls_back_when_live_rpc_lacks_exclusion_parameter(monkeypatch):
+    excluded_id = "9a6c6e89-328f-4d49-b171-2f1beef7ea01"
+    retained_id = "d1227682-d9f3-42c1-8848-9bd592a7b781"
+    rpc_calls = []
+
+    def fake_execute_rpc(_name, params):
+        rpc_calls.append(params.copy())
+        if len(rpc_calls) == 1:
+            raise RuntimeError("PGRST202: missing filter_exclude_attraction_ids")
+        return [{"id": excluded_id}, {"id": retained_id}]
+
+    _patch_client_and_embeddings(monkeypatch, data=[])
+    monkeypatch.setattr(supabase_search_module, "_execute_rpc", fake_execute_rpc)
+
+    results = supabase_search_module.search_attractions(
+        "museum",
+        match_count=1,
+        use_llm_filter=False,
+        exclude_attraction_ids=[excluded_id],
+    )
+
+    assert [attraction["id"] for attraction in results] == [retained_id]
+    assert rpc_calls[0]["filter_exclude_attraction_ids"] == [excluded_id]
+    assert "filter_exclude_attraction_ids" not in rpc_calls[1]
+    assert rpc_calls[1]["match_count"] == 2
+
+
 def test_search_omits_radius_params_when_none(monkeypatch):
     client = _patch_client_and_embeddings(monkeypatch, data=[])
 

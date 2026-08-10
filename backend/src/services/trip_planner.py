@@ -8,7 +8,7 @@ import logging
 import os
 import re
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from copy import deepcopy
 from dataclasses import replace
 from datetime import datetime
@@ -240,17 +240,22 @@ def _search_attraction_candidates_tiered(
     hotel: PlaceCandidate,
     *,
     required_count: int,
+    exclude_attraction_ids: Collection[str] | None = None,
 ) -> list[PlaceCandidate]:
     """Hydrate explicitly tiered attraction results rooted at one hotel."""
     coordinates = hotel.coordinate_pair
     if not coordinates:
         raise ValueError("A hotel with coordinates is required for tiered attraction search.")
+    search_kwargs: dict[str, Any] = {}
+    if exclude_attraction_ids is not None:
+        search_kwargs["exclude_attraction_ids"] = exclude_attraction_ids
     compact_results = rpc_search_attractions_tiered(
         query,
         required_count=required_count,
         filter_destination_id=destination_id,
         root_latitude=coordinates[0],
         root_longitude=coordinates[1],
+        **search_kwargs,
     )
     hydrated = _hydrate_records(
         "attractions",
@@ -268,20 +273,26 @@ def _build_tiered_candidate_pools(
     destination_id: str,
     themes: list[DayTheme],
     hotel: PlaceCandidate,
+    *,
+    exclude_attraction_ids: Collection[str] | None = None,
 ) -> tuple[
     dict[int, list[PlaceCandidate]],
     list[PlaceCandidate],
     list[PlaceCandidate],
     list[PlaceCandidate],
     list[PlaceCandidate],
-]:
+    ]:
     """Fetch final schedule pools from the hotel selected for this itinerary."""
+    search_kwargs: dict[str, Any] = {}
+    if exclude_attraction_ids is not None:
+        search_kwargs["exclude_attraction_ids"] = exclude_attraction_ids
     themed_candidates = {
         theme.day_number: _search_attraction_candidates_tiered(
             f"{theme.query}. Destination: {destination}",
             destination_id,
             hotel,
             required_count=3,
+            **search_kwargs,
         )
         for theme in themes
     }
@@ -292,6 +303,7 @@ def _build_tiered_candidate_pools(
             destination_id,
             hotel,
             required_count=meal_pool_size,
+            **search_kwargs,
         )
         if "lunch" not in hotel.covered_meals
         else []
@@ -301,6 +313,7 @@ def _build_tiered_candidate_pools(
         destination_id,
         hotel,
         required_count=meal_pool_size,
+        **search_kwargs,
     )
     breakfasts = (
         _search_attraction_candidates_tiered(
@@ -308,6 +321,7 @@ def _build_tiered_candidate_pools(
             destination_id,
             hotel,
             required_count=meal_pool_size,
+            **search_kwargs,
         )
         if "breakfast" not in hotel.covered_meals
         else []
@@ -318,6 +332,7 @@ def _build_tiered_candidate_pools(
             destination_id,
             hotel,
             required_count=meal_pool_size,
+            **search_kwargs,
         )
         if "dinner" not in hotel.covered_meals
         else []
@@ -512,6 +527,7 @@ def _build_trip_data(
     session_id: str = "poc_trip_planner_1",
     intake_context: str = "",
     language: str = "vi",
+    exclude_attraction_ids: Collection[str] | None = None,
 ) -> dict[str, Any]:
     destination_id = _get_destination_id(destination)
     if not destination_id:
@@ -632,13 +648,22 @@ def _build_trip_data(
             child_focused=child_focused,
         )
 
+    pool_kwargs: dict[str, Any] = {}
+    if exclude_attraction_ids is not None:
+        pool_kwargs["exclude_attraction_ids"] = exclude_attraction_ids
     (
         themed_candidates,
         restaurants,
         cafes,
         breakfasts,
         dinners,
-    ) = _build_tiered_candidate_pools(destination, destination_id, themes, hotel_candidate)
+    ) = _build_tiered_candidate_pools(
+        destination,
+        destination_id,
+        themes,
+        hotel_candidate,
+        **pool_kwargs,
+    )
     schedule = build_itinerary(
         hotel_candidate,
         themes,
@@ -1324,6 +1349,7 @@ def _apply_day_replan(current_data: dict[str, Any], operation: EditOperation) ->
         themes_override=themes,
         preselected_hotel=dict(current_data.get("hotel") or {}),
         planning_constraints=dict(itinerary.get("planning_constraints") or {}),
+        exclude_attraction_ids=_scheduled_attraction_ids(current_data),
     )
     rebuilt_scheduled, _hotel = _scheduled_day_from_json(rebuilt, operation.day_number)
     _replace_day_in_json(current_data, operation.day_number, rebuilt_scheduled)
@@ -1572,6 +1598,23 @@ def _apply_self_selected_meal_constraint(
             f"Đã để bạn tự chọn {meal_label} và bỏ {removed_count} gợi ý tự động; các hoạt động khác được giữ nguyên."
         ]
     return [f"Đã lưu lựa chọn để bạn tự chọn {meal_label}; không thêm địa điểm tự động."]
+
+
+def _scheduled_attraction_ids(current_data: Mapping[str, Any]) -> list[str]:
+    """Return only attraction records already used by the saved itinerary.
+
+    Candidate IDs returned by earlier semantic searches are intentionally not
+    represented in ``trip_data`` and therefore are never excluded here.
+    """
+    result: list[str] = []
+    for item in current_data.get("itinerary_items") or []:
+        if not isinstance(item, Mapping) or str(item.get("reference_type") or "").casefold() != "attraction":
+            continue
+        reference_id = str(item.get("reference_id") or "")
+        if not reference_id or reference_id in result:
+            continue
+        result.append(reference_id)
+    return result
 
 
 def _scheduled_day_from_json(current_data: dict[str, Any], day_number: int) -> tuple[list[ScheduledItem], PlaceCandidate]:

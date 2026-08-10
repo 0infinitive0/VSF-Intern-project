@@ -77,6 +77,14 @@ def test_get_llm_openai_with_key():
     assert llm.model_name == "gpt-4o-mini"
 
 
+def test_get_llm_omits_temperature_for_gpt5_models_that_only_allow_default():
+    """GPT-5 rejects an explicit temperature value, including 0.0."""
+    with patch("src.services.llm.ChatOpenAI") as factory:
+        get_llm(provider="openai", model="gpt-5", api_key="sk-dummykey123", temperature=0.0)
+
+    assert "temperature" not in factory.call_args.kwargs
+
+
 def test_get_llm_unknown_provider_falls_back():
     """Verify that an unknown provider safely falls back to local ChatOllama."""
     llm = get_llm(provider="unknown_provider_xyz")

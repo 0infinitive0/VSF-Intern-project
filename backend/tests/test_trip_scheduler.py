@@ -84,6 +84,26 @@ def test_builds_balanced_day_with_real_food_rest_and_no_noon_beach() -> None:
         assert previous.end_time <= current.start_time
 
 
+def test_missing_morning_attraction_does_not_imply_missing_breakfast() -> None:
+    theme = DayTheme(1, "Culture", "culture")
+    breakfast = place("breakfast", "Morning Bistro", "Restaurants & cafes", 16.057, 108.224)
+
+    schedule = build_itinerary(
+        hotel=HOTEL,
+        themes=[theme],
+        themed_candidates={1: []},
+        restaurants=[],
+        cafes=[],
+        breakfasts=[breakfast],
+        dinners=[],
+    )
+
+    day = schedule.items_for_day(1)
+    assert any(item.kind == "breakfast" and item.reference_id == "breakfast" for item in day)
+    assert any("địa điểm tham quan buổi sáng" in adjustment for adjustment in schedule.adjustments)
+    assert not any("điểm ăn sáng" in adjustment for adjustment in schedule.adjustments)
+
+
 def test_opening_hours_are_enforced_but_unknown_hours_are_allowed() -> None:
     venue = place(
         "museum",

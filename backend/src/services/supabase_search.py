@@ -290,6 +290,53 @@ def _is_missing_exclusion_rpc_signature(exc: Exception) -> bool:
     return "PGRST202" in error_text and "filter_exclude_hotel_ids" in error_text
 
 
+def _normalized_attraction_exclusion_ids(
+    exclude_attraction_ids: Collection[str] | None,
+) -> list[str]:
+    """Return unique UUIDs that can safely be sent to the attraction RPC."""
+    valid_ids: list[str] = []
+    for attraction_id in exclude_attraction_ids or ():
+        try:
+            normalized_id = str(UUID(str(attraction_id)))
+        except (TypeError, ValueError, AttributeError):
+            logger.warning("Ignoring invalid attraction exclusion ID: %r", attraction_id)
+            continue
+        if normalized_id not in valid_ids:
+            valid_ids.append(normalized_id)
+    return valid_ids
+
+
+def _is_missing_attraction_exclusion_rpc_signature(exc: Exception) -> bool:
+    """Return whether PostgREST rejected only the new attraction exclusion parameter."""
+    error_text = str(exc)
+    return "PGRST202" in error_text and "filter_exclude_attraction_ids" in error_text
+
+
+def _execute_attraction_rpc(
+    params: dict[str, Any],
+    excluded_ids: Collection[str],
+) -> list[dict[str, Any]]:
+    """Call the exclusion-aware attraction RPC with a safe rollout fallback.
+
+    The fallback deliberately receives only ``excluded_ids`` supplied by the
+    caller. IDs seen while collecting one search response are not promoted to
+    exclusions, so a place that was retrieved but never scheduled remains
+    eligible for another theme or meal search.
+    """
+    try:
+        return _execute_rpc("match_attractions", params)
+    except Exception as exc:
+        if not excluded_ids or not _is_missing_attraction_exclusion_rpc_signature(exc):
+            raise
+        fallback_params = params.copy()
+        fallback_params.pop("filter_exclude_attraction_ids", None)
+        fallback_params["match_count"] = int(fallback_params["match_count"]) + len(excluded_ids)
+        logger.warning(
+            "match_attractions lacks filter_exclude_attraction_ids; using local exclusion fallback"
+        )
+        return _execute_rpc("match_attractions", fallback_params)
+
+
 def search_attractions(
     query: str,
     match_threshold: float = 0.4,
@@ -300,6 +347,7 @@ def search_attractions(
     root_latitude: Optional[float] = None,
     root_longitude: Optional[float] = None,
     max_radius_km: Optional[float] = None,
+    exclude_attraction_ids: Collection[str] | None = None,
 ) -> List[Dict[str, Any]]:
     """Tìm kiếm semantic attractions sử dụng Supabase RPC match_attractions và local Ollama LLM filtering."""
     radius = validate_radius_filter(root_latitude, root_longitude, max_radius_km)
@@ -335,7 +383,13 @@ def search_attractions(
         params["root_longitude"] = radius.root_longitude
         params["max_radius_km"] = radius.max_radius_km
 
-    data = _execute_rpc("match_attractions", params)
+    valid_excluded_ids = _normalized_attraction_exclusion_ids(exclude_attraction_ids)
+    if valid_excluded_ids:
+        params["filter_exclude_attraction_ids"] = valid_excluded_ids
+    data = _execute_attraction_rpc(params, valid_excluded_ids)
+    if valid_excluded_ids:
+        excluded_id_set = set(valid_excluded_ids)
+        data = [attraction for attraction in data if str(attraction.get("id")) not in excluded_id_set]
 
     filtered_data = []
     for a in data:
@@ -360,6 +414,7 @@ def search_attractions_tiered(
     filter_destination_id: str,
     root_latitude: float,
     root_longitude: float,
+    exclude_attraction_ids: Collection[str] | None = None,
 ) -> List[Dict[str, Any]]:
     """Return unique semantic attraction matches from explicit GPS search tiers.
 
@@ -376,25 +431,27 @@ def search_attractions_tiered(
     validate_radius_filter(root_latitude, root_longitude, ATTRACTION_SEARCH_TIERS[0][0])
     query_vector = get_embeddings().embed_query(query)
     per_tier_count = max(required_count * 2, 10)
+    valid_excluded_ids = _normalized_attraction_exclusion_ids(exclude_attraction_ids)
+    excluded_id_set = set(valid_excluded_ids)
     seen_ids: set[str] = set()
     collected: List[Dict[str, Any]] = []
 
     for tier_number, (radius_km, match_threshold) in enumerate(ATTRACTION_SEARCH_TIERS, start=1):
-        data = _execute_rpc(
-            "match_attractions",
-            {
-                "query_embedding": query_vector,
-                "match_threshold": match_threshold,
-                "match_count": per_tier_count,
-                "filter_destination_id": filter_destination_id,
-                "root_latitude": float(root_latitude),
-                "root_longitude": float(root_longitude),
-                "max_radius_km": radius_km,
-            },
-        )
+        params: dict[str, Any] = {
+            "query_embedding": query_vector,
+            "match_threshold": match_threshold,
+            "match_count": per_tier_count,
+            "filter_destination_id": filter_destination_id,
+            "root_latitude": float(root_latitude),
+            "root_longitude": float(root_longitude),
+            "max_radius_km": radius_km,
+        }
+        if valid_excluded_ids:
+            params["filter_exclude_attraction_ids"] = valid_excluded_ids
+        data = _execute_attraction_rpc(params, valid_excluded_ids)
         for row in data:
             attraction_id = str(row.get("id") or "")
-            if not attraction_id or attraction_id in seen_ids:
+            if not attraction_id or attraction_id in excluded_id_set or attraction_id in seen_ids:
                 continue
             seen_ids.add(attraction_id)
             collected.append({**row, "retrieval_tier": tier_number})

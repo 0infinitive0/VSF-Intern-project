@@ -812,7 +812,12 @@ def _handle_frontend_hotel_selection(session: TripSession, hotel_id: str) -> Tur
 
     from src.services.trip_scheduler import PlaceCandidate
     from src.services.hotel_selection import resolve_hotel_selection
-    from src.services.trip_planner import _build_trip_data, _generate_and_save_itinerary, _reapply_planning_constraints
+    from src.services.trip_planner import (
+        _build_trip_data,
+        _generate_and_save_itinerary,
+        _reapply_planning_constraints,
+        _scheduled_attraction_ids,
+    )
     from src.services.trip_formatter import format_trip_response_from_json
 
     raw_options = pending.get("options") or []
@@ -867,6 +872,7 @@ def _handle_frontend_hotel_selection(session: TripSession, hotel_id: str) -> Tur
                 preferences,
                 preselected_hotel=hotel_data,
                 planning_constraints=planning_constraints,
+                exclude_attraction_ids=_scheduled_attraction_ids(trip_data),
                 session_id=session.session_id,
                 **stay_kwargs,
             )
