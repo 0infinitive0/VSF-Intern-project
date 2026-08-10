@@ -281,12 +281,12 @@
 
   "resetTitle": "Start over",
 
-  "mapPlaceholderTitle": "Route map",
-  "mapPlaceholderBody": "The map feature is under development.",
-  "mapControlDisabledHint": "The map feature is under development",
-  "mapFilterAttractions": "Sightseeing",
-  "mapFilterProperties": "Hotels",
-  "mapFilterFood": "Food",
-  "mapFilterShopping": "Shopping",
-  "mapSearchPlaceholder": "Search area..."
+  "mapUnavailableTitle": "Map unavailable",
+  "mapUnavailableBody": "Missing map token configuration (VITE_MAPBOX_TOKEN).",
+  "mapLegendDriving": "Driving",
+  "mapLegendWalking": "Walking",
+  "mapLegendFallback": "Estimated",
+  "mapHotelCountLabel": "{{count}} hotels",
+  "mapHotelHintEmpty": "Select a hotel to see distances to nearby highlights",
+  "mapHotelHintSelected": "{{name}} — start & end point each day"
 }

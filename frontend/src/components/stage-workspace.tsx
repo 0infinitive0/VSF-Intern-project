@@ -1,12 +1,16 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import DayTimeline from './day-timeline'
-import MapPanel from './map-panel'
+import MapView, { type MapMarkerSpec } from './map-view'
 import PlaceDetailPanel from './place-detail-panel'
 import TripOverviewTab from './trip-overview-tab'
+import { useMapSync } from '../hooks/use-map-sync'
 import { legBetween, type Leg } from '../lib/leg'
 import { formatTripDateRange } from '../lib/format-trip-dates'
+import { itemSyncId, TRIP_HOTEL_SYNC_KEY } from '../lib/map-sync-id'
+import { buildDaySegments, buildTripSegments } from '../lib/route-segments'
 import type { useFocusMode } from '../hooks/use-focus-mode'
+import type { Theme } from '../hooks/use-theme'
 import type { ChatState, Day, DayItem } from '../types'
 
 type FocusModeApi = ReturnType<typeof useFocusMode>
@@ -51,14 +55,21 @@ export default function StageWorkspace({
   state,
   focusMode,
   onSend,
+  theme,
 }: {
   state: ChatState
   focusMode: FocusModeApi
   onSend: (text: string) => void
+  theme: Theme
 }) {
   const { t, i18n } = useTranslation()
   const tripPlan = state.tripPlan
-  const days = tripPlan?.days ?? []
+  // Memoized so `days` is referentially stable across re-renders that don't
+  // change tripPlan (e.g. Phase 10 hover state) — the segments/markers
+  // useMemo below depend on it and must not recompute (re-decode polylines)
+  // on every mousemove.
+  const days = useMemo(() => tripPlan?.days ?? [], [tripPlan])
+  const mapSync = useMapSync()
 
   const [activeTab, setActiveTab] = useState<TabKey>('overview')
 
@@ -121,9 +132,55 @@ export default function StageWorkspace({
     onSend(i18n.language === 'vi' ? REGENERATE_VI : REGENERATE_EN)
   }
 
-  if (!tripPlan) return null
-
   const activeDay = typeof resolvedTab === 'number' ? days.find((d) => d.day_number === resolvedTab) : null
+
+  // Phase 10 map data. Deliberately NOT keyed on mapSync.hoveredId — hover
+  // changes on every mousemove, and re-decoding every day's polylines on
+  // each one would be wasteful; only real data (tab/plan/hotel) changes.
+  const segments = useMemo(
+    () =>
+      resolvedTab === 'overview'
+        ? buildTripSegments(days, tripPlan?.hotel)
+        : activeDay
+          ? buildDaySegments(activeDay, tripPlan?.hotel)
+          : [],
+    [resolvedTab, days, tripPlan?.hotel, activeDay],
+  )
+
+  const markers: MapMarkerSpec[] = useMemo(() => {
+    const list: MapMarkerSpec[] = []
+    if (tripPlan?.hotel?.coordinates) {
+      list.push({ syncId: TRIP_HOTEL_SYNC_KEY, coordinates: tripPlan.hotel.coordinates, kind: 'hotel' })
+    }
+    const daysToShow = resolvedTab === 'overview' ? days : activeDay ? [activeDay] : []
+    for (const day of daysToShow) {
+      day.items.forEach((item, index) => {
+        list.push({
+          syncId: itemSyncId(day.day_number, item, index),
+          coordinates: item.coordinates,
+          kind: 'item',
+          label: index + 1,
+          dayNumber: day.day_number,
+          openId: item.reference_type === 'Attraction' && item.reference_id ? item.reference_id : undefined,
+        })
+      })
+    }
+    return list
+  }, [resolvedTab, days, activeDay, tripPlan?.hotel])
+
+  function handleMarkerClick(marker: MapMarkerSpec) {
+    mapSync.focusOn(marker.syncId)
+    if (marker.kind === 'hotel' || !marker.openId) return
+    for (const day of days) {
+      const item = day.items.find((it) => it.reference_type === 'Attraction' && it.reference_id === marker.openId)
+      if (item) {
+        openFocus(item)
+        return
+      }
+    }
+  }
+
+  if (!tripPlan) return null
 
   const dateRange = formatTripDateRange(tripPlan.start_date, tripPlan.end_date, i18n.language)
   const nights = nightsFrom(tripPlan.start_date, tripPlan.end_date, tripPlan.duration_days)
@@ -211,7 +268,13 @@ export default function StageWorkspace({
             {resolvedTab === 'overview' ? (
               <TripOverviewTab tripPlan={tripPlan} onPickDay={(n) => pickTab(n)} />
             ) : activeDay ? (
-              <DayTimeline day={activeDay} focusedId={focusedId} onOpen={openFocus} />
+              <DayTimeline
+                day={activeDay}
+                focusedId={focusedId}
+                onOpen={openFocus}
+                hoveredId={mapSync.hoveredId}
+                onHoverChange={mapSync.setHoveredId}
+              />
             ) : null}
           </div>
         </div>
@@ -231,7 +294,15 @@ export default function StageWorkspace({
               'flex .62s cubic-bezier(.22,1,.36,1), opacity .36s ease, transform .55s cubic-bezier(.22,1,.36,1), filter .36s ease',
           }}
         >
-          <MapPanel />
+          <MapView
+            theme={theme}
+            markers={markers}
+            segments={segments}
+            hoveredId={mapSync.hoveredId}
+            onHoverChange={mapSync.setHoveredId}
+            onMarkerClick={handleMarkerClick}
+            showLegend
+          />
         </div>
 
         {focused && context && (

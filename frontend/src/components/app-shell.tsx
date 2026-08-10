@@ -225,6 +225,7 @@ export default function AppShell({
             onSend={onSend}
             intakeForm={intakeForm}
             onEditIntakeField={onEditIntakeField}
+            theme={theme}
           />
         </div>
       </div>

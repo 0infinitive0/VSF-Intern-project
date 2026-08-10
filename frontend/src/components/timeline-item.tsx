@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { legBetween } from '../lib/leg'
 import { dayColor, legColor } from '../lib/map-colors'
+import { itemSyncId } from '../lib/map-sync-id'
 import type { DayItem } from '../types'
 
 const NUM_LOCALE = (lang: string) => (lang === 'vi' ? 'vi-VN' : 'en-US')
@@ -47,6 +48,8 @@ export default function TimelineItem({
   next,
   focusedId,
   onOpen,
+  hoveredId,
+  onHoverChange,
 }: {
   item: DayItem
   index: number
@@ -54,6 +57,9 @@ export default function TimelineItem({
   next: DayItem | null | undefined
   focusedId: string | null
   onOpen: (item: DayItem) => void
+  /** Phase 10 map hover sync (lib/map-sync-id.ts ids) — optional so this component still works standalone. */
+  hoveredId?: string | null
+  onHoverChange?: (id: string | null) => void
 }) {
   const { t, i18n } = useTranslation()
   const numFmt = new Intl.NumberFormat(NUM_LOCALE(i18n.language), { maximumFractionDigits: 1 })
@@ -63,6 +69,8 @@ export default function TimelineItem({
     typeof item.reference_id === 'string' &&
     item.reference_id.length > 0
   const focused = canOpen && focusedId != null && item.reference_id === focusedId
+  const syncId = itemSyncId(dayNumber, item, index)
+  const isHovered = hoveredId != null && hoveredId === syncId
 
   const leg = legBetween(item, next)
   const hasLeg = leg.kind !== 'none'
@@ -111,7 +119,11 @@ export default function TimelineItem({
         className="timeline-item rounded-[20px] border flex gap-3 p-[13px] w-full text-left"
         data-clickable={canOpen ? 'true' : undefined}
         data-focused={focused ? 'true' : undefined}
+        data-hovered={isHovered ? 'true' : undefined}
+        data-card={syncId}
         onClick={canOpen ? () => onOpen(item) : undefined}
+        onMouseEnter={() => onHoverChange?.(syncId)}
+        onMouseLeave={() => onHoverChange?.(null)}
         style={{ cursor: canOpen ? 'pointer' : 'default' }}
       >
         <div className="flex flex-col items-center gap-[6px] flex-none w-[44px]">
