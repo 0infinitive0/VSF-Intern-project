@@ -3,6 +3,12 @@ name: Deploy Staging (main)
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      expose_swagger:
+        description: "Temporarily expose Swagger UI (/docs, /redoc, /openapi.json) via Caddy"
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-${{ github.ref_name }}
@@ -23,15 +29,22 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          envs: EXPOSE_SWAGGER
           script: |
             set -e
             cd /home/ubuntu/app
             git fetch origin main
             git checkout main
             git reset --hard origin/main
+            if [ "$EXPOSE_SWAGGER" = "true" ]; then
+              cp Caddyfile.swagger-debug Caddyfile
+            fi
             docker compose -f docker-compose.staging.yml build
             docker compose -f docker-compose.staging.yml up -d --wait --wait-timeout 300
+            docker compose -f docker-compose.staging.yml exec -T caddy caddy reload --config /etc/caddy/Caddyfile
             docker image prune -f
+        env:
+          EXPOSE_SWAGGER: ${{ inputs.expose_swagger }}
 
       - name: Health check backend + frontend
         env:

@@ -1,0 +1,18 @@
+{$DOMAIN} {
+	# Debug-only: exposes Swagger UI (/docs), ReDoc, and openapi.json via Caddy.
+	# Applied only when deploy.yml runs with expose_swagger=true; every normal
+	# push-to-main deploy resets the working tree and uses the plain Caddyfile.
+	handle /docs* {
+		reverse_proxy backend:8000
+	}
+	handle /redoc* {
+		reverse_proxy backend:8000
+	}
+	handle /openapi.json {
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		reverse_proxy frontend:5173
+	}
+}
