@@ -73,6 +73,10 @@ export interface DayItem {
   // Already returned today by to_trip_plan_payload (backend/src/services/trip_formatter.py:320-323)
   // — this is a type-gap fix, not a new backend field.
   coordinates?: string | null
+  // Attraction/hotel photo carried through from PlaceCandidate.image_url
+  // (trip_scheduler.py) into the itinerary item and emitted at
+  // trip_formatter.py:335 — already on the wire, just not typed until now.
+  image_url?: string | null
   // Real routed distance/duration from routing.py (recalculate_itinerary_routes);
   // null when coordinates are missing on either end, routing failed/timed out, or no
   // route was found — render the straight-line fallback in all of those cases.
@@ -104,6 +108,8 @@ export interface Hotel {
   // corrected from a prior comment here that claimed WKT; the DB column and every
   // backend parser only ever handle "lat,lng".
   coordinates?: string | null
+  // Already emitted by to_trip_plan_payload (trip_formatter.py:358) — a type-gap fix.
+  image_url?: string | null
 }
 
 export type TripStatus = string // backend sends free-text status, e.g. "Draft"

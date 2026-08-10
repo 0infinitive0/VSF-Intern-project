@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { formatHotelStars } from '../lib/format-stars'
 import { dayRouteMetrics, tripRouteMetrics } from '../lib/leg'
 import { dayColor } from '../lib/map-colors'
+import RemoteImage from './remote-image'
 import type { Day, TripPlan } from '../types'
 
 const NUM_LOCALE = (lang: string) => (lang === 'vi' ? 'vi-VN' : 'en-US')
@@ -102,9 +103,11 @@ export default function TripOverviewTab({
 
       {hotel && hotel.name && (
         <div className="p-[14px] rounded-[20px] bg-glass-2 border border-edge flex gap-[13px] items-center">
-          <div
+          <RemoteImage
+            src={hotel.image_url}
+            alt={t('hotelImgAlt', { name: hotel.name })}
             className="w-[62px] h-[62px] flex-none rounded-[16px]"
-            style={{ background: 'repeating-linear-gradient(115deg, rgba(42,145,135,.18) 0 8px, rgba(42,145,135,.06) 8px 16px)' }}
+            icon="hotel"
           />
           <div className="flex-1 min-w-0">
             <div className="text-[10px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
