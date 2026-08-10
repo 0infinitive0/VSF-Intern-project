@@ -162,18 +162,18 @@ body {
 }
 
 .custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: var(--color-primary-fixed);
+  background-color: rgba(120, 130, 145, .4);
   border-radius: 20px;
 }
+
 .custom-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-primary-fixed) transparent;
+  scrollbar-color: rgba(120, 130, 145, .4);
 }
 
 .composer-scrollbar::-webkit-scrollbar {
