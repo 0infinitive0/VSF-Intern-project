@@ -14,11 +14,11 @@
  */
 
 import { useReducer, useEffect, useRef, useCallback } from 'react'
-import { changeHotel as changeHotelRequest, createSession, sendMessage } from '../api/chat-client'
+import { changeHotel as changeHotelRequest, createSession, selectHotel as selectHotelRequest, sendMessage } from '../api/chat-client'
 import { restoreSession } from '../api/session-client'
 import { sendMessageStream, StreamUnsupported } from '../api/stream-client'
 import i18n from '../i18n'
-import type { ChatState, PlannerChatResponse, PhaseKey, SessionRestore } from '../types'
+import type { ChatMessage, ChatState, PlannerChatResponse, PhaseKey, SessionRestore } from '../types'
 
 const SESSION_KEY = 'vsf_trip_planner_session_id'
 
@@ -32,6 +32,7 @@ export const INITIAL_STATE: ChatState = {
   messages: [],
   suggestions: [],
   hotelOptions: [],
+  hotelFilterData: { minPrice: null, maxPrice: null, allPreferences: [], activePreferences: [] },
   tripPlan: null,
   intake: null,
   pending: false,
@@ -58,6 +59,9 @@ export type Action =
   // "A" episode (ABA); turnId only ever increases (see RESET/RESTORE).
   | { type: 'SEND_SUCCESS'; id: string; data: PlannerChatResponse; turnId: number }
   | { type: 'SEND_ERROR'; id: string; error: string; turnId: number }
+  | { type: 'HOTEL_SELECTION_START'; id: string; text: string; turnId: number }
+  | { type: 'HOTEL_SELECTION_SUCCESS'; data: PlannerChatResponse; turnId: number }
+  | { type: 'HOTEL_SELECTION_ERROR'; error: string; turnId: number }
   | { type: 'TICK' }
   | { type: 'RESET'; sessionId: string }
   | { type: 'RESTORE'; sessionId: string; data: SessionRestore }
@@ -71,6 +75,28 @@ export type Action =
   | { type: 'HOTELS_CHANGE_START' }
   | { type: 'HOTELS_CHANGE_SUCCESS'; data: PlannerChatResponse }
   | { type: 'HOTELS_CHANGE_ERROR'; error: string }
+
+function applyPlannerResponse(state: ChatState, data: PlannerChatResponse, message?: ChatMessage): ChatState {
+  return {
+    ...state,
+    pending: false,
+    elapsedMs: 0,
+    messages: message ? [...state.messages, message] : state.messages,
+    suggestions: data.suggestions || [],
+    hotelOptions: data.hotel_options || [],
+    hotelFilterData: {
+      minPrice: data.compound_min_price ?? null,
+      maxPrice: data.compound_max_price ?? null,
+      allPreferences: data.all_preferences ?? [],
+      activePreferences: data.active_preferences ?? [],
+    },
+    tripPlan: data.trip_plan || state.tripPlan,
+    intake: data.intake || state.intake,
+    error: null,
+    streamingText: '',
+    phases: [],
+  }
+}
 
 // ── Reducer ───────────────────────────────────────────────────────────────────
 
@@ -98,6 +124,25 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
         // Freeze chips so they aren't clickable while in-flight
         suggestions: [],
         hotelOptions: [],
+        hotelFilterData: INITIAL_STATE.hotelFilterData,
+        streamingText: '',
+        phases: [],
+      }
+
+    case 'HOTEL_SELECTION_START':
+      if (action.turnId !== state.turnId) return state
+      return {
+        ...state,
+        pending: true,
+        elapsedMs: 0,
+        error: null,
+        messages: [
+          ...state.messages,
+          { id: action.id, role: 'user', text: action.text, stage: 'planned', at: new Date().toISOString() },
+        ],
+        suggestions: [],
+        hotelOptions: [],
+        hotelFilterData: INITIAL_STATE.hotelFilterData,
         streamingText: '',
         phases: [],
       }
@@ -120,19 +165,21 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
         isError,
         at: new Date().toISOString(),
       }
-      return {
-        ...state,
-        pending: false,
-        elapsedMs: 0,
-        messages: [...state.messages, newMsg],
-        suggestions: data.suggestions || [],
-        hotelOptions: data.hotel_options || [],
-        tripPlan: data.trip_plan || state.tripPlan,
-        intake: data.intake || state.intake,
-        error: null,
-        streamingText: '',
-        phases: [],
+      return applyPlannerResponse(state, data, newMsg)
+    }
+
+    case 'HOTEL_SELECTION_SUCCESS': {
+      if (action.turnId !== state.turnId) return state
+      const { data } = action
+      const newMsg = {
+        id: `${state.messages[state.messages.length - 1]?.id ?? 'hotel_selection'}_ai`,
+        role: 'ai' as const,
+        text: data.reply,
+        stage: data.stage,
+        isError: data.stage === 'error',
+        at: new Date().toISOString(),
       }
+      return applyPlannerResponse(state, data, newMsg)
     }
 
     case 'SEND_ERROR':
@@ -157,6 +204,10 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
         streamingText: '',
         phases: [],
       }
+
+    case 'HOTEL_SELECTION_ERROR':
+      if (action.turnId !== state.turnId) return state
+      return { ...state, pending: false, elapsedMs: 0, error: action.error, streamingText: '', phases: [] }
 
     case 'TICK':
       return { ...state, elapsedMs: state.elapsedMs + 1000 }
@@ -390,6 +441,26 @@ export function useChatSession() {
       })
     }
   }, [state.hotelsLoading, state.sessionId])
+  const selectHotel = useCallback(
+    async (hotelId: string | number, selectionMessage: string) => {
+      if (state.pending || !state.sessionId) return
+
+      const turnId = state.turnId
+      const id = `hotel_selection_${++idCounter.current}`
+      dispatch({ type: 'HOTEL_SELECTION_START', id, text: selectionMessage, turnId })
+      try {
+        const data = await selectHotelRequest(state.sessionId, hotelId, selectionMessage)
+        dispatch({ type: 'HOTEL_SELECTION_SUCCESS', data, turnId })
+      } catch (error) {
+        dispatch({
+          type: 'HOTEL_SELECTION_ERROR',
+          error: i18n.t('errorNetwork', { msg: error instanceof Error ? error.message : String(error) }),
+          turnId,
+        })
+      }
+    },
+    [state.pending, state.sessionId, state.turnId],
+  )
 
   // ── startNew ─────────────────────────────────────────────────────────────
   // Deliberately no DELETE: the previous session stays persisted and stays
@@ -434,5 +505,5 @@ export function useChatSession() {
     }
   }, [])
 
-  return { state, send, startNew, restore, changeHotel }
+  return { state, send, selectHotel, startNew, restore, changeHotel }
 }

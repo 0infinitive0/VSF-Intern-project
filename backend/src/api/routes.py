@@ -272,36 +272,18 @@ def select_hotel(request: SelectHotelRequest) -> PlannerChatResponse:
 
     with session.lock:
         try:
-            from src.agents.session import derive_stage, handle_frontend_hotel_selection, suggestions_for
+            from src.agents.session import handle_frontend_hotel_selection, suggestions_for
 
-            result = handle_frontend_hotel_selection(session, str(request.hotel_id))
-
-            safe_reply = sanitize_system_error(result.text, session_id=session_id)
-            suggestions = suggestions_for(session)
-            hotel_options = to_hotel_options_payload(session.pending_hotel_selection)
-            trip_plan = to_trip_plan_payload(session.trip_data)
-            intake = IntakeStatus.from_state(session.intake_state, session.hotel_pref_state)
-
-            requires_stay_dates = bool(
-                session.intake_state.destination
-                and session.intake_state.people
-                and session.hotel_pref_state.is_complete
-                and not session.intake_state.has_explicit_stay_dates
+            result = handle_frontend_hotel_selection(
+                session, str(request.hotel_id), user_input=request.selection_message
             )
 
-            return PlannerChatResponse(
-                session_id=session_id,
-                reply=safe_reply,
-                suggestions=suggestions,
-                stage=derive_stage(result, session),
-                hotel_options=hotel_options,
-                trip_plan=trip_plan,
-                intake=intake,
-                requires_stay_dates=requires_stay_dates,
-                compound_min_price=session.pending_hotel_selection.get("compound_min_price") if session.pending_hotel_selection else None,
-                compound_max_price=session.pending_hotel_selection.get("compound_max_price") if session.pending_hotel_selection else None,
-                all_preferences=session.pending_hotel_selection.get("all_preferences") or [] if session.pending_hotel_selection else [],
-                active_preferences=session.pending_hotel_selection.get("active_preferences") or [] if session.pending_hotel_selection else [],
+            return build_chat_response(
+                session,
+                result,
+                session_id,
+                session.language,
+                suggestions_for(session),
             )
         except Exception as exc:
             logger.exception("Chat error for session %s", session_id)

@@ -44,6 +44,20 @@ export interface HotelOption {
   review_count?: number
   match_score?: number // 0..1, real composite ranking score (hotel_selection.py:_composite_score)
   match_reasons?: MatchReason[]
+  city?: string | null
+  preferences?: string[]
+}
+
+export interface PreferencePayload {
+  id: string
+  label: string
+}
+
+export interface HotelFilterData {
+  minPrice: number | null
+  maxPrice: number | null
+  allPreferences: PreferencePayload[]
+  activePreferences: PreferencePayload[]
 }
 
 // Vehicle/profile code Mapbox Directions was actually called with — never a display
@@ -173,6 +187,7 @@ export interface ChatState {
   messages: ChatMessage[]
   suggestions: Suggestion[]
   hotelOptions: HotelOption[]
+  hotelFilterData: HotelFilterData
   tripPlan: TripPlan | null
   intake: IntakeStatus | null
   pending: boolean
@@ -201,6 +216,10 @@ export interface PlannerChatResponse {
   hotel_options: HotelOption[]
   trip_plan: TripPlan | null
   intake?: IntakeStatus | null
+  compound_min_price?: number | null
+  compound_max_price?: number | null
+  all_preferences?: PreferencePayload[]
+  active_preferences?: PreferencePayload[]
 }
 
 // ── Phase 3 payloads — GET /hotels/{id}, GET /attractions/{id} ──────────────────

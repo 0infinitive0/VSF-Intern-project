@@ -72,6 +72,19 @@ export async function sendMessage(
   })
 }
 
+/** Select a hotel through the dedicated UI endpoint, never through free chat. */
+export async function selectHotel(
+  sessionId: string,
+  hotelId: string | number,
+  selectionMessage: string,
+): Promise<PlannerChatResponse> {
+  return request('POST', '/hotels/select', {
+    session_id: sessionId,
+    hotel_id: hotelId,
+    selection_message: selectionMessage,
+  })
+}
+
 /**
  * Fetch the current trip plan for a session.
  * Throws on 404.

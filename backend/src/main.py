@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +12,11 @@ from src.observability import install_api_error_logging
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    logging.basicConfig(
+        level=getattr(logging, settings.log_level),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    logging.getLogger().setLevel(settings.log_level)
     print(f"Starting {settings.app_name} in {settings.app_env} mode")
     # State is per-session now (TripSession.pending_hotel_selection), so there is
     # no longer a process-global file whose leftover contents could poison the

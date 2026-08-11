@@ -801,29 +801,36 @@ def _process_chat_turn(
 
 
 
-def _handle_frontend_hotel_selection(session: TripSession, hotel_id: str) -> TurnResult:
-    """Handles direct hotel selection from the frontend API."""
+def _pending_hotel_selection_for_frontend(session: TripSession) -> dict[str, Any] | None:
     pending = session.pending_hotel_selection
+    if pending:
+        return pending
+
+    archived = (session.trip_data or {}).get("hotel_selection_options")
+    if not isinstance(archived, dict):
+        return None
+
+    restored = deepcopy(archived)
+    restored["mode"] = "change_hotel"
+    return restored
+
+
+def _handle_frontend_hotel_selection(session: TripSession, hotel_id: str) -> TurnResult:
+    """Handle direct UI selection through the shared hotel-trip builder."""
+    pending = _pending_hotel_selection_for_frontend(session)
     if not pending:
         return TurnResult(
             text="SYSTEM ERROR: Chưa có danh sách khách sạn nào để chọn. Hãy tạo gợi ý khách sạn trước.",
-            tool="select_hotel"
+            tool="select_hotel",
         )
 
-    from src.services.trip_scheduler import PlaceCandidate
     from src.services.hotel_selection import resolve_hotel_selection
-    from src.services.trip_planner import (
-        _build_trip_data,
-        _generate_and_save_itinerary,
-        _reapply_planning_constraints,
-        _scheduled_attraction_ids,
-    )
-    from src.services.trip_formatter import format_trip_response_from_json
+    from src.services.trip_planner import build_selected_hotel_trip
+    from src.services.trip_scheduler import PlaceCandidate
 
-    raw_options = pending.get("options") or []
     options = [
         (data, PlaceCandidate.from_mapping({**data, "category": "Hotel"}))
-        for data in raw_options
+        for data in pending.get("options") or []
         if isinstance(data, dict)
     ]
     resolved = resolve_hotel_selection(hotel_id, options)
@@ -831,106 +838,51 @@ def _handle_frontend_hotel_selection(session: TripSession, hotel_id: str) -> Tur
         ids = [str(data.get("id")) for data, _ in options]
         return TurnResult(
             text=f"SYSTEM ERROR: Không tìm thấy khách sạn đã chọn. Looking for {hotel_id}, available: {ids}",
-            tool="select_hotel"
+            tool="select_hotel",
         )
 
-    hotel_data, _candidate = resolved
-    mode = pending.get("mode", "new_trip")
-    destination = pending.get("destination", "")
-    duration = pending.get("duration", "")
-    start_date = pending.get("start_date")
-    end_date = pending.get("end_date")
-    people = pending.get("people", "")
-    preferences = pending.get("preferences_text", "")
-    stay_kwargs = {}
-    if start_date is not None or end_date is not None:
-        stay_kwargs = {"start_date": start_date, "end_date": end_date}
-
+    mode = str(pending.get("mode") or "new_trip")
+    current_trip_data = session.trip_data
     if mode in {"change_hotel", "replace_trip_preferences"}:
-        trip_data = session.trip_data
-        if trip_data is None:
+        if current_trip_data is None:
             _clear_pending_hotel_selection(session)
-            return TurnResult(
-                text="SYSTEM ERROR: Không còn kế hoạch chuyến đi để đổi khách sạn.",
-                tool="select_hotel"
-            )
-
-        saved_itinerary = (trip_data.get("itineraries") or [{}])[0]
-        if isinstance(saved_itinerary, dict) and str(saved_itinerary.get("status") or "").casefold() == "finalized":
+            return TurnResult(text="SYSTEM ERROR: Không còn kế hoạch chuyến đi để đổi khách sạn.", tool="select_hotel")
+        itinerary = (current_trip_data.get("itineraries") or [{}])[0]
+        if isinstance(itinerary, dict) and str(itinerary.get("status") or "").casefold() == "finalized":
             _clear_pending_hotel_selection(session)
             return TurnResult(
                 text="Kế hoạch đã xác nhận không thể chỉnh sửa. Hãy tạo một kế hoạch mới nếu cần thay đổi.",
-                tool="select_hotel"
+                tool="select_hotel",
             )
 
-        planning_constraints = pending.get("planning_constraints") or {} if mode == "change_hotel" else {}
-        try:
-            updated_data = _build_trip_data(
-                destination,
-                duration,
-                people,
-                preferences,
-                preselected_hotel=hotel_data,
-                planning_constraints=planning_constraints,
-                exclude_attraction_ids=_scheduled_attraction_ids(trip_data),
-                session_id=session.session_id,
-                **stay_kwargs,
-            )
-        except Exception as exc:
-            logger.exception("Hotel change failed")
-            return TurnResult(text=f"SYSTEM ERROR: {exc}", tool="select_hotel")
-
-        adjustment = (
-            "Đã đổi khách sạn và lập lại toàn bộ các cụm địa điểm theo vị trí mới."
-            if mode == "change_hotel"
-            else "Đã cập nhật thông tin chuyến đi, chọn lại khách sạn và lập một lịch trình mới."
+    try:
+        generated = build_selected_hotel_trip(
+            pending,
+            resolved[0],
+            current_trip_data=current_trip_data if mode in {"change_hotel", "replace_trip_preferences"} else None,
+            session_id=session.session_id,
+            intake_context=_build_intake_context(session.intake_state),
+            language=session.language,
         )
-        updated_data.setdefault("adjustments", []).append(adjustment)
-        updated_itinerary = (updated_data.get("itineraries") or [{}])[0]
-        if isinstance(updated_itinerary, dict):
-            updated_itinerary["status"] = "Draft"
-            updated_itinerary.pop("summary", None)
-            if mode == "change_hotel" and planning_constraints:
-                updated_itinerary["planning_constraints"] = planning_constraints
-                updated_data.setdefault("adjustments", []).extend(_reapply_planning_constraints(updated_data))
-        
-        session.trip_data = updated_data
-        session.trip_data["hotel_selection_options"] = deepcopy(pending)
-        _clear_pending_hotel_selection(session)
-        session.initial_plan_complete = True
-        session.planning_new_trip = False
+    except Exception as exc:
+        logger.exception("Hotel selection failed")
+        error_text = str(exc)
         return TurnResult(
-            text=format_trip_response_from_json(updated_data),
-            tool="select_hotel"
+            text=error_text if error_text.startswith("SYSTEM ERROR:") else f"SYSTEM ERROR: {error_text}",
+            tool="select_hotel",
         )
 
-    # New trip mode
-    captured = {}
-    def _capture_save(t_data: dict) -> None:
-        captured["trip_data"] = t_data
-
-    reply = _generate_and_save_itinerary(
-        destination,
-        duration,
-        people,
-        preferences,
-        preselected_hotel=hotel_data,
-        session_id=session.session_id,
-        save=_capture_save,
-        **stay_kwargs,
-    )
-    if str(reply).startswith("SYSTEM ERROR:"):
-        return TurnResult(text=str(reply), tool="select_hotel")
-    
-    session.trip_data = captured.get("trip_data")
-    if session.trip_data is not None:
-        session.trip_data["hotel_selection_options"] = deepcopy(pending)
+    session.trip_data = generated.trip_data
     _clear_pending_hotel_selection(session)
     session.initial_plan_complete = True
     session.planning_new_trip = False
     return TurnResult(
-        text=str(reply),
-        tool="select_hotel"
+        text=t(
+            "Lịch trình của bạn đã được tạo và sẵn sàng trong tab Lịch trình. "
+            "Nếu bạn cần thêm thông tin hoặc hỗ trợ gì khác, hãy cho mình biết nhé!",
+            session.language,
+        ),
+        tool="select_hotel",
     )
 
 
@@ -977,9 +929,11 @@ def process_chat_turn(
     return _persist_turn(session, result, user_input)
 
 
-def handle_frontend_hotel_selection(session: TripSession, hotel_id: str) -> TurnResult:
+def handle_frontend_hotel_selection(
+    session: TripSession, hotel_id: str, *, user_input: str | None = None
+) -> TurnResult:
     """Run a direct hotel-selection action and persist its changed state."""
-    return _persist_turn(session, _handle_frontend_hotel_selection(session, hotel_id))
+    return _persist_turn(session, _handle_frontend_hotel_selection(session, hotel_id), user_input=user_input)
 
 
 def _handle_frontend_hotel_change(session: TripSession) -> TurnResult:

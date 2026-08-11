@@ -34,6 +34,7 @@ export default function ChatPanel({
   onChangeHotel,
   stage,
   onViewStage,
+  hotelOptionsAvailable,
   width,
   intakeForm,
   setIntakeForm,
@@ -49,6 +50,7 @@ export default function ChatPanel({
    * view override (see App.tsx) rather than the live backend-derived stage. */
   stage: StageView
   onViewStage: (stage: StageView) => void
+  hotelOptionsAvailable: boolean
   width: number
   intakeForm: IntakeFormState
   setIntakeForm: (updater: (prev: IntakeFormState) => IntakeFormState) => void
@@ -64,7 +66,6 @@ export default function ChatPanel({
   // gates which steps are reachable at all.
   const intakeComplete = hotelOptions.length > 0 || tripPlan != null
   const hotelPicked = Boolean(tripPlan)
-  const hotelOptionsAvailable = hotelOptions.length > 0
 
   // Header step label — design dc.html:2506 (stepEditing not tracked client-side;
   // the intake form pre-fills instead, so "step1Full" is the honest label).
@@ -141,7 +142,6 @@ export default function ChatPanel({
         hotelPicked={hotelPicked}
         hotelOptionsAvailable={hotelOptionsAvailable}
         hotelsLoading={hotelsLoading}
-        onSend={onSend}
         onChangeHotel={onChangeHotel}
         onViewStage={onViewStage}
       />

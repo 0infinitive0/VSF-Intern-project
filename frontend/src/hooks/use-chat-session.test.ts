@@ -9,6 +9,57 @@ import type { ChatState, SessionRestore } from '../types'
 let chatSessionReducer: typeof ChatSessionReducer
 let INITIAL_STATE: typeof InitialStateType
 
+describe('chatSessionReducer â€” direct hotel selection', () => {
+  it('records the named hotel choice and concise completion message', () => {
+    const before: ChatState = {
+      ...INITIAL_STATE,
+      sessionId: 's1',
+      messages: [{ id: 'existing', role: 'ai', text: 'Existing itinerary', stage: 'planned' }],
+    }
+    const started = chatSessionReducer(before, {
+      type: 'HOTEL_SELECTION_START', id: 'selection-1', text: 'Chọn khách sạn New hotel', turnId: before.turnId,
+    })
+    const next = chatSessionReducer(started, {
+      type: 'HOTEL_SELECTION_SUCCESS',
+      turnId: before.turnId,
+      data: {
+        session_id: 's1', reply: 'New itinerary is ready', suggestions: [], stage: 'planned', hotel_options: [],
+        trip_plan: { status: 'Draft', destination: 'Hồ Chí Minh', duration_days: 2, start_date: null, end_date: null, number_of_adults: 2, hotel: { id: 'hotel-2', name: 'New hotel' }, days: [], adjustments: [] },
+      },
+    })
+
+    expect(next.pending).toBe(false)
+    expect(next.messages.map((message) => message.text)).toEqual([
+      'Existing itinerary',
+      'Chọn khách sạn New hotel',
+      'New itinerary is ready',
+    ])
+    expect(next.messages[2].stage).toBe('planned')
+    expect(next.tripPlan?.hotel?.id).toBe('hotel-2')
+  })
+})
+
+describe('chatSessionReducer hotel filter API data', () => {
+  it('keeps server-provided price bounds and active preferences with hotel options', () => {
+    const next = chatSessionReducer(INITIAL_STATE, {
+      type: 'SEND_SUCCESS', id: 'filters', turnId: INITIAL_STATE.turnId,
+      data: {
+        session_id: 's1', reply: 'Hotels found', suggestions: [], stage: 'hotel_options', trip_plan: null,
+        hotel_options: [{ index: 1, id: 'hotel-1', name: 'Hotel A', average_nightly_price: 1_200_000 }],
+        compound_min_price: 800_000, compound_max_price: 2_000_000,
+        all_preferences: [{ id: 'pool', label: 'Pool' }],
+        active_preferences: [{ id: 'pool', label: 'Pool' }],
+      },
+    })
+
+    expect(next.hotelFilterData).toEqual({
+      minPrice: 800_000, maxPrice: 2_000_000,
+      allPreferences: [{ id: 'pool', label: 'Pool' }],
+      activePreferences: [{ id: 'pool', label: 'Pool' }],
+    })
+  })
+})
+
 beforeAll(async () => {
   globalThis.localStorage ??= {
     getItem: () => null,

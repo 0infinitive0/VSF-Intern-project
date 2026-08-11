@@ -1,10 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import HotelFilterBar from './hotel-filter-bar'
 import HotelOptionCards from './hotel-option-card'
 import HotelDetailPanel from './hotel-detail-panel'
 import MapView, { type MapMarkerSpec } from './map-view'
 import { useMapSync } from '../hooks/use-map-sync'
 import { hotelOptionSyncId } from '../lib/map-sync-id'
+import { filterAndSortHotels, type HotelSortOrder } from '../lib/hotel-filters'
 import type { useFocusMode } from '../hooks/use-focus-mode'
 import type { Theme } from '../hooks/use-theme'
 import type { ChatState, HotelOption } from '../types'
@@ -48,29 +50,43 @@ function nightsFrom(startIso?: string | null, endIso?: string | null): number | 
  */
 export default function StageHotels({
   state,
+  hotelOptions,
+  selectedIndex,
+  onSelectHotel,
+  onConfirmHotel,
   focusMode,
-  onSend,
   theme,
 }: {
   state: ChatState
+  hotelOptions: HotelOption[]
+  selectedIndex: number | null
+  onSelectHotel: (index: number) => void
+  onConfirmHotel: (hotel: HotelOption) => void
   focusMode: FocusModeApi
-  onSend: (text: string, options?: { displayText?: string }) => void
   theme: Theme
 }) {
   const { t } = useTranslation()
-  const hotels = state.hotelOptions
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
+  const hotels = hotelOptions
+  const [minPrice, setMinPrice] = useState<number | null>(null)
+  const [maxPrice, setMaxPrice] = useState<number | null>(null)
+  const [minStars, setMinStars] = useState<number | null>(null)
+  const [preferenceIds, setPreferenceIds] = useState<string[]>([])
+  const [sortOrder, setSortOrder] = useState<HotelSortOrder>('match')
+  const filteredHotels = useMemo(
+    () => filterAndSortHotels(hotels, { minPrice, maxPrice, minStars, preferenceIds, sortOrder }),
+    [hotels, maxPrice, minPrice, minStars, preferenceIds, sortOrder],
+  )
   const mapSync = useMapSync()
-
-  useEffect(() => {
-    setSelectedIndex(null)
-  }, [hotels])
 
   const focusedId = focusMode.focus?.kind === 'hotel' ? focusMode.focus.id : null
   const focused = focusedId != null
   const focusedHotel = hotels.find((h) => h.id === focusedId)
   const selectedHotel = hotels.find((h) => h.index === selectedIndex) ?? null
   const nights = nightsFrom(state.intake?.start_date, state.intake?.end_date)
+
+  useEffect(() => {
+    setPreferenceIds(state.hotelFilterData.activePreferences.map(({ id }) => id))
+  }, [hotels, state.hotelFilterData.activePreferences])
 
   const listRef = useRef<HTMLDivElement>(null)
   const savedScroll = useRef(0)
@@ -87,19 +103,19 @@ export default function StageHotels({
   // has nothing to fetch.
   const markers: MapMarkerSpec[] = useMemo(
     () =>
-      hotels.map((hotel) => ({
+      filteredHotels.map((hotel) => ({
         syncId: hotelOptionSyncId(hotel),
         coordinates: hotel.coordinates,
         kind: 'hotel' as const,
         openId: hotel.id,
       })),
-    [hotels],
+    [filteredHotels],
   )
 
   function handleMarkerClick(marker: MapMarkerSpec) {
     mapSync.focusOn(marker.syncId)
     if (marker.openId) {
-      const hotel = hotels.find((h) => h.id === marker.openId)
+      const hotel = filteredHotels.find((h) => h.id === marker.openId)
       if (hotel) openFocus(hotel)
     }
   }
@@ -112,7 +128,7 @@ export default function StageHotels({
 
   function confirmSelection() {
     if (!selectedHotel) return
-    onSend(String(selectedHotel.index), { displayText: t('hotelPickedMessage', { name: selectedHotel.name }) })
+    onConfirmHotel(selectedHotel)
   }
 
   return (
@@ -166,16 +182,24 @@ export default function StageHotels({
             transition: 'flex-basis .62s cubic-bezier(.22,1,.36,1)',
           }}
         >
+          <HotelFilterBar hotels={hotels} apiPriceMin={state.hotelFilterData.minPrice} apiPriceMax={state.hotelFilterData.maxPrice} allPreferences={state.hotelFilterData.allPreferences} minPrice={minPrice} maxPrice={maxPrice} minStars={minStars} preferenceIds={preferenceIds} sortOrder={sortOrder} onMinPriceChange={setMinPrice} onMaxPriceChange={setMaxPrice} onMinStarsChange={setMinStars} onPreferenceIdsChange={setPreferenceIds} onSortOrderChange={setSortOrder} onClear={() => {
+            setMinPrice(null)
+            setMaxPrice(null)
+            setMinStars(null)
+            setPreferenceIds([])
+            setSortOrder('match')
+          }} />
           <HotelOptionCards
-            hotels={hotels}
+            hotels={filteredHotels}
             selectedIndex={selectedIndex}
             focusedId={focusedId}
             nights={nights}
-            onSelect={(hotel) => setSelectedIndex(hotel.index)}
+            onSelect={(hotel) => onSelectHotel(hotel.index)}
             onOpen={openFocus}
             hoveredId={mapSync.hoveredId}
             onHoverChange={mapSync.setHoveredId}
           />
+          {filteredHotels.length === 0 && <p className="px-3 text-center text-[12px] text-on-surface-muted" role="status">{t('hotelFiltersNoResults')}</p>}
         </div>
 
         <div
@@ -201,7 +225,7 @@ export default function StageHotels({
                 style={{ padding: '11px 14px', backdropFilter: 'blur(20px) saturate(1.6)', maxWidth: '280px' }}
               >
                 <div className="text-[10px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
-                  {t('mapHotelCountLabel', { count: hotels.length })}
+                  {t('mapHotelCountLabel', { count: filteredHotels.length })}
                 </div>
                 <div className="text-[11.5px] text-on-surface-variant mt-0.5" style={{ lineHeight: 1.45 }}>
                   {selectedHotel ? t('mapHotelHintSelected', { name: selectedHotel.name }) : t('mapHotelHintEmpty')}

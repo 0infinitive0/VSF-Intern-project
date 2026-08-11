@@ -8,6 +8,7 @@ const BASE: ChatState = {
   messages: [],
   suggestions: [],
   hotelOptions: [],
+  hotelFilterData: { minPrice: null, maxPrice: null, allPreferences: [], activePreferences: [] },
   tripPlan: null,
   intake: null,
   pending: false,

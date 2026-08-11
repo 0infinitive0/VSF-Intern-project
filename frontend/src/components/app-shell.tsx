@@ -10,7 +10,7 @@ import type { IntakeChecklistRowKey } from '../lib/intake-checklist-rows'
 import type { PreferenceKey } from '../lib/intake-options'
 import type { IntakeField } from '../lib/next-intake-field'
 import type { StageView } from '../lib/derive-stage'
-import type { ChatState, SessionSummary } from '../types'
+import type { ChatState, HotelOption, SessionSummary } from '../types'
 
 const DESKTOP_BREAKPOINT_PX = 768 // Tailwind `md`
 const SIDEBAR_PUSH_BREAKPOINT_PX = 1024 // Tailwind `lg`
@@ -60,6 +60,10 @@ export default function AppShell({
   onNewTrip,
   stage,
   onViewStage,
+  hotelOptions,
+  selectedHotelIndex,
+  onSelectHotel,
+  onConfirmHotel,
   chatWidth,
   onChatResizeStart,
   intakeForm,
@@ -81,6 +85,10 @@ export default function AppShell({
   onNewTrip: () => void
   stage: StageView
   onViewStage: (stage: StageView) => void
+  hotelOptions: HotelOption[]
+  selectedHotelIndex: number | null
+  onSelectHotel: (index: number) => void
+  onConfirmHotel: (hotel: HotelOption) => void
   chatWidth: number
   onChatResizeStart: (e: MouseEvent) => void
   intakeForm: IntakeFormState
@@ -201,6 +209,7 @@ export default function AppShell({
             onChangeHotel={onChangeHotel}
             stage={stage}
             onViewStage={onViewStage}
+            hotelOptionsAvailable={hotelOptions.length > 0}
             width={effectiveChatWidth}
             intakeForm={intakeForm}
             setIntakeForm={setIntakeForm}
@@ -229,6 +238,10 @@ export default function AppShell({
           <StageRouter
             stage={stage}
             state={state}
+            hotelOptions={hotelOptions}
+            selectedHotelIndex={selectedHotelIndex}
+            onSelectHotel={onSelectHotel}
+            onConfirmHotel={onConfirmHotel}
             focusMode={focusMode}
             onSend={onSend}
             intakeForm={intakeForm}

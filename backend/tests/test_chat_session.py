@@ -10,6 +10,22 @@ from src.services.trip_edit_planner import EditOperation, TripEditPlan, TripEdit
 from src.services.trip_intake import DestinationOption, TripIntakeState, TripPreferenceUpdate
 
 
+def test_frontend_hotel_selection_reopens_archived_options_as_a_change():
+    archived = {
+        "mode": "new_trip",
+        "destination": "Hồ Chí Minh",
+        "options": [{"id": "hotel-2", "name": "Khách sạn mới"}],
+    }
+    session = _session(trip_data={"itineraries": [{"status": "Draft"}], "hotel_selection_options": archived})
+
+    pending = session_module._pending_hotel_selection_for_frontend(session)
+
+    assert pending is not archived
+    assert pending["mode"] == "change_hotel"
+    assert pending["options"] == archived["options"]
+    assert session.pending_hotel_selection is None
+
+
 @pytest.fixture(autouse=True)
 def _no_live_supervisor(monkeypatch):
     """These are unit tests of the deterministic `decide_route_by_rules`

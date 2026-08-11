@@ -5,6 +5,7 @@ import { useIntakeForm } from './hooks/use-intake-form'
 import { usePanelResize } from './hooks/use-panel-resize'
 import { useSessionHistory } from './hooks/use-session-history'
 import { deriveStageView, type StageView } from './lib/derive-stage'
+import type { HotelOption } from './types'
 import AppShell from './components/app-shell'
 
 /**
@@ -14,7 +15,7 @@ import AppShell from './components/app-shell'
  * or AppShell's structure again.
  */
 export default function App() {
-  const { state, send, startNew, restore, changeHotel } = useChatSession()
+  const { state, send, selectHotel: selectHotelDirect, startNew, restore, changeHotel } = useChatSession()
   const {
     form: intakeForm,
     setForm: setIntakeForm,
@@ -38,6 +39,34 @@ export default function App() {
     setViewOverride(null)
   }, [stage])
   const displayStage = viewOverride ?? stage
+  const [hotelOptionsBySession, setHotelOptionsBySession] = useState<Record<string, HotelOption[]>>({})
+  const [selectedHotelIndexBySession, setSelectedHotelIndexBySession] = useState<Record<string, number | null>>({})
+  const retainedHotelOptions = state.sessionId ? (hotelOptionsBySession[state.sessionId] ?? []) : []
+  const selectedHotelIndex = state.sessionId ? (selectedHotelIndexBySession[state.sessionId] ?? null) : null
+
+  useEffect(() => {
+    if (!state.sessionId || state.hotelOptions.length === 0) return
+    setHotelOptionsBySession((current) => ({ ...current, [state.sessionId!]: state.hotelOptions }))
+    setSelectedHotelIndexBySession((current) => ({ ...current, [state.sessionId!]: null }))
+  }, [state.sessionId, state.hotelOptions])
+
+  function selectHotel(index: number) {
+    if (!state.sessionId) return
+    setSelectedHotelIndexBySession((current) => ({ ...current, [state.sessionId!]: index }))
+  }
+
+  function handleSend(text: string) {
+    // Confirmation starts a real backend turn, so it must release the local
+    // phase override and resume the server-derived flow from that point.
+    setViewOverride(null)
+    send(text)
+  }
+
+  function handleHotelSelection(hotel: HotelOption) {
+    if (!hotel.id) return
+    setViewOverride(null)
+    selectHotelDirect(hotel.id, `Chọn khách sạn ${hotel.name}`)
+  }
 
   const { sessions, removeLocal, refresh } = useSessionHistory(state.sessionId, state.pending)
 
@@ -84,11 +113,15 @@ export default function App() {
   return (
     <AppShell
       state={state}
-      onSend={send}
+      onSend={handleSend}
       onChangeHotel={changeHotel}
       onNewTrip={handleNewTrip}
       stage={displayStage}
       onViewStage={setViewOverride}
+      hotelOptions={retainedHotelOptions}
+      selectedHotelIndex={selectedHotelIndex}
+      onSelectHotel={selectHotel}
+      onConfirmHotel={handleHotelSelection}
       chatWidth={chatWidth}
       onChatResizeStart={chatResize}
       intakeForm={intakeForm}

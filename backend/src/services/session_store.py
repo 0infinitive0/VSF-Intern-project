@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Iterable
 
 from langchain_core.messages import AIMessage, HumanMessage, messages_from_dict, messages_to_dict
+from postgrest.exceptions import APIError
 from supabase import Client, create_client
 
 from src.agents.state import TripState, initial_state
@@ -210,14 +211,35 @@ def _message_records(session: TripSession) -> list[dict[str, Any]]:
 def upsert(session: TripSession) -> None:
     """Atomically save the checkpoint and transcript; the RPC is retry-idempotent."""
     _require_safe_session_id(session.session_id)
-    _get_supabase_client().rpc(
-        "persist_session_checkpoint",
-        {
-            "p_session_id": session.session_id,
-            "p_context_data": serialize(session),
-            "p_messages": _message_records(session),
-        },
+    client = _get_supabase_client()
+    checkpoint = serialize(session)
+    messages = _message_records(session)
+    try:
+        client.rpc(
+            "persist_session_checkpoint",
+            {
+                "p_session_id": session.session_id,
+                "p_context_data": checkpoint,
+                "p_messages": messages,
+            },
+        ).execute()
+        return
+    except APIError as exc:
+        # Keep persistence available while an older environment is waiting for
+        # the migration that creates the transactional RPC.  Other database
+        # errors remain visible to the session hook and retain its retry path.
+        if exc.code != "PGRST202" or "persist_session_checkpoint" not in str(exc):
+            raise
+
+    client.table("sessions").upsert(
+        {"session_id": session.session_id, "context_data": checkpoint},
+        on_conflict="session_id",
     ).execute()
+    client.table("chat_messages").delete().eq("session_id", session.session_id).execute()
+    if messages:
+        client.table("chat_messages").insert(
+            [{"session_id": session.session_id, **message} for message in messages]
+        ).execute()
 
 
 def load(session_id: str) -> dict[str, Any] | None:

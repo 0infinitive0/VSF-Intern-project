@@ -14,8 +14,6 @@ tool doesn't leak an itinerary through any other path.
 
 from __future__ import annotations
 
-from copy import deepcopy
-
 import logging
 
 from langchain.tools import tool
@@ -25,16 +23,10 @@ from typing import Annotated
 from langchain_core.tools import InjectedToolCallId
 from langgraph.prebuilt import InjectedState
 
-from src.agents.state import TripState
 from src.i18n import t
 from src.services.hotel_selection import resolve_hotel_selection
 from src.services.trip_formatter import format_hotel_options
-from src.services.trip_planner import (
-    _build_trip_data,
-    _generate_and_save_itinerary,
-    _reapply_planning_constraints,
-    _scheduled_attraction_ids,
-)
+from src.services.trip_planner import build_selected_hotel_trip
 from src.services.trip_scheduler import PlaceCandidate
 
 logger = logging.getLogger(__name__)
@@ -50,9 +42,6 @@ def _reply_error(text: str, tool_call_id: str | None, **extra_updates: object) -
     return Command(
         update={**extra_updates, "messages": [ToolMessage(text, tool_call_id=tool_call_id)]}
     )
-
-from langchain_core.tools import InjectedToolCallId
-from langgraph.prebuilt import InjectedState
 
 @tool
 def select_hotel(selection: str, state: Annotated[dict, InjectedState], tool_call_id: Annotated[str, InjectedToolCallId]) -> Command:
@@ -96,114 +85,47 @@ def select_hotel(selection: str, state: Annotated[dict, InjectedState], tool_cal
         return _reply_error(reply, tool_call_id)
 
     hotel_data, _candidate = resolved
-    mode = pending.get("mode", "new_trip")
-    destination = pending.get("destination", "")
-    duration = pending.get("duration", "")
-    start_date = pending.get("start_date")
-    end_date = pending.get("end_date")
-    people = pending.get("people", "")
-    preferences = pending.get("preferences_text", "")
+    mode = str(pending.get("mode") or "new_trip")
     intake_context = pending.get("intake_context", "") or ""
-    stay_kwargs: dict[str, str | None] = {}
-    if start_date is not None or end_date is not None:
-        stay_kwargs = {"start_date": start_date, "end_date": end_date}
-
+    current_trip_data = state.get("trip_data")
     if mode in {"change_hotel", "replace_trip_preferences"}:
-        trip_data = state.get("trip_data")
-        if trip_data is None:
+        if current_trip_data is None:
             return _reply_error(
                 t("SYSTEM ERROR: Không còn kế hoạch chuyến đi để đổi khách sạn.", language),
                 tool_call_id,
                 pending_hotel_selection=None,
-            initial_plan_complete=True,
+                initial_plan_complete=True,
             )
-
-        saved_itinerary = (trip_data.get("itineraries") or [{}])[0]
-        if isinstance(saved_itinerary, dict) and str(saved_itinerary.get("status") or "").casefold() == "finalized":
+        itinerary = (current_trip_data.get("itineraries") or [{}])[0]
+        if isinstance(itinerary, dict) and str(itinerary.get("status") or "").casefold() == "finalized":
             return _reply_error(
-                t(
-                    "Kế hoạch đã xác nhận không thể chỉnh sửa. Hãy tạo một kế hoạch mới nếu cần thay đổi.",
-                    language,
-                ),
+                t("Kế hoạch đã xác nhận không thể chỉnh sửa. Hãy tạo một kế hoạch mới nếu cần thay đổi.", language),
                 tool_call_id,
                 pending_hotel_selection=None,
-            initial_plan_complete=True,
+                initial_plan_complete=True,
             )
 
-        planning_constraints = pending.get("planning_constraints") or {} if mode == "change_hotel" else {}
-        try:
-            updated_data = _build_trip_data(
-                destination,
-                duration,
-                people,
-                preferences,
-                preselected_hotel=hotel_data,
-                planning_constraints=planning_constraints,
-                exclude_attraction_ids=_scheduled_attraction_ids(trip_data),
-                session_id=session_id,
-                intake_context=intake_context,
-                language=language,
-                **stay_kwargs,
-            )
-        except Exception as exc:
-            logger.exception("Hotel change failed")
-            return _reply_error(f"SYSTEM ERROR: {exc}", tool_call_id)
-
-        adjustment = t(
-            "Đã đổi khách sạn và lập lại toàn bộ các cụm địa điểm theo vị trí mới.",
-            language,
-        ) if mode == "change_hotel" else t(
-            "Đã cập nhật thông tin chuyến đi, chọn lại khách sạn và lập một lịch trình mới.",
-            language,
+    try:
+        generated = build_selected_hotel_trip(
+            pending,
+            hotel_data,
+            current_trip_data=current_trip_data if mode in {"change_hotel", "replace_trip_preferences"} else None,
+            session_id=session_id,
+            intake_context=intake_context,
+            language=language,
         )
-        updated_data.setdefault("adjustments", []).append(adjustment)
-        updated_itinerary = (updated_data.get("itineraries") or [{}])[0]
-        if isinstance(updated_itinerary, dict):
-            updated_itinerary["status"] = "Draft"
-            updated_itinerary.pop("summary", None)
-            if mode == "change_hotel" and planning_constraints:
-                updated_itinerary["planning_constraints"] = planning_constraints
-                updated_data.setdefault("adjustments", []).extend(_reapply_planning_constraints(updated_data))
-        updated_data["hotel_selection_options"] = deepcopy(pending)
-        return _reply_success(
-            adjustment,
+    except Exception as exc:
+        logger.exception("Hotel selection failed")
+        error_text = str(exc)
+        return _reply_error(
+            error_text if error_text.startswith("SYSTEM ERROR:") else f"SYSTEM ERROR: {error_text}",
             tool_call_id,
-            trip_data=updated_data,
-            pending_hotel_selection=None,
-            initial_plan_complete=True,
         )
 
-    captured: dict[str, object] = {}
-
-    def _capture_save(trip_data: dict) -> None:
-        # The chat tool returns this in-memory bundle directly instead of using
-        # the persistence path, so calculate its route fields here as well.
-        from src.services.routing import recalculate_itinerary_routes
-
-        recalculate_itinerary_routes(trip_data)
-        captured["trip_data"] = trip_data
-
-    generated_reply = _generate_and_save_itinerary(
-        destination,
-        duration,
-        people,
-        preferences,
-        preselected_hotel=hotel_data,
-        session_id=session_id,
-        save=_capture_save,
-        intake_context=intake_context,
-        language=language,
-        **stay_kwargs,
-    )
-    if str(generated_reply).startswith("SYSTEM ERROR:"):
-        return _reply_error(str(generated_reply), tool_call_id)
-    generated_data = captured.get("trip_data")
-    if isinstance(generated_data, dict):
-        generated_data["hotel_selection_options"] = deepcopy(pending)
     return _reply_success(
         t("Đã chọn khách sạn. Lịch trình của bạn đã sẵn sàng trong tab Lịch trình.", language),
         tool_call_id,
-        trip_data=generated_data,
+        trip_data=generated.trip_data,
         pending_hotel_selection=None,
-            initial_plan_complete=True,
+        initial_plan_complete=True,
     )
