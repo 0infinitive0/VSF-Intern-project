@@ -112,7 +112,11 @@ export default function SidebarRail({
           </div>
         )}
 
-        <div className="flex-1 min-h-0">
+        {/* Must itself be a flex container: a plain block div here would size
+            correctly as an aside flex-item but wouldn't propagate that bound
+            down to ConversationList's scrollable child, which would then
+            render at full content height and spill over the footer below. */}
+        <div className="flex-1 min-h-0 flex flex-col">
           <ConversationList
             collapsed={collapsed}
             sessions={sessions}

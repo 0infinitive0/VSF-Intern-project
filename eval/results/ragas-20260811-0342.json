@@ -1,0 +1,2367 @@
+{
+  "run_metadata": {
+    "timestamp_utc": "20260811-0342",
+    "layer": "all",
+    "limit": null,
+    "llm_metrics": true,
+    "note": "retrieval section from 20260811-0229 run (unaffected by e2e date fix); e2e section re-run with corrected dates (2026-07-01..07)"
+  },
+  "retrieval": {
+    "rows": [
+      {
+        "id": "hotel-nhatrang-city-vi",
+        "search": "hotels",
+        "language": "vi",
+        "pair_id": "hotel-nhatrang-city",
+        "query": "khách sạn ở Nha Trang",
+        "expected_ids": [],
+        "acceptable_ids": [
+          "e1d4c962-4926-4344-ad14-7376bef9cba0",
+          "a12e4403-198d-4d8a-91c4-cfd547d13fa8",
+          "ee40f07a-c3eb-4aa9-8c05-5802ed6ac0d4",
+          "f9f42b85-c29e-48c6-8003-72bd0559bd2d",
+          "9d6dff59-3149-404a-8391-930ced6cf46c"
+        ],
+        "retrieved_ids": [
+          "352f765f-aecb-421f-8ab7-8468900c6ff8",
+          "c73d2bf3-1a1c-43e9-9c56-09b0d8c65554",
+          "678881e7-3789-4985-990c-a5c49b397e23",
+          "61439cf2-5560-4df8-80e8-c37e84c3da80",
+          "be7b2d1e-578a-4568-a6ba-7c718b294f6d",
+          "0f9ca50e-4a59-43f5-80a2-f12e83010015",
+          "0adde5a8-84b9-4180-b2e6-eb1ccc2a4358",
+          "5bd06e76-a642-4055-839d-9550aeb80c24",
+          "45778b4a-91a0-44b0-a10d-95f7d180da3f",
+          "1da35fe9-450f-4aae-b1b9-47860d4a3503"
+        ],
+        "non_llm_precision": 0.0,
+        "non_llm_recall": null,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 1.0,
+        "extracted_filters": {
+          "clean_query": "khách sạn",
+          "destination_name": "Nha Trang",
+          "min_star_rating": null,
+          "max_price": null
+        },
+        "resolved_destination_id": "3d97277e-8210-45bf-9842-eea4fd356e9e",
+        "filter_fallback": false,
+        "latency_s": 4.87,
+        "error": null
+      },
+      {
+        "id": "hotel-nhatrang-city-en",
+        "search": "hotels",
+        "language": "en",
+        "pair_id": "hotel-nhatrang-city",
+        "query": "a hotel in Nha Trang",
+        "expected_ids": [],
+        "acceptable_ids": [
+          "e1d4c962-4926-4344-ad14-7376bef9cba0",
+          "a12e4403-198d-4d8a-91c4-cfd547d13fa8",
+          "ee40f07a-c3eb-4aa9-8c05-5802ed6ac0d4",
+          "f9f42b85-c29e-48c6-8003-72bd0559bd2d",
+          "9d6dff59-3149-404a-8391-930ced6cf46c"
+        ],
+        "retrieved_ids": [
+          "352f765f-aecb-421f-8ab7-8468900c6ff8",
+          "c73d2bf3-1a1c-43e9-9c56-09b0d8c65554",
+          "678881e7-3789-4985-990c-a5c49b397e23",
+          "61439cf2-5560-4df8-80e8-c37e84c3da80",
+          "be7b2d1e-578a-4568-a6ba-7c718b294f6d",
+          "0f9ca50e-4a59-43f5-80a2-f12e83010015",
+          "0adde5a8-84b9-4180-b2e6-eb1ccc2a4358",
+          "5bd06e76-a642-4055-839d-9550aeb80c24",
+          "45778b4a-91a0-44b0-a10d-95f7d180da3f",
+          "1da35fe9-450f-4aae-b1b9-47860d4a3503"
+        ],
+        "non_llm_precision": 0.0,
+        "non_llm_recall": null,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 1.0,
+        "extracted_filters": {
+          "clean_query": "khách sạn",
+          "destination_name": "Nha Trang",
+          "min_star_rating": null,
+          "max_price": null
+        },
+        "resolved_destination_id": "3d97277e-8210-45bf-9842-eea4fd356e9e",
+        "filter_fallback": false,
+        "latency_s": 3.976,
+        "error": null
+      },
+      {
+        "id": "hotel-nhatrang-4star-price-vi",
+        "search": "hotels",
+        "language": "vi",
+        "pair_id": "hotel-nhatrang-4star-price",
+        "query": "khách sạn 4 sao view biển ở Nha Trang dưới 2 triệu",
+        "expected_ids": [
+          "ee40f07a-c3eb-4aa9-8c05-5802ed6ac0d4"
+        ],
+        "acceptable_ids": [
+          "a12e4403-198d-4d8a-91c4-cfd547d13fa8",
+          "f9f42b85-c29e-48c6-8003-72bd0559bd2d",
+          "766abbbc-fb76-4d2e-9605-ae3457777032",
+          "31097455-7bae-4cbb-a170-962a12ba7efb",
+          "8be299f8-71db-46b2-84ee-170ca51e8147"
+        ],
+        "retrieved_ids": [
+          "06fa61bd-cab8-4a5b-9fe0-2745e04a4635",
+          "d5d527c3-6ece-42e2-af78-bb03f8161e20",
+          "aa2a2f2d-4e1f-4647-a933-dc04808c944e",
+          "a0272f3e-9238-4f70-9c95-68cfb0c75bc2",
+          "2277f871-43aa-4bd1-9a87-8656a50ed711",
+          "63db3d7e-d713-4773-b7e8-b12c10d97879",
+          "06bf3433-78a9-4097-9a42-4f3475fc5dc2",
+          "0f4aab86-3d1d-4313-aa87-3974ecf13dfa",
+          "31097455-7bae-4cbb-a170-962a12ba7efb",
+          "7e41d6cb-8b3f-43e1-b5c7-4640055513c4"
+        ],
+        "non_llm_precision": 0.1,
+        "non_llm_recall": 0.0,
+        "llm_precision": 0.99999999999,
+        "llm_context_relevance": 0.0,
+        "extracted_filters": {
+          "clean_query": "view biển",
+          "destination_name": "Nha Trang",
+          "min_star_rating": 4,
+          "max_price": 2000000
+        },
+        "resolved_destination_id": "3d97277e-8210-45bf-9842-eea4fd356e9e",
+        "filter_fallback": false,
+        "latency_s": 13.134,
+        "error": null
+      },
+      {
+        "id": "hotel-nhatrang-4star-price-en",
+        "search": "hotels",
+        "language": "en",
+        "pair_id": "hotel-nhatrang-4star-price",
+        "query": "4-star sea view hotel in Nha Trang under 2 million VND",
+        "expected_ids": [
+          "ee40f07a-c3eb-4aa9-8c05-5802ed6ac0d4"
+        ],
+        "acceptable_ids": [
+          "a12e4403-198d-4d8a-91c4-cfd547d13fa8",
+          "f9f42b85-c29e-48c6-8003-72bd0559bd2d",
+          "766abbbc-fb76-4d2e-9605-ae3457777032",
+          "31097455-7bae-4cbb-a170-962a12ba7efb",
+          "8be299f8-71db-46b2-84ee-170ca51e8147"
+        ],
+        "retrieved_ids": [
+          "5816f41a-5750-4fc9-ae68-4f6ea7d841ad",
+          "aa2a2f2d-4e1f-4647-a933-dc04808c944e",
+          "45778b4a-91a0-44b0-a10d-95f7d180da3f",
+          "61c1f518-5e20-41d3-a045-8481376c8043",
+          "b2680a8d-4221-435e-b0ab-0d21497048ef",
+          "63db3d7e-d713-4773-b7e8-b12c10d97879",
+          "f8ac2e3a-9b43-4f52-a452-c89d2a41423c",
+          "06fa61bd-cab8-4a5b-9fe0-2745e04a4635",
+          "df9806f3-c6c8-4780-85ce-e7a702acb47e",
+          "f9f42b85-c29e-48c6-8003-72bd0559bd2d"
+        ],
+        "non_llm_precision": 0.1,
+        "non_llm_recall": 0.0,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 0.0,
+        "extracted_filters": {
+          "clean_query": "sea view hotel",
+          "destination_name": "Nha Trang",
+          "min_star_rating": 4,
+          "max_price": 2000000
+        },
+        "resolved_destination_id": "3d97277e-8210-45bf-9842-eea4fd356e9e",
+        "filter_fallback": false,
+        "latency_s": 2.977,
+        "error": null
+      },
+      {
+        "id": "hotel-nhatrang-budget-vi",
+        "search": "hotels",
+        "language": "vi",
+        "pair_id": "hotel-nhatrang-budget",
+        "query": "khách sạn giá rẻ ở Nha Trang dưới 200 nghìn một đêm",
+        "expected_ids": [
+          "57f5ba67-05e1-4be2-82ac-5afefd4edc54",
+          "1f5f3661-5405-4095-8f5c-e7cb9d4c0ce6"
+        ],
+        "acceptable_ids": [
+          "c4a36adc-cd26-46d2-b1c6-04433930da1b",
+          "1fdcd9b1-b183-4787-b255-b7a7b625c29d"
+        ],
+        "retrieved_ids": [
+          "b2680a8d-4221-435e-b0ab-0d21497048ef",
+          "ee20b8ff-947b-41fe-8916-68358713a960",
+          "1f5f3661-5405-4095-8f5c-e7cb9d4c0ce6",
+          "5816f41a-5750-4fc9-ae68-4f6ea7d841ad",
+          "57f5ba67-05e1-4be2-82ac-5afefd4edc54",
+          "d2e32050-4ecb-4dea-a105-a88f22deb61e",
+          "c4a36adc-cd26-46d2-b1c6-04433930da1b",
+          "1fdcd9b1-b183-4787-b255-b7a7b625c29d",
+          "36bf523a-30ad-4ac7-940e-380fa71a3596"
+        ],
+        "non_llm_precision": 0.4444444444444444,
+        "non_llm_recall": 1.0,
+        "llm_precision": 0.22499999998875,
+        "llm_context_relevance": 0.5,
+        "extracted_filters": {
+          "clean_query": "khách sạn giá rẻ",
+          "destination_name": "Nha Trang",
+          "min_star_rating": null,
+          "max_price": 200000
+        },
+        "resolved_destination_id": "3d97277e-8210-45bf-9842-eea4fd356e9e",
+        "filter_fallback": false,
+        "latency_s": 6.968,
+        "error": null
+      },
+      {
+        "id": "hotel-nhatrang-budget-en",
+        "search": "hotels",
+        "language": "en",
+        "pair_id": "hotel-nhatrang-budget",
+        "query": "cheap hotel in Nha Trang under 200,000 VND a night",
+        "expected_ids": [
+          "57f5ba67-05e1-4be2-82ac-5afefd4edc54",
+          "1f5f3661-5405-4095-8f5c-e7cb9d4c0ce6"
+        ],
+        "acceptable_ids": [
+          "c4a36adc-cd26-46d2-b1c6-04433930da1b",
+          "1fdcd9b1-b183-4787-b255-b7a7b625c29d"
+        ],
+        "retrieved_ids": [
+          "b2680a8d-4221-435e-b0ab-0d21497048ef",
+          "ee20b8ff-947b-41fe-8916-68358713a960",
+          "c4a36adc-cd26-46d2-b1c6-04433930da1b",
+          "5816f41a-5750-4fc9-ae68-4f6ea7d841ad",
+          "d2e32050-4ecb-4dea-a105-a88f22deb61e",
+          "1f5f3661-5405-4095-8f5c-e7cb9d4c0ce6",
+          "57f5ba67-05e1-4be2-82ac-5afefd4edc54",
+          "1fdcd9b1-b183-4787-b255-b7a7b625c29d",
+          "36bf523a-30ad-4ac7-940e-380fa71a3596"
+        ],
+        "non_llm_precision": 0.4444444444444444,
+        "non_llm_recall": 1.0,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 0.0,
+        "extracted_filters": {
+          "clean_query": "khách sạn giá rẻ",
+          "destination_name": "Nha Trang",
+          "min_star_rating": null,
+          "max_price": 200000
+        },
+        "resolved_destination_id": "3d97277e-8210-45bf-9842-eea4fd356e9e",
+        "filter_fallback": false,
+        "latency_s": 4.605,
+        "error": null
+      },
+      {
+        "id": "hotel-nhatrang-center-vi",
+        "search": "hotels",
+        "language": "vi",
+        "pair_id": "hotel-nhatrang-center",
+        "query": "khách sạn gần trung tâm Nha Trang",
+        "expected_ids": [],
+        "acceptable_ids": [
+          "e1d4c962-4926-4344-ad14-7376bef9cba0",
+          "ee40f07a-c3eb-4aa9-8c05-5802ed6ac0d4",
+          "f9f42b85-c29e-48c6-8003-72bd0559bd2d",
+          "8be299f8-71db-46b2-84ee-170ca51e8147"
+        ],
+        "retrieved_ids": [
+          "3d7c71db-473d-4cb8-acd4-63dd9b52e433",
+          "29fa772c-ba68-492b-8338-b4b944f7be97",
+          "2c3d3726-9647-4da5-ad27-cc40450b8789",
+          "a2bb084a-81d9-434c-9cd5-bf95bd554ad7",
+          "c8a52160-2196-44a1-b1e7-279c3c55c21a",
+          "c14d33b1-493f-46d0-9821-5888ce104630",
+          "110dc4c1-bb61-4157-a4c3-afe6cfe467fa",
+          "e68f8f4d-6a9b-415d-81a7-ce4f76b8f019",
+          "0df88e69-209f-4683-9210-2301397dc718",
+          "ee40f07a-c3eb-4aa9-8c05-5802ed6ac0d4"
+        ],
+        "non_llm_precision": 0.1,
+        "non_llm_recall": null,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 1.0,
+        "extracted_filters": {
+          "clean_query": "gần trung tâm",
+          "destination_name": "Nha Trang",
+          "min_star_rating": null,
+          "max_price": null
+        },
+        "resolved_destination_id": "3d97277e-8210-45bf-9842-eea4fd356e9e",
+        "filter_fallback": false,
+        "latency_s": 3.837,
+        "error": null
+      },
+      {
+        "id": "hotel-danang-city-vi",
+        "search": "hotels",
+        "language": "vi",
+        "pair_id": "hotel-danang-city",
+        "query": "khách sạn ở Đà Nẵng",
+        "expected_ids": [],
+        "acceptable_ids": [
+          "b2a98c31-490f-446e-9140-5f47d582133d",
+          "7bcfda0a-733e-4c32-b882-c07aa5863150",
+          "62550d1a-17be-4138-8992-f2fc0b2de6b8"
+        ],
+        "retrieved_ids": [
+          "0210cdc6-a125-4e2f-b9e0-f5ead511269a",
+          "e19725bb-3f4e-4bd0-8f5d-5d3ab6d15ba8",
+          "3dfcd6c1-4983-410a-96d5-8c0e516c9a7a",
+          "d866309e-cdd8-45ac-b99e-aa4fc244c73a",
+          "a4090f34-44f8-467a-8ce3-8c88a5d24bd8",
+          "46468938-935b-472d-a15c-1abb49ce3392",
+          "ebaedae7-0771-435f-b732-257424f9f06f",
+          "d991f260-2f06-4c5b-9328-29488d69f159",
+          "62550d1a-17be-4138-8992-f2fc0b2de6b8",
+          "2740452f-1008-4657-8cf1-4383c59591ec"
+        ],
+        "non_llm_precision": 0.1,
+        "non_llm_recall": null,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 1.0,
+        "extracted_filters": {
+          "clean_query": "khách sạn",
+          "destination_name": "Đà Nẵng",
+          "min_star_rating": null,
+          "max_price": null
+        },
+        "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
+        "filter_fallback": false,
+        "latency_s": 7.306,
+        "error": null
+      },
+      {
+        "id": "hotel-danang-city-en",
+        "search": "hotels",
+        "language": "en",
+        "pair_id": "hotel-danang-city",
+        "query": "a hotel in Da Nang",
+        "expected_ids": [],
+        "acceptable_ids": [
+          "b2a98c31-490f-446e-9140-5f47d582133d",
+          "7bcfda0a-733e-4c32-b882-c07aa5863150",
+          "62550d1a-17be-4138-8992-f2fc0b2de6b8"
+        ],
+        "retrieved_ids": [
+          "3dfcd6c1-4983-410a-96d5-8c0e516c9a7a",
+          "a4090f34-44f8-467a-8ce3-8c88a5d24bd8",
+          "e19725bb-3f4e-4bd0-8f5d-5d3ab6d15ba8",
+          "d866309e-cdd8-45ac-b99e-aa4fc244c73a",
+          "213684e2-47ce-4ee3-95ae-f3e7f030f22b",
+          "28e7a42b-1908-4624-9d33-48bf899bb55f",
+          "bd981d0e-f163-4b17-b70b-0d4c6732efa3",
+          "0210cdc6-a125-4e2f-b9e0-f5ead511269a",
+          "e78d1de6-1d50-47b0-84c9-fc6a9033fe2f",
+          "69d0fce6-c841-4169-9402-e78e595aea85"
+        ],
+        "non_llm_precision": 0.0,
+        "non_llm_recall": null,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 1.0,
+        "extracted_filters": {
+          "clean_query": "hotel",
+          "destination_name": "Đà Nẵng",
+          "min_star_rating": null,
+          "max_price": null
+        },
+        "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
+        "filter_fallback": false,
+        "latency_s": 7.979,
+        "error": null
+      },
+      {
+        "id": "hotel-danang-center-price-vi",
+        "search": "hotels",
+        "language": "vi",
+        "pair_id": "hotel-danang-center-price",
+        "query": "khách sạn 4 sao gần trung tâm Đà Nẵng dưới 1 triệu",
+        "expected_ids": [
+          "6c1162d0-a28e-42a8-9819-b6033a5f1262",
+          "cd07d755-2b85-485f-8662-b10c239eaffb"
+        ],
+        "acceptable_ids": [
+          "d76eb69c-f441-4bc6-9cb8-af28a3c754d3"
+        ],
+        "retrieved_ids": [
+          "1f147d25-b525-4bff-9994-e8b431708b32",
+          "cd07d755-2b85-485f-8662-b10c239eaffb",
+          "69d0fce6-c841-4169-9402-e78e595aea85",
+          "6c1162d0-a28e-42a8-9819-b6033a5f1262",
+          "eb81fed9-4ac1-41ed-b256-1f7cde59e9e1",
+          "b6a7c616-7d59-43bc-992f-d520646e65a2",
+          "d225dc94-c764-49ed-ba28-45d50b688f84",
+          "4b7f4d9e-632b-4a7a-879d-dfe74de73fef",
+          "39c5133c-1f37-4b86-b652-487f50d923b4"
+        ],
+        "non_llm_precision": 0.2222222222222222,
+        "non_llm_recall": 1.0,
+        "llm_precision": 0.8444444444323809,
+        "llm_context_relevance": 0.25,
+        "extracted_filters": {
+          "clean_query": "gần trung tâm",
+          "destination_name": "Đà Nẵng",
+          "min_star_rating": 4,
+          "max_price": 1000000
+        },
+        "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
+        "filter_fallback": false,
+        "latency_s": 5.583,
+        "error": null
+      },
+      {
+        "id": "hotel-danang-center-price-en",
+        "search": "hotels",
+        "language": "en",
+        "pair_id": "hotel-danang-center-price",
+        "query": "4-star hotel near downtown Da Nang under 1 million VND",
+        "expected_ids": [
+          "6c1162d0-a28e-42a8-9819-b6033a5f1262",
+          "cd07d755-2b85-485f-8662-b10c239eaffb"
+        ],
+        "acceptable_ids": [
+          "d76eb69c-f441-4bc6-9cb8-af28a3c754d3"
+        ],
+        "retrieved_ids": [
+          "1f147d25-b525-4bff-9994-e8b431708b32",
+          "cd07d755-2b85-485f-8662-b10c239eaffb",
+          "69d0fce6-c841-4169-9402-e78e595aea85",
+          "6c1162d0-a28e-42a8-9819-b6033a5f1262",
+          "eb81fed9-4ac1-41ed-b256-1f7cde59e9e1",
+          "b6a7c616-7d59-43bc-992f-d520646e65a2",
+          "d225dc94-c764-49ed-ba28-45d50b688f84",
+          "4b7f4d9e-632b-4a7a-879d-dfe74de73fef",
+          "39c5133c-1f37-4b86-b652-487f50d923b4"
+        ],
+        "non_llm_precision": 0.2222222222222222,
+        "non_llm_recall": 1.0,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 0.25,
+        "extracted_filters": {
+          "clean_query": "gần trung tâm",
+          "destination_name": "Đà Nẵng",
+          "min_star_rating": 4,
+          "max_price": 1000000
+        },
+        "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
+        "filter_fallback": false,
+        "latency_s": 5.634,
+        "error": null
+      },
+      {
+        "id": "hotel-danang-budget-vi",
+        "search": "hotels",
+        "language": "vi",
+        "pair_id": "hotel-danang-budget",
+        "query": "nhà nghỉ giá rẻ ở Đà Nẵng",
+        "expected_ids": [
+          "ea081a61-df48-46e7-925d-f702dfab66a1"
+        ],
+        "acceptable_ids": [
+          "455ac5d8-5dea-4506-bbd9-bd0531f1993f",
+          "0eeaf90b-dea7-4c66-b795-460cf1e7a8a6",
+          "46468938-935b-472d-a15c-1abb49ce3392"
+        ],
+        "retrieved_ids": [
+          "ef517d35-cb61-45ca-b883-84a2e653f710",
+          "2ef84d9f-0c6a-4452-a631-08c8b2913563",
+          "933de187-1fdd-4718-90c7-ad6b44643537",
+          "3a8ed7c1-b2f5-4cd5-a807-cd1e0268123e",
+          "ea081a61-df48-46e7-925d-f702dfab66a1",
+          "39c5133c-1f37-4b86-b652-487f50d923b4",
+          "e19725bb-3f4e-4bd0-8f5d-5d3ab6d15ba8",
+          "b3175a7e-d9b8-4aa8-8730-d42b1f91a263",
+          "0230eb6e-f8b1-43e3-ad1b-9adc169c44b2",
+          "5e135e59-fcc7-4c43-a614-7f55d80d22d2"
+        ],
+        "non_llm_precision": 0.1,
+        "non_llm_recall": 1.0,
+        "llm_precision": 0.19999999998,
+        "llm_context_relevance": 0.75,
+        "extracted_filters": {
+          "clean_query": "nhà nghỉ giá rẻ",
+          "destination_name": "Đà Nẵng",
+          "min_star_rating": null,
+          "max_price": null
+        },
+        "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
+        "filter_fallback": false,
+        "latency_s": 5.197,
+        "error": null
+      },
+      {
+        "id": "hotel-danang-budget-en",
+        "search": "hotels",
+        "language": "en",
+        "pair_id": "hotel-danang-budget",
+        "query": "cheap guesthouse in Da Nang",
+        "expected_ids": [
+          "ea081a61-df48-46e7-925d-f702dfab66a1"
+        ],
+        "acceptable_ids": [
+          "455ac5d8-5dea-4506-bbd9-bd0531f1993f",
+          "0eeaf90b-dea7-4c66-b795-460cf1e7a8a6",
+          "46468938-935b-472d-a15c-1abb49ce3392"
+        ],
+        "retrieved_ids": [
+          "16e1524d-ca1f-4a28-8038-3f5f1d1c2521",
+          "efd8edf0-1256-4738-8150-7fcb9fbe0652",
+          "031bdf94-1c6b-4d91-8d73-5ce012d29d3c",
+          "a4090f34-44f8-467a-8ce3-8c88a5d24bd8",
+          "e19725bb-3f4e-4bd0-8f5d-5d3ab6d15ba8",
+          "cd07d755-2b85-485f-8662-b10c239eaffb",
+          "1cb73a4d-72ce-447e-b050-da38e494cd86",
+          "d978a2e4-1ab1-4b1e-9eec-0e651d4fe627",
+          "b3cb113f-4499-42b2-a6be-442caf12b78e",
+          "4de2582a-55b9-4cec-8339-9e29077d76ca"
+        ],
+        "non_llm_precision": 0.0,
+        "non_llm_recall": 0.0,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 0.5,
+        "extracted_filters": {
+          "clean_query": "cheap guesthouse",
+          "destination_name": "Đà Nẵng",
+          "min_star_rating": null,
+          "max_price": null
+        },
+        "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
+        "filter_fallback": false,
+        "latency_s": 3.919,
+        "error": null
+      },
+      {
+        "id": "hotel-danang-pool-vi",
+        "search": "hotels",
+        "language": "vi",
+        "pair_id": "hotel-danang-pool",
+        "query": "khách sạn có hồ bơi ở Đà Nẵng 4 sao",
+        "expected_ids": [
+          "51e954e4-7617-45c7-b7c4-0037f1886a60",
+          "ebaedae7-0771-435f-b732-257424f9f06f"
+        ],
+        "acceptable_ids": [
+          "cd07d755-2b85-485f-8662-b10c239eaffb",
+          "de673f05-2d17-406c-9dc1-c746bcafc447",
+          "a02de61b-96d4-401c-a4d8-91e60392987e",
+          "24001acf-2da2-4f00-be45-a1a238b2d33f"
+        ],
+        "retrieved_ids": [
+          "b2a98c31-490f-446e-9140-5f47d582133d",
+          "24001acf-2da2-4f00-be45-a1a238b2d33f",
+          "997e7e30-da88-4eab-9bfb-e22f3741b61c",
+          "bda97d0d-8acc-4eb3-81c0-f989eacd30ec",
+          "9459da23-245b-4959-8b4e-eba3c52de817",
+          "a02de61b-96d4-401c-a4d8-91e60392987e",
+          "b1e2fa3a-b5aa-4019-a618-0272b9c8db69",
+          "3a8ed7c1-b2f5-4cd5-a807-cd1e0268123e",
+          "d542ea48-e871-482f-b25e-b7a3916f9695",
+          "a1218e5e-4237-4ac8-8ea8-e20233279bea"
+        ],
+        "non_llm_precision": 0.2,
+        "non_llm_recall": 0.0,
+        "llm_precision": 0.6656084655973721,
+        "llm_context_relevance": 0.25,
+        "extracted_filters": {
+          "clean_query": "hồ bơi",
+          "destination_name": "Đà Nẵng",
+          "min_star_rating": 4,
+          "max_price": null
+        },
+        "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
+        "filter_fallback": false,
+        "latency_s": 3.121,
+        "error": null
+      },
+      {
+        "id": "hotel-hcm-district1-vi",
+        "search": "hotels",
+        "language": "vi",
+        "pair_id": "hotel-hcm-district1",
+        "query": "khách sạn 4 sao ở Quận 1 Sài Gòn dưới 2 triệu",
+        "expected_ids": [
+          "6a404b48-66b9-43a6-a122-c730a314c09b",
+          "086fec3e-f3e7-4ab7-95f1-46fd350c933f"
+        ],
+        "acceptable_ids": [
+          "e3ac73a4-55d3-4cf8-bba6-47e83c1fb909",
+          "74a4f3d1-a8cb-4606-9c79-56efd444fd12"
+        ],
+        "retrieved_ids": [
+          "8c16a661-0ce4-4cad-8f1a-bb8b82d842c2",
+          "2532c1a6-d2e7-456a-b1c0-a6599b9d66ec",
+          "2b1c2c11-9884-4e5e-a82c-fda183af7f88",
+          "83f0df99-091f-4689-a0e0-6ce003f52e43"
+        ],
+        "non_llm_precision": 0.0,
+        "non_llm_recall": 0.0,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 0.25,
+        "extracted_filters": {
+          "clean_query": "khách sạn",
+          "destination_name": "Hồ Chí Minh",
+          "min_star_rating": 4,
+          "max_price": 2000000
+        },
+        "resolved_destination_id": "6f860287-189e-46db-81f6-cd3c7ee5f1f7",
+        "filter_fallback": false,
+        "latency_s": 3.599,
+        "error": null
+      },
+      {
+        "id": "hotel-hcm-district1-en",
+        "search": "hotels",
+        "language": "en",
+        "pair_id": "hotel-hcm-district1",
+        "query": "4-star hotel in District 1 Saigon under 2 million VND",
+        "expected_ids": [
+          "6a404b48-66b9-43a6-a122-c730a314c09b",
+          "086fec3e-f3e7-4ab7-95f1-46fd350c933f"
+        ],
+        "acceptable_ids": [
+          "e3ac73a4-55d3-4cf8-bba6-47e83c1fb909",
+          "74a4f3d1-a8cb-4606-9c79-56efd444fd12"
+        ],
+        "retrieved_ids": [
+          "8c16a661-0ce4-4cad-8f1a-bb8b82d842c2",
+          "2532c1a6-d2e7-456a-b1c0-a6599b9d66ec",
+          "2b1c2c11-9884-4e5e-a82c-fda183af7f88",
+          "83f0df99-091f-4689-a0e0-6ce003f52e43"
+        ],
+        "non_llm_precision": 0.0,
+        "non_llm_recall": 0.0,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 0.0,
+        "extracted_filters": {
+          "clean_query": "khách sạn 4 sao",
+          "destination_name": "Hồ Chí Minh",
+          "min_star_rating": 4,
+          "max_price": 2000000
+        },
+        "resolved_destination_id": "6f860287-189e-46db-81f6-cd3c7ee5f1f7",
+        "filter_fallback": false,
+        "latency_s": 4.457,
+        "error": null
+      },
+      {
+        "id": "hotel-hcm-luxury-vi",
+        "search": "hotels",
+        "language": "vi",
+        "pair_id": "hotel-hcm-luxury",
+        "query": "khách sạn 5 sao sang trọng ở trung tâm Sài Gòn",
+        "expected_ids": [
+          "5f8c9af0-0ff9-4e36-980b-0ac18485b318",
+          "81c9145a-408f-4951-a5cb-7148323fa2d5"
+        ],
+        "acceptable_ids": [
+          "647de5f6-8d67-45ba-9f42-a1b6af75e6a0",
+          "9a563f3d-4921-43c8-bdf8-3047c28d9c4b",
+          "544ba30f-42a6-4567-87e3-6a7b84a8f2fa",
+          "0da9bfbd-747b-4e07-a4d0-13e4185c638d",
+          "564327ae-cd31-4b7a-81c1-71428fbef1fb"
+        ],
+        "retrieved_ids": [
+          "ceaf43b9-0f5f-4bb2-a25f-71655488cf22"
+        ],
+        "non_llm_precision": 0.0,
+        "non_llm_recall": 0.0,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 0.5,
+        "extracted_filters": {
+          "clean_query": "sang trọng",
+          "destination_name": "Sài Gòn",
+          "min_star_rating": 5,
+          "max_price": null
+        },
+        "resolved_destination_id": null,
+        "filter_fallback": false,
+        "latency_s": 5.43,
+        "error": null
+      },
+      {
+        "id": "hotel-hcm-luxury-en",
+        "search": "hotels",
+        "language": "en",
+        "pair_id": "hotel-hcm-luxury",
+        "query": "luxury 5-star hotel in downtown Saigon",
+        "expected_ids": [
+          "5f8c9af0-0ff9-4e36-980b-0ac18485b318",
+          "81c9145a-408f-4951-a5cb-7148323fa2d5"
+        ],
+        "acceptable_ids": [
+          "647de5f6-8d67-45ba-9f42-a1b6af75e6a0",
+          "9a563f3d-4921-43c8-bdf8-3047c28d9c4b",
+          "544ba30f-42a6-4567-87e3-6a7b84a8f2fa",
+          "0da9bfbd-747b-4e07-a4d0-13e4185c638d",
+          "564327ae-cd31-4b7a-81c1-71428fbef1fb"
+        ],
+        "retrieved_ids": [
+          "25c8824a-2368-497c-a937-c4a41c4a842c",
+          "647de5f6-8d67-45ba-9f42-a1b6af75e6a0",
+          "25fc097b-e278-4686-8705-c0e394d67995",
+          "a1268fb4-6950-4bde-86a3-c2bd403ab027",
+          "564327ae-cd31-4b7a-81c1-71428fbef1fb",
+          "90f3b64f-ee2d-4655-91a4-feab67ca2430",
+          "87d59146-f134-4ef9-8ff8-ec5b5c527ff8",
+          "2cee507c-dc69-4868-9948-bc12c3ab0d0d",
+          "79ef2436-8736-4317-ba4e-bd73818597cf"
+        ],
+        "non_llm_precision": 0.2222222222222222,
+        "non_llm_recall": 0.0,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 0.5,
+        "extracted_filters": {
+          "clean_query": "luxury hotel",
+          "destination_name": "Hồ Chí Minh",
+          "min_star_rating": 5,
+          "max_price": null
+        },
+        "resolved_destination_id": "6f860287-189e-46db-81f6-cd3c7ee5f1f7",
+        "filter_fallback": false,
+        "latency_s": 2.323,
+        "error": null
+      },
+      {
+        "id": "hotel-hcm-hostel-vi",
+        "search": "hotels",
+        "language": "vi",
+        "pair_id": "hotel-hcm-hostel",
+        "query": "hostel giá rẻ Quận 1 Sài Gòn",
+        "expected_ids": [
+          "4bb0dc1a-5490-449c-9ce1-f38725c8fbf6"
+        ],
+        "acceptable_ids": [
+          "0633e288-8c95-4d21-aaeb-bea6d91bb170",
+          "b7438c46-9fa2-44c9-bbf0-2a9745c6ddba",
+          "e9bdf41e-d03c-443e-b030-c8a342decaab",
+          "93975d24-9db8-4e99-b64b-5fb4f09d7c91",
+          "ecfab2d1-dbb3-45a6-80d0-e6f0c3cb772b",
+          "f384593a-9d39-46f4-9b16-77ad7c0a0c41"
+        ],
+        "retrieved_ids": [
+          "93975d24-9db8-4e99-b64b-5fb4f09d7c91",
+          "ecfab2d1-dbb3-45a6-80d0-e6f0c3cb772b",
+          "f384593a-9d39-46f4-9b16-77ad7c0a0c41",
+          "c07a38fe-94b5-48b8-8130-14cd34422870",
+          "4bb0dc1a-5490-449c-9ce1-f38725c8fbf6",
+          "8c16a661-0ce4-4cad-8f1a-bb8b82d842c2",
+          "0633e288-8c95-4d21-aaeb-bea6d91bb170",
+          "a2289383-fc51-4d16-93d6-0bf637094607",
+          "d29084d0-19c9-412f-965c-e5ef037ea387",
+          "6ba86707-577c-4a0e-9582-e6c2c3942b78"
+        ],
+        "non_llm_precision": 0.5,
+        "non_llm_recall": 1.0,
+        "llm_precision": 0.7287037036915586,
+        "llm_context_relevance": 1.0,
+        "extracted_filters": {
+          "clean_query": "hostel giá rẻ",
+          "destination_name": "Hồ Chí Minh",
+          "min_star_rating": null,
+          "max_price": null
+        },
+        "resolved_destination_id": "6f860287-189e-46db-81f6-cd3c7ee5f1f7",
+        "filter_fallback": false,
+        "latency_s": 3.379,
+        "error": null
+      },
+      {
+        "id": "hotel-hue-city-vi",
+        "search": "hotels",
+        "language": "vi",
+        "pair_id": "hotel-hue-city",
+        "query": "khách sạn ở Huế",
+        "expected_ids": [],
+        "acceptable_ids": [
+          "6896ecbc-d1a4-4100-a4dc-93123e03dd07",
+          "9696f524-c08c-4f14-b20b-945dcdd9e5b1",
+          "2a33f0aa-b6a2-4e82-8815-6795ab4cd83d"
+        ],
+        "retrieved_ids": [
+          "c99c6ef8-7098-49cd-8e9b-38702be65a5e",
+          "8bc75a72-f208-4679-b81b-fba2e6fbdf86",
+          "ec81ba9f-76c2-4026-b594-bc2bee1017df",
+          "9a50cb2a-a8b9-43b5-8cc4-5faf4b6934c7",
+          "7e0066a9-56a5-441d-b2d1-ebfb0142a631",
+          "ffe9d6f2-fb4d-44f8-82f1-b25dbac30343",
+          "6c38833f-5ecb-469b-a355-e19acb7c5d81",
+          "adaf5a13-b4d4-4644-a304-90812a3b1e41",
+          "c23016da-74b3-427f-aba8-bd7cf6ba9575",
+          "1efe474b-e9ea-4511-94cf-60bfc3e0c2a9"
+        ],
+        "non_llm_precision": 0.0,
+        "non_llm_recall": null,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 1.0,
+        "extracted_filters": {
+          "clean_query": "khách sạn",
+          "destination_name": "Huế",
+          "min_star_rating": null,
+          "max_price": null
+        },
+        "resolved_destination_id": "6dd17d02-74a5-4640-beb3-f116c8c34ea7",
+        "filter_fallback": false,
+        "latency_s": 4.93,
+        "error": null
+      },
+      {
+        "id": "hotel-hue-city-en",
+        "search": "hotels",
+        "language": "en",
+        "pair_id": "hotel-hue-city",
+        "query": "a hotel in Hue",
+        "expected_ids": [],
+        "acceptable_ids": [
+          "6896ecbc-d1a4-4100-a4dc-93123e03dd07",
+          "9696f524-c08c-4f14-b20b-945dcdd9e5b1",
+          "2a33f0aa-b6a2-4e82-8815-6795ab4cd83d"
+        ],
+        "retrieved_ids": [
+          "9a50cb2a-a8b9-43b5-8cc4-5faf4b6934c7",
+          "8bc75a72-f208-4679-b81b-fba2e6fbdf86",
+          "6c38833f-5ecb-469b-a355-e19acb7c5d81",
+          "c99c6ef8-7098-49cd-8e9b-38702be65a5e",
+          "271e983d-cc36-4868-a2a7-05ace7fa050c",
+          "ffe9d6f2-fb4d-44f8-82f1-b25dbac30343",
+          "ec81ba9f-76c2-4026-b594-bc2bee1017df",
+          "11f999ba-f53f-4a18-a1fa-70b1fa456bbd",
+          "1efe474b-e9ea-4511-94cf-60bfc3e0c2a9",
+          "7e0066a9-56a5-441d-b2d1-ebfb0142a631"
+        ],
+        "non_llm_precision": 0.0,
+        "non_llm_recall": null,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 1.0,
+        "extracted_filters": {
+          "clean_query": "khách sạn",
+          "destination_name": "Huế",
+          "min_star_rating": null,
+          "max_price": null
+        },
+        "resolved_destination_id": "6dd17d02-74a5-4640-beb3-f116c8c34ea7",
+        "filter_fallback": false,
+        "latency_s": 3.277,
+        "error": null
+      },
+      {
+        "id": "hotel-hue-near-citadel-vi",
+        "search": "hotels",
+        "language": "vi",
+        "pair_id": "hotel-hue-near-citadel",
+        "query": "khách sạn 4 sao gần Đại Nội Huế",
+        "expected_ids": [
+          "66fc5a6d-dcaa-4c50-aac5-925894007dff"
+        ],
+        "acceptable_ids": [
+          "b41c68a5-41b1-4151-af4b-59775bf10615"
+        ],
+        "retrieved_ids": [
+          "c3909f37-81ac-4408-a49d-aa03685e88d8",
+          "c1a2c204-a885-4ffb-a4da-cddec3ffffa7",
+          "974ba301-c48f-4e12-9b82-38041d50ad7e",
+          "66fc5a6d-dcaa-4c50-aac5-925894007dff",
+          "92fe059b-d81e-4c52-b52a-701f6f0da783",
+          "6b1ce4b0-8c08-44db-9620-dce3482949aa",
+          "a9741f4e-20df-4f9f-9f4d-8a8f4b025184",
+          "9d52c2f0-5b25-4c47-b93e-12555bced93c",
+          "f09395fd-31d7-40b9-b9f3-c66d7698a292",
+          "9e0886a0-3871-4f1f-9d5e-148d99290ac0"
+        ],
+        "non_llm_precision": 0.1,
+        "non_llm_recall": 1.0,
+        "llm_precision": 0.4166666666458333,
+        "llm_context_relevance": 1.0,
+        "extracted_filters": {
+          "clean_query": "gần Đại Nội",
+          "destination_name": "Huế",
+          "min_star_rating": 4,
+          "max_price": null
+        },
+        "resolved_destination_id": "6dd17d02-74a5-4640-beb3-f116c8c34ea7",
+        "filter_fallback": false,
+        "latency_s": 2.955,
+        "error": null
+      },
+      {
+        "id": "hotel-hue-thin-vi",
+        "search": "hotels",
+        "language": "vi",
+        "pair_id": "hotel-hue-thin",
+        "query": "resort biệt lập ở Huế cho tuần trăng mật",
+        "expected_ids": [],
+        "acceptable_ids": [
+          "23b02698-a397-43f3-b6d3-44f19afa3f84"
+        ],
+        "retrieved_ids": [
+          "65df0757-c20d-44ef-b2dd-06fc74732bb9",
+          "14d8b77a-c930-4658-abb9-f7da5b17b7ea",
+          "d137836f-dacd-4b5a-b98f-83a596ef03a3",
+          "c117a8b6-8b44-4c68-8b43-fc3cc58554f7",
+          "07da931b-a988-4c10-bd4b-b77cd2ef56df",
+          "cc0c821d-8166-4345-83a2-e3dbfbd91e1b",
+          "23b02698-a397-43f3-b6d3-44f19afa3f84",
+          "c15ba2c8-f5f5-4c02-b27c-f614810b1af8",
+          "3d242da9-8ea8-4acb-87d5-49790e9c26cc",
+          "6182e18d-5971-4b7b-bbee-2635c64856b8"
+        ],
+        "non_llm_precision": 0.1,
+        "non_llm_recall": null,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 0.5,
+        "extracted_filters": {
+          "clean_query": "resort biệt lập",
+          "destination_name": "Huế",
+          "min_star_rating": null,
+          "max_price": null
+        },
+        "resolved_destination_id": "6dd17d02-74a5-4640-beb3-f116c8c34ea7",
+        "filter_fallback": false,
+        "latency_s": 3.967,
+        "error": null
+      },
+      {
+        "id": "hotel-negative-destination-absent-vi",
+        "search": "hotels",
+        "language": "vi",
+        "pair_id": null,
+        "query": "khách sạn ở Phú Quốc",
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "retrieved_ids": [
+          "70e0365a-946a-439c-97a5-836cd2ceaa7c",
+          "2050359c-31c1-4513-818f-199739c52546",
+          "4f7cad24-227a-4dba-8da9-eb6f64d0a151",
+          "11cc0f1b-7224-4a3a-8ab4-81213c509dd1",
+          "30f62571-4bc9-45bc-9471-2f81368de349",
+          "8c16a661-0ce4-4cad-8f1a-bb8b82d842c2",
+          "a9180dd7-5c0c-4a2c-8f4e-d469f1f1c6fa",
+          "352f765f-aecb-421f-8ab7-8468900c6ff8",
+          "d0122820-3e3c-4a65-9231-62c5a03ea36b",
+          "0bba2f7a-ac15-47c5-8c4a-30ea711ca594"
+        ],
+        "non_llm_precision": 0.0,
+        "non_llm_recall": null,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 0.0,
+        "extracted_filters": {
+          "clean_query": "khách sạn",
+          "destination_name": "Phú Quốc",
+          "min_star_rating": null,
+          "max_price": null
+        },
+        "resolved_destination_id": null,
+        "filter_fallback": false,
+        "latency_s": 6.031,
+        "error": null
+      },
+      {
+        "id": "hotel-negative-impossible-price-vi",
+        "search": "hotels",
+        "language": "vi",
+        "pair_id": null,
+        "query": "khách sạn 5 sao ở Đà Nẵng dưới 100 nghìn một đêm",
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "retrieved_ids": [
+          "8ca41059-0c43-4e6e-b968-563f4f790bb5",
+          "c4dabb20-ac81-49dc-a133-b5a58b5ecc19",
+          "eb81fed9-4ac1-41ed-b256-1f7cde59e9e1",
+          "0230eb6e-f8b1-43e3-ad1b-9adc169c44b2",
+          "132f9eee-7eef-43c8-bcef-11258a11e4c8",
+          "3eec5c77-b549-49a7-a01e-1955dafc4f53"
+        ],
+        "non_llm_precision": 0.0,
+        "non_llm_recall": null,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 0.0,
+        "extracted_filters": {
+          "clean_query": "khách sạn",
+          "destination_name": "Đà Nẵng",
+          "min_star_rating": 5,
+          "max_price": 100000
+        },
+        "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
+        "filter_fallback": false,
+        "latency_s": 2.667,
+        "error": null
+      },
+      {
+        "id": "hotel-crosslang-hyatt-vi",
+        "search": "hotels",
+        "language": "vi",
+        "pair_id": "hotel-crosslang-hyatt",
+        "query": "tôi muốn đặt Hyatt Regency ở Đà Nẵng",
+        "expected_ids": [
+          "b2a98c31-490f-446e-9140-5f47d582133d"
+        ],
+        "acceptable_ids": [],
+        "retrieved_ids": [
+          "b2a98c31-490f-446e-9140-5f47d582133d",
+          "62550d1a-17be-4138-8992-f2fc0b2de6b8",
+          "e19725bb-3f4e-4bd0-8f5d-5d3ab6d15ba8",
+          "2ef84d9f-0c6a-4452-a631-08c8b2913563",
+          "03e15504-f89c-40b7-8670-8def738af9e2",
+          "5884bdd2-bfbc-469f-828a-ff10b706b173",
+          "c2fb8c0d-937d-4dae-b94d-9c2fd1d4dbed",
+          "0ad57943-12de-4405-ba9f-297cfc871e99",
+          "0210cdc6-a125-4e2f-b9e0-f5ead511269a",
+          "7bcfda0a-733e-4c32-b882-c07aa5863150"
+        ],
+        "non_llm_precision": 0.1,
+        "non_llm_recall": 1.0,
+        "llm_precision": 0.99999999995,
+        "llm_context_relevance": 1.0,
+        "extracted_filters": {
+          "clean_query": "đặt Hyatt Regency",
+          "destination_name": "Đà Nẵng",
+          "min_star_rating": null,
+          "max_price": null
+        },
+        "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
+        "filter_fallback": false,
+        "latency_s": 2.66,
+        "error": null
+      },
+      {
+        "id": "hotel-crosslang-novotel-vi",
+        "search": "hotels",
+        "language": "vi",
+        "pair_id": "hotel-crosslang-novotel",
+        "query": "khách sạn Novotel Premier bên bờ sông Hàn",
+        "expected_ids": [
+          "7bcfda0a-733e-4c32-b882-c07aa5863150"
+        ],
+        "acceptable_ids": [],
+        "retrieved_ids": [
+          "e60e867d-674d-4989-bc95-f7327206e0cd",
+          "502ccdb5-019b-49f2-8b84-7e2f73071f5c",
+          "026cea6a-6a6b-46ef-9790-74892a904bbb",
+          "22cde9dd-ae0e-452a-bca0-1b48aa540058",
+          "6b892ae5-88ea-4eff-b111-475cb7261494",
+          "62550d1a-17be-4138-8992-f2fc0b2de6b8",
+          "edc88c59-3f03-4c87-8041-7f1ebab66e59",
+          "0f9ca50e-4a59-43f5-80a2-f12e83010015",
+          "b646914c-3b27-4b25-ada1-b3e3b12740b6",
+          "0bdaf27b-a58d-47b2-a85a-81af62400b2e"
+        ],
+        "non_llm_precision": 0.0,
+        "non_llm_recall": 0.0,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 0.0,
+        "extracted_filters": {
+          "clean_query": "khách sạn bên bờ sông Hàn",
+          "destination_name": null,
+          "min_star_rating": null,
+          "max_price": null
+        },
+        "resolved_destination_id": null,
+        "filter_fallback": false,
+        "latency_s": 2.78,
+        "error": null
+      },
+      {
+        "id": "hotel-crosslang-khachsan-en",
+        "search": "hotels",
+        "language": "en",
+        "pair_id": "hotel-crosslang-khachsan",
+        "query": "find me a room at Khách Sạn Mường Thanh Luxury in Nha Trang",
+        "expected_ids": [
+          "a12e4403-198d-4d8a-91c4-cfd547d13fa8"
+        ],
+        "acceptable_ids": [],
+        "retrieved_ids": [
+          "1f5f3661-5405-4095-8f5c-e7cb9d4c0ce6",
+          "d59fe0e4-a8b7-424f-a692-c71cfcf75b17",
+          "147e0536-500b-4ec7-8562-6e971a02f341",
+          "61c1f518-5e20-41d3-a045-8481376c8043",
+          "63db3d7e-d713-4773-b7e8-b12c10d97879",
+          "f9f42b85-c29e-48c6-8003-72bd0559bd2d",
+          "a12e4403-198d-4d8a-91c4-cfd547d13fa8",
+          "2322b794-fa98-4315-97fa-dbbc2920c580",
+          "664f8478-fb5f-48a3-a716-a493edc2a7d1",
+          "3ae1cd6f-7c1f-4847-97d6-8230d2c8023c"
+        ],
+        "non_llm_precision": 0.1,
+        "non_llm_recall": 1.0,
+        "llm_precision": 0.14285714284285714,
+        "llm_context_relevance": 0.75,
+        "extracted_filters": {
+          "clean_query": "phòng",
+          "destination_name": "Nha Trang",
+          "min_star_rating": null,
+          "max_price": null
+        },
+        "resolved_destination_id": "3d97277e-8210-45bf-9842-eea4fd356e9e",
+        "filter_fallback": false,
+        "latency_s": 3.125,
+        "error": null
+      },
+      {
+        "id": "hotel-crosslang-libertycentral-vi",
+        "search": "hotels",
+        "language": "vi",
+        "pair_id": "hotel-crosslang-libertycentral",
+        "query": "Liberty Central Saigon Centre giá bao nhiêu",
+        "expected_ids": [
+          "086fec3e-f3e7-4ab7-95f1-46fd350c933f"
+        ],
+        "acceptable_ids": [],
+        "retrieved_ids": [
+          "a2289383-fc51-4d16-93d6-0bf637094607",
+          "5ed447b9-9e94-43cf-b612-e39ecc193ed0",
+          "fca17c80-2b20-407d-aeb6-717cf5231ee2",
+          "30e07500-1f6d-48b4-8ee0-746958ae7c76",
+          "e3ac73a4-55d3-4cf8-bba6-47e83c1fb909",
+          "f4e2a680-1b36-4b9f-b754-a6007f4c7889",
+          "f881b1b6-7f43-4592-9a29-a299f4516ce7",
+          "f4633a28-13cd-4a86-93b7-84818e8b3adb",
+          "3901d303-9b8b-428d-b965-0506ca6c618b",
+          "8aaa6c4d-cf6b-49b3-a432-14cce0f04d18"
+        ],
+        "non_llm_precision": 0.0,
+        "non_llm_recall": 0.0,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 0.0,
+        "extracted_filters": {
+          "clean_query": "giá bao nhiêu",
+          "destination_name": "Hồ Chí Minh",
+          "min_star_rating": null,
+          "max_price": null
+        },
+        "resolved_destination_id": "6f860287-189e-46db-81f6-cd3c7ee5f1f7",
+        "filter_fallback": false,
+        "latency_s": 3.521,
+        "error": null
+      },
+      {
+        "id": "hotel-crosslang-khachsan-pullman-en",
+        "search": "hotels",
+        "language": "en",
+        "pair_id": "hotel-crosslang-khachsan-pullman",
+        "query": "is Khách Sạn Mường Thanh Sài Gòn Centre in District 1?",
+        "expected_ids": [
+          "e43ff3af-e9b0-461d-b0ec-ab9bd1272b71"
+        ],
+        "acceptable_ids": [],
+        "retrieved_ids": [
+          "e43ff3af-e9b0-461d-b0ec-ab9bd1272b71",
+          "b341124f-bfa4-4c10-8341-853035e93158",
+          "6c2c7b23-5173-407c-8eef-e19d7381e4db",
+          "086fec3e-f3e7-4ab7-95f1-46fd350c933f",
+          "e3ac73a4-55d3-4cf8-bba6-47e83c1fb909",
+          "e4be79d2-2848-49e6-961c-206af78c7e42",
+          "3041d601-ffbb-41fd-a2c9-f9211ab40e15",
+          "ebe9563c-feb2-4272-b8e3-6efaf9c4db7e",
+          "5f8c9af0-0ff9-4e36-980b-0ac18485b318",
+          "31c19358-15b3-4e96-9dba-f11be286874a"
+        ],
+        "non_llm_precision": 0.1,
+        "non_llm_recall": 1.0,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 0.0,
+        "extracted_filters": {
+          "clean_query": "Khách Sạn Mường Thanh Sài Gòn Centre",
+          "destination_name": "Hồ Chí Minh",
+          "min_star_rating": null,
+          "max_price": null
+        },
+        "resolved_destination_id": "6f860287-189e-46db-81f6-cd3c7ee5f1f7",
+        "filter_fallback": false,
+        "latency_s": 4.491,
+        "error": null
+      },
+      {
+        "id": "attraction-hcm-history-vi",
+        "search": "attractions",
+        "language": "vi",
+        "pair_id": "attraction-hcm-history",
+        "query": "di tích lịch sử ở Sài Gòn",
+        "expected_ids": [
+          "95c262b4-ec51-53e3-9184-0694112dcad8",
+          "5e8a872b-97c1-5e3f-bf0e-d44397e224a8"
+        ],
+        "acceptable_ids": [
+          "fb3d8a69-b477-5936-bf03-8dc379fef1c9",
+          "69b9de99-8b58-5c11-bcd2-518132237bb6",
+          "7b54e282-94f3-5667-880d-1e2caa07faec"
+        ],
+        "retrieved_ids": [
+          "69a32402-8c3d-50dc-80fb-f74d5d6e47ea",
+          "aad1aeaf-8572-5c6b-9697-8e3ca53f489d",
+          "c4dce0fa-2b2c-5d94-985b-8e48d82549e6",
+          "5d7445be-f615-5482-9931-568fb74125ed",
+          "95c262b4-ec51-53e3-9184-0694112dcad8",
+          "57e7aa0f-4808-55bb-8405-ea423239a9aa",
+          "7b54e282-94f3-5667-880d-1e2caa07faec",
+          "c4cab4b4-92a0-514d-a8a2-8f70f7ca5ea9",
+          "e274cfe3-eec7-5b94-bb90-5fda8bdf7fe3",
+          "7e58d6e8-3741-5ce2-b0ed-6e17a0bfae2f"
+        ],
+        "non_llm_precision": 0.2,
+        "non_llm_recall": 0.5,
+        "llm_precision": 0.4268253968168603,
+        "llm_context_relevance": 1.0,
+        "extracted_filters": {
+          "clean_query": "di tích lịch sử",
+          "destination_name": "Hồ Chí Minh",
+          "category": "di tích lịch sử",
+          "max_price": null
+        },
+        "resolved_destination_id": "6f860287-189e-46db-81f6-cd3c7ee5f1f7",
+        "filter_fallback": false,
+        "latency_s": 4.069,
+        "error": null
+      },
+      {
+        "id": "attraction-hcm-history-en",
+        "search": "attractions",
+        "language": "en",
+        "pair_id": "attraction-hcm-history",
+        "query": "historical sites in Saigon",
+        "expected_ids": [
+          "95c262b4-ec51-53e3-9184-0694112dcad8",
+          "5e8a872b-97c1-5e3f-bf0e-d44397e224a8"
+        ],
+        "acceptable_ids": [
+          "fb3d8a69-b477-5936-bf03-8dc379fef1c9",
+          "69b9de99-8b58-5c11-bcd2-518132237bb6",
+          "7b54e282-94f3-5667-880d-1e2caa07faec"
+        ],
+        "retrieved_ids": [
+          "aad1aeaf-8572-5c6b-9697-8e3ca53f489d",
+          "7e58d6e8-3741-5ce2-b0ed-6e17a0bfae2f",
+          "c4dce0fa-2b2c-5d94-985b-8e48d82549e6",
+          "95c262b4-ec51-53e3-9184-0694112dcad8",
+          "3adf0a80-433c-506f-bf90-421599cbc8a1",
+          "57e7aa0f-4808-55bb-8405-ea423239a9aa",
+          "7b54e282-94f3-5667-880d-1e2caa07faec",
+          "e274cfe3-eec7-5b94-bb90-5fda8bdf7fe3",
+          "c4cab4b4-92a0-514d-a8a2-8f70f7ca5ea9",
+          "6ba180c1-447a-5d05-a477-e2953b1195a8"
+        ],
+        "non_llm_precision": 0.2,
+        "non_llm_recall": 0.5,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 1.0,
+        "extracted_filters": {
+          "clean_query": "historical sites",
+          "destination_name": "Hồ Chí Minh",
+          "category": "historical",
+          "max_price": null
+        },
+        "resolved_destination_id": "6f860287-189e-46db-81f6-cd3c7ee5f1f7",
+        "filter_fallback": false,
+        "latency_s": 3.345,
+        "error": null
+      },
+      {
+        "id": "attraction-danang-nature-vi",
+        "search": "attractions",
+        "language": "vi",
+        "pair_id": "attraction-danang-nature",
+        "query": "núi và hang động ở Đà Nẵng",
+        "expected_ids": [
+          "8297aaff-47da-50dc-97d4-85ea0398d518"
+        ],
+        "acceptable_ids": [],
+        "retrieved_ids": [
+          "8297aaff-47da-50dc-97d4-85ea0398d518",
+          "8fa99b23-83db-5ab7-ba99-553ba839b7c0",
+          "dc0fc7fd-984a-52af-93f0-c21b95ec29a4",
+          "722aeeae-026c-57f3-aeb6-954ac3cf27ec",
+          "add32e9f-6f10-5dea-861d-fbcecff1a8bf",
+          "86e5d86b-339e-5d58-9a82-50508c3179db",
+          "aa414655-8aad-55eb-842d-5ad334746aba",
+          "cef33223-7fa1-5644-914d-37d2d7c09b8b",
+          "762ba4e8-902d-5796-bc27-1632156f9790",
+          "0ae3e36c-d842-5f7f-9e19-71b2b6f485e1"
+        ],
+        "non_llm_precision": 0.1,
+        "non_llm_recall": 1.0,
+        "llm_precision": 0.9999999999,
+        "llm_context_relevance": 1.0,
+        "extracted_filters": {
+          "clean_query": "núi và hang động",
+          "destination_name": "Đà Nẵng",
+          "category": null,
+          "max_price": null
+        },
+        "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
+        "filter_fallback": false,
+        "latency_s": 6.792,
+        "error": null
+      },
+      {
+        "id": "attraction-danang-nature-en",
+        "search": "attractions",
+        "language": "en",
+        "pair_id": "attraction-danang-nature",
+        "query": "mountains and caves in Da Nang",
+        "expected_ids": [
+          "8297aaff-47da-50dc-97d4-85ea0398d518"
+        ],
+        "acceptable_ids": [],
+        "retrieved_ids": [
+          "8297aaff-47da-50dc-97d4-85ea0398d518",
+          "722aeeae-026c-57f3-aeb6-954ac3cf27ec",
+          "8fa99b23-83db-5ab7-ba99-553ba839b7c0",
+          "dc0fc7fd-984a-52af-93f0-c21b95ec29a4",
+          "add32e9f-6f10-5dea-861d-fbcecff1a8bf",
+          "f530fa49-c30b-5add-acf2-1c1e87192fdf",
+          "aa414655-8aad-55eb-842d-5ad334746aba",
+          "b141342b-a6c1-5cee-a5c2-2557112f9f52",
+          "cef33223-7fa1-5644-914d-37d2d7c09b8b",
+          "86e5d86b-339e-5d58-9a82-50508c3179db"
+        ],
+        "non_llm_precision": 0.1,
+        "non_llm_recall": 1.0,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 0.75,
+        "extracted_filters": {
+          "clean_query": "mountains and caves",
+          "destination_name": "Đà Nẵng",
+          "category": null,
+          "max_price": null
+        },
+        "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
+        "filter_fallback": false,
+        "latency_s": 3.249,
+        "error": null
+      },
+      {
+        "id": "attraction-nhatrang-kids-vi",
+        "search": "attractions",
+        "language": "vi",
+        "pair_id": "attraction-nhatrang-kids",
+        "query": "chỗ chơi cho trẻ em ở Nha Trang",
+        "expected_ids": [
+          "ad39f8f2-7d11-5c20-87c1-fecd92263565"
+        ],
+        "acceptable_ids": [
+          "ad39f8f2-7d11-5c20-87c1-fecd92263565",
+          "b87be063-b873-5269-9df7-62ac2fb990b3",
+          "4765cd0c-5712-52c3-a112-fe4c1517fe37",
+          "3a60b356-3ac5-5b6a-933c-42e89918308d"
+        ],
+        "retrieved_ids": [
+          "85d9cc1c-b79d-54e1-a139-ef92b587ef78",
+          "138dd5e2-3540-56b3-95fa-294f084f9e4f",
+          "691c230e-54c9-5742-8d8b-96ca71a7a6d7",
+          "285c6541-4046-582b-8b69-ab686f34586d",
+          "ad39f8f2-7d11-5c20-87c1-fecd92263565",
+          "e2ec7279-e943-5410-98f6-57616b9403db",
+          "4765cd0c-5712-52c3-a112-fe4c1517fe37",
+          "439213b1-ca58-5ac9-9878-2cda323e826c",
+          "6e23b8b3-bbac-5402-99c6-ca805014aa6b",
+          "ae2e5250-450f-5f5e-b606-9d37d642d162"
+        ],
+        "non_llm_precision": 0.2,
+        "non_llm_recall": 1.0,
+        "llm_precision": 0.99999999999,
+        "llm_context_relevance": 1.0,
+        "extracted_filters": {
+          "clean_query": "chỗ chơi cho trẻ em",
+          "destination_name": "Nha Trang",
+          "category": null,
+          "max_price": null
+        },
+        "resolved_destination_id": "3d97277e-8210-45bf-9842-eea4fd356e9e",
+        "filter_fallback": false,
+        "latency_s": 3.559,
+        "error": null
+      },
+      {
+        "id": "attraction-nhatrang-kids-en",
+        "search": "attractions",
+        "language": "en",
+        "pair_id": "attraction-nhatrang-kids",
+        "query": "places for kids to play in Nha Trang",
+        "expected_ids": [
+          "ad39f8f2-7d11-5c20-87c1-fecd92263565"
+        ],
+        "acceptable_ids": [
+          "ad39f8f2-7d11-5c20-87c1-fecd92263565",
+          "b87be063-b873-5269-9df7-62ac2fb990b3",
+          "4765cd0c-5712-52c3-a112-fe4c1517fe37",
+          "3a60b356-3ac5-5b6a-933c-42e89918308d"
+        ],
+        "retrieved_ids": [
+          "85d9cc1c-b79d-54e1-a139-ef92b587ef78",
+          "285c6541-4046-582b-8b69-ab686f34586d",
+          "691c230e-54c9-5742-8d8b-96ca71a7a6d7",
+          "138dd5e2-3540-56b3-95fa-294f084f9e4f",
+          "4765cd0c-5712-52c3-a112-fe4c1517fe37",
+          "e2ec7279-e943-5410-98f6-57616b9403db",
+          "ad39f8f2-7d11-5c20-87c1-fecd92263565",
+          "6e23b8b3-bbac-5402-99c6-ca805014aa6b",
+          "604e593d-67d7-52f9-b50f-066103eb2e17",
+          "439213b1-ca58-5ac9-9878-2cda323e826c"
+        ],
+        "non_llm_precision": 0.2,
+        "non_llm_recall": 1.0,
+        "llm_precision": 0.4166666666458333,
+        "llm_context_relevance": 1.0,
+        "extracted_filters": {
+          "clean_query": "places for kids to play",
+          "destination_name": "Nha Trang",
+          "category": null,
+          "max_price": null
+        },
+        "resolved_destination_id": "3d97277e-8210-45bf-9842-eea4fd356e9e",
+        "filter_fallback": false,
+        "latency_s": 2.796,
+        "error": null
+      },
+      {
+        "id": "attraction-hue-temple-vi",
+        "search": "attractions",
+        "language": "vi",
+        "pair_id": "attraction-hue-temple",
+        "query": "chùa cổ ở Huế",
+        "expected_ids": [
+          "b4ca5b7b-b7e7-56c1-812c-6a2bdfa3b370"
+        ],
+        "acceptable_ids": [],
+        "retrieved_ids": [
+          "b4ca5b7b-b7e7-56c1-812c-6a2bdfa3b370",
+          "aa260c32-eebd-596c-806f-b42fc90c6afb",
+          "f596138f-bc0e-594c-94f4-6e9935955662",
+          "cfa1374c-9109-5b62-943f-22b53e674de8",
+          "186b16b8-6579-5b51-ae79-f2dcd2aa4208",
+          "bc7f8e11-28bc-5bba-9a15-ef819d19faaf",
+          "2f048024-ddfa-5170-bdf9-4014a51d2516",
+          "965b9806-0960-5475-9a45-8830a54f279c",
+          "15ce08c5-8dc5-56c4-8197-12aee15d9cea",
+          "e9151523-5083-5840-9083-404d1417ead2"
+        ],
+        "non_llm_precision": 0.1,
+        "non_llm_recall": 1.0,
+        "llm_precision": 0.9999999999,
+        "llm_context_relevance": 1.0,
+        "extracted_filters": {
+          "clean_query": "chùa cổ",
+          "destination_name": "Huế",
+          "category": "chùa",
+          "max_price": null
+        },
+        "resolved_destination_id": "6dd17d02-74a5-4640-beb3-f116c8c34ea7",
+        "filter_fallback": false,
+        "latency_s": 4.073,
+        "error": null
+      },
+      {
+        "id": "attraction-hue-citadel-vi",
+        "search": "attractions",
+        "language": "vi",
+        "pair_id": "attraction-hue-citadel",
+        "query": "Đại Nội Huế",
+        "expected_ids": [
+          "edec6f1c-1302-5d1d-b290-4074d2d53dc5",
+          "e9151523-5083-5840-9083-404d1417ead2"
+        ],
+        "acceptable_ids": [],
+        "retrieved_ids": [],
+        "non_llm_precision": null,
+        "non_llm_recall": 0.0,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 0.0,
+        "extracted_filters": {
+          "clean_query": "Đại Nội",
+          "destination_name": "Huế",
+          "category": null,
+          "max_price": null
+        },
+        "resolved_destination_id": "6dd17d02-74a5-4640-beb3-f116c8c34ea7",
+        "filter_fallback": false,
+        "latency_s": 3.236,
+        "error": null
+      },
+      {
+        "id": "attraction-hue-citadel-en",
+        "search": "attractions",
+        "language": "en",
+        "pair_id": "attraction-hue-citadel",
+        "query": "Hue Imperial City",
+        "expected_ids": [
+          "edec6f1c-1302-5d1d-b290-4074d2d53dc5",
+          "e9151523-5083-5840-9083-404d1417ead2"
+        ],
+        "acceptable_ids": [],
+        "retrieved_ids": [
+          "992995af-9a09-5b67-afb8-f9705d93806f",
+          "ad4e5d55-e219-5052-a4f4-e3cbc6f81fac",
+          "5461002d-6dd9-5061-ba2d-699da97f066f",
+          "beb7b0f3-0f51-510a-9ce5-99d4c6f91362",
+          "aa260c32-eebd-596c-806f-b42fc90c6afb",
+          "e9151523-5083-5840-9083-404d1417ead2",
+          "9dca8bef-2936-5da8-959e-431695ba37c4",
+          "c91bba74-b42b-522c-a32f-50dfdbf8337e",
+          "77b79cf8-47f8-59c9-8056-294ecc445f18",
+          "d11f6862-0819-5a2f-bde3-35fdfc5ffad2"
+        ],
+        "non_llm_precision": 0.1,
+        "non_llm_recall": 0.5,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 1.0,
+        "extracted_filters": {
+          "clean_query": "cố đô Huế",
+          "destination_name": "Huế",
+          "category": "cultural attraction",
+          "max_price": null
+        },
+        "resolved_destination_id": "6dd17d02-74a5-4640-beb3-f116c8c34ea7",
+        "filter_fallback": false,
+        "latency_s": 1.69,
+        "error": null
+      },
+      {
+        "id": "attraction-negative-absent-vi",
+        "search": "attractions",
+        "language": "vi",
+        "pair_id": null,
+        "query": "điểm tham quan ở Phú Quốc",
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "retrieved_ids": [
+          "c4dce0fa-2b2c-5d94-985b-8e48d82549e6",
+          "8347c705-7f32-5a08-a4be-d8075beca2b0",
+          "8dc245de-846f-5ae3-ac7f-4313797673c3",
+          "52f7a444-36ac-59c0-8a01-0c7452a9a711",
+          "7900230a-5410-5d57-b28b-b4d5d84ac63f",
+          "1afe29eb-b8c3-53fd-9373-2407c2b362c2",
+          "dfa70e44-8148-5710-95d4-fb45a1085611",
+          "add32e9f-6f10-5dea-861d-fbcecff1a8bf",
+          "86e5d86b-339e-5d58-9a82-50508c3179db",
+          "01c8988e-e33a-5110-9c8b-35e07c8f1a35"
+        ],
+        "non_llm_precision": 0.0,
+        "non_llm_recall": null,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 0.0,
+        "extracted_filters": {
+          "clean_query": "điểm tham quan",
+          "destination_name": "Phú Quốc",
+          "category": null,
+          "max_price": null
+        },
+        "resolved_destination_id": null,
+        "filter_fallback": false,
+        "latency_s": 4.678,
+        "error": null
+      },
+      {
+        "id": "attraction-hcm-kids-vi",
+        "search": "attractions",
+        "language": "vi",
+        "pair_id": "attraction-hcm-kids",
+        "query": "khu vui chơi trẻ em ở Sài Gòn",
+        "expected_ids": [],
+        "acceptable_ids": [
+          "c3819284-9868-5b61-9b71-0ee4cc3e09be",
+          "ada30917-12a3-5756-a7da-2597decded95",
+          "bbd0cfdb-e0a1-5d00-96ce-450736526e8e",
+          "87cc9020-ddc7-55b8-b92b-50a996cb578d",
+          "8e5c122c-31a1-521b-a34a-aaa68ab3173b"
+        ],
+        "retrieved_ids": [
+          "4ad45aff-92a8-560a-a570-c50d5dcd21f2",
+          "c38df3b0-b51a-5349-8092-5753e735e471",
+          "c3819284-9868-5b61-9b71-0ee4cc3e09be",
+          "dbaab6f8-1f2a-540c-90e5-3c846cd5fd48",
+          "28e9cc45-ade4-58c4-b200-1608f2731f45",
+          "fda63c40-3579-5d09-ae25-ae95e19eb5e4",
+          "5c441683-1c90-5f90-8314-afb937b479f3",
+          "ffa3a334-0636-5910-bf67-cdcaf53ea9af",
+          "bbd0cfdb-e0a1-5d00-96ce-450736526e8e",
+          "282d4232-8ec9-578e-93ef-1eb939b827cd"
+        ],
+        "non_llm_precision": 0.2,
+        "non_llm_recall": null,
+        "llm_precision": 0.99999999999,
+        "llm_context_relevance": 1.0,
+        "extracted_filters": {
+          "clean_query": "khu vui chơi trẻ em",
+          "destination_name": "Hồ Chí Minh",
+          "category": "vui chơi",
+          "max_price": null
+        },
+        "resolved_destination_id": "6f860287-189e-46db-81f6-cd3c7ee5f1f7",
+        "filter_fallback": false,
+        "latency_s": 3.732,
+        "error": null
+      },
+      {
+        "id": "attraction-hcm-kids-en",
+        "search": "attractions",
+        "language": "en",
+        "pair_id": "attraction-hcm-kids",
+        "query": "kids playgrounds in Saigon",
+        "expected_ids": [],
+        "acceptable_ids": [
+          "c3819284-9868-5b61-9b71-0ee4cc3e09be",
+          "ada30917-12a3-5756-a7da-2597decded95",
+          "bbd0cfdb-e0a1-5d00-96ce-450736526e8e",
+          "87cc9020-ddc7-55b8-b92b-50a996cb578d",
+          "8e5c122c-31a1-521b-a34a-aaa68ab3173b"
+        ],
+        "retrieved_ids": [
+          "4ad45aff-92a8-560a-a570-c50d5dcd21f2",
+          "c38df3b0-b51a-5349-8092-5753e735e471",
+          "282d4232-8ec9-578e-93ef-1eb939b827cd",
+          "fda63c40-3579-5d09-ae25-ae95e19eb5e4",
+          "ffa3a334-0636-5910-bf67-cdcaf53ea9af",
+          "28e9cc45-ade4-58c4-b200-1608f2731f45",
+          "c3819284-9868-5b61-9b71-0ee4cc3e09be",
+          "dbaab6f8-1f2a-540c-90e5-3c846cd5fd48",
+          "5c441683-1c90-5f90-8314-afb937b479f3",
+          "1a5a0b7c-92af-5fc6-9e9e-394d34228a0e"
+        ],
+        "non_llm_precision": 0.1,
+        "non_llm_recall": null,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 1.0,
+        "extracted_filters": {
+          "clean_query": "chơi cho trẻ em",
+          "destination_name": "Hồ Chí Minh",
+          "category": "playground",
+          "max_price": null
+        },
+        "resolved_destination_id": "6f860287-189e-46db-81f6-cd3c7ee5f1f7",
+        "filter_fallback": false,
+        "latency_s": 7.494,
+        "error": null
+      },
+      {
+        "id": "attraction-danang-kids-vi",
+        "search": "attractions",
+        "language": "vi",
+        "pair_id": null,
+        "query": "khu vui chơi trẻ em ở Đà Nẵng",
+        "expected_ids": [],
+        "acceptable_ids": [
+          "5599c1c2-e3cc-53fc-b0e0-b2ebe9a5b79b",
+          "c64fea2d-9b6d-55f0-b43b-ae7bcf70914d",
+          "a2c82e7e-bc1c-538b-8afe-58db4f1aea9c",
+          "7b7dcfe4-e220-5d87-9ff0-573710c5ef63"
+        ],
+        "retrieved_ids": [
+          "c64fea2d-9b6d-55f0-b43b-ae7bcf70914d",
+          "f796f4ae-dfce-55ac-bc29-5d866ef6bc19",
+          "d56d1810-90b2-5385-847e-bcfa3e51568f",
+          "80be1e88-3367-51de-8a19-df7e4df04d4a",
+          "00fc1eb6-c923-534b-acbf-26d344a415ad",
+          "2057b3d6-e9e4-5c6d-8d5d-2163bf84df15",
+          "d610b75b-7206-585b-996c-cb2dfd815386",
+          "a24c2a1b-6b41-56bc-8d38-756bd71d5f9e",
+          "a2c82e7e-bc1c-538b-8afe-58db4f1aea9c",
+          "7b7dcfe4-e220-5d87-9ff0-573710c5ef63"
+        ],
+        "non_llm_precision": 0.3,
+        "non_llm_recall": null,
+        "llm_precision": 0.7856701939947976,
+        "llm_context_relevance": 1.0,
+        "extracted_filters": {
+          "clean_query": "khu vui chơi trẻ em",
+          "destination_name": "Đà Nẵng",
+          "category": "vui chơi",
+          "max_price": null
+        },
+        "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
+        "filter_fallback": false,
+        "latency_s": 2.792,
+        "error": null
+      },
+      {
+        "id": "hotel-hcm-family-vi",
+        "search": "hotels",
+        "language": "vi",
+        "pair_id": null,
+        "query": "khách sạn phù hợp cho gia đình ở Sài Gòn",
+        "expected_ids": [
+          "3d7cbe91-e113-4b2e-8c5d-8e73ef2910ec"
+        ],
+        "acceptable_ids": [
+          "e560a4ca-49d0-4602-8c43-30fce58199fc"
+        ],
+        "retrieved_ids": [
+          "c6523f67-fd01-42ba-85a4-3afd0df7f6a1",
+          "0ad57943-12de-4405-ba9f-297cfc871e99",
+          "c99c6ef8-7098-49cd-8e9b-38702be65a5e",
+          "c3e30c35-a1ee-48db-b94b-3bda386bcacf",
+          "500d0fa2-5d74-475e-a509-5e05dae2d5bc",
+          "30f62571-4bc9-45bc-9471-2f81368de349",
+          "179153c6-bdf5-4783-bb52-19d9a7b69662",
+          "bc1ee051-b226-4766-bdf3-2922499ea7dd",
+          "b341124f-bfa4-4c10-8341-853035e93158",
+          "1d9ed445-4c1b-4ca4-8ee9-82807f0da903"
+        ],
+        "non_llm_precision": 0.0,
+        "non_llm_recall": 0.0,
+        "llm_precision": 0.0,
+        "llm_context_relevance": 0.0,
+        "extracted_filters": {
+          "clean_query": "khách sạn phù hợp cho gia đình",
+          "destination_name": "Sài Gòn",
+          "min_star_rating": null,
+          "max_price": null
+        },
+        "resolved_destination_id": null,
+        "filter_fallback": false,
+        "latency_s": 7.208,
+        "error": null
+      }
+    ],
+    "breakdowns": {
+      "non_llm_precision_by_language": {
+        "vi": 0.1173,
+        "en": 0.1181
+      },
+      "non_llm_recall_by_language": {
+        "vi": 0.5278,
+        "en": 0.5833
+      },
+      "non_llm_precision_by_search": {
+        "hotels": 0.105,
+        "attractions": 0.15
+      },
+      "non_llm_recall_by_search": {
+        "hotels": 0.4762,
+        "attractions": 0.7222
+      },
+      "llm_precision_by_language": {
+        "vi": 0.3676,
+        "en": 0.035
+      },
+      "llm_context_relevance_by_language": {
+        "vi": 0.5714,
+        "en": 0.6094
+      }
+    },
+    "summary": {
+      "total": 44,
+      "errors": [],
+      "filter_fallbacks": []
+    }
+  },
+  "e2e": {
+    "rows": [
+      {
+        "id": "conv-nhatrang-couple-3d",
+        "language": "vi",
+        "expected_stage": "planned",
+        "reached_stage": "hotel_options",
+        "harness_failure": true,
+        "error": null,
+        "transcript_path": "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project/eval/results/transcripts/conv-nhatrang-couple-3d.md",
+        "turns": [
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.4890940896225287,
+            "latency_s": 5.883
+          },
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.40525422619299684,
+            "latency_s": 3.442
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": true,
+            "faithfulness": 0.5,
+            "response_relevancy": 0.3408301520747088,
+            "latency_s": 9.496
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": true,
+            "faithfulness": 0.3333333333333333,
+            "response_relevancy": 0.5802370027567995,
+            "latency_s": 7.098
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 5.379
+          }
+        ]
+      },
+      {
+        "id": "conv-danang-family-3d",
+        "language": "vi",
+        "expected_stage": "planned",
+        "reached_stage": "hotel_options",
+        "harness_failure": true,
+        "error": null,
+        "transcript_path": "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project/eval/results/transcripts/conv-danang-family-3d.md",
+        "turns": [
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.49060897512947516,
+            "latency_s": 4.353
+          },
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.4221363798862914,
+            "latency_s": 2.665
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": true,
+            "faithfulness": 0.5,
+            "response_relevancy": 0.3408301520747088,
+            "latency_s": 11.102
+          },
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 1.567
+          },
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 2.075
+          }
+        ]
+      },
+      {
+        "id": "conv-hcm-finalize-4d",
+        "language": "vi",
+        "expected_stage": "finalized",
+        "reached_stage": "error",
+        "harness_failure": true,
+        "error": null,
+        "transcript_path": "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project/eval/results/transcripts/conv-hcm-finalize-4d.md",
+        "turns": [
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.571210122935341,
+            "latency_s": 2.223
+          },
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 2.563
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 4.503
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 5.271
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 5.855
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 9.772
+          }
+        ]
+      },
+      {
+        "id": "conv-hue-finalize-2d",
+        "language": "vi",
+        "expected_stage": "finalized",
+        "reached_stage": "error",
+        "harness_failure": true,
+        "error": null,
+        "transcript_path": "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project/eval/results/transcripts/conv-hue-finalize-2d.md",
+        "turns": [
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.5120369010178539,
+            "latency_s": 2.63
+          },
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 3.088
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 8.601
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 12.69
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 11.723
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 16.648
+          }
+        ]
+      },
+      {
+        "id": "conv-nhatrang-refine-budget",
+        "language": "vi",
+        "expected_stage": "planned",
+        "reached_stage": "error",
+        "harness_failure": true,
+        "error": null,
+        "transcript_path": "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project/eval/results/transcripts/conv-nhatrang-refine-budget.md",
+        "turns": [
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 3.982
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 7.393
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 9.998
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 9.135
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 12.788
+          }
+        ]
+      },
+      {
+        "id": "conv-danang-edit-cheaper",
+        "language": "vi",
+        "expected_stage": "modified",
+        "reached_stage": "error",
+        "harness_failure": true,
+        "error": null,
+        "transcript_path": "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project/eval/results/transcripts/conv-danang-edit-cheaper.md",
+        "turns": [
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.49060897512947516,
+            "latency_s": 2.858
+          },
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 2.427
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 11.673
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 11.965
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 12.105
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 5.614
+          }
+        ]
+      },
+      {
+        "id": "conv-hcm-luxury-en",
+        "language": "en",
+        "expected_stage": "planned",
+        "reached_stage": "error",
+        "harness_failure": true,
+        "error": null,
+        "transcript_path": "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project/eval/results/transcripts/conv-hcm-luxury-en.md",
+        "turns": [
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 1.991
+          },
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 2.434
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 6.596
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 13.576
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 8.763
+          }
+        ]
+      },
+      {
+        "id": "conv-crosslang-hyatt-danang",
+        "language": "vi",
+        "expected_stage": "hotel_options",
+        "reached_stage": "error",
+        "harness_failure": true,
+        "error": null,
+        "transcript_path": "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project/eval/results/transcripts/conv-crosslang-hyatt-danang.md",
+        "turns": [
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 7.526
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 8.434
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 16.425
+          }
+        ]
+      },
+      {
+        "id": "conv-nhatrang-attraction-mix",
+        "language": "vi",
+        "expected_stage": "planned",
+        "reached_stage": "hotel_options",
+        "harness_failure": true,
+        "error": null,
+        "transcript_path": "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project/eval/results/transcripts/conv-nhatrang-attraction-mix.md",
+        "turns": [
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.5413660640438667,
+            "latency_s": 3.172
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": true,
+            "faithfulness": 0.5,
+            "response_relevancy": 0.3408301520747088,
+            "latency_s": 7.595
+          },
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 1.861
+          },
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 2.198
+          }
+        ]
+      },
+      {
+        "id": "conv-unsupported-destination",
+        "language": "vi",
+        "expected_stage": "hotel_options",
+        "reached_stage": "intake",
+        "harness_failure": true,
+        "error": null,
+        "transcript_path": "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project/eval/results/transcripts/conv-unsupported-destination.md",
+        "turns": [
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 2.002
+          },
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 2.594
+          },
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 2.998
+          },
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 2.555
+          }
+        ]
+      },
+      {
+        "id": "conv-hcm-district-switch",
+        "language": "vi",
+        "expected_stage": "planned",
+        "reached_stage": "error",
+        "harness_failure": true,
+        "error": null,
+        "transcript_path": "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project/eval/results/transcripts/conv-hcm-district-switch.md",
+        "turns": [
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.5158635719825037,
+            "latency_s": 2.668
+          },
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 3.469
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 9.2
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 6.512
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 6.922
+          }
+        ]
+      },
+      {
+        "id": "conv-hue-thin-corpus-probe",
+        "language": "vi",
+        "expected_stage": "hotel_options",
+        "reached_stage": "error",
+        "harness_failure": true,
+        "error": null,
+        "transcript_path": "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project/eval/results/transcripts/conv-hue-thin-corpus-probe.md",
+        "turns": [
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 11.418
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 13.2
+          },
+          {
+            "turn_class": "template",
+            "tool": "recommend_hotels",
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": 0.0,
+            "latency_s": 7.104
+          }
+        ]
+      }
+    ],
+    "breakdowns": {
+      "faithfulness_by_turn_class": {},
+      "response_relevancy_by_turn_class": {}
+    },
+    "summary": {
+      "total_conversations": 12,
+      "total_turns": 57,
+      "excluded_no_context_turns": 53,
+      "harness_failures": [
+        "conv-nhatrang-couple-3d",
+        "conv-danang-family-3d",
+        "conv-hcm-finalize-4d",
+        "conv-hue-finalize-2d",
+        "conv-nhatrang-refine-budget",
+        "conv-danang-edit-cheaper",
+        "conv-hcm-luxury-en",
+        "conv-crosslang-hyatt-danang",
+        "conv-nhatrang-attraction-mix",
+        "conv-unsupported-destination",
+        "conv-hcm-district-switch",
+        "conv-hue-thin-corpus-probe"
+      ],
+      "reached_expected_stage_pct": 0.0,
+      "errors": []
+    }
+  }
+}

@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import time
 import unicodedata
 from dataclasses import dataclass, replace
 from typing import Any, Collection, Dict, Iterable, List, Literal, Tuple
@@ -22,6 +23,7 @@ from src.services.guided_question import (
     format_guided_question,
     resolve_guided_reply,
 )
+from src.services.amenity_catalog import query_approved_amenities
 from src.services.supabase_search import search_hotels_with_rooms
 from src.services.trip_scheduler import PlaceCandidate, detect_covered_hotel_meals
 
@@ -111,6 +113,7 @@ def select_hotel_candidates(
         kwargs["root_longitude"] = root_longitude
         kwargs["max_radius_km"] = max_radius_km
 
+    logger.debug("match_hotels_with_rooms input parameters: %s", kwargs)
     search_results = search_hotels_with_rooms(**kwargs) or []
 
     hydrated = _hydrate_hotel_records(search_results)
@@ -733,8 +736,66 @@ _AMENITY_KEYWORD_TAGS: dict[str, tuple[str, ...]] = {
     # "Khu vực hút thuốc" (a smoking area exists) must NOT match non_smoking.
     "non_smoking": ("khong hut thuoc", "non smoking", "non-smoking", "no smoking"),
     "pool": ("ho boi", "be boi", "swimming pool", "pool"),
+    "swimming_pool": ("ho boi", "be boi", "swimming pool", "pool"),
+    "wifi": ("wifi", "wi-fi", "wi fi", "wireless internet"),
+    "parking": ("bai do xe", "cho de xe", "parking", "car park", "garage"),
+    "parking_lot": ("bai do xe", "cho de xe", "parking", "car park", "garage"),
     "family": ("gia dinh", "tre em", "kids club", "family room"),
 }
+
+_CATALOG_TAG_CACHE_SECONDS = 60.0
+_catalog_tag_cache: dict[str, tuple[bool, float]] = {}
+_catalog_keyword_cache: dict[str, tuple[tuple[str, ...], float]] = {}
+
+
+def clear_hotel_amenity_tag_cache() -> None:
+    """Invalidate catalog lookups after a newly approved amenity is stored."""
+
+    _catalog_tag_cache.clear()
+    _catalog_keyword_cache.clear()
+
+
+def _catalog_match_keywords(tag: str) -> tuple[str, ...]:
+    """Return normalized keywords for one approved dynamic catalog tag."""
+
+    now = time.monotonic()
+    cached = _catalog_keyword_cache.get(tag)
+    if cached is not None and now - cached[1] < _CATALOG_TAG_CACHE_SECONDS:
+        return cached[0]
+
+    entries = query_approved_amenities([tag])
+    entry = next((item for item in entries if item.id == tag), None)
+    keywords = (
+        tuple(_normalize_for_match(keyword) for keyword in entry.match_keywords)
+        if entry is not None
+        else ()
+    )
+    _catalog_tag_cache[tag] = (bool(entry), now)
+    _catalog_keyword_cache[tag] = (keywords, now)
+    return keywords
+
+
+def is_hotel_amenity_tag(tag: str) -> bool:
+    """Return whether an ID is approved for the hotel amenity filter UI.
+
+    Built-in amenity IDs remain immediately available during a database outage.
+    Other IDs become eligible only when they are approved in the shared catalog;
+    a short cache avoids one Supabase call for every hotel card and preference
+    payload in the same request.
+    """
+
+    normalized_tag = str(tag).strip().lower()
+    if normalized_tag in {"sea_view", "breakfast", *_AMENITY_KEYWORD_TAGS}:
+        return True
+    if not normalized_tag:
+        return False
+
+    now = time.monotonic()
+    cached = _catalog_tag_cache.get(normalized_tag)
+    if cached is not None and now - cached[1] < _CATALOG_TAG_CACHE_SECONDS:
+        return cached[0]
+
+    return bool(_catalog_match_keywords(normalized_tag))
 
 
 def hotel_matches_amenity_tag(
@@ -750,7 +811,7 @@ def hotel_matches_amenity_tag(
         return hotel_id is not None and str(hotel_id) in sea_view_hotel_ids
     if tag == "breakfast":
         return "breakfast" in (data.get("covered_meals") or [])
-    keywords = _AMENITY_KEYWORD_TAGS.get(tag)
+    keywords = _AMENITY_KEYWORD_TAGS.get(tag) or _catalog_match_keywords(tag)
     if not keywords:
         return False
     amenities_text = " ".join(str(item) for item in (data.get("amenities") or []))

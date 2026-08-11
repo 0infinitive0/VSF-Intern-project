@@ -24,7 +24,11 @@ from langgraph.types import Command
 from src.agents.nodes.intake import validate_trip_basics
 from src.agents.state import TripState
 from src.i18n import t
+from src.services.amenity_catalog import discover_and_store_amenities
 from src.services.hotel_selection import (
+    clear_hotel_amenity_tag_cache,
+    hotel_matches_amenity_tag,
+    is_hotel_amenity_tag,
     lookup_sea_view_hotel_ids,
     rank_hotel_candidates,
     select_hotel_candidates,
@@ -157,13 +161,26 @@ def recommend_hotels(
         # No explicit range given (e.g. a caller that only knows the older single-number
         # target_price) — fall back to treating it as a ceiling-only budget.
         parsed_max_price = parsed_target_price
-    amenity_pref_set = frozenset(tag.strip() for tag in hotel_amenity_prefs.split(",") if tag.strip())
+    amenity_pref_set = frozenset(
+        tag.strip()
+        for tag in hotel_amenity_prefs.split(",")
+        if tag.strip() and is_hotel_amenity_tag(tag.strip())
+    )
 
     # A follow-up search must start beyond the hotels already shown to the user.
     # Keep an explicit list too so callers that already know prior IDs can use the
     # same contract without depending on session state.
     existing_pending = runtime.state.get("pending_hotel_selection") or {}
     existing_options = existing_pending.get("options", [])
+    previous_active_preferences = [
+        preference
+        for preference in existing_pending.get("active_preferences", [])
+        if isinstance(preference, dict)
+        and preference.get("id")
+        and preference.get("label")
+        and is_hotel_amenity_tag(str(preference["id"]))
+    ]
+    previous_active_ids = [str(preference["id"]) for preference in previous_active_preferences]
     
     # A destination or stay-date change invalidates the source hotel set.  A
     # preference change does not: keep the complete original list so clients
@@ -218,8 +235,11 @@ def recommend_hotels(
             **selection_kwargs,
         )
         sea_view_hotel_ids = (
-            lookup_sea_view_hotel_ids([data["id"] for data, _candidate in options])
-            if "sea_view" in amenity_pref_set
+            lookup_sea_view_hotel_ids([
+                *[data["id"] for data, _candidate in options],
+                *[option["id"] for option in existing_options if isinstance(option, dict) and option.get("id")],
+            ])
+            if "sea_view" in {*amenity_pref_set, *previous_active_ids}
             else frozenset()
         )
         options = rank_hotel_candidates(
@@ -279,30 +299,71 @@ def recommend_hotels(
         return [{"id": pref_str, "label": pref_str}]
 
     parsed_hotel_prefs = parse_prefs(hotel_preferences)
-    parsed_general_prefs = parse_prefs(preferences)
+
+    # A hotel-specific request may name an amenity the shared catalog has not
+    # learned yet (for example, "spa"). Only these hotel preference inputs are
+    # eligible for model classification; general trip preferences never become
+    # hotel filter pills.
+    unknown_amenity_candidates: list[dict[str, str]] = []
+    for preference in parsed_hotel_prefs:
+        preference_dict = (
+            preference.model_dump()
+            if hasattr(preference, "model_dump")
+            else preference
+            if isinstance(preference, dict)
+            else None
+        )
+        if (
+            preference_dict
+            and is_valid_pref(preference_dict)
+            and not is_hotel_amenity_tag(str(preference_dict["id"]))
+        ):
+            unknown_amenity_candidates.append(
+                {
+                    "id": str(preference_dict["id"]),
+                    "label": str(preference_dict["label"]),
+                }
+            )
+    if unknown_amenity_candidates and discover_and_store_amenities(unknown_amenity_candidates):
+        # `is_hotel_amenity_tag` may have cached this new ID as unknown while
+        # building the candidate list above. Clear only after a successful
+        # catalog write so it becomes usable in this same recommendation.
+        clear_hotel_amenity_tag_cache()
     
     # Determine current preference objects
-    current_prefs_dict = {}
+    # A follow-up request adds to the active filters. New search results must
+    # therefore be checked against the previously active preference IDs too.
+    current_prefs_dict = {
+        str(preference["id"]): preference
+        for preference in previous_active_preferences
+        if is_valid_pref(preference) and is_hotel_amenity_tag(str(preference["id"]))
+    }
     for p in parsed_hotel_prefs:
         p_dict = p.model_dump() if hasattr(p, "model_dump") else p if isinstance(p, dict) else None
-        if p_dict and is_valid_pref(p_dict):
-            current_prefs_dict[str(p_dict["id"])] = p_dict
-    for p in parsed_general_prefs:
-        p_dict = p.model_dump() if hasattr(p, "model_dump") else p if isinstance(p, dict) else None
-        if p_dict and is_valid_pref(p_dict):
+        if p_dict and is_valid_pref(p_dict) and is_hotel_amenity_tag(str(p_dict["id"])):
             current_prefs_dict[str(p_dict["id"])] = p_dict
             
     # For hotel amenity string, we don't have a good label, so we use the id for both
     if hotel_amenity_prefs.strip():
         for tag in hotel_amenity_prefs.split(","):
             tag = tag.strip()
-            if tag:
+            if tag and is_hotel_amenity_tag(tag):
                 current_prefs_dict[tag] = {"id": tag, "label": tag}
     
     current_pref_ids = list(current_prefs_dict.keys())
     
     # Compare and merge with existing options
     existing_by_id = {str(opt.get("id")): opt for opt in existing_options if opt.get("id")}
+
+    # Retained cards are not blindly marked as matching a new amenity request.
+    # Evaluate their persisted hotel data with the same predicate used for
+    # ranking freshly fetched candidates, then add only verified matches.
+    for existing in existing_by_id.values():
+        prefs = [tag for tag in (existing.get("preferences") or []) if is_hotel_amenity_tag(str(tag))]
+        for tag in dict.fromkeys([*amenity_pref_set, *current_pref_ids]):
+            if tag not in prefs and hotel_matches_amenity_tag(existing, tag, sea_view_hotel_ids):
+                prefs.append(tag)
+        existing["preferences"] = prefs
     
     for data, _candidate in options:
         hotel_id = str(data.get("id"))
@@ -316,7 +377,18 @@ def recommend_hotels(
                     prefs.append(cp_id)
             existing_by_id[hotel_id]["preferences"] = prefs
         else:
-            data["preferences"] = list(current_pref_ids)
+            # Do not blindly label newly fetched hotels with every requested
+            # preference. A pill should only be present when this specific
+            # hotel actually satisfies that accumulated filter.
+            data["preferences"] = (
+                [
+                    tag
+                    for tag in current_pref_ids
+                    if hotel_matches_amenity_tag(data, tag, sea_view_hotel_ids)
+                ]
+                if previous_active_ids
+                else list(current_pref_ids)
+            )
             existing_by_id[hotel_id] = data
             
     combined_options = list(existing_by_id.values())
@@ -342,7 +414,7 @@ def recommend_hotels(
     all_prefs_dict = {}
     for p in existing_pending.get("all_preferences", []):
         if isinstance(p, dict) and "id" in p:
-            if is_valid_pref(p):
+            if is_valid_pref(p) and is_hotel_amenity_tag(str(p["id"])):
                 all_prefs_dict[p["id"]] = p
             
     # Add new current prefs, preserving existing labels if the ID is already known
@@ -350,9 +422,10 @@ def recommend_hotels(
         if pref_id not in all_prefs_dict:
             all_prefs_dict[pref_id] = p_dict
     
-    # Rebuild all_preferences by gathering every preference ID assigned to any hotel
-    final_all_prefs = []
-    seen_prefs = set()
+    # Keep stable, accumulated pill ordering independent of which hotel happens
+    # to rank first. Hotel-only IDs encountered below are appended as a fallback.
+    final_all_prefs = list(all_prefs_dict.values())
+    seen_prefs = set(all_prefs_dict)
     for idx, opt in enumerate(combined_options, start=1):
         opt["rank"] = idx
         for p_id in opt.get("preferences", []):

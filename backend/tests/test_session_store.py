@@ -1,7 +1,9 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
+from postgrest.exceptions import APIError
 
 import src.agents.session as session_module
 import src.api.routes as routes
@@ -73,6 +75,82 @@ def test_upsert_uses_existing_chat_message_columns_without_schema_metadata(monke
     assert params["p_context_data"]["schema_version"] == 2
     assert [message["sender_type"] for message in params["p_messages"]] == ["user", "assistant"]
     assert all("turn_id" not in message and "message_index" not in message for message in params["p_messages"])
+
+
+def test_upsert_falls_back_to_existing_tables_when_checkpoint_rpc_is_not_deployed(monkeypatch):
+    session = _session()
+    session.state["messages"] = [HumanMessage(content="Plan a trip")]
+    calls = []
+
+    class FakeRpc:
+        def execute(self):
+            raise APIError(
+                {
+                    "message": "Could not find the function public.persist_session_checkpoint",
+                    "code": "PGRST202",
+                    "hint": "",
+                    "details": "",
+                }
+            )
+
+    class FakeQuery:
+        def __init__(self, table_name):
+            self.table_name = table_name
+
+        def upsert(self, data, **kwargs):
+            calls.append((self.table_name, "upsert", data, kwargs))
+            return self
+
+        def delete(self):
+            calls.append((self.table_name, "delete"))
+            return self
+
+        def eq(self, key, value):
+            calls.append((self.table_name, "eq", key, value))
+            return self
+
+        def insert(self, data):
+            calls.append((self.table_name, "insert", data))
+            return self
+
+        def execute(self):
+            return SimpleNamespace(data={"ok": True})
+
+    class FakeSupabase:
+        def rpc(self, _name, _params):
+            return FakeRpc()
+
+        def table(self, table_name):
+            return FakeQuery(table_name)
+
+    monkeypatch.setattr(session_store, "_get_supabase_client", lambda: FakeSupabase())
+
+    session_store.upsert(session)
+
+    assert any(
+        call[:2] == ("sessions", "upsert")
+        and call[3] == {"on_conflict": "session_id"}
+        for call in calls
+    )
+    assert any(call[:2] == ("chat_messages", "delete") for call in calls)
+    insert = next(call for call in calls if call[:2] == ("chat_messages", "insert"))
+    assert insert[2][0]["session_id"] == session.session_id
+
+
+def test_session_checkpoint_migration_replaces_transcript_without_new_chat_columns():
+    migration = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "migrations"
+        / "20260811_add_session_checkpoint_persistence.sql"
+    ).read_text(encoding="utf-8")
+
+    assert "CREATE OR REPLACE FUNCTION public.persist_session_checkpoint" in migration
+    assert "DELETE FROM public.chat_messages" in migration
+    assert "INSERT INTO public.chat_messages" in migration
+    assert "ON CONFLICT (session_id) DO UPDATE" in migration
+    assert "turn_id" not in migration
+    assert "message_index" not in migration
 
 
 def test_registry_rehydrates_only_when_loader_is_enabled(monkeypatch):

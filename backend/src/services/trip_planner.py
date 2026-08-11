@@ -10,7 +10,7 @@ import re
 import uuid
 from collections.abc import Callable, Collection
 from copy import deepcopy
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime
 from functools import lru_cache
 from typing import Any, Mapping, Sequence
@@ -2020,6 +2020,110 @@ def _generate_and_save_itinerary(
         return f"SYSTEM ERROR: {exc}"
 
     return format_trip_response_from_json(trip_data, language)
+
+
+@dataclass(frozen=True)
+class SelectedHotelTrip:
+    """The single generated result for a hotel chosen from pending options."""
+
+    trip_data: dict[str, Any]
+    reply: str
+
+
+def build_selected_hotel_trip(
+    pending: Mapping[str, Any],
+    selected_hotel: dict[str, Any],
+    *,
+    current_trip_data: dict[str, Any] | None,
+    session_id: str,
+    intake_context: str = "",
+    language: str = "vi",
+) -> SelectedHotelTrip:
+    """Build one consistent trip bundle for both chat and direct UI hotel picks.
+
+    The callers retain their transport-specific validation and presentation, but
+    both new-trip and change-hotel generation now pass through this function.
+    """
+    mode = str(pending.get("mode") or "new_trip")
+    destination = str(pending.get("destination") or "")
+    duration = str(pending.get("duration") or "")
+    people = str(pending.get("people") or "")
+    preferences = str(pending.get("preferences_text") or "")
+    stay_kwargs: dict[str, str | None] = {}
+    if pending.get("start_date") is not None or pending.get("end_date") is not None:
+        stay_kwargs = {
+            "start_date": pending.get("start_date"),
+            "end_date": pending.get("end_date"),
+        }
+
+    if mode in {"change_hotel", "replace_trip_preferences"}:
+        if current_trip_data is None:
+            raise ValueError("No current trip exists for hotel replacement.")
+
+        planning_constraints = pending.get("planning_constraints") or {} if mode == "change_hotel" else {}
+        trip_data = _build_trip_data(
+            destination,
+            duration,
+            people,
+            preferences,
+            preselected_hotel=selected_hotel,
+            planning_constraints=planning_constraints,
+            exclude_attraction_ids=_scheduled_attraction_ids(current_trip_data),
+            session_id=session_id,
+            intake_context=intake_context,
+            language=language,
+            **stay_kwargs,
+        )
+        adjustment = t(
+            "Đã đổi khách sạn và lập lại toàn bộ các cụm địa điểm theo vị trí mới.",
+            language,
+        ) if mode == "change_hotel" else t(
+            "Đã cập nhật thông tin chuyến đi, chọn lại khách sạn và lập một lịch trình mới.",
+            language,
+        )
+        trip_data.setdefault("adjustments", []).append(adjustment)
+        itinerary = (trip_data.get("itineraries") or [{}])[0]
+        if isinstance(itinerary, dict):
+            itinerary["status"] = "Draft"
+            itinerary.pop("summary", None)
+            if mode == "change_hotel" and planning_constraints:
+                itinerary["planning_constraints"] = planning_constraints
+                trip_data.setdefault("adjustments", []).extend(_reapply_planning_constraints(trip_data))
+        trip_data["hotel_selection_options"] = deepcopy(dict(pending))
+        return SelectedHotelTrip(
+            trip_data=trip_data,
+            reply=format_trip_response_from_json(trip_data, language),
+        )
+
+    captured: dict[str, dict[str, Any]] = {}
+
+    def capture_trip_data(trip_data: dict[str, Any]) -> None:
+        # Keep the tool and direct UI payloads identical: both receive route
+        # calculations before the generated bundle is returned.
+        from src.services.routing import recalculate_itinerary_routes
+
+        recalculate_itinerary_routes(trip_data)
+        captured["trip_data"] = trip_data
+
+    reply = _generate_and_save_itinerary(
+        destination,
+        duration,
+        people,
+        preferences,
+        preselected_hotel=selected_hotel,
+        session_id=session_id,
+        save=capture_trip_data,
+        intake_context=intake_context,
+        language=language,
+        **stay_kwargs,
+    )
+    if str(reply).startswith("SYSTEM ERROR:"):
+        raise RuntimeError(str(reply))
+    trip_data = captured.get("trip_data")
+    if trip_data is None:
+        raise RuntimeError("SYSTEM ERROR: Hotel selection did not produce a trip plan.")
+    trip_data["hotel_selection_options"] = deepcopy(dict(pending))
+    return SelectedHotelTrip(trip_data=trip_data, reply=str(reply))
 
 
 def _legacy_modify_trip_plan(

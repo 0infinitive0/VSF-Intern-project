@@ -34,6 +34,7 @@ from src.agents.state import initial_state
 from src.agents.tools.direct_invoke import invoke_tool_directly
 from src.agents.tools.recommend_hotels import recommend_hotels
 from src.agents.tools.select_hotel import select_hotel
+from src.services.amenity_catalog import AmenityCatalogEntry
 from src.services.trip_edit_planner import EditOperation, TripEditPlan
 from src.services.trip_scheduler import PlaceCandidate
 
@@ -131,6 +132,31 @@ def test_recommend_hotels_writes_pending_selection_and_lists_names(monkeypatch):
     assert [option["id"] for option in updates["pending_hotel_selection"]["options"]] == ["h1", "h2"]
 
 
+def test_recommend_hotels_excludes_general_trip_preferences_from_hotel_filter_payload(monkeypatch):
+    options = [_fake_option("h1", "Khách sạn Một", 1)]
+    monkeypatch.setattr(recommend_hotels_module, "_get_destination_id", lambda _destination: "dest-1")
+    monkeypatch.setattr(recommend_hotels_module, "select_hotel_candidates", lambda *args, **kwargs: options)
+    monkeypatch.setattr(recommend_hotels_module, "rank_hotel_candidates", lambda candidates, **_kwargs: candidates)
+
+    state = initial_state("test-session")
+    state["intake"]["preferences"] = ["lịch sử"]
+    _, updates = invoke_tool_directly(
+        recommend_hotels,
+        state,
+        session_id="test-session",
+        destination="Đà Nẵng",
+        duration="3 ngày",
+        start_date="2026-08-10",
+        end_date="2026-08-13",
+        people="2 người",
+    )
+
+    pending = updates["pending_hotel_selection"]
+    assert pending["active_preferences"] == []
+    assert pending["all_preferences"] == []
+    assert pending["options"][0]["preferences"] == []
+
+
 def test_recommend_hotels_excludes_hotels_already_shown_when_searching_more(monkeypatch):
     captured_select_kwargs: dict = {}
     existing_option = _fake_option("shown-hotel", "Khách sạn Đã Hiển Thị", 1)[0]
@@ -215,6 +241,249 @@ def test_recommend_hotels_keeps_original_list_when_preferences_change(monkeypatc
     ]
 
 
+def test_recommend_hotels_only_tags_previous_hotels_that_match_a_new_amenity(monkeypatch):
+    previous = _fake_option("previous", "Existing", 1)[0]
+    previous["amenities"] = ["Wifi"]
+    matching_previous = _fake_option("matching-previous", "Existing pool", 2)[0]
+    matching_previous["amenities"] = ["Swimming pool"]
+    fresh = _fake_option("fresh", "Fresh", 1)[0]
+    fresh["amenities"] = ["Swimming pool"]
+
+    monkeypatch.setattr(recommend_hotels_module, "_get_destination_id", lambda _destination: "dest-1")
+    monkeypatch.setattr(recommend_hotels_module, "select_hotel_candidates", lambda *args, **kwargs: [(fresh, _fake_option("fresh", "Fresh", 1)[1])])
+    monkeypatch.setattr(recommend_hotels_module, "rank_hotel_candidates", lambda candidates, **_kwargs: candidates)
+
+    state = initial_state("test-session")
+    state["pending_hotel_selection"] = {
+        "destination": "Đà Nẵng",
+        "start_date": "2026-08-10",
+        "end_date": "2026-08-13",
+        "options": [previous, matching_previous],
+    }
+    _, updates = invoke_tool_directly(
+        recommend_hotels,
+        state,
+        session_id="test-session",
+        destination="Đà Nẵng",
+        duration="3 ngày",
+        start_date="2026-08-10",
+        end_date="2026-08-13",
+        people="2 người",
+        hotel_amenity_prefs="pool",
+    )
+
+    options_by_id = {option["id"]: option for option in updates["pending_hotel_selection"]["options"]}
+    assert options_by_id["previous"].get("preferences", []) == []
+    assert options_by_id["matching-previous"]["preferences"] == ["pool"]
+    assert options_by_id["fresh"]["preferences"] == ["pool"]
+
+
+def test_recommend_hotels_checks_new_hotels_against_accumulated_preferences(monkeypatch):
+    matches_both = _fake_option("matches-both", "Both", 1)[0]
+    matches_both["amenities"] = ["Swimming pool", "Family room"]
+    matches_old_only = _fake_option("matches-old", "Pool only", 2)[0]
+    matches_old_only["amenities"] = ["Swimming pool"]
+    matches_new_only = _fake_option("matches-new", "Family only", 3)[0]
+    matches_new_only["amenities"] = ["Family room"]
+    fresh_options = [matches_both, matches_old_only, matches_new_only]
+
+    monkeypatch.setattr(recommend_hotels_module, "_get_destination_id", lambda _destination: "dest-1")
+    monkeypatch.setattr(
+        recommend_hotels_module,
+        "select_hotel_candidates",
+        lambda *args, **kwargs: [
+            (data, _fake_option(data["id"], data["name"], index)[1])
+            for index, data in enumerate(fresh_options, start=1)
+        ],
+    )
+    monkeypatch.setattr(recommend_hotels_module, "rank_hotel_candidates", lambda candidates, **_kwargs: candidates)
+
+    state = initial_state("test-session")
+    state["pending_hotel_selection"] = {
+        "options": [],
+        "all_preferences": [{"id": "pool", "label": "Pool"}],
+        "active_preferences": [{"id": "pool", "label": "Pool"}],
+    }
+    _, updates = invoke_tool_directly(
+        recommend_hotels,
+        state,
+        session_id="test-session",
+        destination="Da Nang",
+        duration="3 days",
+        start_date="2026-08-10",
+        end_date="2026-08-13",
+        people="2 people",
+        hotel_amenity_prefs="family",
+    )
+
+    pending = updates["pending_hotel_selection"]
+    options_by_id = {option["id"]: option for option in pending["options"]}
+    assert options_by_id["matches-both"]["preferences"] == ["pool", "family"]
+    assert options_by_id["matches-old"]["preferences"] == ["pool"]
+    assert options_by_id["matches-new"]["preferences"] == ["family"]
+    assert pending["active_preferences"] == [
+        {"id": "pool", "label": "Pool"},
+        {"id": "family", "label": "family"},
+    ]
+
+
+def test_recommend_hotels_keeps_active_preferences_in_all_preferences_without_a_matching_hotel(monkeypatch):
+    family_only = _fake_option("family-only", "Family only", 1)[0]
+    family_only["amenities"] = ["Family room"]
+
+    monkeypatch.setattr(recommend_hotels_module, "_get_destination_id", lambda _destination: "dest-1")
+    monkeypatch.setattr(
+        recommend_hotels_module,
+        "select_hotel_candidates",
+        lambda *args, **kwargs: [(family_only, _fake_option("family-only", "Family only", 1)[1])],
+    )
+    monkeypatch.setattr(recommend_hotels_module, "rank_hotel_candidates", lambda candidates, **_kwargs: candidates)
+
+    state = initial_state("test-session")
+    state["pending_hotel_selection"] = {
+        "options": [],
+        "all_preferences": [{"id": "pool", "label": "Pool"}],
+        "active_preferences": [{"id": "pool", "label": "Pool"}],
+    }
+    _, updates = invoke_tool_directly(
+        recommend_hotels,
+        state,
+        session_id="test-session",
+        destination="Da Nang",
+        duration="3 days",
+        start_date="2026-08-10",
+        end_date="2026-08-13",
+        people="2 people",
+        hotel_amenity_prefs="family",
+    )
+
+    pending = updates["pending_hotel_selection"]
+    assert pending["active_preferences"] == [
+        {"id": "pool", "label": "Pool"},
+        {"id": "family", "label": "family"},
+    ]
+    assert pending["all_preferences"] == pending["active_preferences"]
+
+
+def test_recommend_hotels_tags_new_hotels_with_matching_wifi_and_swimming_pool_preferences(monkeypatch):
+    fresh = _fake_option("fresh", "Fresh", 1)[0]
+    fresh["amenities"] = ["Wi-Fi miễn phí", "Swimming pool"]
+
+    monkeypatch.setattr(recommend_hotels_module, "_get_destination_id", lambda _destination: "dest-1")
+    monkeypatch.setattr(
+        recommend_hotels_module,
+        "select_hotel_candidates",
+        lambda *args, **kwargs: [(fresh, _fake_option("fresh", "Fresh", 1)[1])],
+    )
+    monkeypatch.setattr(recommend_hotels_module, "rank_hotel_candidates", lambda candidates, **_kwargs: candidates)
+
+    state = initial_state("test-session")
+    state["pending_hotel_selection"] = {
+        "options": [],
+        "all_preferences": [{"id": "history", "label": "History"}],
+        "active_preferences": [{"id": "history", "label": "History"}],
+    }
+    _, updates = invoke_tool_directly(
+        recommend_hotels,
+        state,
+        session_id="test-session",
+        destination="Da Nang",
+        duration="3 days",
+        start_date="2026-08-10",
+        end_date="2026-08-13",
+        people="2 people",
+        hotel_preferences='[{"id":"wifi","label":"wifi"},{"id":"swimming_pool","label":"pool"}]',
+    )
+
+    pending = updates["pending_hotel_selection"]
+    assert pending["options"][0]["preferences"] == ["wifi", "swimming_pool"]
+    assert pending["active_preferences"] == [
+        {"id": "wifi", "label": "wifi"},
+        {"id": "swimming_pool", "label": "pool"},
+    ]
+    assert pending["all_preferences"] == pending["active_preferences"]
+
+
+def test_recommend_hotels_exposes_parking_as_a_hotel_filter_preference(monkeypatch):
+    fresh = _fake_option("fresh", "Fresh", 1)[0]
+    fresh["amenities"] = ["Bãi đỗ xe miễn phí"]
+
+    monkeypatch.setattr(recommend_hotels_module, "_get_destination_id", lambda _destination: "dest-1")
+    monkeypatch.setattr(
+        recommend_hotels_module,
+        "select_hotel_candidates",
+        lambda *args, **kwargs: [(fresh, _fake_option("fresh", "Fresh", 1)[1])],
+    )
+    monkeypatch.setattr(recommend_hotels_module, "rank_hotel_candidates", lambda candidates, **_kwargs: candidates)
+
+    _, updates = invoke_tool_directly(
+        recommend_hotels,
+        initial_state("test-session"),
+        session_id="test-session",
+        destination="Da Nang",
+        duration="3 days",
+        start_date="2026-08-10",
+        end_date="2026-08-13",
+        people="2 people",
+        hotel_preferences='[{"id":"parking","label":"parking lot"}]',
+    )
+
+    pending = updates["pending_hotel_selection"]
+    assert pending["options"][0]["preferences"] == ["parking"]
+    assert pending["active_preferences"] == [{"id": "parking", "label": "parking lot"}]
+    assert pending["all_preferences"] == pending["active_preferences"]
+
+
+def test_recommend_hotels_discovers_a_new_spa_amenity_before_building_filter_pills(monkeypatch):
+    fresh = _fake_option("fresh", "Fresh", 1)[0]
+    fresh["amenities"] = ["Spa"]
+    catalog_ready = {"spa": False}
+    discovered_candidates = []
+
+    monkeypatch.setattr(recommend_hotels_module, "_get_destination_id", lambda _destination: "dest-1")
+    monkeypatch.setattr(
+        recommend_hotels_module,
+        "select_hotel_candidates",
+        lambda *args, **kwargs: [(fresh, _fake_option("fresh", "Fresh", 1)[1])],
+    )
+    monkeypatch.setattr(recommend_hotels_module, "rank_hotel_candidates", lambda candidates, **_kwargs: candidates)
+    monkeypatch.setattr(
+        recommend_hotels_module,
+        "is_hotel_amenity_tag",
+        lambda tag: tag == "spa" and catalog_ready["spa"],
+    )
+    monkeypatch.setattr(
+        recommend_hotels_module,
+        "hotel_matches_amenity_tag",
+        lambda _hotel, tag, _sea_view_ids: tag == "spa",
+    )
+
+    def discover(candidates):
+        discovered_candidates.extend(candidates)
+        catalog_ready["spa"] = True
+        return [AmenityCatalogEntry("spa", "phòng spa", ("spa",))]
+
+    monkeypatch.setattr(recommend_hotels_module, "discover_and_store_amenities", discover)
+    monkeypatch.setattr(recommend_hotels_module, "clear_hotel_amenity_tag_cache", lambda: None)
+
+    _, updates = invoke_tool_directly(
+        recommend_hotels,
+        initial_state("test-session"),
+        session_id="test-session",
+        destination="Da Nang",
+        duration="3 days",
+        start_date="2026-08-10",
+        end_date="2026-08-13",
+        people="2 people",
+        hotel_preferences='[{"id":"spa","label":"phòng spa"}]',
+    )
+
+    pending = updates["pending_hotel_selection"]
+    assert discovered_candidates == [{"id": "spa", "label": "phòng spa"}]
+    assert pending["active_preferences"] == [{"id": "spa", "label": "phòng spa"}]
+    assert pending["options"][0]["preferences"] == ["spa"]
+
+
 def test_change_hotel_reuses_archived_hotel_options_without_rendering_them_in_chat(monkeypatch):
     archived_option = _fake_option("old-hotel", "Khách sạn cũ", 1)[0]
     trip_data = {
@@ -290,9 +559,9 @@ def test_select_hotel_with_valid_rank_builds_itinerary_and_clears_pending(monkey
     }
 
     captured: dict = {}
-    monkeypatch.setattr(select_hotel_module, "_build_trip_data", _fake_build_trip_data(captured))
+    monkeypatch.setattr(trip_planner_module, "_build_trip_data", _fake_build_trip_data(captured))
     monkeypatch.setattr(
-        select_hotel_module, "_generate_and_save_itinerary", lambda *a, **k: _fake_generate_and_save(captured, k)
+        trip_planner_module, "_generate_and_save_itinerary", lambda *a, **k: _fake_generate_and_save(captured, k)
     )
 
     reply, updates = invoke_tool_directly(select_hotel, state, session_id="test-session", selection="2")
@@ -302,6 +571,37 @@ def test_select_hotel_with_valid_rank_builds_itinerary_and_clears_pending(monkey
     assert not reply.startswith("SYSTEM ERROR:")
     assert reply != "Hotel: ok"
     assert updates["trip_data"]["hotel"]["id"] == "h2"
+
+
+def test_build_selected_hotel_trip_is_shared_by_new_and_change_hotel_paths(monkeypatch):
+    """Both selection entry points must receive the same regenerated bundle."""
+    captured: dict = {}
+    current_trip = {
+        "itineraries": [{"status": "Draft"}],
+        "itinerary_items": [{"reference_type": "attraction", "reference_id": "already-scheduled"}],
+    }
+    pending = {
+        "mode": "change_hotel",
+        "destination": "Đà Nẵng",
+        "duration": "3 ngày",
+        "people": "2 người",
+        "preferences_text": "biển",
+        "planning_constraints": {"latest_outing_start": "19:00"},
+    }
+    hotel = _fake_option("h2", "Khách sạn Hai", 2)[0]
+    monkeypatch.setattr(trip_planner_module, "_build_trip_data", _fake_build_trip_data(captured))
+
+    result = trip_planner_module.build_selected_hotel_trip(
+        pending,
+        hotel,
+        current_trip_data=current_trip,
+        session_id="test-session",
+    )
+
+    assert result.trip_data["hotel"]["id"] == "h2"
+    assert result.trip_data["hotel_selection_options"] is not pending
+    assert result.trip_data["hotel_selection_options"]["mode"] == "change_hotel"
+    assert captured["exclude_attraction_ids"] == ["already-scheduled"]
 
 
 def test_select_hotel_calculates_routes_before_returning_the_trip_plan(monkeypatch):
@@ -330,7 +630,7 @@ def test_select_hotel_calculates_routes_before_returning_the_trip_plan(monkeypat
         trip_data["itinerary_items"][0]["route_to_next"] = {"distance_km": 1.5}
         return trip_data
 
-    monkeypatch.setattr(select_hotel_module, "_generate_and_save_itinerary", _generate)
+    monkeypatch.setattr(trip_planner_module, "_generate_and_save_itinerary", _generate)
     monkeypatch.setattr("src.services.routing.recalculate_itinerary_routes", _routes)
 
     _, updates = invoke_tool_directly(select_hotel, state, session_id="test-session", selection="1")
@@ -405,7 +705,7 @@ def test_select_hotel_replacement_mode_builds_fresh_dated_draft(monkeypatch):
             "itinerary_items": [{"id": "new-item"}],
         }
 
-    monkeypatch.setattr(select_hotel_module, "_build_trip_data", _build)
+    monkeypatch.setattr(trip_planner_module, "_build_trip_data", _build)
 
     reply, updates = invoke_tool_directly(select_hotel, state, session_id="test-session", selection="1")
 

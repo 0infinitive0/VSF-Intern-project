@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import logging
+
 import src.services.hotel_selection as hotel_selection_module
 from src.services.hotel_selection import (
     HotelPreferenceState,
     _parse_free_text_budget,
     fetch_hotel_by_id,
     hotel_matches_amenity_tag,
+    is_hotel_amenity_tag,
     lookup_sea_view_hotel_ids,
     rank_hotel_candidates,
     resolve_hotel_selection,
     select_hotel_candidates,
 )
+from src.services.amenity_catalog import AmenityCatalogEntry
 from src.services.trip_scheduler import PlaceCandidate
 
 
@@ -138,6 +142,52 @@ def test_select_hotel_candidates_preserves_images_and_city_from_hydration(monkey
 
     assert data["images"] == ["https://example.com/1.jpg"]
     assert data["city"] == "Đà Nẵng"
+
+
+def test_select_hotel_candidates_logs_all_rpc_input_parameters(monkeypatch, caplog):
+    captured_kwargs: dict = {}
+
+    def fake_search_hotels_with_rooms(**kwargs):
+        captured_kwargs.update(kwargs)
+        return []
+
+    monkeypatch.setattr(hotel_selection_module, "search_hotels_with_rooms", fake_search_hotels_with_rooms)
+
+    with caplog.at_level(logging.DEBUG, logger="src.services.hotel_selection"):
+        select_hotel_candidates(
+            "Da Nang",
+            "dest-1",
+            "2 people",
+            hotel_query="quiet hotel with a pool",
+            match_count=7,
+            min_price=800_000,
+            max_price=2_500_000,
+            exclude_hotel_ids=["hotel-old"],
+            start_date="2026-07-01",
+            end_date="2026-07-03",
+            root_latitude=16.0544,
+            root_longitude=108.2022,
+            max_radius_km=5.0,
+        )
+
+    expected = {
+        "query": "quiet hotel with a pool",
+        "match_count": 7,
+        "filter_destination_id": "dest-1",
+        "min_price": 800_000,
+        "max_price": 2_500_000,
+        "start_date": "2026-07-01",
+        "end_date": "2026-07-03",
+        "exclude_hotel_ids": ["hotel-old"],
+        "root_latitude": 16.0544,
+        "root_longitude": 108.2022,
+        "max_radius_km": 5.0,
+    }
+    assert captured_kwargs == expected
+    assert any(
+        record.getMessage() == f"match_hotels_with_rooms input parameters: {expected}"
+        for record in caplog.records
+    )
 
 
 def test_rank_hotel_candidates_assigns_sequential_rank():
@@ -552,6 +602,33 @@ def test_hotel_preference_state_tool_arguments_raises_before_complete():
 # ---- hotel_matches_amenity_tag -----------------------------------------------------------
 
 
+def test_is_hotel_amenity_tag_accepts_only_approved_catalog_entries(monkeypatch):
+    hotel_selection_module._catalog_tag_cache.clear()
+    hotel_selection_module._catalog_keyword_cache.clear()
+    calls: list[list[str]] = []
+
+    def query_catalog(ids):
+        calls.append(ids)
+        return [
+            AmenityCatalogEntry(
+                id="electric_vehicle_charging",
+                label="Sạc xe điện",
+                match_keywords=("ev charging",),
+            )
+        ]
+
+    monkeypatch.setattr(hotel_selection_module, "query_approved_amenities", query_catalog)
+
+    assert is_hotel_amenity_tag("electric_vehicle_charging") is True
+    assert is_hotel_amenity_tag("electric_vehicle_charging") is True
+    assert hotel_matches_amenity_tag(
+        {"amenities": ["EV charging station in the parking area"]},
+        "electric_vehicle_charging",
+    ) is True
+    assert is_hotel_amenity_tag("history") is False
+    assert calls == [["electric_vehicle_charging"], ["history"]]
+
+
 def test_hotel_matches_amenity_tag_non_smoking_requires_negation():
     smoking_area_only = {"amenities": ["Khu vực hút thuốc"]}
     non_smoking = {"amenities": ["Phòng không hút thuốc"]}
@@ -562,7 +639,10 @@ def test_hotel_matches_amenity_tag_non_smoking_requires_negation():
 
 def test_hotel_matches_amenity_tag_pool_and_family():
     assert hotel_matches_amenity_tag({"amenities": ["Hồ bơi ngoài trời"]}, "pool") is True
+    assert hotel_matches_amenity_tag({"amenities": ["Hồ bơi ngoài trời"]}, "swimming_pool") is True
     assert hotel_matches_amenity_tag({"amenities": ["Phòng gia đình"]}, "family") is True
+    assert hotel_matches_amenity_tag({"amenities": ["Wi-Fi miễn phí"]}, "wifi") is True
+    assert hotel_matches_amenity_tag({"amenities": ["Bãi đỗ xe miễn phí"]}, "parking") is True
     assert hotel_matches_amenity_tag({"amenities": ["Wifi"]}, "pool") is False
 
 

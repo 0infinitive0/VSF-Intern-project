@@ -67,7 +67,7 @@ export default function ConversationList({
   return (
     <>
       <div
-        className="flex flex-col gap-1 overflow-y-auto overflow-x-hidden custom-scrollbar min-h-0"
+        className="flex flex-col gap-1 overflow-y-auto overflow-x-hidden overscroll-contain custom-scrollbar min-h-0"
         role="list"
         aria-label={t('sidebarHistoryLabel')}
       >

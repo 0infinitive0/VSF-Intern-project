@@ -238,6 +238,37 @@ CREATE TABLE itinerary_items (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Approved, server-managed hotel amenity definitions. The browser must not
+-- access this catalog directly; the backend service role owns it.
+CREATE TABLE hotel_amenity_catalog (
+    id TEXT PRIMARY KEY CHECK (id ~ '^[a-z0-9_]{1,64}$'),
+    label TEXT NOT NULL CHECK (char_length(btrim(label)) BETWEEN 1 AND 80),
+    match_keywords JSONB NOT NULL DEFAULT '[]'::jsonb
+        CHECK (jsonb_typeof(match_keywords) = 'array'),
+    source TEXT NOT NULL DEFAULT 'seed'
+        CHECK (source IN ('seed', 'fast_model')),
+    is_approved BOOLEAN NOT NULL DEFAULT TRUE,
+    usage_count INTEGER NOT NULL DEFAULT 0 CHECK (usage_count >= 0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE hotel_amenity_catalog ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE hotel_amenity_catalog FROM anon, authenticated, PUBLIC;
+GRANT SELECT, INSERT, UPDATE ON TABLE hotel_amenity_catalog TO service_role;
+
+INSERT INTO hotel_amenity_catalog (
+    id, label, match_keywords, source, is_approved
+) VALUES
+    ('wifi', 'Wi-Fi', '["wifi", "wi-fi", "wi fi", "wireless internet"]'::jsonb, 'seed', TRUE),
+    ('swimming_pool', 'Hồ bơi', '["hồ bơi", "bể bơi", "swimming pool", "pool"]'::jsonb, 'seed', TRUE),
+    ('parking', 'Bãi đỗ xe', '["bãi đỗ xe", "chỗ để xe", "parking", "car park", "garage"]'::jsonb, 'seed', TRUE),
+    ('family', 'Phù hợp gia đình', '["gia đình", "trẻ em", "kids club", "family room"]'::jsonb, 'seed', TRUE),
+    ('non_smoking', 'Không hút thuốc', '["không hút thuốc", "non smoking", "non-smoking", "no smoking"]'::jsonb, 'seed', TRUE),
+    ('breakfast', 'Bao gồm bữa sáng', '["bữa sáng", "bao gồm bữa sáng", "breakfast", "breakfast included"]'::jsonb, 'seed', TRUE),
+    ('sea_view', 'View biển', '["view biển", "hướng biển", "sea view", "ocean view"]'::jsonb, 'seed', TRUE)
+ON CONFLICT (id) DO NOTHING;
+
 /*
 =========================================================
 QDRANT VECTOR DATABASE SCHEMA (Mô phỏng Metadata Payload)

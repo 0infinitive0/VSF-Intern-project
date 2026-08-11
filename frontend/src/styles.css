@@ -151,6 +151,13 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   transition: background 0.5s ease;
+  /* App shell is a fixed h-screen layout (app-shell.tsx) with its own nested
+     scroll regions (e.g. conversation-list.tsx's history rail). Without this,
+     dragging past a nested list's scroll boundary chains the gesture to the
+     page, triggering iOS Safari's rubber-band bounce — which visually
+     detaches `position: fixed` siblings (sidebar-rail.tsx's language/theme
+     toggle footer) from the content they're pinned under. */
+  overscroll-behavior: none;
 }
 
 @keyframes vPinIn {
@@ -559,6 +566,71 @@ body {
 
 .intake-calendar .rdp-range_start.rdp-range_end .rdp-day_button {
   border-radius: 11px;
+}
+
+.hotel-preference-scroll {
+  cursor: grab;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-fill2) transparent;
+  touch-action: pan-y;
+}
+
+.hotel-preference-scroll:active {
+  cursor: grabbing;
+}
+
+.hotel-preference-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+
+.hotel-preference-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-fill2);
+  border-radius: 999px;
+}
+
+.hotel-price-range {
+  --range-low: 0%;
+  --range-high: 100%;
+  position: relative;
+  height: 20px;
+  background: linear-gradient(
+    to right,
+    var(--color-fill2) 0 var(--range-low),
+    #2C5FC9 var(--range-low) var(--range-high),
+    var(--color-fill2) var(--range-high) 100%
+  ) center / 100% 4px no-repeat;
+}
+
+.hotel-price-range input {
+  appearance: none;
+  background: transparent;
+  height: 20px;
+  inset: 0;
+  margin: 0;
+  pointer-events: none;
+  position: absolute;
+  width: 100%;
+}
+
+.hotel-price-range input::-webkit-slider-thumb {
+  appearance: none;
+  background: #2C5FC9;
+  border: 2px solid #F8FBFF;
+  border-radius: 999px;
+  cursor: grab;
+  height: 14px;
+  pointer-events: auto;
+  width: 14px;
+}
+
+.hotel-price-range input::-moz-range-thumb {
+  background: #2C5FC9;
+  border: 2px solid #F8FBFF;
+  border-radius: 999px;
+  cursor: grab;
+  height: 10px;
+  pointer-events: auto;
+  width: 10px;
 }
 
 @media (prefers-reduced-motion: reduce) {

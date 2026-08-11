@@ -31,8 +31,10 @@ function lastAiStage(messages: ChatState['messages']): string | null {
 export default function ChatPanel({
   state,
   onSend,
+  onChangeHotel,
   stage,
   onViewStage,
+  hotelOptionsAvailable,
   width,
   intakeForm,
   setIntakeForm,
@@ -42,10 +44,13 @@ export default function ChatPanel({
 }: {
   state: ChatState
   onSend: (text: string) => void
+  /** Rebuilds the hotel list without a chat turn — see step-navigator.tsx. */
+  onChangeHotel: () => void
   /** What's currently displayed in the stage panel — may be a client-side
    * view override (see App.tsx) rather than the live backend-derived stage. */
   stage: StageView
   onViewStage: (stage: StageView) => void
+  hotelOptionsAvailable: boolean
   width: number
   intakeForm: IntakeFormState
   setIntakeForm: (updater: (prev: IntakeFormState) => IntakeFormState) => void
@@ -53,7 +58,7 @@ export default function ChatPanel({
   editingIntakeField: IntakeField | null
   onDoneEditingIntakeField: () => void
 }) {
-  const { messages, suggestions, hotelOptions, tripPlan, intake, pending, streamingText } = state
+  const { messages, suggestions, hotelOptions, tripPlan, intake, pending, hotelsLoading, streamingText } = state
   const { t } = useTranslation()
 
   const lastStage = lastAiStage(messages)
@@ -61,7 +66,6 @@ export default function ChatPanel({
   // gates which steps are reachable at all.
   const intakeComplete = hotelOptions.length > 0 || tripPlan != null
   const hotelPicked = Boolean(tripPlan)
-  const hotelOptionsAvailable = hotelOptions.length > 0
 
   // Header step label — design dc.html:2506 (stepEditing not tracked client-side;
   // the intake form pre-fills instead, so "step1Full" is the honest label).
@@ -137,7 +141,8 @@ export default function ChatPanel({
         intakeComplete={intakeComplete}
         hotelPicked={hotelPicked}
         hotelOptionsAvailable={hotelOptionsAvailable}
-        onSend={onSend}
+        hotelsLoading={hotelsLoading}
+        onChangeHotel={onChangeHotel}
         onViewStage={onViewStage}
       />
 

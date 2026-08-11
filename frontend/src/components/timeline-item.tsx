@@ -2,32 +2,33 @@ import { useTranslation } from 'react-i18next'
 import { legBetween } from '../lib/leg'
 import { dayColor, legColor } from '../lib/map-colors'
 import { itemSyncId } from '../lib/map-sync-id'
+import RemoteImage from './remote-image'
 import type { DayItem } from '../types'
 
 const NUM_LOCALE = (lang: string) => (lang === 'vi' ? 'vi-VN' : 'en-US')
 
-// Design thumbs map (V-OTA Planner.dc.html:1371) keyed by the itinerary kind
-// codes the backend actually emits (trip_formatter.py:325) — a tint base whose
-// alpha stops are filled in below. Unknown kinds fall back to the design's
-// else-branch near-black tint.
-const THUMB_BASES: Record<string, string> = {
-  attraction: 'rgba(58,115,222,', // Tham quan
-  breakfast: 'rgba(200,128,47,', // Ăn uống
-  lunch: 'rgba(200,128,47,',
-  dinner: 'rgba(200,128,47,',
-  coffee: 'rgba(200,128,47,',
-  transport: 'rgba(142,107,196,', // Di chuyển
-  hotel: 'rgba(42,145,135,', // Khách sạn
+// RemoteImage fallback icon keyed by the itinerary kind codes the backend
+// actually emits (trip_formatter.py:325). Unknown kinds fall back to 'place'.
+const THUMB_ICONS: Record<string, string> = {
+  attraction: 'attractions',
+  breakfast: 'restaurant',
+  lunch: 'restaurant',
+  dinner: 'restaurant',
+  coffee: 'local_cafe',
+  transport: 'directions_car',
+  hotel: 'hotel',
 }
 
 /**
  * TimelineItem — one itinerary row plus the leg pill that follows it
  * (TimelineItem.dc.html). The left 44px column shows the start time (hidden
  * when null — the numbered dot stays, per phase-09: never invent an hour) and
- * a 24px numbered dot tinted with the day color; the 52×52 thumb is the kind
- * tint from the design's thumbs map; content is name + kind badge + a
- * time-window meta built from the real start/end fields (there is no note/cost
- * on DayItem, so those lines are simply omitted).
+ * a 24px numbered dot tinted with the day color; the 52×52 thumb is the item's
+ * real photo (item.image_url, already on the wire — trip_formatter.py:335)
+ * via the shared RemoteImage fallback chain, keyed by kind for the icon shown
+ * while loading/missing; content is name + kind badge + a time-window meta
+ * built from the real start/end fields (there is no note/cost on DayItem, so
+ * those lines are simply omitted).
  *
  * Click affordance is gated on the real contract: only items with
  * reference_type 'Attraction' AND a non-empty reference_id open Place Detail
@@ -85,7 +86,7 @@ export default function TimelineItem({
 
   const dotBg = dayColor(dayNumber)
   const pillColor = legColor(index)
-  const thumbBase = THUMB_BASES[item.kind ?? ''] ?? 'rgba(14,19,25,'
+  const thumbIcon = THUMB_ICONS[item.kind ?? ''] ?? 'place'
 
   const kindLabel = item.kind
     ? t(`kind${item.kind[0]?.toUpperCase() ?? ''}${item.kind.slice(1)}`, { defaultValue: item.kind })
@@ -147,9 +148,11 @@ export default function TimelineItem({
             {index + 1}
           </div>
         </div>
-        <div
+        <RemoteImage
+          src={item.image_url}
+          alt={t('placeImgAlt', { name: item.activity })}
           className="w-[52px] h-[52px] flex-none rounded-[14px]"
-          style={{ background: `repeating-linear-gradient(115deg, ${thumbBase}.18) 0 8px, ${thumbBase}.05) 8px 16px)` }}
+          icon={thumbIcon}
         />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-[7px]">

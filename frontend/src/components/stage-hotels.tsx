@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import HotelFilterBar from './hotel-filter-bar'
 import HotelOptionCards from './hotel-option-card'
 import HotelDetailPanel from './hotel-detail-panel'
 import MapView, { type MapMarkerSpec } from './map-view'
@@ -7,6 +8,7 @@ import { useMapSync } from '../hooks/use-map-sync'
 import { hotelOptionSyncId } from '../lib/map-sync-id'
 import { hotelMapFields, hotelMapRays } from '../lib/map-presentation'
 import { useHotelDetail } from '../hooks/use-hotel-detail'
+import { filterAndSortHotels, type HotelSortOrder } from '../lib/hotel-filters'
 import type { useFocusMode } from '../hooks/use-focus-mode'
 import type { Theme } from '../hooks/use-theme'
 import type { ChatState, HotelOption } from '../types'
@@ -30,15 +32,19 @@ function nightsFrom(startIso?: string | null, endIso?: string | null): number | 
 /**
  * StageHotels — the split-view "hotels" stage (V-OTA Planner.dc.html:377+):
  * glass header (V logo, step title, status badge, confirm button) over three
- * flex columns: card list | map (placeholder until Phase 10) | detail panel.
+ * flex columns: card list (with the filter bar) | map | detail panel.
  *
  * Two-step hotel pick (user decision 06/08/2026): a card's "Chọn" only sets
  * local selectedIndex; the header's "Tạo lịch trình từ khách sạn này" is the
- * ONLY sender, posting String(hotel.index) through onSend as a plain chat
- * message — byte-identical to the pre-Phase-8 wire, no new verb, no new
- * endpoint. The button is disabled until something is selected so no empty
+ * ONLY sender, posting String(hotel.index) through onSend — byte-identical
+ * to the pre-Phase-8 wire, no new verb, no new endpoint. The bubble shown to
+ * the user swaps that raw index for `displayText` (e.g. "Mình chọn Sóng Xanh
+ * Boutique") so the thread reads naturally; the backend still only ever sees
+ * the index. The button is disabled until something is selected so no empty
  * message can ever be sent. selectedIndex resets when hotel_options rotates
- * (backend clears them on the next turn, as before).
+ * (backend clears them on the next turn, as before). selectedIndex itself is
+ * owned by App.tsx (per-session, so switching conversations never leaks a
+ * pick into the wrong one) — this component only reads/reports it.
  *
  * Focus mode (chat collapses in app-shell): the list widens 520→470px per the
  * design's hListW, the map column collapses to 0, and the detail panel joins
@@ -48,23 +54,33 @@ function nightsFrom(startIso?: string | null, endIso?: string | null): number | 
  */
 export default function StageHotels({
   state,
+  hotelOptions,
+  selectedIndex,
+  onSelectHotel,
+  onConfirmHotel,
   focusMode,
-  onSend,
   theme,
 }: {
   state: ChatState
+  hotelOptions: HotelOption[]
+  selectedIndex: number | null
+  onSelectHotel: (index: number) => void
+  onConfirmHotel: (hotel: HotelOption) => void
   focusMode: FocusModeApi
-  onSend: (text: string) => void
   theme: Theme
 }) {
   const { t, i18n } = useTranslation()
-  const hotels = state.hotelOptions
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
+  const hotels = hotelOptions
+  const [minPrice, setMinPrice] = useState<number | null>(null)
+  const [maxPrice, setMaxPrice] = useState<number | null>(null)
+  const [minStars, setMinStars] = useState<number | null>(null)
+  const [preferenceIds, setPreferenceIds] = useState<string[]>([])
+  const [sortOrder, setSortOrder] = useState<HotelSortOrder>('match')
+  const filteredHotels = useMemo(
+    () => filterAndSortHotels(hotels, { minPrice, maxPrice, minStars, preferenceIds, sortOrder }),
+    [hotels, maxPrice, minPrice, minStars, preferenceIds, sortOrder],
+  )
   const mapSync = useMapSync()
-
-  useEffect(() => {
-    setSelectedIndex(null)
-  }, [hotels])
 
   const focusedId = focusMode.focus?.kind === 'hotel' ? focusMode.focus.id : null
   const focused = focusedId != null
@@ -75,6 +91,10 @@ export default function StageHotels({
   const { detail: selectedHotelDetail } = useHotelDetail(selectedHotel?.id ?? null)
   const selectedHotelRays = useMemo(() => hotelMapRays(selectedHotelDetail), [selectedHotelDetail])
 
+  useEffect(() => {
+    setPreferenceIds(state.hotelFilterData.activePreferences.map(({ id }) => id))
+  }, [hotels, state.hotelFilterData.activePreferences])
+
   const listRef = useRef<HTMLDivElement>(null)
   const savedScroll = useRef(0)
 
@@ -84,27 +104,32 @@ export default function StageHotels({
     focusMode.openFocus({ kind: 'hotel', id: hotel.id })
   }
 
-  // Phase 10: one marker per hotel option. hotel.id gates openId exactly like
-  // the card's own canOpen check — a marker for a hotel without an id
+  // Phase 10: one marker per hotel option (post-filter, so a filtered-out
+  // hotel's marker disappears with its card). hotel.id gates openId exactly
+  // like the card's own canOpen check — a marker for a hotel without an id
   // scrolls its card into view on click but never opens a focus panel that
   // has nothing to fetch.
   const markers: MapMarkerSpec[] = useMemo(
     () =>
-      hotels.map((hotel) => ({
+      filteredHotels.map((hotel) => ({
         syncId: hotelOptionSyncId(hotel),
         coordinates: hotel.coordinates,
         kind: 'hotel' as const,
         openId: hotel.id,
         ...hotelMapFields(hotel, i18n.language),
       })),
-    [hotels, i18n.language],
+    [filteredHotels, i18n.language],
   )
 
   function handleMarkerClick(marker: MapMarkerSpec) {
     const hotel = hotels.find((candidate) => hotelOptionSyncId(candidate) === marker.syncId)
     if (!hotel) return
-    setSelectedIndex(hotel.index)
+    onSelectHotel(hotel.index)
     mapSync.focusOn(marker.syncId)
+    if (marker.openId) {
+      const openHotel = filteredHotels.find((h) => h.id === marker.openId)
+      if (openHotel) openFocus(openHotel)
+    }
   }
 
   useLayoutEffect(() => {
@@ -115,7 +140,7 @@ export default function StageHotels({
 
   function confirmSelection() {
     if (!selectedHotel) return
-    onSend(String(selectedHotel.index))
+    onConfirmHotel(selectedHotel)
   }
 
   return (
@@ -145,7 +170,7 @@ export default function StageHotels({
           type="button"
           disabled={!selectedHotel}
           onClick={confirmSelection}
-          className="px-[18px] py-2.5 rounded-[13px] border-none text-[13px] font-[590] tracking-[-0.12px] transition-all duration-200"
+          className="px-[18px] py-2.5 rounded-[13px] border-none text-[13px] font-[590] tracking-[-0.12px] transition-all duration-200 text-nowrap"
           style={{
             background: selectedHotel ? 'var(--btn)' : 'var(--fill2)',
             color: selectedHotel ? 'var(--btn-fg)' : 'var(--t4)',
@@ -169,16 +194,44 @@ export default function StageHotels({
             transition: 'flex-basis .62s cubic-bezier(.22,1,.36,1)',
           }}
         >
-          <HotelOptionCards
+          <HotelFilterBar
             hotels={hotels}
+            apiPriceMin={state.hotelFilterData.minPrice}
+            apiPriceMax={state.hotelFilterData.maxPrice}
+            allPreferences={state.hotelFilterData.allPreferences}
+            minPrice={minPrice}
+            maxPrice={maxPrice}
+            minStars={minStars}
+            preferenceIds={preferenceIds}
+            sortOrder={sortOrder}
+            onMinPriceChange={setMinPrice}
+            onMaxPriceChange={setMaxPrice}
+            onMinStarsChange={setMinStars}
+            onPreferenceIdsChange={setPreferenceIds}
+            onSortOrderChange={setSortOrder}
+            onClear={() => {
+              setMinPrice(null)
+              setMaxPrice(null)
+              setMinStars(null)
+              setPreferenceIds([])
+              setSortOrder('match')
+            }}
+          />
+          <HotelOptionCards
+            hotels={filteredHotels}
             selectedIndex={selectedIndex}
             focusedId={focusedId}
             nights={nights}
-            onSelect={(hotel) => setSelectedIndex(hotel.index)}
+            onSelect={(hotel) => onSelectHotel(hotel.index)}
             onOpen={openFocus}
             hoveredId={mapSync.hoveredId}
             onHoverChange={mapSync.setHoveredId}
           />
+          {filteredHotels.length === 0 && (
+            <p className="px-3 text-center text-[12px] text-on-surface-muted" role="status">
+              {t('hotelFiltersNoResults')}
+            </p>
+          )}
         </div>
 
         <div

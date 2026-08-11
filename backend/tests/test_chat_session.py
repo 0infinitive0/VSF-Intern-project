@@ -10,6 +10,22 @@ from src.services.trip_edit_planner import EditOperation, TripEditPlan, TripEdit
 from src.services.trip_intake import DestinationOption, TripIntakeState, TripPreferenceUpdate
 
 
+def test_frontend_hotel_selection_reopens_archived_options_as_a_change():
+    archived = {
+        "mode": "new_trip",
+        "destination": "Hồ Chí Minh",
+        "options": [{"id": "hotel-2", "name": "Khách sạn mới"}],
+    }
+    session = _session(trip_data={"itineraries": [{"status": "Draft"}], "hotel_selection_options": archived})
+
+    pending = session_module._pending_hotel_selection_for_frontend(session)
+
+    assert pending is not archived
+    assert pending["mode"] == "change_hotel"
+    assert pending["options"] == archived["options"]
+    assert session.pending_hotel_selection is None
+
+
 @pytest.fixture(autouse=True)
 def _no_live_supervisor(monkeypatch):
     """These are unit tests of the deterministic `decide_route_by_rules`
@@ -992,6 +1008,46 @@ def test_saved_trip_hotel_change_falls_back_when_edit_planner_rejects_request(mo
     assert result.tool == "recommend_hotels"
     assert result.text == "Mình đã tìm danh sách khách sạn phù hợp."
     assert captured == {"request": "Tôi muốn đổi khách sạn", "operation": "change_hotel"}
+
+
+def test_handle_frontend_hotel_change_skips_the_llm_edit_planner_and_leaves_no_chat_message(monkeypatch):
+    """Backs POST /hotels/change (routes.py): the nav-triggered "đổi khách sạn"
+    action already knows its intent, so it must never reach plan_trip_edit (an
+    LLM call) and must never append a chat message pair — only the business
+    state (pending_hotel_selection) changes."""
+    session = _session(
+        trip_data={"itineraries": [{"duration_days": 1, "status": "Draft"}], "itinerary_items": []},
+        initial_plan_complete=True,
+    )
+    monkeypatch.setattr(
+        session_module,
+        "plan_trip_edit",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("must not call the LLM edit planner")),
+    )
+    captured = {}
+
+    def _execute(_session, request, plan):
+        captured["request"] = request
+        captured["operation"] = plan.operations[0].operation
+        _session.pending_hotel_selection = {"mode": "change_hotel", "options": []}
+        return "Mình đã tìm danh sách khách sạn phù hợp."
+
+    monkeypatch.setattr(session_module, "execute_trip_edit_request", _execute)
+
+    result = session_module.handle_frontend_hotel_change(session)
+
+    assert result.tool == "execute_trip_edit_request"
+    assert result.text == "Mình đã tìm danh sách khách sạn phù hợp."
+    assert captured == {"request": "", "operation": "change_hotel"}
+    assert session.state["messages"] == []
+
+
+def test_handle_frontend_hotel_change_without_a_trip_fails_closed():
+    session = _session()
+
+    result = session_module.handle_frontend_hotel_change(session)
+
+    assert result.text.startswith("SYSTEM ERROR:")
 
 
 def test_frontend_trip_information_button_gets_a_clarifying_prompt_when_planner_rejects(monkeypatch):

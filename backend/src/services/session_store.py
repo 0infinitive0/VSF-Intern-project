@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Iterable
 
 from langchain_core.messages import AIMessage, HumanMessage, messages_from_dict, messages_to_dict
+from postgrest.exceptions import APIError
 from supabase import Client, create_client
 
 from src.agents.state import TripState, initial_state
@@ -112,10 +113,11 @@ def _ui_summary(state: dict[str, Any], current_trip: dict[str, Any]) -> dict[str
     trip_data = state.get("trip_data") or {}
     hotel = trip_data.get("hotel") or {}
     itinerary = next(iter(trip_data.get("itineraries") or []), {})
+    is_finalized = str(current_trip.get("status") or "").casefold() == "finalized"
     return {
         "destination": intake.get("destination") or trip_data.get("destination"),
         "duration_days": itinerary.get("duration_days") or trip_data.get("duration_days"),
-        "status": current_trip.get("status"),
+        "status": "completed" if is_finalized else "draft",
         "hotel_name": hotel.get("name"),
         "thumbnail_url": hotel.get("image_url"),
     }
@@ -209,14 +211,35 @@ def _message_records(session: TripSession) -> list[dict[str, Any]]:
 def upsert(session: TripSession) -> None:
     """Atomically save the checkpoint and transcript; the RPC is retry-idempotent."""
     _require_safe_session_id(session.session_id)
-    _get_supabase_client().rpc(
-        "persist_session_checkpoint",
-        {
-            "p_session_id": session.session_id,
-            "p_context_data": serialize(session),
-            "p_messages": _message_records(session),
-        },
+    client = _get_supabase_client()
+    checkpoint = serialize(session)
+    messages = _message_records(session)
+    try:
+        client.rpc(
+            "persist_session_checkpoint",
+            {
+                "p_session_id": session.session_id,
+                "p_context_data": checkpoint,
+                "p_messages": messages,
+            },
+        ).execute()
+        return
+    except APIError as exc:
+        # Keep persistence available while an older environment is waiting for
+        # the migration that creates the transactional RPC.  Other database
+        # errors remain visible to the session hook and retain its retry path.
+        if exc.code != "PGRST202" or "persist_session_checkpoint" not in str(exc):
+            raise
+
+    client.table("sessions").upsert(
+        {"session_id": session.session_id, "context_data": checkpoint},
+        on_conflict="session_id",
     ).execute()
+    client.table("chat_messages").delete().eq("session_id", session.session_id).execute()
+    if messages:
+        client.table("chat_messages").insert(
+            [{"session_id": session.session_id, **message} for message in messages]
+        ).execute()
 
 
 def load(session_id: str) -> dict[str, Any] | None:
@@ -297,12 +320,17 @@ def summarize(row: dict[str, Any]) -> dict[str, Any]:
     context = row.get("context_data") or {}
     if context.get("schema_version") == _CONTEXT_SCHEMA_VERSION:
         summary = context.get("ui_summary") or {}
+        # Legacy rows may carry the itinerary vocabulary ("Draft"/"Finalized")
+        # instead of the UI vocabulary ("draft"/"completed") — normalize so
+        # SessionSummaryPayload's Literal validation never rejects a row.
+        raw_status = str(summary.get("status") or "").casefold()
+        status = "completed" if raw_status in ("completed", "finalized") else "draft"
         return {
             "session_id": str(row["session_id"]),
             "title": None,
             "destination": summary.get("destination"),
             "duration_days": summary.get("duration_days"),
-            "status": summary.get("status") or "draft",
+            "status": status,
             "created_at": row.get("created_at"),
             "updated_at": row.get("updated_at"),
             "thumbnail_url": summary.get("thumbnail_url"),

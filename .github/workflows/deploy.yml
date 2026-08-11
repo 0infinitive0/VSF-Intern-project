@@ -30,6 +30,7 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           envs: EXPOSE_SWAGGER
+          command_timeout: 20m
           script: |
             set -e
             cd /home/ubuntu/app
@@ -39,7 +40,8 @@ jobs:
             if [ "$EXPOSE_SWAGGER" = "true" ]; then
               cp Caddyfile.swagger-debug Caddyfile
             fi
-            docker compose -f docker-compose.staging.yml build
+            docker compose -f docker-compose.staging.yml build backend
+            docker compose -f docker-compose.staging.yml build frontend
             docker compose -f docker-compose.staging.yml up -d --wait --wait-timeout 300
             docker compose -f docker-compose.staging.yml exec -T caddy caddy reload --config /etc/caddy/Caddyfile
             docker image prune -f
