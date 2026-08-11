@@ -15,33 +15,59 @@ import MapStateOverlay from './map-state-overlay'
 const ROUTE_SOURCE = 'trip-routes'
 const RAY_SOURCE = 'hotel-distance-rays'
 const HALO_SOURCE = 'hotel-selection-halo'
-const CASING_LAYER = 'route-casing'
 const DRIVE_LAYER = 'route-drive'
 const WALK_LAYER = 'route-walk'
 const FALLBACK_LAYER = 'route-fallback'
-const FLOW_LAYER = 'route-flow'
+// Only drive/walk animate (see addRouteLayers) — fallback is an honest
+// straight-line estimate, not a real route, and never gets the "flowing"
+// treatment that would make it look like real navigated data.
+const ANIMATED_LAYERS = [DRIVE_LAYER, WALK_LAYER] as const
+const ROUTE_LAYER_IDS = [DRIVE_LAYER, WALK_LAYER, FALLBACK_LAYER] as const
 const RAY_LAYER = 'hotel-distance-rays-line'
 const HALO_LAYER = 'hotel-selection-halo-circle'
-// Entrance draw-in duration (map_line_animation_effects.md §1: "0.9 giây").
-const ROUTE_FADE_MS = 900
-// Dash/gap below are line-width MULTIPLES (mapbox-gl's own dasharray unit,
-// same semantics as an SVG stroke-dasharray relative to stroke-width) — so
-// each pair is the doc's raw px spec divided by that layer's own
-// line-width, reproducing the same on-screen dash/gap length in pixels:
-// drive flow (weight 2.4): 14px/2.4=5.83, 120px/2.4=50, 3.4s cycle.
-const FLOW_DASH = 5.83
-const FLOW_GAP = 50
-const FLOW_CYCLE_MS = 3_400
-// Walk mode has no casing layer under it (unlike drive), so its dots are
-// the ONLY thing carrying the whole leg against a busy street basemap — the
-// doc's literal 2px/9px (at width 4) rendered essentially invisibly in
-// testing. Sized up while keeping the same "small dot, wide gap" character
-// clearly distinct from drive's bold flowing dash, not the doc's raw ratio.
-const WALK_DASH = 0.9
-const WALK_GAP = 3.2
-const WALK_CYCLE_MS = 1_600
-const WALK_WIDTH = 5
+
+// Fade-in duration when a leg first appears (tab/day change or initial load).
+const ROUTE_FADE_MS = 400
+
+// Per-layer rest width/opacity — the ONE place these live, read by
+// addRouteLayers (paint) and by the fade-in effect (restoring after the
+// zero-opacity flash). Keeping this a plain table instead of scattering
+// magic numbers is what makes the fade-in/hover logic below able to stay
+// generic across all 3 layers instead of one bespoke branch per layer.
+const LAYER_STYLE: Record<string, { width: number; opacity: number; dash: [number, number] }> = {
+  [DRIVE_LAYER]: { width: 5, opacity: 0.9, dash: [1, 0] },
+  [WALK_LAYER]: { width: 4, opacity: 0.9, dash: [0.6, 2] },
+  [FALLBACK_LAYER]: { width: 3, opacity: 0.45, dash: [0.6, 1.8] },
+}
+
+// Direction-of-travel dash animation — one shared mechanism for both
+// animated layers (§9 of the earlier animation spec: never one animation
+// loop per segment/leg, one mechanism for the whole route regardless of how
+// many legs/days are in it). Cycle length controls how long a full pattern
+// period takes to drift past; shorter = livelier (walking), longer = calmer
+// (driving) — tuned to feel like motion, not a loading spinner.
+const FLOW: Record<string, { dash: number; gap: number; cycleMs: number }> = {
+  [DRIVE_LAYER]: { dash: 3, gap: 2, cycleMs: 2200 },
+  [WALK_LAYER]: { dash: 0.6, gap: 2, cycleMs: 1400 },
+}
 const DASH_EPSILON = 0.01
+
+/**
+ * Phase-shifts a fixed [dash, gap] pattern by elapsed time — for pattern
+ * [D, G] with period P = D+G, at offset o ∈ [0, P): while o is still inside
+ * the dash (o < D) the visible remainder is (D - o) then a full [G, D, G];
+ * once o has moved into the gap (o >= D) nothing is visible yet, then the
+ * remaining gap then a full [D, G]. GL tiles whatever 4-tuple is given, so
+ * this alone represents the shifted infinite pattern — no per-frame DOM
+ * work, no React state, just one setPaintProperty call per animated layer.
+ */
+function animatedDash(dash: number, gap: number, cycleMs: number, elapsedMs: number): [number, number, number, number] {
+  const period = dash + gap
+  const offset = ((elapsedMs % cycleMs) / cycleMs) * period
+  return offset < dash
+    ? [Math.max(DASH_EPSILON, dash - offset), gap, dash, gap]
+    : [DASH_EPSILON, Math.max(DASH_EPSILON, period - offset), dash, gap]
+}
 
 export interface MapMarkerSpec {
   syncId: string
@@ -81,57 +107,60 @@ function routeData(segments: RouteSegment[]): FeatureCollection {
   }
 }
 
-// map_line_animation_effects.md §3: the "main" colored line for a leg (drive/
-// walk/fallback) brightens to full opacity on hover; a "casing"/"flow"
-// overlay never brightens on hover (only its width does, for casing) — it
-// only reacts to `dimmed`. Two expression shapes instead of one shared
-// 3-tier case, matching that split exactly.
-function mainOpacity(rest: number, dimmed: number): mapboxgl.DataDrivenPropertyValueSpecification<number> {
-  return ['case', ['boolean', ['feature-state', 'hovered'], false], 1, ['boolean', ['feature-state', 'dimmed'], false], dimmed, rest]
+// Hover highlight (§1/§3 of the earlier UI-fix spec): the related leg
+// brightens to full opacity + a bit wider; every OTHER leg dims (never to
+// 0) whenever anything is hovered; a leg's own color never changes. One
+// shape shared by all 3 layers — there is no longer a separate "casing"/
+// "flow" role with different rules, which is exactly the kind of extra
+// moving part this rebuild is cutting.
+function opacityExpr(rest: number): mapboxgl.DataDrivenPropertyValueSpecification<number> {
+  return ['case', ['boolean', ['feature-state', 'hovered'], false], 1, ['boolean', ['feature-state', 'dimmed'], false], 0.2, rest]
 }
-function accentOpacity(rest: number, dimmed: number): mapboxgl.DataDrivenPropertyValueSpecification<number> {
-  return ['case', ['boolean', ['feature-state', 'dimmed'], false], dimmed, rest]
-}
-// "weight + 2" on the active leg (§3) — casing and the main-color line both
-// get this; the flow overlay's width stays constant (doc never widens it).
-function hoverWidth(rest: number): mapboxgl.DataDrivenPropertyValueSpecification<number> {
+function widthExpr(rest: number): mapboxgl.DataDrivenPropertyValueSpecification<number> {
   return ['case', ['boolean', ['feature-state', 'hovered'], false], rest + 2, rest]
 }
 
 function addRouteLayers(map: mapboxgl.Map) {
-  map.addSource(ROUTE_SOURCE, { type: 'geojson', lineMetrics: true, data: { type: 'FeatureCollection', features: [] } })
+  map.addSource(ROUTE_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
   const layout: mapboxgl.LineLayerSpecification['layout'] = { 'line-cap': 'round', 'line-join': 'round' }
   const realRouteFilter = ['==', ['get', 'isFallback'], false]
   const walkFilter = ['all', realRouteFilter, ['==', ['get', 'profile'], 'walking']]
   const driveFilter = ['all', realRouteFilter, ['!=', ['get', 'profile'], 'walking']]
-  // The trim interval is rendered transparent. Start at [0, 1] (fully
-  // hidden) and animate to [0, 0] (fully visible), matching SVG draw-in —
-  // applied to every semantic line layer (casing/drive/walk/fallback) so a
-  // tab/day change always "draws" the whole route, not just driving legs.
-  // The flow overlay is deliberately excluded: it's already animating its
-  // own dash, trimming it too would read as two motions fighting each other.
-  const opacityTransition = { 'line-opacity-transition': { duration: ROUTE_FADE_MS, delay: 0 } }
-  const trimProps = { ...opacityTransition, 'line-trim-offset-transition': { duration: ROUTE_FADE_MS, delay: 0 }, 'line-trim-color': 'rgba(0,0,0,0)' as const, 'line-trim-offset': [0, 1] as [number, number] }
-  map.addLayer({ id: CASING_LAYER, type: 'line', source: ROUTE_SOURCE, filter: driveFilter, layout, paint: { ...trimProps, 'line-color': '#fff', 'line-opacity': accentOpacity(.75, .1), 'line-width': hoverWidth(7) } } as mapboxgl.LineLayerSpecification)
-  map.addLayer({ id: DRIVE_LAYER, type: 'line', source: ROUTE_SOURCE, filter: driveFilter, layout, paint: { ...trimProps, 'line-color': ['get', 'color'], 'line-opacity': mainOpacity(.92, .18), 'line-width': hoverWidth(4) } } as mapboxgl.LineLayerSpecification)
-  map.addLayer({ id: WALK_LAYER, type: 'line', source: ROUTE_SOURCE, filter: walkFilter, layout, paint: { ...trimProps, 'line-color': ['get', 'color'], 'line-dasharray': [WALK_DASH, WALK_GAP], 'line-opacity': mainOpacity(.95, .18), 'line-width': hoverWidth(WALK_WIDTH) } } as mapboxgl.LineLayerSpecification)
-  map.addLayer({ id: FALLBACK_LAYER, type: 'line', source: ROUTE_SOURCE, filter: ['==', ['get', 'isFallback'], true], layout, paint: { ...trimProps, 'line-color': ['get', 'color'], 'line-dasharray': [.6, 1.8], 'line-opacity': mainOpacity(.5, .18), 'line-width': hoverWidth(3) } } as mapboxgl.LineLayerSpecification)
-  map.addLayer({ id: FLOW_LAYER, type: 'line', source: ROUTE_SOURCE, filter: driveFilter, layout, paint: { ...opacityTransition, 'line-color': '#fff', 'line-dasharray': [FLOW_DASH, FLOW_GAP], 'line-opacity': accentOpacity(.95, .1), 'line-width': 2.4 } } as mapboxgl.LineLayerSpecification)
+  const fadeIn = { 'line-opacity-transition': { duration: ROUTE_FADE_MS, delay: 0 } }
+
+  for (const [id, filter] of [
+    [DRIVE_LAYER, driveFilter],
+    [WALK_LAYER, walkFilter],
+    [FALLBACK_LAYER, ['==', ['get', 'isFallback'], true]],
+  ] as const) {
+    const style = LAYER_STYLE[id]
+    map.addLayer({
+      id,
+      type: 'line',
+      source: ROUTE_SOURCE,
+      filter,
+      layout,
+      paint: {
+        ...fadeIn,
+        'line-color': ['get', 'color'],
+        'line-dasharray': style.dash,
+        'line-opacity': opacityExpr(style.opacity),
+        'line-width': widthExpr(style.width),
+      },
+    } as mapboxgl.LineLayerSpecification)
+  }
 }
 
-function setRouteTrimEnd(map: mapboxgl.Map, trimEnd: number) {
-  const trimLayers = [CASING_LAYER, DRIVE_LAYER, WALK_LAYER, FALLBACK_LAYER] as const
-  for (const id of trimLayers) if (map.getLayer(id)) map.setPaintProperty(id, 'line-trim-offset', [0, trimEnd])
-}
-
-function animatedDash(dash: number, gap: number, cycleMs: number, elapsedMs: number): [number, number, number, number] {
-  const offset = ((elapsedMs % cycleMs) / cycleMs) * (dash + gap)
-  // Mapbox GL requires every dash-array entry to be positive. A literal zero
-  // makes the whole layer disappear in some renderers, so an imperceptible
-  // leading dash preserves the phase shift without ever invalidating the line.
-  return offset < dash
-    ? [Math.max(DASH_EPSILON, dash - offset), gap, dash, gap]
-    : [DASH_EPSILON, Math.max(DASH_EPSILON, dash + gap - offset), dash, gap]
+/** Zeroes then restores each route layer's opacity — the fade-in cue when a leg first appears (tab/day change, initial load). */
+function flashRouteIn(map: mapboxgl.Map) {
+  for (const id of ROUTE_LAYER_IDS) {
+    if (map.getLayer(id)) map.setPaintProperty(id, 'line-opacity', 0)
+  }
+  requestAnimationFrame(() => {
+    for (const id of ROUTE_LAYER_IDS) {
+      if (map.getLayer(id)) map.setPaintProperty(id, 'line-opacity', opacityExpr(LAYER_STYLE[id].opacity))
+    }
+  })
 }
 
 function createMarkerElement(marker: MapMarkerSpec): { root: HTMLDivElement; content: HTMLDivElement } {
@@ -242,15 +271,19 @@ export default function MapView({ variant, theme, markers, segments, hoveredId, 
     })
   }, [hoveredId, selectedId, markerKey])
 
+  // Route source/layers: created once, then just setData() on every
+  // segments change (tab/day switch, hotel rotation) — no geometry-reveal
+  // animation, just a plain opacity flash so the swap doesn't feel like an
+  // abrupt cut. Simpler and far easier to reason about than a trim-offset
+  // draw-in: one visual property (opacity), one transition, no dependency
+  // on line-metrics.
   useEffect(() => {
     const map = mapRef.current
     if (!map || status !== 'ready' || variant !== 'workspace') return
     if (!map.getSource(ROUTE_SOURCE)) addRouteLayers(map)
     const source = map.getSource(ROUTE_SOURCE) as mapboxgl.GeoJSONSource
     source.setData(routeData(segments) as never)
-    setRouteTrimEnd(map, 1)
-    const frame = requestAnimationFrame(() => setRouteTrimEnd(map, 0))
-    return () => cancelAnimationFrame(frame)
+    flashRouteIn(map)
   }, [segments, status, styleVersion, variant, mapRef])
 
   useEffect(() => {
@@ -261,18 +294,27 @@ export default function MapView({ variant, theme, markers, segments, hoveredId, 
     for (const segment of segments) map.setFeatureState({ source: ROUTE_SOURCE, id: segment.segKey }, { hovered: activeSegmentKeys.has(segment.segKey), dimmed: active && !activeSegmentKeys.has(segment.segKey) })
   }, [hoveredId, segments, status, styleVersion, variant, mapRef])
 
+  // Direction-of-travel flow: one requestAnimationFrame loop, two
+  // setPaintProperty calls per frame (drive + walk), regardless of how many
+  // legs/days are on screen — never one loop per segment.
   useEffect(() => {
     const map = mapRef.current
     if (!map || status !== 'ready' || variant !== 'workspace' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
-    let frame = 0; let start = 0
+    let frame = 0
+    let start = 0
     const tick = (time: number) => {
       if (!start) start = time
       const elapsed = time - start
-      if (map.getLayer(FLOW_LAYER)) map.setPaintProperty(FLOW_LAYER, 'line-dasharray', animatedDash(FLOW_DASH, FLOW_GAP, FLOW_CYCLE_MS, elapsed))
-      if (map.getLayer(WALK_LAYER)) map.setPaintProperty(WALK_LAYER, 'line-dasharray', animatedDash(WALK_DASH, WALK_GAP, WALK_CYCLE_MS, elapsed))
+      for (const id of ANIMATED_LAYERS) {
+        if (map.getLayer(id)) {
+          const { dash, gap, cycleMs } = FLOW[id]
+          map.setPaintProperty(id, 'line-dasharray', animatedDash(dash, gap, cycleMs, elapsed))
+        }
+      }
       frame = requestAnimationFrame(tick)
     }
-    frame = requestAnimationFrame(tick); return () => cancelAnimationFrame(frame)
+    frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
   }, [status, styleVersion, variant, mapRef])
 
   useEffect(() => {
