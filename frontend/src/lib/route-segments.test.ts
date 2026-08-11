@@ -77,18 +77,28 @@ describe('buildDaySegments', () => {
     expect(leg1.points.length).toBeGreaterThan(1)
     expect(leg1.fromKey).toBe('day-1-item-0')
     expect(leg1.toKey).toBe('attraction-my-khe') // real reference_id, not a synthetic key
+    // Real metrics carried straight from route_to_next — never recomputed.
+    expect(leg1.distanceKm).toBe(5.8)
+    expect(leg1.durationMins).toBe(13.4)
 
     const leg2 = segments.find((s) => s.legIndex === 2)! // item1 -> item2, walking
     expect(leg2.isFallback).toBe(false)
     expect(leg2.profile).toBe('walking')
+    expect(leg2.distanceKm).toBe(1.9)
+    expect(leg2.durationMins).toBe(22.0)
   })
 
-  it('falls back to a straight 2-point line when route_to_next is null', () => {
+  it('falls back to a straight 2-point line when route_to_next is null, with no invented duration', () => {
     const segments = buildDaySegments(DAY_1, HOTEL)
     const leg3 = segments.find((s) => s.legIndex === 3)! // item2 -> item3, route_to_next: null
     expect(leg3.isFallback).toBe(true)
     expect(leg3.points).toHaveLength(2)
     expect(leg3.profile).toBeNull()
+    // crow-fly: distanceKm is a real haversine figure, durationMins is null —
+    // never guessed from a straight-line distance (mirrors leg.ts's Leg
+    // 'crow-fly' variant, which also has no durationMins field at all).
+    expect(leg3.durationMins).toBeNull()
+    expect(leg3.distanceKm).toBeGreaterThan(0)
   })
 
   it('builds the last-item -> hotel return segment from the last item\'s route_to_next', () => {
@@ -106,6 +116,34 @@ describe('buildDaySegments', () => {
     expect(segments).toHaveLength(5)
     expect(segments.every((s) => s.isFallback)).toBe(true)
     expect(segments.every((s) => s.points.length === 2)).toBe(true)
+    // route was null (not just polyline-less) for every one of these, so
+    // durationMins is null across the board too.
+    expect(segments.every((s) => s.durationMins === null)).toBe(true)
+  })
+
+  it('keeps real distance/duration on a fallback segment whose polyline failed to decode (isFallback is about geometry, not metrics)', () => {
+    const day: Day = {
+      day_number: 1,
+      theme: 't',
+      items: [
+        {
+          order_index: 1, start_time: null, end_time: null, activity: 'a', coordinates: '16.0544,108.2022',
+          // A real route exists (distance/duration/profile), but the polyline
+          // string decodes to a single point (verified directly against
+          // decodePolyline — '!' is one minimal-varint pair) — pointsFor()
+          // must fall back to a straight line (isFallback: true) while
+          // metricsFor() still carries the real numbers through untouched.
+          route_to_next: { distance_km: 3.3, duration_mins: 9.1, polyline: '!', profile: 'driving-traffic' },
+        },
+        { order_index: 2, start_time: null, end_time: null, activity: 'b', coordinates: '16.0678,108.2208' },
+      ],
+    }
+    const segments = buildDaySegments(day, null)
+    expect(segments).toHaveLength(1)
+    expect(segments[0].isFallback).toBe(true)
+    expect(segments[0].points).toHaveLength(2)
+    expect(segments[0].distanceKm).toBe(3.3)
+    expect(segments[0].durationMins).toBe(9.1)
   })
 
   it('never bridges across an item with unparseable/missing coordinates', () => {

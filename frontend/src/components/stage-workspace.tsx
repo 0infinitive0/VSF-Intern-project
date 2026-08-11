@@ -122,6 +122,17 @@ export default function StageWorkspace({
     focusMode.openFocus({ kind: 'place', id: item.reference_id })
   }
 
+  function handleOpenDetail(marker: MapMarkerSpec) {
+    if (!marker.openId) return
+    for (const day of days) {
+      const item = day.items.find((it) => it.reference_type === 'Attraction' && it.reference_id === marker.openId)
+      if (item) {
+        openFocus(item)
+        return
+      }
+    }
+  }
+
   useLayoutEffect(() => {
     if (!focused && itinRef.current) {
       itinRef.current.scrollTop = savedScroll.current
@@ -150,7 +161,11 @@ export default function StageWorkspace({
   const markers: MapMarkerSpec[] = useMemo(() => {
     const list: MapMarkerSpec[] = []
     if (tripPlan?.hotel?.coordinates) {
-      list.push({ syncId: TRIP_HOTEL_SYNC_KEY, coordinates: tripPlan.hotel.coordinates, kind: 'hotel' })
+      list.push({
+        syncId: TRIP_HOTEL_SYNC_KEY,
+        coordinates: tripPlan.hotel.coordinates,
+        kind: 'hotel',
+      })
     }
     const daysToShow = resolvedTab === 'overview' ? days : activeDay ? [activeDay] : []
     for (const day of daysToShow) {
@@ -162,6 +177,7 @@ export default function StageWorkspace({
           label: index + 1,
           dayNumber: day.day_number,
           openId: item.reference_type === 'Attraction' && item.reference_id ? item.reference_id : undefined,
+          endpoint: resolvedTab !== 'overview' && index === 0 ? 'start' : resolvedTab !== 'overview' && index === day.items.length - 1 ? 'end' : undefined,
         })
       })
     }
@@ -170,14 +186,7 @@ export default function StageWorkspace({
 
   function handleMarkerClick(marker: MapMarkerSpec) {
     mapSync.focusOn(marker.syncId)
-    if (marker.kind === 'hotel' || !marker.openId) return
-    for (const day of days) {
-      const item = day.items.find((it) => it.reference_type === 'Attraction' && it.reference_id === marker.openId)
-      if (item) {
-        openFocus(item)
-        return
-      }
-    }
+    if (marker.openId) handleOpenDetail(marker)
   }
 
   if (!tripPlan) return null
@@ -295,13 +304,14 @@ export default function StageWorkspace({
           }}
         >
           <MapView
+            variant="workspace"
             theme={theme}
             markers={markers}
             segments={segments}
             hoveredId={mapSync.hoveredId}
-            onHoverChange={mapSync.setHoveredId}
+            onHoverChange={mapSync.hoverMarker}
             onMarkerClick={handleMarkerClick}
-            showLegend
+            selectedId={focusedId}
           />
         </div>
 

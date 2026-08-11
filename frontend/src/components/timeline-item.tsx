@@ -40,6 +40,14 @@ const THUMB_BASES: Record<string, string> = {
  * (vehicle · km · ~mins), identical coordinates ("cùng địa điểm" — never
  * "0 km · 0 phút"), straight-line fallback (km only, no vehicle/duration), or
  * omitted entirely when coordinates are missing.
+ *
+ * Row body click -> onOpen (Place Detail Focus Mode directly). Phase 10.5
+ * briefly routed this through a preview step with a trailing chevron button;
+ * the UI-fix pass removed that button entirely per explicit spec ("Xóa nút
+ * Xem chi tiết dạng Chevron") — the row itself is the only interactive
+ * affordance again, matching HotelOptionCard's own explicit "Xem chi tiết"
+ * button's philosophy of a single, direct click target (that button lives
+ * one level up in HotelOptionCard and is untouched by this change).
  */
 export default function TimelineItem({
   item,

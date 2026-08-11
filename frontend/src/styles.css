@@ -153,6 +153,12 @@ body {
   transition: background 0.5s ease;
 }
 
+@keyframes vPinIn {
+  0% { opacity: 0; transform: translateY(-14px) scale(.4); }
+  70% { transform: translateY(0) scale(1.14); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
 .material-symbols-outlined {
   font-variation-settings:
     "FILL" 0,
@@ -297,6 +303,43 @@ body {
   }
   100% {
     transform: translateX(340%);
+  }
+}
+
+/* Phase 10.5 §11 — the "Selected" marker's gentle pulse ring. A ::after
+   pseudo-element, not an animation on the marker's own transform/box-shadow:
+   those two properties are already imperatively set per-frame by
+   applyMarkerVisualState() in map-view.tsx (JS reads/writes .style directly
+   on the same element for hover/selected/dimmed state), so animating them
+   here too would fight that. The ring is a separate box layered on top,
+   free to animate on its own. Kept out of design-animation.css — that file
+   is byte-locked to the design source. */
+.map-marker-pulse {
+  position: relative;
+}
+.map-marker-pulse::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid var(--color-primary);
+  animation: map-marker-pulse-ring 1.6s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
+  pointer-events: none;
+}
+@keyframes map-marker-pulse-ring {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .map-marker-pulse::after {
+    animation: none;
+    opacity: 0.5;
   }
 }
 

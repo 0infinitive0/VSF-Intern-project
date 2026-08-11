@@ -291,5 +291,20 @@
   "mapLegendFallback": "Estimated",
   "mapHotelCountLabel": "{{count}} hotels",
   "mapHotelHintEmpty": "Select a hotel to see distances to nearby highlights",
-  "mapHotelHintSelected": "{{name}} — start & end point each day"
+  "mapHotelHintSelected": "{{name}} — start & end point each day",
+  "mapLoadingLabel": "Loading map...",
+  "mapLegendOverview": "Trip overview",
+  "mapLegendDayRoutes": "Route legs",
+  "mapErrorTitle": "Couldn't load map data",
+  "mapErrorBody": "Something went wrong loading the map. Chat and your itinerary still work normally.",
+  "mapRetryLabel": "Retry",
+  "mapEmptyTitle": "No location data",
+  "mapEmptyBody": "No location data available for this itinerary.",
+  "mapPreviewCloseLabel": "Close",
+  "mapZoomIn": "Zoom in",
+  "mapZoomOut": "Zoom out",
+  "mapFitRoute": "Fit entire route",
+  "mapMyLocation": "My location",
+  "mapShowSatellite": "Show satellite",
+  "mapShowStreets": "Show streets"
 }

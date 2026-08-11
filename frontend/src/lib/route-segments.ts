@@ -35,7 +35,7 @@
  *    segments (every segment needs 2 valid endpoints), no separate gate
  *    needed.
  */
-import { parseCoordinates, type LatLng } from './geo'
+import { haversineKm, parseCoordinates, type LatLng } from './geo'
 import { classifyRoute } from './leg'
 import { decodePolyline } from './polyline'
 import { itemSyncId, TRIP_HOTEL_SYNC_KEY } from './map-sync-id'
@@ -53,6 +53,18 @@ export interface RouteSegment {
   points: LatLng[]
   isFallback: boolean
   profile: RouteProfile | null
+  /** Real route.distance_km, or haversine crow-fly when `route` is null. Always a number. */
+  distanceKm: number
+  /**
+   * Real route.duration_mins — but ONLY when a route existed. `null` when
+   * `route` was null (crow-fly), matching leg.ts's Leg 'crow-fly' variant: a
+   * duration cannot be guessed from a straight-line distance, so it's never
+   * invented here either. NOTE this is independent of `isFallback`: a
+   * segment can be `isFallback: true` (polyline failed to decode) while
+   * still carrying a REAL duration from the backend's route data — only a
+   * genuinely null `route` produces `durationMins: null`.
+   */
+  durationMins: number | null
 }
 
 type HotelLike = { coordinates?: string | null } | null | undefined
@@ -63,6 +75,12 @@ function pointsFor(route: RouteInfo | null | undefined, from: LatLng, to: LatLng
     if (decoded.length >= 2) return { points: decoded, isFallback: false }
   }
   return { points: [from, to], isFallback: true }
+}
+
+/** Mirrors leg.ts's route/crow-fly split: real metrics when a route exists, haversine distance with no duration otherwise. */
+function metricsFor(route: RouteInfo | null | undefined, from: LatLng, to: LatLng): { distanceKm: number; durationMins: number | null } {
+  if (route) return { distanceKm: route.distance_km ?? 0, durationMins: route.duration_mins ?? 0 }
+  return { distanceKm: haversineKm(from, to), durationMins: null }
 }
 
 export function buildDaySegments(day: Day, hotel: HotelLike): RouteSegment[] {
@@ -76,6 +94,7 @@ export function buildDaySegments(day: Day, hotel: HotelLike): RouteSegment[] {
     const route = items[0].route_from_hotel
     if (classifyRoute(route) !== 'same-place') {
       const { points, isFallback } = pointsFor(route, hotelPoint, itemPoints[0])
+      const { distanceKm, durationMins } = metricsFor(route, hotelPoint, itemPoints[0])
       segments.push({
         segKey: `d${day.day_number}-s0`,
         dayNumber: day.day_number,
@@ -85,6 +104,8 @@ export function buildDaySegments(day: Day, hotel: HotelLike): RouteSegment[] {
         points,
         isFallback,
         profile: route?.profile ?? null,
+        distanceKm,
+        durationMins,
       })
     }
   }
@@ -99,6 +120,7 @@ export function buildDaySegments(day: Day, hotel: HotelLike): RouteSegment[] {
     if (classifyRoute(route) === 'same-place') continue
 
     const { points, isFallback } = pointsFor(route, fromPoint, toPoint)
+    const { distanceKm, durationMins } = metricsFor(route, fromPoint, toPoint)
     segments.push({
       segKey: `d${day.day_number}-s${i + 1}`,
       dayNumber: day.day_number,
@@ -108,6 +130,8 @@ export function buildDaySegments(day: Day, hotel: HotelLike): RouteSegment[] {
       points,
       isFallback,
       profile: route?.profile ?? null,
+      distanceKm,
+      durationMins,
     })
   }
 
@@ -119,6 +143,7 @@ export function buildDaySegments(day: Day, hotel: HotelLike): RouteSegment[] {
       const route = items[lastIndex].route_to_next
       if (classifyRoute(route) !== 'same-place') {
         const { points, isFallback } = pointsFor(route, lastPoint, hotelPoint)
+        const { distanceKm, durationMins } = metricsFor(route, lastPoint, hotelPoint)
         segments.push({
           segKey: `d${day.day_number}-s${items.length}`,
           dayNumber: day.day_number,
@@ -128,6 +153,8 @@ export function buildDaySegments(day: Day, hotel: HotelLike): RouteSegment[] {
           points,
           isFallback,
           profile: route?.profile ?? null,
+          distanceKm,
+          durationMins,
         })
       }
     }

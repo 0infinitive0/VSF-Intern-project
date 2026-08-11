@@ -1,363 +1,314 @@
-import { useEffect, useMemo, useRef } from 'react'
-import type { ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import mapboxgl from 'mapbox-gl'
 import { useTranslation } from 'react-i18next'
 import { useMapboxMap } from '../hooks/use-mapbox-map'
 import { boundsOf, parseCoordinates, toLngLat } from '../lib/geo'
-import { dayColor, kindAccent } from '../lib/map-colors'
-import MapLegend from './map-legend'
+import { dayColor, legColor } from '../lib/map-colors'
+import type { HotelMapRay } from '../lib/map-presentation'
+import { highlightedRouteKeys } from '../lib/map-presentation'
 import type { RouteSegment } from '../lib/route-segments'
 import type { Theme } from '../hooks/use-theme'
+import type { MapStyleKind } from '../hooks/use-mapbox-map'
+import MapControls from './map-controls'
+import MapStateOverlay from './map-state-overlay'
 
-const SOURCE_ID = 'trip-routes'
-const DRIVING_LAYER = 'route-line-driving'
-const WALKING_LAYER = 'route-line-walking'
-const FALLBACK_LAYER = 'route-line-fallback'
-const ROUTE_LAYER_IDS = [DRIVING_LAYER, WALKING_LAYER, FALLBACK_LAYER] as const
+const ROUTE_SOURCE = 'trip-routes'
+const RAY_SOURCE = 'hotel-distance-rays'
+const HALO_SOURCE = 'hotel-selection-halo'
+const CASING_LAYER = 'route-casing'
+const DRIVE_LAYER = 'route-drive'
+const WALK_LAYER = 'route-walk'
+const FALLBACK_LAYER = 'route-fallback'
+const FLOW_LAYER = 'route-flow'
+const RAY_LAYER = 'hotel-distance-rays-line'
+const HALO_LAYER = 'hotel-selection-halo-circle'
+// Entrance draw-in duration (map_line_animation_effects.md §1: "0.9 giây").
+const ROUTE_FADE_MS = 900
+// Dash/gap below are line-width MULTIPLES (mapbox-gl's own dasharray unit,
+// same semantics as an SVG stroke-dasharray relative to stroke-width) — so
+// each pair is the doc's raw px spec divided by that layer's own
+// line-width, reproducing the same on-screen dash/gap length in pixels:
+// drive flow (weight 2.4): 14px/2.4=5.83, 120px/2.4=50, 3.4s cycle.
+const FLOW_DASH = 5.83
+const FLOW_GAP = 50
+const FLOW_CYCLE_MS = 3_400
+// Walk mode has no casing layer under it (unlike drive), so its dots are
+// the ONLY thing carrying the whole leg against a busy street basemap — the
+// doc's literal 2px/9px (at width 4) rendered essentially invisibly in
+// testing. Sized up while keeping the same "small dot, wide gap" character
+// clearly distinct from drive's bold flowing dash, not the doc's raw ratio.
+const WALK_DASH = 0.9
+const WALK_GAP = 3.2
+const WALK_CYCLE_MS = 1_600
+const WALK_WIDTH = 5
+const DASH_EPSILON = 0.01
 
 export interface MapMarkerSpec {
   syncId: string
   coordinates?: string | null
   kind: 'hotel' | 'item'
-  /** 1-based position label shown inside an 'item' pin; ignored for 'hotel'. */
   label?: number
-  /** Day-color source for an 'item' pin. */
   dayNumber?: number
-  /** Present when clicking this marker should also open a detail focus mode, in addition to scrolling its card into view. */
   openId?: string
+  endpoint?: 'start' | 'end'
+  priceLabel?: string
+  matchLabel?: string
 }
 
 export interface MapViewProps {
+  variant: 'workspace' | 'hotels'
   theme: Theme
   markers: MapMarkerSpec[]
   segments: RouteSegment[]
   hoveredId: string | null
   onHoverChange: (id: string | null) => void
   onMarkerClick: (marker: MapMarkerSpec) => void
-  /** Stage-specific overlay (e.g. the hotels-stage top-left hotel-count/status card) — not legend content. */
-  statusOverlay?: ReactNode
-  showLegend?: boolean
+  selectedId?: string | null
+  hotelRays?: HotelMapRay[]
 }
 
-// Local shape instead of the ambient `GeoJSON.*` namespace (from @types/geojson,
-// which mapbox-gl pulls in transitively) — avoids depending on whether that
-// package's ambient globals are visible in this file's compilation, while
-// staying structurally compatible with what mapboxgl.GeoJSONSourceSpecification expects.
-interface RouteFeature {
-  type: 'Feature'
-  id: string
-  properties: { segKey: string; isFallback: boolean; profile: string | null; color: string }
-  geometry: { type: 'LineString'; coordinates: [number, number][] }
-}
-interface RouteFeatureCollection {
-  type: 'FeatureCollection'
-  features: RouteFeature[]
-}
+type FeatureCollection = { type: 'FeatureCollection'; features: Array<Record<string, unknown>> }
 
-function segmentsToFeatureCollection(segments: RouteSegment[]): RouteFeatureCollection {
+function routeData(segments: RouteSegment[]): FeatureCollection {
   return {
     type: 'FeatureCollection',
-    features: segments.map((seg) => ({
+    features: segments.map((segment) => ({
       type: 'Feature',
-      id: seg.segKey,
-      properties: {
-        segKey: seg.segKey,
-        isFallback: seg.isFallback,
-        profile: seg.profile ?? null,
-        color: dayColor(seg.dayNumber),
-      },
-      geometry: {
-        type: 'LineString',
-        coordinates: seg.points.map((p) => toLngLat(p)),
-      },
+      id: segment.segKey,
+      properties: { segKey: segment.segKey, isFallback: segment.isFallback, profile: segment.profile, color: legColor(segment.legIndex) },
+      geometry: { type: 'LineString', coordinates: segment.points.map(toLngLat) },
     })),
   }
 }
 
-/**
- * Adds the shared source + 3 filtered line-layers (driving/walking/fallback —
- * line-dasharray isn't data-driven in the GL style spec, only zoom
- * expressions, so a single layer can't vary dash pattern per feature).
- *
- * Hover highlight is declared ONCE here via feature-state expressions —
- * `map.setFeatureState()` alone (no further setPaintProperty calls) is
- * enough to re-evaluate line-opacity/line-width per feature, exactly like
- * Mapbox's own "create a hover effect" pattern. This is simpler than (and
- * functionally equivalent to) toggling the expression itself on every
- * hover change.
- */
+// map_line_animation_effects.md §3: the "main" colored line for a leg (drive/
+// walk/fallback) brightens to full opacity on hover; a "casing"/"flow"
+// overlay never brightens on hover (only its width does, for casing) — it
+// only reacts to `dimmed`. Two expression shapes instead of one shared
+// 3-tier case, matching that split exactly.
+function mainOpacity(rest: number, dimmed: number): mapboxgl.DataDrivenPropertyValueSpecification<number> {
+  return ['case', ['boolean', ['feature-state', 'hovered'], false], 1, ['boolean', ['feature-state', 'dimmed'], false], dimmed, rest]
+}
+function accentOpacity(rest: number, dimmed: number): mapboxgl.DataDrivenPropertyValueSpecification<number> {
+  return ['case', ['boolean', ['feature-state', 'dimmed'], false], dimmed, rest]
+}
+// "weight + 2" on the active leg (§3) — casing and the main-color line both
+// get this; the flow overlay's width stays constant (doc never widens it).
+function hoverWidth(rest: number): mapboxgl.DataDrivenPropertyValueSpecification<number> {
+  return ['case', ['boolean', ['feature-state', 'hovered'], false], rest + 2, rest]
+}
+
 function addRouteLayers(map: mapboxgl.Map) {
-  map.addSource(SOURCE_ID, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-
-  const commonLayout: mapboxgl.LineLayerSpecification['layout'] = {
-    'line-cap': 'round',
-    'line-join': 'round',
-  }
-
-  map.addLayer({
-    id: DRIVING_LAYER,
-    type: 'line',
-    source: SOURCE_ID,
-    filter: ['all', ['==', ['get', 'isFallback'], false], ['!=', ['get', 'profile'], 'walking']],
-    layout: commonLayout,
-    paint: {
-      'line-color': ['get', 'color'],
-      'line-dasharray': [1, 0],
-      'line-opacity': ['case', ['boolean', ['feature-state', 'hovered'], false], 1.0, 0.85],
-      'line-width': ['case', ['boolean', ['feature-state', 'hovered'], false], 6, 4],
-      'line-opacity-transition': { duration: 500, delay: 0 },
-      'line-width-transition': { duration: 300, delay: 0 },
-    },
-  } as mapboxgl.LineLayerSpecification)
-
-  map.addLayer({
-    id: WALKING_LAYER,
-    type: 'line',
-    source: SOURCE_ID,
-    filter: ['all', ['==', ['get', 'isFallback'], false], ['==', ['get', 'profile'], 'walking']],
-    layout: commonLayout,
-    paint: {
-      'line-color': ['get', 'color'],
-      'line-dasharray': [2, 1.6],
-      'line-opacity': ['case', ['boolean', ['feature-state', 'hovered'], false], 1.0, 0.85],
-      'line-width': ['case', ['boolean', ['feature-state', 'hovered'], false], 6, 4],
-      'line-opacity-transition': { duration: 500, delay: 0 },
-      'line-width-transition': { duration: 300, delay: 0 },
-    },
-  } as mapboxgl.LineLayerSpecification)
-
-  // Fallback legs: same day color, distinguished by sparser dash + lower
-  // opacity + thinner width — never a second color, never curved (see
-  // route-segments.ts doc comment on why this stays a straight line).
-  map.addLayer({
-    id: FALLBACK_LAYER,
-    type: 'line',
-    source: SOURCE_ID,
-    filter: ['==', ['get', 'isFallback'], true],
-    layout: commonLayout,
-    paint: {
-      'line-color': ['get', 'color'],
-      'line-dasharray': [0.6, 1.8],
-      'line-opacity': ['case', ['boolean', ['feature-state', 'hovered'], false], 0.9, 0.5],
-      'line-width': ['case', ['boolean', ['feature-state', 'hovered'], false], 5, 3],
-      'line-opacity-transition': { duration: 500, delay: 0 },
-      'line-width-transition': { duration: 300, delay: 0 },
-    },
-  } as mapboxgl.LineLayerSpecification)
+  map.addSource(ROUTE_SOURCE, { type: 'geojson', lineMetrics: true, data: { type: 'FeatureCollection', features: [] } })
+  const layout: mapboxgl.LineLayerSpecification['layout'] = { 'line-cap': 'round', 'line-join': 'round' }
+  const realRouteFilter = ['==', ['get', 'isFallback'], false]
+  const walkFilter = ['all', realRouteFilter, ['==', ['get', 'profile'], 'walking']]
+  const driveFilter = ['all', realRouteFilter, ['!=', ['get', 'profile'], 'walking']]
+  // The trim interval is rendered transparent. Start at [0, 1] (fully
+  // hidden) and animate to [0, 0] (fully visible), matching SVG draw-in —
+  // applied to every semantic line layer (casing/drive/walk/fallback) so a
+  // tab/day change always "draws" the whole route, not just driving legs.
+  // The flow overlay is deliberately excluded: it's already animating its
+  // own dash, trimming it too would read as two motions fighting each other.
+  const opacityTransition = { 'line-opacity-transition': { duration: ROUTE_FADE_MS, delay: 0 } }
+  const trimProps = { ...opacityTransition, 'line-trim-offset-transition': { duration: ROUTE_FADE_MS, delay: 0 }, 'line-trim-color': 'rgba(0,0,0,0)' as const, 'line-trim-offset': [0, 1] as [number, number] }
+  map.addLayer({ id: CASING_LAYER, type: 'line', source: ROUTE_SOURCE, filter: driveFilter, layout, paint: { ...trimProps, 'line-color': '#fff', 'line-opacity': accentOpacity(.75, .1), 'line-width': hoverWidth(7) } } as mapboxgl.LineLayerSpecification)
+  map.addLayer({ id: DRIVE_LAYER, type: 'line', source: ROUTE_SOURCE, filter: driveFilter, layout, paint: { ...trimProps, 'line-color': ['get', 'color'], 'line-opacity': mainOpacity(.92, .18), 'line-width': hoverWidth(4) } } as mapboxgl.LineLayerSpecification)
+  map.addLayer({ id: WALK_LAYER, type: 'line', source: ROUTE_SOURCE, filter: walkFilter, layout, paint: { ...trimProps, 'line-color': ['get', 'color'], 'line-dasharray': [WALK_DASH, WALK_GAP], 'line-opacity': mainOpacity(.95, .18), 'line-width': hoverWidth(WALK_WIDTH) } } as mapboxgl.LineLayerSpecification)
+  map.addLayer({ id: FALLBACK_LAYER, type: 'line', source: ROUTE_SOURCE, filter: ['==', ['get', 'isFallback'], true], layout, paint: { ...trimProps, 'line-color': ['get', 'color'], 'line-dasharray': [.6, 1.8], 'line-opacity': mainOpacity(.5, .18), 'line-width': hoverWidth(3) } } as mapboxgl.LineLayerSpecification)
+  map.addLayer({ id: FLOW_LAYER, type: 'line', source: ROUTE_SOURCE, filter: driveFilter, layout, paint: { ...opacityTransition, 'line-color': '#fff', 'line-dasharray': [FLOW_DASH, FLOW_GAP], 'line-opacity': accentOpacity(.95, .1), 'line-width': 2.4 } } as mapboxgl.LineLayerSpecification)
 }
 
-/** One-time fade-in right after the layers are (re)created — see map-view.tsx's route effect. */
-function fadeInRouteLayers(map: mapboxgl.Map) {
-  for (const id of ROUTE_LAYER_IDS) {
-    if (!map.getLayer(id)) continue
-    map.setPaintProperty(id, 'line-opacity', 0)
-  }
-  requestAnimationFrame(() => {
-    for (const id of ROUTE_LAYER_IDS) {
-      if (!map.getLayer(id)) continue
-      map.setPaintProperty(id, 'line-opacity', [
-        'case',
-        ['boolean', ['feature-state', 'hovered'], false],
-        id === FALLBACK_LAYER ? 0.9 : 1.0,
-        id === FALLBACK_LAYER ? 0.5 : 0.85,
-      ])
-    }
-  })
+function setRouteTrimEnd(map: mapboxgl.Map, trimEnd: number) {
+  const trimLayers = [CASING_LAYER, DRIVE_LAYER, WALK_LAYER, FALLBACK_LAYER] as const
+  for (const id of trimLayers) if (map.getLayer(id)) map.setPaintProperty(id, 'line-trim-offset', [0, trimEnd])
 }
 
-function createMarkerElement(marker: MapMarkerSpec): HTMLDivElement {
-  const el = document.createElement('div')
-  el.style.cursor = 'pointer'
-  el.style.display = 'flex'
-  el.style.alignItems = 'center'
-  el.style.justifyContent = 'center'
-  el.style.transition = 'transform .18s cubic-bezier(.34,1.4,.64,1)'
-  el.style.transformOrigin = 'center'
-  el.style.color = '#fff'
-  el.style.border = '2px solid #fff'
-  el.style.borderRadius = '50%'
-  el.style.boxShadow = '0 3px 10px -3px rgba(0,0,0,.55)'
+function animatedDash(dash: number, gap: number, cycleMs: number, elapsedMs: number): [number, number, number, number] {
+  const offset = ((elapsedMs % cycleMs) / cycleMs) * (dash + gap)
+  // Mapbox GL requires every dash-array entry to be positive. A literal zero
+  // makes the whole layer disappear in some renderers, so an imperceptible
+  // leading dash preserves the phase shift without ever invalidating the line.
+  return offset < dash
+    ? [Math.max(DASH_EPSILON, dash - offset), gap, dash, gap]
+    : [DASH_EPSILON, Math.max(DASH_EPSILON, dash + gap - offset), dash, gap]
+}
 
+function createMarkerElement(marker: MapMarkerSpec): { root: HTMLDivElement; content: HTMLDivElement } {
+  const root = document.createElement('div')
+  const content = document.createElement('div')
+  root.appendChild(content)
+  content.style.cursor = 'pointer'
+  content.style.transition = 'transform .25s cubic-bezier(.34,1.5,.64,1), box-shadow .25s ease, opacity .2s ease'
+  content.style.transformOrigin = 'center'
+  content.style.color = '#FCFDFE'
+  content.style.border = '2px solid #fff'
+  content.style.boxShadow = '0 4px 12px -3px rgba(0,0,0,.45)'
   if (marker.kind === 'hotel') {
-    el.style.width = '34px'
-    el.style.height = '34px'
-    el.style.background = kindAccent('hotel')
-    const icon = document.createElement('span')
-    icon.className = 'material-symbols-outlined'
-    icon.textContent = 'hotel'
-    icon.style.fontSize = '17px'
-    icon.setAttribute('aria-hidden', 'true')
-    el.appendChild(icon)
+    content.style.display = 'flex'
+    content.style.alignItems = 'center'
+    content.style.gap = '6px'
+    content.style.whiteSpace = 'nowrap'
+    content.style.padding = '5px 10px'
+    content.style.borderRadius = '999px'
+    content.style.background = '#3A73DE'
+    content.style.font = "500 11.5px/1.2 'Be Vietnam Pro', sans-serif"
+    content.style.setProperty('--base-marker', '#3A73DE')
+    if (marker.priceLabel) { const price = document.createElement('b'); price.textContent = marker.priceLabel; price.style.fontWeight = '590'; content.appendChild(price) }
+    if (marker.matchLabel) { const match = document.createElement('span'); match.textContent = marker.matchLabel; match.style.opacity = '.75'; content.appendChild(match) }
   } else {
-    el.style.width = '24px'
-    el.style.height = '24px'
-    el.style.background = dayColor(marker.dayNumber ?? 1)
-    el.style.fontSize = '11px'
-    el.style.fontWeight = '590'
-    el.textContent = marker.label != null ? String(marker.label) : ''
+    content.style.width = '26px'
+    content.style.height = '26px'
+    content.style.borderRadius = '50%'
+    content.style.background = dayColor(marker.dayNumber ?? 1)
+    content.style.font = "600 12px/26px 'Be Vietnam Pro', sans-serif"
+    content.style.textAlign = 'center'
+    content.style.animation = `vPinIn .6s ${(marker.label ?? 1) * 65}ms cubic-bezier(.34,1.4,.64,1) backwards`
+    content.textContent = marker.label != null ? String(marker.label) : ''
+    if (marker.endpoint) {
+      const badge = document.createElement('div')
+      badge.textContent = marker.endpoint === 'start' ? 'XUẤT PHÁT' : 'KẾT THÚC'
+      badge.style.cssText = "position:absolute;left:50%;bottom:30px;transform:translateX(-50%);white-space:nowrap;padding:2px 8px;border-radius:99px;background:var(--btn);color:var(--btn-fg);font:600 9.5px/1.4 'Be Vietnam Pro',sans-serif;letter-spacing:.04em;box-shadow:0 6px 14px -6px rgba(0,0,0,.6)"
+      content.appendChild(badge)
+    }
   }
-
-  return el
+  return { root, content }
 }
 
-function applyHoverStyle(el: HTMLElement, hovered: boolean) {
-  el.style.transform = hovered ? 'scale(1.22)' : 'scale(1)'
-  el.style.zIndex = hovered ? '10' : '0'
+function applyMarkerState(content: HTMLElement, marker: MapMarkerSpec, hovered: boolean, selected: boolean, dimmed: boolean) {
+  const scale = marker.kind === 'hotel' ? (hovered ? 1.18 : 1) : (hovered || selected ? 1.45 : 1)
+  content.style.transform = `scale(${scale})`
+  const root = content.parentElement as HTMLElement | null
+  if (root) root.style.zIndex = hovered ? '1000' : selected ? '900' : '0'
+  content.style.opacity = dimmed ? '.55' : '1'
+  content.style.boxShadow = hovered || selected ? '0 8px 20px -4px rgba(0,0,0,.5), 0 0 0 6px rgba(255,255,255,.55)' : '0 4px 12px -3px rgba(0,0,0,.45)'
+  if (marker.kind === 'hotel') content.style.background = selected ? '#0e1319' : 'var(--base-marker)'
 }
 
-export default function MapView({
-  theme,
-  markers,
-  segments,
-  hoveredId,
-  onHoverChange,
-  onMarkerClick,
-  statusOverlay,
-  showLegend,
-}: MapViewProps) {
+function fitWorkspace(map: mapboxgl.Map, points: { lat: number; lng: number }[]) {
+  if (points.length === 1) map.flyTo({ center: toLngLat(points[0]), zoom: 15, duration: 900 })
+  else if (points.length > 1) { const bounds = boundsOf(points)!; map.fitBounds([[bounds.sw.lng, bounds.sw.lat], [bounds.ne.lng, bounds.ne.lat]], { padding: 56, maxZoom: 15, duration: 900 }) }
+}
+
+export default function MapView({ variant, theme, markers, segments, hoveredId, onHoverChange, onMarkerClick, selectedId = null, hotelRays = [] }: MapViewProps) {
   const { t } = useTranslation()
-  const { containerRef, mapRef, ready, styleVersion, tokenMissing } = useMapboxMap(theme)
-  const markerRegistry = useRef<Map<string, mapboxgl.Marker>>(new Map())
+  const [styleKind, setStyleKind] = useState<MapStyleKind>('map')
+  const { containerRef, mapRef, status, styleVersion, tokenMissing, retry } = useMapboxMap(theme, styleKind)
+  const markerRegistry = useRef(new Map<string, { marker: mapboxgl.Marker; spec: MapMarkerSpec }>())
+  const badgeRegistry = useRef<mapboxgl.Marker[]>([])
+  const hotelCameraSet = useRef(false)
+  const onHoverRef = useRef(onHoverChange); onHoverRef.current = onHoverChange
+  const onClickRef = useRef(onMarkerClick); onClickRef.current = onMarkerClick
+  const markerKey = useMemo(() => markers.map((marker) => JSON.stringify(marker)).join('|'), [markers])
 
-  // Latest-callback refs so the imperative marker effect doesn't need to
-  // recreate markers every time a parent re-render hands it a fresh inline
-  // callback — only real data changes (markersKey below) do that.
-  const onHoverChangeRef = useRef(onHoverChange)
-  onHoverChangeRef.current = onHoverChange
-  const onMarkerClickRef = useRef(onMarkerClick)
-  onMarkerClickRef.current = onMarkerClick
-
-  const markersKey = useMemo(
-    () => markers.map((m) => `${m.syncId}:${m.coordinates ?? ''}:${m.kind}:${m.label ?? ''}:${m.dayNumber ?? ''}:${m.openId ?? ''}`).join('|'),
-    [markers],
-  )
-
-  // Marker reconciliation: add/remove/move by syncId, plus an initial
-  // camera fit over whatever's currently plottable. Coordinates that fail
-  // to parse are dropped here — never plotted at (0,0).
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !ready) return
-
-    const registry = markerRegistry.current
-    const seen = new Set<string>()
+    if (!map || status !== 'ready') return
+    markerRegistry.current.forEach(({ marker }) => marker.remove()); markerRegistry.current.clear()
     const points: { lat: number; lng: number }[] = []
-
-    for (const marker of markers) {
-      const point = parseCoordinates(marker.coordinates)
+    const duplicateCount = new Map<string, number>()
+    for (const spec of markers) {
+      const point = spec.kind === 'hotel' ? parseCoordinates(spec.coordinates) : null
       if (!point) continue
-      seen.add(marker.syncId)
+      const key = `${point.lat.toFixed(4)},${point.lng.toFixed(4)}`
+      duplicateCount.set(key, (duplicateCount.get(key) ?? 0) + 1)
+    }
+    const duplicateIndex = new Map<string, number>()
+    for (const spec of markers) {
+      const point = parseCoordinates(spec.coordinates); if (!point) continue
       points.push(point)
-
-      const existing = registry.get(marker.syncId)
-      if (existing) {
-        existing.setLngLat(toLngLat(point))
-        continue
-      }
-
-      const el = createMarkerElement(marker)
-      el.addEventListener('mouseenter', () => onHoverChangeRef.current(marker.syncId))
-      el.addEventListener('mouseleave', () => onHoverChangeRef.current(null))
-      el.addEventListener('click', () => onMarkerClickRef.current(marker))
-
-      const mbMarker = new mapboxgl.Marker({ element: el }).setLngLat(toLngLat(point)).addTo(map)
-      registry.set(marker.syncId, mbMarker)
+      const { root, content } = createMarkerElement(spec)
+      content.addEventListener('mouseenter', () => { root.style.zIndex = '1000'; onHoverRef.current(spec.syncId) })
+      content.addEventListener('mouseleave', () => { root.style.zIndex = '0'; onHoverRef.current(null) })
+      content.addEventListener('click', (event) => { event.stopPropagation(); onClickRef.current(spec) })
+      const key = `${point.lat.toFixed(4)},${point.lng.toFixed(4)}`
+      const count = spec.kind === 'hotel' ? duplicateCount.get(key) ?? 1 : 1
+      const index = duplicateIndex.get(key) ?? 0
+      if (spec.kind === 'hotel') duplicateIndex.set(key, index + 1)
+      const angle = count > 1 ? (Math.PI * 2 * index) / count - Math.PI / 2 : 0
+      const offset: [number, number] = count > 1 ? [Math.cos(angle) * 18, Math.sin(angle) * 18] : [0, 0]
+      const marker = new mapboxgl.Marker({ element: root, anchor: spec.kind === 'hotel' ? 'bottom' : 'center', offset }).setLngLat(toLngLat(point)).addTo(map)
+      markerRegistry.current.set(spec.syncId, { marker, spec })
     }
+    if (variant === 'hotels' && !hotelCameraSet.current) { map.jumpTo({ center: [108.24, 16.045], zoom: 12 }); hotelCameraSet.current = true }
+    if (variant === 'workspace') fitWorkspace(map, points)
+  }, [markerKey, markers, status, variant, mapRef])
 
-    for (const [syncId, mbMarker] of registry) {
-      if (!seen.has(syncId)) {
-        mbMarker.remove()
-        registry.delete(syncId)
-      }
-    }
-
-    if (points.length === 1) {
-      map.flyTo({ center: toLngLat(points[0]), zoom: 14, duration: 600 })
-    } else if (points.length >= 2) {
-      const bounds = boundsOf(points)!
-      map.fitBounds(
-        [
-          [bounds.sw.lng, bounds.sw.lat],
-          [bounds.ne.lng, bounds.ne.lat],
-        ],
-        { padding: 56, maxZoom: 15, duration: 600 },
-      )
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- markersKey is the real dependency; markers/onHoverChange/onMarkerClick read via refs/key above
-  }, [ready, markersKey])
-
-  // Reverse hover direction (timeline/card hover -> marker highlight).
   useEffect(() => {
-    for (const [syncId, mbMarker] of markerRegistry.current) {
-      applyHoverStyle(mbMarker.getElement(), syncId === hoveredId)
-    }
-  }, [hoveredId])
+    const anyActive = hoveredId != null || selectedId != null
+    markerRegistry.current.forEach(({ marker, spec }, id) => {
+      const content = marker.getElement().firstElementChild as HTMLElement | null
+      if (content) applyMarkerState(content, spec, id === hoveredId, id === selectedId, anyActive && id !== hoveredId && id !== selectedId)
+    })
+  }, [hoveredId, selectedId, markerKey])
 
-  // Route source/layers: re-added after every style (re)load (setStyle wipes
-  // them, see use-mapbox-map.ts), then setData on every segment change.
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !ready) return
+    if (!map || status !== 'ready' || variant !== 'workspace') return
+    if (!map.getSource(ROUTE_SOURCE)) addRouteLayers(map)
+    const source = map.getSource(ROUTE_SOURCE) as mapboxgl.GeoJSONSource
+    source.setData(routeData(segments) as never)
+    setRouteTrimEnd(map, 1)
+    const frame = requestAnimationFrame(() => setRouteTrimEnd(map, 0))
+    return () => cancelAnimationFrame(frame)
+  }, [segments, status, styleVersion, variant, mapRef])
 
-    let justCreated = false
-    if (!map.getSource(SOURCE_ID)) {
-      addRouteLayers(map)
-      justCreated = true
-    }
-
-    const source = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource
-    source.setData(segmentsToFeatureCollection(segments))
-    if (justCreated) fadeInRouteLayers(map)
-  }, [styleVersion, segments, ready, mapRef])
-
-  // Route hover highlight: setFeatureState only — the paint expressions
-  // declared in addRouteLayers already react to it (no setPaintProperty
-  // needed per hover change).
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !ready || !map.getSource(SOURCE_ID)) return
+    if (!map || status !== 'ready' || variant !== 'workspace' || !map.getSource(ROUTE_SOURCE)) return
+    const activeSegmentKeys = highlightedRouteKeys(segments, hoveredId, null)
+    const active = hoveredId != null
+    for (const segment of segments) map.setFeatureState({ source: ROUTE_SOURCE, id: segment.segKey }, { hovered: activeSegmentKeys.has(segment.segKey), dimmed: active && !activeSegmentKeys.has(segment.segKey) })
+  }, [hoveredId, segments, status, styleVersion, variant, mapRef])
 
-    const hoveredSegKeys = new Set(
-      segments.filter((s) => s.fromKey === hoveredId || s.toKey === hoveredId).map((s) => s.segKey),
-    )
-    for (const seg of segments) {
-      map.setFeatureState({ source: SOURCE_ID, id: seg.segKey }, { hovered: hoveredSegKeys.has(seg.segKey) })
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || status !== 'ready' || variant !== 'workspace' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    let frame = 0; let start = 0
+    const tick = (time: number) => {
+      if (!start) start = time
+      const elapsed = time - start
+      if (map.getLayer(FLOW_LAYER)) map.setPaintProperty(FLOW_LAYER, 'line-dasharray', animatedDash(FLOW_DASH, FLOW_GAP, FLOW_CYCLE_MS, elapsed))
+      if (map.getLayer(WALK_LAYER)) map.setPaintProperty(WALK_LAYER, 'line-dasharray', animatedDash(WALK_DASH, WALK_GAP, WALK_CYCLE_MS, elapsed))
+      frame = requestAnimationFrame(tick)
     }
-  }, [hoveredId, segments, ready, styleVersion, mapRef])
+    frame = requestAnimationFrame(tick); return () => cancelAnimationFrame(frame)
+  }, [status, styleVersion, variant, mapRef])
 
-  return (
-    <div
-      className="relative w-full h-full rounded-[26px] overflow-hidden border border-edge"
-      style={{ boxShadow: '0 20px 50px -26px rgb(var(--shadow-rgb) / 0.3)' }}
-    >
-      {tokenMissing ? (
-        <div className="absolute inset-0 flex items-center justify-center bg-surface-muted px-6">
-          <div className="text-center text-on-surface-variant">
-            <span className="material-symbols-outlined text-4xl" aria-hidden="true">
-              map
-            </span>
-            <div className="font-medium text-on-surface mt-2">{t('mapUnavailableTitle')}</div>
-            <div className="text-sm mt-1">{t('mapUnavailableBody')}</div>
-          </div>
-        </div>
-      ) : (
-        <>
-          {/* w-full h-full, NOT absolute+inset-0: mapbox-gl.css ships a
-              `.mapboxgl-map { position: relative }` rule, and Mapbox GL JS
-              appends that exact class to whatever element we hand it as
-              `container` — it silently wins over our own `absolute` utility
-              (same specificity, later in the cascade), which drops `inset-0`
-              positioning and collapses this div to its normal-flow height
-              (0, since its only child content is absolutely-positioned).
-              Plain block sizing sidesteps the fight entirely; the overlay
-              siblings below stay `absolute` against the very same
-              `position: relative` parent (this component's own root), so
-              stacking is unaffected. */}
-          <div ref={containerRef} className="w-full h-full" />
-          {statusOverlay && <div className="absolute top-4 left-4 right-4 z-10">{statusOverlay}</div>}
-          {showLegend && <MapLegend segments={segments} className="absolute bottom-4 left-4 z-10" />}
-        </>
-      )}
-    </div>
-  )
+  useEffect(() => {
+    const map = mapRef.current
+    badgeRegistry.current.forEach((marker) => marker.remove()); badgeRegistry.current = []
+    if (!map || status !== 'ready' || variant !== 'hotels') return
+    if (!map.getSource(RAY_SOURCE)) map.addSource(RAY_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+    if (!map.getLayer(RAY_LAYER)) map.addLayer({ id: RAY_LAYER, type: 'line', source: RAY_SOURCE, paint: { 'line-color': '#0e1319', 'line-width': 1.6, 'line-opacity': .45, 'line-dasharray': [3, 7] } })
+    if (!map.getSource(HALO_SOURCE)) map.addSource(HALO_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+    if (!map.getLayer(HALO_LAYER)) map.addLayer({ id: HALO_LAYER, type: 'circle', source: HALO_SOURCE, paint: { 'circle-radius': 26, 'circle-color': '#0e1319', 'circle-opacity': .07, 'circle-stroke-color': '#0e1319', 'circle-stroke-width': 1.4, 'circle-stroke-opacity': .5 } })
+    const selected = selectedId ? markers.find((marker) => marker.syncId === selectedId) : undefined
+    const origin = selected ? parseCoordinates(selected.coordinates) : null
+    const raySource = map.getSource(RAY_SOURCE) as mapboxgl.GeoJSONSource
+    const haloSource = map.getSource(HALO_SOURCE) as mapboxgl.GeoJSONSource
+    if (!origin) { raySource.setData({ type: 'FeatureCollection', features: [] }); haloSource.setData({ type: 'FeatureCollection', features: [] }); return }
+    raySource.setData({ type: 'FeatureCollection', features: hotelRays.map((ray) => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [toLngLat(origin), toLngLat(ray.coordinates)] } })) })
+    haloSource.setData({ type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: toLngLat(origin) } }] })
+    badgeRegistry.current = hotelRays.map((ray) => {
+      const el = document.createElement('div')
+      el.textContent = `${ray.name} · ${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 }).format(ray.distanceKm)} km`
+      el.style.cssText = "white-space:nowrap;padding:2px 8px;border-radius:99px;background:rgba(255,255,255,.85);border:1px solid var(--edge);box-shadow:0 4px 10px -6px rgb(var(--shadow-rgb) / .6);font:400 10px/1.3 'Be Vietnam Pro',sans-serif;color:var(--t1)"
+      return new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([(origin.lng + ray.coordinates.lng) / 2, (origin.lat + ray.coordinates.lat) / 2]).addTo(map)
+    })
+  }, [hotelRays, markerKey, markers, selectedId, status, styleVersion, variant, mapRef])
+
+  const validMarker = markers.some((marker) => parseCoordinates(marker.coordinates) != null)
+  const hasGeolocation = typeof navigator !== 'undefined' && 'geolocation' in navigator
+  return <div className="relative h-full w-full overflow-hidden rounded-[26px] border border-edge" style={{ boxShadow: '0 20px 50px -26px rgb(var(--shadow-rgb) / .3)' }}>
+    {tokenMissing ? <MapStateOverlay icon="map" title={t('mapUnavailableTitle')} body={t('mapUnavailableBody')} /> : <>
+      <div ref={containerRef} className="h-full w-full" />
+      {status === 'error' && <MapStateOverlay icon="error" title={t('mapErrorTitle')} body={t('mapErrorBody')} action={{ label: t('mapRetryLabel'), onClick: retry }} />}
+      {status === 'loading' && <div className="absolute inset-0 shimmer-block" aria-hidden="true" />}
+      {status === 'ready' && !validMarker && <MapStateOverlay icon="location_off" title={t('mapEmptyTitle')} body={t('mapEmptyBody')} />}
+      {status === 'ready' && validMarker && <>
+        <MapControls styleKind={styleKind} onZoomIn={() => mapRef.current?.zoomIn()} onZoomOut={() => mapRef.current?.zoomOut()} onFitRoute={() => { const points = markers.map((marker) => parseCoordinates(marker.coordinates)).filter((point): point is NonNullable<typeof point> => point != null); fitWorkspace(mapRef.current!, points) }} onLocate={hasGeolocation ? () => navigator.geolocation.getCurrentPosition((position) => mapRef.current?.flyTo({ center: [position.coords.longitude, position.coords.latitude], zoom: 14, duration: 600 })) : undefined} onToggleStyle={() => setStyleKind((kind) => kind === 'satellite' ? 'map' : 'satellite')} className="absolute right-4 top-4 z-10" />
+      </>}
+    </>}
+  </div>
 }

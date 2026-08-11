@@ -291,5 +291,20 @@
   "mapLegendFallback": "Ước lượng",
   "mapHotelCountLabel": "{{count}} khách sạn",
   "mapHotelHintEmpty": "Chọn một khách sạn để xem khoảng cách tới các điểm nổi bật",
-  "mapHotelHintSelected": "{{name}} — điểm xuất phát & kết thúc mỗi ngày"
+  "mapHotelHintSelected": "{{name}} — điểm xuất phát & kết thúc mỗi ngày",
+  "mapLoadingLabel": "Đang tải bản đồ...",
+  "mapLegendOverview": "Tổng quan hành trình",
+  "mapLegendDayRoutes": "Các chặng di chuyển",
+  "mapErrorTitle": "Không thể tải dữ liệu bản đồ",
+  "mapErrorBody": "Đã có lỗi khi tải bản đồ. Chat và lịch trình vẫn hoạt động bình thường.",
+  "mapRetryLabel": "Thử lại",
+  "mapEmptyTitle": "Không có dữ liệu vị trí",
+  "mapEmptyBody": "Không có dữ liệu vị trí cho hành trình này.",
+  "mapPreviewCloseLabel": "Đóng",
+  "mapZoomIn": "Phóng to",
+  "mapZoomOut": "Thu nhỏ",
+  "mapFitRoute": "Xem toàn bộ lộ trình",
+  "mapMyLocation": "Vị trí của tôi",
+  "mapShowSatellite": "Xem vệ tinh",
+  "mapShowStreets": "Xem đường phố"
 }

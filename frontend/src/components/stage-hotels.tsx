@@ -5,6 +5,8 @@ import HotelDetailPanel from './hotel-detail-panel'
 import MapView, { type MapMarkerSpec } from './map-view'
 import { useMapSync } from '../hooks/use-map-sync'
 import { hotelOptionSyncId } from '../lib/map-sync-id'
+import { hotelMapFields, hotelMapRays } from '../lib/map-presentation'
+import { useHotelDetail } from '../hooks/use-hotel-detail'
 import type { useFocusMode } from '../hooks/use-focus-mode'
 import type { Theme } from '../hooks/use-theme'
 import type { ChatState, HotelOption } from '../types'
@@ -55,7 +57,7 @@ export default function StageHotels({
   onSend: (text: string) => void
   theme: Theme
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const hotels = state.hotelOptions
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const mapSync = useMapSync()
@@ -69,6 +71,9 @@ export default function StageHotels({
   const focusedHotel = hotels.find((h) => h.id === focusedId)
   const selectedHotel = hotels.find((h) => h.index === selectedIndex) ?? null
   const nights = nightsFrom(state.intake?.start_date, state.intake?.end_date)
+  const selectedId = selectedHotel ? hotelOptionSyncId(selectedHotel) : null
+  const { detail: selectedHotelDetail } = useHotelDetail(selectedHotel?.id ?? null)
+  const selectedHotelRays = useMemo(() => hotelMapRays(selectedHotelDetail), [selectedHotelDetail])
 
   const listRef = useRef<HTMLDivElement>(null)
   const savedScroll = useRef(0)
@@ -90,16 +95,16 @@ export default function StageHotels({
         coordinates: hotel.coordinates,
         kind: 'hotel' as const,
         openId: hotel.id,
+        ...hotelMapFields(hotel, i18n.language),
       })),
-    [hotels],
+    [hotels, i18n.language],
   )
 
   function handleMarkerClick(marker: MapMarkerSpec) {
+    const hotel = hotels.find((candidate) => hotelOptionSyncId(candidate) === marker.syncId)
+    if (!hotel) return
+    setSelectedIndex(hotel.index)
     mapSync.focusOn(marker.syncId)
-    if (marker.openId) {
-      const hotel = hotels.find((h) => h.id === marker.openId)
-      if (hotel) openFocus(hotel)
-    }
   }
 
   useLayoutEffect(() => {
@@ -187,25 +192,15 @@ export default function StageHotels({
           }}
         >
           <MapView
+            variant="hotels"
             theme={theme}
             markers={markers}
             segments={[]}
             hoveredId={mapSync.hoveredId}
-            onHoverChange={mapSync.setHoveredId}
+            onHoverChange={mapSync.hoverMarker}
             onMarkerClick={handleMarkerClick}
-            statusOverlay={
-              <div
-                className="rounded-[18px] border border-edge bg-glass-2 inline-block"
-                style={{ padding: '11px 14px', backdropFilter: 'blur(20px) saturate(1.6)', maxWidth: '280px' }}
-              >
-                <div className="text-[10px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
-                  {t('mapHotelCountLabel', { count: hotels.length })}
-                </div>
-                <div className="text-[11.5px] text-on-surface-variant mt-0.5" style={{ lineHeight: 1.45 }}>
-                  {selectedHotel ? t('mapHotelHintSelected', { name: selectedHotel.name }) : t('mapHotelHintEmpty')}
-                </div>
-              </div>
-            }
+            selectedId={selectedId}
+            hotelRays={selectedHotelRays}
           />
         </div>
 

@@ -11,10 +11,11 @@ const PRICE_LOCALE = (lang: string) => (lang === 'vi' ? 'vi-VN' : 'en-US')
 
 /**
  * HotelOptionCard — the full-design premium glass card (HotelCard.dc.html).
- * Three distinct click zones, exactly as the design intends:
- *   card body / "Xem chi tiết" → onOpen (opens Hotel Detail Focus Mode)
- *   "Chọn"                     → onSelect — marks the card LOCALLY only
- *                                (stopPropagation so it never opens the panel)
+ * Four distinct click zones:
+ *   card body     → no action (selection and detail have their own explicit controls)
+ *   "Xem chi tiết"→ onOpen (opens Hotel Detail Focus Mode directly, bypassing preview)
+ *   "Chọn"        → onSelect — marks the card LOCALLY only
+ *                   (stopPropagation so it never triggers a preview)
  *
  * Phase 8 two-step pick: marking here sends NOTHING to the backend. The only
  * sender is the stage header's confirm button in stage-hotels.tsx, which posts
@@ -66,7 +67,6 @@ function HotelOptionCard({
 
   return (
     <div
-      onClick={canOpen ? () => onOpen(hotel) : undefined}
       className="hotel-card rounded-[26px] p-4 border"
       data-selected={selected ? 'true' : undefined}
       data-focused={focused ? 'true' : undefined}
@@ -75,7 +75,7 @@ function HotelOptionCard({
       onMouseEnter={() => onHoverChange?.(syncId)}
       onMouseLeave={() => onHoverChange?.(null)}
       style={{
-        cursor: canOpen ? 'pointer' : 'default',
+        cursor: 'default',
         animation: `vFade .55s ${delay} ease both`,
       }}
     >
