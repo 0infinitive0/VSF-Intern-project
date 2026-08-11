@@ -34,8 +34,18 @@ const ROUTE_FADE_MS = 400
 // zero-opacity flash). Keeping this a plain table instead of scattering
 // magic numbers is what makes the fade-in/hover logic below able to stay
 // generic across all 3 layers instead of one bespoke branch per layer.
+// Mapbox GL requires every line-dasharray entry to be positive — a literal
+// 0 (rather than a very small gap) makes the WHOLE layer disappear in some
+// renderers, not just render as solid. Every dasharray below, static or
+// animated, must go through this instead of a bare 0.
+const DASH_EPSILON = 0.01
+
+// route-drive's "0" gap is what makes it read as one continuous solid line
+// while idle (before the flow animation below takes over, or permanently
+// when `prefers-reduced-motion` skips that effect entirely) — hence
+// DASH_EPSILON instead of a literal 0.
 const LAYER_STYLE: Record<string, { width: number; opacity: number; dash: [number, number] }> = {
-  [DRIVE_LAYER]: { width: 5, opacity: 0.9, dash: [1, 0] },
+  [DRIVE_LAYER]: { width: 5, opacity: 0.9, dash: [1, DASH_EPSILON] },
   [WALK_LAYER]: { width: 4, opacity: 0.9, dash: [0.6, 2] },
   [FALLBACK_LAYER]: { width: 3, opacity: 0.45, dash: [0.6, 1.8] },
 }
@@ -50,20 +60,38 @@ const FLOW: Record<string, { dash: number; gap: number; cycleMs: number }> = {
   [DRIVE_LAYER]: { dash: 3, gap: 2, cycleMs: 2200 },
   [WALK_LAYER]: { dash: 0.6, gap: 2, cycleMs: 1400 },
 }
-const DASH_EPSILON = 0.01
+
+// Mapbox GL caches every distinct `line-dasharray` it's ever been asked to
+// draw in ONE shared, fixed-size texture (LineAtlas) — each new pattern
+// claims space permanently and is never evicted
+// (line_atlas.js: `if (this.nextRow + rowHeight > this.height) return
+// warnOnce("LineAtlas out of space"), null`). Feeding it a raw elapsed-time
+// float every single animation frame mints a virtually unique pattern on
+// EVERY frame (two layers × ~60fps), which silently exhausts that atlas
+// within minutes — after which the layer needing a new pattern just stops
+// drawing, no error, no crash, the line vanishes. This is exactly what made
+// the walking route disappear (drive happened to still have room). Mapbox's
+// own "animate a line" example avoids this by cycling a small, FIXED set of
+// precomputed dasharrays instead of an unbounded continuous ramp — FLOW_STEPS
+// quantizes to the same fix: only this many distinct patterns per layer ever
+// exist, so they're reused/cache-hit from the atlas forever after warm-up.
+const FLOW_STEPS = 24
 
 /**
- * Phase-shifts a fixed [dash, gap] pattern by elapsed time — for pattern
- * [D, G] with period P = D+G, at offset o ∈ [0, P): while o is still inside
- * the dash (o < D) the visible remainder is (D - o) then a full [G, D, G];
- * once o has moved into the gap (o >= D) nothing is visible yet, then the
- * remaining gap then a full [D, G]. GL tiles whatever 4-tuple is given, so
- * this alone represents the shifted infinite pattern — no per-frame DOM
- * work, no React state, just one setPaintProperty call per animated layer.
+ * Phase-shifts a fixed [dash, gap] pattern by elapsed time, quantized to
+ * FLOW_STEPS discrete positions per cycle (see FLOW_STEPS doc above) — for
+ * pattern [D, G] with period P = D+G, at offset o ∈ [0, P): while o is still
+ * inside the dash (o < D) the visible remainder is (D - o) then a full
+ * [G, D, G]; once o has moved into the gap (o >= D) nothing is visible yet,
+ * then the remaining gap then a full [D, G]. GL tiles whatever 4-tuple is
+ * given, so this alone represents the shifted infinite pattern — no
+ * per-frame DOM work, no React state, just one setPaintProperty call per
+ * animated layer.
  */
 function animatedDash(dash: number, gap: number, cycleMs: number, elapsedMs: number): [number, number, number, number] {
   const period = dash + gap
-  const offset = ((elapsedMs % cycleMs) / cycleMs) * period
+  const step = Math.floor(((elapsedMs % cycleMs) / cycleMs) * FLOW_STEPS)
+  const offset = (step / FLOW_STEPS) * period
   return offset < dash
     ? [Math.max(DASH_EPSILON, dash - offset), gap, dash, gap]
     : [DASH_EPSILON, Math.max(DASH_EPSILON, period - offset), dash, gap]
