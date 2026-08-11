@@ -23,9 +23,9 @@ logger = logging.getLogger(__name__)
 
 def _openai_model_supports_temperature(model: str) -> bool:
     """Return whether an OpenAI model accepts an explicit temperature value."""
-    # GPT-5 currently accepts only its server-side default. Sending 0.0 (the
-    # deterministic value used by intake and edit extraction) causes a 400.
-    return not model.casefold().startswith("gpt-5")
+    # OpenAI reasoning-model families accept only their server-side default.
+    # Sending 0.0 (used by intake and edit extraction) causes a 400.
+    return not model.casefold().startswith(("gpt-5", "o1", "o3", "o4"))
 
 
 class _CloudflareChatOpenAI(ChatOpenAI):

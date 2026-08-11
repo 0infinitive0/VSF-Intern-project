@@ -77,12 +77,20 @@ def test_get_llm_openai_with_key():
     assert llm.model_name == "gpt-4o-mini"
 
 
-def test_get_llm_omits_temperature_for_gpt5_models_that_only_allow_default():
-    """GPT-5 rejects an explicit temperature value, including 0.0."""
+@pytest.mark.parametrize("model", ["gpt-5", "o1", "o3-mini", "o4-mini"])
+def test_get_llm_omits_temperature_for_models_that_only_allow_default(model: str):
+    """Reasoning models reject explicit non-default temperature values."""
     with patch("src.services.llm.ChatOpenAI") as factory:
-        get_llm(provider="openai", model="gpt-5", api_key="sk-dummykey123", temperature=0.0)
+        get_llm(provider="openai", model=model, api_key="sk-dummykey123", temperature=0.0)
 
     assert "temperature" not in factory.call_args.kwargs
+
+
+def test_get_llm_keeps_temperature_for_models_that_support_it():
+    with patch("src.services.llm.ChatOpenAI") as factory:
+        get_llm(provider="openai", model="gpt-4o-mini", api_key="sk-dummykey123", temperature=0.3)
+
+    assert factory.call_args.kwargs["temperature"] == 0.3
 
 
 def test_get_llm_unknown_provider_falls_back():
