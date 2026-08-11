@@ -1,10 +1,9 @@
 {
   "run_metadata": {
-    "timestamp_utc": "20260811-0342",
+    "timestamp_utc": "20260811-0732",
     "layer": "all",
     "limit": null,
-    "llm_metrics": true,
-    "note": "retrieval section from 20260811-0229 run (unaffected by e2e date fix); e2e section re-run with corrected dates (2026-07-01..07)"
+    "llm_metrics": true
   },
   "retrieval": {
     "rows": [
@@ -46,7 +45,7 @@
         },
         "resolved_destination_id": "3d97277e-8210-45bf-9842-eea4fd356e9e",
         "filter_fallback": false,
-        "latency_s": 4.87,
+        "latency_s": 10.221,
         "error": null
       },
       {
@@ -77,7 +76,7 @@
         ],
         "non_llm_precision": 0.0,
         "non_llm_recall": null,
-        "llm_precision": 0.0,
+        "llm_precision": 0.49999999995,
         "llm_context_relevance": 1.0,
         "extracted_filters": {
           "clean_query": "khách sạn",
@@ -87,7 +86,7 @@
         },
         "resolved_destination_id": "3d97277e-8210-45bf-9842-eea4fd356e9e",
         "filter_fallback": false,
-        "latency_s": 3.976,
+        "latency_s": 9.085,
         "error": null
       },
       {
@@ -130,7 +129,7 @@
         },
         "resolved_destination_id": "3d97277e-8210-45bf-9842-eea4fd356e9e",
         "filter_fallback": false,
-        "latency_s": 13.134,
+        "latency_s": 6.593,
         "error": null
       },
       {
@@ -163,7 +162,7 @@
         ],
         "non_llm_precision": 0.1,
         "non_llm_recall": 0.0,
-        "llm_precision": 0.0,
+        "llm_precision": 0.9060405643638305,
         "llm_context_relevance": 0.0,
         "extracted_filters": {
           "clean_query": "sea view hotel",
@@ -173,7 +172,7 @@
         },
         "resolved_destination_id": "3d97277e-8210-45bf-9842-eea4fd356e9e",
         "filter_fallback": false,
-        "latency_s": 2.977,
+        "latency_s": 10.029,
         "error": null
       },
       {
@@ -213,7 +212,7 @@
         },
         "resolved_destination_id": "3d97277e-8210-45bf-9842-eea4fd356e9e",
         "filter_fallback": false,
-        "latency_s": 6.968,
+        "latency_s": 8.157,
         "error": null
       },
       {
@@ -243,17 +242,17 @@
         ],
         "non_llm_precision": 0.4444444444444444,
         "non_llm_recall": 1.0,
-        "llm_precision": 0.0,
+        "llm_precision": 0.45119047617919644,
         "llm_context_relevance": 0.0,
         "extracted_filters": {
-          "clean_query": "khách sạn giá rẻ",
+          "clean_query": "cheap hotel",
           "destination_name": "Nha Trang",
           "min_star_rating": null,
           "max_price": 200000
         },
         "resolved_destination_id": "3d97277e-8210-45bf-9842-eea4fd356e9e",
         "filter_fallback": false,
-        "latency_s": 4.605,
+        "latency_s": 8.678,
         "error": null
       },
       {
@@ -293,7 +292,7 @@
         },
         "resolved_destination_id": "3d97277e-8210-45bf-9842-eea4fd356e9e",
         "filter_fallback": false,
-        "latency_s": 3.837,
+        "latency_s": 7.895,
         "error": null
       },
       {
@@ -332,7 +331,7 @@
         },
         "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
         "filter_fallback": false,
-        "latency_s": 7.306,
+        "latency_s": 7.969,
         "error": null
       },
       {
@@ -348,30 +347,30 @@
           "62550d1a-17be-4138-8992-f2fc0b2de6b8"
         ],
         "retrieved_ids": [
-          "3dfcd6c1-4983-410a-96d5-8c0e516c9a7a",
-          "a4090f34-44f8-467a-8ce3-8c88a5d24bd8",
-          "e19725bb-3f4e-4bd0-8f5d-5d3ab6d15ba8",
-          "d866309e-cdd8-45ac-b99e-aa4fc244c73a",
-          "213684e2-47ce-4ee3-95ae-f3e7f030f22b",
-          "28e7a42b-1908-4624-9d33-48bf899bb55f",
-          "bd981d0e-f163-4b17-b70b-0d4c6732efa3",
           "0210cdc6-a125-4e2f-b9e0-f5ead511269a",
-          "e78d1de6-1d50-47b0-84c9-fc6a9033fe2f",
-          "69d0fce6-c841-4169-9402-e78e595aea85"
+          "e19725bb-3f4e-4bd0-8f5d-5d3ab6d15ba8",
+          "3dfcd6c1-4983-410a-96d5-8c0e516c9a7a",
+          "d866309e-cdd8-45ac-b99e-aa4fc244c73a",
+          "a4090f34-44f8-467a-8ce3-8c88a5d24bd8",
+          "46468938-935b-472d-a15c-1abb49ce3392",
+          "ebaedae7-0771-435f-b732-257424f9f06f",
+          "d991f260-2f06-4c5b-9328-29488d69f159",
+          "62550d1a-17be-4138-8992-f2fc0b2de6b8",
+          "2740452f-1008-4657-8cf1-4383c59591ec"
         ],
-        "non_llm_precision": 0.0,
+        "non_llm_precision": 0.1,
         "non_llm_recall": null,
         "llm_precision": 0.0,
         "llm_context_relevance": 1.0,
         "extracted_filters": {
-          "clean_query": "hotel",
+          "clean_query": "khách sạn",
           "destination_name": "Đà Nẵng",
           "min_star_rating": null,
           "max_price": null
         },
         "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
         "filter_fallback": false,
-        "latency_s": 7.979,
+        "latency_s": 6.617,
         "error": null
       },
       {
@@ -410,7 +409,7 @@
         },
         "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
         "filter_fallback": false,
-        "latency_s": 5.583,
+        "latency_s": 6.794,
         "error": null
       },
       {
@@ -439,7 +438,7 @@
         ],
         "non_llm_precision": 0.2222222222222222,
         "non_llm_recall": 1.0,
-        "llm_precision": 0.0,
+        "llm_precision": 0.6388888888675925,
         "llm_context_relevance": 0.25,
         "extracted_filters": {
           "clean_query": "gần trung tâm",
@@ -449,7 +448,7 @@
         },
         "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
         "filter_fallback": false,
-        "latency_s": 5.634,
+        "latency_s": 11.097,
         "error": null
       },
       {
@@ -490,7 +489,7 @@
         },
         "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
         "filter_fallback": false,
-        "latency_s": 5.197,
+        "latency_s": 8.016,
         "error": null
       },
       {
@@ -531,7 +530,7 @@
         },
         "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
         "filter_fallback": false,
-        "latency_s": 3.919,
+        "latency_s": 6.379,
         "error": null
       },
       {
@@ -574,7 +573,7 @@
         },
         "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
         "filter_fallback": false,
-        "latency_s": 3.121,
+        "latency_s": 5.53,
         "error": null
       },
       {
@@ -609,7 +608,7 @@
         },
         "resolved_destination_id": "6f860287-189e-46db-81f6-cd3c7ee5f1f7",
         "filter_fallback": false,
-        "latency_s": 3.599,
+        "latency_s": 7.929,
         "error": null
       },
       {
@@ -627,14 +626,17 @@
           "74a4f3d1-a8cb-4606-9c79-56efd444fd12"
         ],
         "retrieved_ids": [
+          "8aaa6c4d-cf6b-49b3-a432-14cce0f04d18",
+          "78efaa7b-0a12-4c3a-94a6-d071168d49e7",
+          "68e3e8a9-a632-46e6-8ab7-72b2f3555897",
+          "9ca4a7ce-87b0-4338-930e-70fa15e362aa",
           "8c16a661-0ce4-4cad-8f1a-bb8b82d842c2",
-          "2532c1a6-d2e7-456a-b1c0-a6599b9d66ec",
-          "2b1c2c11-9884-4e5e-a82c-fda183af7f88",
-          "83f0df99-091f-4689-a0e0-6ce003f52e43"
+          "b341124f-bfa4-4c10-8341-853035e93158",
+          "1d9b01e1-0bff-446c-8c70-55f686664d81"
         ],
         "non_llm_precision": 0.0,
         "non_llm_recall": 0.0,
-        "llm_precision": 0.0,
+        "llm_precision": 0.249999999975,
         "llm_context_relevance": 0.0,
         "extracted_filters": {
           "clean_query": "khách sạn 4 sao",
@@ -644,7 +646,7 @@
         },
         "resolved_destination_id": "6f860287-189e-46db-81f6-cd3c7ee5f1f7",
         "filter_fallback": false,
-        "latency_s": 4.457,
+        "latency_s": 7.99,
         "error": null
       },
       {
@@ -653,11 +655,10 @@
         "language": "vi",
         "pair_id": "hotel-hcm-luxury",
         "query": "khách sạn 5 sao sang trọng ở trung tâm Sài Gòn",
-        "expected_ids": [
-          "5f8c9af0-0ff9-4e36-980b-0ac18485b318",
-          "81c9145a-408f-4951-a5cb-7148323fa2d5"
-        ],
+        "expected_ids": [],
         "acceptable_ids": [
+          "5f8c9af0-0ff9-4e36-980b-0ac18485b318",
+          "81c9145a-408f-4951-a5cb-7148323fa2d5",
           "647de5f6-8d67-45ba-9f42-a1b6af75e6a0",
           "9a563f3d-4921-43c8-bdf8-3047c28d9c4b",
           "544ba30f-42a6-4567-87e3-6a7b84a8f2fa",
@@ -668,18 +669,18 @@
           "ceaf43b9-0f5f-4bb2-a25f-71655488cf22"
         ],
         "non_llm_precision": 0.0,
-        "non_llm_recall": 0.0,
+        "non_llm_recall": null,
         "llm_precision": 0.0,
         "llm_context_relevance": 0.5,
         "extracted_filters": {
-          "clean_query": "sang trọng",
+          "clean_query": "khách sạn sang trọng",
           "destination_name": "Sài Gòn",
           "min_star_rating": 5,
           "max_price": null
         },
         "resolved_destination_id": null,
         "filter_fallback": false,
-        "latency_s": 5.43,
+        "latency_s": 9.308,
         "error": null
       },
       {
@@ -688,11 +689,10 @@
         "language": "en",
         "pair_id": "hotel-hcm-luxury",
         "query": "luxury 5-star hotel in downtown Saigon",
-        "expected_ids": [
-          "5f8c9af0-0ff9-4e36-980b-0ac18485b318",
-          "81c9145a-408f-4951-a5cb-7148323fa2d5"
-        ],
+        "expected_ids": [],
         "acceptable_ids": [
+          "5f8c9af0-0ff9-4e36-980b-0ac18485b318",
+          "81c9145a-408f-4951-a5cb-7148323fa2d5",
           "647de5f6-8d67-45ba-9f42-a1b6af75e6a0",
           "9a563f3d-4921-43c8-bdf8-3047c28d9c4b",
           "544ba30f-42a6-4567-87e3-6a7b84a8f2fa",
@@ -711,7 +711,7 @@
           "79ef2436-8736-4317-ba4e-bd73818597cf"
         ],
         "non_llm_precision": 0.2222222222222222,
-        "non_llm_recall": 0.0,
+        "non_llm_recall": null,
         "llm_precision": 0.0,
         "llm_context_relevance": 0.5,
         "extracted_filters": {
@@ -722,7 +722,7 @@
         },
         "resolved_destination_id": "6f860287-189e-46db-81f6-cd3c7ee5f1f7",
         "filter_fallback": false,
-        "latency_s": 2.323,
+        "latency_s": 7.169,
         "error": null
       },
       {
@@ -766,7 +766,7 @@
         },
         "resolved_destination_id": "6f860287-189e-46db-81f6-cd3c7ee5f1f7",
         "filter_fallback": false,
-        "latency_s": 3.379,
+        "latency_s": 7.887,
         "error": null
       },
       {
@@ -805,7 +805,7 @@
         },
         "resolved_destination_id": "6dd17d02-74a5-4640-beb3-f116c8c34ea7",
         "filter_fallback": false,
-        "latency_s": 4.93,
+        "latency_s": 8.325,
         "error": null
       },
       {
@@ -821,20 +821,20 @@
           "2a33f0aa-b6a2-4e82-8815-6795ab4cd83d"
         ],
         "retrieved_ids": [
-          "9a50cb2a-a8b9-43b5-8cc4-5faf4b6934c7",
-          "8bc75a72-f208-4679-b81b-fba2e6fbdf86",
-          "6c38833f-5ecb-469b-a355-e19acb7c5d81",
           "c99c6ef8-7098-49cd-8e9b-38702be65a5e",
-          "271e983d-cc36-4868-a2a7-05ace7fa050c",
-          "ffe9d6f2-fb4d-44f8-82f1-b25dbac30343",
+          "8bc75a72-f208-4679-b81b-fba2e6fbdf86",
           "ec81ba9f-76c2-4026-b594-bc2bee1017df",
-          "11f999ba-f53f-4a18-a1fa-70b1fa456bbd",
-          "1efe474b-e9ea-4511-94cf-60bfc3e0c2a9",
-          "7e0066a9-56a5-441d-b2d1-ebfb0142a631"
+          "9a50cb2a-a8b9-43b5-8cc4-5faf4b6934c7",
+          "7e0066a9-56a5-441d-b2d1-ebfb0142a631",
+          "ffe9d6f2-fb4d-44f8-82f1-b25dbac30343",
+          "6c38833f-5ecb-469b-a355-e19acb7c5d81",
+          "adaf5a13-b4d4-4644-a304-90812a3b1e41",
+          "c23016da-74b3-427f-aba8-bd7cf6ba9575",
+          "1efe474b-e9ea-4511-94cf-60bfc3e0c2a9"
         ],
         "non_llm_precision": 0.0,
         "non_llm_recall": null,
-        "llm_precision": 0.0,
+        "llm_precision": 0.9478458049751214,
         "llm_context_relevance": 1.0,
         "extracted_filters": {
           "clean_query": "khách sạn",
@@ -844,7 +844,7 @@
         },
         "resolved_destination_id": "6dd17d02-74a5-4640-beb3-f116c8c34ea7",
         "filter_fallback": false,
-        "latency_s": 3.277,
+        "latency_s": 6.794,
         "error": null
       },
       {
@@ -883,7 +883,7 @@
         },
         "resolved_destination_id": "6dd17d02-74a5-4640-beb3-f116c8c34ea7",
         "filter_fallback": false,
-        "latency_s": 2.955,
+        "latency_s": 5.802,
         "error": null
       },
       {
@@ -920,7 +920,7 @@
         },
         "resolved_destination_id": "6dd17d02-74a5-4640-beb3-f116c8c34ea7",
         "filter_fallback": false,
-        "latency_s": 3.967,
+        "latency_s": 4.989,
         "error": null
       },
       {
@@ -955,7 +955,7 @@
         },
         "resolved_destination_id": null,
         "filter_fallback": false,
-        "latency_s": 6.031,
+        "latency_s": 8.232,
         "error": null
       },
       {
@@ -986,7 +986,7 @@
         },
         "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
         "filter_fallback": false,
-        "latency_s": 2.667,
+        "latency_s": 7.295,
         "error": null
       },
       {
@@ -1023,7 +1023,7 @@
         },
         "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
         "filter_fallback": false,
-        "latency_s": 2.66,
+        "latency_s": 8.535,
         "error": null
       },
       {
@@ -1054,13 +1054,13 @@
         "llm_context_relevance": 0.0,
         "extracted_filters": {
           "clean_query": "khách sạn bên bờ sông Hàn",
-          "destination_name": null,
+          "destination_name": "Đà Nẵng",
           "min_star_rating": null,
           "max_price": null
         },
-        "resolved_destination_id": null,
+        "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
         "filter_fallback": false,
-        "latency_s": 2.78,
+        "latency_s": 11.618,
         "error": null
       },
       {
@@ -1097,7 +1097,7 @@
         },
         "resolved_destination_id": "3d97277e-8210-45bf-9842-eea4fd356e9e",
         "filter_fallback": false,
-        "latency_s": 3.125,
+        "latency_s": 9.333,
         "error": null
       },
       {
@@ -1134,7 +1134,7 @@
         },
         "resolved_destination_id": "6f860287-189e-46db-81f6-cd3c7ee5f1f7",
         "filter_fallback": false,
-        "latency_s": 3.521,
+        "latency_s": 7.869,
         "error": null
       },
       {
@@ -1171,7 +1171,7 @@
         },
         "resolved_destination_id": "6f860287-189e-46db-81f6-cd3c7ee5f1f7",
         "filter_fallback": false,
-        "latency_s": 4.491,
+        "latency_s": 10.493,
         "error": null
       },
       {
@@ -1208,12 +1208,12 @@
         "extracted_filters": {
           "clean_query": "di tích lịch sử",
           "destination_name": "Hồ Chí Minh",
-          "category": "di tích lịch sử",
+          "category": "lịch sử",
           "max_price": null
         },
         "resolved_destination_id": "6f860287-189e-46db-81f6-cd3c7ee5f1f7",
         "filter_fallback": false,
-        "latency_s": 4.069,
+        "latency_s": 5.868,
         "error": null
       },
       {
@@ -1245,7 +1245,7 @@
         ],
         "non_llm_precision": 0.2,
         "non_llm_recall": 0.5,
-        "llm_precision": 0.0,
+        "llm_precision": 0.7496598639348688,
         "llm_context_relevance": 1.0,
         "extracted_filters": {
           "clean_query": "historical sites",
@@ -1255,7 +1255,7 @@
         },
         "resolved_destination_id": "6f860287-189e-46db-81f6-cd3c7ee5f1f7",
         "filter_fallback": false,
-        "latency_s": 3.345,
+        "latency_s": 5.253,
         "error": null
       },
       {
@@ -1292,7 +1292,7 @@
         },
         "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
         "filter_fallback": false,
-        "latency_s": 6.792,
+        "latency_s": 4.757,
         "error": null
       },
       {
@@ -1319,7 +1319,7 @@
         ],
         "non_llm_precision": 0.1,
         "non_llm_recall": 1.0,
-        "llm_precision": 0.0,
+        "llm_precision": 0.9999999999,
         "llm_context_relevance": 0.75,
         "extracted_filters": {
           "clean_query": "mountains and caves",
@@ -1329,7 +1329,7 @@
         },
         "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
         "filter_fallback": false,
-        "latency_s": 3.249,
+        "latency_s": 4.658,
         "error": null
       },
       {
@@ -1371,7 +1371,7 @@
         },
         "resolved_destination_id": "3d97277e-8210-45bf-9842-eea4fd356e9e",
         "filter_fallback": false,
-        "latency_s": 3.559,
+        "latency_s": 4.697,
         "error": null
       },
       {
@@ -1403,7 +1403,7 @@
         ],
         "non_llm_precision": 0.2,
         "non_llm_recall": 1.0,
-        "llm_precision": 0.4166666666458333,
+        "llm_precision": 0.99999999999,
         "llm_context_relevance": 1.0,
         "extracted_filters": {
           "clean_query": "places for kids to play",
@@ -1413,7 +1413,7 @@
         },
         "resolved_destination_id": "3d97277e-8210-45bf-9842-eea4fd356e9e",
         "filter_fallback": false,
-        "latency_s": 2.796,
+        "latency_s": 5.426,
         "error": null
       },
       {
@@ -1450,7 +1450,7 @@
         },
         "resolved_destination_id": "6dd17d02-74a5-4640-beb3-f116c8c34ea7",
         "filter_fallback": false,
-        "latency_s": 4.073,
+        "latency_s": 5.194,
         "error": null
       },
       {
@@ -1477,7 +1477,7 @@
         },
         "resolved_destination_id": "6dd17d02-74a5-4640-beb3-f116c8c34ea7",
         "filter_fallback": false,
-        "latency_s": 3.236,
+        "latency_s": 5.462,
         "error": null
       },
       {
@@ -1491,31 +1491,20 @@
           "e9151523-5083-5840-9083-404d1417ead2"
         ],
         "acceptable_ids": [],
-        "retrieved_ids": [
-          "992995af-9a09-5b67-afb8-f9705d93806f",
-          "ad4e5d55-e219-5052-a4f4-e3cbc6f81fac",
-          "5461002d-6dd9-5061-ba2d-699da97f066f",
-          "beb7b0f3-0f51-510a-9ce5-99d4c6f91362",
-          "aa260c32-eebd-596c-806f-b42fc90c6afb",
-          "e9151523-5083-5840-9083-404d1417ead2",
-          "9dca8bef-2936-5da8-959e-431695ba37c4",
-          "c91bba74-b42b-522c-a32f-50dfdbf8337e",
-          "77b79cf8-47f8-59c9-8056-294ecc445f18",
-          "d11f6862-0819-5a2f-bde3-35fdfc5ffad2"
-        ],
-        "non_llm_precision": 0.1,
-        "non_llm_recall": 0.5,
+        "retrieved_ids": [],
+        "non_llm_precision": null,
+        "non_llm_recall": 0.0,
         "llm_precision": 0.0,
-        "llm_context_relevance": 1.0,
+        "llm_context_relevance": 0.0,
         "extracted_filters": {
-          "clean_query": "cố đô Huế",
+          "clean_query": "Imperial City",
           "destination_name": "Huế",
-          "category": "cultural attraction",
+          "category": null,
           "max_price": null
         },
         "resolved_destination_id": "6dd17d02-74a5-4640-beb3-f116c8c34ea7",
         "filter_fallback": false,
-        "latency_s": 1.69,
+        "latency_s": 5.527,
         "error": null
       },
       {
@@ -1550,7 +1539,7 @@
         },
         "resolved_destination_id": null,
         "filter_fallback": false,
-        "latency_s": 4.678,
+        "latency_s": 7.315,
         "error": null
       },
       {
@@ -1591,7 +1580,7 @@
         },
         "resolved_destination_id": "6f860287-189e-46db-81f6-cd3c7ee5f1f7",
         "filter_fallback": false,
-        "latency_s": 3.732,
+        "latency_s": 3.089,
         "error": null
       },
       {
@@ -1622,17 +1611,17 @@
         ],
         "non_llm_precision": 0.1,
         "non_llm_recall": null,
-        "llm_precision": 0.0,
+        "llm_precision": 0.99999999999,
         "llm_context_relevance": 1.0,
         "extracted_filters": {
-          "clean_query": "chơi cho trẻ em",
+          "clean_query": "kids playgrounds",
           "destination_name": "Hồ Chí Minh",
           "category": "playground",
           "max_price": null
         },
         "resolved_destination_id": "6f860287-189e-46db-81f6-cd3c7ee5f1f7",
         "filter_fallback": false,
-        "latency_s": 7.494,
+        "latency_s": 4.051,
         "error": null
       },
       {
@@ -1672,7 +1661,7 @@
         },
         "resolved_destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
         "filter_fallback": false,
-        "latency_s": 2.792,
+        "latency_s": 4.26,
         "error": null
       },
       {
@@ -1711,34 +1700,34 @@
         },
         "resolved_destination_id": null,
         "filter_fallback": false,
-        "latency_s": 7.208,
+        "latency_s": 5.265,
         "error": null
       }
     ],
     "breakdowns": {
       "non_llm_precision_by_language": {
         "vi": 0.1173,
-        "en": 0.1181
+        "en": 0.1259
       },
       "non_llm_recall_by_language": {
-        "vi": 0.5278,
-        "en": 0.5833
+        "vi": 0.5588,
+        "en": 0.5909
       },
       "non_llm_precision_by_search": {
-        "hotels": 0.105,
-        "attractions": 0.15
+        "hotels": 0.1082,
+        "attractions": 0.1545
       },
       "non_llm_recall_by_search": {
-        "hotels": 0.4762,
-        "attractions": 0.7222
+        "hotels": 0.5263,
+        "attractions": 0.6667
       },
       "llm_precision_by_language": {
         "vi": 0.3676,
-        "en": 0.035
+        "en": 0.4742
       },
       "llm_context_relevance_by_language": {
         "vi": 0.5714,
-        "en": 0.6094
+        "en": 0.5469
       }
     },
     "summary": {
@@ -1753,8 +1742,8 @@
         "id": "conv-nhatrang-couple-3d",
         "language": "vi",
         "expected_stage": "planned",
-        "reached_stage": "hotel_options",
-        "harness_failure": true,
+        "reached_stage": "planned",
+        "harness_failure": false,
         "error": null,
         "transcript_path": "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project/eval/results/transcripts/conv-nhatrang-couple-3d.md",
         "turns": [
@@ -1763,40 +1752,27 @@
             "tool": null,
             "has_contexts": false,
             "faithfulness": null,
-            "response_relevancy": 0.4890940896225287,
-            "latency_s": 5.883
-          },
-          {
-            "turn_class": "generated",
-            "tool": null,
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.40525422619299684,
-            "latency_s": 3.442
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 3.262
           },
           {
             "turn_class": "template",
             "tool": "recommend_hotels",
             "has_contexts": true,
-            "faithfulness": 0.5,
-            "response_relevancy": 0.3408301520747088,
-            "latency_s": 9.496
+            "faithfulness": 0.25,
+            "response_relevancy": 0.527895376947237,
+            "hotel_grounding": 1.0,
+            "latency_s": 8.731
           },
           {
             "turn_class": "template",
-            "tool": "recommend_hotels",
+            "tool": "select_hotel",
             "has_contexts": true,
-            "faithfulness": 0.3333333333333333,
-            "response_relevancy": 0.5802370027567995,
-            "latency_s": 7.098
-          },
-          {
-            "turn_class": "template",
-            "tool": "recommend_hotels",
-            "has_contexts": false,
             "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 5.379
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 22.717
           }
         ]
       },
@@ -1804,8 +1780,8 @@
         "id": "conv-danang-family-3d",
         "language": "vi",
         "expected_stage": "planned",
-        "reached_stage": "hotel_options",
-        "harness_failure": true,
+        "reached_stage": "planned",
+        "harness_failure": false,
         "error": null,
         "transcript_path": "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project/eval/results/transcripts/conv-danang-family-3d.md",
         "turns": [
@@ -1814,40 +1790,27 @@
             "tool": null,
             "has_contexts": false,
             "faithfulness": null,
-            "response_relevancy": 0.49060897512947516,
-            "latency_s": 4.353
-          },
-          {
-            "turn_class": "generated",
-            "tool": null,
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.4221363798862914,
-            "latency_s": 2.665
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 3.259
           },
           {
             "turn_class": "template",
             "tool": "recommend_hotels",
             "has_contexts": true,
-            "faithfulness": 0.5,
-            "response_relevancy": 0.3408301520747088,
-            "latency_s": 11.102
+            "faithfulness": 0.25,
+            "response_relevancy": 0.5270499940406185,
+            "hotel_grounding": 1.0,
+            "latency_s": 9.429
           },
           {
-            "turn_class": "generated",
-            "tool": null,
-            "has_contexts": false,
+            "turn_class": "template",
+            "tool": "select_hotel",
+            "has_contexts": true,
             "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 1.567
-          },
-          {
-            "turn_class": "generated",
-            "tool": null,
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 2.075
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 18.153
           }
         ]
       },
@@ -1855,8 +1818,8 @@
         "id": "conv-hcm-finalize-4d",
         "language": "vi",
         "expected_stage": "finalized",
-        "reached_stage": "error",
-        "harness_failure": true,
+        "reached_stage": "finalized",
+        "harness_failure": false,
         "error": null,
         "transcript_path": "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project/eval/results/transcripts/conv-hcm-finalize-4d.md",
         "turns": [
@@ -1865,48 +1828,36 @@
             "tool": null,
             "has_contexts": false,
             "faithfulness": null,
-            "response_relevancy": 0.571210122935341,
-            "latency_s": 2.223
-          },
-          {
-            "turn_class": "generated",
-            "tool": null,
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 2.563
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 4.413
           },
           {
             "turn_class": "template",
             "tool": "recommend_hotels",
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 4.503
+            "has_contexts": true,
+            "faithfulness": 0.3333333333333333,
+            "response_relevancy": 0.5212659066385766,
+            "hotel_grounding": 1.0,
+            "latency_s": 6.262
           },
           {
             "turn_class": "template",
-            "tool": "recommend_hotels",
-            "has_contexts": false,
+            "tool": "select_hotel",
+            "has_contexts": true,
             "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 5.271
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 13.929
           },
           {
             "turn_class": "template",
-            "tool": "recommend_hotels",
+            "tool": "finalize_trip_plan",
             "has_contexts": false,
             "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 5.855
-          },
-          {
-            "turn_class": "template",
-            "tool": "recommend_hotels",
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 9.772
+            "response_relevancy": 0.5952885197652361,
+            "hotel_grounding": null,
+            "latency_s": 7.246
           }
         ]
       },
@@ -1914,8 +1865,8 @@
         "id": "conv-hue-finalize-2d",
         "language": "vi",
         "expected_stage": "finalized",
-        "reached_stage": "error",
-        "harness_failure": true,
+        "reached_stage": "finalized",
+        "harness_failure": false,
         "error": null,
         "transcript_path": "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project/eval/results/transcripts/conv-hue-finalize-2d.md",
         "turns": [
@@ -1924,48 +1875,36 @@
             "tool": null,
             "has_contexts": false,
             "faithfulness": null,
-            "response_relevancy": 0.5120369010178539,
-            "latency_s": 2.63
-          },
-          {
-            "turn_class": "generated",
-            "tool": null,
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 3.088
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 3.646
           },
           {
             "turn_class": "template",
             "tool": "recommend_hotels",
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 8.601
+            "has_contexts": true,
+            "faithfulness": 0.25,
+            "response_relevancy": 0.5270499940406185,
+            "hotel_grounding": 1.0,
+            "latency_s": 6.95
           },
           {
             "turn_class": "template",
-            "tool": "recommend_hotels",
-            "has_contexts": false,
+            "tool": "select_hotel",
+            "has_contexts": true,
             "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 12.69
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 7.509
           },
           {
             "turn_class": "template",
-            "tool": "recommend_hotels",
+            "tool": "finalize_trip_plan",
             "has_contexts": false,
             "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 11.723
-          },
-          {
-            "turn_class": "template",
-            "tool": "recommend_hotels",
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 16.648
+            "response_relevancy": 0.6347495933901391,
+            "hotel_grounding": null,
+            "latency_s": 3.325
           }
         ]
       },
@@ -1973,8 +1912,8 @@
         "id": "conv-nhatrang-refine-budget",
         "language": "vi",
         "expected_stage": "planned",
-        "reached_stage": "error",
-        "harness_failure": true,
+        "reached_stage": "planned",
+        "harness_failure": false,
         "error": null,
         "transcript_path": "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project/eval/results/transcripts/conv-nhatrang-refine-budget.md",
         "turns": [
@@ -1983,99 +1922,36 @@
             "tool": null,
             "has_contexts": false,
             "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 3.982
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 2.951
           },
           {
             "turn_class": "template",
             "tool": "recommend_hotels",
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 7.393
+            "has_contexts": true,
+            "faithfulness": 0.25,
+            "response_relevancy": 0.5188550584022921,
+            "hotel_grounding": 1.0,
+            "latency_s": 5.284
           },
           {
             "turn_class": "template",
             "tool": "recommend_hotels",
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 9.998
+            "has_contexts": true,
+            "faithfulness": 0.3333333333333333,
+            "response_relevancy": 0.421892079976435,
+            "hotel_grounding": 1.0,
+            "latency_s": 9.295
           },
           {
             "turn_class": "template",
-            "tool": "recommend_hotels",
-            "has_contexts": false,
+            "tool": "select_hotel",
+            "has_contexts": true,
             "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 9.135
-          },
-          {
-            "turn_class": "template",
-            "tool": "recommend_hotels",
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 12.788
-          }
-        ]
-      },
-      {
-        "id": "conv-danang-edit-cheaper",
-        "language": "vi",
-        "expected_stage": "modified",
-        "reached_stage": "error",
-        "harness_failure": true,
-        "error": null,
-        "transcript_path": "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project/eval/results/transcripts/conv-danang-edit-cheaper.md",
-        "turns": [
-          {
-            "turn_class": "generated",
-            "tool": null,
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.49060897512947516,
-            "latency_s": 2.858
-          },
-          {
-            "turn_class": "generated",
-            "tool": null,
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 2.427
-          },
-          {
-            "turn_class": "template",
-            "tool": "recommend_hotels",
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 11.673
-          },
-          {
-            "turn_class": "template",
-            "tool": "recommend_hotels",
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 11.965
-          },
-          {
-            "turn_class": "template",
-            "tool": "recommend_hotels",
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 12.105
-          },
-          {
-            "turn_class": "template",
-            "tool": "recommend_hotels",
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 5.614
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 12.052
           }
         ]
       },
@@ -2083,8 +1959,8 @@
         "id": "conv-hcm-luxury-en",
         "language": "en",
         "expected_stage": "planned",
-        "reached_stage": "error",
-        "harness_failure": true,
+        "reached_stage": "planned",
+        "harness_failure": false,
         "error": null,
         "transcript_path": "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project/eval/results/transcripts/conv-hcm-luxury-en.md",
         "turns": [
@@ -2093,75 +1969,27 @@
             "tool": null,
             "has_contexts": false,
             "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 1.991
-          },
-          {
-            "turn_class": "generated",
-            "tool": null,
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 2.434
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 2.759
           },
           {
             "turn_class": "template",
             "tool": "recommend_hotels",
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 6.596
+            "has_contexts": true,
+            "faithfulness": 0.25,
+            "response_relevancy": 0.5188550584022921,
+            "hotel_grounding": 1.0,
+            "latency_s": 6.094
           },
           {
             "turn_class": "template",
-            "tool": "recommend_hotels",
-            "has_contexts": false,
+            "tool": "select_hotel",
+            "has_contexts": true,
             "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 13.576
-          },
-          {
-            "turn_class": "template",
-            "tool": "recommend_hotels",
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 8.763
-          }
-        ]
-      },
-      {
-        "id": "conv-crosslang-hyatt-danang",
-        "language": "vi",
-        "expected_stage": "hotel_options",
-        "reached_stage": "error",
-        "harness_failure": true,
-        "error": null,
-        "transcript_path": "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project/eval/results/transcripts/conv-crosslang-hyatt-danang.md",
-        "turns": [
-          {
-            "turn_class": "template",
-            "tool": "recommend_hotels",
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 7.526
-          },
-          {
-            "turn_class": "template",
-            "tool": "recommend_hotels",
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 8.434
-          },
-          {
-            "turn_class": "template",
-            "tool": "recommend_hotels",
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 16.425
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 8.7
           }
         ]
       },
@@ -2169,8 +1997,8 @@
         "id": "conv-nhatrang-attraction-mix",
         "language": "vi",
         "expected_stage": "planned",
-        "reached_stage": "hotel_options",
-        "harness_failure": true,
+        "reached_stage": "planned",
+        "harness_failure": false,
         "error": null,
         "transcript_path": "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project/eval/results/transcripts/conv-nhatrang-attraction-mix.md",
         "turns": [
@@ -2179,32 +2007,36 @@
             "tool": null,
             "has_contexts": false,
             "faithfulness": null,
-            "response_relevancy": 0.5413660640438667,
-            "latency_s": 3.172
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 3.702
           },
           {
             "turn_class": "template",
             "tool": "recommend_hotels",
             "has_contexts": true,
-            "faithfulness": 0.5,
-            "response_relevancy": 0.3408301520747088,
-            "latency_s": 7.595
+            "faithfulness": 0.25,
+            "response_relevancy": 0.5270499940406185,
+            "hotel_grounding": 1.0,
+            "latency_s": 6.482
           },
           {
             "turn_class": "generated",
             "tool": null,
             "has_contexts": false,
             "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 1.861
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 1.558
           },
           {
-            "turn_class": "generated",
-            "tool": null,
-            "has_contexts": false,
+            "turn_class": "template",
+            "tool": "select_hotel",
+            "has_contexts": true,
             "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 2.198
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 12.57
           }
         ]
       },
@@ -2222,32 +2054,36 @@
             "tool": null,
             "has_contexts": false,
             "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 2.002
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 3.552
           },
           {
             "turn_class": "generated",
             "tool": null,
             "has_contexts": false,
             "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 2.594
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 2.444
           },
           {
             "turn_class": "generated",
             "tool": null,
             "has_contexts": false,
             "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 2.998
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 2.273
           },
           {
             "turn_class": "generated",
             "tool": null,
             "has_contexts": false,
             "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 2.555
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 2.299
           }
         ]
       },
@@ -2255,8 +2091,8 @@
         "id": "conv-hcm-district-switch",
         "language": "vi",
         "expected_stage": "planned",
-        "reached_stage": "error",
-        "harness_failure": true,
+        "reached_stage": "planned",
+        "harness_failure": false,
         "error": null,
         "transcript_path": "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project/eval/results/transcripts/conv-hcm-district-switch.md",
         "turns": [
@@ -2265,40 +2101,45 @@
             "tool": null,
             "has_contexts": false,
             "faithfulness": null,
-            "response_relevancy": 0.5158635719825037,
-            "latency_s": 2.668
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 2.489
           },
           {
             "turn_class": "generated",
             "tool": null,
             "has_contexts": false,
             "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 3.469
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 2.667
+          },
+          {
+            "turn_class": "generated",
+            "tool": null,
+            "has_contexts": false,
+            "faithfulness": null,
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 3.218
           },
           {
             "turn_class": "template",
             "tool": "recommend_hotels",
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 9.2
+            "has_contexts": true,
+            "faithfulness": 0.3333333333333333,
+            "response_relevancy": 0.5205301456487701,
+            "hotel_grounding": 1.0,
+            "latency_s": 5.484
           },
           {
             "turn_class": "template",
-            "tool": "recommend_hotels",
-            "has_contexts": false,
+            "tool": "select_hotel",
+            "has_contexts": true,
             "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 6.512
-          },
-          {
-            "turn_class": "template",
-            "tool": "recommend_hotels",
-            "has_contexts": false,
-            "faithfulness": null,
-            "response_relevancy": 0.0,
-            "latency_s": 6.922
+            "response_relevancy": null,
+            "hotel_grounding": null,
+            "latency_s": 9.874
           }
         ]
       },
@@ -2317,7 +2158,8 @@
             "has_contexts": false,
             "faithfulness": null,
             "response_relevancy": 0.0,
-            "latency_s": 11.418
+            "hotel_grounding": null,
+            "latency_s": 5.601
           },
           {
             "turn_class": "template",
@@ -2325,7 +2167,8 @@
             "has_contexts": false,
             "faithfulness": null,
             "response_relevancy": 0.0,
-            "latency_s": 13.2
+            "hotel_grounding": null,
+            "latency_s": 5.752
           },
           {
             "turn_class": "template",
@@ -2333,34 +2176,32 @@
             "has_contexts": false,
             "faithfulness": null,
             "response_relevancy": 0.0,
-            "latency_s": 7.104
+            "hotel_grounding": null,
+            "latency_s": 4.518
           }
         ]
       }
     ],
     "breakdowns": {
-      "faithfulness_by_turn_class": {},
-      "response_relevancy_by_turn_class": {}
+      "faithfulness_by_turn_class": {
+        "template": 0.2778
+      },
+      "response_relevancy_by_turn_class": {
+        "template": 0.531
+      },
+      "hotel_grounding_by_turn_class": {
+        "template": 1.0
+      }
     },
     "summary": {
-      "total_conversations": 12,
-      "total_turns": 57,
-      "excluded_no_context_turns": 53,
+      "total_conversations": 10,
+      "total_turns": 37,
+      "excluded_no_context_turns": 20,
       "harness_failures": [
-        "conv-nhatrang-couple-3d",
-        "conv-danang-family-3d",
-        "conv-hcm-finalize-4d",
-        "conv-hue-finalize-2d",
-        "conv-nhatrang-refine-budget",
-        "conv-danang-edit-cheaper",
-        "conv-hcm-luxury-en",
-        "conv-crosslang-hyatt-danang",
-        "conv-nhatrang-attraction-mix",
         "conv-unsupported-destination",
-        "conv-hcm-district-switch",
         "conv-hue-thin-corpus-probe"
       ],
-      "reached_expected_stage_pct": 0.0,
+      "reached_expected_stage_pct": 80.0,
       "errors": []
     }
   }

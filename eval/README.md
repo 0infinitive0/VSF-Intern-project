@@ -139,10 +139,10 @@ real LLM + real Supabase traffic per turn, not a mock.
 
 ## What a run costs
 
-The 2026-08-11 baseline run: 44 retrieval queries (~197s of retrieval-side latency, judge-side
-latency not separately measured) and 12 conversations (~380s of agent-turn latency). Cost is
-reported as wall-clock + call count, not metered tokens — `ragas==0.3.9`'s token-usage parser
-was not verified against this run's OpenAI client; see `eval/results/ragas-20260811-0342.md`'s
+The 2026-08-11 baseline run: 44 retrieval queries (~313s of retrieval-side latency, judge-side
+latency not separately measured) and 10 conversations / 37 turns (~240s of agent-turn latency).
+Cost is reported as wall-clock + call count, not metered tokens — `ragas==0.3.9`'s token-usage
+parser was not verified against this run's OpenAI client; see `eval/results/ragas-20260811-0732.md`'s
 Run metadata and Caveats sections. The smoke check costs a handful of `gpt-4o-mini` calls —
 negligible.
 

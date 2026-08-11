@@ -6,7 +6,7 @@
 
 **Agent:** SYSTEM ERROR: Không tìm thấy khách sạn có tọa độ hợp lệ tại Huế; không thể gợi ý khách sạn.
 
-**Scores:** faithfulness=N/A (no contexts), response_relevancy=0.0
+**Scores:** faithfulness=N/A (no contexts), response_relevancy=0.0, hotel_grounding=N/A
 
 **Retrieved contexts:** none
 
@@ -16,7 +16,7 @@
 
 **Agent:** SYSTEM ERROR: Không tìm thấy khách sạn có tọa độ hợp lệ tại Huế; không thể gợi ý khách sạn.
 
-**Scores:** faithfulness=N/A (no contexts), response_relevancy=0.0
+**Scores:** faithfulness=N/A (no contexts), response_relevancy=0.0, hotel_grounding=N/A
 
 **Retrieved contexts:** none
 
@@ -26,6 +26,6 @@
 
 **Agent:** SYSTEM ERROR: Không tìm thấy khách sạn có tọa độ hợp lệ tại Huế; không thể gợi ý khách sạn.
 
-**Scores:** faithfulness=N/A (no contexts), response_relevancy=0.0
+**Scores:** faithfulness=N/A (no contexts), response_relevancy=0.0, hotel_grounding=N/A
 
 **Retrieved contexts:** none

@@ -103,6 +103,7 @@ def _conversation_result_to_dict(r: ConversationResult) -> dict:
                 "has_contexts": bool(t.contexts),
                 "faithfulness": _nan_safe(t.faithfulness),
                 "response_relevancy": _nan_safe(t.response_relevancy),
+                "hotel_grounding": _nan_safe(t.hotel_grounding),
                 "latency_s": round(t.latency_s, 3),
             }
             for t in r.turns
@@ -144,6 +145,7 @@ def run_e2e_layer(limit: int | None, score: bool) -> dict:
         "breakdowns": {
             "faithfulness_by_turn_class": _turn_metric_breakdown(rows, "faithfulness"),
             "response_relevancy_by_turn_class": _turn_metric_breakdown(rows, "response_relevancy"),
+            "hotel_grounding_by_turn_class": _turn_metric_breakdown(rows, "hotel_grounding"),
         },
         "summary": {
             "total_conversations": len(rows),

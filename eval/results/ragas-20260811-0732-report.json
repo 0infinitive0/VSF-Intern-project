@@ -1,12 +1,11 @@
 {
   "run_metadata": {
-    "timestamp_utc": "20260811-0342",
+    "timestamp_utc": "20260811-0732",
     "layer": "all",
     "limit": null,
-    "llm_metrics": true,
-    "note": "retrieval section from 20260811-0229 run (unaffected by e2e date fix); e2e section re-run with corrected dates (2026-07-01..07)"
+    "llm_metrics": true
   },
-  "dataset_hash": "0c0c89b45f1ab764",
+  "dataset_hash": "28c553772bf69468",
   "retrieval_summary": {
     "total": 44,
     "errors": [],
@@ -15,81 +14,82 @@
   "retrieval_breakdowns": {
     "non_llm_precision_by_language": {
       "vi": 0.1173,
-      "en": 0.1181
+      "en": 0.1259
     },
     "non_llm_recall_by_language": {
-      "vi": 0.5278,
-      "en": 0.5833
+      "vi": 0.5588,
+      "en": 0.5909
     },
     "non_llm_precision_by_search": {
-      "hotels": 0.105,
-      "attractions": 0.15
+      "hotels": 0.1082,
+      "attractions": 0.1545
     },
     "non_llm_recall_by_search": {
-      "hotels": 0.4762,
-      "attractions": 0.7222
+      "hotels": 0.5263,
+      "attractions": 0.6667
     },
     "llm_precision_by_language": {
       "vi": 0.3676,
-      "en": 0.035
+      "en": 0.4742
     },
     "llm_context_relevance_by_language": {
       "vi": 0.5714,
-      "en": 0.6094
+      "en": 0.5469
     }
   },
   "worst_retrieval_queries": [
     "hotel-nhatrang-city-vi",
     "hotel-nhatrang-city-en",
-    "hotel-danang-city-en",
     "hotel-danang-budget-en",
     "hotel-hcm-district1-vi",
     "hotel-hcm-district1-en",
     "hotel-hcm-luxury-vi",
     "hotel-hue-city-vi",
     "hotel-hue-city-en",
-    "hotel-negative-destination-absent-vi"
+    "hotel-negative-destination-absent-vi",
+    "hotel-negative-impossible-price-vi"
   ],
   "e2e_summary": {
-    "total_conversations": 12,
-    "total_turns": 57,
-    "excluded_no_context_turns": 53,
+    "total_conversations": 10,
+    "total_turns": 37,
+    "excluded_no_context_turns": 20,
     "harness_failures": [
-      "conv-nhatrang-couple-3d",
-      "conv-danang-family-3d",
-      "conv-hcm-finalize-4d",
-      "conv-hue-finalize-2d",
-      "conv-nhatrang-refine-budget",
-      "conv-danang-edit-cheaper",
-      "conv-hcm-luxury-en",
-      "conv-crosslang-hyatt-danang",
-      "conv-nhatrang-attraction-mix",
       "conv-unsupported-destination",
-      "conv-hcm-district-switch",
       "conv-hue-thin-corpus-probe"
     ],
-    "reached_expected_stage_pct": 0.0,
+    "reached_expected_stage_pct": 80.0,
     "errors": []
   },
   "e2e_breakdowns": {
-    "faithfulness_by_turn_class": {},
-    "response_relevancy_by_turn_class": {}
+    "faithfulness_by_turn_class": {
+      "template": 0.2778
+    },
+    "response_relevancy_by_turn_class": {
+      "template": 0.531
+    },
+    "hotel_grounding_by_turn_class": {
+      "template": 1.0
+    }
   },
   "worst_e2e_turns": [
     [
       "conv-nhatrang-couple-3d",
-      3
-    ],
-    [
-      "conv-nhatrang-couple-3d",
-      2
+      1
     ],
     [
       "conv-danang-family-3d",
-      2
+      1
     ],
     [
-      "conv-nhatrang-attraction-mix",
+      "conv-hue-finalize-2d",
+      1
+    ],
+    [
+      "conv-nhatrang-refine-budget",
+      1
+    ],
+    [
+      "conv-hcm-luxury-en",
       1
     ]
   ],
@@ -150,7 +150,7 @@
         {
           "id": "attraction-hue-citadel-en",
           "language": "en",
-          "recall": 0.5
+          "recall": 0.0
         }
       ]
     },
@@ -235,12 +235,12 @@
         {
           "id": "hotel-hcm-luxury-vi",
           "language": "vi",
-          "recall": 0.0
+          "recall": null
         },
         {
           "id": "hotel-hcm-luxury-en",
           "language": "en",
-          "recall": 0.0
+          "recall": null
         }
       ]
     },
@@ -308,17 +308,17 @@
   "threshold_candidates": [
     {
       "metric": "non_llm_recall_vi",
-      "observed": 0.5278,
+      "observed": 0.5588,
       "measured_variance": 0.0,
-      "proposed_floor": 0.4222,
-      "reasoning": "20% relative margin below the single observed run (0.5278 -> floor 0.4222); absorbs live-corpus drift between runs, not measurement noise (non-LLM metrics reproduce exactly)."
+      "proposed_floor": 0.447,
+      "reasoning": "20% relative margin below the single observed run (0.5588 -> floor 0.447); absorbs live-corpus drift between runs, not measurement noise (non-LLM metrics reproduce exactly)."
     },
     {
       "metric": "non_llm_recall_en",
-      "observed": 0.5833,
+      "observed": 0.5909,
       "measured_variance": 0.0,
-      "proposed_floor": 0.4666,
-      "reasoning": "20% relative margin below the single observed run (0.5833 -> floor 0.4666); absorbs live-corpus drift between runs, not measurement noise (non-LLM metrics reproduce exactly)."
+      "proposed_floor": 0.4727,
+      "reasoning": "20% relative margin below the single observed run (0.5909 -> floor 0.4727); absorbs live-corpus drift between runs, not measurement noise (non-LLM metrics reproduce exactly)."
     },
     {
       "metric": "non_llm_precision_vi",
@@ -329,10 +329,10 @@
     },
     {
       "metric": "non_llm_precision_en",
-      "observed": 0.1181,
+      "observed": 0.1259,
       "measured_variance": 0.0,
-      "proposed_floor": 0.0945,
-      "reasoning": "20% relative margin below the single observed run (0.1181 -> floor 0.0945); absorbs live-corpus drift between runs, not measurement noise (non-LLM metrics reproduce exactly)."
+      "proposed_floor": 0.1007,
+      "reasoning": "20% relative margin below the single observed run (0.1259 -> floor 0.1007); absorbs live-corpus drift between runs, not measurement noise (non-LLM metrics reproduce exactly)."
     }
   ]
 }

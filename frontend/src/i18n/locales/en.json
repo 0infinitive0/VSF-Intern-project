@@ -251,6 +251,7 @@
   "detailNearby": "Distance to key points",
   "detailAmen": "Hotel amenities",
   "detailPriceFrom": "From",
+  "detailHandoff": "View original listing on {{platform}}",
   "detailNoInfo": "No details available for this hotel.",
   "detailCloseLabel": "Close hotel details",
   "policyCheckIn": "Check-in",

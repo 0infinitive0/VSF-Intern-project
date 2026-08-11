@@ -6,6 +6,7 @@ import RoomCard from './room-card'
 import { useHotelDetail } from '../hooks/use-hotel-detail'
 import { formatCurrency } from '../lib/format-currency'
 import { formatHotelStars } from '../lib/format-stars'
+import { formatSourcePlatform } from '../lib/format-source-platform'
 import type { HotelOption } from '../types'
 
 const NUM_LOCALE = (lang: string) => (lang === 'vi' ? 'vi-VN' : 'en-US')
@@ -166,6 +167,25 @@ export default function HotelDetailPanel({
                   <div className="flex-1" />
                   <MatchScoreRing score={option?.match_score} variant="panel" />
                 </div>
+              )}
+
+              {/* Handoff — opens the hotel's original OTA listing (Agoda/Booking.com)
+                  in a new tab. Hidden when the row has no source_url (e.g. detail
+                  fetch failed or an older crawl predates the column). */}
+              {detail?.source_url && detail?.source_platform && (
+                <a
+                  href={detail.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-1.5 px-4 py-[11px] rounded-[16px] border border-stroke bg-glass-2 text-on-surface text-[13px] font-[530] transition-colors hover:bg-glass-3"
+                >
+                  {t('detailHandoff', {
+                    platform: formatSourcePlatform(detail.source_platform),
+                  })}
+                  <span className="material-symbols-outlined text-[16px]" aria-hidden="true">
+                    open_in_new
+                  </span>
+                </a>
               )}
 
               {/* Gallery — up to 4 thumbs, vFade staggered like the design */}

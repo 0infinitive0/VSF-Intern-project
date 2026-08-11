@@ -7,7 +7,7 @@ import IntakeParametersForm from './intake-parameters-form'
 import { QUICK_START_DESTINATIONS } from '../lib/quick-start-destinations'
 import type { IntakeFormState } from '../lib/compose-intake-message'
 import type { PreferenceKey } from '../lib/intake-options'
-import type { IntakeField } from '../lib/next-intake-field'
+import { currentIntakeField, type IntakeField } from '../lib/next-intake-field'
 import type { StageView } from '../lib/derive-stage'
 import type { ChatState } from '../types'
 
@@ -16,6 +16,25 @@ function lastAiStage(messages: ChatState['messages']): string | null {
     if (messages[i].role === 'ai') return messages[i].stage
   }
   return null
+}
+
+// On the natural forward flow (not editing), the backend's own intake reply
+// ("Bạn dự định bắt đầu chuyến đi vào ngày nào?") and IntakeParametersForm's
+// dates/budget prompt bubble (tied directly above the picker) ask the same
+// question the moment `currentIntakeField` lands on 'dates' or 'budget' —
+// two AI bubbles for one question. The widget's own bubble is the one that
+// actually matches the picker (e.g. it asks for a date *range*, which is
+// what the calendar collects), so the redundant trailing backend message is
+// dropped here for display only; `state.messages` itself is untouched.
+function hideDuplicateIntakeReply(
+  messages: ChatState['messages'],
+  activeField: IntakeField | null,
+  isEditing: boolean,
+): ChatState['messages'] {
+  if (isEditing || (activeField !== 'dates' && activeField !== 'budget')) return messages
+  const last = messages[messages.length - 1]
+  if (!last || last.role !== 'ai' || last.stage !== 'intake') return messages
+  return messages.slice(0, -1)
 }
 
 /**
@@ -105,6 +124,9 @@ export default function ChatPanel({
   // composer — same tap-or-type-freely chip pattern as server suggestions.
   const isEmptyConversation = messages.length === 0
 
+  const activeIntakeField = editingIntakeField ?? currentIntakeField(intake, intakeForm)
+  const displayMessages = hideDuplicateIntakeReply(messages, activeIntakeField, Boolean(editingIntakeField))
+
   return (
     <section
       className="flex flex-col shrink-0 min-h-0 h-full glass-panel rounded-[26px] overflow-hidden"
@@ -147,7 +169,7 @@ export default function ChatPanel({
       />
 
       <MessageList
-        messages={messages}
+        messages={displayMessages}
         pending={pending}
         streamingText={streamingText}
       />

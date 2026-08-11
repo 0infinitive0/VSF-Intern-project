@@ -116,6 +116,8 @@ class HotelDetailPayload(BaseModel):
     lowest_price: float | None = None
     currency: str | None = None
     rooms: list[RoomDetailPayload] = Field(default_factory=list)
+    source_platform: str | None = None  # 'agoda' | 'booking' — powers the OTA handoff button
+    source_url: str | None = None  # original listing URL on the source OTA
 
 
 class AttractionDetailPayload(BaseModel):
@@ -208,6 +210,8 @@ class TripPlanHotel(BaseModel):
     matched_rooms: list[str] = Field(default_factory=list)
     coordinates: str | None = None
     image_url: str | None = None
+    source_platform: str | None = None  # 'agoda' | 'booking' — powers the OTA handoff button
+    source_url: str | None = None  # original listing URL on the source OTA
 
 
 class TripPlanPayload(BaseModel):

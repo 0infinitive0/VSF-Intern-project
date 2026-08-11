@@ -17,7 +17,7 @@ _HOTEL_FIELDS = (
     "id,name,star_rating,description,address,city,area_name,location_highlight,coordinates,"
     "image_url,images,amenities,amenity_groups,awards,warnings,review_score,review_count,"
     "category_scores,check_in_time,check_in_until,check_out_time,reception_open_until,"
-    "nearby_attractions,nearby_essentials,lowest_price,currency"
+    "nearby_attractions,nearby_essentials,lowest_price,currency,source_platform,source_url"
 )
 _ROOM_FIELDS = "id,name,bed_description,room_size_sqm,max_guests,view,room_facilities,images"
 _PRICE_FIELDS = "room_id,price,currency,check_in_date,check_out_date,sold_out,crawled_at"

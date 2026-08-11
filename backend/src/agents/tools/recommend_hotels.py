@@ -26,6 +26,7 @@ from src.agents.state import TripState
 from src.i18n import t
 from src.services.amenity_catalog import discover_and_store_amenities
 from src.services.hotel_selection import (
+    MIN_PLAUSIBLE_PRICE_VND,
     clear_hotel_amenity_tag_cache,
     hotel_matches_amenity_tag,
     is_hotel_amenity_tag,
@@ -37,6 +38,24 @@ from src.services.trip_formatter import format_hotel_options
 from src.services.trip_planner import _get_destination_id
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_price(value: float | None, *, field_name: str) -> float | None:
+    """Drop an implausible price the tool-calling LLM likely hallucinated (e.g.
+    a bare year like "2026" read off start_date) instead of silently applying
+    it as a real filter — a ~2000 VND ceiling makes every search return zero
+    hotels with a misleading "no valid coordinates" error instead of the real
+    cause (RAGAS eval harness, 2026-08-11, traced max_price="2026" to this)."""
+    if value is not None and value < MIN_PLAUSIBLE_PRICE_VND:
+        logger.warning(
+            "recommend_hotels: ignoring implausible %s=%s (below %s VND floor - "
+            "likely a misread date/number, not a real price)",
+            field_name,
+            value,
+            MIN_PLAUSIBLE_PRICE_VND,
+        )
+        return None
+    return value
 
 class PreferenceItem(BaseModel):
     id: str = Field(description="English identifier (e.g. 'swimming_pool', 'near_center')")
@@ -154,9 +173,15 @@ def recommend_hotels(
     # request. Supplying them to search refreshes the similarity that powers the
     # realistic match score instead of reusing the previous preference's score.
     hotel_query = hotel_preferences.strip() or preferences.strip() or None
-    parsed_target_price = float(target_price) if target_price.strip() else None
-    parsed_min_price = float(min_price) if min_price.strip() else None
-    parsed_max_price = float(max_price) if max_price.strip() else None
+    parsed_target_price = _sanitize_price(
+        float(target_price) if target_price.strip() else None, field_name="target_price"
+    )
+    parsed_min_price = _sanitize_price(
+        float(min_price) if min_price.strip() else None, field_name="min_price"
+    )
+    parsed_max_price = _sanitize_price(
+        float(max_price) if max_price.strip() else None, field_name="max_price"
+    )
     if parsed_min_price is None and parsed_max_price is None and parsed_target_price is not None:
         # No explicit range given (e.g. a caller that only knows the older single-number
         # target_price) — fall back to treating it as a ceiling-only budget.

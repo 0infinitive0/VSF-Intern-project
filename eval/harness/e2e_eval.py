@@ -9,13 +9,20 @@ from dataclasses import dataclass, field
 from ragas import SingleTurnSample
 from ragas.metrics import Faithfulness, ResponseRelevancy
 
-from harness.context_format import as_context
+from harness.context_format import as_context, context_id
 from harness.context_recorder import record_contexts
 from harness.dataset_loader import ConversationRecord, load_golden_conversations
 from harness.judge import build_judge, build_judge_embeddings
 from harness.transcripts import write_transcript
 
-from src.agents.session import create_chat_session, derive_stage, process_chat_turn
+from src.agents.session import create_chat_session, derive_stage, handle_frontend_hotel_selection, process_chat_turn
+
+# Sentinel a golden-conversation turn can use instead of literal chat text, to
+# mirror what the real UI actually sends when a user clicks a hotel card
+# (frontend/src/components/hotel-option-card.tsx -> POST /hotels/select ->
+# handle_frontend_hotel_selection(session, hotel_id) with the exact ID) -
+# never free text routed through the chat/LLM intent-classification path.
+SELECT_FIRST_HOTEL_ACTION = "__ACTION:select_first_hotel__"
 
 # Templated turns (recommend_hotels/select_hotel/finalize_trip_plan) render mostly
 # from a template - faithfulness there is a grounding *regression* check (did a
@@ -44,6 +51,7 @@ class TurnRecord:
     latency_s: float
     faithfulness: float | None = None
     response_relevancy: float | None = None
+    hotel_grounding: float | None = None
 
 
 @dataclass
@@ -56,18 +64,52 @@ class ConversationResult:
     error: str | None = None
 
 
+def _hotel_grounding_ratio(session, cumulative_context_ids: set[str]) -> float | None:
+    """Deterministic BR-07 grounding check: of the hotels currently shown to the
+    user (session.pending_hotel_selection.options), what fraction have actually
+    been returned by a real retrieval call at some point in this conversation?
+    Exact ID comparison, no LLM/judge involved - this is what the templated
+    recommend_hotels/select_hotel replies (a fixed "check the Hotels tab"
+    sentence with no hotel facts of its own) make RAGAS's text-based
+    Faithfulness metric structurally unable to check (see eval/README.md)."""
+    options = (session.pending_hotel_selection or {}).get("options") or []
+    option_ids = [str(opt.get("id") or opt.get("hotel_id") or "") for opt in options if opt.get("id") or opt.get("hotel_id")]
+    if not option_ids:
+        return None
+    grounded = sum(1 for oid in option_ids if oid in cumulative_context_ids)
+    return grounded / len(option_ids)
+
+
 def _replay_conversation(record: ConversationRecord) -> ConversationResult:
     session_id = f"ragas-eval-{record.id}"
     session = create_chat_session(session_id)  # no persist_hook - never writes to the real store
 
     result = ConversationResult(record=record)
     turn_result = None
+    cumulative_context_ids: set[str] = set()
     try:
         for turn_text in record.turns:
             with record_contexts() as captured:
                 t0 = time.perf_counter()
-                turn_result = process_chat_turn(session, turn_text, language=record.language)
+                if turn_text == SELECT_FIRST_HOTEL_ACTION:
+                    options = (session.pending_hotel_selection or {}).get("options") or []
+                    if not options:
+                        raise RuntimeError(
+                            f"{SELECT_FIRST_HOTEL_ACTION} used but pending_hotel_selection has no "
+                            "options - the prior turn must have retrieved hotels first."
+                        )
+                    hotel_id = str(options[0].get("id") or options[0].get("hotel_id") or "")
+                    turn_result = handle_frontend_hotel_selection(session, hotel_id)
+                else:
+                    turn_result = process_chat_turn(session, turn_text, language=record.language)
                 elapsed = time.perf_counter() - t0
+
+            turn_contexts = [as_context(row) for row in captured]
+            cumulative_context_ids.update(cid for ctx in turn_contexts if (cid := context_id(ctx)))
+
+            grounding = None
+            if turn_result.tool in ("recommend_hotels", "select_hotel"):
+                grounding = _hotel_grounding_ratio(session, cumulative_context_ids)
 
             result.turns.append(
                 TurnRecord(
@@ -75,12 +117,16 @@ def _replay_conversation(record: ConversationRecord) -> ConversationResult:
                     response=turn_result.text,
                     tool=turn_result.tool,
                     turn_class=_turn_class(turn_result.tool),
-                    contexts=[as_context(row) for row in captured],
+                    contexts=turn_contexts,
                     latency_s=elapsed,
+                    hotel_grounding=grounding,
                 )
             )
     except Exception as exc:
         result.error = f"{type(exc).__name__}: {exc}"
+        result.reached_stage = "error"
+        result.harness_failure = True  # an exception never reaches expected_stage - must count as a failure,
+        # not the dataclass default (False), or a run full of exceptions silently reports as 100% success
         return result
 
     if turn_result is not None:
@@ -94,8 +140,26 @@ def _score_conversation(result: ConversationResult, judge, embeddings) -> None:
     relevancy_metric = ResponseRelevancy(llm=judge, embeddings=embeddings)
 
     for turn in result.turns:
-        sample_kwargs = {"user_input": turn.user_input, "response": turn.response}
-        turn.response_relevancy = relevancy_metric.single_turn_score(SingleTurnSample(**sample_kwargs))
+        if turn.tool == "select_hotel":
+            # select_hotel's response is a generic confirmation ("itinerary is
+            # ready, check the tab") with no factual claims of its own, and its
+            # user_input is the SELECT_FIRST_HOTEL_ACTION sentinel, not a real
+            # question - both metrics score a structural 0.0 here regardless of
+            # answer quality, which reads as "hallucinating" when it's actually
+            # "nothing to check". Excluded, not scored 0.
+            continue
+
+        if turn.tool is None:
+            # A tool=None turn in this flow is the agent asking its own
+            # clarifying intake question back to the user (e.g. "how many
+            # people?"), not answering one. ResponseRelevancy scores a
+            # *question* against the user's prior statement structurally low
+            # regardless of how appropriate the question actually was -
+            # excluded, not scored as if it were a real (low) answer.
+            pass
+        else:
+            sample_kwargs = {"user_input": turn.user_input, "response": turn.response}
+            turn.response_relevancy = relevancy_metric.single_turn_score(SingleTurnSample(**sample_kwargs))
 
         if not turn.contexts:
             continue  # no contexts to be faithful to (pure intake question) - excluded, not scored 0
@@ -130,6 +194,7 @@ def run_e2e_eval(limit: int | None = None, score: bool = True) -> list[Conversat
                         "contexts": t.contexts,
                         "faithfulness": t.faithfulness,
                         "response_relevancy": t.response_relevancy,
+                        "hotel_grounding": t.hotel_grounding,
                     }
                     for t in result.turns
                 ],

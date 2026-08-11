@@ -1,5 +1,5 @@
 {
-  "dataset_hash": "0c0c89b45f1ab764",
+  "dataset_hash": "28c553772bf69468",
   "retrieval": {
     "hotel-nhatrang-city-vi": {
       "non_llm_precision": 0.0,
@@ -10,7 +10,7 @@
     "hotel-nhatrang-city-en": {
       "non_llm_precision": 0.0,
       "non_llm_recall": null,
-      "llm_precision": 0.0,
+      "llm_precision": 0.49999999995,
       "llm_context_relevance": 1.0
     },
     "hotel-nhatrang-4star-price-vi": {
@@ -22,7 +22,7 @@
     "hotel-nhatrang-4star-price-en": {
       "non_llm_precision": 0.1,
       "non_llm_recall": 0.0,
-      "llm_precision": 0.0,
+      "llm_precision": 0.9060405643638305,
       "llm_context_relevance": 0.0
     },
     "hotel-nhatrang-budget-vi": {
@@ -34,7 +34,7 @@
     "hotel-nhatrang-budget-en": {
       "non_llm_precision": 0.4444444444444444,
       "non_llm_recall": 1.0,
-      "llm_precision": 0.0,
+      "llm_precision": 0.45119047617919644,
       "llm_context_relevance": 0.0
     },
     "hotel-nhatrang-center-vi": {
@@ -50,7 +50,7 @@
       "llm_context_relevance": 1.0
     },
     "hotel-danang-city-en": {
-      "non_llm_precision": 0.0,
+      "non_llm_precision": 0.1,
       "non_llm_recall": null,
       "llm_precision": 0.0,
       "llm_context_relevance": 1.0
@@ -64,7 +64,7 @@
     "hotel-danang-center-price-en": {
       "non_llm_precision": 0.2222222222222222,
       "non_llm_recall": 1.0,
-      "llm_precision": 0.0,
+      "llm_precision": 0.6388888888675925,
       "llm_context_relevance": 0.25
     },
     "hotel-danang-budget-vi": {
@@ -94,18 +94,18 @@
     "hotel-hcm-district1-en": {
       "non_llm_precision": 0.0,
       "non_llm_recall": 0.0,
-      "llm_precision": 0.0,
+      "llm_precision": 0.249999999975,
       "llm_context_relevance": 0.0
     },
     "hotel-hcm-luxury-vi": {
       "non_llm_precision": 0.0,
-      "non_llm_recall": 0.0,
+      "non_llm_recall": null,
       "llm_precision": 0.0,
       "llm_context_relevance": 0.5
     },
     "hotel-hcm-luxury-en": {
       "non_llm_precision": 0.2222222222222222,
-      "non_llm_recall": 0.0,
+      "non_llm_recall": null,
       "llm_precision": 0.0,
       "llm_context_relevance": 0.5
     },
@@ -124,7 +124,7 @@
     "hotel-hue-city-en": {
       "non_llm_precision": 0.0,
       "non_llm_recall": null,
-      "llm_precision": 0.0,
+      "llm_precision": 0.9478458049751214,
       "llm_context_relevance": 1.0
     },
     "hotel-hue-near-citadel-vi": {
@@ -190,7 +190,7 @@
     "attraction-hcm-history-en": {
       "non_llm_precision": 0.2,
       "non_llm_recall": 0.5,
-      "llm_precision": 0.0,
+      "llm_precision": 0.7496598639348688,
       "llm_context_relevance": 1.0
     },
     "attraction-danang-nature-vi": {
@@ -202,7 +202,7 @@
     "attraction-danang-nature-en": {
       "non_llm_precision": 0.1,
       "non_llm_recall": 1.0,
-      "llm_precision": 0.0,
+      "llm_precision": 0.9999999999,
       "llm_context_relevance": 0.75
     },
     "attraction-nhatrang-kids-vi": {
@@ -214,7 +214,7 @@
     "attraction-nhatrang-kids-en": {
       "non_llm_precision": 0.2,
       "non_llm_recall": 1.0,
-      "llm_precision": 0.4166666666458333,
+      "llm_precision": 0.99999999999,
       "llm_context_relevance": 1.0
     },
     "attraction-hue-temple-vi": {
@@ -230,10 +230,10 @@
       "llm_context_relevance": 0.0
     },
     "attraction-hue-citadel-en": {
-      "non_llm_precision": 0.1,
-      "non_llm_recall": 0.5,
+      "non_llm_precision": null,
+      "non_llm_recall": 0.0,
       "llm_precision": 0.0,
-      "llm_context_relevance": 1.0
+      "llm_context_relevance": 0.0
     },
     "attraction-negative-absent-vi": {
       "non_llm_precision": 0.0,
@@ -250,7 +250,7 @@
     "attraction-hcm-kids-en": {
       "non_llm_precision": 0.1,
       "non_llm_recall": null,
-      "llm_precision": 0.0,
+      "llm_precision": 0.99999999999,
       "llm_context_relevance": 1.0
     },
     "attraction-danang-kids-vi": {
@@ -268,48 +268,40 @@
   },
   "e2e": {
     "conv-nhatrang-couple-3d": {
-      "reached_stage": "hotel_options",
-      "harness_failure": true
+      "reached_stage": "planned",
+      "harness_failure": false
     },
     "conv-danang-family-3d": {
-      "reached_stage": "hotel_options",
-      "harness_failure": true
+      "reached_stage": "planned",
+      "harness_failure": false
     },
     "conv-hcm-finalize-4d": {
-      "reached_stage": "error",
-      "harness_failure": true
+      "reached_stage": "finalized",
+      "harness_failure": false
     },
     "conv-hue-finalize-2d": {
-      "reached_stage": "error",
-      "harness_failure": true
+      "reached_stage": "finalized",
+      "harness_failure": false
     },
     "conv-nhatrang-refine-budget": {
-      "reached_stage": "error",
-      "harness_failure": true
-    },
-    "conv-danang-edit-cheaper": {
-      "reached_stage": "error",
-      "harness_failure": true
+      "reached_stage": "planned",
+      "harness_failure": false
     },
     "conv-hcm-luxury-en": {
-      "reached_stage": "error",
-      "harness_failure": true
-    },
-    "conv-crosslang-hyatt-danang": {
-      "reached_stage": "error",
-      "harness_failure": true
+      "reached_stage": "planned",
+      "harness_failure": false
     },
     "conv-nhatrang-attraction-mix": {
-      "reached_stage": "hotel_options",
-      "harness_failure": true
+      "reached_stage": "planned",
+      "harness_failure": false
     },
     "conv-unsupported-destination": {
       "reached_stage": "intake",
       "harness_failure": true
     },
     "conv-hcm-district-switch": {
-      "reached_stage": "error",
-      "harness_failure": true
+      "reached_stage": "planned",
+      "harness_failure": false
     },
     "conv-hue-thin-corpus-probe": {
       "reached_stage": "error",

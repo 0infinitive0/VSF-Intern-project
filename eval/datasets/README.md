@@ -107,7 +107,7 @@ written here.**
 |---|---|
 | `hotel-nhatrang-city-{vi,en}`, `hotel-nhatrang-center-vi`, `hotel-danang-city-{vi,en}`, `hotel-hue-city-{vi,en}` | Required a single "flagship" hotel to rank top-10 for a broad, unconstrained destination-only query. No principled basis: embedding similarity encodes semantic content, not brand prominence. Flagship IDs moved to `acceptable_ids`; `expected_ids` now empty for these 7 records. |
 | `hotel-nhatrang-4star-price-{vi,en}` (Golden Rain 2 half) | Claimed "view biển" (sea view) for a hotel whose live amenities have no sea-view/beach tag (only generic beach-proximity in free text). Downgraded to `acceptable_ids`; kept genuinely-verified Quinter Central Nha Trang (confirmed "Bãi biển riêng" amenity) as the sole `expected_id`. |
-| `hotel-hcm-luxury-{vi,en}` | "Sang trọng" (luxury) has no structured filter to anchor a single answer; retriever surfaced other legitimate 5★ heritage hotels (Majestic, Rex, Windsor Plaza). Broadened `acceptable_ids` rather than treating as a miss. |
+| `hotel-hcm-luxury-{vi,en}` | "Sang trọng" (luxury) has no structured filter to anchor a single answer; retriever surfaced other legitimate 5★ heritage hotels (Majestic, Rex, Windsor Plaza). Broadened `acceptable_ids` rather than treating as a miss. **2026-08-11 follow-up:** the same reasoning applies to the two IDs the original author had left in `expected_ids` (Rex, Windsor Plaza) — no principled basis to require exactly those two over the other verified-luxury alternates already in `acceptable_ids`. Moved them in too; `expected_ids` now empty like the other broad-unconstrained records above. This was the one genuine authoring inconsistency found while auditing all 12 zero-recall retrieval records on 2026-08-11 (see "Context Recall audit" below) — the other 11 are Category B retriever-findings, already listed above, left unchanged. |
 | `hotel-hcm-hostel-vi` | "9 Hostel and Suites" correctly surfaced; "9 Hostel and Bar" is a tied-price near-duplicate with no principled reason to outrank alternates. Downgraded, broadened `acceptable_ids`. |
 | `hotel-danang-budget-{vi,en}` | Starfish Alley correctly surfaced; Brown Bean is a tied-price duplicate. Same treatment. |
 | `attraction-hcm-history-{vi,en}` | Dinh Độc Lập correctly surfaced; Bến Nhà Rồng did not (soft finding, kept). Added the War Remnants Museum as a verified acceptable alternate. |
@@ -127,6 +127,72 @@ written here.**
 
 None of these are fixed here — this plan measures, it does not tune retrieval (see
 plan Non-goals). They are exactly the evidence Phase 3/5's reports are built on.
+
+## Conversations removed from the e2e suite (2026-08-11)
+
+Two of the original 12 scripted conversations were dropped at the project owner's direction,
+after the price-hallucination bug (see `eval/README.md`'s Deviations section) was fixed but these
+two still failed for unrelated reasons:
+
+- `conv-danang-edit-cheaper` — the post-planning "đổi khách sạn rẻ hơn" edit request still
+  doesn't reliably route to `execute_trip_edit_request` (a pre-existing routing gap, not
+  price-related).
+- `conv-crosslang-hyatt-danang` — a short (3-turn) brand-name hotel search that occasionally still
+  fails to retrieve any hotel via a residual tool-calling issue distinct from the fixed bug.
+
+Removed, not disproven: both are real, legitimate gaps worth a case again once addressed
+separately - this just narrows what the current suite measures.
+
+## Context Recall audit (2026-08-11)
+
+12 of the 44 retrieval records score `non_llm_recall=0.0`. Audited each one individually
+against Section 3's disagreement list rather than assuming they're all the same class of
+problem:
+
+- **11/12 are genuine, already-adjudicated Category B retriever-findings** from the original
+  2026-08-10 pass (`hotel-crosslang-libertycentral-vi`, `hotel-crosslang-novotel-vi`,
+  `attraction-hue-citadel-{vi,en}`, `hotel-nhatrang-4star-price-{vi,en}` (Quinter Central
+  half), `hotel-danang-pool-vi`, `hotel-hcm-district1-{vi,en}`, `hotel-hcm-family-vi`) — real
+  gaps the retriever has, not dataset errors. Left unchanged; loosening `expected_ids` here to
+  raise the recall number would misrepresent what was actually verified against the corpus.
+- **1/12 was a genuine authoring inconsistency**: `hotel-hcm-luxury-{vi,en}` (see the updated
+  Category A row above) — fixed by moving its last two `expected_ids` into `acceptable_ids`,
+  consistent with the same "no principled single answer for an unconstrained luxury query"
+  reasoning already applied to its sibling records the day before.
+
+Net effect of the one fix on the aggregate numbers (`non_llm_recall_by_language`):
+VI 0.5278→0.5588, EN 0.5833→0.6364 — small and expected, since only one record's denominator
+changed. This plan measures, it does not tune retrieval (Non-goals) — the 11 real gaps stand
+as findings for future retrieval work, not something this dataset should paper over.
+
+## Context Precision LLM gap: root cause and fix (2026-08-11)
+
+The VI/EN gap on `llm_precision` (`LLMContextPrecisionWithReference`) was large and suspicious
+(VI 0.368 vs EN 0.035) — investigated before assuming it reflected a real retrieval/embedding
+quality difference between languages. `LLMContextPrecisionWithReference` uses each record's
+`rationale` field as `reference` — its only ground truth for judging whether a retrieved
+context is relevant.
+
+14 EN records' `rationale` was literally just `"EN mirror of X-vi, same intent."` — no
+hotel/attraction names, prices, or facts for the judge to check retrieved contexts against.
+Proved this was the cause with an isolated test (identical contexts and query, only the
+reference text swapped): thin reference scored `0.0`, the same context scored with a rich
+reference scored `0.9999999999`.
+
+**Fix:** rewrote the core `rationale` for all 14 affected EN records (`hotel-nhatrang-city-en`,
+`hotel-nhatrang-4star-price-en`, `hotel-nhatrang-budget-en`, `hotel-danang-city-en`,
+`hotel-danang-center-price-en`, `hotel-danang-budget-en`, `hotel-hcm-district1-en`,
+`hotel-hue-city-en`, `attraction-hcm-history-en`, `attraction-danang-nature-en`,
+`attraction-nhatrang-kids-en`, `attraction-hue-citadel-en`, `attraction-hcm-kids-en`,
+`hotel-crosslang-khachsan-pullman-en`) to carry the same substantive facts as their VI
+counterpart, restated in English — hotel/attraction names, prices, star ratings, the specific
+verified detail (e.g. "Bãi biển riêng" amenity, "1,3 km từ trung tâm"). Any existing
+`ADJUDICATED`/`DIAGNOSTIC`/`RETRIEVER FINDING` note was preserved, appended after the new core
+text, not deleted — the finding itself didn't change, only the thin boilerplate around it.
+
+Result: `llm_precision_by_language` VI 0.3676→0.4033, EN 0.035→0.4742. The gap is gone — EN and
+VI now land in the same range. This confirms the original gap was a dataset-authoring artifact
+(thin EN reference text), not a real VI/EN retrieval quality difference.
 
 ## Adding a new case
 

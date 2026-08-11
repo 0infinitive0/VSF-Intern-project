@@ -356,6 +356,8 @@ def to_trip_plan_payload(trip_data: dict[str, Any] | None) -> dict[str, Any] | N
             "matched_rooms": hotel.get("matched_rooms") or hotel.get("matched_room_names") or [],
             "coordinates": hotel.get("coordinates"),
             "image_url": hotel.get("image_url"),
+            "source_platform": hotel.get("source_platform"),
+            "source_url": hotel.get("source_url"),
         },
         "days": days,
         "adjustments": [str(value) for value in trip_data.get("adjustments") or [] if value],

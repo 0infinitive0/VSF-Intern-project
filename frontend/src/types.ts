@@ -124,6 +124,10 @@ export interface Hotel {
   coordinates?: string | null
   // Already emitted by to_trip_plan_payload (trip_formatter.py:358) — a type-gap fix.
   image_url?: string | null
+  // 'agoda' | 'booking' — which OTA this row was crawled from; powers the handoff button.
+  source_platform?: string | null
+  // Original listing URL on the source OTA (backend/scripts/database_schema.sql:32).
+  source_url?: string | null
 }
 
 export type TripStatus = string // backend sends free-text status, e.g. "Draft"
@@ -286,6 +290,10 @@ export interface HotelDetail {
   lowest_price?: number
   currency?: string
   rooms?: RoomDetail[]
+  // 'agoda' | 'booking' — which OTA this row was crawled from; powers the handoff button.
+  source_platform?: string | null
+  // Original listing URL on the source OTA (backend/scripts/database_schema.sql:32).
+  source_url?: string | null
 }
 
 export interface AttractionDetail {

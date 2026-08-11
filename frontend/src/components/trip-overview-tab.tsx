@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { formatHotelStars } from '../lib/format-stars'
+import { formatSourcePlatform } from '../lib/format-source-platform'
 import { dayRouteMetrics, tripRouteMetrics } from '../lib/leg'
 import { dayColor } from '../lib/map-colors'
 import RemoteImage from './remote-image'
@@ -125,6 +126,20 @@ export default function TripOverviewTab({
               <div className="text-[12px] text-on-surface-muted font-normal mt-[2px]">{hotel.description}</div>
             )}
           </div>
+          {hotel.source_url && hotel.source_platform && (
+            <a
+              href={hotel.source_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={t('detailHandoff', { platform: formatSourcePlatform(hotel.source_platform) })}
+              aria-label={t('detailHandoff', { platform: formatSourcePlatform(hotel.source_platform) })}
+              className="flex-none w-[34px] h-[34px] rounded-full border border-stroke flex items-center justify-center text-on-surface-variant transition-colors hover:bg-glass-3"
+            >
+              <span className="material-symbols-outlined text-[17px]" aria-hidden="true">
+                open_in_new
+              </span>
+            </a>
+          )}
         </div>
       )}
 

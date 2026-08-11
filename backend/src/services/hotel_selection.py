@@ -50,7 +50,8 @@ def _hydrate_hotel_records(search_results: List[Dict[str, Any]]) -> List[Dict[st
             supabase.table("hotels")
             .select(
                 "id,destination_id,name,star_rating,description,coordinates,amenities,amenity_groups,"
-                "review_score,review_count,address,area_name,lowest_price,currency,image_url,images,city"
+                "review_score,review_count,address,area_name,lowest_price,currency,image_url,images,city,"
+                "source_platform,source_url"
             )
             .in_("id", result_ids)
             .execute()
@@ -160,6 +161,8 @@ def select_hotel_candidates(
             "city": hotel.get("city"),
             "similarity": hotel.get("similarity"),
             "amenities": hotel.get("amenities") or [],
+            "source_platform": hotel.get("source_platform"),
+            "source_url": hotel.get("source_url"),
         }
         options.append((hotel_data, candidate))
 
@@ -427,6 +430,8 @@ def fetch_hotel_by_id(
         "images": hotel.get("images") or [],
         "city": hotel.get("city"),
         "amenities": hotel.get("amenities") or [],
+        "source_platform": hotel.get("source_platform"),
+        "source_url": hotel.get("source_url"),
     }
     return hotel_data, candidate
 
@@ -482,6 +487,14 @@ _NO_BUDGET_PREFERENCE_PHRASES: tuple[str, ...] = (
 )
 
 _MILLION_UNIT = r"(?:trieu|tr\b)"
+
+# No real per-night VND hotel price is this low (the cheapest observed listing
+# in the corpus is ~27,000 VND) — a bare 4-digit number below this floor is far
+# more likely a misread date/year (e.g. "2026" from a start_date) than a real
+# price. Used both by _parse_free_text_price's bare-number fallback below and
+# by recommend_hotels.py's tool-argument sanitizer (RAGAS eval harness,
+# 2026-08-11, traced a hallucinated max_price="2026" back to this class of bug).
+MIN_PLAUSIBLE_PRICE_VND = 10_000.0
 
 
 def _is_no_budget_preference(text: str) -> bool:
@@ -546,7 +559,11 @@ def _parse_free_text_price(text: str) -> float | None:
         return float(thousand_match.group(1).replace(",", ".")) * 1_000
     plain_match = re.search(r"\b(\d{4,})\b", normalized.replace(",", "").replace(".", ""))
     if plain_match:
-        return float(plain_match.group(1))
+        value = float(plain_match.group(1))
+        # A bare 4-digit number below the plausibility floor (e.g. "2026") is a
+        # date/year, not a price - real bare-number prices here are typically
+        # 6+ digits (hundreds of thousands of VND).
+        return value if value >= MIN_PLAUSIBLE_PRICE_VND else None
     return None
 
 

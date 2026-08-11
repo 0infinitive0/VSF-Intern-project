@@ -251,6 +251,7 @@
   "detailNearby": "Khoảng cách tới các điểm chính",
   "detailAmen": "Tiện nghi khách sạn",
   "detailPriceFrom": "Giá từ",
+  "detailHandoff": "Xem trang gốc trên {{platform}}",
   "detailNoInfo": "Không có thông tin chi tiết cho khách sạn này.",
   "detailCloseLabel": "Đóng chi tiết khách sạn",
   "policyCheckIn": "Nhận phòng",
