@@ -151,6 +151,13 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   transition: background 0.5s ease;
+  /* App shell is a fixed h-screen layout (app-shell.tsx) with its own nested
+     scroll regions (e.g. conversation-list.tsx's history rail). Without this,
+     dragging past a nested list's scroll boundary chains the gesture to the
+     page, triggering iOS Safari's rubber-band bounce — which visually
+     detaches `position: fixed` siblings (sidebar-rail.tsx's language/theme
+     toggle footer) from the content they're pinned under. */
+  overscroll-behavior: none;
 }
 
 .material-symbols-outlined {

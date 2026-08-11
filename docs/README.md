@@ -18,6 +18,9 @@ Welcome to the **VSF Trip Planner AI Agent** documentation. This directory is or
   * [Mobile Wireframe](file:///d:/Git%20repo/vsf-project/docs/design/wireframe.png)
   * [Web Wireframe](file:///d:/Git%20repo/vsf-project/docs/design/wireframe_web.png)
 
+## 🧪 RAG Evaluation (`eval/`)
+* **[RAGAS evaluation harness](../eval/README.md)**: Retrieval-quality and end-to-end grounding measurement for the trip-planner RAG pipeline, isolated from the backend runtime. See `eval/datasets/README.md` for the golden-set authoring log and `eval/results/` for the latest report.
+
 ## 💡 Feature Proposals & RFCs (`docs/proposals/`)
 * **[Itinerary Embedding Reuse (v2)](file:///d:/Git%20repo/vsf-project/docs/proposals/itinerary-embedding-reuse-v2.md)**: Tier 1 BGE-M3 fingerprint matching and template reuse specification.
 

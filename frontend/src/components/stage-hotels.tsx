@@ -32,9 +32,11 @@ function nightsFrom(startIso?: string | null, endIso?: string | null): number | 
  *
  * Two-step hotel pick (user decision 06/08/2026): a card's "Chọn" only sets
  * local selectedIndex; the header's "Tạo lịch trình từ khách sạn này" is the
- * ONLY sender, posting String(hotel.index) through onSend as a plain chat
- * message — byte-identical to the pre-Phase-8 wire, no new verb, no new
- * endpoint. The button is disabled until something is selected so no empty
+ * ONLY sender, posting String(hotel.index) through onSend — byte-identical
+ * to the pre-Phase-8 wire, no new verb, no new endpoint. The bubble shown to
+ * the user swaps that raw index for `displayText` (e.g. "Mình chọn Sóng Xanh
+ * Boutique") so the thread reads naturally; the backend still only ever sees
+ * the index. The button is disabled until something is selected so no empty
  * message can ever be sent. selectedIndex resets when hotel_options rotates
  * (backend clears them on the next turn, as before).
  *
@@ -52,7 +54,7 @@ export default function StageHotels({
 }: {
   state: ChatState
   focusMode: FocusModeApi
-  onSend: (text: string) => void
+  onSend: (text: string, options?: { displayText?: string }) => void
   theme: Theme
 }) {
   const { t } = useTranslation()
@@ -110,7 +112,7 @@ export default function StageHotels({
 
   function confirmSelection() {
     if (!selectedHotel) return
-    onSend(String(selectedHotel.index))
+    onSend(String(selectedHotel.index), { displayText: t('hotelPickedMessage', { name: selectedHotel.name }) })
   }
 
   return (
@@ -140,7 +142,7 @@ export default function StageHotels({
           type="button"
           disabled={!selectedHotel}
           onClick={confirmSelection}
-          className="px-[18px] py-2.5 rounded-[13px] border-none text-[13px] font-[590] tracking-[-0.12px] transition-all duration-200"
+          className="px-[18px] py-2.5 rounded-[13px] border-none text-[13px] font-[590] tracking-[-0.12px] transition-all duration-200 text-nowrap"
           style={{
             background: selectedHotel ? 'var(--btn)' : 'var(--fill2)',
             color: selectedHotel ? 'var(--btn-fg)' : 'var(--t4)',

@@ -176,6 +176,12 @@ export interface ChatState {
   tripPlan: TripPlan | null
   intake: IntakeStatus | null
   pending: boolean
+  // True while the "đổi khách sạn" step-nav action (step-navigator.tsx) is
+  // re-fetching hotel options via the dedicated /hotels/change endpoint.
+  // Deliberately separate from `pending`: that flag belongs to the chat
+  // turn machinery (message bubbles, elapsed timer, streaming) and this
+  // isn't a chat turn — no LLM call, no message, just a hotel-list fetch.
+  hotelsLoading: boolean
   elapsedMs: number
   error: string | null
   // ── Streaming (Phase 5, transient — cleared by SEND_SUCCESS/SEND_ERROR) ──

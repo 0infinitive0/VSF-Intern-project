@@ -11,6 +11,7 @@ const BASE: ChatState = {
   tripPlan: null,
   intake: null,
   pending: false,
+  hotelsLoading: false,
   elapsedMs: 0,
   error: null,
   streamingText: '',

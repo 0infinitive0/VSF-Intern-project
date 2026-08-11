@@ -14,7 +14,7 @@
  */
 
 import { useReducer, useEffect, useRef, useCallback } from 'react'
-import { createSession, sendMessage } from '../api/chat-client'
+import { changeHotel as changeHotelRequest, createSession, sendMessage } from '../api/chat-client'
 import { restoreSession } from '../api/session-client'
 import { sendMessageStream, StreamUnsupported } from '../api/stream-client'
 import i18n from '../i18n'
@@ -35,6 +35,7 @@ export const INITIAL_STATE: ChatState = {
   tripPlan: null,
   intake: null,
   pending: false,
+  hotelsLoading: false,
   elapsedMs: 0,
   error: null,
   streamingText: '',
@@ -45,7 +46,10 @@ export const INITIAL_STATE: ChatState = {
 
 export type Action =
   | { type: 'SESSION_READY'; sessionId: string }
-  | { type: 'SEND_START'; id: string; text: string }
+  // `displayText`: shows a friendlier label in the user's own bubble than
+  // the literal wire payload (e.g. "1") — see stage-hotels.tsx's hotel pick.
+  // The backend still receives `text` unchanged; only the bubble differs.
+  | { type: 'SEND_START'; id: string; text: string; displayText?: string }
   // `turnId` on these five is state.turnId as it was when send() captured it,
   // before any `await` — the reducer drops the action once turnId has moved
   // on, so a stale in-flight turn can't overwrite freshly-restored state.
@@ -60,6 +64,13 @@ export type Action =
   | { type: 'STREAM_PHASE'; key: PhaseKey; at: number; turnId: number }
   | { type: 'STREAM_DELTA'; text: string; turnId: number }
   | { type: 'STREAM_RESET'; turnId: number }
+  // Dedicated hotels/change round-trip (step-navigator.tsx's "đổi khách sạn"
+  // action) — never part of the chat turn machinery: no message, no LLM call,
+  // just a hotel-list refresh. Own pending flag (`hotelsLoading`) so Composer/
+  // elapsed-timer/streaming state never react to it.
+  | { type: 'HOTELS_CHANGE_START' }
+  | { type: 'HOTELS_CHANGE_SUCCESS'; data: PlannerChatResponse }
+  | { type: 'HOTELS_CHANGE_ERROR'; error: string }
 
 // ── Reducer ───────────────────────────────────────────────────────────────────
 
@@ -76,7 +87,13 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
         error: null,
         messages: [
           ...state.messages,
-          { id: action.id, role: 'user', text: action.text, stage: null, at: new Date().toISOString() },
+          {
+            id: action.id,
+            role: 'user',
+            text: action.displayText ?? action.text,
+            stage: null,
+            at: new Date().toISOString(),
+          },
         ],
         // Freeze chips so they aren't clickable while in-flight
         suggestions: [],
@@ -189,6 +206,24 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
       if (action.turnId !== state.turnId) return state
       return { ...state, streamingText: '' }
 
+    case 'HOTELS_CHANGE_START':
+      return { ...state, hotelsLoading: true, error: null }
+
+    case 'HOTELS_CHANGE_SUCCESS': {
+      const { data } = action
+      return {
+        ...state,
+        hotelsLoading: false,
+        hotelOptions: data.hotel_options || [],
+        tripPlan: data.trip_plan || state.tripPlan,
+        intake: data.intake || state.intake,
+        error: null,
+      }
+    }
+
+    case 'HOTELS_CHANGE_ERROR':
+      return { ...state, hotelsLoading: false, error: action.error }
+
     default:
       return state
   }
@@ -279,7 +314,7 @@ export function useChatSession() {
   // later failure (including a first-frame timeout) surfaces as a plain
   // network error instead of retrying. See stream-client.ts's StreamUnsupported.
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, options?: { displayText?: string }) => {
       const trimmed = String(text).trim()
       if (!trimmed || state.pending || !state.sessionId) return
 
@@ -289,7 +324,7 @@ export function useChatSession() {
       // that's no longer current (see the Action type's comment on why this
       // is turnId, not sessionId).
       const turnId = state.turnId
-      dispatch({ type: 'SEND_START', id, text: trimmed })
+      dispatch({ type: 'SEND_START', id, text: trimmed, displayText: options?.displayText })
 
       const controller = new AbortController()
       abortRef.current = controller
@@ -335,6 +370,27 @@ export function useChatSession() {
     [state.pending, state.sessionId, state.turnId],
   )
 
+  // ── changeHotel ──────────────────────────────────────────────────────────
+  // Backs the "đổi khách sạn" step-nav action (step-navigator.tsx). Hits the
+  // dedicated deterministic /hotels/change endpoint directly — no LLM call,
+  // no chat message — so it's kept entirely separate from `send()`/the chat
+  // turn machinery: own pending flag (`hotelsLoading`), no turnId guard
+  // needed (nothing here can race a session switch the way a slow chat
+  // reply can, since it never touches `messages`).
+  const changeHotel = useCallback(async () => {
+    if (state.hotelsLoading || !state.sessionId) return
+    dispatch({ type: 'HOTELS_CHANGE_START' })
+    try {
+      const data = await changeHotelRequest(state.sessionId)
+      dispatch({ type: 'HOTELS_CHANGE_SUCCESS', data })
+    } catch (err) {
+      dispatch({
+        type: 'HOTELS_CHANGE_ERROR',
+        error: i18n.t('errorNetwork', { msg: err instanceof Error ? err.message : String(err) }),
+      })
+    }
+  }, [state.hotelsLoading, state.sessionId])
+
   // ── startNew ─────────────────────────────────────────────────────────────
   // Deliberately no DELETE: the previous session stays persisted and stays
   // visible in the history rail. Deleting a conversation is the separate,
@@ -378,5 +434,5 @@ export function useChatSession() {
     }
   }, [])
 
-  return { state, send, startNew, restore }
+  return { state, send, startNew, restore, changeHotel }
 }

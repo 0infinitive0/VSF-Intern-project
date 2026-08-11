@@ -225,6 +225,7 @@
   "buildFromHotel": "Build the itinerary from this hotel",
   "hotelBadgeEmpty": "Pick a hotel to see distances to the key sights",
   "hotelBadgeSelected": "{{name}} — start and end of every day",
+  "hotelPickedMessage": "I'll go with {{name}}",
 
   "detailWhy": "Why V-OTA recommends this hotel",
   "detailRooms": "Rooms",

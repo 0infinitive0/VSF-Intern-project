@@ -31,6 +31,7 @@ function lastAiStage(messages: ChatState['messages']): string | null {
 export default function ChatPanel({
   state,
   onSend,
+  onChangeHotel,
   stage,
   onViewStage,
   width,
@@ -42,6 +43,8 @@ export default function ChatPanel({
 }: {
   state: ChatState
   onSend: (text: string) => void
+  /** Rebuilds the hotel list without a chat turn — see step-navigator.tsx. */
+  onChangeHotel: () => void
   /** What's currently displayed in the stage panel — may be a client-side
    * view override (see App.tsx) rather than the live backend-derived stage. */
   stage: StageView
@@ -53,7 +56,7 @@ export default function ChatPanel({
   editingIntakeField: IntakeField | null
   onDoneEditingIntakeField: () => void
 }) {
-  const { messages, suggestions, hotelOptions, tripPlan, intake, pending, streamingText } = state
+  const { messages, suggestions, hotelOptions, tripPlan, intake, pending, hotelsLoading, streamingText } = state
   const { t } = useTranslation()
 
   const lastStage = lastAiStage(messages)
@@ -137,7 +140,9 @@ export default function ChatPanel({
         intakeComplete={intakeComplete}
         hotelPicked={hotelPicked}
         hotelOptionsAvailable={hotelOptionsAvailable}
+        hotelsLoading={hotelsLoading}
         onSend={onSend}
+        onChangeHotel={onChangeHotel}
         onViewStage={onViewStage}
       />
 

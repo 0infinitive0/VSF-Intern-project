@@ -981,6 +981,45 @@ def handle_frontend_hotel_selection(session: TripSession, hotel_id: str) -> Turn
     """Run a direct hotel-selection action and persist its changed state."""
     return _persist_turn(session, _handle_frontend_hotel_selection(session, hotel_id))
 
+
+def _handle_frontend_hotel_change(session: TripSession) -> TurnResult:
+    """Rebuild the hotel list for an already-built trip without an LLM call.
+
+    Used by the "đổi khách sạn" nav action (frontend step-navigator.tsx): the
+    intent is already known from the UI action itself, so this constructs the
+    change_hotel edit plan directly instead of routing free text through
+    `plan_trip_edit` (an LLM call) — there's nothing to classify. Reuses
+    `execute_trip_edit_request`'s existing change_hotel branch as-is (archived
+    option reuse, rank_hotel_candidates, etc.) purely to avoid duplicating it.
+    """
+    if session.trip_data is None:
+        return TurnResult(
+            text="SYSTEM ERROR: Chưa có kế hoạch chuyến đi để đổi khách sạn.",
+            tool="execute_trip_edit_request",
+        )
+    from src.services.trip_edit_planner import EditOperation, TripEditPlan
+
+    plan = TripEditPlan(
+        decision="apply",
+        summary="Đổi khách sạn",
+        operations=(EditOperation(operation="change_hotel"),),
+    )
+    tool_response = execute_trip_edit_request(session, "", plan)
+    text = tool_response or "SYSTEM ERROR: Không tìm thấy khách sạn phù hợp."
+    return TurnResult(text=str(text), tool="execute_trip_edit_request")
+
+
+def handle_frontend_hotel_change(session: TripSession) -> TurnResult:
+    """Run the deterministic hotel-change action and persist its state.
+
+    No `user_input` passed to `_persist_turn` — same as
+    `handle_frontend_hotel_selection` above, this deliberately does not append
+    a chat message pair; only the business state (pending_hotel_selection)
+    persists.
+    """
+    return _persist_turn(session, _handle_frontend_hotel_change(session))
+
+
 def _run_finalize(session: TripSession) -> TurnResult:
     tool_response = session.tools.finalize_trip_plan.invoke({})
     logger.info("Finalization response: %s", tool_response)

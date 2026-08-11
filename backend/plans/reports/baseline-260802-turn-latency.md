@@ -11,7 +11,7 @@ cold-started), 20 samples per route, local dev machine, no network.
 
 | Route | p50 (ms) | p95 (ms) |
 |---|---|---|
-| select_hotel | 0.040 | 0.219 |
-| finalize | 0.016 | 0.028 |
-| intake | 0.089 | 0.216 |
-| chat | 0.362 | 0.729 |
+| select_hotel | 0.034 | 0.170 |
+| finalize | 0.016 | 0.022 |
+| intake | 0.029 | 0.035 |
+| chat | 0.156 | 0.625 |

@@ -19,20 +19,27 @@ function stepFromStage(stage: StageView): StepKey {
  * Backward navigation prefers a pure client-side view swap: if the target
  * step's data is already sitting in `state` (intake is always collected by
  * the time another step exists; hotel options only while `hotelOptionsAvailable`),
- * clicking it just re-renders that panel via `onViewStage` — no chat turn, no
- * AI reply. Only when the data genuinely isn't loaded anymore (e.g. hotel
- * options were superseded by a trip plan) does the click fall back to sending
- * ONE translated natural-language message through the ordinary send path
- * (e.g. "Tôi muốn đổi khách sạn") — that is what the backend actually supports
- * (session.py edit flow). There is no rollback verb, and we don't pretend
- * there is. Steps not yet reached are inert.
+ * clicking it just re-renders that panel via `onViewStage` — no network call
+ * at all.
+ *
+ * Only when the data genuinely isn't loaded anymore (e.g. hotel options were
+ * superseded by a trip plan — clicking "Khách sạn" from step 3) does the
+ * click fall back to `onChangeHotel`, which hits a dedicated deterministic
+ * backend endpoint (POST /hotels/change) directly — no LLM call, no chat
+ * turn, no message bubble. It's a plain hotel-list fetch, not a chatbot
+ * request, so it isn't routed through `onSend`/the chat turn machinery at
+ * all; `hotelsLoading` drives the button's own busy state while it's
+ * in-flight. There is no rollback verb, and we don't pretend there is. Steps
+ * not yet reached are inert.
  */
 export default function StepNavigator({
   stage,
   intakeComplete,
   hotelPicked,
   hotelOptionsAvailable,
+  hotelsLoading,
   onSend,
+  onChangeHotel,
   onViewStage,
 }: {
   stage: StageView
@@ -42,25 +49,45 @@ export default function StepNavigator({
   hotelPicked: boolean
   /** hotel options are still loaded in state — hotels can be viewed without a chat turn */
   hotelOptionsAvailable: boolean
+  /** a /hotels/change fetch triggered by this nav is in flight */
+  hotelsLoading: boolean
   onSend: (text: string) => void
+  /** Rebuilds the hotel list without a chat turn — POST /hotels/change. */
+  onChangeHotel: () => void
   onViewStage: (stage: StageView) => void
 }) {
   const { t } = useTranslation()
   const current = stepFromStage(stage)
 
-  const steps: { key: StepKey; n: string; label: string; open: boolean; message: string | null; viewable: boolean }[] = [
-    { key: 'intake', n: '1', label: t('stepDetails'), open: true, message: t('stepNavBackIntake'), viewable: true },
+  const steps: {
+    key: StepKey
+    n: string
+    label: string
+    open: boolean
+    viewable: boolean
+    busy?: boolean
+    fallback: { kind: 'send'; message: string } | { kind: 'changeHotel' } | null
+  }[] = [
+    {
+      key: 'intake',
+      n: '1',
+      label: t('stepDetails'),
+      open: true,
+      viewable: true,
+      fallback: { kind: 'send', message: t('stepNavBackIntake') },
+    },
     {
       key: 'hotels',
       n: '2',
       label: t('stepHotel'),
       open: intakeComplete,
-      message: t('stepNavBackHotels'),
       viewable: hotelOptionsAvailable,
+      busy: hotelsLoading,
+      fallback: { kind: 'changeHotel' },
     },
     // workspace is the terminal step — nothing is ever "behind" it, so it is never
     // a backward target; it is only ever current (or a disabled forward state).
-    { key: 'workspace', n: '3', label: t('stepItinerary'), open: hotelPicked, message: null, viewable: false },
+    { key: 'workspace', n: '3', label: t('stepItinerary'), open: hotelPicked, viewable: false, fallback: null },
   ]
 
   return (
@@ -70,14 +97,15 @@ export default function StepNavigator({
     >
       {steps.map((step) => {
         const isCurrent = current === step.key
-        const clickable = step.open && !isCurrent && (step.viewable || step.message !== null)
+        const clickable = step.open && !isCurrent && !step.busy && (step.viewable || step.fallback !== null)
         const handleClick = () => {
           if (!clickable) return
           if (step.viewable) {
             onViewStage(step.key)
             return
           }
-          if (step.message) onSend(step.message)
+          if (step.fallback?.kind === 'send') onSend(step.fallback.message)
+          else if (step.fallback?.kind === 'changeHotel') onChangeHotel()
         }
         return (
           <button
@@ -86,6 +114,7 @@ export default function StepNavigator({
             onClick={handleClick}
             disabled={!clickable}
             aria-current={isCurrent ? 'step' : undefined}
+            aria-busy={step.busy || undefined}
             className={`flex-1 flex items-center justify-center gap-1.5 px-1.5 py-2 rounded-[12px] text-[11.5px] whitespace-nowrap transition-all disabled:cursor-default ${
               isCurrent
                 ? 'bg-button text-on-button font-semibold border border-button'
@@ -96,6 +125,12 @@ export default function StepNavigator({
           >
             <span className="text-[9.5px] opacity-60">{step.n}</span>
             {step.label}
+            {step.busy && (
+              <span
+                aria-hidden="true"
+                className="w-3 h-3 rounded-full border-[1.5px] border-current border-t-transparent animate-spin opacity-70"
+              />
+            )}
           </button>
         )
       })}

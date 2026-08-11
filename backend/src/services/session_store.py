@@ -112,10 +112,11 @@ def _ui_summary(state: dict[str, Any], current_trip: dict[str, Any]) -> dict[str
     trip_data = state.get("trip_data") or {}
     hotel = trip_data.get("hotel") or {}
     itinerary = next(iter(trip_data.get("itineraries") or []), {})
+    is_finalized = str(current_trip.get("status") or "").casefold() == "finalized"
     return {
         "destination": intake.get("destination") or trip_data.get("destination"),
         "duration_days": itinerary.get("duration_days") or trip_data.get("duration_days"),
-        "status": current_trip.get("status"),
+        "status": "completed" if is_finalized else "draft",
         "hotel_name": hotel.get("name"),
         "thumbnail_url": hotel.get("image_url"),
     }
@@ -297,12 +298,17 @@ def summarize(row: dict[str, Any]) -> dict[str, Any]:
     context = row.get("context_data") or {}
     if context.get("schema_version") == _CONTEXT_SCHEMA_VERSION:
         summary = context.get("ui_summary") or {}
+        # Legacy rows may carry the itinerary vocabulary ("Draft"/"Finalized")
+        # instead of the UI vocabulary ("draft"/"completed") — normalize so
+        # SessionSummaryPayload's Literal validation never rejects a row.
+        raw_status = str(summary.get("status") or "").casefold()
+        status = "completed" if raw_status in ("completed", "finalized") else "draft"
         return {
             "session_id": str(row["session_id"]),
             "title": None,
             "destination": summary.get("destination"),
             "duration_days": summary.get("duration_days"),
-            "status": summary.get("status") or "draft",
+            "status": status,
             "created_at": row.get("created_at"),
             "updated_at": row.get("updated_at"),
             "thumbnail_url": summary.get("thumbnail_url"),

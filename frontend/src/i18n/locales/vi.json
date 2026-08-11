@@ -225,6 +225,7 @@
   "buildFromHotel": "Tạo lịch trình từ khách sạn này",
   "hotelBadgeEmpty": "Chọn một khách sạn để xem khoảng cách tới các điểm nổi bật",
   "hotelBadgeSelected": "{{name}} — điểm xuất phát & kết thúc mỗi ngày",
+  "hotelPickedMessage": "Mình chọn {{name}}",
 
   "detailWhy": "Vì sao V-OTA đề xuất khách sạn này",
   "detailRooms": "Danh sách phòng",

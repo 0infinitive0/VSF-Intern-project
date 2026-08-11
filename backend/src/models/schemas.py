@@ -348,6 +348,10 @@ class SelectHotelRequest(BaseModel):
     hotel_id: str | int
 
 
+class ChangeHotelRequest(BaseModel):
+    session_id: UUID
+
+
 class PreferencePayload(BaseModel):
     id: str
     label: str

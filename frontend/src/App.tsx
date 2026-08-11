@@ -14,7 +14,7 @@ import AppShell from './components/app-shell'
  * or AppShell's structure again.
  */
 export default function App() {
-  const { state, send, startNew, restore } = useChatSession()
+  const { state, send, startNew, restore, changeHotel } = useChatSession()
   const {
     form: intakeForm,
     setForm: setIntakeForm,
@@ -85,6 +85,7 @@ export default function App() {
     <AppShell
       state={state}
       onSend={send}
+      onChangeHotel={changeHotel}
       onNewTrip={handleNewTrip}
       stage={displayStage}
       onViewStage={setViewOverride}

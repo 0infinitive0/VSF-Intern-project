@@ -79,3 +79,14 @@ export async function sendMessage(
 export async function getPlan(sessionId: string): Promise<{ trip_plan: TripPlan | null }> {
   return request('GET', `/chat/${encodeURIComponent(sessionId)}/plan`)
 }
+
+/**
+ * Rebuild the hotel list for an already-built trip — backs the "đổi khách
+ * sạn" step-nav action (step-navigator.tsx). Deliberately NOT `sendMessage`:
+ * this hits a dedicated deterministic endpoint (no LLM call, see
+ * backend/src/api/routes.py's `change_hotel`) and never produces a chat
+ * message, so it must not go through the chat turn machinery at all.
+ */
+export async function changeHotel(sessionId: string): Promise<PlannerChatResponse> {
+  return request('POST', '/hotels/change', { session_id: sessionId })
+}

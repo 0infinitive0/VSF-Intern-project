@@ -56,6 +56,7 @@ function useViewportWidth() {
 export default function AppShell({
   state,
   onSend,
+  onChangeHotel,
   onNewTrip,
   stage,
   onViewStage,
@@ -75,6 +76,8 @@ export default function AppShell({
 }: {
   state: ChatState
   onSend: (text: string) => void
+  /** Rebuilds the hotel list without a chat turn — see step-navigator.tsx. */
+  onChangeHotel: () => void
   onNewTrip: () => void
   stage: StageView
   onViewStage: (stage: StageView) => void
@@ -195,6 +198,7 @@ export default function AppShell({
           <ChatPanel
             state={state}
             onSend={onSend}
+            onChangeHotel={onChangeHotel}
             stage={stage}
             onViewStage={onViewStage}
             width={effectiveChatWidth}

@@ -26,6 +26,7 @@ from src.agents.session import (
     TurnResult,
     debug_persist_hook,
     derive_stage,
+    handle_frontend_hotel_change,
     process_chat_turn,
     supabase_persist_hook,
     suggestions_for,
@@ -34,6 +35,7 @@ from src.api.streaming import STREAM_HEADERS, TurnEmitter, emitting_to, sse_stre
 from src.config import get_settings
 from src.models.schemas import (
     AttractionDetailPayload,
+    ChangeHotelRequest,
     HotelDetailPayload,
     IntakeStatus,
     PlannerChatRequest,
@@ -304,6 +306,47 @@ def select_hotel(request: SelectHotelRequest) -> PlannerChatResponse:
         except Exception as exc:
             logger.exception("Chat error for session %s", session_id)
             raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/hotels/change", response_model=PlannerChatResponse)
+def change_hotel(request: ChangeHotelRequest) -> PlannerChatResponse:
+    """Rebuild the hotel list for an already-built trip, deterministically —
+    no LLM call, no chat message (see `handle_frontend_hotel_change`). Backs
+    the "đổi khách sạn" nav action (frontend step-navigator.tsx): the intent
+    is already known from the UI, so there's nothing for a chatbot turn to
+    classify, only a hotel search to run.
+    """
+    session_id = str(request.session_id)
+    registry.evict_expired()
+    session = registry.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
+
+    with session.lock:
+        try:
+            result = handle_frontend_hotel_change(session)
+        except Exception as exc:
+            logger.exception("Hotel-change error for session %s", session_id)
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    if result.text.startswith("SYSTEM ERROR:") or not session.pending_hotel_selection:
+        safe_reply = sanitize_system_error(result.text, session_id=session_id)
+        raise HTTPException(status_code=400, detail=safe_reply)
+
+    return PlannerChatResponse(
+        session_id=session_id,
+        reply="",
+        suggestions=[],
+        stage=derive_stage(result, session),
+        hotel_options=to_hotel_options_payload(session.pending_hotel_selection),
+        trip_plan=to_trip_plan_payload(session.trip_data),
+        intake=IntakeStatus.from_state(session.intake_state, session.hotel_pref_state),
+        requires_stay_dates=False,
+        compound_min_price=session.pending_hotel_selection.get("compound_min_price"),
+        compound_max_price=session.pending_hotel_selection.get("compound_max_price"),
+        all_preferences=session.pending_hotel_selection.get("all_preferences") or [],
+        active_preferences=session.pending_hotel_selection.get("active_preferences") or [],
+    )
 
 
 @router.post("/planner_chat", response_model=PlannerChatResponse)
