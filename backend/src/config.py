@@ -69,6 +69,10 @@ class Settings(BaseSettings):
         "deploy — the operational rollback for R1/R2/R3 in that plan.",
     )
 
+    jailbreak_guard_mode: Literal["block", "log", "off"] = Field(
+        default="block",
+        description="How to handle high-confidence user jailbreak attempts before any LLM call.",
+    )
 
     # Mapbox
     mapbox_access_token: str = ""

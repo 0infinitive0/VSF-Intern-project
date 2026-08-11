@@ -39,6 +39,7 @@ from src.agents.state import TripState, initial_state
 from src.agents.supervisor import decide_route_by_llm
 from src.api.streaming import _DeltaGate, emit_phase, emit_reset
 from src.config import get_settings
+from src.guardrails.jailbreak import detect_jailbreak
 from src.i18n import SUPPORTED_LANGUAGES, t
 from src.models.schemas import sanitize_system_error
 from src.services.hotel_selection import HotelPreferenceState, _has_budget_signal
@@ -925,7 +926,41 @@ def process_chat_turn(
     enables token streaming on the `_run_chat_agent` branch); every other
     caller's default False keeps behavior byte-identical to before.
     """
-    result = _process_chat_turn(session, user_input, stay_dates=stay_dates, language=language, stream=stream)
+    guard_mode = getattr(get_settings(), "jailbreak_guard_mode", "block")
+    jailbreak = detect_jailbreak(user_input) if guard_mode != "off" else None
+    if jailbreak and jailbreak.blocked:
+        logger.warning(
+            "Blocked jailbreak input reason=%s length=%d",
+            jailbreak.reason,
+            len(user_input),
+        )
+        if guard_mode == "log":
+            result = _process_chat_turn(
+                session,
+                user_input,
+                stay_dates=stay_dates,
+                language=language,
+                stream=stream,
+            )
+            return _persist_turn(session, result, user_input)
+        emit_phase("received")
+        return TurnResult(
+            text=(
+                "I can help plan your trip, but I can't follow requests to override "
+                "or reveal system instructions."
+                if language == "en"
+                else "Mình có thể hỗ trợ lên kế hoạch chuyến đi, nhưng không thể làm theo "
+                "yêu cầu ghi đè hoặc tiết lộ hướng dẫn hệ thống."
+            ),
+            tool="chat",
+        )
+    result = _process_chat_turn(
+        session,
+        user_input,
+        stay_dates=stay_dates,
+        language=language,
+        stream=stream,
+    )
     return _persist_turn(session, result, user_input)
 
 
