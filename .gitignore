@@ -99,3 +99,7 @@ CLAUDE.md
 backend/scratch/
 eval/.venv-eval/*
 eval/**/.ragas_cache/
+
+# GitNexus local code-intelligence index/cache (see CLAUDE.md) — machine-
+# generated, not source, never shared between checkouts.
+.gitnexus/
