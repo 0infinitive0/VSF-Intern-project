@@ -94,6 +94,11 @@ class DayTheme:
     day_number: int
     title: str
     query: str
+    # "user_specified" ⇒ the user explicitly named this day's theme (e.g. via
+    # replan_day); normalize_day_themes must preserve title/query verbatim
+    # instead of deriving them from trip-level preferences. Default keeps
+    # every existing positional constructor call valid.
+    selection_mode: str = "auto"
 
 
 @dataclass(frozen=True)
@@ -530,16 +535,24 @@ def normalize_day_themes(
         except (TypeError, ValueError):
             continue
         query = str(raw.get("query") or "").strip()
-        title = _theme_title_from_query(query)
-        if clean_preferences and 1 <= day_number <= number_of_days:
-            title, query = _preference_theme_for_day(clean_preferences, day_number, query)
+        user_specified = str(raw.get("selection_mode") or "").strip() == "user_specified"
+        if user_specified:
+            # The user explicitly named this day's theme (e.g. via replan_day) —
+            # preserve title/query verbatim, never re-derive from preferences.
+            title = str(raw.get("title") or "").strip() or _theme_title_from_query(query)
+        else:
+            title = _theme_title_from_query(query)
+            if clean_preferences and 1 <= day_number <= number_of_days:
+                title, query = _preference_theme_for_day(clean_preferences, day_number, query)
         key = title.casefold()
         if 1 <= day_number <= number_of_days and query:
             duplicate_count = sum(existing.title.startswith(title) for existing in by_day.values())
             if duplicate_count:
                 title = f"{title} - khu vực {duplicate_count + 1}"
                 key = title.casefold()
-            by_day[day_number] = DayTheme(day_number, title, query)
+            by_day[day_number] = DayTheme(
+                day_number, title, query, selection_mode="user_specified" if user_specified else "auto"
+            )
             used.add(key)
 
     fallback_pairs = [
@@ -580,6 +593,7 @@ def serialize_day_themes(themes: Sequence[DayTheme]) -> list[dict[str, Any]]:
             "day_number": theme.day_number,
             "title": theme.title,
             "query": theme.query,
+            "selection_mode": theme.selection_mode,
         }
         for theme in themes
     ]

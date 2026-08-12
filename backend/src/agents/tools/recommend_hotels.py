@@ -403,17 +403,12 @@ def recommend_hotels(
             existing_by_id[hotel_id]["preferences"] = prefs
         else:
             # Do not blindly label newly fetched hotels with every requested
-            # preference. A pill should only be present when this specific
-            # hotel actually satisfies that accumulated filter.
-            data["preferences"] = (
-                [
-                    tag
-                    for tag in current_pref_ids
-                    if hotel_matches_amenity_tag(data, tag, sea_view_hotel_ids)
-                ]
-                if previous_active_ids
-                else list(current_pref_ids)
-            )
+            # preference — including on the very first request. A pill must
+            # only be present when this specific hotel actually satisfies
+            # that accumulated filter.
+            data["preferences"] = [
+                tag for tag in current_pref_ids if hotel_matches_amenity_tag(data, tag, sea_view_hotel_ids)
+            ]
             existing_by_id[hotel_id] = data
             
     combined_options = list(existing_by_id.values())

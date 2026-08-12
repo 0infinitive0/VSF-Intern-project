@@ -278,6 +278,44 @@ def test_recommend_hotels_only_tags_previous_hotels_that_match_a_new_amenity(mon
     assert options_by_id["fresh"]["preferences"] == ["pool"]
 
 
+def test_recommend_hotels_does_not_blindly_label_first_request_hotels_that_do_not_match(monkeypatch):
+    """Bug B: on the very first amenity request -- no pending_hotel_selection at
+    all, so previous_active_ids is empty -- every newly fetched hotel used to be
+    labelled with every requested preference, bypassing hotel_matches_amenity_tag.
+    A pill must only appear on a hotel that actually has the amenity."""
+    matching = _fake_option("matching", "Matching", 1)[0]
+    matching["amenities"] = ["Swimming pool"]
+    non_matching = _fake_option("non-matching", "No Pool", 2)[0]
+    non_matching["amenities"] = ["Wifi"]
+
+    monkeypatch.setattr(recommend_hotels_module, "_get_destination_id", lambda _destination: "dest-1")
+    monkeypatch.setattr(
+        recommend_hotels_module,
+        "select_hotel_candidates",
+        lambda *args, **kwargs: [
+            (matching, _fake_option("matching", "Matching", 1)[1]),
+            (non_matching, _fake_option("non-matching", "No Pool", 2)[1]),
+        ],
+    )
+    monkeypatch.setattr(recommend_hotels_module, "rank_hotel_candidates", lambda candidates, **_kwargs: candidates)
+
+    _, updates = invoke_tool_directly(
+        recommend_hotels,
+        initial_state("test-session"),
+        session_id="test-session",
+        destination="Đà Nẵng",
+        duration="3 ngày",
+        start_date="2026-08-10",
+        end_date="2026-08-13",
+        people="2 người",
+        hotel_amenity_prefs="pool",
+    )
+
+    options_by_id = {option["id"]: option for option in updates["pending_hotel_selection"]["options"]}
+    assert options_by_id["matching"]["preferences"] == ["pool"]
+    assert options_by_id["non-matching"]["preferences"] == []
+
+
 def test_recommend_hotels_checks_new_hotels_against_accumulated_preferences(monkeypatch):
     matches_both = _fake_option("matches-both", "Both", 1)[0]
     matches_both["amenities"] = ["Swimming pool", "Family room"]

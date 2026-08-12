@@ -121,7 +121,7 @@ def test_trip_edit_reply_confirms_update_without_rendering_the_trip_plan(monkeyp
 
     reply, updates = resolve_trip_edit_request(trip_data, "remove the museum", plan)
 
-    assert reply == "Điều chỉnh đã áp dụng."
+    assert reply == "Đã bỏ Tham quan bảo tàng."
     assert "Ngày 1" not in reply
     assert updates["trip_data"] is trip_data
     assert updates["trip_data"]["itinerary_items"]
@@ -329,3 +329,62 @@ def test_replan_day_changes_only_the_requested_theme_and_day_items(monkeypatch) 
     assert captured["preferences"] == "văn hóa"
     assert "markets" in captured["themes"][1]["query"]
     assert captured["exclude_attraction_ids"] == ["old-day-one", "old-day-two"]
+    # Bug A: the replanned day must be stamped user_specified so normalize_day_themes
+    # (called inside the real _build_trip_data, mocked away here) preserves it verbatim
+    # instead of overriding it with the trip's preference-driven theme.
+    assert captured["themes"][1]["selection_mode"] == "user_specified"
+    assert captured["themes"][0]["day_number"] == 1
+    assert "selection_mode" not in captured["themes"][0]
+
+
+def test_reused_template_day_themes_are_rethemed_not_frozen_from_the_donor_trip(monkeypatch) -> None:
+    """A Tier-1 reuse template's day_themes are historical data from a DIFFERENT
+    trip. If that donor trip had a user-specified day (selection_mode stamped by
+    _apply_day_replan), reusing its themes here must not freeze the donor's
+    theme -- re-theming to this trip's own preferences is the entire point of
+    reuse (trip_planner.py `_build_trip_data`, reusable_template branch)."""
+    from src.services.itinerary_reuse import ItineraryTemplate
+
+    template = ItineraryTemplate(
+        id="template-1",
+        destination_id="destination-1",
+        hotel_id="hotel-1",
+        duration_days=1,
+        day_themes=(
+            {
+                "day_number": 1,
+                "title": "Donor's theme",
+                "query": "donor query",
+                "selection_mode": "user_specified",
+            },
+        ),
+    )
+    monkeypatch.setattr(trip_builder_svc, "_get_destination_id", lambda _destination: "destination-1")
+    monkeypatch.setattr(trip_builder_svc, "_find_reusable_template", lambda _query: template)
+
+    captured = {}
+
+    class _Stop(Exception):
+        pass
+
+    def _fake_normalize(raw_themes, _number_of_days, _preferences):
+        captured["raw_themes"] = raw_themes
+        raise _Stop()
+
+    monkeypatch.setattr(trip_builder_svc, "normalize_day_themes", _fake_normalize)
+
+    hotel = {"id": "hotel-1", "coordinates": "10.7,106.7", "destination_id": "destination-1"}
+    try:
+        trip_builder_svc._build_trip_data(
+            "Đà Nẵng",
+            "1 ngày",
+            "2 người",
+            "ẩm thực",
+            preselected_hotel=hotel,
+        )
+    except _Stop:
+        pass
+
+    assert "raw_themes" in captured
+    assert captured["raw_themes"][0]["selection_mode"] == "auto"
+    assert captured["raw_themes"][0]["title"] == "Donor's theme"

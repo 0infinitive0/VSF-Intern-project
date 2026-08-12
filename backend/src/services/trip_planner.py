@@ -607,7 +607,16 @@ def _build_trip_data(
     )
     reusable_template = _find_reusable_template(reuse_query) if themes_override is None else None
 
-    raw_themes = themes_override or (list(reusable_template.day_themes) if reusable_template else None)
+    # A reused template's day_themes are historical data from a *different*
+    # trip. Reset selection_mode so a donor trip's user-specified day doesn't
+    # block re-theming to this trip's own preferences below -- re-theming a
+    # reused template is the entire point of Tier-1 reuse, unlike
+    # themes_override (a same-trip edit, whose selection_mode is authoritative).
+    raw_themes = themes_override or (
+        [{**theme, "selection_mode": "auto"} for theme in reusable_template.day_themes]
+        if reusable_template
+        else None
+    )
     if raw_themes is not None:
         themes = normalize_day_themes(raw_themes, number_of_days, preferences)
     else:
@@ -1374,7 +1383,14 @@ def _apply_day_replan(current_data: dict[str, Any], operation: EditOperation) ->
         raise ValueError("Kế hoạch hiện tại không có chủ đề theo ngày.")
     for value in themes:
         if int(value.get("day_number") or 0) == operation.day_number:
-            value.update({"day_number": operation.day_number, "title": title, "query": query})
+            value.update(
+                {
+                    "day_number": operation.day_number,
+                    "title": title,
+                    "query": query,
+                    "selection_mode": "user_specified",
+                }
+            )
     rebuilt = _build_trip_data(
         destination,
         duration,
@@ -1541,7 +1557,8 @@ def resolve_trip_edit_request(
         current_data.setdefault("adjustments", []).extend(adjustments)
         _persist_itinerary_metadata(current_data)
         logger.info("Applied LLM edit plan: %s", [operation.operation for operation in plan.operations])
-        reply = "Adjustment applied." if language == "en" else "Điều chỉnh đã áp dụng."
+        fallback_reply = "Adjustment applied." if language == "en" else "Điều chỉnh đã áp dụng."
+        reply = "; ".join(adjustments) if adjustments else fallback_reply
         return reply, {"trip_data": current_data}
     except Exception as exc:
         logger.exception("Failed to apply LLM edit plan")
