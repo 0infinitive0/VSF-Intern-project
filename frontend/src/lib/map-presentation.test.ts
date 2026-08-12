@@ -38,4 +38,24 @@ describe('highlightedRouteKeys', () => {
   it('uses exactly the legend pill route when one is hovered', () => {
     expect([...highlightedRouteKeys(SEGMENTS, 'place-1', 'c')]).toEqual(['c'])
   })
+
+  // map_implementation_spec.md §2 "Double-Leg Highlight": activating ONE
+  // place must light the leg arriving at it AND the leg leaving it, while
+  // every leg further down the chain stays unlit (the map dims those). A
+  // 4-place chain is the smallest fixture where "leaves the rest out" is a
+  // real assertion rather than a side effect of the chain being too short.
+  it('lights both the arriving and the departing leg of one place, and nothing beyond them', () => {
+    const chain = [
+      { segKey: 'h1', fromKey: 'hotel', toKey: 'place-1' },
+      { segKey: 's12', fromKey: 'place-1', toKey: 'place-2' },
+      { segKey: 's23', fromKey: 'place-2', toKey: 'place-3' },
+      { segKey: 's3h', fromKey: 'place-3', toKey: 'hotel' },
+    ] as RouteSegment[]
+    expect([...highlightedRouteKeys(chain, 'place-2', null)]).toEqual(['s12', 's23'])
+  })
+
+  it('lights the single adjacent leg when a place sits at the end of the chain', () => {
+    expect([...highlightedRouteKeys(SEGMENTS, 'place-2', null)]).toEqual(['b', 'c'])
+    expect([...highlightedRouteKeys(SEGMENTS, 'unknown-place', null)]).toEqual([])
+  })
 })

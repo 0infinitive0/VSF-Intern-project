@@ -17,20 +17,17 @@ const RAY_SOURCE = 'hotel-distance-rays'
 const HALO_SOURCE = 'hotel-selection-halo'
 // Drive is 3 stacked layers at the same coordinates (map_line_animation_effects.md
 // §2.1): a white casing underneath, the per-leg-colored main line, and a
-// white "flow" pulse on top. Walk is a single dotted line (no casing). Both
-// z-order (add order, casing first = bottom) and filter come from this list.
+// white moving bar on top. Walk has no casing (spec §2.2) — a colored line
+// with white dots marching along it. Both moving overlays are gradient
+// layers, see travelGradient below. Add order == z-order (casing at the
+// bottom, the two moving overlays on top so nothing paints over them).
 const DRIVE_CASING_LAYER = 'route-drive-casing'
 const DRIVE_LAYER = 'route-drive'
 const WALK_LAYER = 'route-walk'
 const FALLBACK_LAYER = 'route-fallback'
 const DRIVE_FLOW_LAYER = 'route-drive-flow'
-const ROUTE_LAYER_IDS = [DRIVE_CASING_LAYER, DRIVE_LAYER, WALK_LAYER, FALLBACK_LAYER, DRIVE_FLOW_LAYER] as const
-// Only the flow overlay and the walk line carry motion — fallback is an
-// honest straight-line estimate, not a real route, and never gets the
-// "flowing" treatment that would make it look like real navigated data;
-// the casing/main drive lines are solid (the flow layer on top is what
-// reads as "moving"), so they don't need a dasharray at all.
-const ANIMATED_LAYERS = [DRIVE_FLOW_LAYER, WALK_LAYER] as const
+const WALK_FLOW_LAYER = 'route-walk-flow'
+const ROUTE_LAYER_IDS = [DRIVE_CASING_LAYER, DRIVE_LAYER, WALK_LAYER, FALLBACK_LAYER, DRIVE_FLOW_LAYER, WALK_FLOW_LAYER] as const
 const RAY_LAYER = 'hotel-distance-rays-line'
 const HALO_LAYER = 'hotel-selection-halo-circle'
 
@@ -38,12 +35,12 @@ const HALO_LAYER = 'hotel-selection-halo-circle'
 // anymore, see startDrawIn() below for that.
 const ROUTE_FADE_MS = 400
 
-// Mapbox GL requires every line-dasharray entry to be positive — a literal
-// 0 (rather than a very small gap) makes the WHOLE layer disappear in some
-// renderers. Only used inside animatedDash() below; the solid layers
-// (casing/drive/fallback) don't set line-dasharray at all anymore, so they
-// can't hit this.
-const DASH_EPSILON = 0.01
+// Fallback's static dash, in Mapbox's dasharray unit (multiples of the
+// layer's own line-width): sparse and faint so an estimated straight line
+// never passes for navigated data. It's the only dashed layer left — the
+// walking "dots" are now drawn by a gradient instead (see travelGradient),
+// because a dasharray fundamentally cannot animate smoothly.
+const FALLBACK_DASH: [number, number] = [0.6, 1.8]
 
 // Per-layer rest width/opacity/color, one row per role in
 // map_line_animation_effects.md §2: casing (white glow beneath drive),
@@ -54,64 +51,127 @@ const DASH_EPSILON = 0.01
 type PaintExpr = mapboxgl.DataDrivenPropertyValueSpecification<number>
 const LAYER_STYLE: Record<
   string,
-  { width: number; opacity: number; color: mapboxgl.DataDrivenPropertyValueSpecification<string>; opacityFn: (rest: number) => PaintExpr; widthFn?: (rest: number) => PaintExpr }
+  {
+    width: number
+    opacity: number
+    color: mapboxgl.DataDrivenPropertyValueSpecification<string>
+    opacityFn: (rest: number) => PaintExpr
+    widthFn?: (rest: number) => PaintExpr
+    dash?: [number, number]
+    /** Colored by an animated line-gradient instead of a flat line-color (see travelGradient). */
+    pulse?: PulseKind
+  }
 > = {
   [DRIVE_CASING_LAYER]: { width: 7, opacity: 0.75, color: '#fff', opacityFn: accentOpacityExpr, widthFn: mainWidthExpr },
   [DRIVE_LAYER]: { width: 4, opacity: 0.92, color: ['get', 'color'], opacityFn: mainOpacityExpr, widthFn: mainWidthExpr },
-  [WALK_LAYER]: { width: 5, opacity: 0.9, color: ['get', 'color'], opacityFn: mainOpacityExpr, widthFn: mainWidthExpr },
-  [FALLBACK_LAYER]: { width: 3, opacity: 0.45, color: ['get', 'color'], opacityFn: mainOpacityExpr, widthFn: mainWidthExpr },
-  [DRIVE_FLOW_LAYER]: { width: 2.4, opacity: 0.95, color: '#fff', opacityFn: accentOpacityExpr },
+  [WALK_LAYER]: { width: 4.5, opacity: 0.92, color: ['get', 'color'], opacityFn: mainOpacityExpr, widthFn: mainWidthExpr },
+  [FALLBACK_LAYER]: { width: 3, opacity: 0.45, color: ['get', 'color'], opacityFn: mainOpacityExpr, widthFn: mainWidthExpr, dash: FALLBACK_DASH },
+  // The two moving overlays, both at the spec's full 0.95 — they're meant to
+  // read as a bright white highlight travelling along the leg, so anything
+  // dimmer just disappears against the colored line underneath.
+  [DRIVE_FLOW_LAYER]: { width: 3, opacity: 0.95, color: '#fff', opacityFn: accentOpacityExpr, pulse: 'bar' },
+  [WALK_FLOW_LAYER]: { width: 2.6, opacity: 0.95, color: '#fff', opacityFn: accentOpacityExpr, pulse: 'dots' },
 }
-
-// Direction-of-travel dash animation — one shared mechanism for both
-// animated layers (§9 of the earlier animation spec: never one animation
-// loop per segment/leg, one mechanism for the whole route regardless of how
-// many legs/days are in it). Values are map_line_animation_effects.md §2's
-// raw px/timing converted to Mapbox's dasharray unit (multiples of the
-// layer's own line-width): drive flow is 14px dash / 120px gap at weight
-// 2.4px -> 14/2.4=5.83, 120/2.4=50, 3.4s cycle, matching the spec exactly.
-// Walk's raw spec value (2px/9px at width 4) rendered essentially
-// invisibly in testing, so it's sized up here (width 5, 0.9/3.2) while
-// keeping the same "small dot, wide gap" character and the spec's 1.6s cycle.
-const FLOW: Record<string, { dash: number; gap: number; cycleMs: number }> = {
-  [DRIVE_FLOW_LAYER]: { dash: 14 / 2.4, gap: 120 / 2.4, cycleMs: 3400 },
-  [WALK_LAYER]: { dash: 0.9, gap: 3.2, cycleMs: 1600 },
-}
-
-// Mapbox GL caches every distinct `line-dasharray` it's ever been asked to
-// draw in ONE shared, fixed-size texture (LineAtlas) — each new pattern
-// claims space permanently and is never evicted
-// (line_atlas.js: `if (this.nextRow + rowHeight > this.height) return
-// warnOnce("LineAtlas out of space"), null`). Feeding it a raw elapsed-time
-// float every single animation frame mints a virtually unique pattern on
-// EVERY frame (two layers × ~60fps), which silently exhausts that atlas
-// within minutes — after which the layer needing a new pattern just stops
-// drawing, no error, no crash, the line vanishes. This is exactly what made
-// the walking route disappear (drive happened to still have room). Mapbox's
-// own "animate a line" example avoids this by cycling a small, FIXED set of
-// precomputed dasharrays instead of an unbounded continuous ramp — FLOW_STEPS
-// quantizes to the same fix: only this many distinct patterns per layer ever
-// exist, so they're reused/cache-hit from the atlas forever after warm-up.
-const FLOW_STEPS = 24
 
 /**
- * Phase-shifts a fixed [dash, gap] pattern by elapsed time, quantized to
- * FLOW_STEPS discrete positions per cycle (see FLOW_STEPS doc above) — for
- * pattern [D, G] with period P = D+G, at offset o ∈ [0, P): while o is still
- * inside the dash (o < D) the visible remainder is (D - o) then a full
- * [G, D, G]; once o has moved into the gap (o >= D) nothing is visible yet,
- * then the remaining gap then a full [D, G]. GL tiles whatever 4-tuple is
- * given, so this alone represents the shifted infinite pattern — no
- * per-frame DOM work, no React state, just one setPaintProperty call per
- * animated layer.
+ * Direction-of-travel motion (map_line_animation_effects.md §2): a bright
+ * white bar sweeping each drive leg, and white dots marching along each walk
+ * leg.
+ *
+ * Both are animated `line-gradient`s, NOT scrolling `line-dasharray`s, and
+ * that choice is the whole reason they can run at display rate. A dasharray
+ * pattern is baked into a texture atlas by the WORKER during tile parse
+ * (LineBucket.populate -> addConstantDashes); the draw call only ever looks
+ * the baked pattern up (LineAtlas.getDash returns this.positions[key], it
+ * never adds one). So every new dasharray value has to wait on a tile
+ * re-parse round-trip before it can show — which caps the effective frame
+ * rate no matter how often setPaintProperty is called, and is exactly why
+ * the earlier scrolling-dash version looked like ~30fps. A line-gradient is
+ * instead rasterized into a small ramp texture on the MAIN thread inside the
+ * render pass (keyed by gradientVersion), so rewriting it every frame is
+ * cheap and lands in that same frame.
+ *
+ * That's also why walking lost its dashed line-dasharray: the dots ARE the
+ * gradient now, which is the only way they can move smoothly.
+ *
+ * Trade-off worth knowing: `line-progress` is normalized per FEATURE, so a
+ * leg's motion is timed and sized relative to that leg, not in absolute
+ * pixels — every leg completes a cycle together regardless of length. It
+ * reads as "this is the direction you travel" rather than as one continuous
+ * stream flowing down the whole route like the Leaflet original.
  */
-function animatedDash(dash: number, gap: number, cycleMs: number, elapsedMs: number): [number, number, number, number] {
-  const period = dash + gap
-  const step = Math.floor(((elapsedMs % cycleMs) / cycleMs) * FLOW_STEPS)
-  const offset = (step / FLOW_STEPS) * period
-  return offset < dash
-    ? [Math.max(DASH_EPSILON, dash - offset), gap, dash, gap]
-    : [DASH_EPSILON, Math.max(DASH_EPSILON, period - offset), dash, gap]
+type PulseKind = 'bar' | 'dots'
+
+/** One sweep of the drive bar from before a leg's start to past its end. */
+const BAR_CYCLE_MS = 3_400
+/** Half-extent of the bar's soft edge, and of its solid core, as a fraction of leg length. */
+const BAR_HALF_WIDTH = 0.075
+const BAR_CORE_HALF_WIDTH = 0.028
+
+/** Time for the walking dots to advance by exactly one dot spacing (so the loop is seamless). */
+const DOTS_CYCLE_MS = 1_600
+const DOTS_PER_LEG = 13
+const DOT_HALF_WIDTH = 0.013
+
+const PULSE_CLEAR = 'rgba(255,255,255,0)'
+const PULSE_CORE = 'rgba(255,255,255,1)'
+
+/**
+ * Builds a line-progress gradient from a caller-supplied set of stops.
+ *
+ * `interpolate` demands strictly increasing stops, but stops get clamped
+ * into [0,1] as a shape slides off either end of the leg and would then
+ * collide with their predecessor. Each stop is therefore nudged just past
+ * the previous one rather than dropped, which keeps the expression valid at
+ * every phase without special-casing the ends.
+ */
+function buildGradient(addStops: (push: (at: number, color: string) => void) => void): mapboxgl.ExpressionSpecification {
+  const stops: Array<number | string> = []
+  let last = -1
+  const push = (at: number, color: string) => {
+    let value = Math.min(1, Math.max(0, at))
+    if (value <= last) value = last + 1e-4
+    if (value > 1) return
+    last = value
+    stops.push(value, color)
+  }
+  addStops(push)
+  return ['interpolate', ['linear'], ['line-progress'], ...stops] as mapboxgl.ExpressionSpecification
+}
+
+/**
+ * `phase` runs 0->1 over one cycle for both kinds.
+ *
+ * bar:  one solid-cored bar travelling the leg, entering and leaving past
+ *       the ends so it never pops into existence mid-line.
+ * dots: an evenly spaced train of dots shifted by one whole spacing per
+ *       cycle — at phase 1 each dot has taken its neighbour's place, so the
+ *       loop is seamless. The -1/+1 iterations are the dots half in and half
+ *       out at the two ends.
+ */
+function travelGradient(kind: PulseKind, phase: number): mapboxgl.ExpressionSpecification {
+  if (kind === 'bar') {
+    const center = phase * (1 + 2 * BAR_HALF_WIDTH) - BAR_HALF_WIDTH
+    return buildGradient((push) => {
+      push(0, PULSE_CLEAR)
+      push(center - BAR_HALF_WIDTH, PULSE_CLEAR)
+      push(center - BAR_CORE_HALF_WIDTH, PULSE_CORE)
+      push(center + BAR_CORE_HALF_WIDTH, PULSE_CORE)
+      push(center + BAR_HALF_WIDTH, PULSE_CLEAR)
+      push(1, PULSE_CLEAR)
+    })
+  }
+  return buildGradient((push) => {
+    push(0, PULSE_CLEAR)
+    for (let index = -1; index <= DOTS_PER_LEG; index++) {
+      const center = (index + phase) / DOTS_PER_LEG
+      if (center + DOT_HALF_WIDTH < 0 || center - DOT_HALF_WIDTH > 1) continue
+      push(center - DOT_HALF_WIDTH, PULSE_CLEAR)
+      push(center, PULSE_CORE)
+      push(center + DOT_HALF_WIDTH, PULSE_CLEAR)
+    }
+    push(1, PULSE_CLEAR)
+  })
 }
 
 export interface MapMarkerSpec {
@@ -191,17 +251,9 @@ function addRouteLayers(map: mapboxgl.Map) {
     [WALK_LAYER, walkFilter],
     [FALLBACK_LAYER, ['==', ['get', 'isFallback'], true]],
     [DRIVE_FLOW_LAYER, driveFilter],
+    [WALK_FLOW_LAYER, walkFilter],
   ] as const) {
     const style = LAYER_STYLE[id]
-    const flow = FLOW[id]
-    // Only the 2 animated layers get a dasharray from animatedDash (frame 0
-    // — a safe, already-quantized pattern, see FLOW_STEPS above); fallback
-    // keeps its own static dashed look; casing/drive stay solid (no key).
-    const dash: [number, number, number, number] | [number, number] | undefined = flow
-      ? animatedDash(flow.dash, flow.gap, flow.cycleMs, 0)
-      : id === FALLBACK_LAYER
-        ? [0.6, 1.8]
-        : undefined
     map.addLayer({
       id,
       type: 'line',
@@ -210,13 +262,15 @@ function addRouteLayers(map: mapboxgl.Map) {
       layout,
       paint: {
         ...fadeIn,
-        'line-color': style.color,
         'line-opacity': style.opacityFn(style.opacity),
         'line-width': style.widthFn ? style.widthFn(style.width) : style.width,
         // Fully hidden ([trim_start, trim_end] = [0,1] covers the whole
         // line — see startDrawIn's doc comment) until startDrawIn reveals it.
         'line-trim-offset': [0, 1],
-        ...(dash ? { 'line-dasharray': dash } : {}),
+        // line-gradient replaces line-color outright, so a moving overlay
+        // sets one or the other, never both.
+        ...(style.pulse ? { 'line-gradient': travelGradient(style.pulse, 0) } : { 'line-color': style.color }),
+        ...(style.dash ? { 'line-dasharray': style.dash } : {}),
       },
     } as mapboxgl.LineLayerSpecification)
   }
@@ -240,10 +294,9 @@ function addRouteLayers(map: mapboxgl.Map) {
 // so unlike line-opacity above this needs a manual requestAnimationFrame
 // tween instead of a paint transition.
 //
-// Also, unlike line-dasharray (see the LineAtlas doc on FLOW_STEPS above),
-// line-trim-offset is NOT texture/atlas-backed — it's two floats fed
-// straight into the shader per draw call via line-progress, no shared
-// cache to exhaust. Animating it continuously every frame is safe.
+// Cost-wise it behaves like line-gradient rather than line-dasharray (see
+// travelGradient above): it's two plain uniforms fed to the shader per draw
+// call, with no worker round-trip, so tweening it every frame is cheap.
 const DRAW_IN_MS = 900
 
 /** Numeric solver for a CSS-style cubic-bezier(x1,y1,x2,y2) easing curve — Newton-Raphson on the bezier's own parametric t, the same evaluation browsers use for `cubic-bezier()`. */
@@ -416,19 +469,32 @@ export default function MapView({ variant, theme, markers, segments, hoveredId, 
     return startDrawIn(map)
   }, [segments, status, styleVersion, variant, mapRef])
 
+  // Double-leg highlight (map_implementation_spec.md §2/§3): picking ONE
+  // place lights up BOTH legs touching it — the one arriving at it and the
+  // one leaving it — because highlightedRouteKeys matches a segment when
+  // the active id is at EITHER endpoint (its fromKey/toKey pair is the
+  // spec's `ids: [id_start, id_end]`), never just the arriving one.
+  //
+  // `hoveredId ?? selectedId` is the spec's `hovered || selected`: a live
+  // hover wins, but a click-through selection keeps its two legs lit after
+  // the pointer leaves. This mirrors what the marker effect above already
+  // does with the same two ids — routes and pins now agree on what "active"
+  // means instead of routes tracking hover alone.
   useEffect(() => {
     const map = mapRef.current
     if (!map || status !== 'ready' || variant !== 'workspace' || !map.getSource(ROUTE_SOURCE)) return
-    const activeSegmentKeys = highlightedRouteKeys(segments, hoveredId, null)
-    const active = hoveredId != null
+    const activeId = hoveredId ?? selectedId
+    const activeSegmentKeys = highlightedRouteKeys(segments, activeId, null)
+    const active = activeId != null
     for (const segment of segments) map.setFeatureState({ source: ROUTE_SOURCE, id: segment.segKey }, { hovered: activeSegmentKeys.has(segment.segKey), dimmed: active && !activeSegmentKeys.has(segment.segKey) })
-  }, [hoveredId, segments, status, styleVersion, variant, mapRef])
+  }, [hoveredId, selectedId, segments, status, styleVersion, variant, mapRef])
 
-  // Direction-of-travel flow: one requestAnimationFrame loop, two
-  // setPaintProperty calls per frame (drive's flow overlay + walk's own
-  // line — ANIMATED_LAYERS), regardless of how many legs/days are on
-  // screen — never one loop per segment. Quantized via FLOW_STEPS (see its
-  // doc comment above addRouteLayers) so this never floods LineAtlas.
+  // Direction-of-travel motion: ONE requestAnimationFrame loop writing one
+  // paint property per moving overlay, regardless of how many legs/days are
+  // on screen — never one loop per segment. Runs at display rate with no
+  // quantization at all, because line-gradient updates on the main thread
+  // (see travelGradient's doc comment for why the earlier
+  // scrolling-dasharray version could not).
   useEffect(() => {
     const map = mapRef.current
     if (!map || status !== 'ready' || variant !== 'workspace' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
@@ -437,11 +503,12 @@ export default function MapView({ variant, theme, markers, segments, hoveredId, 
     const tick = (time: number) => {
       if (!start) start = time
       const elapsed = time - start
-      for (const id of ANIMATED_LAYERS) {
-        if (map.getLayer(id)) {
-          const { dash, gap, cycleMs } = FLOW[id]
-          map.setPaintProperty(id, 'line-dasharray', animatedDash(dash, gap, cycleMs, elapsed))
-        }
+      for (const [id, kind, cycleMs] of [
+        [DRIVE_FLOW_LAYER, 'bar', BAR_CYCLE_MS],
+        [WALK_FLOW_LAYER, 'dots', DOTS_CYCLE_MS],
+      ] as const) {
+        if (!map.getLayer(id)) continue
+        map.setPaintProperty(id, 'line-gradient', travelGradient(kind, (elapsed % cycleMs) / cycleMs))
       }
       frame = requestAnimationFrame(tick)
     }
