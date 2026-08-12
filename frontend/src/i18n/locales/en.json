@@ -262,6 +262,10 @@
 
   "legDistanceKm": "{{km}} km",
   "legDurationMins": "~{{mins}} min",
+  "durationHoursOne": "{{count}} hour",
+  "durationHoursOther": "{{count}} hours",
+  "durationMinutesOne": "{{count}} min",
+  "durationMinutesOther": "{{count}} mins",
   "legSamePlace": "Same place",
   "legCrowFly": "≈ {{km}} km as the crow flies",
   "routeProfile.driving-traffic": "Car",

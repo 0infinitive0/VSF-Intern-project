@@ -123,7 +123,9 @@ export default function TripOverviewTab({
               </div>
             )}
             {hotel.description && (
-              <div className="text-[12px] text-on-surface-muted font-normal mt-[2px]">{hotel.description}</div>
+              <div className="text-[12px] text-on-surface-muted font-normal mt-[2px] line-clamp-2">
+                {hotel.description}
+              </div>
             )}
           </div>
           {hotel.source_url && hotel.source_platform && (

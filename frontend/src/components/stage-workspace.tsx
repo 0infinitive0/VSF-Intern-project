@@ -4,6 +4,7 @@ import DayTimeline from './day-timeline'
 import MapView, { type MapMarkerSpec } from './map-view'
 import PlaceDetailPanel from './place-detail-panel'
 import TripOverviewTab from './trip-overview-tab'
+import { placeNameFromActivity } from '../lib/activity-name'
 import { useMapSync } from '../hooks/use-map-sync'
 import { legBetween, type Leg } from '../lib/leg'
 import { formatTripDateRange } from '../lib/format-trip-dates'
@@ -319,7 +320,7 @@ export default function StageWorkspace({
         {focused && context && (
           <PlaceDetailPanel
             placeId={context.item.reference_id!}
-            name={context.item.activity}
+            name={placeNameFromActivity(context.item.activity)}
             kind={context.item.kind}
             dayNumber={context.day.day_number}
             startTime={context.item.start_time}

@@ -262,6 +262,10 @@
 
   "legDistanceKm": "{{km}} km",
   "legDurationMins": "~{{mins}} phút",
+  "durationHoursOne": "{{count}} tiếng",
+  "durationHoursOther": "{{count}} tiếng",
+  "durationMinutesOne": "{{count}} phút",
+  "durationMinutesOther": "{{count}} phút",
   "legSamePlace": "Cùng địa điểm",
   "legCrowFly": "≈ {{km}} km đường chim bay",
   "routeProfile.driving-traffic": "Ô tô",

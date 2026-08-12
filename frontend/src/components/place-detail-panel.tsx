@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import RemoteImage from './remote-image'
 import { useAttractionDetail } from '../hooks/use-attraction-detail'
 import { formatCurrency } from '../lib/format-currency'
+import { stripSeconds } from '../lib/item-duration'
 import { kindAccent } from '../lib/map-colors'
 import type { Leg } from '../lib/leg'
 import type { AttractionDetail } from '../types'
@@ -60,7 +61,7 @@ export default function PlaceDetailPanel({
   // Day + time come from the timeline item, never from the detail endpoint —
   // null start_time → only "Ngày N", no invented hour (phase-09).
   const dayContext = startTime
-    ? `${t('dayLabel', { n: dayNumber })} · ${startTime}`
+    ? `${t('dayLabel', { n: dayNumber })} · ${stripSeconds(startTime)}`
     : t('dayLabel', { n: dayNumber })
 
   // Adult and child fares are reported independently — 0 → "Miễn phí" for
