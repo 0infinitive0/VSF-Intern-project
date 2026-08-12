@@ -1,13 +1,13 @@
 ---
-phase: 8
-title: "Audit log and state patch eval"
+phase: 10
+title: "Audit log and State Patch Accuracy eval"
 status: pending
 priority: P3
 effort: "1.5d"
-dependencies: [2]
+dependencies: [3]
 ---
 
-# Phase 8: Audit log and state patch eval
+# Phase 10: Audit log and State Patch Accuracy eval
 
 ## Overview
 
@@ -67,7 +67,7 @@ originally reported bugs become permanent regression cases.
 - Create: `backend/src/services/state_audit.py`
 - Create: `eval/datasets/state_patches.jsonl`
 - Create: `eval/harness/score_state_patches.py`
-- Modify: `backend/src/services/travel_state.py` — emit applied/rejected for auditing
+- Modify: `backend/src/domain/travel_state.py` — emit applied/rejected for auditing
 - Modify: `eval/README.md`, `backend/Makefile` — add the eval target
 - Possibly create: `backend/scripts/migrations/*_state_audit_logs.sql` (pending Open Question 3)
 
@@ -98,7 +98,7 @@ originally reported bugs become permanent regression cases.
 | Risk | Mitigation |
 |---|---|
 | Audit writes add latency to every turn | Best-effort and non-blocking; measure per-turn delta and record it. Drop to batched writes if measurable |
-| Audit table grows unbounded | Same retention policy as the Phase 5 checkpoint pruning cron; decide both together |
+| Audit table grows unbounded | Same retention policy as the Phase 4 checkpoint pruning cron; decide both together |
 | Eval dataset encodes today's wrong behavior as expected | Expected patches are derived from the requirements in Phases 1-7, not from observed output. Every case traces to a success criterion |
 | Scoring Vietnamese values is brittle (normalization) | Reuse `_normalize_for_match` from `hotel_selection.py` — already the repo's diacritic-insensitive comparison |
 | Duplicating the delivered RAGAS harness | This extends `eval/`, reusing its venv, results path, and baseline convention. No second harness |

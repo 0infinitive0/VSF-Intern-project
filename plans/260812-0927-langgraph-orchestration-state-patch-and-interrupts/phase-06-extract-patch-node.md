@@ -1,18 +1,18 @@
 ---
-phase: 3
-title: "Unified extract_patch node"
+phase: 6
+title: "extract_patch node"
 status: pending
 priority: P1
 effort: "2d"
-dependencies: [2]
+dependencies: [5]
 ---
 
-# Phase 3: Unified extract_patch node
+# Phase 6: extract_patch node
 
 ## Overview
 
 Replace three separate LLM extraction calls with one `extract_patch` node that emits a
-validated state patch. Makes the Phase 2 patch layer the authoritative writer.
+validated state patch. Makes the Phase 3 patch layer the authoritative writer.
 
 ## Problem
 
@@ -109,7 +109,7 @@ Grounding stays layered exactly as today: model proposes → pure function valid
 
 | Risk | Mitigation |
 |---|---|
-| llama3.1 emits invalid JSON patches | Strict parse + retry-once + rules fallback — the exact shape `plan_trip_edit` already runs in production. Measured in Phase 8 as State Patch Accuracy |
+| llama3.1 emits invalid JSON patches | Strict parse + retry-once + rules fallback — the exact shape `plan_trip_edit` already runs in production. Measured in Phase 10 as State Patch Accuracy |
 | One prompt covering all intents degrades vs three specialized ones | Table test is the gate. If accuracy drops, split extraction from intent classification — two calls is still fewer than three |
 | Removing edit-planner day-theme branch breaks post-plan replan | Day scope is rewritten to a path *before* the planner runs; `replan_day` still executes, it is just no longer the model's choice to make |
-| Correctable slots let a stray extraction clobber a confirmed fact | `operation: set` on an already-`SET` slot is logged to the Phase 8 audit trail; Phase 5 adds confirmation for high-cost fields (dates, destination) |
+| Correctable slots let a stray extraction clobber a confirmed fact | `operation: set` on an already-`SET` slot is logged to the Phase 10 audit trail; Phase 7 adds confirmation for high-cost fields (dates, destination) |

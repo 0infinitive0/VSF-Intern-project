@@ -1,13 +1,13 @@
 ---
-phase: 7
-title: "Amenity and radius hard filters"
+phase: 8
+title: "hotel_flow: hard filters, radius, center"
 status: pending
 priority: P2
-effort: "1.5d"
-dependencies: [2, 5]
+effort: "2d"
+dependencies: [7]
 ---
 
-# Phase 7: Amenity and radius hard filters
+# Phase 8: hotel_flow: hard filters, radius, center
 
 ## Overview
 
@@ -32,14 +32,43 @@ not a filtered one. There is no verb to remove a filter.
 validates them (`supabase_search.py:192-248`) — but `recommend_hotels` never builds them
 into `selection_kwargs` (:247-255). And there is no center concept: 3km from what?
 
-## Locked decision
+**Rating filter half-exists and silently lies.** `min_star_rating` is extracted
+(`supabase_search.py:214`) and passed to the RPC — but when nothing meets it, the code
+**falls back to unfiltered semantic matches** (`:281`, log line: *"No hotels met strict
+filters (star>=N). Returning semantic matches."*). So "đánh giá trên 4 sao" can return 3-star
+hotels with no indication the filter was dropped. Same anti-pattern as amenity, different
+symptom.
+
+**Amenity taxonomy is missing the common cases.** `_AMENITY_KEYWORD_TAGS`
+(`hotel_selection.py:751-761`) has 7 tags: non_smoking, pool, swimming_pool, wifi, parking,
+parking_lot, family. **No gym, no spa, no restaurant** — all three named as canonical in
+doc §19. They currently depend entirely on runtime LLM discovery via
+`discover_and_store_amenities`, which is not a dependable path for a common request.
+
+## Locked decisions
 
 **Center = the user's selected hotel.** When no hotel is selected, or the intended center is
-otherwise ambiguous, `interrupt()` and ask — which is why this phase depends on Phase 5.
+otherwise ambiguous, `interrupt()` and ask — which is why this phase depends on Phase 7.
+
+**Multi-amenity is AND.** "Kết hợp nhiều tiện ích" reads literally as all-must-match, so
+`{gym, pool}` returns only hotels with both. AND will return zero results more often on this
+dataset than OR would — that is handled by the binding-constraint report ("không có khách sạn
+nào vừa có gym vừa có hồ bơi; bỏ gym thì có 6"), **not** by silently relaxing to OR. Silent
+relaxation is the exact bug being removed from `:281`.
+
+**"Đánh giá trên 4 sao" is ambiguous and gets asked.** `star_rating` (1-5) and `review_score`
+(0-10) are different columns. "4 sao" alone means stars; "8/10" means review score; a bare
+"đánh giá trên 4" is ambiguous and follows the Phase 7 ask-don't-guess rule.
 
 ## Requirements
 
 - Functional: a requested amenity is a hard filter — every returned hotel satisfies it.
+- Functional: multiple amenities combine with AND; zero results report which one binds.
+- Functional: `gym`, `spa`, and `restaurant` exist in the built-in canonical taxonomy, not
+  only via runtime discovery.
+- Functional: `min_star_rating` becomes a real filter — the `:281` silent fallback is removed
+  and replaced by an explicit "no hotel meets N stars" report.
+- Functional: `min_review_score` becomes filterable (it is not, today).
 - Functional: filters are removable ("bỏ lọc hồ bơi") via patch, not only additive.
 - Functional: a radius search returns only hotels within the radius of the resolved center.
 - Functional: no selected hotel and no named center ⇒ ask; never silently pick one.
@@ -70,7 +99,7 @@ neither                     → interrupt("Bán kính 3km tính từ đâu?")
 ```
 
 Constraints live at `hotel_preferences.amenities` / `.radius_km` / `.center` — already in
-Phase 2's `ALLOWED_PATHS`, so add/remove are ordinary patch operations. `recommend_hotels`
+Phase 3's `ALLOWED_PATHS`, so add/remove are ordinary patch operations. `recommend_hotels`
 reads active constraints from state instead of accumulating them in `pending_hotel_selection`.
 
 ## Related Code Files
@@ -78,7 +107,7 @@ reads active constraints from state instead of accumulating them in `pending_hot
 - Modify: `backend/src/services/hotel_selection.py` — `select_hotel_candidates` (:73-169)
 - Modify: `backend/src/agents/tools/recommend_hotels.py` — pass radius/amenities (:247-255), stop blind merging (:419)
 - Create: `backend/src/services/search_center.py` — center resolution
-- Modify: `backend/src/services/travel_state.py` — radius validator (positive, ≤ max)
+- Modify: `backend/src/domain/travel_state.py` — radius validator (positive, ≤ max)
 - Create: `backend/tests/test_hotel_hard_filters.py`, `backend/tests/test_search_center.py`
 
 ## Implementation Steps
@@ -96,6 +125,10 @@ reads active constraints from state instead of accumulating them in `pending_hot
 ## Success Criteria
 
 - [ ] Every hotel returned for "có hồ bơi" satisfies `hotel_matches_amenity_tag(..., "pool")`
+- [ ] "có gym và hồ bơi" returns only hotels with **both**; zero results name which one binds
+- [ ] `gym`, `spa`, `restaurant` resolve from the built-in taxonomy without runtime discovery
+- [ ] "khách sạn trên 4 sao" never returns a 3-star hotel — no silent fallback
+- [ ] "đánh giá trên 4" asks whether it means stars or review score
 - [ ] "bỏ lọc hồ bơi" widens results; the pill disappears
 - [ ] "bán kính 3km" with a selected hotel returns only hotels within 3km of it
 - [ ] "bán kính 3km" with no selected hotel asks for the center
