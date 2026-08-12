@@ -312,6 +312,7 @@ export default function StageWorkspace({
             onHoverChange={mapSync.hoverMarker}
             onMarkerClick={handleMarkerClick}
             selectedId={focusedId}
+            colorByDay={resolvedTab === 'overview'}
           />
         </div>
 
