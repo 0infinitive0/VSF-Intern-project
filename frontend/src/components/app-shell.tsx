@@ -14,7 +14,7 @@ import type { ChatState, HotelOption, SessionSummary } from '../types'
 
 const DESKTOP_BREAKPOINT_PX = 768 // Tailwind `md`
 const SIDEBAR_PUSH_BREAKPOINT_PX = 1024 // Tailwind `lg`
-const SIDEBAR_COLLAPSED_PX = 76
+const SIDEBAR_COLLAPSED_PX = 68
 
 /** Tracks viewport width so chat-panel.tsx's own fixed-pixel `width` prop
  * (out of scope to modify this phase) can be given a sane value below `md`,

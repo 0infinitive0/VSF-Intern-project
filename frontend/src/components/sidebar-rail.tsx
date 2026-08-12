@@ -53,7 +53,7 @@ export default function SidebarRail({
       <aside
         className="fixed lg:relative inset-y-0 left-0 z-40 lg:z-30 shrink-0 flex flex-col gap-2.5 glass-panel overflow-hidden"
         style={{
-          width: collapsed ? '76px' : '248px',
+          width: collapsed ? '68px' : '252px',
           padding: collapsed ? '14px 13px' : '14px 12px',
           borderRadius: 0,
           // glass-panel's own `border` shorthand (--color-edge, all sides) sorts after
