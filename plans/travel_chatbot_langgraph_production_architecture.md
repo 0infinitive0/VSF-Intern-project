@@ -1862,6 +1862,101 @@ Production should use a persistent checkpointer rather than in-memory state.
 
 # 36. Recommended Python Project Structure
 
+The production graph is a state-patch workflow first. The supervisor routes
+work, but hotel, itinerary, and booking are scoped subgraphs backed by shared
+domain tools; they are not unrestricted independent agents. The supervisor
+receives a compact session manifest and data references, never full hotel or
+itinerary result sets.
+
+```text
+backend/
+├── src/
+│   ├── main.py
+│   ├── api/
+│   │   ├── chat.py
+│   │   ├── trips.py
+│   │   ├── hotels.py
+│   │   └── bookings.py
+│   │
+│   ├── graph/
+│   │   ├── graph.py              # Parent LangGraph workflow
+│   │   ├── state.py              # TravelGraphState + SessionManifest
+│   │   ├── contracts.py          # Agent/flow read, write, and required fields
+│   │   ├── impact_map.py         # State path -> affected domain flows
+│   │   ├── prompting.py          # Composes approved compact context + validates LLM output
+│   │   ├── nodes/
+│   │   │   ├── load_context.py    # Resolve compact session manifest/references
+│   │   │   ├── understand_request.py # Intent/extraction + deterministic validation
+│   │   │   ├── apply_change.py    # State patch + affected-flow calculation
+│   │   │   ├── route_or_replan.py # Task delegation, completion and loop limits
+│   │   │   ├── hotel.py          # Invokes hotel_flow
+│   │   │   ├── itinerary.py      # Invokes itinerary_flow
+│   │   │   ├── booking.py        # Confirmation-gated booking entry
+│   │   │   ├── answer.py          # Read-only questions and answers
+│   │   │   └── response.py
+│   │   ├── subgraphs/
+│   │   │   ├── hotel_flow.py     # Search -> availability -> filter -> rank
+│   │   │   ├── itinerary_flow.py # Retrieve -> schedule -> validate -> save
+│   │   │   └── booking_flow.py   # Interrupt -> hold -> booking -> handoff
+│   │   └── prompts/
+│   │       ├── base.md           # Shared safety, language, and response rules
+│   │       ├── supervisor.md     # Routing, delegation, and replanning instructions
+│   │       ├── understand.md     # Intent and structured-field extraction
+│   │       ├── hotel.md          # Hotel-search reasoning only
+│   │       ├── itinerary.md      # Itinerary-planning reasoning only
+│   │       ├── qa.md             # Read-only question answering
+│   │       ├── booking.md        # Clarification before deterministic booking actions
+│   │       ├── clarify.md        # Missing or ambiguous information requests
+│   │       └── response.md       # Final user-facing response composition
+│   │
+│   ├── tools/                     # Shared deterministic/external capabilities
+│   │   ├── hotels.py
+│   │   ├── places.py
+│   │   ├── routing.py
+│   │   ├── weather.py
+│   │   └── booking.py
+│   │
+│   ├── domain/
+│   │   ├── travel_state.py
+│   │   ├── state_patches.py
+│   │   ├── constraints.py
+│   │   ├── validators.py
+│   │   └── itinerary.py
+│   │
+│   ├── repositories/
+│   │   ├── trips.py
+│   │   ├── itineraries.py
+│   │   ├── hotels.py
+│   │   ├── messages.py
+│   │   └── audit_logs.py
+│   │
+│   ├── models/
+│   │   ├── trip.py
+│   │   ├── itinerary.py
+│   │   ├── hotel.py
+│   │   └── booking.py
+│   │
+│   └── services/
+│       ├── state_service.py
+│       ├── hotel_service.py
+│       ├── itinerary_service.py
+│       └── booking_service.py
+│
+└── migrations/
+```
+
+Only LLM-backed nodes load prompts. Validation within `understand_request`,
+patch/impact logic within `apply_change`, completion checks, availability,
+booking confirmation, and route/budget validation remain deterministic Python.
+
+`graph/contracts.py` limits each flow to the parameters and tools it needs.
+For example, `hotel_flow` may read trip dates and preferences and write hotel
+results or a selected hotel; it cannot write itinerary or booking state.
+`answer.py` is read-only. The parent graph remains responsible for task creation,
+completion checks, dynamic replanning, total-task limits, and loop limits.
+
+<!-- Superseded project-structure draft retained below for document history.
+
 ```text
 backend/
 |
@@ -1925,6 +2020,8 @@ backend/
 ```
 
 ---
+
+-->
 
 # 37. Example End-to-End Conversation
 
