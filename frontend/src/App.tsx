@@ -24,7 +24,7 @@ export default function App() {
     editingField: editingIntakeField,
     setEditingField: setEditingIntakeField,
   } = useIntakeForm(state.intake)
-  const [chatWidth, setChatWidth] = useState(380)
+  const [chatWidth, setChatWidth] = useState(352)
   const chatResize = usePanelResize(chatWidth, setChatWidth, { min: 300, max: 560 })
   const stage = deriveStageView(state)
 

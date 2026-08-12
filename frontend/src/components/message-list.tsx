@@ -60,7 +60,7 @@ export default function MessageList({
       {messages.length === 0 && !pending && (
         <div className="flex gap-2.5 items-end">
           <div className="w-6 h-6 flex-none rounded-[9px] bg-[linear-gradient(145deg,#5C93EE,#2C5FC9)] shadow-[0_4px_12px_-3px_rgba(44,95,201,0.55)] flex items-center justify-center">
-            <span className="text-on-primary text-[11px] font-semibold">V</span>
+            <span className="text-on-primary text-[11px] font-[590]">V</span>
           </div>
           <div className="max-w-[84%] bg-glass-3 text-on-surface border border-line rounded-[18px] rounded-bl-[6px] shadow-[0_6px_16px_-12px_rgb(var(--shadow-rgb)/0.7)] px-3.5 py-2.5 text-sm">
             {t('greeting')}

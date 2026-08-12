@@ -7,7 +7,7 @@ export default function ElapsedSpinner() {
   return (
     <div className="flex gap-2.5 items-end" aria-live="polite" aria-busy="true">
       <div className="w-6 h-6 flex-none rounded-[9px] bg-[linear-gradient(145deg,#5C93EE,#2C5FC9)] flex items-center justify-center">
-        <span className="text-on-primary text-[11px] font-semibold">V</span>
+        <span className="text-on-primary text-[11px] font-[590]">V</span>
       </div>
       <div className="flex flex-col gap-1.5">
         <div className="flex gap-1 px-[15px] py-[13px] rounded-[18px] bg-glass-3 border border-line">

@@ -140,7 +140,7 @@ export default function ChatPanel({
           aria-hidden="true"
         />
         <div className="flex-1 min-w-0">
-          <div className="text-[12.5px] font-semibold tracking-[-0.1px] text-on-surface truncate">
+          <div className="text-[12.5px] font-[590] tracking-[-0.1px] text-on-surface truncate">
             {tripTitle}
           </div>
           <div className="text-[10.5px] tracking-[0.01em] text-on-surface-muted">{stepLabel}</div>
@@ -150,7 +150,7 @@ export default function ChatPanel({
             <div
               key={dot.label}
               title={dot.label}
-              className={`w-[13px] h-[4px] rounded-[3px] transition-colors duration-500 ${
+              className={`w-[13px] h-[4px] rounded-[3px] transition-colors duration-[400ms] ${
                 dot.done ? 'bg-primary' : 'bg-fill2'
               }`}
             />

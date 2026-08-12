@@ -88,6 +88,13 @@
    would alter existing visuals. Declared at :root + body[data-theme="dark"] with the
    unlayered override winning, same cascade trick the pre-06/08 build relied on. */
 @theme {
+  /* Design's body{font-family} (V-OTA Planner.dc.html), not a Tailwind default —
+     Apple system fonts first, 'Be Vietnam Pro' (loaded in index.html) as the
+     Vietnamese-glyph fallback before Segoe UI/sans-serif. Previously undeclared,
+     so Tailwind emitted its own generic --font-sans default here instead. */
+  --font-sans: -apple-system, "SF Pro Display", "SF Pro Text", BlinkMacSystemFont,
+    "Be Vietnam Pro", "Segoe UI", sans-serif;
+
   --color-primary-fixed: rgba(58, 115, 222, 0.35);
   --color-primary-fixed-dim: rgba(58, 115, 222, 0.35);
 
@@ -147,6 +154,7 @@ body {
   background: var(--gradient-page);
   color: var(--color-on-surface);
   font-family: var(--font-sans);
+  font-synthesis-weight: none;
   letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

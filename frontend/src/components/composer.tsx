@@ -48,7 +48,7 @@ export default function Composer({
       <textarea
         ref={textareaRef}
         id="message-input"
-        className="composer-scrollbar flex-1 bg-transparent border-none rounded-none text-[13px] text-on-surface resize-none leading-normal focus:outline-none disabled:opacity-60 placeholder:text-on-surface-faint py-2"
+        className="composer-scrollbar flex-1 bg-transparent border-none rounded-none text-[13.5px] text-on-surface resize-none leading-normal focus:outline-none disabled:opacity-60 placeholder:text-on-surface-faint py-2"
         placeholder={t('composerPlaceholder')}
         rows={1}
         disabled={disabled}

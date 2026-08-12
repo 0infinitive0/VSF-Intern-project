@@ -39,7 +39,7 @@ export default function StepNavigator({
   ]
 
   return (
-    <nav className="flex items-center gap-1.5 px-3.5 py-2.5 border-b border-line shrink-0" aria-label={t('stepNavigatorLabel')}>
+    <nav className="flex items-center gap-[5px] px-3.5 py-2.5 border-b border-line shrink-0" aria-label={t('stepNavigatorLabel')}>
       {steps.map((step) => {
         const isCurrent = current === step.key
         const target = navigationTarget(step.key, { intakeComplete, hotelOptionsAvailable, hotelPicked })
@@ -58,7 +58,8 @@ export default function StepNavigator({
             disabled={!clickable}
             aria-current={isCurrent ? 'step' : undefined}
             aria-busy={busy || undefined}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-1.5 py-2 rounded-[12px] text-[11.5px] whitespace-nowrap transition-all disabled:cursor-default ${
+            style={{ transition: 'all .3s var(--ease-spring)' }}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-1.5 py-[7px] rounded-[12px] text-[11.5px] whitespace-nowrap disabled:cursor-default active:scale-[0.97] ${
               isCurrent
                 ? 'bg-button text-on-button font-semibold border border-button'
                 : clickable

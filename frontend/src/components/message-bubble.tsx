@@ -1,4 +1,16 @@
+import { useTranslation } from 'react-i18next'
 import type { ChatMessage } from '../types'
+
+/** `message.at` (ISO) → localized "HH:mm" caption, or null when absent
+ * (streaming placeholder bubbles, or any turn the backend didn't stamp) —
+ * never fabricate a time. Same locale-driven `toLocaleTimeString` pattern as
+ * `lib/session-date.ts`'s `toLocaleDateString` for history rows. */
+function formatMessageTime(at: string | undefined, locale: string): string | null {
+  if (!at) return null
+  const date = new Date(at)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
+}
 
 /**
  * MessageBubble — renders one chat turn per the Claude Design glassmorphism
@@ -18,8 +30,10 @@ export default function MessageBubble({
    * blinking cursor after the text (Phase 5, plan 260806-1602). */
   streaming?: boolean
 }) {
-  const { role, text, isError } = message
+  const { i18n } = useTranslation()
+  const { role, text, isError, at } = message
   const isUser = role === 'user'
+  const timeLabel = formatMessageTime(at, i18n.language)
 
   const radiusClass = isUser ? 'rounded-[18px] rounded-br-[6px]' : 'rounded-[18px] rounded-bl-[6px]'
 
@@ -35,7 +49,7 @@ export default function MessageBubble({
     >
       {!isUser && (
         <div className="w-6 h-6 flex-none rounded-[9px] bg-[linear-gradient(145deg,#5C93EE,#2C5FC9)] shadow-[0_4px_12px_-3px_rgba(44,95,201,0.55)] flex items-center justify-center">
-          <span className="text-on-primary text-[11px] font-semibold">V</span>
+          <span className="text-on-primary text-[11px] font-[590]">V</span>
         </div>
       )}
       <div className={`flex flex-col gap-1 max-w-[84%] min-w-0 ${isUser ? 'items-end' : 'items-start'}`}>
@@ -47,6 +61,11 @@ export default function MessageBubble({
             <span className="inline-block w-[2px] h-[1em] ml-0.5 -mb-0.5 bg-current animate-[vBlink_1s_step-end_infinite]" aria-hidden="true" />
           )}
         </div>
+        {timeLabel && (
+          <div className="text-[9.5px] font-medium tracking-[0.04em] text-on-surface-muted px-1">
+            {timeLabel}
+          </div>
+        )}
       </div>
     </div>
   )

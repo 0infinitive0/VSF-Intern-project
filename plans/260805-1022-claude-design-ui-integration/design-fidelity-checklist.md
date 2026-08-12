@@ -42,7 +42,10 @@ Bảng dưới đây biến "khớp design" thành danh sách tick. Quy tắc d�
 - [x] AI: bg `--g3`, fg `--t1`, border `--line`, shadow `0 6px 16px -12px rgba(--sh,.7)`
 - [x] User: bg `linear-gradient(145deg,#4F86E8,#2C5FC9)`, fg `#FCFDFE`, border `rgba(255,255,255,.22)`, shadow `0 8px 20px -10px rgba(44,95,201,.6)`
 - [x] Avatar AI: 24px, radius 9, `linear-gradient(145deg,#5C93EE,#2C5FC9)`, shadow `0 4px 12px -3px rgba(44,95,201,.55)`, chữ "V" 11px/590
-- [x] Timestamp: 9.5px/500/.04em, `--t3`, pad `0 4px`
+- [x] Timestamp: 9.5px/500/.04em, `--t3`, pad `0 4px` — **regression phát hiện 12/08/2026**:
+      dòng này từng tick nhưng `message-bubble.tsx` không render `message.at` ở đâu cả (chỉ
+      thiếu JSX, dữ liệu `ChatMessage.at` đã có sẵn). Đã vá lại đúng giá trị trên, ẩn caption
+      khi `at` là `undefined` thay vì bịa giờ.
 - [x] **Animation `vPop .5s cubic-bezier(.22,1,.36,1) both`** trên mỗi tin nhắn
 
 ### Chỉ báo suy nghĩ (`ChatPanel.dc.html:38-45`)
