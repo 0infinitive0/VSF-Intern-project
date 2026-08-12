@@ -1,18 +1,19 @@
 ---
 phase: 8
-title: "hotel_flow: hard filters, radius, center"
+title: "hotel_node: hard filters, radius, center"
 status: pending
 priority: P2
 effort: "2d"
 dependencies: [7]
 ---
 
-# Phase 8: hotel_flow: hard filters, radius, center
+# Phase 8: hotel_node — hard filters, radius, center
 
 ## Overview
 
 Turn amenity and radius from unreachable or advisory into real search constraints, with a
-deterministic center resolved from the user's selected hotel.
+deterministic center resolved from the user's selected hotel. This node is one of the
+supervisor's 4 worker nodes — the supervisor delegates hotel-related tasks here.
 
 ## Problem
 
@@ -95,7 +96,7 @@ Center resolution is a small deterministic function, not a model decision:
 ```
 selected hotel coordinates  → use it
 explicitly named POI/landmark → geocode against the attractions table
-neither                     → interrupt("Bán kính 3km tính từ đâu?")
+neither → interrupt("Bán kính 3km tính từ đâu?")
 ```
 
 Constraints live at `hotel_preferences.amenities` / `.radius_km` / `.center` — already in

@@ -44,35 +44,44 @@ An earlier revision of this plan kept both planes alive during an incremental mi
 was rejected: it accepted "two sources of truth during transition" as a standing risk, and it
 left every regex guard in place with nobody able to prove what depended on them.
 
-### The single plane
+### The single plane — with supervisor
 
 ```
 START → load_context → scope_guard → extract_patch → validate_patch
       → [interrupt when ambiguous] → apply_patch → next_question?
-      → detect_impact → hotel_flow | itinerary_flow | general_qa | none
+      → 🧠 supervisor (tạo task → chia cho worker → kiểm tra hoàn thành)
+          ├→ hotel_node
+          ├→ itinerary_node
+          ├→ booking_node (placeholder)
+          └→ qa_node
       → validate_result → respond → END
 ```
 
-All routing lives in **graph edges**. There is no `_decide_route`, no
-`decide_route_by_rules`, no regex intent zoo.
+**One supervisor orchestrates all routing.** It receives the patched state + intent,
+creates a task list, delegates each task to the appropriate worker node, and checks
+whether all tasks are complete before passing to response generation. If the supervisor
+LLM fails, `IMPACT_MAP` provides a deterministic fallback.
 
-**The ReAct agent survives as a leaf node, not a plane.** It handles the
+There is no `_decide_route`, no `decide_route_by_rules`, no regex intent zoo.
+
+**The ReAct agent survives as `qa_node`, a worker subgraph.** It handles the
 `general_question` intent only, keeping `query_hotel` and `query_hotel_rooms`.
 `recommend_hotels`, `select_hotel`, and `modify_trip_plan` stop being agent tools and become
-graph flows, so the model can no longer choose whether a trip gets rebuilt.
+worker node actions, so the model can no longer choose whether a trip gets rebuilt.
 
 ### What is deleted
 
 | Target | Size |
 |---|---|
 | `routing_decision.py` | 189 LOC |
-| `supervisor.py` | 108 LOC |
+| `supervisor.py` — **rewritten** as graph node, old tool-calling router deleted | 108 LOC |
 | 17 functions in `session.py` — `_process_chat_turn`, `_decide_route`, `_run_intake`, `_run_edit_draft`, `_run_chat_agent`, `_run_finalize`, `_run_recommend_hotels`, `_begin_new_trip_if_requested`, `_looks_like_*`, `_is_generic_*`, `_unsupported_destination_reply`, … | ~900 LOC |
 | `TripPreferenceUpdate`, `TripIntakeState.with_message`, `HotelPreferenceState.with_message` | ~250 LOC |
 | `graph.py::_ToolAdapter`, `SessionTools` | ~60 LOC |
 
 ≈ **1,400 LOC removed.** `session.py` shrinks 1656 → ~400 (`TripSession`, `SessionRegistry`,
-persist hooks).
+persist hooks). `supervisor.py` is replaced by `graph_v2/nodes/supervisor.py` — new code,
+not a port.
 
 ### What is kept — deliberately
 
@@ -100,7 +109,9 @@ together, so the document changes with the code rather than ahead of it.
 
 - Rewriting the domain layer.
 - A `trips` table (doc §6) — duplicates the existing `itineraries`.
-- Multi-agent proliferation (doc §38 warns against it explicitly).
+- Multi-agent proliferation (doc §38 warns against it explicitly). The 4 worker nodes
+  are **not** independent agents — they are scoped functions invoked by the supervisor.
+  The supervisor is the only LLM making routing decisions.
 
 ### Deferred to separate plans — blocked, not declined
 
@@ -135,11 +146,11 @@ source means fabricating inventory state — the failure doc §32 names explicit
 | 2 | [Out-of-scope refusal guardrail](./phase-02-out-of-scope-refusal-guardrail.md) | — | 0.5d |
 | 3 | [TravelState, patch layer, IMPACT_MAP](./phase-03-travelstate-patch-layer.md) | — | 2d |
 | 4 | [Postgres checkpointer](./phase-04-postgres-checkpointer.md) | — | 1.5d |
-| 5 | [Graph skeleton behind a flag](./phase-05-graph-skeleton.md) | 3, 4 | 3d |
+| 5 | [Graph skeleton + supervisor behind a flag](./phase-05-graph-skeleton.md) | 3, 4 | 3.5d |
 | 6 | [extract_patch node](./phase-06-extract-patch-node.md) | 5 | 2d |
 | 7 | [Slot registry, next_question, interrupt](./phase-07-slots-and-interrupt.md) | 6 | 2.5d |
-| 8 | [hotel_flow: hard filters, radius, center](./phase-08-hotel-flow.md) | 7 | 2d |
-| 9 | [itinerary_flow: day-level regen, locked_days](./phase-09-itinerary-flow.md) | 7 | 3d |
+| 8 | [hotel_node: hard filters, radius, center](./phase-08-hotel-flow.md) | 7 | 2d |
+| 9 | [itinerary_node: day-level regen, locked_days](./phase-09-itinerary-flow.md) | 7 | 3d |
 | 10 | [Audit log and State Patch Accuracy eval](./phase-10-audit-and-eval.md) | 3 | 1.5d |
 | 11 | [**CUTOVER** — flip default, delete the old plane](./phase-11-cutover.md) | 8, 9, 10 | 2d |
 | 12 | [Per-day itinerary constraints](./phase-12-per-day-constraints.md) | 9, 11 | 2.5d |
@@ -190,7 +201,8 @@ Natural stop points: after 1+2, after 7 (deadlock class gone), after 11 (one pla
 | Frontend contract drift during the rewrite | Medium | `PlannerChatResponse` shape is frozen for the whole plan. The graph fills the same fields; no client change until after Phase 11 | 5, 11 |
 | Two planes coexisting 5→11 reintroduces the bug being fixed | Medium | The legacy plane is **frozen** — no edits to it after Phase 5 except reverts. Time-boxed to one window that Phase 11 closes | 5-11 |
 | **An interrupted node re-executes from its start**, so a per-day Python loop containing a shortlist interrupt re-runs completed days — re-searching and silently changing days the user never touched | **High** | Loops with interrupt points are **subgraphs invoked per iteration** (`rebuild_day`), not `for` inside a node. Interrupt-isolation test in Phase 9 step 8 is the proof | 5, 7, 9, 13 |
-| Subgraph checkpointer inherited by accident | Medium | `general_qa` and `rebuild_day` compile with an explicitly stated `checkpointer=`; asserted by test | 5, 9 |
+| Subgraph checkpointer inherited by accident | Medium | `qa_node` and `rebuild_day` compile with an explicitly stated `checkpointer=`; asserted by test | 5, 9 |
+| **Supervisor LLM picks wrong worker or loops** | **Medium** | Structured output with closed label set (4 workers); max 5 loop iterations/turn; `IMPACT_MAP` deterministic fallback on any failure; routing accuracy measured in Phase 10 eval | 5, 10 |
 
 ## Success Criteria
 
@@ -205,7 +217,7 @@ Natural stop points: after 1+2, after 7 (deadlock class gone), after 11 (one pla
 
 ## Diagrams
 
-- [`target-architecture.md`](./target-architecture.md) — the single-plane graph, flows, state layer
+- [`target-architecture.md`](./target-architecture.md) — supervisor + 4 worker nodes, flows, state layer
 - [`capability-map.md`](./capability-map.md) — today's two-plane flow and capability table
 
 ## References
@@ -233,11 +245,13 @@ Decided while planning, recorded so the reasoning is not lost:
 | Question | Decision |
 |---|---|
 | Incremental patch or full rewrite? | **Full rewrite of the orchestration layer**, domain layer kept. User decision after the trade-off was presented twice |
-| Does the ReAct agent survive? | **Yes, as a leaf node** for `general_question` with `query_hotel`/`query_hotel_rooms`. It stops being a plane |
+| Does the ReAct agent survive? | **Yes, as `qa_node` worker** for `general_question` with `query_hotel`/`query_hotel_rooms`. It stops being a plane |
 | Multi-amenity AND or OR? | **AND**, with a binding-constraint report on zero results — never silent relaxation |
 | "4 sao" = stars or review score? | Different columns; both filterable. "N sao" ⇒ stars, "N/10" ⇒ review score, ambiguous ⇒ ask |
 | "1-2-2026" fixed rule or ask? | **Ask**, but only when genuinely ambiguous — `31/07` has one valid reading |
-| Node or subgraph for each flow? | Pipeline nodes and `hotel_flow` stay nodes. `general_qa` and `rebuild_day` are **subgraphs** — the first already is one (`create_react_agent` returns a compiled graph), the second must be, because an interrupted node re-executes from its start and the per-day loop contains an interrupt |
+| Node or subgraph for each flow? | `hotel_node` and `itinerary_node` are worker nodes. `qa_node` and `rebuild_day` are **subgraphs** — the first already is one (`create_react_agent` returns a compiled graph), the second must be, because an interrupted node re-executes from its start and the per-day loop contains an interrupt |
+| Routing: deterministic or LLM? | **Supervisor LLM** with `IMPACT_MAP` as deterministic fallback. Supervisor creates task list + checks completion; `IMPACT_MAP` catches LLM failures |
+| Supervisor loop limit? | **Max 5 iterations/turn** — prevents infinite delegation. Enforced by counter, not by trust |
 | Adopt doc §36 folder layout? | **Partially** — `domain/` for new pure files; reject the renames; defer `repositories/` |
 
 <!-- slug: langgraph-orchestration-state-patch-and-interrupts -->

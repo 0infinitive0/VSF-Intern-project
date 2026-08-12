@@ -1,7 +1,7 @@
 ---
 phase: 2
 title: "Out-of-scope refusal guardrail"
-status: pending
+status: done
 priority: P1
 effort: "0.5d"
 dependencies: []
