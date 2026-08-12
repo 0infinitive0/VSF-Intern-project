@@ -3,6 +3,7 @@ import {
   INTAKE_FIELD_ORDER,
   currentIntakeField,
   isFieldMissing,
+  locallyAdvancedField,
   nextIntakeField,
   type IntakeField,
 } from './next-intake-field'
@@ -74,6 +75,30 @@ describe('nextIntakeField', () => {
   it('never surfaces budget/preferences as server-required', () => {
     expect(nextIntakeField(intakeWith(['budget']))).toBeNull()
     expect(nextIntakeField(intakeWith(['preferences']))).toBeNull()
+  })
+})
+
+describe('locallyAdvancedField', () => {
+  it('asks nothing when the widget matches what the backend just asked for', () => {
+    // Backend replied "how many people?" and the people stepper is what's open
+    // — its own message already covers it.
+    expect(locallyAdvancedField(intakeWith(['people', 'start_date']), 'people')).toBeNull()
+  })
+
+  it('asks the question when the widget has walked past the backend', () => {
+    // People answered locally (no chat turn), so the backend still considers
+    // people missing while the dates picker is already open — nobody has asked
+    // about dates yet.
+    expect(locallyAdvancedField(intakeWith(['people', 'start_date']), 'dates')).toBe('dates')
+  })
+
+  it('asks for the ungated optional fields, which the backend never requests', () => {
+    expect(locallyAdvancedField(intakeWith([]), 'budget')).toBe('budget')
+    expect(locallyAdvancedField(intakeWith([]), 'preferences')).toBe('preferences')
+  })
+
+  it('returns null when no widget is open', () => {
+    expect(locallyAdvancedField(intakeWith(['people']), null)).toBeNull()
   })
 })
 

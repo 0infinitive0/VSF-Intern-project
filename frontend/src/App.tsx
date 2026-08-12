@@ -5,6 +5,7 @@ import { useIntakeForm } from './hooks/use-intake-form'
 import { usePanelResize } from './hooks/use-panel-resize'
 import { useSessionHistory } from './hooks/use-session-history'
 import { deriveStageView, type StageView } from './lib/derive-stage'
+import { isFieldFilled } from './lib/next-intake-field'
 import type { HotelOption } from './types'
 import AppShell from './components/app-shell'
 
@@ -26,7 +27,14 @@ export default function App() {
   } = useIntakeForm(state.intake)
   const [chatWidth, setChatWidth] = useState(352)
   const chatResize = usePanelResize(chatWidth, setChatWidth, { min: 300, max: 560 })
-  const stage = deriveStageView(state)
+  // The three fields the backend actually gates on (next-intake-field.ts). All
+  // answered => a pending turn is the hotel search, not one more intake reply,
+  // so the right-hand panel may switch to the generating view.
+  const intakeReady =
+    isFieldFilled(intakeForm, 'destination') &&
+    isFieldFilled(intakeForm, 'people') &&
+    isFieldFilled(intakeForm, 'dates')
+  const stage = deriveStageView(state, intakeReady)
 
   // StepNavigator can jump to a step whose data is already sitting in `state`
   // (e.g. hopping back to "Thông tin" while hotel options are still loaded)

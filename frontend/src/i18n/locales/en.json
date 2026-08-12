@@ -161,6 +161,7 @@
   "budgetSkippedValue": "No limit",
   "budgetMinLabel": "Minimum budget",
   "budgetMaxLabel": "Maximum budget",
+  "intakePeopleQuestion": "Great. How many people are travelling?",
   "intakeDatesQuestion": "When do you plan to depart and return?",
   "intakeBudgetQuestion": "About how much would you like to budget for the whole trip?",
   "intakePreferencesQuestion": "Last thing - what kind of experiences do you like? Pick a few.",

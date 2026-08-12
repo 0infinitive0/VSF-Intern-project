@@ -12,9 +12,20 @@ const SCROLL_THROTTLE_MS = 100
 /**
  * MessageList — the scrollable thread of messages. Thread-only (phase-06): the
  * intake widgets / chips / hotel cards live in a fixed rail above the composer,
- * not inside this scroll. Renders bubbles, the greeting before the first turn,
- * and the in-flow progress indicator while pending — a live streaming bubble
- * once `delta` text starts flowing, or the plain elapsed spinner otherwise.
+ * not inside this scroll. Renders the greeting, the bubbles, the in-flow
+ * progress indicator while pending (a live streaming bubble once `delta` text
+ * starts flowing, or the plain elapsed spinner otherwise), and the trailing
+ * intake question that goes with whatever widget the rail is showing.
+ *
+ * Both frontend-authored bubbles — the greeting and `intakeQuestion` — are the
+ * design's own p0..p4 intake prompts, which its ask(step) pushes into the
+ * message thread and leaves there permanently. They render here, in the
+ * thread, and never inside the widget rail.
+ *
+ * The greeting is deliberately NOT gated on an empty thread: it is the
+ * conversation's opening line, so hiding it the moment the user replies (the
+ * old `messages.length === 0` condition) made the first thing the assistant
+ * ever said vanish for good.
  *
  * The step-by-step `phase` tick list lives ONLY in stage-generating.tsx's
  * right-hand panel (design reference: data/trip_planner/trip_planner_components)
@@ -24,10 +35,15 @@ export default function MessageList({
   messages,
   pending,
   streamingText,
+  intakeQuestion = null,
 }: {
   messages: ChatMessage[]
   pending: boolean
   streamingText: string
+  /** Question for the currently-open intake widget, when the backend's own last
+   * reply didn't already ask it (see lib/next-intake-field.ts's
+   * locallyAdvancedField). Null renders nothing. */
+  intakeQuestion?: string | null
 }) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const lastScrollAt = useRef(0)
@@ -49,7 +65,7 @@ export default function MessageList({
       scrollTimer.current = setTimeout(scroll, SCROLL_THROTTLE_MS - elapsed)
     }
     return () => clearTimeout(scrollTimer.current)
-  }, [messages, pending, streamingText])
+  }, [messages, pending, streamingText, intakeQuestion])
 
   return (
     <div
@@ -57,16 +73,9 @@ export default function MessageList({
       role="log"
       aria-live="polite"
     >
-      {messages.length === 0 && !pending && (
-        <div className="flex gap-2.5 items-end">
-          <div className="w-6 h-6 flex-none rounded-[9px] bg-[linear-gradient(145deg,#5C93EE,#2C5FC9)] shadow-[0_4px_12px_-3px_rgba(44,95,201,0.55)] flex items-center justify-center">
-            <span className="text-on-primary text-[11px] font-[590]">V</span>
-          </div>
-          <div className="max-w-[84%] bg-glass-3 text-on-surface border border-line rounded-[18px] rounded-bl-[6px] shadow-[0_6px_16px_-12px_rgb(var(--shadow-rgb)/0.7)] px-3.5 py-2.5 text-sm">
-            {t('greeting')}
-          </div>
-        </div>
-      )}
+      <MessageBubble
+        message={{ id: '__greeting__', role: 'ai', text: t('greeting'), stage: 'intake' }}
+      />
 
       {messages.map((msg) => (
         <div key={msg.id}>
@@ -87,6 +96,15 @@ export default function MessageList({
         <div className="flex justify-start">
           <ElapsedSpinner/>
         </div>
+      )}
+
+      {/* Trailing intake prompt — the question for the widget currently open in
+          the rail. Only ever set while idle (the rail itself is hidden during
+          `pending`), so it can't compete with the spinner above. */}
+      {intakeQuestion && (
+        <MessageBubble
+          message={{ id: '__intake_question__', role: 'ai', text: intakeQuestion, stage: 'intake' }}
+        />
       )}
 
       <div ref={bottomRef} />

@@ -127,9 +127,15 @@ export function buildIntakeChecklistRows(
     },
     {
       // Not gated by `missing`; collected the moment the backend echoes real
-      // preference keys (they arrive together with an intake response).
+      // preference keys (they arrive together with an intake response), or as
+      // soon as the user toggles a chip locally — same server-∪-local rule as
+      // the rows above. Only `collected` reads the local form: `preferenceKeys`
+      // stays server-only because the two sides speak different vocabularies
+      // (server sends Vietnamese wire strings like "biển", the form holds
+      // canonical keys like "beach" — intake-options.ts), and mixing them would
+      // break the chips' translation lookup.
       key: 'preferences',
-      collected: preferenceKeys.length > 0,
+      collected: preferenceKeys.length > 0 || isFieldFilled(form ?? {}, 'preferences'),
       value: null,
       preferenceKeys,
     },

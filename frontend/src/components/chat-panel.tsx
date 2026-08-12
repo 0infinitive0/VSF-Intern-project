@@ -7,7 +7,8 @@ import IntakeParametersForm from './intake-parameters-form'
 import { QUICK_START_DESTINATIONS } from '../lib/quick-start-destinations'
 import type { IntakeFormState } from '../lib/compose-intake-message'
 import type { PreferenceKey } from '../lib/intake-options'
-import { currentIntakeField, type IntakeField } from '../lib/next-intake-field'
+import { buildIntakeChecklistRows } from '../lib/intake-checklist-rows'
+import { currentIntakeField, locallyAdvancedField, type IntakeField } from '../lib/next-intake-field'
 import type { StageView } from '../lib/derive-stage'
 import type { ChatState } from '../types'
 
@@ -18,23 +19,16 @@ function lastAiStage(messages: ChatState['messages']): string | null {
   return null
 }
 
-// On the natural forward flow (not editing), the backend's own intake reply
-// ("Bạn dự định bắt đầu chuyến đi vào ngày nào?") and IntakeParametersForm's
-// dates/budget prompt bubble (tied directly above the picker) ask the same
-// question the moment `currentIntakeField` lands on 'dates' or 'budget' —
-// two AI bubbles for one question. The widget's own bubble is the one that
-// actually matches the picker (e.g. it asks for a date *range*, which is
-// what the calendar collects), so the redundant trailing backend message is
-// dropped here for display only; `state.messages` itself is untouched.
-function hideDuplicateIntakeReply(
-  messages: ChatState['messages'],
-  activeField: IntakeField | null,
-  isEditing: boolean,
-): ChatState['messages'] {
-  if (isEditing || (activeField !== 'dates' && activeField !== 'budget')) return messages
-  const last = messages[messages.length - 1]
-  if (!last || last.role !== 'ai' || last.stage !== 'intake') return messages
-  return messages.slice(0, -1)
+// i18n key for each widget's question. Rendered as an AI bubble in the thread
+// (MessageList), never inside the widget rail — see IntakeParametersForm's
+// header. 'destination' has no entry: it is always the first field, so the
+// backend's own reply (or the greeting, which asks exactly it) covers it and
+// locallyAdvancedField can never surface it.
+const INTAKE_QUESTION_KEY: Partial<Record<IntakeField, string>> = {
+  people: 'intakePeopleQuestion',
+  dates: 'intakeDatesQuestion',
+  budget: 'intakeBudgetQuestion',
+  preferences: 'intakePreferencesQuestion',
 }
 
 /**
@@ -78,7 +72,7 @@ export default function ChatPanel({
   onDoneEditingIntakeField: () => void
 }) {
   const { messages, suggestions, hotelOptions, tripPlan, intake, pending, hotelsLoading, streamingText } = state
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
 
   const lastStage = lastAiStage(messages)
   // Real backend truth — independent of what's currently being viewed —
@@ -97,14 +91,17 @@ export default function ChatPanel({
           ? t('step1Full')
           : t('aiWorking')
 
-  // Progress dots — server-confirmed intake collection (5 widget steps).
-  const progressDots = [
-    { label: t('destLabel'), done: Boolean(intake?.destination) || intakeComplete },
-    { label: t('peopleLabel'), done: Boolean(intake?.people) || intakeComplete },
-    { label: t('datesLabel'), done: Boolean(intake?.start_date) || intakeComplete },
-    { label: t('budgetLabel'), done: intakeComplete },
-    { label: t('interestLabel'), done: (intake?.preferences?.length ?? 0) > 0 || intakeComplete },
-  ]
+  // Progress dots — same five rows, same "collected" rule as the intake
+  // checklist panel on the right (buildIntakeChecklistRows: server snapshot
+  // UNION the local widget answers). Previously this had its own server-only
+  // logic, so a dot stayed grey until a chat turn round-tripped — and the
+  // budget dot was gated on `intakeComplete`, i.e. it could not light up until
+  // hotels already existed, long after the user had answered it.
+  const dotLabelKey = ['destLabel', 'peopleLabel', 'datesLabel', 'budgetLabel', 'interestLabel']
+  const progressDots = buildIntakeChecklistRows(intake, i18n.language, intakeForm).map((row, i) => ({
+    label: t(dotLabelKey[i]),
+    done: row.collected || intakeComplete,
+  }))
 
   const tripTitle = tripPlan?.destination || intake?.destination || t('chatPanelTitle')
 
@@ -125,7 +122,12 @@ export default function ChatPanel({
   const isEmptyConversation = messages.length === 0
 
   const activeIntakeField = editingIntakeField ?? currentIntakeField(intake, intakeForm)
-  const displayMessages = hideDuplicateIntakeReply(messages, activeIntakeField, Boolean(editingIntakeField))
+  // The widget's question, asked in the thread only when the backend's own
+  // last reply didn't already ask it (progressive disclosure advances locally,
+  // with no chat turn — see locallyAdvancedField).
+  const questionField = showIntakeForm ? locallyAdvancedField(intake, activeIntakeField) : null
+  const questionKey = questionField ? INTAKE_QUESTION_KEY[questionField] : undefined
+  const intakeQuestion = questionKey ? t(questionKey) : null
 
   return (
     <section
@@ -169,9 +171,10 @@ export default function ChatPanel({
       />
 
       <MessageList
-        messages={displayMessages}
+        messages={messages}
         pending={pending}
         streamingText={streamingText}
+        intakeQuestion={intakeQuestion}
       />
 
       {/* Widget rail — fixed above the composer, never inside the scroll */}
