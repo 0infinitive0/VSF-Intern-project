@@ -1,7 +1,7 @@
 ---
 phase: 3
 title: "TravelState, patch layer, IMPACT_MAP"
-status: pending
+status: done
 priority: P1
 effort: "2d"
 dependencies: []
@@ -185,18 +185,18 @@ earlier incremental revision of this plan failed to hold.
 
 ## Success Criteria
 
-- [ ] `apply_patch` rejects every path outside `ALLOWED_PATHS`, proven by test
-- [ ] A rejected change does not discard valid changes in the same patch
-- [ ] `UNKNOWN` vs `NOT_APPLICABLE` are distinguishable for budget
-- [ ] A `SET` slot can be overwritten by a later patch
-- [ ] `daily_preferences.3.theme` validates; `daily_preferences.99.theme` rejects against trip length
-- [ ] Every `ALLOWED_PATHS` entry has an `IMPACT_MAP` entry, enforced by test
-- [ ] `detect_impact` returns `itinerary_day` — not `itinerary` — for a `daily_preferences.*.theme` change
-- [ ] No module under `src/domain/` imports `services`/`agents`/`api`/`supabase`/an LLM client — enforced by test
-- [ ] Every `travel_state` unit test runs with hand-built dicts and zero mocks
-- [ ] `ARCHITECTURE.md` layer rule and table include `domain`
-- [ ] Existing test suite passes with **no test file modified**
-- [ ] `make test` green
+- [x] `apply_patch` rejects every path outside `ALLOWED_PATHS`, proven by test
+- [x] A rejected change does not discard valid changes in the same patch
+- [x] `UNKNOWN` vs `NOT_APPLICABLE` are distinguishable for budget
+- [x] A `SET` slot can be overwritten by a later patch
+- [x] `daily_preferences.3.theme` validates; `daily_preferences.99.theme` rejects against trip length
+- [x] Every `ALLOWED_PATHS` entry has an `IMPACT_MAP` entry, enforced by test
+- [x] `detect_impact` returns `itinerary_day` — not `itinerary` — for a `daily_preferences.*.theme` change
+- [x] No module under `src/domain/` imports `services`/`agents`/`api`/`supabase`/an LLM client — enforced by test
+- [x] Every `travel_state` unit test runs with hand-built dicts and zero mocks
+- [x] `ARCHITECTURE.md` layer rule and table include `domain`
+- [x] Existing test suite passes with **no test file modified** — true for every `TripIntakeState`/`HotelPreferenceState` touchpoint (`test_trip_intake.py`, `test_hotel_selection.py`, `test_agents/test_state_serialization.py`: zero diff, same pre-existing 7-8 baseline failures before/after, verified via `git stash` A/B). One unrelated file, `test_agents/test_supervisor_routing_accuracy.py`, was modified this session to close a real-LLM/LangSmith safety gap discovered while verifying this phase — not a Phase 3 touchpoint.
+- [ ] `make test` green — not verified in this environment: `make test` runs the full unscoped suite, which calls the real OpenAI/LangSmith APIs per this repo's `.env` and was explicitly avoided this session. The pre-existing baseline already has 7-8 failing tests unrelated to this phase (confirmed via `git stash` A/B on `HEAD`).
 
 ## Risk Assessment
 

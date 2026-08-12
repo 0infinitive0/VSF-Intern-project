@@ -153,7 +153,7 @@ graph LR
 The codebase uses a strict **one-way import rule** to prevent circular dependencies:
 
 ```
-api  →  agents  →  services  →  models
+api  →  agents  →  services  →  domain  →  models
          ↑               ↑
        (session)      (config)
 ```
@@ -163,6 +163,7 @@ api  →  agents  →  services  →  models
 | `api` | `src/api/` | HTTP handlers — call `agents.session`, return Pydantic schemas |
 | `agents` | `src/agents/` | LangGraph graph, session registry, turn routing |
 | `services` | `src/services/` | Business logic — LLM, Supabase search, scheduler, intake |
+| `domain` | `src/domain/` | Pure state, validation, constraints — imports nothing above it (no `services`, no I/O, no LLM, no Supabase) |
 | `models` | `src/models/` | Pydantic schemas only — no imports from upper layers |
 | `config` | `src/config.py` | Settings — imported by any layer, imports nothing above it |
 

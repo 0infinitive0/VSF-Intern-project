@@ -2,17 +2,23 @@
 
 This is a measurement tool, not a hard pass/fail gate — the plan's own Phase 4
 doc states three legitimate outcomes (supervisor beats regex, matches it, or
-is worse), and the honest result may be "keep the flag off". Requires a
-reachable Ollama (skips otherwise) and the live destination table.
+is worse), and the honest result may be "keep the flag off". `decide_route_by_llm`
+calls whatever `LLM_PROVIDER` resolves to in the environment — in this repo
+that is real OpenAI, traced to real LangSmith, when `.env` is used as-is — so
+this test is opt-in only: set `RUN_LIVE_ROUTING_EVAL=1` to run it. An Ollama
+reachability check alone is NOT a safe gate here, since Ollama commonly runs
+locally anyway (for embeddings, per ARCHITECTURE.md's Environment Matrix)
+regardless of which provider `LLM_PROVIDER` actually points `get_llm()` at.
 
 Run directly for a human-readable report:
-    python tests/test_agents/test_supervisor_routing_accuracy.py
+    RUN_LIVE_ROUTING_EVAL=1 python tests/test_agents/test_supervisor_routing_accuracy.py
 Or via pytest for CI-safe structural assertions only (no accuracy gate):
-    pytest tests/test_agents/test_supervisor_routing_accuracy.py
+    RUN_LIVE_ROUTING_EVAL=1 pytest tests/test_agents/test_supervisor_routing_accuracy.py
 """
 
 from __future__ import annotations
 
+import os
 import time
 import urllib.request
 from dataclasses import dataclass, field
@@ -21,6 +27,12 @@ import pytest
 
 from src.agents.routing_decision import Route, decide_route_by_rules, route_context_from_state
 from src.agents.supervisor import decide_route_by_llm
+
+_LIVE_EVAL_OPT_IN = "RUN_LIVE_ROUTING_EVAL"
+
+
+def _live_eval_enabled() -> bool:
+    return os.environ.get(_LIVE_EVAL_OPT_IN) == "1"
 
 
 def _ollama_reachable() -> bool:
@@ -160,6 +172,10 @@ SCENARIOS: list[Scenario] = [
 ]
 
 
+@pytest.mark.skipif(
+    not _live_eval_enabled(),
+    reason=f"Live LLM/LangSmith call — set {_LIVE_EVAL_OPT_IN}=1 to opt in",
+)
 @pytest.mark.skipif(not _ollama_reachable(), reason="Ollama not reachable — live measurement only")
 def test_routing_accuracy_and_latency_report():
     """Prints the comparison table and per-call latency. No accuracy assertion
@@ -203,4 +219,8 @@ def test_routing_accuracy_and_latency_report():
 
 
 if __name__ == "__main__":
+    if not _live_eval_enabled():
+        raise SystemExit(
+            f"Refusing to call the real LLM/LangSmith: set {_LIVE_EVAL_OPT_IN}=1 to run this report."
+        )
     test_routing_accuracy_and_latency_report()

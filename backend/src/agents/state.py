@@ -7,6 +7,7 @@ from langgraph.graph.message import add_messages
 from langgraph.managed.is_last_step import RemainingStepsManager
 from typing_extensions import TypedDict
 
+from src.domain.travel_state import TravelState
 from src.services.hotel_selection import HotelPreferenceState
 from src.services.trip_intake import TripIntakeState
 
@@ -31,6 +32,12 @@ class TripState(TypedDict):
     with `from_dict()` before reading `.is_complete` or other derived
     properties, never by reaching into the raw dict.
 
+    `travel_state` is the canonical `TravelState` (`src/domain/travel_state.py`)
+    via `to_dict()`, carried alongside `intake`/`hotel_prefs` rather than
+    replacing them — Phase 3 adds the patch-validated layer without changing
+    either state's behavior; only from Phase 6 does `apply_patch` become the
+    sole writer, and Phase 11 retires `intake`/`hotel_prefs` as writers.
+
     `route`/`reroute_count` are written by the Phase 5 router node;
     `reply`/`tool_ran` replace `TurnResult`'s two fields there. None of the
     four are read or written by anything before Phase 5 — they exist now so
@@ -49,6 +56,7 @@ class TripState(TypedDict):
     messages: Annotated[list, add_messages]
     intake: dict[str, Any]
     hotel_prefs: dict[str, Any]
+    travel_state: dict[str, Any]
     trip_data: dict[str, Any] | None
     pending_hotel_selection: dict[str, Any] | None
     initial_plan_complete: bool
@@ -77,6 +85,7 @@ def initial_state(session_id: str, language: str = "vi") -> TripState:
         messages=[],
         intake=TripIntakeState().to_dict(),
         hotel_prefs=HotelPreferenceState().to_dict(),
+        travel_state=TravelState().to_dict(),
         trip_data=None,
         pending_hotel_selection=None,
         initial_plan_complete=False,

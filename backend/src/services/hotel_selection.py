@@ -17,6 +17,7 @@ from typing import Any, Collection, Dict, Iterable, List, Literal, Tuple
 from supabase import Client, create_client
 
 from src.config import get_settings
+from src.domain.travel_state import Presence, Slot, TravelState, apply_patch
 from src.services.guided_question import (
     GuidedOption,
     GuidedQuestion,
@@ -745,6 +746,62 @@ class HotelPreferenceState:
             target_price=data.get("target_price"),
             min_price=data.get("min_price"),
             max_price=data.get("max_price"),
+        )
+
+    def to_travel_state(self) -> TravelState:
+        """Read-through view over the canonical `budget.*` slots (Phase 3
+        foundation — `TripState.travel_state` doesn't consume this yet). Not
+        yet resolved (`stage == "pending_budget"`) stays UNKNOWN; the explicit
+        "bao nhiêu cũng được" no-preference answer — `stage == "done"` with all
+        three prices `None` — becomes NOT_APPLICABLE, never SET, so a real skip
+        stays distinguishable from a parse failure.
+
+        Routed through `apply_patch` rather than constructing `Slot`s
+        directly, so a value this dataclass could hold but `apply_patch`
+        would reject (e.g. a negative price) is dropped, not silently stored
+        as a Slot no patch could ever have produced."""
+        if self.stage != "done":
+            return TravelState(slots={})
+        if self.target_price is None and self.min_price is None and self.max_price is None:
+            changes = [
+                {"path": "budget.target", "operation": "set", "value": None},
+                {"path": "budget.min", "operation": "set", "value": None},
+                {"path": "budget.max", "operation": "set", "value": None},
+            ]
+            return apply_patch(TravelState(), changes).state
+        changes = []
+        if self.target_price is not None:
+            changes.append({"path": "budget.target", "operation": "set", "value": self.target_price})
+        if self.min_price is not None:
+            changes.append({"path": "budget.min", "operation": "set", "value": self.min_price})
+        if self.max_price is not None:
+            changes.append({"path": "budget.max", "operation": "set", "value": self.max_price})
+        return apply_patch(TravelState(), changes).state
+
+    @classmethod
+    def from_travel_state(cls, state: TravelState) -> HotelPreferenceState:
+        """Inverse of `to_travel_state`. Each of the three prices resolves
+        independently — SET keeps its value, everything else (UNKNOWN or
+        NOT_APPLICABLE) reads back as `None` — matching `with_message`'s own
+        `values[0]` unpacking, which can already leave one of the three
+        `None`. A single NOT_APPLICABLE slot must not blank out a SET
+        sibling: "no upper limit" and "at least 1tr/night" can coexist."""
+        target_slot = state.get("budget.target")
+        min_slot = state.get("budget.min")
+        max_slot = state.get("budget.max")
+        if target_slot.presence is Presence.UNKNOWN and min_slot.presence is Presence.UNKNOWN and (
+            max_slot.presence is Presence.UNKNOWN
+        ):
+            return cls()
+
+        def _resolved(slot: Slot) -> float | None:
+            return slot.value if slot.presence is Presence.SET else None
+
+        return cls(
+            stage="done",
+            target_price=_resolved(target_slot),
+            min_price=_resolved(min_slot),
+            max_price=_resolved(max_slot),
         )
 
 
