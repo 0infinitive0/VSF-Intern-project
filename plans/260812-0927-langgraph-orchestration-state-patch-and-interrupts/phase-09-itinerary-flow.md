@@ -1,21 +1,22 @@
 ---
 phase: 9
-title: "itinerary_flow node + rebuild_day subgraph"
+title: "itinerary_node + rebuild_day subgraph"
 status: pending
 priority: P2
 effort: "3d"
 dependencies: [7]
 ---
 
-# Phase 9: itinerary_flow node + rebuild_day subgraph
+# Phase 9: itinerary_node + rebuild_day subgraph
 
 ## Overview
 
-Stop rebuilding the whole trip to edit one day. `itinerary_flow` is a plain node that decides
-*which* days change; `rebuild_day` is a **LangGraph subgraph invoked once per affected day**, so
-each day checkpoints independently and an `interrupt()` on day 2 never re-runs day 1.
+Stop rebuilding the whole trip to edit one day. `itinerary_node` is a supervisor worker node
+that decides *which* days change; `rebuild_day` is a **LangGraph subgraph invoked once per
+affected day**, so each day checkpoints independently and an `interrupt()` on day 2 never
+re-runs day 1. The supervisor delegates itinerary-related tasks to this node.
 
-`IMPACT_MAP` and `detect_impact` are **not** built here — they live in Phase 3 beside
+`IMPACT_MAP` is used as supervisor fallback — it lives in Phase 3 beside
 `ALLOWED_PATHS`. This phase consumes them.
 
 ## Problem
@@ -60,11 +61,11 @@ return *different* venues, so day 1 silently changes content the user never touc
 
 ```mermaid
 flowchart TD
-    IN(["detect_impact → itinerary"]) --> IF["itinerary_flow · <b>node</b><br/><i>ngày nào bị ảnh hưởng · trừ locked_days<br/>plan_trip_edit khi sửa cấp item</i>"]
+    IN(["supervisor → itinerary"]) --> IF["itinerary_node · <b>Worker</b><br/><i>ngày nào bị ảnh hưởng · trừ locked_days<br/>plan_trip_edit khi sửa cấp item</i>"]
     IF --> LOOP{"còn ngày<br/>chưa dựng?"}
     LOOP -->|có| RD["rebuild_day · <b>SUBGRAPH</b><br/><i>1 lần / 1 ngày · checkpoint riêng</i>"]
     RD --> LOOP
-    LOOP -->|hết| OUT(["→ budget_check"])
+    LOOP -->|hết| OUT(["→ trả kết quả cho supervisor"])
 
     class RD sub
     classDef sub fill:#1a3a52,stroke:#4a90c2,stroke-width:3px,color:#fff
@@ -87,7 +88,7 @@ docs describe.
 
 ### Where the second LLM lives
 
-`plan_trip_edit` (`trip_edit_planner.py`) survives inside the `itinerary_flow` node for
+`plan_trip_edit` (`trip_edit_planner.py`) survives inside the `itinerary_node` for
 item-level operations. The patch layer cannot express them: a patch sets
 `daily_preferences.1.theme`, but "đổi quán ăn trưa ngày 2" needs `replace_item` against a
 specific `item_id`. It plans **operations on data**, never which node runs next — output still
@@ -106,10 +107,10 @@ schema change.
 ## Related Code Files
 
 - Create: `backend/src/agents/graph_v2/subgraphs/rebuild_day.py`
-- Create: `backend/src/agents/graph_v2/nodes/itinerary_flow.py`
+- Create: `backend/src/agents/graph_v2/nodes/itinerary_node.py`
 - Modify: `backend/src/services/trip_planner.py` — extract `rebuild_day` from `_build_trip_data`; day-scope `_scheduled_attraction_ids` (:1386); retire `_apply_day_replan` (:1354-1392)
 - Modify: `backend/src/services/trip_scheduler.py` — honor `locked_days` in repair passes
-- Modify: `backend/src/agents/session.py` — `requires_candidate_rebuild` (:554) already replaced by Phase 3's `detect_impact`
+- Modify: `backend/src/agents/session.py` — `requires_candidate_rebuild` (:554) already replaced by supervisor's routing
 - Create: `backend/tests/test_rebuild_day.py`, `backend/tests/test_day_loop_interrupt.py`
 
 ## Implementation Steps
@@ -117,8 +118,8 @@ schema change.
 1. Run `impact` on `_apply_day_replan` and `_build_trip_data` before touching them.
 2. Extract `rebuild_day` as a pure function reusing the existing scheduling primitives.
 3. Wrap it as a compiled subgraph with an explicit `checkpointer=`; define shared vs private state keys.
-4. Build `itinerary_flow` as a node: affected days minus `locked_days`, plus `plan_trip_edit`
-   for item-level ops.
+4. Build `itinerary_node` as a worker node: affected days minus `locked_days`, plus `plan_trip_edit`
+    for item-level ops.
 5. Wire the parent loop as a conditional edge, not a Python `for`.
 6. Scope `exclude_attraction_ids` to the target day.
 7. Add `locked_days` to `planning_constraints`; honor it in `rebuild_day` and repair passes.

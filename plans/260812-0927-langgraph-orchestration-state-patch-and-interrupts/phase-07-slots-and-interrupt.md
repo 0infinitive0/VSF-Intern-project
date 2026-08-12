@@ -88,7 +88,7 @@ runs **before** `ask_slot`. The pending question no longer decides whether a mes
 to mean something else — that decision does not exist anymore.
 
 `interrupt()` is called from `validate_patch` when a validator reports ambiguity, and from
-`hotel_flow` when a search center cannot be resolved (Phase 8). Resume is `Command(resume=...)`
+`hotel_node` when a search center cannot be resolved (Phase 8). Resume is `Command(resume=...)`
 per the documented protocol. This only works because the node lives inside the graph — the
 reason this phase depends on Phase 5 and Phase 4.
 
@@ -101,7 +101,7 @@ interrupt point therefore happens twice.
 Two rules follow, and they bind every later phase, not just this one:
 
 1. **A node containing `interrupt()` must be pure, or idempotent, up to the interrupt point.**
-   `validate_patch` is pure — safe. `hotel_flow` interrupts at `resolve_center`, before the
+   `validate_patch` is pure — safe. `hotel_node` interrupts at `resolve_center`, before the
    search RPC — safe, but note it in review if anything is ever inserted earlier.
 2. **A loop containing an interrupt point must be a subgraph invoked per iteration, never a
    Python `for` inside one node.** Otherwise resuming re-runs completed iterations. This is why
@@ -125,7 +125,7 @@ works. What changes is that a failed parse no longer traps the turn.
 
 1. Define the slot registry with today's default ordering, so ordering behavior is unchanged.
 2. Implement `next_question(state)` over tri-state presence.
-3. Fill `ask_slot`; wire the `apply_patch → ask_slot | detect_impact` edge.
+3. Fill `ask_slot`; wire the `apply_patch → ask_slot | supervisor` edge.
 4. Add date validators: missing year, past date, end ≤ start, implausible span, day/month order.
 5. Call `interrupt()` from `validate_patch` on ambiguity; implement resume.
 6. Decouple `requires_stay_dates` from `hotel_pref_state.is_complete`.

@@ -56,7 +56,7 @@ retrieval layer already exists and already supports radius; only the user-facing
 per-day loop**. Phase 9 already made `rebuild_day` a subgraph precisely so this works: picking a
 place for day 2 resumes only day 2's subgraph, leaving day 1 checkpointed and untouched.
 
-Do not add the shortlist to `itinerary_flow` (the node that selects affected days). An interrupt
+Do not add the shortlist to `itinerary_node` (the worker node that selects affected days). An interrupt
 there re-executes day selection and `plan_trip_edit` on resume — a wasted LLM call, and a second
 `plan_trip_edit` run can legitimately return different operations, silently changing the edit
 the user already saw.
@@ -102,7 +102,7 @@ places for free, satisfying doc §11 for a second entity type.
 - [ ] "gợi ý địa điểm phù hợp thay cho X" returns a shortlist instead of swapping silently
 - [ ] "chọn cái thứ 2" resolves a place pick through the shared resolver
 - [ ] Picking a place for day 2 resumes only day 2 — day 1 stays byte-identical and issues no new search
-- [ ] The shortlist interrupt is raised inside `rebuild_day`, never in `itinerary_flow`
+- [ ] The shortlist interrupt is raised inside `rebuild_day`, never in `itinerary_node`
 - [ ] "đổi nhiều địa điểm" produces one shortlist per target
 - [ ] Every returned venue exists in `attractions` — none invented
 - [ ] Direct replacement still works without going through suggestion

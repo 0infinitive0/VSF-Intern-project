@@ -1,7 +1,7 @@
 ---
 phase: 1
 title: "Fix deterministic day-theme and amenity bugs"
-status: pending
+status: done
 priority: P1
 effort: "0.5d"
 dependencies: []
