@@ -289,7 +289,12 @@ def test_full_session_structural_signature(monkeypatch):
 def test_create_react_agent_has_exactly_two_owners_in_src():
     """Phase 1 deleted the CLI fork's own create_react_agent + MemorySaver
     (src/cli/planner_tools.py:678) and the dead template graph
-    (src/agents/graph.py's old `agent`). A third call site reappearing means a
+    (src/agents/graph.py's old `agent`). `agents/supervisor.py` was this
+    list's second historical entry but no longer calls create_react_agent
+    (it routes via `llm.bind_tools`, not the prebuilt ReAct agent) --
+    Phase 5 (260812-0927-langgraph-orchestration-state-patch-and-interrupts)
+    adds `graph_v2/nodes/qa_node.py` as the legitimate second owner instead,
+    the qa_node subgraph. A third, undeclared call site reappearing means a
     parallel agent-construction path has crept back in."""
     src_root = Path(__file__).resolve().parents[1] / "src"
     owners = sorted(
@@ -297,4 +302,4 @@ def test_create_react_agent_has_exactly_two_owners_in_src():
         for path in src_root.rglob("*.py")
         if "create_react_agent(" in path.read_text(encoding="utf-8")
     )
-    assert owners == ["agents/graph.py", "agents/supervisor.py"]
+    assert owners == ["agents/graph.py", "agents/graph_v2/nodes/qa_node.py"]

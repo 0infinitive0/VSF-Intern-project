@@ -20,6 +20,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from langchain_core.messages import HumanMessage
 
 from src.agents.session import (
     SessionRegistry,
@@ -335,6 +336,48 @@ def change_hotel(request: ChangeHotelRequest) -> PlannerChatResponse:
     )
 
 
+# ---------------------------------------------------------------------------
+# graph_v2 dispatch (Phase 5, orchestrator=graph) — a separate code path from
+# process_chat_turn's legacy cascade below, never touching TripSession.state.
+# Compiled once, lazily, so the app-lifespan checkpointer (set on `registry`
+# after this module is imported) is captured at first use, not import time —
+# and imported lazily too, so a legacy-mode boot (`orchestrator=legacy`, the
+# default) never pulls in the graph_v2 tree at module-import time at all.
+# ---------------------------------------------------------------------------
+
+_graph_v2_app = None
+
+
+def _get_graph_v2():
+    global _graph_v2_app
+    if _graph_v2_app is None:
+        from src.agents.graph_v2.graph import build_graph
+
+        checkpointer = registry.checkpointer
+        if checkpointer is None:
+            logger.warning(
+                "graph_v2 compiling with a process-local MemorySaver: no app-lifespan checkpointer was "
+                "set on `registry` yet (checkpointer_backend != 'postgres', or called before lifespan "
+                "startup). Graph state will not survive a process restart until this is re-compiled "
+                "with a real checkpointer."
+            )
+        _graph_v2_app = build_graph(checkpointer=checkpointer)
+    return _graph_v2_app
+
+
+def _run_turn_via_graph(session_id: str, message: str, language: str) -> PlannerChatResponse:
+    app = _get_graph_v2()
+    result = app.invoke(
+        {
+            "session_id": session_id,
+            "language": language,
+            "messages": [HumanMessage(content=message)],
+        },
+        config={"configurable": {"thread_id": session_id}},
+    )
+    return PlannerChatResponse(**result["response"])
+
+
 @router.post("/planner_chat", response_model=PlannerChatResponse)
 @router.post("/chat", response_model=PlannerChatResponse)
 def planner_chat(request: PlannerChatRequest) -> PlannerChatResponse:
@@ -343,6 +386,9 @@ def planner_chat(request: PlannerChatRequest) -> PlannerChatResponse:
     Giữ nguyên hành vi cho mọi client hiện có — endpoint này là fallback khi
     SSE bị proxy chặn và là đường mà toàn bộ test hiện có đang đi. Mọi thay
     đổi dựng response phải qua build_chat_response() dùng chung.
+
+    `orchestrator=graph` (Phase 5, default off) dispatches to graph_v2
+    instead — response shape unchanged, `process_chat_turn` never runs.
     """
     session_id = str(request.session_id)
 
@@ -350,6 +396,14 @@ def planner_chat(request: PlannerChatRequest) -> PlannerChatResponse:
     session = registry.get(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
+
+    if get_settings().orchestrator == "graph":
+        with session.lock:
+            try:
+                return _run_turn_via_graph(session_id, request.message or "", request.language)
+            except Exception:
+                logger.exception("Unexpected error in graph_v2 planner_chat for session %s", session_id)
+                raise HTTPException(status_code=500, detail="Đã xảy ra lỗi máy chủ. Vui lòng thử lại.")
 
     with session.lock:
         try:

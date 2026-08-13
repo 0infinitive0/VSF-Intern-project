@@ -1,2 +1,3 @@
 - [Supabase direct DB host is IPv6-only](supabase-direct-db-ipv6.md) — `db.<ref>.supabase.co` DSNs cannot connect from this dev box, Docker bridge, or EC2; use the Supavisor pooler
 - [Proving zero regressions here](proving-zero-regressions.md) — failure counts lie (~44 env-dependent failures); diff failing test names against a clean `git worktree`
+- [Lint/type baselines are red](lint-type-baselines-are-red.md) — ~961 ruff + ~59 mypy errors pre-exist; scope runs to changed paths and report only the delta

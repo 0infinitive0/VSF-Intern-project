@@ -1557,6 +1557,15 @@ class SessionRegistry:
         this sets it once, before any request creates a session."""
         self._checkpointer = checkpointer
 
+    @property
+    def checkpointer(self) -> BaseCheckpointSaver | None:
+        """Read-only access to the app-lifespan checkpointer, for shared
+        infra (e.g. `graph_v2`'s `orchestrator=graph` plane, Phase 5) that
+        needs the same Postgres/MemorySaver instance the legacy plane's
+        sessions use -- without reaching into the private `_checkpointer`
+        attribute or duplicating `set_checkpointer`'s injection timing."""
+        return self._checkpointer
+
     def create(self) -> TripSession:
         """The only way a session comes into being with a server-generated id."""
         import uuid

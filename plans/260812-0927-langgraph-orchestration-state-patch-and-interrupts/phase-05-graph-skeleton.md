@@ -1,7 +1,7 @@
 ---
 phase: 5
 title: "Graph skeleton + supervisor behind a flag"
-status: pending
+status: done
 priority: P1
 effort: "3.5d"
 dependencies: [3, 4]
@@ -301,24 +301,34 @@ The **business** state is the Phase 3 `TravelState` loaded by `load_context` and
 
 ## Success Criteria
 
-- [ ] `orchestrator=graph` completes a turn end to end and returns a valid `PlannerChatResponse`
-- [ ] `orchestrator=legacy` is byte-identical to today; the full suite passes untouched
-- [ ] Supervisor creates a task and delegates to a worker in at least one test case
-- [ ] Supervisor loop terminates within max iterations in all cases
-- [ ] **A single-workflow turn issues zero supervisor LLM calls** (fast path), asserted by call count
-- [ ] Supervisor LLM failure falls back to `IMPACT_MAP` and yields a real worker **node name**, not a `Workflow` value
-- [ ] A supervisor proposal that is impossible for current state is rejected and re-routed
-- [ ] `all_tasks_done` is a plain predicate — no LLM call in the completion path, asserted by call count
-- [ ] `booking_node` returns an explicit decline; it never returns an empty pass-through
-- [ ] `qa_node` writes nothing — contract violation raises, proven by test
-- [ ] `qa_node` has exactly one outgoing edge
-- [ ] `qa_node` exposes exactly two tools; `recommend_hotels`/`select_hotel`/`modify_trip_plan`
+- [x] `orchestrator=graph` completes a turn end to end and returns a valid `PlannerChatResponse`
+      (`/planner_chat` only — `/planner_chat/stream` and the other session endpoints still always
+      run the legacy cascade; documented in `config.py`'s `orchestrator` field and `.env.example`)
+- [x] `orchestrator=legacy` is byte-identical to today; the full suite passes untouched (diff of
+      `routes.py` is purely an early-return branch above the untouched legacy code)
+- [x] Supervisor creates a task and delegates to a worker in at least one test case
+- [x] Supervisor loop terminates within max iterations in all cases
+- [x] **A single-workflow turn issues zero supervisor LLM calls** (fast path), asserted by call count
+- [x] Supervisor LLM failure falls back to `IMPACT_MAP` and yields a real worker **node name**, not a `Workflow` value
+- [x] A supervisor proposal that is impossible for current state is rejected and re-routed (extended
+      during review to also reject a proposal outside this turn's `pending_tasks` queue, not just an
+      `_IMPOSSIBLE` precondition failure)
+- [x] `all_tasks_done` is a plain predicate — no LLM call in the completion path, asserted by call count
+- [x] `booking_node` returns an explicit decline; it never returns an empty pass-through
+- [x] `qa_node` writes nothing — contract violation raises, proven by test (structural for `qa_node`
+      itself; `hotel_node`/`itinerary_node`/`booking_node` wrapped with `enforce_contract` in `build_graph`)
+- [x] `qa_node` has exactly one outgoing edge
+- [x] `qa_node` exposes exactly two tools; `recommend_hotels`/`select_hotel`/`modify_trip_plan`
       are absent from its list
-- [ ] No node reads a raw message to choose the next node — routing is supervisor or edges only
-- [ ] `qa_node` is registered as a compiled subgraph with an explicitly stated `checkpointer=`
-- [ ] Topology test passes: every node reachable, no orphans
-- [ ] `PlannerChatResponse` field shape unchanged from before this phase
-- [ ] `make test` green
+- [x] No node reads a raw message to choose the next node — routing is supervisor or edges only
+- [x] `qa_node` is registered as a compiled subgraph with an explicitly stated `checkpointer=`
+- [x] Topology test passes: every node reachable, no orphans
+- [x] `PlannerChatResponse` field shape unchanged from before this phase (`schemas.py` untouched)
+- [ ] `make test` green — **not literally green**: `make test` runs the full unscoped `pytest tests/`,
+      which was already red before this phase (pre-existing failures in `test_agents/test_supervisor.py`,
+      `test_session_store.py`, `test_structural_regression_harness.py::test_full_session_structural_signature`,
+      and 6 `test_api/` failures — all confirmed via `git stash` to fail identically without this
+      phase's changes). Every test this phase's scope actually touches is green; see phase report.
 
 ## Risk Assessment
 
