@@ -177,10 +177,40 @@ class RejectedChange:
 
 
 @dataclass(frozen=True)
+class DateAmbiguity:
+    """A date-shaped patch value with more than one valid calendar reading,
+    or missing its year outright — surfaced separately from `RejectedChange`
+    because resolving it needs structured data (candidate ISO dates), not
+    just a reason string. This module never calls `interrupt()` itself (it
+    would break the purity test); `validate_patch`
+    (`agents/graph_v2/nodes/validate_patch.py`) is the only caller that turns
+    one of these into an actual pause."""
+
+    path: str
+    kind: Literal["missing_year", "day_month_order"]
+    raw_value: str
+    candidates: tuple[str, ...] = ()  # ISO date strings — populated only for day_month_order
+
+
+class DateAmbiguousError(PatchValidationError):
+    """Raised by a date validator instead of a plain `PatchValidationError`
+    when the value has more than one valid reading (or no year), rather than
+    being outright invalid. `apply_patch` catches this ahead of the generic
+    `PatchValidationError` handler and routes it to `PatchResult.ambiguous`
+    instead of `.rejected` — the two must never collapse into one bucket,
+    since only one of them carries enough data to ask a specific question."""
+
+    def __init__(self, ambiguity: DateAmbiguity) -> None:
+        super().__init__(f"{ambiguity.path}: ambiguous date ({ambiguity.kind})")
+        self.ambiguity = ambiguity
+
+
+@dataclass(frozen=True)
 class PatchResult:
     state: TravelState
     applied: tuple[PatchChange, ...]
     rejected: tuple[RejectedChange, ...]
+    ambiguous: tuple[DateAmbiguity, ...] = ()
 
 
 def apply_patch(
@@ -192,6 +222,7 @@ def apply_patch(
     slots: dict[str, Slot] = dict(state.slots)
     applied: list[PatchChange] = []
     rejected: list[RejectedChange] = []
+    ambiguous: list[DateAmbiguity] = []
 
     for raw_change in changes:
         change = _coerce_change(raw_change)
@@ -220,13 +251,21 @@ def apply_patch(
         working_state = TravelState(slots=dict(slots))
         try:
             slots[storage_key] = _apply_single(pattern, change, slots.get(storage_key, Slot()), working_state)
+        except DateAmbiguousError as exc:
+            ambiguous.append(exc.ambiguity)
+            continue
         except PatchValidationError as exc:
             rejected.append(RejectedChange(change.path, change.operation, change.value, str(exc)))
             continue
 
         applied.append(change)
 
-    return PatchResult(state=TravelState(slots=slots), applied=tuple(applied), rejected=tuple(rejected))
+    return PatchResult(
+        state=TravelState(slots=slots),
+        applied=tuple(applied),
+        rejected=tuple(rejected),
+        ambiguous=tuple(ambiguous),
+    )
 
 
 def detect_impact(applied_changes: Sequence[PatchChange]) -> set[Workflow]:
@@ -431,22 +470,102 @@ def _int_range(min_value: int, max_value: int) -> _Validator:
     return _validate
 
 
-def _iso_date(value: Any, path: str, _state: TravelState) -> date:
+# Bare numeric date, day/month order and year deliberately unresolved —
+# extract_patch's prompt now copies a bare-numeric date exactly as typed
+# ("01/07", "1-2-2026") instead of guessing, precisely so this validator (not
+# the model) is what decides whether it is ambiguous. Year, when present, may
+# be 2 or 4 digits ("26" or "2026").
+_RAW_NUMERIC_DATE_RE = re.compile(r"^\s*(\d{1,2})[-/.](\d{1,2})(?:[-/.](\d{2,4}))?\s*$")
+
+
+def _normalize_year(raw: str) -> int:
+    year = int(raw)
+    return year + 2000 if year < 100 else year
+
+
+def _safe_date(year: int, month: int, day: int) -> date | None:
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
+
+
+def _resolve_numeric_date(x: int, y: int, year: int) -> date | tuple[date, date] | None:
+    """Two raw numbers `x-y` plus a year have two candidate calendar
+    readings: day=x/month=y (the DD-MM reading), or day=y/month=x (MM-DD).
+
+    A reading that already passed is not a genuine option — for most of any
+    given year, exactly one of the two calendar-valid readings is in the
+    past (e.g. today 2026-08-13, "12-08-2026": DD-MM is yesterday, MM-DD is
+    Dec 8), and asking "which did you mean" between a real answer and an
+    impossible one is not the "genuinely ambiguous" this phase's requirement
+    calls for — it silently offers a choice the user could never have meant.
+    Past readings are filtered out before deciding ambiguity; if that leaves
+    a single reading, it resolves silently even though it was calendar-
+    ambiguous. If it leaves none (both readings already passed), the one
+    calendar-valid past date is still returned so the caller's own past-date
+    check rejects it with the correct message, rather than losing it here.
+
+    Returns the single valid `date` when only one reading is real AND not
+    in the past, an `(a, b)` pair — DD-MM reading first — when BOTH are
+    real and still upcoming (the day/month order ambiguity), or None when
+    neither reading is a real calendar date at all."""
+    reading_dd_mm = _safe_date(year, y, x)
+    reading_mm_dd = _safe_date(year, x, y) if x != y else None
+
+    today = date.today()
+    # Built in (DD-MM, MM-DD) order, so a 2-element result keeps that ordering.
+    upcoming = [reading for reading in (reading_dd_mm, reading_mm_dd) if reading is not None and reading >= today]
+    if len(upcoming) == 2:
+        return upcoming[0], upcoming[1]
+    if len(upcoming) == 1:
+        return upcoming[0]
+    return reading_dd_mm or reading_mm_dd
+
+
+def _parse_date_value(value: Any, path: str) -> date:
+    """Accepts either a clean ISO string (already unambiguous — a relative
+    date like "ngày mai" that extract_patch resolved itself) or a raw numeric
+    `D[-/.]M[-/.][Y]` fragment it deliberately left untouched. Never guesses:
+    raises `DateAmbiguousError` when the year is missing or when both
+    day/month readings are valid calendar dates."""
     if not isinstance(value, str):
         raise PatchValidationError(f"{path}: expected a string, got {type(value).__name__}")
+    text = value.strip()
+
     try:
-        return date.fromisoformat(value)
+        return date.fromisoformat(text)
     except ValueError:
-        raise PatchValidationError(f"{path}: expected an ISO 8601 date (YYYY-MM-DD)") from None
+        pass
+
+    match = _RAW_NUMERIC_DATE_RE.match(text)
+    if not match:
+        raise PatchValidationError(f"{path}: expected an ISO 8601 date (YYYY-MM-DD)")
+
+    x, y, year_raw = match.groups()
+    x, y = int(x), int(y)
+    if year_raw is None:
+        raise DateAmbiguousError(DateAmbiguity(path=path, kind="missing_year", raw_value=text))
+
+    resolved = _resolve_numeric_date(x, y, _normalize_year(year_raw))
+    if resolved is None:
+        raise PatchValidationError(f"{path}: not a valid calendar date")
+    if isinstance(resolved, tuple):
+        candidates = tuple(d.isoformat() for d in resolved)
+        raise DateAmbiguousError(DateAmbiguity(path=path, kind="day_month_order", raw_value=text, candidates=candidates))
+    return resolved
 
 
 def _validate_date_start(value: Any, path: str, state: TravelState) -> str:
-    """The temporal check `dates.start` didn't have before this phase: valid
-    ISO format, plus — when `dates.end` is already known in this same working
-    state — must fall strictly before it. Order-dependent within one patch
-    (only the date applied second sees the other), which is enough to catch
-    the actual failure mode: an inverted range submitted together."""
-    start = _iso_date(value, path, state)
+    """Valid date (ISO or unambiguous raw numeric), plus two temporal checks
+    this phase adds: never in the past, and — when `dates.end` is already
+    known in this same working state — strictly before it. Order-dependent
+    within one patch (only the date applied second sees the other), which is
+    enough to catch the actual failure mode: an inverted range submitted
+    together."""
+    start = _parse_date_value(value, path)
+    if start < date.today():
+        raise PatchValidationError(f"{path}: start date cannot be in the past")
     end_slot = state.get("dates.end")
     if end_slot.presence is Presence.SET and start >= date.fromisoformat(str(end_slot.value)):
         raise PatchValidationError(f"{path}: start date must be before the trip's end date")
@@ -454,7 +573,9 @@ def _validate_date_start(value: Any, path: str, state: TravelState) -> str:
 
 
 def _validate_date_end(value: Any, path: str, state: TravelState) -> str:
-    end = _iso_date(value, path, state)
+    end = _parse_date_value(value, path)
+    if end < date.today():
+        raise PatchValidationError(f"{path}: end date cannot be in the past")
     start_slot = state.get("dates.start")
     if start_slot.presence is Presence.SET and end <= date.fromisoformat(str(start_slot.value)):
         raise PatchValidationError(f"{path}: end date must be after the trip's start date")

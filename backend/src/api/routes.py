@@ -21,6 +21,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
+from langgraph.types import Command
 
 from src.agents.session import (
     SessionRegistry,
@@ -242,10 +243,13 @@ def build_chat_response(session, result, session_id: str, language: str, suggest
 
     trip_plan = to_trip_plan_payload(session.trip_data)
     intake = IntakeStatus.from_state(session.intake_state, session.hotel_pref_state)
+    # Phase 7: no longer gated on `hotel_pref_state.is_complete` -- that was
+    # the literal mechanism behind "ngân sách chưa nhập chưa cho edit" (the
+    # date picker waiting on budget, an unrelated fact). Destination + people
+    # known and no explicit dates yet is enough to show the picker.
     requires_stay_dates = bool(
         session.intake_state.destination
         and session.intake_state.people
-        and session.hotel_pref_state.is_complete
         and not session.intake_state.has_explicit_stay_dates
     )
 
@@ -365,16 +369,54 @@ def _get_graph_v2():
     return _graph_v2_app
 
 
-def _run_turn_via_graph(session_id: str, message: str, language: str) -> PlannerChatResponse:
-    app = _get_graph_v2()
-    result = app.invoke(
+def _invoke_fresh_turn(app, config: dict, session_id: str, message: str, language: str) -> dict:
+    return app.invoke(
         {
             "session_id": session_id,
             "language": language,
             "messages": [HumanMessage(content=message)],
         },
-        config={"configurable": {"thread_id": session_id}},
+        config=config,
     )
+
+
+def _run_turn_via_graph(session_id: str, message: str, language: str) -> PlannerChatResponse:
+    """Phase 7: a thread can be PAUSED at `interrupt()` (an ambiguous date --
+    see `nodes/validate_patch.py`) from the previous turn. `get_state(...)
+    .interrupts` is non-empty exactly then, and this turn's message must
+    resume that paused node via `Command(resume=...)` rather than start a
+    fresh turn -- which would re-run the pipeline from `load_context` and
+    re-ask every slot already answered. A turn that itself pauses returns
+    with `"__interrupt__"` in the result instead of `"response"` (`respond`
+    never runs -- the graph stopped at `validate_patch`), so this builds the
+    frozen response shape directly from the interrupt's own message.
+
+    A resume reply that does NOT resolve the paused ambiguity (the user
+    answered something else entirely, e.g. "thôi đổi điểm đến sang Huế"
+    instead of naming a year) comes back with `unresolved_resume_text` set
+    (see `nodes/validate_patch.py`) -- that text never reached
+    `extract_patch` this turn (resuming re-executes only `validate_patch`,
+    not the whole pipeline), so it is re-run here as one ordinary fresh
+    turn. This is the fix for "a pending question isn't interruptible by a
+    different intent" recreated one level down, inside the interrupt itself.
+    """
+    app = _get_graph_v2()
+    config = {"configurable": {"thread_id": session_id}}
+
+    snapshot = app.get_state(config)
+    if snapshot.interrupts:
+        result = app.invoke(Command(resume=message), config=config)
+        unresolved = result.get("unresolved_resume_text")
+        if unresolved and "__interrupt__" not in result:
+            result = _invoke_fresh_turn(app, config, session_id, unresolved, language)
+    else:
+        result = _invoke_fresh_turn(app, config, session_id, message, language)
+
+    interrupts = result.get("__interrupt__")
+    if interrupts:
+        payload = interrupts[0].value or {}
+        return PlannerChatResponse(session_id=session_id, reply=str(payload.get("message", "")), stage="intake")
+
     return PlannerChatResponse(**result["response"])
 
 

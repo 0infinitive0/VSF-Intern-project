@@ -225,3 +225,30 @@ msgid ""
 "thẳng mức giá bạn muốn (vd \"4 triệu\"):"
 msgstr ""
 
+msgid "Bạn dự định kết thúc chuyến đi vào ngày nào?"
+msgstr ""
+
+#, python-brace-format
+msgid "Bạn muốn nói ngày {raw} năm nào? Cho mình biết năm cụ thể nhé."
+msgstr ""
+
+#, python-brace-format
+msgid ""
+"Ngày {raw} bạn nói có thể hiểu theo hai cách. Trả lời 1 hoặc 2:\n"
+"1. {a}\n"
+"2. {b}"
+msgstr ""
+
+msgid ""
+"Bạn muốn mức giá khách sạn khoảng nào? Có thể nói một mức cụ thể (vd \"4 triệu/đêm\"),"
+" một khoảng (vd \"2-3 triệu/đêm\"), hoặc \"không cần lọc theo giá\" nếu bạn không có "
+"yêu cầu."
+msgstr ""
+
+#, python-brace-format
+msgid "Đã cập nhật: {joined}."
+msgstr ""
+
+msgid "Mình chưa hiểu rõ ý bạn ở câu trả lời trước."
+msgstr ""
+

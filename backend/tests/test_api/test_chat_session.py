@@ -796,6 +796,62 @@ class TestTripPlanHTTP:
         assert item["route_from_hotel"] is None
 
 
+class TestRequiresStayDates:
+    """Phase 7: `requires_stay_dates` no longer requires `hotel_pref_state
+    .is_complete` -- the literal mechanism behind "ngân sách chưa nhập chưa
+    cho edit" (the date picker waiting on an unrelated fact, budget)."""
+
+    def _session(self, *, has_dates: bool, budget_complete: bool) -> TripSession:
+        from src.services.hotel_selection import HotelPreferenceState
+        from src.services.trip_intake import TripIntakeState
+
+        intake_state = TripIntakeState(
+            destination="Đà Nẵng",
+            people="2 người",
+            start_date="2099-01-01" if has_dates else None,
+            stay_end_date="2099-01-05" if has_dates else None,
+        )
+        hotel_pref_state = (
+            HotelPreferenceState(stage="done", target_price=1_000_000)
+            if budget_complete
+            else HotelPreferenceState()  # stage="pending_budget"
+        )
+        return TripSession(
+            session_id="stub",
+            agent=None,
+            config={"configurable": {"thread_id": "stub"}},
+            persist_hook=None,
+            intake_state=intake_state,
+            hotel_pref_state=hotel_pref_state,
+        )
+
+    def test_picker_shows_with_budget_still_pending(self):
+        """The exact regression: destination + people known, no dates yet,
+        budget untouched -- the picker must still fire."""
+        session = self._session(has_dates=False, budget_complete=False)
+        result = TurnResult(text="Bạn dự định bắt đầu chuyến đi vào ngày nào?", tool=None)
+
+        response = routes_module.build_chat_response(session, result, "stub", "vi", [])
+
+        assert response.requires_stay_dates is True
+
+    def test_picker_shows_with_budget_already_answered(self):
+        session = self._session(has_dates=False, budget_complete=True)
+        result = TurnResult(text="Bạn dự định bắt đầu chuyến đi vào ngày nào?", tool=None)
+
+        response = routes_module.build_chat_response(session, result, "stub", "vi", [])
+
+        assert response.requires_stay_dates is True
+
+    def test_picker_does_not_show_once_dates_are_explicit(self):
+        session = self._session(has_dates=True, budget_complete=False)
+        result = TurnResult(text="ok", tool=None)
+
+        response = routes_module.build_chat_response(session, result, "stub", "vi", [])
+
+        assert response.requires_stay_dates is False
+
+
 class TestIntakeGateHTTP:
     @pytest.mark.asyncio
     async def test_bare_city_gives_intake_stage(self, client, fresh_registry):

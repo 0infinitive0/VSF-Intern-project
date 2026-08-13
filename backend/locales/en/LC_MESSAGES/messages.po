@@ -239,3 +239,36 @@ msgstr ""
 "What hotel price range are you looking for? Reply with one of the numbered options "
 "below, or just tell me a price directly (e.g. \"4 million\"):"
 
+msgid "Bạn dự định kết thúc chuyến đi vào ngày nào?"
+msgstr "When do you plan to end your trip?"
+
+#, python-brace-format
+msgid "Bạn muốn nói ngày {raw} năm nào? Cho mình biết năm cụ thể nhé."
+msgstr "Which year did you mean for {raw}? Please tell me the specific year."
+
+#, python-brace-format
+msgid ""
+"Ngày {raw} bạn nói có thể hiểu theo hai cách. Trả lời 1 hoặc 2:\n"
+"1. {a}\n"
+"2. {b}"
+msgstr ""
+"The date {raw} you mentioned could be read two ways. Reply 1 or 2:\n"
+"1. {a}\n"
+"2. {b}"
+
+msgid ""
+"Bạn muốn mức giá khách sạn khoảng nào? Có thể nói một mức cụ thể (vd \"4 triệu/đêm\"),"
+" một khoảng (vd \"2-3 triệu/đêm\"), hoặc \"không cần lọc theo giá\" nếu bạn không có "
+"yêu cầu."
+msgstr ""
+"What hotel price range are you looking for? You can name a specific price (e.g. "
+"\"4 million/night\"), a range (e.g. \"2-3 million/night\"), or say \"no price "
+"preference\" if you don't have one."
+
+#, python-brace-format
+msgid "Đã cập nhật: {joined}."
+msgstr "Updated: {joined}."
+
+msgid "Mình chưa hiểu rõ ý bạn ở câu trả lời trước."
+msgstr "I didn't quite catch your previous reply."
+

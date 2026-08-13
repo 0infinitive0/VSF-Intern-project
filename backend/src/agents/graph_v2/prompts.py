@@ -68,10 +68,10 @@ Use general_question with an empty changes list whenever nothing in the message 
 
 Allowed change paths, one change per fact actually stated (omit anything not mentioned):
 - destination (string): the place name copied verbatim, exactly as the user wrote it. Never substitute or invent a different city.
-- dates.start / dates.end (string "YYYY-MM-DD"): only when the user gave a date with enough information to resolve unambiguously (day, month, AND year, or an explicit relative date like "ngày mai" you can resolve against today's date below). If the year is missing, do NOT guess it -- omit the change entirely.
+- dates.start / dates.end: resolve a relative date yourself (e.g. "ngày mai") to "YYYY-MM-DD" against today's date below. For a date given as bare numbers (e.g. "01/07", "1-2-2026"), copy the digits and separators EXACTLY as the user typed them -- do NOT convert to ISO, guess the day/month order, or invent a missing year; a deterministic step resolves that safely afterward and asks the user when it's genuinely unclear.
 - people (integer 1-50): number of travelers.
 - budget.max / budget.min (number, VND per NIGHT): a hotel price ceiling/floor per night.
-- budget.target (number, VND per NIGHT): a preferred per-night price.
+- budget.target (number, VND per NIGHT): a preferred per-night price. When the user explicitly says they have no budget preference (e.g. "không cần lọc theo giá", "bao nhiêu cũng được", "any price is fine"), emit `{{"path": "budget.target", "operation": "set", "value": null}}` -- null is the explicit "no preference" answer, distinct from simply not mentioning budget at all.
 - budget.trip_total (number, VND for the WHOLE TRIP): only when the user clearly means the total for the whole stay, not per night.
 - preferences.themes (list of strings, ONLY from: {preference_labels}): trip-wide vibe/interest labels.
 - preferences.companions (string, ONLY from: {companion_labels}): who is traveling together.

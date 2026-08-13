@@ -5,11 +5,16 @@ must return a response indistinguishable in *shape* from the legacy
 plane), even a `max_iterations` bail-out or an `ask_slot` question.
 
 Reply text priority:
-1. The last worker's own reply (`booking_node`'s decline, or any future
+1. `ask_slot`'s `next_question` (Phase 7) — a required slot is still
+   missing, so nothing downstream of `ask_slot` ran this turn
+   (`route_ask_slot` sends `"ask"` straight here). This must win over
+   everything below: `messages`/`task_results` could otherwise carry a
+   stale prior-turn answer forward on a turn that asked a fresh question.
+2. The last worker's own reply (`booking_node`'s decline, or any future
    worker that sets one) — `task_results[-1]["reply"]`.
-2. `qa_node`'s answer — the last AI message in `messages`, the only
+3. `qa_node`'s answer — the last AI message in `messages`, the only
    channel that subgraph shares with the parent.
-3. A generic acknowledgement, for the pass-through stub workers
+4. A generic acknowledgement, for the pass-through stub workers
    (`hotel_node`/`itinerary_node`) that have nothing to say yet.
 
 `stage`/`trip_plan`/`intake` stay at their Phase-5 placeholder values —
@@ -62,7 +67,8 @@ def _reply_from_messages(state: TravelGraphState) -> str | None:
 
 def respond(state: TravelGraphState) -> dict[str, Any]:
     reply = (
-        _reply_from_task_results(state)
+        state.get("next_question")
+        or _reply_from_task_results(state)
         or _reply_from_messages(state)
         or (_ACK_EN if state.get("language") == "en" else _ACK_VI)
     )

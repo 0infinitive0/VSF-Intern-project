@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date, timedelta
 
 from src.domain.travel_state import (
     _VALIDATORS,  # noqa: PLC2701 — parity check, same module
@@ -13,6 +14,11 @@ from src.domain.travel_state import (
     apply_patch,
     detect_impact,
 )
+
+# Phase 7 added a past-date rejection to dates.start/dates.end — these must
+# stay in the future relative to whenever the suite actually runs.
+_TRIP_START = (date.today() + timedelta(days=30)).isoformat()
+_TRIP_END = (date.today() + timedelta(days=35)).isoformat()  # 5-day trip
 
 
 def test_apply_patch_rejects_a_path_outside_allowed_paths() -> None:
@@ -90,8 +96,8 @@ def test_daily_preferences_wildcard_day_within_trip_length_validates() -> None:
     state = apply_patch(
         TravelState(),
         [
-            {"path": "dates.start", "operation": "set", "value": "2026-08-10"},
-            {"path": "dates.end", "operation": "set", "value": "2026-08-15"},  # 5-day trip
+            {"path": "dates.start", "operation": "set", "value": _TRIP_START},
+            {"path": "dates.end", "operation": "set", "value": _TRIP_END},
         ],
     ).state
 
@@ -105,8 +111,8 @@ def test_daily_preferences_wildcard_day_beyond_trip_length_rejects() -> None:
     state = apply_patch(
         TravelState(),
         [
-            {"path": "dates.start", "operation": "set", "value": "2026-08-10"},
-            {"path": "dates.end", "operation": "set", "value": "2026-08-15"},  # 5-day trip
+            {"path": "dates.start", "operation": "set", "value": _TRIP_START},
+            {"path": "dates.end", "operation": "set", "value": _TRIP_END},
         ],
     ).state
 
@@ -264,14 +270,149 @@ def test_inverted_date_range_in_the_same_patch_is_rejected() -> None:
     result = apply_patch(
         TravelState(),
         [
-            {"path": "dates.start", "operation": "set", "value": "2026-08-15"},
-            {"path": "dates.end", "operation": "set", "value": "2026-08-10"},
+            {"path": "dates.start", "operation": "set", "value": _TRIP_END},
+            {"path": "dates.end", "operation": "set", "value": _TRIP_START},
         ],
     )
 
     assert len(result.applied) == 1
     assert len(result.rejected) == 1
     assert "end date" in result.rejected[0].reason
+
+
+# --- Phase 7: date validators — past-date rejection + ambiguity -----------
+
+
+def test_past_start_date_is_rejected_with_a_date_specific_message() -> None:
+    past = (date.today() - timedelta(days=1)).isoformat()
+
+    result = apply_patch(TravelState(), [{"path": "dates.start", "operation": "set", "value": past}])
+
+    assert result.applied == ()
+    assert len(result.rejected) == 1
+    assert "past" in result.rejected[0].reason
+
+
+def test_past_end_date_is_rejected_with_a_date_specific_message() -> None:
+    past = (date.today() - timedelta(days=1)).isoformat()
+
+    result = apply_patch(TravelState(), [{"path": "dates.end", "operation": "set", "value": past}])
+
+    assert result.applied == ()
+    assert len(result.rejected) == 1
+    assert "past" in result.rejected[0].reason
+
+
+def test_bare_numeric_date_with_no_year_is_ambiguous_not_rejected() -> None:
+    result = apply_patch(TravelState(), [{"path": "dates.start", "operation": "set", "value": "01/07"}])
+
+    assert result.applied == ()
+    assert result.rejected == ()
+    assert len(result.ambiguous) == 1
+    assert result.ambiguous[0].kind == "missing_year"
+    assert result.ambiguous[0].path == "dates.start"
+
+
+def test_bare_numeric_date_with_both_components_under_13_is_day_month_ambiguous() -> None:
+    future_year = date.today().year + 1
+
+    result = apply_patch(
+        TravelState(), [{"path": "dates.start", "operation": "set", "value": f"1-2-{future_year}"}]
+    )
+
+    assert result.applied == ()
+    assert result.rejected == ()
+    assert len(result.ambiguous) == 1
+    ambiguity = result.ambiguous[0]
+    assert ambiguity.kind == "day_month_order"
+    # DD-MM reading (1 Feb) first, MM-DD reading (2 Jan) second.
+    assert ambiguity.candidates == (f"{future_year}-02-01", f"{future_year}-01-02")
+
+
+def test_bare_numeric_date_where_one_reading_already_passed_resolves_to_the_other_silently(monkeypatch) -> None:
+    """Both `x<=12` and `y<=12` is not enough to ask -- if one calendar-valid
+    reading already passed, it was never a real option, so the other
+    resolves silently instead of offering an impossible choice. "Today" is
+    frozen (rather than derived from the live clock) so this is correct on
+    every day of the year, not just ones where day != month."""
+    import src.domain.travel_state as travel_state_module
+
+    class _FixedDate(date):
+        @classmethod
+        def today(cls):
+            return date(2026, 8, 13)
+
+    monkeypatch.setattr(travel_state_module, "date", _FixedDate)
+
+    # "12-08-2026" reads as either 12 Aug (yesterday relative to the frozen
+    # "today") or 8 Dec (still upcoming) -- only the latter is a real option.
+    result = apply_patch(TravelState(), [{"path": "dates.start", "operation": "set", "value": "12-08-2026"}])
+
+    assert result.ambiguous == ()
+    assert len(result.applied) == 1
+    assert result.state.get("dates.start").value == "2026-12-08"
+
+
+def test_bare_numeric_date_where_both_readings_already_passed_is_rejected_as_past() -> None:
+    result = apply_patch(TravelState(), [{"path": "dates.start", "operation": "set", "value": "1-1-2020"}])
+
+    assert result.applied == ()
+    assert result.ambiguous == ()
+    assert len(result.rejected) == 1
+    assert "past" in result.rejected[0].reason
+
+
+def test_bare_numeric_date_with_one_component_over_12_resolves_silently() -> None:
+    future_year = date.today().year + 1
+
+    result = apply_patch(
+        TravelState(), [{"path": "dates.start", "operation": "set", "value": f"31-07-{future_year}"}]
+    )
+
+    assert result.rejected == ()
+    assert result.ambiguous == ()
+    assert len(result.applied) == 1
+    assert result.state.get("dates.start").value == f"{future_year}-07-31"
+
+
+def test_bare_numeric_date_with_equal_day_and_month_is_unambiguous() -> None:
+    future_year = date.today().year + 1
+
+    result = apply_patch(
+        TravelState(), [{"path": "dates.start", "operation": "set", "value": f"5-5-{future_year}"}]
+    )
+
+    assert result.ambiguous == ()
+    assert len(result.applied) == 1
+    assert result.state.get("dates.start").value == f"{future_year}-05-05"
+
+
+def test_bare_numeric_date_with_neither_reading_valid_is_rejected_not_ambiguous() -> None:
+    future_year = date.today().year + 1
+
+    result = apply_patch(
+        TravelState(), [{"path": "dates.start", "operation": "set", "value": f"35-13-{future_year}"}]
+    )
+
+    assert result.applied == ()
+    assert result.ambiguous == ()
+    assert len(result.rejected) == 1
+    assert "not a valid calendar date" in result.rejected[0].reason
+
+
+def test_ambiguity_resolution_via_a_candidate_iso_value_applies_cleanly() -> None:
+    """The interrupt-resolution shape `validate_patch` (the graph node) relies
+    on: re-running `apply_patch` with the chosen candidate as the new value
+    resolves cleanly, no second ambiguity."""
+    future_year = date.today().year + 1
+    first = apply_patch(TravelState(), [{"path": "dates.start", "operation": "set", "value": f"1-2-{future_year}"}])
+    chosen = first.ambiguous[0].candidates[0]
+
+    resolved = apply_patch(TravelState(), [{"path": "dates.start", "operation": "set", "value": chosen}])
+
+    assert resolved.ambiguous == ()
+    assert resolved.rejected == ()
+    assert resolved.state.get("dates.start").value == chosen
 
 
 def test_wildcard_day_key_normalizes_equivalent_forms_to_one_slot() -> None:

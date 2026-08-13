@@ -6,17 +6,26 @@ does not modify."""
 
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 from src.domain.travel_state import Presence, Slot, TravelState
 from src.services.hotel_selection import HotelPreferenceState
 from src.services.trip_intake import TripIntakeState
+
+# Phase 7 added a past-date rejection to the `dates.start`/`dates.end`
+# validators `to_travel_state()` routes through — these must stay in the
+# future relative to whenever the suite actually runs, not a date literal
+# frozen at authoring time.
+_TRIP_START = (date.today() + timedelta(days=30)).isoformat()
+_TRIP_END = (date.today() + timedelta(days=35)).isoformat()
 
 
 def test_trip_intake_state_to_travel_state_maps_set_facts() -> None:
     intake = TripIntakeState(
         destination="Đà Nẵng",
         duration="5 ngày",
-        start_date="2026-08-10",
-        stay_end_date="2026-08-15",
+        start_date=_TRIP_START,
+        stay_end_date=_TRIP_END,
         people="2 người",
         preferences=("biển", "ẩm thực"),
         companions="đi cùng người yêu hoặc vợ chồng",
@@ -28,8 +37,8 @@ def test_trip_intake_state_to_travel_state_maps_set_facts() -> None:
     travel_state = intake.to_travel_state()
 
     assert travel_state.get("destination") == Slot(Presence.SET, "Đà Nẵng")
-    assert travel_state.get("dates.start") == Slot(Presence.SET, "2026-08-10")
-    assert travel_state.get("dates.end") == Slot(Presence.SET, "2026-08-15")
+    assert travel_state.get("dates.start") == Slot(Presence.SET, _TRIP_START)
+    assert travel_state.get("dates.end") == Slot(Presence.SET, _TRIP_END)
     assert travel_state.get("people") == Slot(Presence.SET, 2)
     assert travel_state.get("preferences.themes") == Slot(Presence.SET, ["biển", "ẩm thực"])
     assert travel_state.get("preferences.companions") == Slot(Presence.SET, "đi cùng người yêu hoặc vợ chồng")

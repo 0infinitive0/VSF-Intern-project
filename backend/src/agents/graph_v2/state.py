@@ -39,6 +39,11 @@ class TravelGraphState(TypedDict, total=False):
     applied_changes: list[dict[str, Any]]
     rejected_changes: list[dict[str, Any]]
     impacted_workflows: list[str]  # Workflow labels from detect_impact()
+    # Raw text of a `Command(resume=...)` reply that did NOT resolve the
+    # ambiguity `interrupt()` paused on (Phase 7) -- `_run_turn_via_graph`
+    # (api/routes.py) re-runs it as a normal fresh turn instead of losing
+    # it. None on every turn that wasn't a resume, or that resolved cleanly.
+    unresolved_resume_text: str | None
 
     # --- slot gate (Phase 7) --------------------------------------------
     missing_slots: list[str]
@@ -127,6 +132,7 @@ def initial_graph_state(session_id: str, *, language: str = "vi") -> TravelGraph
         applied_changes=[],
         rejected_changes=[],
         impacted_workflows=[],
+        unresolved_resume_text=None,
         missing_slots=[],
         next_question=None,
         jailbreak_blocked=False,

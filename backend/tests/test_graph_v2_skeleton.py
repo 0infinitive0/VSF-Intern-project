@@ -6,6 +6,7 @@ covered by `test_supervisor_routing.py`.
 
 from __future__ import annotations
 
+import inspect
 from collections import deque
 
 import pytest
@@ -14,6 +15,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 import src.agents.graph_v2.nodes.extract_patch as extract_patch_module
 import src.agents.graph_v2.nodes.supervisor as supervisor_module
+import src.agents.graph_v2.nodes.validate_patch as validate_patch_module
 from src.agents.graph_v2.contracts import CONTRACTS, ContractViolation, enforce_contract
 from src.agents.graph_v2.graph import NODE_NAMES, build_graph
 from src.agents.graph_v2.nodes.booking_node import booking_node
@@ -59,6 +61,43 @@ def test_qa_node_has_exactly_one_outgoing_edge():
     outgoing = [edge for edge in app.get_graph().edges if edge.source == "qa_node"]
     assert len(outgoing) == 1
     assert outgoing[0].target == "respond"
+
+
+def test_only_validate_patch_calls_interrupt():
+    """Phase 7's standing constraint: `interrupt()` re-runs its WHOLE node
+    from the start on every resume, so a node calling it must be pure (or
+    idempotent) up to that call. `validate_patch` is the only node this
+    plan grants that to (see its module docstring) -- asserted here two
+    ways: it is the only node whose source references `interrupt`, and it
+    imports no LLM/DB/API client that a resume-triggered re-run could
+    accidentally re-invoke as a side effect.
+
+    Node modules are derived from `NODE_NAMES` (not hand-listed) so a future
+    node is automatically covered instead of silently exempt."""
+    import importlib
+
+    # Every node name maps to `nodes.<name>` except the two that don't share
+    # their node name with their module (validate_patch is asserted
+    # separately below; qa_node is a subgraph built by build_qa_subgraph,
+    # not a plain node function, so there is no bare `qa_node` module
+    # attribute to source-inspect the same way -- its module is still
+    # scanned for `interrupt(`).
+    other_node_names = [name for name in NODE_NAMES if name not in ("validate_patch",)]
+    other_node_modules = [
+        importlib.import_module(f"src.agents.graph_v2.nodes.{name}") for name in other_node_names
+    ]
+
+    for module in other_node_modules:
+        assert "interrupt(" not in inspect.getsource(module), f"{module.__name__} must not call interrupt()"
+
+    assert "interrupt(" in inspect.getsource(validate_patch_module)
+
+    forbidden = ("get_reasoning_llm", "get_fast_llm", "supabase", "httpx", "requests")
+    validate_patch_source = inspect.getsource(validate_patch_module)
+    for name in forbidden:
+        assert name not in validate_patch_source, (
+            f"validate_patch must stay pure up to interrupt() (no LLM/DB/API call) -- found {name!r}"
+        )
 
 
 # --- qa_node: reduced tool list + explicit checkpointer subgraph -----------
@@ -172,15 +211,18 @@ def test_graph_routes_a_completed_worker_through_budget_check_to_respond(monkeyp
     level -- proving `budget_check` actually executes and the frozen
     response still gets built afterward.
 
-    `extract_patch` is still a Phase 6 stub (always proposes zero
-    changes), so nothing can organically populate `pending_tasks` through
-    `.invoke()` from START today -- this test substitutes it for one call,
-    the only way to reach a worker node through the real graph before
-    Phase 6 lands. `budget.max` maps to exactly one workflow (`hotel`) in
-    `IMPACT_MAP`, so this also exercises the supervisor's fast path (zero
-    LLM calls) rather than the LLM path.
+    This substitutes `extract_patch` for one call so the test controls
+    exactly what patch reaches `ask_slot`'s Phase 7 slot gate. Every OTHER
+    required slot (destination/people/dates) is pre-seeded directly in the
+    invoke's starting `travel_state` (not via the patch), so the gate lets
+    the turn through to the supervisor instead of stopping to ask for one of
+    them first, while the patch itself still only sets `budget.max` -- the
+    ONE change that maps to a single workflow (`hotel`) in `IMPACT_MAP`, so
+    this also exercises the supervisor's fast path (zero LLM calls) rather
+    than the LLM path.
     """
     import src.agents.graph_v2.graph as graph_module
+    from src.domain.travel_state import TravelState, apply_patch
 
     def _fake_extract_patch(_state):
         return {"patch": [{"path": "budget.max", "operation": "set", "value": 5000000}]}
@@ -191,11 +233,22 @@ def test_graph_routes_a_completed_worker_through_budget_check_to_respond(monkeyp
     monkeypatch.setattr(graph_module, "extract_patch", _fake_extract_patch)
     monkeypatch.setattr(supervisor_module, "get_fast_llm", _unreachable)
 
+    seeded_state = apply_patch(
+        TravelState(),
+        [
+            {"path": "destination", "operation": "set", "value": "Đà Nẵng"},
+            {"path": "people", "operation": "set", "value": 2},
+            {"path": "dates.start", "operation": "set", "value": "2099-01-01"},
+            {"path": "dates.end", "operation": "set", "value": "2099-01-05"},
+        ],
+    ).state
+
     app = graph_module.build_graph()
     result = app.invoke(
         {
             "session_id": "turn-budget",
             "language": "vi",
+            "travel_state": seeded_state.to_dict(),
             "messages": [HumanMessage(content="Ngân sách tối đa 5 triệu")],
         },
         config={"configurable": {"thread_id": "test-budget-check-thread"}},

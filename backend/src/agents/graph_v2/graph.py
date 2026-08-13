@@ -10,9 +10,10 @@ deviations from that doc's shorthand:
   the legacy plane. The doc's out-of-scope half of this edge (Phase 2's
   `guardrails/scope.py`) was never actually shipped — see
   `nodes/scope_guard.py`'s docstring — so only the jailbreak branch exists
-  today. `validate_patch → apply_patch` stays a plain edge: the doc's "→
-  interrupt |" branch is Phase 7 (`interrupt`, not yet built), and wiring a
-  conditional edge to a branch nothing can take would be dead code.
+  today. `validate_patch → apply_patch` stays a plain edge even though
+  Phase 7 landed `interrupt()`: the pause/resume happens INSIDE
+  `validate_patch` (it calls `interrupt()` itself when a date is ambiguous),
+  not on a separate graph branch — see `nodes/validate_patch.py`.
 - `ask_slot`'s `"ask"` outcome routes to `respond`, not straight to `END`.
   Every path must build the frozen `PlannerChatResponse` shape (Phase 5's
   own functional requirement), and only `respond` does that — see
