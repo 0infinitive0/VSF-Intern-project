@@ -12,6 +12,7 @@ import pytest
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
+import src.agents.graph_v2.nodes.extract_patch as extract_patch_module
 import src.agents.graph_v2.nodes.supervisor as supervisor_module
 from src.agents.graph_v2.contracts import CONTRACTS, ContractViolation, enforce_contract
 from src.agents.graph_v2.graph import NODE_NAMES, build_graph
@@ -19,7 +20,6 @@ from src.agents.graph_v2.nodes.booking_node import booking_node
 from src.agents.graph_v2.nodes.qa_node import QA_TOOLS, build_qa_subgraph
 from src.agents.graph_v2.state import initial_graph_state
 from src.models.schemas import PlannerChatResponse
-
 
 # --- Topology ---------------------------------------------------------------
 
@@ -134,16 +134,20 @@ def test_booking_node_replies_in_english_when_requested():
 
 
 def test_graph_completes_a_turn_end_to_end_and_returns_a_planner_chat_response(monkeypatch):
-    """No patch is ever proposed in Phase 5 (`extract_patch` is a Phase 6
-    stub), so `pending_tasks` is always empty at the supervisor -- forcing
-    the LLM call to fail here exercises the `workers == [] -> "respond"`
-    fallback deterministically, with no real model call anywhere in the
+    """`extract_patch` (Phase 6) now runs for real, so both its LLM call and
+    the supervisor's are forced to fail here -- `extract_patch` falls back to
+    an empty patch/`general_question` on its own (never raises out), which
+    keeps `pending_tasks` empty at the supervisor exactly as the Phase 5
+    stub did, exercising the same `workers == [] -> "respond"` fallback
+    deterministically, with no real model or network call anywhere in the
     turn."""
 
     def _raise(*_args, **_kwargs):
         raise RuntimeError("no LLM in this test")
 
     monkeypatch.setattr(supervisor_module, "get_fast_llm", _raise)
+    monkeypatch.setattr(extract_patch_module, "get_reasoning_llm", _raise)
+    monkeypatch.setattr(extract_patch_module, "_get_destination_names", lambda: ())
 
     app = build_graph()
     result = app.invoke(

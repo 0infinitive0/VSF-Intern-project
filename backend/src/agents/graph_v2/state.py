@@ -34,6 +34,7 @@ class TravelGraphState(TypedDict, total=False):
 
     # --- patch pipeline (Phase 6/3) --------------------------------------
     patch: list[dict[str, Any]]  # proposed {path, operation, value} changes
+    intent: str  # extract_patch's classification -- audit trail only, never routes (doc §36)
     proposed_travel_state: dict[str, Any]  # validate_patch's output; apply_patch commits it
     applied_changes: list[dict[str, Any]]
     rejected_changes: list[dict[str, Any]]
@@ -121,6 +122,7 @@ def initial_graph_state(session_id: str, *, language: str = "vi") -> TravelGraph
         messages=[],
         travel_state={},
         patch=[],
+        intent="",
         proposed_travel_state={},
         applied_changes=[],
         rejected_changes=[],

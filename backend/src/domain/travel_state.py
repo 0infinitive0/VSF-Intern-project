@@ -355,7 +355,10 @@ def _canonical_key(pattern: str, path: str) -> str:
     return f"daily_preferences.{day_number}.theme"
 
 
-def _trip_duration_days(state: TravelState) -> int | None:
+def trip_duration_days(state: TravelState) -> int | None:
+    """Public: reused by `extract_patch` (Phase 6) for deterministic
+    day-scope resolution before a patch reaches this module's own
+    validators."""
     start_slot = state.get("dates.start")
     end_slot = state.get("dates.end")
     if start_slot.presence is not Presence.SET or end_slot.presence is not Presence.SET:
@@ -475,7 +478,7 @@ def _validate_daily_theme(value: Any, path: str, state: TravelState) -> str:
     day_number = _extract_wildcard_day(path)
     if day_number is None or day_number < 1:
         raise PatchValidationError(f"{path}: invalid day number")
-    max_day = _trip_duration_days(state) or _MAX_DAY_NUMBER_FALLBACK
+    max_day = trip_duration_days(state) or _MAX_DAY_NUMBER_FALLBACK
     if day_number > max_day:
         raise PatchValidationError(f"{path}: day {day_number} exceeds trip length ({max_day} days)")
     if not isinstance(value, str):
@@ -493,7 +496,7 @@ def _validate_locked_day(value: Any, path: str, state: TravelState) -> int:
         raise PatchValidationError(f"{path}: expected an integer day number") from None
     if day_number < 1:
         raise PatchValidationError(f"{path}: day number must be >= 1")
-    max_day = _trip_duration_days(state) or _MAX_DAY_NUMBER_FALLBACK
+    max_day = trip_duration_days(state) or _MAX_DAY_NUMBER_FALLBACK
     if day_number > max_day:
         raise PatchValidationError(f"{path}: day {day_number} exceeds trip length ({max_day} days)")
     return day_number

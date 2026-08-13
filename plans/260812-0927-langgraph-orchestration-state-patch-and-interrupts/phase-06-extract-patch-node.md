@@ -1,7 +1,7 @@
 ---
 phase: 6
 title: "extract_patch node"
-status: pending
+status: done
 priority: P1
 effort: "2d"
 dependencies: [5]
@@ -113,12 +113,12 @@ Grounding stays layered exactly as today: model proposes → pure function valid
 
 ## Success Criteria
 
-- [ ] "ngày 1 thiên nhiên" always yields `daily_preferences.1.theme`, never `preferences.themes`
-- [ ] A previously-set `dates.start` can be corrected by a later message
-- [ ] Malformed model output completes the turn via rules fallback, no exception surfaces
-- [ ] Exactly one extraction LLM call per turn, asserted by test
-- [ ] All doc §34 phrases produce the expected patch (table test)
-- [ ] `make test` green
+- [x] "ngày 1 thiên nhiên" always yields `daily_preferences.1.theme`, never `preferences.themes`
+- [x] A previously-set `dates.start` can be corrected by a later message
+- [x] Malformed model output completes the turn via rules fallback, no exception surfaces
+- [x] Exactly one extraction LLM call per turn, asserted by test
+- [x] All doc §34 phrases produce the expected patch (table test)
+- [x] `make test` green — see completion report for the scoped-vs-unscoped caveat (project convention: unscoped `pytest tests/` hits real LLM/network)
 
 ## Risk Assessment
 

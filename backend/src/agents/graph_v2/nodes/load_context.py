@@ -21,6 +21,7 @@ def load_context(state: TravelGraphState) -> dict[str, Any]:
     return {
         "travel_state": state.get("travel_state") or {},
         "patch": [],
+        "intent": "",
         "proposed_travel_state": {},
         "applied_changes": [],
         "rejected_changes": [],
