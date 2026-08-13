@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import RemoteImage from './remote-image'
 import { formatCurrency } from '../lib/format-currency'
@@ -8,11 +8,16 @@ import type { RoomDetail } from '../types'
  * RoomCard — the read-only room accordion (RoomCard.dc.html minus the removed
  * parts). Click anywhere on the card (or the toggle button) expands IN PLACE
  * to show the gallery / facilities / package details — no new screen, no
- * popup (Hotel Detail Focus.md §Room Detail).
+ * popup (Hotel Detail Focus.md §Room Detail). Opening/closing smooth-scrolls
+ * the newly revealed details (or the card itself, on close) into view within
+ * whatever scroll container it sits in — see the `open` effect below.
  *
- * Removed from the design on purpose (plan.md "Phần chưa làm" #4/#21):
- *   - no "Chọn phòng" button — there is no select-room verb on the backend;
- *   - no cancellation/payment policy cells — the tables have no such columns.
+ * "Chọn phòng" (`selected`/`onPick`) is display-only by design (plan.md "Phần
+ * chưa làm" #4): the backend has no select-room verb, so picking a room here
+ * never reaches it, never changes the hotel's total price or AI summary —
+ * it's a local highlight the caller (hotel-detail-panel.tsx) tracks per
+ * hotel, same as the design's `state.rooms[hid]`. No cancellation/payment
+ * policy cells either (plan.md #21) — the tables have no such columns.
  *
  * The availability badge is honest: it maps from price.sold_out (real data),
  * shows only when a price row exists at all (price: null means "we don't
@@ -22,12 +27,39 @@ import type { RoomDetail } from '../types'
 export default function RoomCard({
   room,
   delay,
+  selected,
+  onPick,
 }: {
   room: RoomDetail
   delay: string
+  selected: boolean
+  onPick: () => void
 }) {
   const { t, i18n } = useTranslation()
   const [open, setOpen] = useState(false)
+  const cardRef = useRef<HTMLDivElement>(null)
+  const detailsRef = useRef<HTMLDivElement>(null)
+  // Skips the scroll on mount — this effect exists purely to react to the
+  // user actually toggling `open`, not to move anything on first render.
+  const skipNextScroll = useRef(true)
+
+  // Expanding can reveal content below the fold of HotelDetailPanel's own
+  // scroll container; collapsing can leave the view scrolled to where that
+  // content used to be. Bring the right thing into view smoothly either
+  // way — the just-revealed details on open, the card itself on close —
+  // scrollIntoView finds the nearest scrollable ancestor on its own, so this
+  // doesn't need to know about HotelDetailPanel's scroll div specifically.
+  useEffect(() => {
+    if (skipNextScroll.current) {
+      skipNextScroll.current = false
+      return
+    }
+    const frame = requestAnimationFrame(() => {
+      const target = open ? detailsRef.current : cardRef.current
+      target?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [open])
 
   const meta = [
     room.room_size_sqm != null ? t('roomSqm', { n: room.room_size_sqm }) : null,
@@ -47,10 +79,15 @@ export default function RoomCard({
 
   return (
     <div
+      ref={cardRef}
       onClick={() => setOpen((o) => !o)}
-      className="rounded-[22px] p-3.5 bg-glass-2 border border-edge cursor-pointer"
+      className="rounded-[22px] p-3.5 border cursor-pointer"
       style={{
-        boxShadow: '0 10px 26px -20px rgb(var(--shadow-rgb) / 0.5)',
+        background: selected ? 'var(--g3)' : 'var(--g2)',
+        borderColor: selected ? 'var(--acc)' : 'var(--edge)',
+        boxShadow: selected
+          ? '0 18px 38px -20px rgb(var(--shadow-rgb) / 0.55), 0 0 0 3px var(--acc-soft)'
+          : '0 8px 20px -18px rgb(var(--shadow-rgb) / 0.6)',
         transition: 'all .34s cubic-bezier(.34,1.3,.64,1)',
         animation: `vFade .5s ${delay} ease both`,
       }}
@@ -61,7 +98,6 @@ export default function RoomCard({
           alt={t('roomImgAlt', { name: room.name ?? '' })}
           icon="king_bed"
           className="w-[92px] h-[76px] rounded-[16px] flex-none"
-          sheen="vSheen 6.5s 1.6s ease-in-out infinite"
         />
         <div className="flex-1 min-w-0">
           <div className="flex items-start gap-2.5">
@@ -107,6 +143,7 @@ export default function RoomCard({
 
       {open && (
         <div
+          ref={detailsRef}
           className="mt-3 pt-3 border-t border-line flex flex-col gap-[11px] animate-[vFade_0.35s_ease_both]"
         >
           {room.images && room.images.length > 0 && (
@@ -135,7 +172,7 @@ export default function RoomCard({
             </div>
           )}
           {price?.package_details && (
-            <div className="text-[12px] font-[450] text-on-surface-variant">
+            <div className="text-[13px] font-normal leading-[1.55] text-on-surface-variant text-pretty">
               {price.package_details}
             </div>
           )}
@@ -147,15 +184,29 @@ export default function RoomCard({
           type="button"
           onClick={(e) => {
             e.stopPropagation()
+            onPick()
+          }}
+          className="flex-1 p-2.5 rounded-[14px] border-none text-[12.5px] font-[590] tracking-[-0.1px] cursor-pointer transition-all duration-200 active:scale-[0.985]"
+          style={{
+            background: selected ? 'var(--btn)' : 'var(--fill)',
+            color: selected ? 'var(--btn-fg)' : 'var(--t2)',
+          }}
+        >
+          {selected ? t('roomPickBtnSelected') : t('roomPickBtn')}
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
             setOpen((o) => !o)
           }}
           aria-expanded={open}
-          className="flex-none px-3.5 py-2.5 rounded-[14px] border border-stroke bg-glass-2 text-on-surface-variant text-[12.5px] font-[530] cursor-pointer transition-all duration-200 hover:bg-glass-3 hover:text-on-surface"
+          className="inline-flex flex-none items-center justify-center gap-1 px-3.5 py-2.5 rounded-[14px] border border-stroke bg-glass-2 text-on-surface-variant text-[12.5px] font-[530] cursor-pointer transition-all duration-200 hover:bg-glass-3 hover:text-on-surface"
         >
-          <span className="material-symbols-outlined text-[14px] align-[-2px] mr-1" aria-hidden="true">
+          <span className="material-symbols-outlined text-[14px]" aria-hidden="true">
             {open ? 'expand_less' : 'expand_more'}
           </span>
-          {open ? t('roomCollapse') : t('roomExpand')}
+          {t('roomExpand')}
         </button>
       </div>
     </div>

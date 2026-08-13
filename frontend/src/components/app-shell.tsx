@@ -233,7 +233,21 @@ export default function AppShell({
 
         <div
           className="flex-1 min-h-[70vh] md:min-h-0 md:h-full flex overflow-hidden"
-          style={{ paddingLeft: isDesktop ? chatGutter : 0 }}
+          style={{
+            paddingLeft: isDesktop ? chatGutter : 0,
+            // Was un-transitioned on purpose (see the file doc comment: "a
+            // single one-time reflow per toggle, not animated, not a
+            // per-frame cost") — but that made every stage panel (header,
+            // list, map, detail) snap sideways instantly the moment focus
+            // opens/closes, while the chat panel next to it is still
+            // sliding away over .62s. Same duration/easing as chat's own
+            // transform below, so the stage's left edge recedes in step
+            // with chat leaving instead of jumping ahead of it. Trade-off
+            // accepted: this reflows the stage subtree every frame for
+            // .62s now, not once — revisit if that turns out janky on
+            // lower-end devices.
+            transition: isDesktop ? 'padding-left .62s var(--ease-glide)' : undefined,
+          }}
         >
           <StageRouter
             stage={stage}

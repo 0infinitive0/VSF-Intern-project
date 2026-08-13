@@ -509,7 +509,16 @@ export default function MapView({ variant, theme, markers, segments, hoveredId, 
       const marker = new mapboxgl.Marker({ element: root, anchor: spec.kind === 'hotel' ? 'bottom' : 'center', offset }).setLngLat(toLngLat(point)).addTo(map)
       markerRegistry.current.set(spec.syncId, { marker, spec })
     }
-    if (variant === 'hotels' && !hotelCameraSet.current) { map.jumpTo({ center: [108.24, 16.045], zoom: 12 }); hotelCameraSet.current = true }
+    // Frame the real hotel coordinates once on first load (not a hardcoded
+    // Đà Nẵng fallback — that put the camera somewhere with zero hotels for
+    // any other destination). Only "consumes" the one-time flag once there
+    // are actual points to fit, so an empty first render (options still
+    // loading) doesn't lock the camera out of framing the real markers once
+    // they arrive.
+    if (variant === 'hotels' && !hotelCameraSet.current && points.length > 0) {
+      fitWorkspace(map, points)
+      hotelCameraSet.current = true
+    }
     if (variant === 'workspace') fitWorkspace(map, points)
   }, [markerKey, markers, status, variant, mapRef])
 

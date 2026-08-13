@@ -400,7 +400,11 @@ body {
   --hc-bg: var(--g3);
   --hc-border: var(--btn);
   --hc-shadow: 0 26px 54px -26px rgb(var(--shadow-rgb) / 0.7);
-  --hc-transform: translateY(-3px) scale(1.008);
+  /* Design also has `scale(1.008)` here — dropped: in the narrow card list
+     (no overflow-x guard between the list/map columns) that 0.8% grow was
+     enough to spill the selected card's edge past its own column, and border
+     color + shadow already carry the "selected" read on their own. */
+  --hc-transform: translateY(-3px);
 }
 .hotel-card[data-focused='true'] {
   --hc-border: var(--acc);

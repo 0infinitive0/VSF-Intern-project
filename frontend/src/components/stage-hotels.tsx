@@ -84,7 +84,18 @@ export default function StageHotels({
 
   const focusedId = focusMode.focus?.kind === 'hotel' ? focusMode.focus.id : null
   const focused = focusedId != null
-  const focusedHotel = hotels.find((h) => h.id === focusedId)
+  // The detail panel is always mounted now (never conditionally rendered) so
+  // it can animate its own close, not just its open — see design's hDet*
+  // tokens. That means its CONTENT must outlive `focusedId` going back to
+  // null the instant focus closes, or the close transition would fade out an
+  // already-blank panel. `lastFocusedId` is the sticky "last hotel actually
+  // viewed" value fed to HotelDetailPanel; `focusedId` itself still drives
+  // every visual open/closed state (including the card's own highlight ring)
+  // so nothing else lags behind the real focus state.
+  const [lastFocusedId, setLastFocusedId] = useState<string | null>(null)
+  useEffect(() => {
+    if (focusedId != null) setLastFocusedId(focusedId)
+  }, [focusedId])
   const selectedHotel = hotels.find((h) => h.index === selectedIndex) ?? null
   const nights = nightsFrom(state.intake?.start_date, state.intake?.end_date)
   const selectedId = selectedHotel ? hotelOptionSyncId(selectedHotel) : null
@@ -121,15 +132,16 @@ export default function StageHotels({
     [filteredHotels, i18n.language],
   )
 
+  // Marker click mirrors the card's "Chọn" zone (user decision — an earlier
+  // pass had this open the detail panel instead, mirroring "Xem chi tiết",
+  // but the request coming back from actually using it is a plain pick:
+  // same as pressing "Chọn khách sạn này" on the card). focusOn scrolls the
+  // list to the corresponding card ("Click Marker → Scroll tới Card").
   function handleMarkerClick(marker: MapMarkerSpec) {
     const hotel = hotels.find((candidate) => hotelOptionSyncId(candidate) === marker.syncId)
     if (!hotel) return
     onSelectHotel(hotel.index)
     mapSync.focusOn(marker.syncId)
-    if (marker.openId) {
-      const openHotel = filteredHotels.find((h) => h.id === marker.openId)
-      if (openHotel) openFocus(openHotel)
-    }
   }
 
   useLayoutEffect(() => {
@@ -239,9 +251,13 @@ export default function StageHotels({
           aria-hidden={focused}
           style={{
             flex: focused ? '0 0 0px' : '1 1 auto',
+            minWidth: focused ? '0px' : '340px',
             opacity: focused ? 0 : 1,
+            transform: focused ? 'scale(.94)' : 'none',
+            filter: focused ? 'blur(16px)' : 'blur(0px)',
             pointerEvents: focused ? 'none' : 'auto',
-            transition: 'flex .62s cubic-bezier(.22,1,.36,1), opacity .38s ease',
+            transition:
+              'flex .62s cubic-bezier(.22,1,.36,1), opacity .36s ease, transform .55s cubic-bezier(.22,1,.36,1), filter .36s ease',
           }}
         >
           <MapView
@@ -257,13 +273,30 @@ export default function StageHotels({
           />
         </div>
 
-        {focused && (
+        {/* Always mounted (never conditionally rendered) so it can animate its
+            own open AND close via flex/opacity/scale/blur, per design's hDet*
+            tokens — see the lastFocusedId comment above for why its content
+            uses the sticky id, not the live focusedId. */}
+        <div
+          className="min-w-0 overflow-hidden rounded-[26px]"
+          aria-hidden={!focused}
+          style={{
+            flex: focused ? '1 1 auto' : '0 0 0px',
+            minWidth: focused ? '440px' : '0px',
+            opacity: focused ? 1 : 0,
+            transform: focused ? 'none' : 'scale(.96)',
+            filter: focused ? 'blur(0px)' : 'blur(12px)',
+            pointerEvents: focused ? 'auto' : 'none',
+            transition:
+              'flex .62s cubic-bezier(.22,1,.36,1), opacity .36s ease, transform .55s cubic-bezier(.22,1,.36,1), filter .36s ease',
+          }}
+        >
           <HotelDetailPanel
-            hotelId={focusedId}
-            option={focusedHotel}
+            hotelId={lastFocusedId}
+            option={hotels.find((h) => h.id === lastFocusedId)}
             onClose={focusMode.closeFocus}
           />
-        )}
+        </div>
       </div>
     </div>
   )

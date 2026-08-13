@@ -154,15 +154,13 @@ export default function PlaceDetailPanel({
   return (
     <div className="flex-none w-[430px] max-w-full min-w-0 animate-[vRise_0.6s_cubic-bezier(0.22,1,0.36,1)_both]">
       <div className="glass-panel relative h-full overflow-y-auto custom-scrollbar rounded-[26px]">
-        {/* Hero — 250px, vHero reveal, sheen sweep, bottom fade, close ✕ */}
+        {/* Hero — 250px, vHero reveal, bottom fade, close ✕ */}
         <div className="relative h-[250px] overflow-hidden animate-[vHero_0.9s_cubic-bezier(0.22,1,0.36,1)_both]">
           <RemoteImage
             src={heroSrc}
             alt={t('placeImgAlt', { name: displayName })}
             className="absolute inset-0"
             icon="attractions"
-            sheen="vSheen 7s 1.4s ease-in-out infinite"
-            sheenWidth="32%"
           />
           <div
             className="absolute inset-x-0 bottom-0 h-[120px] pointer-events-none"

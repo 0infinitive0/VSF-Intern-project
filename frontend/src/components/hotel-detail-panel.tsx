@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import MatchReasons from './match-reasons'
 import MatchScoreRing from './match-score-ring'
@@ -36,12 +37,22 @@ export default function HotelDetailPanel({
   option,
   onClose,
 }: {
-  hotelId: string
+  /** null while no hotel has ever been focused yet this session (the caller
+   * keeps mounting this component always — see stage-hotels.tsx's
+   * lastFocusedId — so this only happens transiently, before the first open). */
+  hotelId: string | null
   option?: HotelOption
   onClose: () => void
 }) {
   const { t, i18n } = useTranslation()
   const { detail, status } = useHotelDetail(hotelId)
+  // "Chọn phòng" is display-only (see room-card.tsx's doc comment) — one pick
+  // per hotel, keyed by hotelId so it survives closing/reopening the SAME
+  // hotel (matches the design's `state.rooms[hid]`, which never resets it
+  // either) while a different hotel naturally shows nothing picked.
+  const [roomPicks, setRoomPicks] = useState<Record<string, string>>({})
+
+  if (hotelId == null) return <div className="flex-1 min-w-0" />
   const numFmt = new Intl.NumberFormat(NUM_LOCALE(i18n.language))
 
   const heroSrc = detail?.image_url ?? detail?.images?.[0] ?? option?.image_url
@@ -71,7 +82,7 @@ export default function HotelDetailPanel({
   ].filter((p) => p.value)
 
   return (
-    <div className="flex-1 min-w-0 animate-[vRise_0.6s_cubic-bezier(0.22,1,0.36,1)_both]">
+    <div className="min-w-0 h-full">
       <div className="glass-panel relative h-full overflow-y-auto custom-scrollbar rounded-[26px]">
         {status === 'error' ? (
           <div className="h-full flex flex-col items-center justify-center gap-3 p-8 text-center">
@@ -89,14 +100,12 @@ export default function HotelDetailPanel({
           </div>
         ) : (
           <>
-            {/* Hero — 240px, vHero reveal, sheen sweep, bottom fade, close ✕ */}
+            {/* Hero — 240px, vHero reveal, bottom fade, close ✕ */}
             <div className="relative h-[240px] overflow-hidden animate-[vHero_0.9s_cubic-bezier(0.22,1,0.36,1)_both]">
               <RemoteImage
                 src={heroSrc}
                 alt={t('hotelImgAlt', { name })}
                 className="absolute inset-0"
-                sheen="vSheen 7s 1.4s ease-in-out infinite"
-                sheenWidth="32%"
               />
               <div
                 className="absolute inset-x-0 bottom-0 h-[120px] pointer-events-none"
@@ -218,14 +227,25 @@ export default function HotelDetailPanel({
                 </div>
               )}
 
-              {/* Rooms — read-only accordion cards. No "Chọn phòng" anywhere. */}
+              {/* Rooms — accordion cards with a display-only "Chọn phòng"
+                  pick (see room-card.tsx's doc comment for why it never
+                  reaches the backend). */}
               {detail?.rooms && detail.rooms.length > 0 && (
                 <div>
                   <div className={SECTION_EYEBROW}>{t('detailRooms')}</div>
                   <div className="flex flex-col gap-2.5">
-                    {detail.rooms.map((room, i) => (
-                      <RoomCard key={room.id ?? room.name ?? i} room={room} delay={`${i * 90}ms`} />
-                    ))}
+                    {detail.rooms.map((room, i) => {
+                      const roomKey = room.id ?? room.name ?? String(i)
+                      return (
+                        <RoomCard
+                          key={roomKey}
+                          room={room}
+                          delay={`${i * 90}ms`}
+                          selected={roomPicks[hotelId] === roomKey}
+                          onPick={() => setRoomPicks((prev) => ({ ...prev, [hotelId]: roomKey }))}
+                        />
+                      )
+                    })}
                   </div>
                 </div>
               )}
