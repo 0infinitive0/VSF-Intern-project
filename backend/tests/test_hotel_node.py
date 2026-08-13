@@ -12,11 +12,11 @@ from __future__ import annotations
 from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 
-import src.agents.graph_v2.graph as graph_module
-import src.agents.graph_v2.nodes.hotel_node as hotel_node_module
-import src.agents.graph_v2.nodes.supervisor as supervisor_module
+import src.agents.graph.graph as graph_module
+import src.agents.graph.nodes.hotel_node as hotel_node_module
+import src.agents.graph.nodes.supervisor as supervisor_module
 import src.services.search_center as search_center_module
-from src.agents.graph_v2.nodes.hotel_node import hotel_node
+from src.agents.graph.nodes.hotel_node import hotel_node
 from src.domain.travel_state import TravelState, apply_patch
 from src.services.hotel_selection import NoHotelsMatchAmenities, NoHotelsMatchRating
 from src.services.trip_scheduler import PlaceCandidate

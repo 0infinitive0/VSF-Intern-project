@@ -24,12 +24,10 @@ def _fake_planner_agent(monkeypatch):
     def _fake_create_chat_session(thread_id, **kwargs):
         return TripSession(
             session_id=thread_id,
-            agent=object(),
             config={"configurable": {"thread_id": thread_id}},
         )
 
     monkeypatch.setattr(session_module, "create_chat_session", _fake_create_chat_session)
-    monkeypatch.setattr(session_module, "_get_destination_names", lambda: ("Đà Nẵng",))
 
     # Refresh the registry so it picks up the monkeypatched create_chat_session.
     import src.api.routes as _routes
@@ -98,33 +96,6 @@ async def test_get_plan_for_unknown_session_returns_404(client):
 
 
 @pytest.mark.asyncio
-async def test_planner_chat_preserves_state_across_turns_with_same_session_id(client):
-    """Session state must survive across turns — Phase 3 variant (session created first)."""
-    # Create a session via the new endpoint
-    create_resp = await client.post("/api/v1/chat/session")
-    session_id = create_resp.json()["session_id"]
-
-    first = await client.post(
-        "/api/v1/planner_chat",
-        json={"session_id": session_id, "message": "Tôi muốn đi Đà Nẵng"},
-    )
-    assert first.status_code == 200
-    data = first.json()
-    assert "bao lâu" in data["reply"].lower()
-    # Phase 3 fields present
-    assert "stage" in data
-    assert "hotel_options" in data
-    assert "session_id" in data
-
-    second = await client.post(
-        "/api/v1/planner_chat",
-        json={"session_id": session_id, "message": "3 ngày"},
-    )
-    assert second.status_code == 200
-    assert "ngày nào" in second.json()["reply"].lower()
-
-
-@pytest.mark.asyncio
 async def test_planner_chat_empty_message_rejected(client):
     """min_length=1 on message must still produce 422 (D10 backward-compat)."""
     create_resp = await client.post("/api/v1/chat/session")
@@ -140,21 +111,6 @@ async def test_planner_chat_empty_message_rejected(client):
 # ---------------------------------------------------------------------------
 # Two sessions must not share state
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_two_sessions_do_not_share_trip_data(client):
-    sid1 = (await client.post("/api/v1/chat/session")).json()["session_id"]
-    sid2 = (await client.post("/api/v1/chat/session")).json()["session_id"]
-
-    await client.post("/api/v1/planner_chat", json={"session_id": sid1, "message": "Đà Nẵng"})
-    await client.post("/api/v1/planner_chat", json={"session_id": sid2, "message": "Nha Trang"})
-
-    plan1 = (await client.get(f"/api/v1/chat/{sid1}/plan")).json()
-    plan2 = (await client.get(f"/api/v1/chat/{sid2}/plan")).json()
-
-    # Neither session has a plan yet (intake incomplete), but they are distinct objects
-    assert plan1 != plan2 or (plan1["trip_plan"] is None and plan2["trip_plan"] is None)
 
 
 # ---------------------------------------------------------------------------

@@ -1668,6 +1668,161 @@ def _scheduled_attraction_ids(current_data: Mapping[str, Any]) -> list[str]:
     return result
 
 
+def _scheduled_attraction_ids_for_day(current_data: Mapping[str, Any], day_number: int) -> list[str]:
+    """Return attraction IDs scheduled only on *day_number*, not the whole trip.
+
+    Phase 9 fix: ``_apply_day_replan`` previously called ``_scheduled_attraction_ids``
+    (whole-trip scope) as ``exclude_attraction_ids``, which meant a day-2 rebuild
+    excluded every attraction already used on days 1 and 3.  On a thin destination
+    that could leave day 2 empty.  A day-scoped rebuild should only exclude
+    attractions it has already placed *on that day* — the caller can reuse an
+    attraction that appears on a different day.
+    """
+    result: list[str] = []
+    for item in current_data.get("itinerary_items") or []:
+        if not isinstance(item, Mapping):
+            continue
+        if int(item.get("day_number") or 0) != day_number:
+            continue
+        if str(item.get("reference_type") or "").casefold() != "attraction":
+            continue
+        reference_id = str(item.get("reference_id") or "")
+        if not reference_id or reference_id in result:
+            continue
+        result.append(reference_id)
+    return result
+
+
+def _get_locked_days(current_data: Mapping[str, Any]) -> frozenset[int]:
+    """Read ``locked_days`` from ``planning_constraints`` (Phase 9).
+
+    ``locked_days`` lives on ``itineraries[0].planning_constraints``, the same
+    dict that already carries ``latest_outing_start_by_day`` and
+    ``meal_preferences_by_day`` — no schema change required.  Returns an empty
+    frozenset when the key is absent so callers can use ``day not in locked``.
+    """
+    rows = current_data.get("itineraries") or [{}]
+    itinerary = rows[0] if isinstance(rows, list) else rows
+    if not isinstance(itinerary, dict):
+        return frozenset()
+    constraints = itinerary.get("planning_constraints") or {}
+    raw = constraints.get("locked_days") or []
+    try:
+        return frozenset(int(d) for d in raw)
+    except (TypeError, ValueError):
+        return frozenset()
+
+
+def rebuild_day_data(
+    current_data: dict[str, Any],
+    day_number: int,
+    theme: dict[str, Any],
+    *,
+    locked_days: Collection[int] | None = None,
+) -> None:
+    """Rebuild exactly *day_number* in-place inside *current_data*.
+
+    Phase 9 extraction: this is the per-day path from ``_build_trip_data``
+    turned into a standalone primitive.  It calls the same scheduling
+    primitives (``_build_tiered_candidate_pools``, ``build_itinerary``) so
+    there is no second scheduler to keep in sync.
+
+    ``locked_days`` is honoured here as a defensive guard — the caller
+    (``itinerary_node``) is expected to have filtered the queue already, but
+    the function refuses to overwrite a locked day even if asked directly.
+
+    Side-effects:
+    - ``current_data["itinerary_items"]`` has the rebuilt day's items
+      in-place; all other days are byte-identical.
+    - ``itinerary["day_themes"]`` is updated for *day_number*.
+
+    Raises ``ValueError`` if the destination or hotel data is missing or
+    if *day_number* is in *locked_days*.
+    """
+    _locked: frozenset[int] = frozenset(int(d) for d in (locked_days or []))
+    if day_number in _locked:
+        raise ValueError(
+            f"Day {day_number} is locked and cannot be rebuilt. "
+            "Remove it from locked_days before calling rebuild_day_data."
+        )
+
+    destination, duration, people, preferences_text = _current_trip_parameters(current_data)
+    itinerary = _itinerary_record(current_data)
+    destination_id = _get_destination_id(destination)
+    if not destination_id:
+        raise ValueError(f"Không tìm thấy dữ liệu điểm đến cho {destination}.")
+    destination_id = str(destination_id)
+
+    hotel_data = current_data.get("hotel") or {}
+    hotel_candidate = PlaceCandidate.from_mapping({**hotel_data, "category": "Hotel"})
+    if not hotel_candidate.id or not hotel_candidate.coordinate_pair:
+        raise ValueError("Khách sạn hiện tại không có tọa độ hợp lệ; không thể lập lịch trình.")
+
+    number_of_days = int(itinerary.get("duration_days") or 1)
+    try:
+        number_of_people = int("".join(filter(str.isdigit, people))) if any(c.isdigit() for c in people) else 1
+    except (TypeError, ValueError):
+        number_of_people = 1
+    preferences = [p.strip() for p in preferences_text.replace(";", ",").split(",") if p.strip()]
+    child_focused_text = f"{people} {preferences_text}".casefold()
+    child_focused = any(
+        kw in child_focused_text
+        for kw in ("trẻ em", "tre em", "children", "child", "kids", "gia đình", "gia dinh")
+    )
+
+    # Rebuild themes list — caller has already patched the target day's theme.
+    existing_themes = itinerary.get("day_themes") or []
+    themes_dict: dict[int, dict[str, Any]] = {}
+    for t_item in existing_themes:
+        dn = int(t_item.get("day_number") or 0)
+        if dn:
+            themes_dict[dn] = dict(t_item)
+    themes_dict[day_number] = {**theme, "day_number": day_number}
+    raw_themes = [themes_dict.get(d, {"day_number": d, "title": f"Ngày {d}", "query": destination}) for d in range(1, number_of_days + 1)]
+    themes = normalize_day_themes(raw_themes, number_of_days, preferences)
+
+    # Day-scoped exclusion: only exclude attractions already on THIS day.
+    # Attractions on other days are intentionally reusable.
+    exclude_ids = _scheduled_attraction_ids_for_day(current_data, day_number)
+
+    (
+        themed_candidates,
+        restaurants,
+        cafes,
+        breakfasts,
+        dinners,
+    ) = _build_tiered_candidate_pools(
+        destination,
+        destination_id,
+        themes,
+        hotel_candidate,
+        exclude_attraction_ids=exclude_ids if exclude_ids else None,
+    )
+
+    # We only care about day_number's schedule; build_itinerary returns all days
+    # because the scheduler needs cross-day context for meal deduplication.
+    schedule = build_itinerary(
+        hotel_candidate,
+        themes,
+        themed_candidates,
+        restaurants,
+        cafes,
+        breakfasts=breakfasts,
+        dinners=dinners,
+        child_focused=child_focused,
+    )
+
+    # Filter to just this day's scheduled items.
+    day_items = [item for item in schedule.items if item.day_number == day_number]
+    _replace_day_in_json(current_data, day_number, day_items)
+    # Update the stored theme for this day.
+    itinerary["day_themes"] = [
+        {**themes_dict.get(d, {"day_number": d}), "day_number": d}
+        for d in range(1, number_of_days + 1)
+    ]
+    _reapply_planning_constraints(current_data, only_days=(day_number,))
+
+
 def _scheduled_day_from_json(current_data: dict[str, Any], day_number: int) -> tuple[list[ScheduledItem], PlaceCandidate]:
     hotel_data = current_data.get("hotel") or {}
     hotel = PlaceCandidate.from_mapping({**hotel_data, "category": "Hotel"})

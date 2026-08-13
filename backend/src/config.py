@@ -95,7 +95,7 @@ class Settings(BaseSettings):
 
     # Orchestration plane (260812-0927-langgraph-orchestration-state-patch-and-interrupts, Phase 5)
     orchestrator: Literal["graph", "legacy"] = Field(
-        default="legacy",
+        default="graph",
         description="Which control plane handles a chat turn. 'legacy' is today's process_chat_turn "
         "cascade, frozen from Phase 5 on. 'graph' is the graph_v2 StateGraph (supervisor + worker "
         "nodes) built out across Phases 5-11. As of Phase 5, 'graph' dispatch only covers the "

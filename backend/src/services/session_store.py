@@ -12,7 +12,6 @@ from langchain_core.messages import AIMessage, HumanMessage, messages_from_dict,
 from postgrest.exceptions import APIError
 from supabase import Client, create_client
 
-from src.agents.state import TripState, initial_state
 from src.config import get_settings
 
 if TYPE_CHECKING:
@@ -151,8 +150,8 @@ def serialize(session: TripSession) -> dict[str, Any]:
     }
 
 
-def _deserialize_v1(session_id: str, context: dict[str, Any]) -> TripState:
-    state = initial_state(session_id)
+def _deserialize_v1(session_id: str, context: dict[str, Any]) -> dict[str, Any]:
+    state: dict[str, Any] = {}
     for key in state:
         if key not in {"messages", "remaining_steps"} and key in context:
             state[key] = context[key]
@@ -177,13 +176,13 @@ def deserialize(
     session_id: str,
     context_data: dict[str, Any] | None,
     message_rows: Iterable[dict[str, Any]] | None = None,
-) -> TripState:
+) -> dict[str, Any]:
     """Rebuild checkpoint state; v1 contexts remain readable until next save."""
     context = context_data or {}
     if context.get("schema_version") != _CONTEXT_SCHEMA_VERSION:
         state = _deserialize_v1(session_id, context)
     else:
-        state = initial_state(session_id)
+        state = {}
         workflow = context.get("workflow") or {}
         for field in _CHECKPOINT_FIELDS:
             if field in workflow:

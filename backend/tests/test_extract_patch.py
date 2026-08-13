@@ -20,9 +20,9 @@ import json
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-import src.agents.graph_v2.nodes.extract_patch as extract_patch_module
-from src.agents.graph_v2.nodes.extract_patch import PatchExtractionError, extract_patch
-from src.agents.graph_v2.state import initial_graph_state
+import src.agents.graph.nodes.extract_patch as extract_patch_module
+from src.agents.graph.nodes.extract_patch import PatchExtractionError, extract_patch
+from src.agents.graph.state import initial_graph_state
 from src.domain.travel_state import TravelState
 from src.services.trip_intake import DestinationOption
 

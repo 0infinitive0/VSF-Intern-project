@@ -13,15 +13,15 @@ import pytest
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
-import src.agents.graph_v2.nodes.extract_patch as extract_patch_module
-import src.agents.graph_v2.nodes.hotel_node as hotel_node_module
-import src.agents.graph_v2.nodes.supervisor as supervisor_module
-import src.agents.graph_v2.nodes.validate_patch as validate_patch_module
-from src.agents.graph_v2.contracts import CONTRACTS, ContractViolation, enforce_contract
-from src.agents.graph_v2.graph import NODE_NAMES, build_graph
-from src.agents.graph_v2.nodes.booking_node import booking_node
-from src.agents.graph_v2.nodes.qa_node import QA_TOOLS, build_qa_subgraph
-from src.agents.graph_v2.state import initial_graph_state
+import src.agents.graph.nodes.extract_patch as extract_patch_module
+import src.agents.graph.nodes.hotel_node as hotel_node_module
+import src.agents.graph.nodes.supervisor as supervisor_module
+import src.agents.graph.nodes.validate_patch as validate_patch_module
+from src.agents.graph.contracts import CONTRACTS, ContractViolation, enforce_contract
+from src.agents.graph.graph import NODE_NAMES, build_graph
+from src.agents.graph.nodes.booking_node import booking_node
+from src.agents.graph.nodes.qa_node import QA_TOOLS, build_qa_subgraph
+from src.agents.graph.state import initial_graph_state
 from src.models.schemas import PlannerChatResponse
 
 # --- Topology ---------------------------------------------------------------
@@ -80,7 +80,7 @@ def test_only_validate_patch_and_hotel_node_call_interrupt():
     interrupting_node_names = {"validate_patch", "hotel_node"}
     other_node_names = [name for name in NODE_NAMES if name not in interrupting_node_names]
     other_node_modules = [
-        importlib.import_module(f"src.agents.graph_v2.nodes.{name}") for name in other_node_names
+        importlib.import_module(f"src.agents.graph.nodes.{name}") for name in other_node_names
     ]
 
     for module in other_node_modules:
@@ -231,7 +231,7 @@ def test_graph_routes_a_completed_worker_through_budget_check_to_respond(monkeyp
     this test is about the `budget_check`/`respond` wiring around it, not
     hotel search correctness (see `test_hotel_node.py` for that).
     """
-    import src.agents.graph_v2.graph as graph_module
+    import src.agents.graph.graph as graph_module
     from src.domain.travel_state import TravelState, apply_patch
 
     def _fake_extract_patch(_state):

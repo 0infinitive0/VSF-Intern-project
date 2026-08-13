@@ -25,13 +25,8 @@ from langgraph.types import Command
 
 from src.agents.session import (
     SessionRegistry,
-    TurnResult,
     debug_persist_hook,
-    derive_stage,
-    handle_frontend_hotel_change,
-    process_chat_turn,
     supabase_persist_hook,
-    suggestions_for,
 )
 from src.api.streaming import STREAM_HEADERS, TurnEmitter, emitting_to, sse_stream
 from src.config import get_settings
@@ -164,20 +159,20 @@ def list_persisted_sessions(
 
 @router.get("/chat/{session_id}/restore", response_model=SessionRestorePayload)
 def restore_session(session_id: str) -> SessionRestorePayload:
-    session = registry.get(session_id)
-    if session is None:
+    app = _get_graph_v2()
+    snapshot = app.get_state({"configurable": {"thread_id": session_id}})
+    state = snapshot.values
+    if not state:
         raise HTTPException(status_code=404, detail="Session not found.")
-    stage = derive_stage(
-        TurnResult(text=str(session.state.get("reply") or ""), tool=session.state.get("tool_ran")), session
-    )
+    
     return SessionRestorePayload(
-        session_id=session.session_id,
-        messages=session_store.restored_messages(session.state.get("messages")),
-        suggestions=suggestions_for(session),
-        stage=stage,
-        hotel_options=to_hotel_options_payload(session.pending_hotel_selection),
-        trip_plan=to_trip_plan_payload(session.trip_data),
-        intake=IntakeStatus.from_state(session.intake_state, session.hotel_pref_state),
+        session_id=session_id,
+        messages=[],
+        suggestions=[],
+        stage="intake",
+        hotel_options=to_hotel_options_payload(state.get("hotel_options")),
+        trip_plan=to_trip_plan_payload(state.get("travel_state")),
+        intake=IntakeStatus.from_state(None, None),
     )
 
 
@@ -185,10 +180,12 @@ def restore_session(session_id: str) -> SessionRestorePayload:
 @router.get("/session/{session_id}/state")
 def get_session_plan(session_id: str) -> dict:
     """Trả về kế hoạch chuyến đi hiện tại của một phiên, hoặc 404 nếu không có."""
-    session = registry.get(session_id)
-    if session is None:
+    app = _get_graph_v2()
+    snapshot = app.get_state({"configurable": {"thread_id": session_id}})
+    state = snapshot.values
+    if not state:
         raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
-    return {"trip_plan": to_trip_plan_payload(session.trip_data)}
+    return {"trip_plan": to_trip_plan_payload(state.get("travel_state"))}
 
 
 @router.delete("/chat/{session_id}", status_code=204)
@@ -281,19 +278,8 @@ def select_hotel(request: SelectHotelRequest) -> PlannerChatResponse:
 
     with session.lock:
         try:
-            from src.agents.session import handle_frontend_hotel_selection, suggestions_for
-
-            result = handle_frontend_hotel_selection(
-                session, str(request.hotel_id), user_input=request.selection_message
-            )
-
-            return build_chat_response(
-                session,
-                result,
-                session_id,
-                session.language,
-                suggestions_for(session),
-            )
+            message = f"Tôi chọn khách sạn ID {request.hotel_id}"
+            return _run_turn_via_graph(session_id, message, session.language)
         except Exception as exc:
             logger.exception("Chat error for session %s", session_id)
             raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -301,12 +287,6 @@ def select_hotel(request: SelectHotelRequest) -> PlannerChatResponse:
 
 @router.post("/hotels/change", response_model=PlannerChatResponse)
 def change_hotel(request: ChangeHotelRequest) -> PlannerChatResponse:
-    """Rebuild the hotel list for an already-built trip, deterministically —
-    no LLM call, no chat message (see `handle_frontend_hotel_change`). Backs
-    the "đổi khách sạn" nav action (frontend step-navigator.tsx): the intent
-    is already known from the UI, so there's nothing for a chatbot turn to
-    classify, only a hotel search to run.
-    """
     session_id = str(request.session_id)
     registry.evict_expired()
     session = registry.get(session_id)
@@ -315,29 +295,10 @@ def change_hotel(request: ChangeHotelRequest) -> PlannerChatResponse:
 
     with session.lock:
         try:
-            result = handle_frontend_hotel_change(session)
+            return _run_turn_via_graph(session_id, "đổi khách sạn", session.language)
         except Exception as exc:
             logger.exception("Hotel-change error for session %s", session_id)
             raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-    if result.text.startswith("SYSTEM ERROR:") or not session.pending_hotel_selection:
-        safe_reply = sanitize_system_error(result.text, session_id=session_id)
-        raise HTTPException(status_code=400, detail=safe_reply)
-
-    return PlannerChatResponse(
-        session_id=session_id,
-        reply="",
-        suggestions=[],
-        stage=derive_stage(result, session),
-        hotel_options=to_hotel_options_payload(session.pending_hotel_selection),
-        trip_plan=to_trip_plan_payload(session.trip_data),
-        intake=IntakeStatus.from_state(session.intake_state, session.hotel_pref_state),
-        requires_stay_dates=False,
-        compound_min_price=session.pending_hotel_selection.get("compound_min_price"),
-        compound_max_price=session.pending_hotel_selection.get("compound_max_price"),
-        all_preferences=session.pending_hotel_selection.get("all_preferences") or [],
-        active_preferences=session.pending_hotel_selection.get("active_preferences") or [],
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -355,7 +316,7 @@ _graph_v2_app = None
 def _get_graph_v2():
     global _graph_v2_app
     if _graph_v2_app is None:
-        from src.agents.graph_v2.graph import build_graph
+        from src.agents.graph.graph import build_graph
 
         checkpointer = registry.checkpointer
         if checkpointer is None:
@@ -423,60 +384,23 @@ def _run_turn_via_graph(session_id: str, message: str, language: str) -> Planner
 @router.post("/planner_chat", response_model=PlannerChatResponse)
 @router.post("/chat", response_model=PlannerChatResponse)
 def planner_chat(request: PlannerChatRequest) -> PlannerChatResponse:
-    """Chat với trip planner thật.
-
-    Giữ nguyên hành vi cho mọi client hiện có — endpoint này là fallback khi
-    SSE bị proxy chặn và là đường mà toàn bộ test hiện có đang đi. Mọi thay
-    đổi dựng response phải qua build_chat_response() dùng chung.
-
-    `orchestrator=graph` (Phase 5, default off) dispatches to graph_v2
-    instead — response shape unchanged, `process_chat_turn` never runs.
-    """
     session_id = str(request.session_id)
-
     registry.evict_expired()
     session = registry.get(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
 
-    if get_settings().orchestrator == "graph":
-        with session.lock:
-            try:
-                return _run_turn_via_graph(session_id, request.message or "", request.language)
-            except Exception:
-                logger.exception("Unexpected error in graph_v2 planner_chat for session %s", session_id)
-                raise HTTPException(status_code=500, detail="Đã xảy ra lỗi máy chủ. Vui lòng thử lại.")
-
     with session.lock:
         try:
-            stay_dates = _prepare_turn_inputs(session, request)
-            result = process_chat_turn(
-                session,
-                request.message or "",
-                stay_dates=stay_dates,
-                language=request.language,
-            )
-            suggestions_raw = suggestions_for(session)
+            return _run_turn_via_graph(session_id, request.message or "", request.language)
         except Exception:
             logger.exception("Unexpected error in planner_chat for session %s", session_id)
             raise HTTPException(status_code=500, detail="Đã xảy ra lỗi máy chủ. Vui lòng thử lại.")
 
-    return build_chat_response(session, result, session_id, request.language, suggestions_raw)
-
 
 @router.post("/planner_chat/stream")
 async def planner_chat_stream(request: PlannerChatRequest) -> StreamingResponse:
-    """SSE variant of planner_chat: same PlannerChatRequest body, streams
-    `phase` / `final` / `error` frames (contract: docs/chat_api_contract.md
-    §Streaming). The `final` frame carries the exact dict the POST endpoint
-    would have returned — both go through build_chat_response().
-
-    The turn itself runs blocking in a worker thread (identical to the POST
-    endpoint); this async handler only bridges its events over SSE via a
-    TurnEmitter queue (see src/api/streaming.py).
-    """
     session_id = str(request.session_id)
-
     registry.evict_expired()
     session = registry.get(session_id)
     if session is None:
@@ -487,35 +411,13 @@ async def planner_chat_stream(request: PlannerChatRequest) -> StreamingResponse:
 
     def _run_turn() -> None:
         try:
-            try:
-                with session.lock:
-                    stay_dates = _prepare_turn_inputs(session, request)
-                    # emitting_to MUST run inside this worker thread, not in the
-                    # async handler — ContextVar values are per-context and
-                    # run_in_executor doesn't propagate the handler's context.
-                    # From here on, every emit_phase inside the pipeline lands
-                    # on this turn's stream (`received` fires at the head of
-                    # process_chat_turn itself); emit_phase is a no-op on the
-                    # plain POST path, which is never wrapped.
-                    with emitting_to(emitter):
-                        result = process_chat_turn(
-                            session,
-                            request.message or "",
-                            stay_dates=stay_dates,
-                            language=request.language,
-                            stream=True,
-                        )
-                    suggestions_raw = suggestions_for(session)
-
-                # Assemble outside the lock — mirrors planner_chat exactly.
-                payload = build_chat_response(session, result, session_id, request.language, suggestions_raw)
-                emitter.emit("final", **payload.model_dump(mode="json"))
-            except Exception:
-                logger.exception("Unexpected error in planner_chat_stream for session %s", session_id)
-                emitter.emit("error", detail="Đã xảy ra lỗi máy chủ. Vui lòng thử lại.")
+            with session.lock:
+                response = _run_turn_via_graph(session_id, request.message or "", request.language)
+            emitter.emit("final", **response.model_dump(mode="json"))
+        except Exception:
+            logger.exception("Unexpected error in planner_chat_stream for session %s", session_id)
+            emitter.emit("error", detail="Đã xảy ra lỗi máy chủ. Vui lòng thử lại.")
         finally:
-            # Always terminate the stream; a terminal frame (final | error) is
-            # always enqueued above before close() — contract invariant.
             emitter.close()
 
     loop.run_in_executor(None, _run_turn)

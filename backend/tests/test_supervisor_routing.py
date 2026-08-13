@@ -8,10 +8,10 @@ fast path/edge predicate is supposed to skip the LLM entirely.
 
 from __future__ import annotations
 
-import src.agents.graph_v2.nodes.supervisor as supervisor_module
-from src.agents.graph_v2.nodes.supervisor import MAX_SUPERVISOR_ITERATIONS, SupervisorDecision, supervisor
-from src.agents.graph_v2.routing import all_tasks_done
-from src.agents.graph_v2.state import initial_graph_state
+import src.agents.graph.nodes.supervisor as supervisor_module
+from src.agents.graph.nodes.supervisor import MAX_SUPERVISOR_ITERATIONS, SupervisorDecision, supervisor
+from src.agents.graph.routing import all_tasks_done
+from src.agents.graph.state import initial_graph_state
 
 
 def _state(**overrides):
@@ -247,7 +247,7 @@ def test_all_tasks_done_is_a_plain_predicate_with_no_llm_dependency():
     "no LLM call" guarantee is asserted structurally instead: its compiled
     bytecode resolves no name other than `state`/`pending_tasks`, so there
     is no code path inside it that could ever reach an LLM client."""
-    import src.agents.graph_v2.routing as routing_module
+    import src.agents.graph.routing as routing_module
 
     assert "get_fast_llm" not in dir(routing_module)
     referenced_names = set(all_tasks_done.__code__.co_names)

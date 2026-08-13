@@ -17,8 +17,8 @@ import pytest
 from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 
-import src.agents.graph_v2.graph as graph_module
-import src.agents.graph_v2.nodes.supervisor as supervisor_module
+import src.agents.graph.graph as graph_module
+import src.agents.graph.nodes.supervisor as supervisor_module
 from src.domain.travel_state import TravelState, apply_patch
 from src.models.schemas import PlannerChatResponse
 

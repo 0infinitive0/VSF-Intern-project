@@ -460,7 +460,7 @@ def rank_hotel_candidates(
 
     ranked = sorted(
         options,
-        key=lambda option: _realistic_match_score(option[0], option[1]),
+        key=lambda option: _final_score(option[0], option[1]),
         reverse=True,
     )
 
