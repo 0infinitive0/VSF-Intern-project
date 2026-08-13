@@ -34,7 +34,22 @@ class NodeContract:
 # fill their bodies. booking_node writes nothing today: it only replies.
 CONTRACTS: dict[str, NodeContract] = {
     "hotel_node": NodeContract(
-        reads=frozenset({"destination", "dates.start", "dates.end", "people", "budget.min", "budget.max"}),
+        reads=frozenset(
+            {
+                "destination",
+                "dates.start",
+                "dates.end",
+                "people",
+                "budget.min",
+                "budget.max",
+                "budget.target",
+                "hotel_preferences.amenities",
+                "hotel_preferences.radius_km",
+                "hotel_preferences.center",
+                "hotel_preferences.min_star_rating",
+                "hotel_preferences.min_review_score",
+            }
+        ),
         writes=frozenset(
             {
                 "hotel_preferences.amenities",

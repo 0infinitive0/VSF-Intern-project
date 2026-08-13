@@ -20,6 +20,15 @@ Reply text priority:
 `stage`/`trip_plan`/`intake` stay at their Phase-5 placeholder values —
 hotel_node/itinerary_node don't produce real trip data until Phases 8-9, so
 deriving a richer stage now would be guessing.
+
+`hotel_options` (Phase 8): the most recent worker's own `hotel_options` list
+when present — `hotel_node` sets it on every turn it runs, including an
+empty list on a zero-result turn, so a stale prior turn's cards never leak
+forward. `compound_min_price`/`compound_max_price`/`all_preferences`/
+`active_preferences` stay Phase-5 placeholders — those are the legacy
+plane's multi-turn accumulation bookkeeping, which Phase 8 deliberately
+replaces with `travel_state` as the single source of truth for active
+filters (`hotel_preferences.*`) rather than porting the accumulation.
 """
 
 from __future__ import annotations
@@ -27,6 +36,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.agents.graph_v2.state import TravelGraphState
+from src.models.schemas import to_hotel_options_payload
 
 _ACK_VI = "Đã cập nhật thông tin chuyến đi."
 _ACK_EN = "Trip information updated."
@@ -39,6 +49,16 @@ def _reply_from_task_results(state: TravelGraphState) -> str | None:
         if reply:
             return str(reply)
     return None
+
+
+def _hotel_options_from_task_results(state: TravelGraphState) -> list[dict[str, Any]]:
+    task_results = state.get("task_results") or []
+    if not task_results:
+        return []
+    hotel_search_result = task_results[-1].get("hotel_search_result")
+    if not isinstance(hotel_search_result, dict):
+        return []
+    return [option.model_dump() for option in to_hotel_options_payload(hotel_search_result)]
 
 
 def _reply_from_messages(state: TravelGraphState) -> str | None:
@@ -78,7 +98,7 @@ def respond(state: TravelGraphState) -> dict[str, Any]:
         "reply": reply,
         "suggestions": [],
         "stage": "intake",
-        "hotel_options": [],
+        "hotel_options": _hotel_options_from_task_results(state),
         "trip_plan": None,
         "intake": None,
         "requires_stay_dates": False,

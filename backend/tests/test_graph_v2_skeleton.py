@@ -14,6 +14,7 @@ from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
 import src.agents.graph_v2.nodes.extract_patch as extract_patch_module
+import src.agents.graph_v2.nodes.hotel_node as hotel_node_module
 import src.agents.graph_v2.nodes.supervisor as supervisor_module
 import src.agents.graph_v2.nodes.validate_patch as validate_patch_module
 from src.agents.graph_v2.contracts import CONTRACTS, ContractViolation, enforce_contract
@@ -63,26 +64,21 @@ def test_qa_node_has_exactly_one_outgoing_edge():
     assert outgoing[0].target == "respond"
 
 
-def test_only_validate_patch_calls_interrupt():
+def test_only_validate_patch_and_hotel_node_call_interrupt():
     """Phase 7's standing constraint: `interrupt()` re-runs its WHOLE node
     from the start on every resume, so a node calling it must be pure (or
-    idempotent) up to that call. `validate_patch` is the only node this
-    plan grants that to (see its module docstring) -- asserted here two
-    ways: it is the only node whose source references `interrupt`, and it
-    imports no LLM/DB/API client that a resume-triggered re-run could
-    accidentally re-invoke as a side effect.
+    idempotent) up to that call. Two nodes are granted that today:
+    `validate_patch` (Phase 7, zero I/O up to its interrupt) and
+    `hotel_node` (Phase 8, one read-only `attractions` lookup before its
+    interrupt -- idempotent, not pure, see its module docstring for why
+    that's the constraint that actually matters).
 
     Node modules are derived from `NODE_NAMES` (not hand-listed) so a future
     node is automatically covered instead of silently exempt."""
     import importlib
 
-    # Every node name maps to `nodes.<name>` except the two that don't share
-    # their node name with their module (validate_patch is asserted
-    # separately below; qa_node is a subgraph built by build_qa_subgraph,
-    # not a plain node function, so there is no bare `qa_node` module
-    # attribute to source-inspect the same way -- its module is still
-    # scanned for `interrupt(`).
-    other_node_names = [name for name in NODE_NAMES if name not in ("validate_patch",)]
+    interrupting_node_names = {"validate_patch", "hotel_node"}
+    other_node_names = [name for name in NODE_NAMES if name not in interrupting_node_names]
     other_node_modules = [
         importlib.import_module(f"src.agents.graph_v2.nodes.{name}") for name in other_node_names
     ]
@@ -91,6 +87,7 @@ def test_only_validate_patch_calls_interrupt():
         assert "interrupt(" not in inspect.getsource(module), f"{module.__name__} must not call interrupt()"
 
     assert "interrupt(" in inspect.getsource(validate_patch_module)
+    assert "interrupt(" in inspect.getsource(hotel_node_module)
 
     forbidden = ("get_reasoning_llm", "get_fast_llm", "supabase", "httpx", "requests")
     validate_patch_source = inspect.getsource(validate_patch_module)
@@ -98,6 +95,14 @@ def test_only_validate_patch_calls_interrupt():
         assert name not in validate_patch_source, (
             f"validate_patch must stay pure up to interrupt() (no LLM/DB/API call) -- found {name!r}"
         )
+
+    # hotel_node's own, looser bar: no LLM call anywhere (center resolution
+    # never lets a model compute coordinates, doc §20), but a read-only
+    # Supabase lookup before interrupt() is allowed -- see the module
+    # docstring's idempotency argument.
+    hotel_node_source = inspect.getsource(hotel_node_module)
+    for name in ("get_reasoning_llm", "get_fast_llm", "httpx", "requests"):
+        assert name not in hotel_node_source, f"hotel_node must never call an LLM -- found {name!r}"
 
 
 # --- qa_node: reduced tool list + explicit checkpointer subgraph -----------
@@ -220,6 +225,11 @@ def test_graph_routes_a_completed_worker_through_budget_check_to_respond(monkeyp
     ONE change that maps to a single workflow (`hotel`) in `IMPACT_MAP`, so
     this also exercises the supervisor's fast path (zero LLM calls) rather
     than the LLM path.
+
+    `hotel_node` does real work since Phase 8, so its two Supabase-touching
+    calls (`_get_destination_id`, `select_hotel_candidates`) are stubbed --
+    this test is about the `budget_check`/`respond` wiring around it, not
+    hotel search correctness (see `test_hotel_node.py` for that).
     """
     import src.agents.graph_v2.graph as graph_module
     from src.domain.travel_state import TravelState, apply_patch
@@ -232,6 +242,8 @@ def test_graph_routes_a_completed_worker_through_budget_check_to_respond(monkeyp
 
     monkeypatch.setattr(graph_module, "extract_patch", _fake_extract_patch)
     monkeypatch.setattr(supervisor_module, "get_fast_llm", _unreachable)
+    monkeypatch.setattr(hotel_node_module, "_get_destination_id", lambda _destination: "dest-1")
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", lambda *_args, **_kwargs: [])
 
     seeded_state = apply_patch(
         TravelState(),
@@ -255,7 +267,8 @@ def test_graph_routes_a_completed_worker_through_budget_check_to_respond(monkeyp
     )
 
     assert result["pending_tasks"] == []
-    assert result["task_results"][-1] == {"worker": "hotel_node", "status": "stub_pass_through"}
+    assert result["task_results"][-1]["worker"] == "hotel_node"
+    assert result["task_results"][-1]["status"] == "no_results"
     assert result["routing_source"] == "impact_map"  # fast path, not the LLM
 
     response = PlannerChatResponse(**result["response"])
