@@ -37,7 +37,7 @@ Supervisor là **bộ não trung tâm** của graph. Nó:
 flowchart TD
     START(["Tin nhắn người dùng"]) --> LC["load_context<br/><i>TravelState từ Postgres checkpointer</i><br/>P4"]
 
-    LC --> SG{"scope_guard<br/><i>toán / code / vé máy bay</i><br/>P2"}
+    LC --> SG{"scope_guard"}
     SG -->|ngoài phạm vi| REFUSE["Từ chối 1 câu<br/>+ đề nghị việc làm được"]
     REFUSE --> END1(["END"])
 
@@ -45,7 +45,7 @@ flowchart TD
 
     EX --> VP{"validate_patch<br/><i>ALLOWED_PATHS + validator/path</i><br/>P3"}
 
-    VP -->|mơ hồ| INT["interrupt<br/><i>thiếu năm · thứ tự ngày/tháng<br/>tâm bán kính · sao hay điểm</i><br/>P7"]
+    VP -->|mơ hồ| INT["interrupt<br/><br/>P7"]
     INT -.->|"Command resume"| VP
 
     VP -->|từ chối 1 phần| AP
@@ -58,7 +58,7 @@ flowchart TD
     NQ -->|đủ| SUP
 
     subgraph SUPERVISOR_LOOP["🧠 Vòng lặp Supervisor"]
-        SUP["supervisor<br/><i>Phân tích state + intent<br/>Tạo task list<br/>Chọn worker tiếp theo</i><br/>P5"]
+        SUP["supervisor<br/><i>1 workflow → tra IMPACT_MAP, KHÔNG LLM<br/>nhiều workflow / worker lỗi → LLM<br/>+ guard _IMPOSSIBLE</i><br/>P5"]
         SUP -->|hotel_task| HN["hotel_node<br/><b>Worker</b><br/>P8"]
         SUP -->|itinerary_task| IN2["itinerary_node<br/><b>Worker</b><br/>P9"]
         SUP -->|booking_task| BN["booking_node<br/><b>Worker</b><br/>P15"]
@@ -68,8 +68,7 @@ flowchart TD
         HN --> CHECK
         IN2 --> CHECK
         BN --> CHECK
-        QA --> CHECK
-        CHECK{"supervisor_check<br/><i>Task hoàn thành?<br/>Cần thêm task?</i>"} -->|chưa xong / task mới| SUP
+        CHECK{"all_tasks_done?<br/><i>len(pending_tasks)==0<br/>PYTHON THUẦN — không LLM</i>"} -->|còn task| SUP
     end
 
     CHECK -->|tất cả hoàn thành| BC{"budget_check<br/><i>tổng chuyến ≤ giới hạn?</i><br/>P14"}

@@ -11,8 +11,23 @@ dependencies: [5]
 
 ## Overview
 
-Replace three separate LLM extraction calls with one `extract_patch` node that emits a
-validated state patch. Makes the Phase 3 patch layer the authoritative writer.
+Replace three separate LLM extraction calls with one node that emits **intent *and* a validated
+state patch in a single call**. Makes the Phase 3 patch layer the authoritative writer.
+
+This node is doc §36's `understand_request.py` — *"Intent/extraction + deterministic
+validation"*. The name `extract_patch` is kept because it is already wired through Phases 5-14;
+the substance that matters is **one LLM call, not two**.
+
+**Why intent and extraction share one call.** They read the same message and the same state.
+Splitting them costs a second round-trip on a local model to re-derive what the first call
+already knew, and creates two places where the turn can be misread. Doc §36 merges them for the
+same reason; §10 and §35 still show them split, but those sections predate §36 and were not
+updated with it.
+
+Note what intent is **not** used for: it never selects a worker. Worker selection is
+`detect_impact(changes)` → `WORKFLOW_TO_WORKER` (Phase 5), a table lookup on the validated
+patch. `intent` only distinguishes read-only Q&A from state-changing turns, and feeds the audit
+trail.
 
 ## Problem
 

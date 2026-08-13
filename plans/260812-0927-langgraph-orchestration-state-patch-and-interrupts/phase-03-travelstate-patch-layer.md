@@ -141,8 +141,9 @@ IMPACT_MAP = {
 }
 ```
 
-`detect_impact(applied_changes) -> set[Workflow]` is the graph's routing input for
-`detect_impact → hotel_flow | itinerary_flow | general_qa | none`. It replaces
+`detect_impact(applied_changes) -> set[Workflow]` is the graph's routing input. Phase 5 maps
+those workflow labels onto worker node names via `WORKFLOW_TO_WORKER` — that mapping lives in
+`graph_v2/`, never here, because `domain/` must not know graph node names. It replaces
 `requires_candidate_rebuild` (`session.py:554`), which is a hand-rolled four-field version of
 exactly this idea.
 

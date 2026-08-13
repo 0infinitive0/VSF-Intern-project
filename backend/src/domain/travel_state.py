@@ -75,8 +75,9 @@ ALLOWED_PATHS: frozenset[str] = frozenset(
 )
 
 # Every path's workflow fan-out, kept beside ALLOWED_PATHS so the two cannot
-# drift. detect_impact() is the graph's routing input for
-# detect_impact -> hotel_flow | itinerary_flow | general_qa | none.
+# drift. detect_impact() is the graph's routing input; the orchestration layer
+# maps these workflow labels onto worker nodes. That mapping deliberately lives
+# outside this module -- this layer stays ignorant of graph node names.
 IMPACT_MAP: dict[str, tuple[Workflow, ...]] = {
     "destination": ("hotel", "itinerary"),
     "dates.start": ("hotel", "itinerary"),
@@ -230,8 +231,9 @@ def apply_patch(
 
 def detect_impact(applied_changes: Sequence[PatchChange]) -> set[Workflow]:
     """Union of workflows touched by an already-applied set of changes. The
-    graph's routing input for detect_impact -> hotel_flow | itinerary_flow |
-    general_qa | none; replaces the hand-rolled `requires_candidate_rebuild`."""
+    graph's routing input; the orchestration layer maps these labels onto worker
+    nodes (that mapping deliberately lives outside this pure layer). Replaces
+    the hand-rolled `requires_candidate_rebuild`."""
     impacted: set[Workflow] = set()
     for change in applied_changes:
         pattern = _pattern_for_path(change.path)

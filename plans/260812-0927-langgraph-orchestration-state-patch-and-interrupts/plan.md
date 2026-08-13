@@ -3,7 +3,7 @@ title: "Single control plane — LangGraph rewrite of the orchestration layer"
 description: "Replace the deterministic cascade + ReAct plane with one LangGraph graph: patch-validated state, interrupts, hard filters, day-level regeneration. Delete the old plane."
 status: pending
 priority: P1
-effort: "~27d"
+effort: "~28d"
 tags: [langgraph, orchestration, rewrite, state-management]
 created: 2026-08-12
 blockedBy: []
@@ -250,8 +250,10 @@ Decided while planning, recorded so the reasoning is not lost:
 | "4 sao" = stars or review score? | Different columns; both filterable. "N sao" ⇒ stars, "N/10" ⇒ review score, ambiguous ⇒ ask |
 | "1-2-2026" fixed rule or ask? | **Ask**, but only when genuinely ambiguous — `31/07` has one valid reading |
 | Node or subgraph for each flow? | `hotel_node` and `itinerary_node` are worker nodes. `qa_node` and `rebuild_day` are **subgraphs** — the first already is one (`create_react_agent` returns a compiled graph), the second must be, because an interrupted node re-executes from its start and the per-day loop contains an interrupt |
-| Routing: deterministic or LLM? | **Supervisor LLM** with `IMPACT_MAP` as deterministic fallback. Supervisor creates task list + checks completion; `IMPACT_MAP` catches LLM failures |
+| Routing: deterministic or LLM? | **Deterministic first.** Single-workflow turns route by `IMPACT_MAP` with no LLM call. The supervisor's LLM is consulted only for multi-workflow turns and post-failure recovery. Doc §36: completion checks *"remain deterministic Python"* |
 | Supervisor loop limit? | **Max 5 iterations/turn** — prevents infinite delegation. Enforced by counter, not by trust |
+| Intent and extraction: one call or two? | **One** (`extract_patch`, doc §36 `understand_request`). They read the same message and state; splitting costs a second local-model round-trip to re-derive what the first already knew |
+| Does `intent` pick the worker? | **No.** Worker selection is `detect_impact(changes)` → `WORKFLOW_TO_WORKER`, a table lookup on the validated patch. `intent` only separates read-only Q&A from state-changing turns |
 | Adopt doc §36 folder layout? | **Partially** — `domain/` for new pure files; reject the renames; defer `repositories/` |
 
 <!-- slug: langgraph-orchestration-state-patch-and-interrupts -->

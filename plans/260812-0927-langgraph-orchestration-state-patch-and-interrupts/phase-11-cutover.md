@@ -43,6 +43,7 @@ the deletion and now asserts the graph produces the same outcome by a different 
 | `_is_hotel_choice_attempt` | a bare out-of-range number is still a pick attempt | "9" against a 5-item list re-asks, not topic-changes |
 | `_is_generic_trip_information_change` | frontend's generic edit button label | that exact label asks which field |
 | `_unsupported_destination_reply` | naming an unsupported city fell into the edit planner | "đi Hội An" names supported destinations |
+| **`validate_route` / `_IMPOSSIBLE`** (`routing_decision.py:174-189`) | a *valid* route label can still be an *impossible* action — editing with no trip, finalizing a finalized trip | the supervisor's `_IMPOSSIBLE` guard (Phase 5) rejects the same two cases plus `booking_node`, and re-routes instead of executing |
 
 `MIN_PLAUSIBLE_PRICE_VND` and `_sanitize_price` are **not** deleted — they live in the tool and
 domain layer, which survives.

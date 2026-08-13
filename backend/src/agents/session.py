@@ -22,15 +22,16 @@ from pathlib import Path
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from src.agents.graph import build_trip_agent
 from src.agents.routing_decision import (
+    _VALID_ROUTES,
     Route,
     RouteContext,
     _is_hotel_choice_attempt,
     _new_trip_signal,
     _normalize_intent_text,
-    _VALID_ROUTES,
     decide_route_by_rules,
     route_context_from_state,
     validate_route,
@@ -267,7 +268,12 @@ class TripSession:
         self.state["pending_parameter_confirmation"] = value
 
 
-def create_chat_session(session_id: str, *, persist_hook: Callable[[TripSession], None] | None = None) -> TripSession:
+def create_chat_session(
+    session_id: str,
+    *,
+    persist_hook: Callable[[TripSession], None] | None = None,
+    checkpointer: BaseCheckpointSaver | None = None,
+) -> TripSession:
     """Build a fresh session with its own compiled agent and tool closures, so no
     tool ever reaches for a module-level file constant shared by every
     conversation."""
@@ -277,7 +283,7 @@ def create_chat_session(session_id: str, *, persist_hook: Callable[[TripSession]
         config={"configurable": {"thread_id": session_id}},
         persist_hook=persist_hook,
     )
-    session.agent, session.tools = build_trip_agent(session)
+    session.agent, session.tools = build_trip_agent(session, checkpointer=checkpointer)
     return session
 
 
@@ -1233,8 +1239,9 @@ def _compact_history(session: TripSession) -> None:
         # threshold check above without compacting — a key at entry would be
         # fake progress.
         emit_phase("compacting_history")
+        from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, SystemMessage
+
         from src.services.llm import get_fast_llm
-        from langchain_core.messages import HumanMessage, SystemMessage, RemoveMessage, AIMessage
         
         llm = get_fast_llm(temperature=0.0)
         summary_prompt = (
@@ -1532,6 +1539,7 @@ class SessionRegistry:
         persist_hook: Callable[[TripSession], None] | None = None,
         load_hook: Callable[[str], dict[str, Any] | None] | None = None,
         delete_hook: Callable[[str], None] | None = None,
+        checkpointer: BaseCheckpointSaver | None = None,
     ) -> None:
         self._sessions: dict[str, TripSession] = {}
         self._registry_lock = threading.Lock()
@@ -1540,6 +1548,14 @@ class SessionRegistry:
         self._persist_hook = persist_hook
         self._load_hook = load_hook
         self._delete_hook = delete_hook
+        self._checkpointer = checkpointer
+
+    def set_checkpointer(self, checkpointer: BaseCheckpointSaver) -> None:
+        """Injection point for `src/main.py`'s lifespan. `registry` is a
+        module-level object built at import time -- before the lifespan runs
+        -- so it cannot receive the app-wide checkpointer via `__init__`;
+        this sets it once, before any request creates a session."""
+        self._checkpointer = checkpointer
 
     def create(self) -> TripSession:
         """The only way a session comes into being with a server-generated id."""
@@ -1547,7 +1563,9 @@ class SessionRegistry:
 
         session_id = str(uuid.uuid4())
         with self._registry_lock:
-            session = create_chat_session(session_id, persist_hook=self._persist_hook)
+            session = create_chat_session(
+                session_id, persist_hook=self._persist_hook, checkpointer=self._checkpointer
+            )
             self._sessions[session_id] = session
             return session
 
@@ -1572,7 +1590,9 @@ class SessionRegistry:
                 from src.services.itinerary_store import ItineraryStore
                 from src.services.session_store import deserialize
 
-                session = create_chat_session(session_id, persist_hook=self._persist_hook)
+                session = create_chat_session(
+                    session_id, persist_hook=self._persist_hook, checkpointer=self._checkpointer
+                )
                 session.state = deserialize(session_id, row.get("context_data"), row.get("messages"))
                 current_trip = (row.get("context_data") or {}).get("current_trip") or {}
                 itinerary_id = current_trip.get("itinerary_id")
@@ -1606,7 +1626,9 @@ class SessionRegistry:
         with self._registry_lock:
             session = self._sessions.get(session_id)
             if session is None:
-                session = create_chat_session(session_id, persist_hook=self._persist_hook)
+                session = create_chat_session(
+                    session_id, persist_hook=self._persist_hook, checkpointer=self._checkpointer
+                )
                 self._sessions[session_id] = session
             session.last_seen_at = time.time()
             return session
@@ -1619,10 +1641,36 @@ class SessionRegistry:
                     self._delete_hook(session_id)
                 except Exception:
                     logger.exception("Unable to delete persisted session %s", session_id)
+        self._prune_checkpoints([session_id])
 
     def __len__(self) -> int:
         with self._registry_lock:
             return len(self._sessions)
+
+    def _prune_checkpoints(self, session_ids: list[str]) -> None:
+        """Deletes each session's LangGraph checkpoints -- the pruning policy
+        for `checkpointer_backend='postgres'`. Piggybacks on the same
+        opportunistic, request-triggered pattern `evict_expired` already uses
+        instead of a separate scheduler dependency. No-op for 'memory' and
+        for CLI/script sessions, both of which run with no checkpointer
+        injected (`self._checkpointer is None`).
+
+        Runs after the caller has released `_registry_lock` (deleting is a
+        potentially slow DB call). A concurrent `get()`/`resolve()` could have
+        recreated one of these ids in that window, so each id is re-checked
+        under the lock immediately before its delete -- skipping ids that came
+        back keeps a live session's checkpoints from being wiped out from
+        under it."""
+        if self._checkpointer is None:
+            return
+        for session_id in session_ids:
+            with self._registry_lock:
+                if session_id in self._sessions:
+                    continue
+            try:
+                self._checkpointer.delete_thread(session_id)
+            except Exception:
+                logger.exception("Unable to prune checkpoints for session %s", session_id)
 
     def evict_expired(self) -> int:
         """Evict sessions past the TTL, then trim to the size cap by oldest
@@ -1633,6 +1681,7 @@ class SessionRegistry:
         """
         now = time.time()
         evicted = 0
+        pruned_ids: list[str] = []
         with self._registry_lock:
             expired_ids = [
                 session_id
@@ -1642,6 +1691,7 @@ class SessionRegistry:
             for session_id in expired_ids:
                 del self._sessions[session_id]
                 evicted += 1
+            pruned_ids.extend(expired_ids)
 
             if len(self._sessions) > self._cap:
                 evictable = sorted(
@@ -1652,5 +1702,8 @@ class SessionRegistry:
                 for session in evictable[:overflow]:
                     del self._sessions[session.session_id]
                     evicted += 1
+                    pruned_ids.append(session.session_id)
+
+        self._prune_checkpoints(pruned_ids)
 
         return evicted

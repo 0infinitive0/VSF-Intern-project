@@ -160,7 +160,7 @@ def test_registry_rehydrates_only_when_loader_is_enabled(monkeypatch):
     }
     created = []
 
-    def fake_create(session_id, *, persist_hook=None):
+    def fake_create(session_id, *, persist_hook=None, **_kwargs):
         created.append(session_id)
         return _session(session_id, persist_hook)
 

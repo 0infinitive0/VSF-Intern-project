@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, NamedTuple
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 
@@ -75,12 +76,23 @@ class SessionTools(NamedTuple):
     query_hotel_rooms: object
 
 
-def build_trip_agent(session: TripSession, *, temperature: float = 0.3):
+def build_trip_agent(
+    session: TripSession,
+    *,
+    temperature: float = 0.3,
+    checkpointer: BaseCheckpointSaver | None = None,
+):
     """Build the trip planner's supervisor ReAct agent, bound to the four
     module-level tools, plus a SessionTools bundle of adapters for the
     deterministic cascade and existing tests. Returns
     (compiled_agent, SessionTools) — the caller stores both on the
-    TripSession."""
+    TripSession.
+
+    `checkpointer` is normally the app-lifespan singleton threaded down from
+    `SessionRegistry` via `src/main.py`'s lifespan. CLI/script entry points
+    that build a session outside the FastAPI app (terminal_chat.py,
+    poc_trip_planner.py) never have one to pass, so a fresh `MemorySaver` is
+    the fallback -- matching this function's original per-session behavior."""
     tools = SessionTools(
         recommend_hotels=_ToolAdapter(recommend_hotels, session),
         modify_trip_plan=_ToolAdapter(modify_trip_plan, session),
@@ -89,12 +101,11 @@ def build_trip_agent(session: TripSession, *, temperature: float = 0.3):
         query_hotel_rooms=_ToolAdapter(query_hotel_rooms, session),
     )
     llm = get_llm(temperature=temperature)
-    memory = MemorySaver()
     compiled_agent = create_react_agent(
         llm,
         _AGENT_TOOLS,
         state_schema=TripState,
-        checkpointer=memory,
+        checkpointer=checkpointer if checkpointer is not None else MemorySaver(),
         prompt=SUPERVISOR_PROMPT_EN if session.language == "en" else SUPERVISOR_PROMPT,
     )
     return compiled_agent, tools

@@ -75,6 +75,10 @@ registry = SessionRegistry(
     load_hook=session_store.load if _persistence_enabled else None,
     delete_hook=session_store.delete if _persistence_enabled else None,
 )
+# `registry.set_checkpointer(...)` is called from src/main.py's lifespan --
+# this module is imported (and `registry` constructed) before the lifespan
+# runs, so the app-wide LangGraph checkpointer cannot be threaded through
+# __init__ above.
 
 
 # ---------------------------------------------------------------------------

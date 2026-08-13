@@ -42,6 +42,25 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "sqlite:///./data/app.db"
 
+    # LangGraph checkpointer
+    checkpointer_backend: Literal["memory", "postgres"] = Field(
+        default="memory",
+        description="LangGraph checkpoint backend for the FastAPI server's SessionRegistry. "
+        "'postgres' persists graph state to a Postgres database and survives process restarts. "
+        "CLI/script entry points (terminal_chat.py, poc_trip_planner.py) always use an "
+        "in-process MemorySaver regardless of this flag -- they never run the FastAPI lifespan "
+        "that builds and injects the Postgres checkpointer.",
+    )
+    checkpointer_database_url: str = Field(
+        default="",
+        description="Full Postgres connection string for the LangGraph checkpointer. Required "
+        "when checkpointer_backend='postgres'. For Supabase, use the Supavisor pooler DSN from "
+        "the dashboard (Settings -> Database -> Connection string -> Session pooler), e.g. "
+        "postgresql://postgres.<project_ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres "
+        "-- NOT the direct db.<project_ref>.supabase.co host, which is IPv6-only and unreachable "
+        "from this project's Docker/EC2 deployment. Unrelated to database_url above.",
+    )
+
     # Vector Store
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str = ""
