@@ -140,10 +140,14 @@ export default function RoomCard({
             <div className="flex items-center gap-2 mt-[7px] flex-wrap">
               <span
                 className="text-[10.5px] font-[530] px-[9px] py-[3px] rounded-full"
+                // Was a literal rgba(42,145,135,.14) (the light-theme value
+                // of --ok-soft/--color-success-soft) — never switched to the
+                // brighter dark-theme tint like its sold_out sibling below
+                // already correctly does via --color-error-soft.
                 style={
                   price.sold_out
                     ? { background: 'var(--color-error-soft)', color: 'var(--color-error-ink)' }
-                    : { background: 'rgba(42,145,135,.14)', color: 'var(--ok)' }
+                    : { background: 'var(--color-success-soft)', color: 'var(--ok)' }
                 }
               >
                 {price.sold_out ? t('roomSoldOut') : t('roomAvailable')}

@@ -138,7 +138,7 @@ export default function HotelFilterBar({
             onClick={() => onMinStarsChange(null)}
             className={`h-7 shrink-0 whitespace-nowrap rounded-[10px] px-3 text-[11px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
               minStars == null
-                ? 'bg-glass-3 text-on-surface font-[600] shadow-[0_4px_12px_-6px_rgb(var(--shadow-rgb)/0.6)]'
+                ? 'bg-glass-3 text-on-surface font-[600] shadow-[0_4px_12px_-6px_rgb(var(--shadow-rgb)/0.6),0_0_0_1px_var(--edge),inset_0_1px_0_var(--gloss)]'
                 : 'text-on-surface-variant font-normal hover:text-on-surface'
             }`}
           >
@@ -235,7 +235,13 @@ export default function HotelFilterBar({
       >
         {allPreferences.map(({ id, label }) => {
           const active = preferenceIds.includes(id)
-          return <button key={id} type="button" aria-pressed={active} onClick={() => togglePreference(id)} className={`shrink-0 rounded-full border px-3 py-2 text-[12px] transition-colors ${active ? 'border-[#2C5FC9] bg-[#2C5FC9] text-white shadow-sm' : 'border-fill2 bg-glass-2 text-on-surface-variant hover:text-on-surface'}`}>{label}</button>
+          // active used to be literal #2C5FC9/white — same class of bug as
+          // the sort dropdown fixed earlier: a hardcoded light-mode blue
+          // that doesn't become the dark-mode --acc (#6C9BF0), and white
+          // text that stays white instead of --on-acc. bg-button matches
+          // every other "picked/active" chip in the app (hotel Chọn, room
+          // pick, etc.).
+          return <button key={id} type="button" aria-pressed={active} onClick={() => togglePreference(id)} className={`shrink-0 rounded-full border px-3 py-2 text-[12px] transition-colors ${active ? 'border-button bg-button text-on-button shadow-sm' : 'border-fill2 bg-glass-2 text-on-surface-variant hover:text-on-surface'}`}>{label}</button>
         })}
       </div>}
     </section>

@@ -138,7 +138,7 @@ export default function ChatPanel({
       {/* Header — status dot, trip title, step label, progress dots */}
       <div className="flex-none flex items-center gap-2.5 px-4.5 py-3.5 border-b border-line">
         <div
-          className="w-[7px] h-[7px] rounded-full bg-success shadow-[0_0_0_3px_rgba(42,145,135,0.18)]"
+          className="w-[7px] h-[7px] rounded-full bg-success shadow-[0_0_0_3px_var(--color-success-soft)]"
           aria-hidden="true"
         />
         <div className="flex-1 min-w-0">

@@ -420,8 +420,8 @@ function createMarkerElement(marker: MapMarkerSpec): { root: HTMLDivElement; con
   content.style.cursor = 'pointer'
   content.style.transition = 'transform .25s cubic-bezier(.34,1.5,.64,1), box-shadow .25s ease, opacity .2s ease'
   content.style.transformOrigin = 'center'
-  content.style.color = '#FCFDFE'
-  content.style.border = '2px solid #fff'
+  content.style.color = 'var(--on-acc)'
+  content.style.border = '2px solid var(--surface-background)'
   content.style.boxShadow = '0 4px 12px -3px rgba(0,0,0,.45)'
   if (marker.kind === 'hotel') {
     content.style.display = 'flex'
@@ -430,9 +430,9 @@ function createMarkerElement(marker: MapMarkerSpec): { root: HTMLDivElement; con
     content.style.whiteSpace = 'nowrap'
     content.style.padding = '5px 10px'
     content.style.borderRadius = '999px'
-    content.style.background = '#3A73DE'
+    content.style.background = 'var(--acc)'
     content.style.font = "500 11.5px/1.2 'Be Vietnam Pro', sans-serif"
-    content.style.setProperty('--base-marker', '#3A73DE')
+    content.style.setProperty('--base-marker', 'var(--acc)')
     if (marker.priceLabel) { const price = document.createElement('b'); price.textContent = marker.priceLabel; price.style.fontWeight = '590'; content.appendChild(price) }
     if (marker.matchLabel) { const match = document.createElement('span'); match.textContent = marker.matchLabel; match.style.opacity = '.75'; content.appendChild(match) }
   } else {
@@ -460,8 +460,11 @@ function applyMarkerState(content: HTMLElement, marker: MapMarkerSpec, hovered: 
   const root = content.parentElement as HTMLElement | null
   if (root) root.style.zIndex = hovered ? '1000' : selected ? '900' : '0'
   content.style.opacity = dimmed ? '.55' : '1'
-  content.style.boxShadow = hovered || selected ? '0 8px 20px -4px rgba(0,0,0,.5), 0 0 0 6px rgba(255,255,255,.55)' : '0 4px 12px -3px rgba(0,0,0,.45)'
-  if (marker.kind === 'hotel') content.style.background = selected ? '#0e1319' : 'var(--base-marker)'
+  content.style.boxShadow = hovered || selected ? '0 8px 20px -4px rgb(var(--shadow-rgb) / .6), 0 0 0 6px var(--g2)' : '0 4px 12px -3px rgb(var(--shadow-rgb) / .45)'
+  if (marker.kind === 'hotel') {
+    content.style.background = selected ? 'var(--btn)' : 'var(--base-marker)'
+    content.style.color = selected ? 'var(--btn-fg)' : 'var(--on-acc)'
+  }
 }
 
 function fitWorkspace(map: mapboxgl.Map, points: { lat: number; lng: number }[]) {
@@ -625,10 +628,16 @@ export default function MapView({ variant, theme, markers, segments, hoveredId, 
     const map = mapRef.current
     badgeRegistry.current.forEach((marker) => marker.remove()); badgeRegistry.current = []
     if (!map || status !== 'ready' || variant !== 'hotels') return
+    const lineColor = theme === 'dark' ? '#EDF0F4' : '#0e1319'
     if (!map.getSource(RAY_SOURCE)) map.addSource(RAY_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-    if (!map.getLayer(RAY_LAYER)) map.addLayer({ id: RAY_LAYER, type: 'line', source: RAY_SOURCE, paint: { 'line-color': '#0e1319', 'line-width': 1.6, 'line-opacity': .45, 'line-dasharray': [3, 7] } })
+    if (!map.getLayer(RAY_LAYER)) map.addLayer({ id: RAY_LAYER, type: 'line', source: RAY_SOURCE, paint: { 'line-color': lineColor, 'line-width': 1.6, 'line-opacity': .45, 'line-dasharray': [3, 7] } })
+    else map.setPaintProperty(RAY_LAYER, 'line-color', lineColor)
     if (!map.getSource(HALO_SOURCE)) map.addSource(HALO_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-    if (!map.getLayer(HALO_LAYER)) map.addLayer({ id: HALO_LAYER, type: 'circle', source: HALO_SOURCE, paint: { 'circle-radius': 26, 'circle-color': '#0e1319', 'circle-opacity': .07, 'circle-stroke-color': '#0e1319', 'circle-stroke-width': 1.4, 'circle-stroke-opacity': .5 } })
+    if (!map.getLayer(HALO_LAYER)) map.addLayer({ id: HALO_LAYER, type: 'circle', source: HALO_SOURCE, paint: { 'circle-radius': 26, 'circle-color': lineColor, 'circle-opacity': .07, 'circle-stroke-color': lineColor, 'circle-stroke-width': 1.4, 'circle-stroke-opacity': .5 } })
+    else {
+      map.setPaintProperty(HALO_LAYER, 'circle-color', lineColor)
+      map.setPaintProperty(HALO_LAYER, 'circle-stroke-color', lineColor)
+    }
     const selected = selectedId ? markers.find((marker) => marker.syncId === selectedId) : undefined
     const origin = selected ? parseCoordinates(selected.coordinates) : null
     const raySource = map.getSource(RAY_SOURCE) as mapboxgl.GeoJSONSource
@@ -639,7 +648,12 @@ export default function MapView({ variant, theme, markers, segments, hoveredId, 
     badgeRegistry.current = hotelRays.map((ray) => {
       const el = document.createElement('div')
       el.textContent = `${ray.name} · ${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 }).format(ray.distanceKm)} km`
-      el.style.cssText = "white-space:nowrap;padding:2px 8px;border-radius:99px;background:rgba(255,255,255,.85);border:1px solid var(--edge);box-shadow:0 4px 10px -6px rgb(var(--shadow-rgb) / .6);font:400 10px/1.3 'Be Vietnam Pro',sans-serif;color:var(--t1)"
+      // background used to be a literal rgba(255,255,255,.85) — in dark
+      // theme --t1 (the text color right after it) flips to a near-white
+      // ink, so light text landed on a still-near-white background: barely
+      // legible. --g3 is the same "elevated glass" surface every other
+      // badge/chip in the app uses, and actually inverts with the theme.
+      el.style.cssText = "white-space:nowrap;padding:2px 8px;border-radius:99px;background:var(--g3);border:1px solid var(--edge);box-shadow:0 4px 10px -6px rgb(var(--shadow-rgb) / .6);font:400 10px/1.3 'Be Vietnam Pro',sans-serif;color:var(--t1)"
       return new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([(origin.lng + ray.coordinates.lng) / 2, (origin.lat + ray.coordinates.lat) / 2]).addTo(map)
     })
   }, [hotelRays, markerKey, markers, selectedId, status, styleVersion, variant, mapRef])
