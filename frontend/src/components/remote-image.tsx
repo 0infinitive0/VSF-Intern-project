@@ -5,14 +5,23 @@ import { useEffect, useState } from 'react'
  * Phase 9 reuses it for place photos). Hotel/room image URLs are external and
  * can 404 or be null, so every slot renders exactly one of three states:
  *
- *   loading      → shimmer block (the project's shimmer-block utility)
+ *   loading      → a plain, static bg-fill box — same neutral tone as the
+ *                  error state below, deliberately with NO animation. Used
+ *                  to be the shared shimmer-block utility (a moving-gradient
+ *                  sweep), dropped on request alongside `vSheen` (below):
+ *                  both read as the same "vệt sáng chạy" (running light
+ *                  streak) on a photo once an image is slow to load, even
+ *                  though they're two different mechanisms. shimmer-block
+ *                  itself is untouched — skeleton-card.tsx still uses it for
+ *                  whole-card generating-stage placeholders, a different,
+ *                  design-matched pattern this doesn't affect.
  *   error / null → neutral Material icon centred in the same box — the
  *                  placeholder pattern hotel-option-card.tsx had pre-Phase-8,
  *                  promoted to shared so no screen hand-rolls its own fallback
  *   success      → the image, object-cover, with a descriptive alt
  *
- * The design runs an infinite `vSheen` light-sweep over its photo boxes;
- * dropped here on request across every caller (no `sheen` prop anymore).
+ * The design also runs an infinite `vSheen` light-sweep over its LOADED photo
+ * boxes; dropped here on request across every caller (no `sheen` prop anymore).
  */
 export default function RemoteImage({
   src,
@@ -47,7 +56,7 @@ export default function RemoteImage({
 
   return (
     <div className={`relative overflow-hidden ${className}`}>
-      {status === 'loading' && <div className="shimmer-block absolute inset-0" aria-hidden="true" />}
+      {status === 'loading' && <div className="bg-fill absolute inset-0" aria-hidden="true" />}
       <img
         src={src ?? undefined}
         alt={alt}

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import DayTimeline from './day-timeline'
 import MapView, { type MapMarkerSpec } from './map-view'
@@ -89,25 +89,37 @@ export default function StageWorkspace({
   // Computed here (ahead of the hooks below, not after the `!tripPlan` early
   // return) so `focused` can be gated on it: a chat turn can replace the plan
   // while a place is focused, and if that item is gone, `focused` must not
-  // stay true with nothing to show (review finding H3).
-  let context: { day: Day; item: DayItem; index: number; routeLeg: Leg } | null = null
-  if (focusedId) {
-    outer: for (const day of days) {
+  // stay true with nothing to show (review finding H3). useMemo (not a plain
+  // `let`) so its object identity is stable across renders when nothing it
+  // depends on changed — required for the lastContext effect below, which
+  // would otherwise re-fire (and re-render) every render on a "new" object
+  // that's actually the same context.
+  const context = useMemo<{ day: Day; item: DayItem; index: number; routeLeg: Leg } | null>(() => {
+    if (!focusedId) return null
+    for (const day of days) {
       for (let i = 0; i < day.items.length; i++) {
         const item = day.items[i]
         if (item.reference_type === 'Attraction' && item.reference_id === focusedId) {
-          context = {
-            day,
-            item,
-            index: i,
-            routeLeg: i === 0 ? { kind: 'none' } : legBetween(day.items[i - 1], item),
-          }
-          break outer
+          return { day, item, index: i, routeLeg: i === 0 ? { kind: 'none' } : legBetween(day.items[i - 1], item) }
         }
       }
     }
-  }
+    return null
+  }, [days, focusedId])
   const focused = focusedId != null && context != null
+
+  // PlaceDetailPanel is always mounted now (never conditionally rendered) so
+  // it can animate its own close, not just its open — see the map/detail
+  // wrapper styles below. That means its CONTENT must outlive `context`
+  // going back to null the instant focus closes, or the close transition
+  // would fade out an already-blank panel. `lastContext` is the sticky "last
+  // place actually viewed" value fed to PlaceDetailPanel; `focused` itself
+  // still drives every visual open/closed state, same pattern as
+  // stage-hotels.tsx's lastFocusedId.
+  const [lastContext, setLastContext] = useState(context)
+  useEffect(() => {
+    if (context != null) setLastContext(context)
+  }, [context])
 
   const itinRef = useRef<HTMLDivElement>(null)
   const savedScroll = useRef(0)
@@ -298,10 +310,16 @@ export default function StageWorkspace({
             minWidth: focused ? '0px' : '320px',
             opacity: focused ? 0 : 1,
             transform: focused ? 'scale(.94)' : 'none',
+            // Not in `transition` (see below) — animating blur radius forces
+            // a full re-rasterize of everything under it (here, the Mapbox
+            // WebGL canvas) EVERY frame for the whole .55-.62s the rest of
+            // this box is transitioning; instant toggle keeps the same
+            // before/after look for a fraction of the cost. Easy to miss
+            // that it snapped since it's always paired with the opacity
+            // fade already happening.
             filter: focused ? 'blur(16px)' : 'blur(0px)',
             pointerEvents: focused ? 'none' : 'auto',
-            transition:
-              'flex .62s cubic-bezier(.22,1,.36,1), opacity .36s ease, transform .55s cubic-bezier(.22,1,.36,1), filter .36s ease',
+            transition: 'flex .62s cubic-bezier(.22,1,.36,1), opacity .36s ease, transform .55s cubic-bezier(.22,1,.36,1)',
           }}
         >
           <MapView
@@ -317,17 +335,37 @@ export default function StageWorkspace({
           />
         </div>
 
-        {focused && context && (
+        {/* Always mounted (never conditionally rendered) so it can animate its
+            own open AND close via flex/opacity/scale/blur, per design's det*
+            tokens — same fix already applied to stage-hotels.tsx's detail
+            column. Content comes from the sticky lastContext (see its own
+            comment above), not the live context, so it doesn't go blank the
+            instant focus closes. */}
+        <div
+          className="min-w-0 overflow-hidden rounded-[26px]"
+          aria-hidden={!focused}
+          style={{
+            flex: focused ? '1 1 auto' : '0 0 0px',
+            minWidth: focused ? '430px' : '0px',
+            opacity: focused ? 1 : 0,
+            transform: focused ? 'none' : 'scale(.96)',
+            // Instant toggle, not animated — same reasoning as the map
+            // column's own filter above.
+            filter: focused ? 'blur(0px)' : 'blur(12px)',
+            pointerEvents: focused ? 'auto' : 'none',
+            transition: 'flex .62s cubic-bezier(.22,1,.36,1), opacity .36s ease, transform .55s cubic-bezier(.22,1,.36,1)',
+          }}
+        >
           <PlaceDetailPanel
-            placeId={context.item.reference_id!}
-            name={placeNameFromActivity(context.item.activity)}
-            kind={context.item.kind}
-            dayNumber={context.day.day_number}
-            startTime={context.item.start_time}
-            routeLeg={context.routeLeg}
+            placeId={lastContext?.item.reference_id ?? null}
+            name={lastContext ? placeNameFromActivity(lastContext.item.activity) : ''}
+            kind={lastContext?.item.kind}
+            dayNumber={lastContext?.day.day_number ?? 1}
+            startTime={lastContext?.item.start_time ?? null}
+            routeLeg={lastContext?.routeLeg ?? { kind: 'none' }}
             onClose={focusMode.closeFocus}
           />
-        )}
+        </div>
       </div>
     </div>
   )

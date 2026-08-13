@@ -480,6 +480,28 @@ export default function MapView({ variant, theme, markers, segments, hoveredId, 
   const onClickRef = useRef(onMarkerClick); onClickRef.current = onMarkerClick
   const markerKey = useMemo(() => markers.map((marker) => JSON.stringify(marker)).join('|'), [markers])
 
+  // Route line animation rebuilds a line-gradient every frame per flow layer
+  // (see travelGradient's doc comment for why that's not cheap) — the loop
+  // below used to do that for all 7 flow layers (drive + all 6 walk colors)
+  // regardless of whether a given day actually used a color, which on a
+  // typical 1-2-color day meant 4-5 layers being recomputed and pushed to
+  // Mapbox 60x/second for nothing visible on screen. This narrows it to only
+  // the layers a real segment in the CURRENT `segments` will actually paint.
+  const activeFlowLayers = useMemo(() => {
+    const active = new Set<string>()
+    for (const segment of segments) {
+      if (segment.isFallback) continue
+      if (segment.profile === 'walking') {
+        const color = colorByDay ? dayColor(segment.dayNumber) : legColor(segment.legIndex)
+        const index = (LEG_COLORS as readonly string[]).indexOf(color)
+        if (index >= 0) active.add(WALK_LAYER_IDS[index])
+      } else {
+        active.add(DRIVE_FLOW_LAYER)
+      }
+    }
+    return active
+  }, [segments, colorByDay])
+
   useEffect(() => {
     const map = mapRef.current
     if (!map || status !== 'ready') return
@@ -567,23 +589,27 @@ export default function MapView({ variant, theme, markers, segments, hoveredId, 
   }, [hoveredId, selectedId, segments, status, styleVersion, variant, mapRef])
 
   // Direction-of-travel motion: ONE requestAnimationFrame loop writing one
-  // paint property per moving overlay, regardless of how many legs/days are
-  // on screen — never one loop per segment. Runs at display rate with no
+  // paint property per moving overlay — filtered to activeFlowLayers (see
+  // its own comment above) so an idle color's layer is never touched, never
+  // one loop per segment either way. Runs at display rate with no
   // quantization at all, because line-gradient updates on the main thread
   // (see travelGradient's doc comment for why the earlier
   // scrolling-dasharray version could not).
   useEffect(() => {
     const map = mapRef.current
     if (!map || status !== 'ready' || variant !== 'workspace' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    // Built once per effect run (segments/style change), not per frame.
+    const allFlowLayers: Array<[string, number]> = [
+      [DRIVE_FLOW_LAYER, DRIVE_FLOW_CYCLE_MS],
+      ...WALK_LAYER_IDS.map((id): [string, number] => [id, WALK_FLOW_CYCLE_MS]),
+    ]
+    const flowLayers = allFlowLayers.filter(([id]) => activeFlowLayers.has(id))
+    if (flowLayers.length === 0) return
     let frame = 0
     let start = 0
     const tick = (time: number) => {
       if (!start) start = time
       const elapsed = time - start
-      const flowLayers: Array<[string, number]> = [
-        [DRIVE_FLOW_LAYER, DRIVE_FLOW_CYCLE_MS],
-        ...WALK_LAYER_IDS.map((id): [string, number] => [id, WALK_FLOW_CYCLE_MS]),
-      ]
       for (const [id, cycleMs] of flowLayers) {
         const style = LAYER_STYLE[id]
         if (!map.getLayer(id) || !style.pulse) continue
@@ -593,7 +619,7 @@ export default function MapView({ variant, theme, markers, segments, hoveredId, 
     }
     frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
-  }, [status, styleVersion, variant, mapRef])
+  }, [status, styleVersion, variant, mapRef, activeFlowLayers])
 
   useEffect(() => {
     const map = mapRef.current

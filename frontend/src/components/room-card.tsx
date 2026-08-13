@@ -8,9 +8,10 @@ import type { RoomDetail } from '../types'
  * RoomCard — the read-only room accordion (RoomCard.dc.html minus the removed
  * parts). Click anywhere on the card (or the toggle button) expands IN PLACE
  * to show the gallery / facilities / package details — no new screen, no
- * popup (Hotel Detail Focus.md §Room Detail). Opening/closing smooth-scrolls
- * the newly revealed details (or the card itself, on close) into view within
- * whatever scroll container it sits in — see the `open` effect below.
+ * popup (Hotel Detail Focus.md §Room Detail). Opening smooth-scrolls down far
+ * enough to reveal the newly-expanded details AND the "Chọn phòng"/"Chi tiết
+ * phòng" buttons below them; closing smooth-scrolls the card back into view
+ * — see the `open` effect below.
  *
  * "Chọn phòng" (`selected`/`onPick`) is display-only by design (plan.md "Phần
  * chưa làm" #4): the backend has no select-room verb, so picking a room here
@@ -38,25 +39,36 @@ export default function RoomCard({
   const { t, i18n } = useTranslation()
   const [open, setOpen] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
-  const detailsRef = useRef<HTMLDivElement>(null)
+  // Wraps the expandable details block AND the "Chọn phòng"/"Chi tiết
+  // phòng" button row below it (see the JSX — this ref sits on their common
+  // parent, not just the details block), so opening scrolls far enough to
+  // reveal the buttons too, not just the top of the newly-expanded content.
+  const bodyRef = useRef<HTMLDivElement>(null)
   // Skips the scroll on mount — this effect exists purely to react to the
   // user actually toggling `open`, not to move anything on first render.
   const skipNextScroll = useRef(true)
 
-  // Expanding can reveal content below the fold of HotelDetailPanel's own
-  // scroll container; collapsing can leave the view scrolled to where that
-  // content used to be. Bring the right thing into view smoothly either
-  // way — the just-revealed details on open, the card itself on close —
-  // scrollIntoView finds the nearest scrollable ancestor on its own, so this
-  // doesn't need to know about HotelDetailPanel's scroll div specifically.
+  // Expanding can reveal content (gallery/facilities/package details, then
+  // the button row) below the fold of HotelDetailPanel's own scroll
+  // container; collapsing can leave the view scrolled to where that content
+  // used to be. scrollIntoView finds the nearest scrollable ancestor on its
+  // own, so neither branch needs to know about HotelDetailPanel's scroll div
+  // specifically.
+  //   - open: 'nearest' on `bodyRef` — scrolls the minimum needed to reveal
+  //     the whole details+buttons block, prioritizing its bottom (the
+  //     buttons) once it's taller than the viewport.
+  //   - close: 'center' on the card itself, not 'nearest' — the card is
+  //     usually ALREADY inside the viewport once collapsed (only the
+  //     content below it moved), so 'nearest' would just no-op instead of
+  //     giving the "hiệu ứng cuộn nhẹ nhàng" a collapse is supposed to have.
   useEffect(() => {
     if (skipNextScroll.current) {
       skipNextScroll.current = false
       return
     }
     const frame = requestAnimationFrame(() => {
-      const target = open ? detailsRef.current : cardRef.current
-      target?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      if (open) bodyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      else cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     })
     return () => cancelAnimationFrame(frame)
   }, [open])
@@ -141,73 +153,74 @@ export default function RoomCard({
         </div>
       </div>
 
-      {open && (
-        <div
-          ref={detailsRef}
-          className="mt-3 pt-3 border-t border-line flex flex-col gap-[11px] animate-[vFade_0.35s_ease_both]"
-        >
-          {room.images && room.images.length > 0 && (
-            <div className="grid grid-cols-3 gap-2">
-              {room.images.slice(0, 3).map((url, i) => (
-                <RemoteImage
-                  key={url}
-                  src={url}
-                  alt={t('galleryImgAlt', { index: i + 1, name: room.name ?? '' })}
-                  icon="king_bed"
-                  className="h-[70px] rounded-[14px]"
-                />
-              ))}
-            </div>
-          )}
-          {room.room_facilities && room.room_facilities.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {room.room_facilities.map((facility) => (
-                <span
-                  key={facility}
-                  className="text-[11px] font-[450] px-2.5 py-1 rounded-full bg-fill text-on-surface-variant"
-                >
-                  {facility}
-                </span>
-              ))}
-            </div>
-          )}
-          {price?.package_details && (
-            <div className="text-[13px] font-normal leading-[1.55] text-on-surface-variant text-pretty">
-              {price.package_details}
-            </div>
-          )}
-        </div>
-      )}
+      <div ref={bodyRef}>
+        {open && (
+          <div
+            className="mt-3 pt-3 border-t border-line flex flex-col gap-[11px] animate-[vFade_0.35s_ease_both]"
+          >
+            {room.images && room.images.length > 0 && (
+              <div className="grid grid-cols-3 gap-2">
+                {room.images.slice(0, 3).map((url, i) => (
+                  <RemoteImage
+                    key={url}
+                    src={url}
+                    alt={t('galleryImgAlt', { index: i + 1, name: room.name ?? '' })}
+                    icon="king_bed"
+                    className="h-[70px] rounded-[14px]"
+                  />
+                ))}
+              </div>
+            )}
+            {room.room_facilities && room.room_facilities.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {room.room_facilities.map((facility) => (
+                  <span
+                    key={facility}
+                    className="text-[11px] font-[450] px-2.5 py-1 rounded-full bg-fill text-on-surface-variant"
+                  >
+                    {facility}
+                  </span>
+                ))}
+              </div>
+            )}
+            {price?.package_details && (
+              <div className="text-[13px] font-normal leading-[1.55] text-on-surface-variant text-pretty">
+                {price.package_details}
+              </div>
+            )}
+          </div>
+        )}
 
-      <div className="flex gap-2 mt-3">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            onPick()
-          }}
-          className="flex-1 p-2.5 rounded-[14px] border-none text-[12.5px] font-[590] tracking-[-0.1px] cursor-pointer transition-all duration-200 active:scale-[0.985]"
-          style={{
-            background: selected ? 'var(--btn)' : 'var(--fill)',
-            color: selected ? 'var(--btn-fg)' : 'var(--t2)',
-          }}
-        >
-          {selected ? t('roomPickBtnSelected') : t('roomPickBtn')}
-        </button>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            setOpen((o) => !o)
-          }}
-          aria-expanded={open}
-          className="inline-flex flex-none items-center justify-center gap-1 px-3.5 py-2.5 rounded-[14px] border border-stroke bg-glass-2 text-on-surface-variant text-[12.5px] font-[530] cursor-pointer transition-all duration-200 hover:bg-glass-3 hover:text-on-surface"
-        >
-          <span className="material-symbols-outlined text-[14px]" aria-hidden="true">
-            {open ? 'expand_less' : 'expand_more'}
-          </span>
-          {t('roomExpand')}
-        </button>
+        <div className="flex gap-2 mt-3">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onPick()
+            }}
+            className="flex-1 p-2.5 rounded-[14px] border-none text-[12.5px] font-[590] tracking-[-0.1px] cursor-pointer transition-all duration-200 active:scale-[0.985]"
+            style={{
+              background: selected ? 'var(--btn)' : 'var(--fill)',
+              color: selected ? 'var(--btn-fg)' : 'var(--t2)',
+            }}
+          >
+            {selected ? t('roomPickBtnSelected') : t('roomPickBtn')}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              setOpen((o) => !o)
+            }}
+            aria-expanded={open}
+            className="inline-flex flex-none items-center justify-center gap-1 px-3.5 py-2.5 rounded-[14px] border border-stroke bg-glass-2 text-on-surface-variant text-[12.5px] font-[530] cursor-pointer transition-all duration-200 hover:bg-glass-3 hover:text-on-surface"
+          >
+            <span className="material-symbols-outlined text-[14px]" aria-hidden="true">
+              {open ? 'expand_less' : 'expand_more'}
+            </span>
+            {t('roomExpand')}
+          </button>
+        </div>
       </div>
     </div>
   )

@@ -134,6 +134,16 @@ export default function AppShell({
   // so no manual gutter is needed.
   const sidebarGutter = isLgUp ? 0 : sidebarCollapsed ? SIDEBAR_COLLAPSED_PX : 0
 
+  // Step 2 (hotel selection) is a 3-panel split (list | map | detail) that
+  // wants all the horizontal room it can get — auto-collapse the rail once
+  // on ARRIVING at that stage. Only fires when `stage` actually changes to
+  // 'hotels' (the effect's dependency), not on every render while it stays
+  // 'hotels', so the user can freely re-expand the rail afterwards without
+  // this fighting them back.
+  useEffect(() => {
+    if (stage === 'hotels') setSidebarCollapsed(true)
+  }, [stage])
+
   return (
     <div className="h-screen overflow-hidden flex text-on-surface font-sans">
       {/* Ambient background blobs (design dc.html:53-55): float behind all

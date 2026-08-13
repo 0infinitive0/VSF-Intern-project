@@ -17,6 +17,14 @@ const SECTION_EYEBROW =
  * a real flex sibling of the workspace split view (itinerary | map | detail),
  * not a modal. Shares the chat/hotel glass surface (glass-panel).
  *
+ * Always mounted by the caller (stage-workspace.tsx never conditionally
+ * renders this component) — its own root fills whatever box the caller's
+ * flex wrapper gives it (`min-w-0 h-full`, no fixed width of its own here),
+ * so it grows to fill the actual remaining space instead of sitting at a
+ * literal width that can leave a gap or overflow depending on viewport size.
+ * The caller's wrapper is what animates open/close via flex/opacity/scale/
+ * blur — same fix already applied to stage-hotels.tsx's HotelDetailPanel.
+ *
  * Data contract: the detail body comes only from `GET /attractions/{id}` via
  * useAttractionDetail (per-session cache); the hero badge's day number, the
  * context time, the kind accent and the travel-info block are NOT on that
@@ -40,7 +48,10 @@ export default function PlaceDetailPanel({
   routeLeg,
   onClose,
 }: {
-  placeId: string
+  /** null while no place has ever been focused yet this session (the caller
+   * keeps mounting this component always — see stage-workspace.tsx's
+   * lastContext — so this only happens transiently, before the first open). */
+  placeId: string | null
   name: string
   kind?: string | null
   dayNumber: number
@@ -51,6 +62,8 @@ export default function PlaceDetailPanel({
   const { t, i18n } = useTranslation()
   const { detail, status } = useAttractionDetail(placeId)
   const numFmt = new Intl.NumberFormat(NUM_LOCALE(i18n.language), { maximumFractionDigits: 1 })
+
+  if (placeId == null) return <div className="min-w-0 h-full" />
 
   const displayName = detail?.name ?? name
   const heroSrc = detail?.images?.[0]
@@ -133,7 +146,7 @@ export default function PlaceDetailPanel({
 
   if (status === 'error') {
     return (
-      <div className="flex-none w-[430px] max-w-full min-w-0 animate-[vRise_0.6s_cubic-bezier(0.22,1,0.36,1)_both]">
+      <div className="min-w-0 h-full">
         <div className="glass-panel h-full rounded-[26px] flex flex-col items-center justify-center gap-3 p-8 text-center">
           <span className="material-symbols-outlined text-4xl text-on-surface-faint" aria-hidden="true">
             attractions
@@ -152,7 +165,7 @@ export default function PlaceDetailPanel({
   }
 
   return (
-    <div className="flex-none w-[430px] max-w-full min-w-0 animate-[vRise_0.6s_cubic-bezier(0.22,1,0.36,1)_both]">
+    <div className="min-w-0 h-full">
       <div className="glass-panel relative h-full overflow-y-auto custom-scrollbar rounded-[26px]">
         {/* Hero — 250px, vHero reveal, bottom fade, close ✕ */}
         <div className="relative h-[250px] overflow-hidden animate-[vHero_0.9s_cubic-bezier(0.22,1,0.36,1)_both]">

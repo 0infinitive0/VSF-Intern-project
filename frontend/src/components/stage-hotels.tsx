@@ -254,10 +254,16 @@ export default function StageHotels({
             minWidth: focused ? '0px' : '340px',
             opacity: focused ? 0 : 1,
             transform: focused ? 'scale(.94)' : 'none',
+            // Not in `transition` (see below) — animating blur radius forces
+            // a full re-rasterize of everything under it (here, the Mapbox
+            // WebGL canvas) EVERY frame for the whole .55-.62s the rest of
+            // this box is transitioning; instant toggle keeps the same
+            // before/after look for a fraction of the cost. Easy to miss
+            // that it snapped since it's always paired with the opacity
+            // fade already happening.
             filter: focused ? 'blur(16px)' : 'blur(0px)',
             pointerEvents: focused ? 'none' : 'auto',
-            transition:
-              'flex .62s cubic-bezier(.22,1,.36,1), opacity .36s ease, transform .55s cubic-bezier(.22,1,.36,1), filter .36s ease',
+            transition: 'flex .62s cubic-bezier(.22,1,.36,1), opacity .36s ease, transform .55s cubic-bezier(.22,1,.36,1)',
           }}
         >
           <MapView
@@ -285,10 +291,11 @@ export default function StageHotels({
             minWidth: focused ? '440px' : '0px',
             opacity: focused ? 1 : 0,
             transform: focused ? 'none' : 'scale(.96)',
+            // Instant toggle, not animated — same reasoning as the map
+            // column's own filter above.
             filter: focused ? 'blur(0px)' : 'blur(12px)',
             pointerEvents: focused ? 'auto' : 'none',
-            transition:
-              'flex .62s cubic-bezier(.22,1,.36,1), opacity .36s ease, transform .55s cubic-bezier(.22,1,.36,1), filter .36s ease',
+            transition: 'flex .62s cubic-bezier(.22,1,.36,1), opacity .36s ease, transform .55s cubic-bezier(.22,1,.36,1)',
           }}
         >
           <HotelDetailPanel
