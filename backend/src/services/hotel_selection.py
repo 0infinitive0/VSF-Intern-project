@@ -480,7 +480,7 @@ def rank_hotel_candidates(
     return ranked
 
 
-def resolve_hotel_selection(
+def resolve_selection(
     selection: str,
     options: List[Tuple[Dict[str, Any], PlaceCandidate]],
 ) -> Tuple[Dict[str, Any], PlaceCandidate] | None:

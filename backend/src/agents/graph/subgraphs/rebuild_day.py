@@ -40,14 +40,16 @@ from __future__ import annotations
 
 import logging
 from copy import deepcopy
-from typing import Any
+from typing import Any, TypedDict
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
-from typing_extensions import TypedDict
+from langgraph.types import interrupt
 
-from src.services.trip_planner import rebuild_day_data
+from src.services.trip_planner import rebuild_day_data, _current_trip_parameters, _get_destination_id, _apply_replace_or_add, EditOperation
+from src.services.place_search import search_attraction_candidates
+from src.services.hotel_selection import resolve_selection
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +77,7 @@ class RebuildDayState(TypedDict, total=False):
     locked_days: list[int]  # defensive copy from parent
 
     # --- private scratch (produced inside the subgraph) -------------------
+    suggest_operations: list[dict[str, Any]]
     rebuild_error: str | None  # non-None signals a hard failure to the parent
 
 
@@ -100,6 +103,7 @@ def fetch_and_schedule_node(state: RebuildDayState) -> dict[str, Any]:
     day_number: int = int(state.get("day_number") or 0)
     day_theme: dict[str, Any] = dict(state.get("day_theme") or {})
     locked_days: list[int] = list(state.get("locked_days") or [])
+    suggest_operations: list[dict[str, Any]] = list(state.get("suggest_operations") or [])
     trip_data: dict[str, Any] = state.get("trip_data") or {}
 
     if not day_number:
@@ -107,12 +111,88 @@ def fetch_and_schedule_node(state: RebuildDayState) -> dict[str, Any]:
 
     working = deepcopy(trip_data)
     try:
-        rebuild_day_data(
-            working,
-            day_number,
-            day_theme,
-            locked_days=locked_days,
-        )
+        if suggest_operations:
+            from dataclasses import dataclass
+            
+            @dataclass(frozen=True)
+            class MockRequirements:
+                item_kind: str
+                semantic_query: str
+                
+            @dataclass(frozen=True)
+            class MockTarget:
+                item_id: str
+                
+            for op_dict in suggest_operations:
+                op_target = op_dict.get("target") or {}
+                op_reqs = op_dict.get("requirements") or {}
+                query = op_reqs.get("semantic_query") or ""
+                
+                # Extract destination
+                destination, _, _, _ = _current_trip_parameters(working)
+                destination_id = _get_destination_id(destination)
+                
+                if not query or not destination_id:
+                    continue
+                    
+                # Search candidates
+                candidates = search_attraction_candidates(
+                    destination=destination,
+                    destination_id=destination_id,
+                    query=query,
+                    near=None,  # Fallback to no center for now if not provided
+                    limit=3,
+                )
+                
+                if not candidates:
+                    continue
+                    
+                # Format options text
+                from src.i18n import t
+                language = str(state.get("language") or "vi")
+                lines = [t("Mình tìm thấy một vài địa điểm phù hợp. Bạn chọn cái nào nhé?", language)]
+                for idx, c in enumerate(candidates, 1):
+                    lines.append(f"{idx}. {c.venue_name} ({c.description})")
+                message_text = "\n".join(lines)
+                    
+                # Prepare payload
+                payload = {
+                    "type": "place_selection",
+                    "message": message_text,
+                    "options": [
+                        {
+                            "id": c.venue_id,
+                            "name": c.venue_name,
+                            "description": c.description,
+                        }
+                        for c in candidates
+                    ],
+                }
+                
+                # Interrupt and get user choice
+                resume_text = str(interrupt(payload) or "")
+                
+                # Resolve selection
+                resolution = resolve_selection(resume_text, candidates, "vi")
+                
+                if resolution.resolved and resolution.selection:
+                    # Apply replace_item
+                    from src.services.trip_edit_planner import EditOperation
+                    replace_op = EditOperation(
+                        operation="replace_item",
+                        target=MockTarget(item_id=op_target.get("item_id")),
+                        requirements=MockRequirements(item_kind=op_reqs.get("item_kind"), semantic_query=query),
+                        replacement_candidate=resolution.selection,
+                    )
+                    _apply_replace_or_add(working, replace_op)
+                    
+        else:
+            rebuild_day_data(
+                working,
+                day_number,
+                day_theme,
+                locked_days=locked_days,
+            )
     except Exception as exc:
         logger.exception(
             "rebuild_day: failed to rebuild day %d: %s", day_number, exc

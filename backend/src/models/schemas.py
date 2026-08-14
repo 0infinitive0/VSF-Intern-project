@@ -353,6 +353,12 @@ class SelectHotelRequest(BaseModel):
     selection_message: str | None = Field(default=None, min_length=1, max_length=5000)
 
 
+class SelectPlaceRequest(BaseModel):
+    session_id: UUID
+    place_id: str | int
+    selection_message: str | None = Field(default=None, min_length=1, max_length=5000)
+
+
 class ChangeHotelRequest(BaseModel):
     session_id: UUID
 

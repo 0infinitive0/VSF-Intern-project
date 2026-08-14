@@ -32,6 +32,13 @@ from src.services.llm import get_fast_llm
 logger = logging.getLogger(__name__)
 
 MAX_SUPERVISOR_ITERATIONS = 5
+# The day-rebuild loop (Phase 9) routes back through this node once per day
+# by design (`itinerary_node` re-queues itself while `rebuild_day_queue` is
+# non-empty). Sharing `MAX_SUPERVISOR_ITERATIONS` with that loop silently
+# truncated any itinerary past ~5 days -- review finding F3. This bound
+# exists only to stop a genuine runaway loop, not to cap trip length, so
+# it's generous relative to any real trip.
+MAX_DAY_REBUILD_HOPS = 100
 
 
 class SupervisorDecision(BaseModel):
@@ -59,6 +66,43 @@ def _eligible_workers(state: TravelGraphState) -> list[str]:
 
 def supervisor(state: TravelGraphState) -> dict[str, Any]:
     """Delegation only. Completion is decided by `all_tasks_done` on the edge."""
+    # A non-empty `rebuild_day_queue` means `itinerary_node` already started
+    # draining a multi-day build and is just continuing -- this is a
+    # mechanical queue-pop the node itself controls, not the supervisor
+    # choosing among workers, so it gets its own bounded counter instead of
+    # spending the general delegation budget (review finding F3).
+    if state.get("rebuild_day_queue") and "itinerary_node" in (state.get("pending_tasks") or []):
+        if state.get("day_rebuild_hops", 0) >= MAX_DAY_REBUILD_HOPS:
+            logger.error("Day-rebuild loop exceeded %d hops; bailing to respond", MAX_DAY_REBUILD_HOPS)
+            # Say so, honestly, instead of falling through to `respond`'s
+            # generic "updated" ack while days are still missing -- exactly
+            # the "success message, wrong data" failure this bailout used to
+            # cause silently (review finding F3).
+            rebuilt = state.get("rebuilt_days") or []
+            remaining = state.get("rebuild_day_queue") or []
+            partial_reply = (
+                f"Đã xây dựng {len(rebuilt)} ngày ({sorted(rebuilt)}); "
+                f"còn {len(remaining)} ngày ({sorted(remaining)}) chưa hoàn tất do vượt giới hạn xử lý. "
+                "Hãy thử lại để tiếp tục."
+            )
+            task_results = [
+                *(state.get("task_results") or []),
+                {"worker": "itinerary_node", "status": "partial_error", "reply": partial_reply},
+            ]
+            return {
+                "next_worker": "respond",
+                "routing_source": "max_iterations",
+                "routing_reasoning": "",
+                "task_results": task_results,
+            }
+        return {
+            "next_worker": "itinerary_node",
+            "task_description": state.get("task_description") or "",
+            "routing_source": "day_loop_continuation",
+            "routing_reasoning": "",
+            "day_rebuild_hops": state.get("day_rebuild_hops", 0) + 1,
+        }
+
     if state.get("supervisor_iterations", 0) >= MAX_SUPERVISOR_ITERATIONS:
         return {"next_worker": "respond", "routing_source": "max_iterations", "routing_reasoning": ""}
 

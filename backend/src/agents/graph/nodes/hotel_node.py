@@ -33,6 +33,7 @@ so the discarded response here is never shown to the user.
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import Any
 
 from langgraph.types import interrupt
@@ -43,11 +44,12 @@ from src.i18n import t
 from src.services.hotel_selection import (
     NoHotelsMatchAmenities,
     NoHotelsMatchRating,
+    fetch_hotel_by_id,
     rank_hotel_candidates,
     select_hotel_candidates,
 )
 from src.services.search_center import CenterResolution, extract_named_place, resolve_center
-from src.services.trip_planner import _get_destination_id
+from src.services.trip_planner import _get_destination_id, build_selected_hotel_trip
 from src.services.trip_scheduler import parse_coordinates
 
 logger = logging.getLogger(__name__)
@@ -136,10 +138,63 @@ def _rating_reply(exc: NoHotelsMatchRating, language: str) -> str:
     return t("Không có khách sạn nào đạt {criteria}.", language, criteria=" và ".join(parts))
 
 
+def _handle_hotel_selection(
+    *,
+    hotel_id: str,
+    destination: str,
+    destination_id: str,
+    people: str,
+    start_date: str | None,
+    end_date: str | None,
+    current_trip_data: dict[str, Any],
+    session_id: str,
+    language: str,
+) -> tuple[dict[str, Any] | None, str]:
+    """Fetch the picked hotel and build/replace `trip_data` from it (review
+    finding F2). Returns `(None, error_reply)` on any failure -- never
+    raises, mirroring every other error path in this node."""
+    resolved = fetch_hotel_by_id(hotel_id, destination_id)
+    if resolved is None:
+        return None, t("Không tìm thấy khách sạn với id đã cho tại điểm đến này.", language)
+    hotel_data, _candidate = resolved
+
+    if not start_date or not end_date:
+        return None, t("Mình cần biết ngày đi và ngày về trước khi chọn khách sạn.", language)
+    duration_days = (date.fromisoformat(end_date) - date.fromisoformat(start_date)).days
+    if duration_days <= 0:
+        return None, t("Khoảng ngày lưu trú không hợp lệ.", language)
+
+    has_existing_trip = bool(current_trip_data)
+    selection_pending = {
+        "mode": "change_hotel" if has_existing_trip else "new_trip",
+        "destination": destination,
+        "duration": str(duration_days),
+        "people": people,
+        "preferences_text": "",
+        "start_date": start_date,
+        "end_date": end_date,
+        "planning_constraints": {},
+    }
+    try:
+        generated = build_selected_hotel_trip(
+            selection_pending,
+            hotel_data,
+            current_trip_data=current_trip_data if has_existing_trip else None,
+            session_id=session_id,
+            language=language,
+        )
+    except Exception as exc:
+        logger.exception("hotel_node: hotel selection failed")
+        return None, t("Chọn khách sạn thất bại: {error}", language, error=str(exc))
+
+    return generated.trip_data, generated.reply
+
+
 def hotel_node(state: TravelGraphState) -> dict[str, Any]:
     pending = [worker for worker in (state.get("pending_tasks") or []) if worker != _WORKER_NAME]
     language = state.get("language") or "vi"
     travel_state = TravelState.from_dict(state.get("travel_state"))
+    selected_hotel_id = state.get("selected_hotel_id")
 
     destination_slot = travel_state.get("destination")
     if destination_slot.presence is not Presence.SET:
@@ -147,14 +202,14 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
         # here — this is a defensive fallback, not an expected path.
         reply = t("Mình cần biết bạn muốn đi đâu trước khi tìm khách sạn.", language)
         task_results = [*(state.get("task_results") or []), {"worker": _WORKER_NAME, "status": "no_destination", "reply": reply}]
-        return {"pending_tasks": pending, "task_results": task_results}
+        return {"pending_tasks": pending, "task_results": task_results, "selected_hotel_id": None}
 
     destination = str(destination_slot.value)
     destination_id = _get_destination_id(destination)
     if not destination_id:
         reply = t("Không tìm thấy dữ liệu điểm đến cho {dest}.", language, dest=destination)
         task_results = [*(state.get("task_results") or []), {"worker": _WORKER_NAME, "status": "unknown_destination", "reply": reply}]
-        return {"pending_tasks": pending, "task_results": task_results}
+        return {"pending_tasks": pending, "task_results": task_results, "selected_hotel_id": None}
 
     people_slot = travel_state.get("people")
     people = str(int(people_slot.value)) if people_slot.presence is Presence.SET else ""
@@ -162,6 +217,26 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
     end_slot = travel_state.get("dates.end")
     start_date = str(start_slot.value) if start_slot.presence is Presence.SET else None
     end_date = str(end_slot.value) if end_slot.presence is Presence.SET else None
+
+    if selected_hotel_id:
+        trip_data, reply = _handle_hotel_selection(
+            hotel_id=selected_hotel_id,
+            destination=destination,
+            destination_id=destination_id,
+            people=people,
+            start_date=start_date,
+            end_date=end_date,
+            current_trip_data=state.get("trip_data") or {},
+            session_id=state.get("session_id") or "",
+            language=language,
+        )
+        status = "hotel_selected" if trip_data is not None else "hotel_selection_failed"
+        task_results = [*(state.get("task_results") or []), {"worker": _WORKER_NAME, "status": status, "reply": reply}]
+        update: dict[str, Any] = {"pending_tasks": pending, "task_results": task_results, "selected_hotel_id": None}
+        if trip_data is not None:
+            update["trip_data"] = trip_data
+        return update
+
     min_price_slot = travel_state.get("budget.min")
     max_price_slot = travel_state.get("budget.max")
     min_price = float(min_price_slot.value) if min_price_slot.presence is Presence.SET else None

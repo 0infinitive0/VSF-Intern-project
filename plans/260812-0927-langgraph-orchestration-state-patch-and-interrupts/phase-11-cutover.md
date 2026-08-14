@@ -1,7 +1,7 @@
 ---
 phase: 11
 title: "CUTOVER — flip default, delete the old plane"
-status: pending
+status: completed
 priority: P1
 effort: "2d"
 dependencies: [8, 9, 10]

@@ -69,17 +69,14 @@ CONTRACTS: dict[str, NodeContract] = {
             "people",
             "preferences.themes",
             "preferences.pace",
-            # Phase 9: the full trip bundle and locked-days constraint
-            "trip_data",
-            "planning_constraints.locked_days",
+            # Phase 9 / review finding F4: the patch-validated lock list --
+            # synced into trip_data's planning_constraints, authoritative.
+            "locked_days",
         }),
         writes=frozenset({
-            # Phase 9: day-level theme overrides and planning_constraints.locked_days
+            # Phase 9: day-level theme overrides
             "daily_preferences.*.theme",
             "constraints.max_items_per_day",
-            "planning_constraints.locked_days",
-            # itinerary_node owns the trip_data written back after rebuild_day
-            "trip_data",
         }),
         tools=frozenset(),
     ),

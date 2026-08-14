@@ -144,6 +144,16 @@ def _context_line(state: TravelGraphState, spec: SlotSpec, language: str) -> str
     if updated:
         return updated
 
+    rejected = state.get("rejected_changes") or []
+    for rejection in rejected:
+        if rejection.get("path") == spec.name:
+            reason = rejection.get("reason", "")
+            # Clean up the prefix "path: " if it exists
+            prefix = f"{spec.name}: "
+            if reason.startswith(prefix):
+                reason = reason[len(prefix):]
+            return t("Dữ liệu chưa hợp lệ: {reason}", language, reason=reason)
+
     previously_pending = state.get("missing_slots") or []
     if spec.name in previously_pending:
         return t("Mình chưa hiểu rõ ý bạn ở câu trả lời trước.", language)

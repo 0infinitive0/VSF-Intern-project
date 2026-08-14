@@ -37,6 +37,7 @@ from src.services.supabase_search import (
     search_attractions_tiered as rpc_search_attractions_tiered,
 )
 from src.services.trip_edit_planner import EditOperation, NewItemRequirements, TripEditPlan
+from src.services.place_search import search_attraction_candidates, search_attraction_candidates_tiered
 from src.services.trip_formatter import format_hotel_options, format_trip_response_from_json, parse_duration_to_days
 from src.services.trip_intake import (
     DestinationOption,
@@ -138,34 +139,6 @@ def _strip_json_fence(content: str) -> str:
     return content.strip()
 
 
-def _hydrate_records(table_name: str, search_results: list[dict[str, Any]], fields: str) -> list[dict[str, Any]]:
-    """Merge compact RPC results with canonical Supabase rows without changing RPC contracts."""
-    result_ids = [str(result.get("id")) for result in search_results if result.get("id")]
-    if not result_ids:
-        return []
-    try:
-        supabase = get_supabase_client()
-        response = supabase.table(table_name).select(fields).in_("id", result_ids).execute()
-        canonical_by_id = {str(row["id"]): row for row in response.data or [] if row.get("id")}
-    except Exception as exc:
-        logger.error("Failed to hydrate %s search results: %s", table_name, exc)
-        return []
-    hydrated = []
-    for result in search_results:
-        canonical = canonical_by_id.get(str(result.get("id")))
-        if canonical:
-            hydrated.append({**result, **canonical})
-    return hydrated
-
-
-def _to_place_candidates(rows: list[dict[str, Any]]) -> list[PlaceCandidate]:
-    candidates = []
-    for row in rows:
-        candidate = PlaceCandidate.from_mapping(row)
-        if candidate.id and candidate.name and candidate.coordinate_pair:
-            candidates.append(candidate)
-    return candidates
-
 
 def _generate_day_themes(
     destination: str,
@@ -206,68 +179,6 @@ Every day_number from 1 through {number_of_days} must appear exactly once and ti
     return normalize_day_themes(raw_themes, number_of_days, preferences)
 
 
-def _search_attraction_candidates(
-    query: str, 
-    destination_id: str, 
-    match_count: int = 20,
-    root_latitude: float | None = None,
-    root_longitude: float | None = None,
-    max_radius_km: float | None = None,
-) -> list[PlaceCandidate]:
-    compact_results = rpc_search_attractions(
-        query=query,
-        match_count=match_count,
-        filter_destination_id=destination_id,
-        use_llm_filter=False,
-        root_latitude=root_latitude,
-        root_longitude=root_longitude,
-        max_radius_km=max_radius_km,
-    ) or []
-    hydrated = _hydrate_records(
-        "attractions",
-        compact_results,
-        (
-            "id,destination_id,name,description,category,is_tour,estimated_duration_minutes,"
-            "opening_time,closing_time,rating,coordinates,images,ticket_price_adult"
-        ),
-    )
-    return _to_place_candidates(hydrated)
-
-
-def _search_attraction_candidates_tiered(
-    query: str,
-    destination_id: str,
-    hotel: PlaceCandidate,
-    *,
-    required_count: int,
-    exclude_attraction_ids: Collection[str] | None = None,
-) -> list[PlaceCandidate]:
-    """Hydrate explicitly tiered attraction results rooted at one hotel."""
-    coordinates = hotel.coordinate_pair
-    if not coordinates:
-        raise ValueError("A hotel with coordinates is required for tiered attraction search.")
-    search_kwargs: dict[str, Any] = {}
-    if exclude_attraction_ids is not None:
-        search_kwargs["exclude_attraction_ids"] = exclude_attraction_ids
-    compact_results = rpc_search_attractions_tiered(
-        query,
-        required_count=required_count,
-        filter_destination_id=destination_id,
-        root_latitude=coordinates[0],
-        root_longitude=coordinates[1],
-        **search_kwargs,
-    )
-    hydrated = _hydrate_records(
-        "attractions",
-        compact_results,
-        (
-            "id,destination_id,name,description,category,is_tour,estimated_duration_minutes,"
-            "opening_time,closing_time,rating,coordinates,images,ticket_price_adult"
-        ),
-    )
-    return _to_place_candidates(hydrated)
-
-
 def _build_tiered_candidate_pools(
     destination: str,
     destination_id: str,
@@ -292,7 +203,7 @@ def _build_tiered_candidate_pools(
     # can lower its threshold or widen its radius.
     theme_pool_size = max(6, len(themes) + 4)
     themed_candidates = {
-        theme.day_number: _search_attraction_candidates_tiered(
+        theme.day_number: search_attraction_candidates_tiered(
             f"{theme.query}. Destination: {destination}",
             destination_id,
             hotel,
@@ -305,7 +216,7 @@ def _build_tiered_candidate_pools(
     # themed candidates have already been used (or cannot fit the slot's
     # opening-hour/cluster constraints), the scheduler may use this nearby,
     # non-theme pool instead of emitting a local-exploration placeholder.
-    nearby_fallbacks = _search_attraction_candidates_tiered(
+    nearby_fallbacks = search_attraction_candidates_tiered(
         f"nearby local attractions landmarks museums parks sightseeing in {destination}",
         destination_id,
         hotel,
@@ -332,7 +243,7 @@ def _build_tiered_candidate_pools(
         )
     meal_pool_size = max(len(themes) + 2, 5)
     restaurants = (
-        _search_attraction_candidates_tiered(
+        search_attraction_candidates_tiered(
             f"local restaurant lunch Vietnamese food in {destination}",
             destination_id,
             hotel,
@@ -342,7 +253,7 @@ def _build_tiered_candidate_pools(
         if "lunch" not in hotel.covered_meals
         else []
     )
-    cafes = _search_attraction_candidates_tiered(
+    cafes = search_attraction_candidates_tiered(
         f"coffee shop cafe relaxation in {destination}",
         destination_id,
         hotel,
@@ -350,7 +261,7 @@ def _build_tiered_candidate_pools(
         **search_kwargs,
     )
     breakfasts = (
-        _search_attraction_candidates_tiered(
+        search_attraction_candidates_tiered(
             f"breakfast restaurant cafe morning food in {destination}",
             destination_id,
             hotel,
@@ -361,7 +272,7 @@ def _build_tiered_candidate_pools(
         else []
     )
     dinners = (
-        _search_attraction_candidates_tiered(
+        search_attraction_candidates_tiered(
             f"dinner restaurant evening dining in {destination}",
             destination_id,
             hotel,
@@ -640,7 +551,7 @@ def _build_trip_data(
         # hotel. The itinerary shown to the user is rebuilt from GPS-rooted
         # pools after this selection completes.
         themed_candidates = {
-            theme.day_number: _search_attraction_candidates(
+            theme.day_number: search_attraction_candidates(
                 f"{theme.query}. Destination: {destination}",
                 destination_id,
                 match_count=20,
@@ -649,7 +560,7 @@ def _build_trip_data(
         }
         pool_size = min(max(number_of_days * 3, 15), 50)
         restaurants = (
-            _search_attraction_candidates(
+            search_attraction_candidates(
                 f"local restaurant lunch Vietnamese food in {destination}",
                 destination_id,
                 match_count=pool_size,
@@ -657,13 +568,13 @@ def _build_trip_data(
             if any("lunch" not in hotel.covered_meals for hotel in hotel_candidates)
             else []
         )
-        cafes = _search_attraction_candidates(
+        cafes = search_attraction_candidates(
             f"coffee shop cafe relaxation in {destination}",
             destination_id,
             match_count=pool_size,
         )
         breakfasts = (
-            _search_attraction_candidates(
+            search_attraction_candidates(
                 f"breakfast restaurant cafe morning food in {destination}",
                 destination_id,
                 match_count=pool_size,
@@ -672,7 +583,7 @@ def _build_trip_data(
             else []
         )
         dinners = (
-            _search_attraction_candidates(
+            search_attraction_candidates(
                 f"dinner restaurant evening dining in {destination}",
                 destination_id,
                 match_count=pool_size,
@@ -689,6 +600,7 @@ def _build_trip_data(
             breakfasts=breakfasts,
             dinners=dinners,
             child_focused=child_focused,
+            planning_constraints=planning_constraints,
         )
 
     pool_kwargs: dict[str, Any] = {}
@@ -716,6 +628,7 @@ def _build_trip_data(
         breakfasts=breakfasts,
         dinners=dinners,
         child_focused=child_focused,
+        planning_constraints=planning_constraints,
     )
     hotel_data = next(
         data for data, candidate in hotel_options if candidate.id == hotel_candidate.id
@@ -1210,7 +1123,7 @@ def _select_edit_candidate(
     anchor = _candidate_anchor(scheduled, hotel, target, requirements)
     max_radius = 5.0 if requirements.item_kind == "breakfast" else 15.0
     
-    candidates = _search_attraction_candidates(
+    candidates = search_attraction_candidates(
         requirements.semantic_query, 
         destination_id, 
         match_count=40,
@@ -1771,6 +1684,7 @@ def rebuild_day_data(
     )
 
     # Rebuild themes list — caller has already patched the target day's theme.
+    planning_constraints = itinerary.get("planning_constraints") or {}
     existing_themes = itinerary.get("day_themes") or []
     themes_dict: dict[int, dict[str, Any]] = {}
     for t_item in existing_themes:
@@ -1810,6 +1724,7 @@ def rebuild_day_data(
         breakfasts=breakfasts,
         dinners=dinners,
         child_focused=child_focused,
+        planning_constraints=planning_constraints,
     )
 
     # Filter to just this day's scheduled items.
@@ -2010,7 +1925,7 @@ def _apply_local_trip_change(
             raise ValueError("Thiếu mã điểm đến để tìm địa điểm thay thế.")
         target = scheduled[target_index]
         anchor_coordinates = target.coordinates or hotel.coordinate_pair
-        candidates = _search_attraction_candidates(
+        candidates = search_attraction_candidates(
             change.query or modification_request,
             destination_id,
             match_count=15,

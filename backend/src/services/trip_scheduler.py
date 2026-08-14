@@ -609,10 +609,16 @@ def build_itinerary(
     dinners: Sequence[PlaceCandidate] | None = None,
     child_focused: bool = False,
     policy: PlanningPolicy | None = None,
+    planning_constraints: dict[str, Any] | None = None,
 ) -> ItinerarySchedule:
     policy = policy or PlanningPolicy()
     if not hotel.id or not hotel.coordinate_pair:
         raise ValueError("A real hotel with coordinates is required to build an itinerary.")
+
+    planning_constraints = planning_constraints or {}
+    max_items_per_day = planning_constraints.get("max_items_per_day")
+    max_items_by_day = planning_constraints.get("max_items_by_day") or {}
+    max_item_distance_km = planning_constraints.get("max_item_distance_km")
 
     used_ids: set[str] = set()
     playground_trip_count = 0
@@ -624,6 +630,8 @@ def build_itinerary(
     dinners = [candidate for candidate in (dinners or []) if _is_food(candidate)]
 
     for theme in themes:
+        day_max_items = max_items_by_day.get(str(theme.day_number), max_items_per_day)
+        scheduled_attraction_count = 0
         day_playgrounds = 0
         day_nature_pois = 0
         day_pool = [candidate for candidate in themed_candidates.get(theme.day_number, []) if candidate.id]
@@ -663,20 +671,23 @@ def build_itinerary(
         day_items.append(breakfast_item)
 
         morning_start = max(8 * 60 + 15, _time_to_minutes(breakfast_item.end_time))
-        morning = _select_candidate(
-            _limit_nature_candidates(attraction_pool, day_nature_pois, policy),
-            used_ids,
-            hotel,
-            anchor=None,
-            start_time=_minutes_to_time(morning_start),
-            kind="attraction",
-            policy=policy,
-            playground_trip_count=playground_trip_count,
-            playground_day_count=day_playgrounds,
-            child_focused=child_focused,
-            previous_coordinates=breakfast_item.coordinates,
-            prior_coordinates=hotel.coordinate_pair,
-        )
+        morning = None
+        if day_max_items is None or scheduled_attraction_count < day_max_items:
+            morning = _select_candidate(
+                _limit_nature_candidates(attraction_pool, day_nature_pois, policy),
+                used_ids,
+                hotel,
+                anchor=None,
+                start_time=_minutes_to_time(morning_start),
+                kind="attraction",
+                policy=policy,
+                playground_trip_count=playground_trip_count,
+                playground_day_count=day_playgrounds,
+                child_focused=child_focused,
+                previous_coordinates=breakfast_item.coordinates,
+                prior_coordinates=hotel.coordinate_pair,
+                max_item_distance_km=max_item_distance_km,
+            )
         if morning:
             morning_start = _next_start(breakfast_item, morning.coordinate_pair, morning_start, policy)
             if not fits_opening_hours(
@@ -691,6 +702,7 @@ def build_itinerary(
             )
             day_items.append(morning_item)
             used_ids.add(morning.id)
+            scheduled_attraction_count += 1
             if morning_item.is_playground:
                 playground_trip_count += 1
                 day_playgrounds += 1
@@ -701,10 +713,16 @@ def build_itinerary(
                 theme.day_number, 2, hotel, "attraction", _minutes_to_time(morning_start), 90
             )
             day_items.append(morning_item)
-            adjustments.append(
-                f"Ngày {theme.day_number}: không có địa điểm tham quan buổi sáng phù hợp, "
-                "dành thời gian khám phá khu vực quanh khách sạn."
-            )
+            if day_max_items is not None and scheduled_attraction_count >= day_max_items:
+                if not any(f"đạt giới hạn số lượng" in adj for adj in adjustments):
+                    adjustments.append(f"Ngày {theme.day_number}: đã đạt giới hạn số lượng {day_max_items} địa điểm tham quan, các hoạt động tiếp theo sẽ là thời gian tự do.")
+            elif max_item_distance_km is not None and any(c.id not in used_ids for c in attraction_pool):
+                adjustments.append(f"Ngày {theme.day_number}: không tìm được địa điểm tham quan buổi sáng đủ gần trong bán kính {max_item_distance_km}km, dành thời gian khám phá khu vực quanh khách sạn.")
+            else:
+                adjustments.append(
+                    f"Ngày {theme.day_number}: không có địa điểm tham quan buổi sáng phù hợp, "
+                    "dành thời gian khám phá khu vực quanh khách sạn."
+                )
 
         lunch_start = _next_start(
             day_items[-1],
@@ -792,20 +810,23 @@ def build_itinerary(
         day_items.append(rest_item)
 
         afternoon_start = max(15 * 60 + 30, _time_to_minutes(rest_item.end_time))
-        afternoon = _select_candidate(
-            _limit_nature_candidates(attraction_pool, day_nature_pois, policy),
-            used_ids,
-            hotel,
-            anchor=morning,
-            start_time=_minutes_to_time(afternoon_start),
-            kind="attraction",
-            policy=policy,
-            playground_trip_count=playground_trip_count,
-            playground_day_count=day_playgrounds,
-            child_focused=child_focused,
-            previous_coordinates=rest_item.coordinates,
-            prior_coordinates=lunch_item.coordinates,
-        )
+        afternoon = None
+        if day_max_items is None or scheduled_attraction_count < day_max_items:
+            afternoon = _select_candidate(
+                _limit_nature_candidates(attraction_pool, day_nature_pois, policy),
+                used_ids,
+                hotel,
+                anchor=morning,
+                start_time=_minutes_to_time(afternoon_start),
+                kind="attraction",
+                policy=policy,
+                playground_trip_count=playground_trip_count,
+                playground_day_count=day_playgrounds,
+                child_focused=child_focused,
+                previous_coordinates=rest_item.coordinates,
+                prior_coordinates=lunch_item.coordinates,
+                max_item_distance_km=max_item_distance_km,
+            )
         if afternoon:
             afternoon_start = _next_start(rest_item, afternoon.coordinate_pair, afternoon_start, policy)
             if not fits_opening_hours(
@@ -819,6 +840,7 @@ def build_itinerary(
                 theme.day_number, 5, afternoon, "attraction", _minutes_to_time(afternoon_start)
             )
             used_ids.add(afternoon.id)
+            scheduled_attraction_count += 1
             if afternoon_item.is_playground:
                 playground_trip_count += 1
                 day_playgrounds += 1
@@ -828,7 +850,13 @@ def build_itinerary(
             afternoon_item = _local_exploration_item(
                 theme.day_number, 5, hotel, "attraction", _minutes_to_time(afternoon_start), 90
             )
-            adjustments.append(f"Ngày {theme.day_number}: không có điểm chiều đủ gần, dành thời gian khám phá khu vực quanh khách sạn.")
+            if day_max_items is not None and scheduled_attraction_count >= day_max_items:
+                if not any(f"đạt giới hạn số lượng" in adj for adj in adjustments):
+                    adjustments.append(f"Ngày {theme.day_number}: đã đạt giới hạn số lượng {day_max_items} địa điểm tham quan, các hoạt động tiếp theo sẽ là thời gian tự do.")
+            elif max_item_distance_km is not None and any(c.id not in used_ids for c in attraction_pool):
+                adjustments.append(f"Ngày {theme.day_number}: không tìm được điểm tham quan buổi chiều đủ gần trong bán kính {max_item_distance_km}km, dành thời gian khám phá khu vực quanh khách sạn.")
+            else:
+                adjustments.append(f"Ngày {theme.day_number}: không có điểm chiều đủ gần, dành thời gian khám phá khu vực quanh khách sạn.")
         day_items.append(afternoon_item)
 
         coffee_start = max(17 * 60 + 45, _time_to_minutes(afternoon_item.end_time))
@@ -922,20 +950,23 @@ def build_itinerary(
         day_items.append(dinner_item)
 
         evening_start = max(20 * 60 + 15, _time_to_minutes(dinner_item.end_time))
-        evening = _select_candidate(
-            _limit_nature_candidates(attraction_pool, day_nature_pois, policy),
-            used_ids,
-            hotel,
-            anchor=afternoon or morning,
-            start_time=_minutes_to_time(evening_start),
-            kind="evening",
-            policy=policy,
-            playground_trip_count=playground_trip_count,
-            playground_day_count=day_playgrounds,
-            child_focused=child_focused,
-            previous_coordinates=dinner_item.coordinates,
-            prior_coordinates=coffee_item.coordinates,
-        )
+        evening = None
+        if day_max_items is None or scheduled_attraction_count < day_max_items:
+            evening = _select_candidate(
+                _limit_nature_candidates(attraction_pool, day_nature_pois, policy),
+                used_ids,
+                hotel,
+                anchor=afternoon or morning,
+                start_time=_minutes_to_time(evening_start),
+                kind="evening",
+                policy=policy,
+                playground_trip_count=playground_trip_count,
+                playground_day_count=day_playgrounds,
+                child_focused=child_focused,
+                previous_coordinates=dinner_item.coordinates,
+                prior_coordinates=coffee_item.coordinates,
+                max_item_distance_km=max_item_distance_km,
+            )
         if evening and evening_start <= 20 * 60 + 30:
             duration = min(default_duration_minutes(evening, "evening"), 90)
             evening_start = _next_start(dinner_item, evening.coordinate_pair, evening_start, policy)
@@ -945,10 +976,16 @@ def build_itinerary(
                 )
                 day_items.append(evening_item)
                 used_ids.add(evening.id)
+                scheduled_attraction_count += 1
                 if evening_item.is_playground:
                     playground_trip_count += 1
                 if is_nature(evening):
                     day_nature_pois += 1
+        elif day_max_items is not None and scheduled_attraction_count >= day_max_items:
+            if not any(f"đạt giới hạn số lượng" in adj for adj in adjustments):
+                adjustments.append(f"Ngày {theme.day_number}: đã đạt giới hạn số lượng {day_max_items} địa điểm tham quan, các hoạt động tiếp theo sẽ là thời gian tự do.")
+        elif max_item_distance_km is not None and any(c.id not in used_ids for c in attraction_pool):
+            adjustments.append(f"Ngày {theme.day_number}: không tìm được điểm tham quan buổi tối đủ gần trong bán kính {max_item_distance_km}km.")
 
         repaired, day_adjustments = validate_or_repair_day(
             day_items,
@@ -975,6 +1012,7 @@ def build_itinerary_with_hotel_reselection(
     dinners: Sequence[PlaceCandidate] | None = None,
     child_focused: bool = False,
     policy: PlanningPolicy | None = None,
+    planning_constraints: dict[str, Any] | None = None,
 ) -> tuple[PlaceCandidate, ItinerarySchedule]:
     """Keep the primary hotel when viable; otherwise choose the best complete schedule."""
     if not hotels:
@@ -992,6 +1030,7 @@ def build_itinerary_with_hotel_reselection(
             dinners=dinners,
             child_focused=child_focused,
             policy=policy,
+            planning_constraints=planning_constraints,
         )
 
     primary_hotel = hotels[0]
@@ -1220,11 +1259,15 @@ def _select_candidate(
     previous_coordinates: tuple[float, float] | None = None,
     prior_coordinates: tuple[float, float] | None = None,
     next_coordinates: tuple[float, float] | None = None,
+    max_item_distance_km: float | None = None,
 ) -> PlaceCandidate | None:
     eligible: list[PlaceCandidate] = []
     for candidate in candidates:
         if not candidate.id or candidate.id in used_ids or not candidate.coordinate_pair:
             continue
+        if max_item_distance_km is not None and previous_coordinates is not None:
+            if haversine_distance_km(previous_coordinates, candidate.coordinate_pair) > max_item_distance_km:
+                continue
         duration = default_duration_minutes(candidate, kind)
         if not fits_opening_hours(candidate, start_time, duration):
             continue

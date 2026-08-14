@@ -41,6 +41,7 @@ from src.models.schemas import (
     SessionRestorePayload,
     SessionSummaryPayload,
     SelectHotelRequest,
+    SelectPlaceRequest,
     sanitize_system_error,
     to_hotel_options_payload,
     to_trip_plan_payload,
@@ -171,7 +172,7 @@ def restore_session(session_id: str) -> SessionRestorePayload:
         suggestions=[],
         stage="intake",
         hotel_options=to_hotel_options_payload(state.get("hotel_options")),
-        trip_plan=to_trip_plan_payload(state.get("travel_state")),
+        trip_plan=to_trip_plan_payload(state.get("trip_data")),
         intake=IntakeStatus.from_state(None, None),
     )
 
@@ -185,7 +186,7 @@ def get_session_plan(session_id: str) -> dict:
     state = snapshot.values
     if not state:
         raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
-    return {"trip_plan": to_trip_plan_payload(state.get("travel_state"))}
+    return {"trip_plan": to_trip_plan_payload(state.get("trip_data"))}
 
 
 @router.delete("/chat/{session_id}", status_code=204)
@@ -220,53 +221,6 @@ def _prepare_turn_inputs(session, request: PlannerChatRequest) -> tuple[str, str
     )
 
 
-def build_chat_response(session, result, session_id: str, language: str, suggestions_raw) -> PlannerChatResponse:
-    """Single source for assembling PlannerChatResponse. Both planner_chat and
-    planner_chat_stream go through here — Phase 6 of plan
-    260806-1602-streaming-chat-messages tests the two endpoints match
-    byte-for-byte on the same scenario, so they must never assemble responses
-    independently.
-
-    Sanitize any SYSTEM ERROR: text that might carry internal detail before it
-    reaches the browser. sanitize_system_error() logs the original at error
-    level (keyed by session_id) whenever it replaces the text.
-    """
-    safe_reply = sanitize_system_error(result.text, session_id=session_id, language=language)
-
-    stage = derive_stage(result, session)
-
-    hotel_options = to_hotel_options_payload(session.pending_hotel_selection)
-    suggestions = [{"label": s["label"], "value": s["value"]} for s in suggestions_raw]
-
-    trip_plan = to_trip_plan_payload(session.trip_data)
-    intake = IntakeStatus.from_state(session.intake_state, session.hotel_pref_state)
-    # Phase 7: no longer gated on `hotel_pref_state.is_complete` -- that was
-    # the literal mechanism behind "ngân sách chưa nhập chưa cho edit" (the
-    # date picker waiting on budget, an unrelated fact). Destination + people
-    # known and no explicit dates yet is enough to show the picker.
-    requires_stay_dates = bool(
-        session.intake_state.destination
-        and session.intake_state.people
-        and not session.intake_state.has_explicit_stay_dates
-    )
-
-    return PlannerChatResponse(
-        session_id=session_id,
-        reply=safe_reply,
-        suggestions=suggestions,
-        stage=stage,
-        hotel_options=hotel_options,
-        trip_plan=trip_plan,
-        intake=intake,
-        requires_stay_dates=requires_stay_dates,
-        compound_min_price=session.pending_hotel_selection.get("compound_min_price") if session.pending_hotel_selection else None,
-        compound_max_price=session.pending_hotel_selection.get("compound_max_price") if session.pending_hotel_selection else None,
-        all_preferences=session.pending_hotel_selection.get("all_preferences") or [] if session.pending_hotel_selection else [],
-        active_preferences=session.pending_hotel_selection.get("active_preferences") or [] if session.pending_hotel_selection else [],
-    )
-
-
-
 @router.post("/chat/select_hotel", response_model=PlannerChatResponse)
 @router.post("/hotels/select", response_model=PlannerChatResponse)
 def select_hotel(request: SelectHotelRequest) -> PlannerChatResponse:
@@ -279,6 +233,29 @@ def select_hotel(request: SelectHotelRequest) -> PlannerChatResponse:
     with session.lock:
         try:
             message = f"Tôi chọn khách sạn ID {request.hotel_id}"
+            # `selected_hotel_id` is the deterministic signal `hotel_node`
+            # acts on (review finding F2) -- the message text above stays
+            # for the conversation transcript/audit trail only.
+            return _run_turn_via_graph(
+                session_id, message, session.language, extra_state={"selected_hotel_id": str(request.hotel_id)}
+            )
+        except Exception as exc:
+            logger.exception("Chat error for session %s", session_id)
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/chat/select_place", response_model=PlannerChatResponse)
+@router.post("/places/select", response_model=PlannerChatResponse)
+def select_place(request: SelectPlaceRequest) -> PlannerChatResponse:
+    session_id = str(request.session_id)
+    registry.evict_expired()
+    session = registry.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
+
+    with session.lock:
+        try:
+            message = f"Tôi chọn địa điểm ID {request.place_id}"
             return _run_turn_via_graph(session_id, message, session.language)
         except Exception as exc:
             logger.exception("Chat error for session %s", session_id)
@@ -330,18 +307,23 @@ def _get_graph_v2():
     return _graph_v2_app
 
 
-def _invoke_fresh_turn(app, config: dict, session_id: str, message: str, language: str) -> dict:
+def _invoke_fresh_turn(
+    app, config: dict, session_id: str, message: str, language: str, extra_state: dict | None = None
+) -> dict:
     return app.invoke(
         {
             "session_id": session_id,
             "language": language,
             "messages": [HumanMessage(content=message)],
+            **(extra_state or {}),
         },
         config=config,
     )
 
 
-def _run_turn_via_graph(session_id: str, message: str, language: str) -> PlannerChatResponse:
+def _run_turn_via_graph(
+    session_id: str, message: str, language: str, extra_state: dict | None = None
+) -> PlannerChatResponse:
     """Phase 7: a thread can be PAUSED at `interrupt()` (an ambiguous date --
     see `nodes/validate_patch.py`) from the previous turn. `get_state(...)
     .interrupts` is non-empty exactly then, and this turn's message must
@@ -360,6 +342,13 @@ def _run_turn_via_graph(session_id: str, message: str, language: str) -> Planner
     not the whole pipeline), so it is re-run here as one ordinary fresh
     turn. This is the fix for "a pending question isn't interruptible by a
     different intent" recreated one level down, inside the interrupt itself.
+
+    `extra_state` (review finding F2) merges extra keys into this turn's
+    `invoke()` input -- e.g. `selected_hotel_id` from `POST /hotels/select`,
+    read deterministically by `hotel_node` rather than re-parsed out of the
+    message text. Only applied on the fresh-turn path: a turn that resumes a
+    paused `interrupt()` must resolve that ambiguity first, and threading a
+    hotel pick through a resume is an edge case rare enough not to bother.
     """
     app = _get_graph_v2()
     config = {"configurable": {"thread_id": session_id}}
@@ -369,9 +358,9 @@ def _run_turn_via_graph(session_id: str, message: str, language: str) -> Planner
         result = app.invoke(Command(resume=message), config=config)
         unresolved = result.get("unresolved_resume_text")
         if unresolved and "__interrupt__" not in result:
-            result = _invoke_fresh_turn(app, config, session_id, unresolved, language)
+            result = _invoke_fresh_turn(app, config, session_id, unresolved, language, extra_state)
     else:
-        result = _invoke_fresh_turn(app, config, session_id, message, language)
+        result = _invoke_fresh_turn(app, config, session_id, message, language, extra_state)
 
     interrupts = result.get("__interrupt__")
     if interrupts:
@@ -411,7 +400,7 @@ async def planner_chat_stream(request: PlannerChatRequest) -> StreamingResponse:
 
     def _run_turn() -> None:
         try:
-            with session.lock:
+            with emitting_to(emitter), session.lock:
                 response = _run_turn_via_graph(session_id, request.message or "", request.language)
             emitter.emit("final", **response.model_dump(mode="json"))
         except Exception:

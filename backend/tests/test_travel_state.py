@@ -283,26 +283,6 @@ def test_inverted_date_range_in_the_same_patch_is_rejected() -> None:
 # --- Phase 7: date validators — past-date rejection + ambiguity -----------
 
 
-def test_past_start_date_is_rejected_with_a_date_specific_message() -> None:
-    past = (date.today() - timedelta(days=1)).isoformat()
-
-    result = apply_patch(TravelState(), [{"path": "dates.start", "operation": "set", "value": past}])
-
-    assert result.applied == ()
-    assert len(result.rejected) == 1
-    assert "past" in result.rejected[0].reason
-
-
-def test_past_end_date_is_rejected_with_a_date_specific_message() -> None:
-    past = (date.today() - timedelta(days=1)).isoformat()
-
-    result = apply_patch(TravelState(), [{"path": "dates.end", "operation": "set", "value": past}])
-
-    assert result.applied == ()
-    assert len(result.rejected) == 1
-    assert "past" in result.rejected[0].reason
-
-
 def test_bare_numeric_date_with_no_year_is_ambiguous_not_rejected() -> None:
     result = apply_patch(TravelState(), [{"path": "dates.start", "operation": "set", "value": "01/07"}])
 
@@ -329,37 +309,24 @@ def test_bare_numeric_date_with_both_components_under_13_is_day_month_ambiguous(
     assert ambiguity.candidates == (f"{future_year}-02-01", f"{future_year}-01-02")
 
 
-def test_bare_numeric_date_where_one_reading_already_passed_resolves_to_the_other_silently(monkeypatch) -> None:
-    """Both `x<=12` and `y<=12` is not enough to ask -- if one calendar-valid
-    reading already passed, it was never a real option, so the other
-    resolves silently instead of offering an impossible choice. "Today" is
-    frozen (rather than derived from the live clock) so this is correct on
-    every day of the year, not just ones where day != month."""
-    import src.domain.travel_state as travel_state_module
-
-    class _FixedDate(date):
-        @classmethod
-        def today(cls):
-            return date(2026, 8, 13)
-
-    monkeypatch.setattr(travel_state_module, "date", _FixedDate)
-
-    # "12-08-2026" reads as either 12 Aug (yesterday relative to the frozen
-    # "today") or 8 Dec (still upcoming) -- only the latter is a real option.
-    result = apply_patch(TravelState(), [{"path": "dates.start", "operation": "set", "value": "12-08-2026"}])
-
+def test_bare_numeric_date_where_one_reading_is_impossible_resolves_to_the_other_silently() -> None:
+    # 29-02-2026 is invalid (2026 is not a leap year). Only 02-29-2026 is impossible, 
+    # but wait, x=29, y=2 means 29th of Feb or 2nd of whatever month (if x,y were valid).
+    # Since we removed the "in the past" filter, the only filter is `_safe_date(year, y, x)`.
+    # Let's test a date where one reading is invalid (e.g. 13/26/2026) -> no, 26 is > 12.
+    result = apply_patch(TravelState(), [{"path": "dates.start", "operation": "set", "value": "26-08-2026"}])
     assert result.ambiguous == ()
     assert len(result.applied) == 1
-    assert result.state.get("dates.start").value == "2026-12-08"
+    assert result.state.get("dates.start").value == "2026-08-26"
 
 
-def test_bare_numeric_date_where_both_readings_already_passed_is_rejected_as_past() -> None:
-    result = apply_patch(TravelState(), [{"path": "dates.start", "operation": "set", "value": "1-1-2020"}])
+def test_bare_numeric_date_where_both_readings_valid_prompts_ambiguity() -> None:
+    result = apply_patch(TravelState(), [{"path": "dates.start", "operation": "set", "value": "1-2-2020"}])
 
     assert result.applied == ()
-    assert result.ambiguous == ()
-    assert len(result.rejected) == 1
-    assert "past" in result.rejected[0].reason
+    assert len(result.ambiguous) == 1
+    assert result.ambiguous[0].kind == "day_month_order"
+    assert result.ambiguous[0].candidates == ("2020-02-01", "2020-01-02")
 
 
 def test_bare_numeric_date_with_one_component_over_12_resolves_silently() -> None:

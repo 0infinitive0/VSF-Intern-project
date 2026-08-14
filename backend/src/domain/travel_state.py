@@ -69,6 +69,7 @@ ALLOWED_PATHS: frozenset[str] = frozenset(
         "hotel_preferences.min_review_score",  # 0-10 score — a DIFFERENT column
         "constraints.max_items_per_day",  # Phase 12
         "constraints.max_item_distance_km",  # Phase 12
+        "constraints.max_items_by_day.*",  # Phase 12
         "daily_preferences.*.theme",  # wildcard segment — day number
         "locked_days",
     }
@@ -99,8 +100,14 @@ IMPACT_MAP: dict[str, tuple[Workflow, ...]] = {
     "hotel_preferences.min_review_score": ("hotel",),
     "constraints.max_items_per_day": ("itinerary",),
     "constraints.max_item_distance_km": ("itinerary",),
+    "constraints.max_items_by_day.*": ("itinerary_day",),
     "daily_preferences.*.theme": ("itinerary_day",),  # narrowest scope
-    "locked_days": (),
+    # Review finding F4: was `()` -- a patch that only touched `locked_days`
+    # never delegated to any worker, so the validated slot had zero effect
+    # on which days actually got locked (itinerary_node only read the
+    # separate, LLM-parsed `lock_days` action's copy inside trip_data).
+    # `itinerary_node` now syncs this slot into trip_data on every run.
+    "locked_days": ("itinerary",),
 }
 
 # Paths whose value is a list, mutable one item at a time via append/remove.
@@ -386,11 +393,13 @@ def _canonical_key(pattern: str, path: str) -> str:
     the same slot as "5") so equivalent paths never fork into separate,
     conflicting entries. Every other pattern already equals `path` exactly
     (no wildcard segment), so it passes through unchanged."""
-    if pattern != "daily_preferences.*.theme":
+    if pattern not in ("daily_preferences.*.theme", "constraints.max_items_by_day.*"):
         return path
     day_number = _extract_wildcard_day(path)
     if day_number is None or day_number < 1:
         raise PatchValidationError(f"{path}: invalid day number")
+    if pattern == "constraints.max_items_by_day.*":
+        return f"constraints.max_items_by_day.{day_number}"
     return f"daily_preferences.{day_number}.theme"
 
 
@@ -513,13 +522,12 @@ def _resolve_numeric_date(x: int, y: int, year: int) -> date | tuple[date, date]
     reading_dd_mm = _safe_date(year, y, x)
     reading_mm_dd = _safe_date(year, x, y) if x != y else None
 
-    today = date.today()
     # Built in (DD-MM, MM-DD) order, so a 2-element result keeps that ordering.
-    upcoming = [reading for reading in (reading_dd_mm, reading_mm_dd) if reading is not None and reading >= today]
-    if len(upcoming) == 2:
-        return upcoming[0], upcoming[1]
-    if len(upcoming) == 1:
-        return upcoming[0]
+    valid_readings = [reading for reading in (reading_dd_mm, reading_mm_dd) if reading is not None]
+    if len(valid_readings) == 2:
+        return valid_readings[0], valid_readings[1]
+    if len(valid_readings) == 1:
+        return valid_readings[0]
     return reading_dd_mm or reading_mm_dd
 
 
@@ -564,8 +572,6 @@ def _validate_date_start(value: Any, path: str, state: TravelState) -> str:
     enough to catch the actual failure mode: an inverted range submitted
     together."""
     start = _parse_date_value(value, path)
-    if start < date.today():
-        raise PatchValidationError(f"{path}: start date cannot be in the past")
     end_slot = state.get("dates.end")
     if end_slot.presence is Presence.SET and start >= date.fromisoformat(str(end_slot.value)):
         raise PatchValidationError(f"{path}: start date must be before the trip's end date")
@@ -574,8 +580,6 @@ def _validate_date_start(value: Any, path: str, state: TravelState) -> str:
 
 def _validate_date_end(value: Any, path: str, state: TravelState) -> str:
     end = _parse_date_value(value, path)
-    if end < date.today():
-        raise PatchValidationError(f"{path}: end date cannot be in the past")
     start_slot = state.get("dates.start")
     if start_slot.presence is Presence.SET and end <= date.fromisoformat(str(start_slot.value)):
         raise PatchValidationError(f"{path}: end date must be after the trip's start date")
@@ -623,6 +627,18 @@ def _validate_locked_day(value: Any, path: str, state: TravelState) -> int:
     return day_number
 
 
+_daily_max_items_validator = _int_range(1, 20)
+
+def _validate_daily_max_items(value: Any, path: str, state: TravelState) -> int:
+    day_number = _extract_wildcard_day(path)
+    if day_number is None or day_number < 1:
+        raise PatchValidationError(f"{path}: invalid day number")
+    max_day = trip_duration_days(state) or _MAX_DAY_NUMBER_FALLBACK
+    if day_number > max_day:
+        raise PatchValidationError(f"{path}: day {day_number} exceeds trip length ({max_day} days)")
+    return _daily_max_items_validator(value, path, state)
+
+
 _VALIDATORS: dict[str, _Validator] = {
     "destination": _nonempty_str(200),
     "dates.start": _validate_date_start,
@@ -644,6 +660,7 @@ _VALIDATORS: dict[str, _Validator] = {
     "hotel_preferences.min_review_score": _number_range(0, 10),
     "constraints.max_items_per_day": _int_range(1, 20),
     "constraints.max_item_distance_km": _number_range(0, 50, inclusive_min=False),
+    "constraints.max_items_by_day.*": _validate_daily_max_items,
     "daily_preferences.*.theme": _validate_daily_theme,
     "locked_days": _validate_locked_day,
 }

@@ -21,15 +21,23 @@ from src.agents.graph.routing import WORKER_ORDER, WORKFLOW_TO_WORKER
 from src.agents.graph.state import TravelGraphState
 
 
-def _pending_tasks_from_impact(impacted: list[str]) -> list[str]:
+def _pending_tasks_from_impact(impacted: list[str], *, force_hotel: bool) -> list[str]:
     workers = {WORKFLOW_TO_WORKER[workflow] for workflow in impacted if workflow in WORKFLOW_TO_WORKER}
+    if force_hotel:
+        # A hotel pick (`selected_hotel_id`, review finding F2) isn't an
+        # ALLOWED_PATHS change, so `impacted_workflows` never carries it --
+        # without this, `hotel_node` would never be delegated to and a
+        # picked hotel would never turn into `trip_data`.
+        workers.add("hotel_node")
     return [worker for worker in WORKER_ORDER if worker in workers]
 
 
 def apply_patch(state: TravelGraphState) -> dict[str, Any]:
     proposed = state.get("proposed_travel_state")
     committed = proposed if proposed is not None else (state.get("travel_state") or {})
-    pending_tasks = _pending_tasks_from_impact(state.get("impacted_workflows") or [])
+    pending_tasks = _pending_tasks_from_impact(
+        state.get("impacted_workflows") or [], force_hotel=bool(state.get("selected_hotel_id"))
+    )
 
     # --- Phase 10: best-effort audit emit ---------------------------------
     # Capture the before-state BEFORE we commit proposed_travel_state.

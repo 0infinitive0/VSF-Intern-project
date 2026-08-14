@@ -145,6 +145,8 @@ class TripSession:
             self.trip_data = trip_data
         if pending_hotel_selection is not None:
             self.pending_hotel_selection = pending_hotel_selection
+        if pending_place_selection is not None:
+            self.pending_place_selection = pending_place_selection
 
     @property
     def intake_state(self) -> TripIntakeState:
@@ -177,6 +179,14 @@ class TripSession:
     @pending_hotel_selection.setter
     def pending_hotel_selection(self, value: dict[str, Any] | None) -> None:
         self.state["pending_hotel_selection"] = value
+
+    @property
+    def pending_place_selection(self) -> dict[str, Any] | None:
+        return self.state.get("pending_place_selection")
+
+    @pending_place_selection.setter
+    def pending_place_selection(self, value: dict[str, Any] | None) -> None:
+        self.state["pending_place_selection"] = value
 
     @property
     def language(self) -> str:
@@ -261,6 +271,15 @@ def _load_pending_hotel_selection(session: TripSession) -> dict[str, Any] | None
 def _clear_pending_hotel_selection(session: TripSession) -> None:
     if session.pending_hotel_selection is not None:
         session.pending_hotel_selection = None
+
+
+def _load_pending_place_selection(session: TripSession) -> dict[str, Any] | None:
+    return session.pending_place_selection
+
+
+def _clear_pending_place_selection(session: TripSession) -> None:
+    if session.pending_place_selection is not None:
+        session.pending_place_selection = None
         if session.persist_hook:
             session.persist_hook(session)
 
@@ -271,6 +290,7 @@ def clear_session_history(session: TripSession) -> None:
     global file cleanup."""
     session.trip_data = None
     session.pending_hotel_selection = None
+    session.pending_place_selection = None
     session.intake_state = TripIntakeState()
     session.hotel_pref_state = HotelPreferenceState()
     session.initial_plan_complete = False
@@ -303,6 +323,13 @@ def cli_persist_hook(session: TripSession) -> None:
     elif pending_hotel_selection_file.exists():
         pending_hotel_selection_file.unlink()
 
+    pending_place_selection_file = session_data_dir / "pending_place_selection.json"
+    if session.pending_place_selection is not None:
+        with open(pending_place_selection_file, "w", encoding="utf-8") as file_handle:
+            json.dump(session.pending_place_selection, file_handle, ensure_ascii=False, indent=2)
+    elif pending_place_selection_file.exists():
+        pending_place_selection_file.unlink()
+
 
 def debug_persist_hook(session: TripSession) -> None:
     """Opt-in (DEBUG_TRIP_PLAN_FILE=1) debug hook: writes to debug/{session_id}/,
@@ -334,6 +361,11 @@ def debug_persist_hook(session: TripSession) -> None:
     if session.pending_hotel_selection is not None:
         with open(pending_file, "w", encoding="utf-8") as file_handle:
             json.dump(session.pending_hotel_selection, file_handle, ensure_ascii=False, indent=2)
+
+    pending_place_file = debug_dir / "pending_place_selection.json"
+    if session.pending_place_selection is not None:
+        with open(pending_place_file, "w", encoding="utf-8") as file_handle:
+            json.dump(session.pending_place_selection, file_handle, ensure_ascii=False, indent=2)
     elif pending_file.exists():
         pending_file.unlink()
 

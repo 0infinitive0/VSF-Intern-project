@@ -29,6 +29,12 @@ forward. `compound_min_price`/`compound_max_price`/`all_preferences`/
 plane's multi-turn accumulation bookkeeping, which Phase 8 deliberately
 replaces with `travel_state` as the single source of truth for active
 filters (`hotel_preferences.*`) rather than porting the accumulation.
+
+`trip_plan` (review finding F1): built from `state["trip_data"]` -- the
+`itinerary_node`/`hotel_node`-generated trip bundle, now its own state key
+rather than nested (and lost) inside `travel_state`. `None` whenever no
+trip has been built yet, exactly like `to_trip_plan_payload` already
+behaves for the `/restore` and `/chat/{id}/plan` endpoints.
 """
 
 from __future__ import annotations
@@ -36,7 +42,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.agents.graph.state import TravelGraphState
-from src.models.schemas import to_hotel_options_payload
+from src.models.schemas import to_hotel_options_payload, to_trip_plan_payload
 
 _ACK_VI = "Đã cập nhật thông tin chuyến đi."
 _ACK_EN = "Trip information updated."
@@ -99,7 +105,7 @@ def respond(state: TravelGraphState) -> dict[str, Any]:
         "suggestions": [],
         "stage": "intake",
         "hotel_options": _hotel_options_from_task_results(state),
-        "trip_plan": None,
+        "trip_plan": to_trip_plan_payload(state.get("trip_data")),
         "intake": None,
         "requires_stay_dates": False,
         "compound_min_price": None,

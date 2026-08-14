@@ -20,20 +20,32 @@ check.
 
 from __future__ import annotations
 
+from typing import Any, Sequence
+
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import create_react_agent
 
-from src.agents.tools.query_hotel import query_hotel
-from src.agents.tools.query_hotel_rooms import query_hotel_rooms
+from src.agents.tools.get_itinerary import get_current_itinerary
+from src.agents.tools.search_hotels import search_hotels
+from src.agents.tools.search_places import search_places
+from src.agents.tools.select_place import select_place
+from src.agents.tools.time import current_time
 from src.services.llm import get_fast_llm
 
-QA_TOOLS = (query_hotel, query_hotel_rooms)
+QA_TOOLS: Sequence[Any] = (
+    current_time,
+    get_current_itinerary,
+    search_hotels,
+    search_places,
+    select_place,
+)
 
 QA_SYSTEM_PROMPT = (
-    "You answer questions about hotels and rooms already shown to the user. "
+    "You answer questions about hotels and rooms already shown to the user, "
+    "and you can search for nearby places like restaurants or attractions. "
     "You never modify the trip, never recommend or select a hotel, and never "
-    "build or edit an itinerary — use only query_hotel/query_hotel_rooms."
+    "build or edit an itinerary — use only the provided tools."
 )
 
 

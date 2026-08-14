@@ -67,8 +67,15 @@ class TravelGraphState(TypedDict, total=False):
     next_worker: str | None
     task_description: str
     task_results: list[dict[str, Any]]
-    routing_source: str  # "impact_map" | "supervisor" | "impact_map_fallback" | "max_iterations"
+    routing_source: str  # "impact_map" | "supervisor" | "impact_map_fallback" | "max_iterations" | "day_loop_continuation"
     routing_reasoning: str
+    # Bounds the day-rebuild loop's own re-queue hops, SEPARATELY from
+    # `supervisor_iterations` (review finding F3): the day loop routes back
+    # through `supervisor` once per day by design, and sharing one 5-call
+    # budget with the general "prevent infinite delegation" guard silently
+    # truncated any itinerary past ~5 days. `load_context` resets this to 0
+    # every turn, same as `supervisor_iterations`.
+    day_rebuild_hops: int
 
     # --- itinerary day-rebuild queue (Phase 9) ----------------------------
     # `rebuild_day_queue` holds day numbers still waiting to be processed by
@@ -82,6 +89,27 @@ class TravelGraphState(TypedDict, total=False):
     # Days already rebuilt this turn — used by tests to assert byte-identity
     # of other days and to record the audit trail.
     rebuilt_days: list[int]
+    # Operations from the edit planner that require suggesting choices to the user
+    pending_suggest_operations: list[dict[str, Any]]
+
+    # --- built trip bundle (Phase 9) --------------------------------------
+    # Lives OUTSIDE `travel_state` deliberately (review finding F1):
+    # `travel_state` round-trips through `TravelState.from_dict()`/`.to_dict()`
+    # every turn (`validate_patch`/`apply_patch`), and that round-trip only
+    # preserves `ALLOWED_PATHS` keys. Nesting the generated trip bundle
+    # inside `travel_state` silently dropped the whole itinerary after
+    # exactly one more turn. `trip_data` is carried forward like `messages`:
+    # `load_context` does not reset it, only the node that legitimately
+    # replaces it (`itinerary_node`, `hotel_node` on a hotel pick) writes it.
+    trip_data: dict[str, Any]
+
+    # Set by `POST /hotels/select` for exactly the turn that picks a hotel.
+    # `load_context` deliberately does not reset it (same convention as
+    # `missing_slots`) so it survives from the turn's `invoke()` input
+    # through to `hotel_node`; `hotel_node` is the sole consumer and clears
+    # it on every return path so it can never fire on a later, unrelated
+    # turn (review finding F2).
+    selected_hotel_id: str | None
 
     # --- output -----------------------------------------------------------
     response: dict[str, Any]  # PlannerChatResponse field shape (Phase 5 non-functional freeze)
@@ -122,7 +150,7 @@ def build_manifest(state: TravelGraphState) -> SessionManifest:
             break
     task_results = state.get("task_results") or []
     return SessionManifest(
-        has_trip_data=bool((state.get("travel_state") or {}).get("destination")),
+        has_trip_data=bool(state.get("trip_data")),
         pending_tasks=tuple(state.get("pending_tasks") or ()),
         completed_workers=tuple(result.get("worker", "") for result in task_results),
         task_description=str(state.get("task_description") or ""),
@@ -150,6 +178,7 @@ def initial_graph_state(session_id: str, *, language: str = "vi") -> TravelGraph
         next_question=None,
         jailbreak_blocked=False,
         supervisor_iterations=0,
+        day_rebuild_hops=0,
         pending_tasks=[],
         next_worker=None,
         task_description="",
@@ -158,6 +187,8 @@ def initial_graph_state(session_id: str, *, language: str = "vi") -> TravelGraph
         routing_reasoning="",
         rebuild_day_queue=[],
         rebuilt_days=[],
+        pending_suggest_operations=[],
+        trip_data={},
+        selected_hotel_id=None,
         response={},
     )
-

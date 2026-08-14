@@ -1,7 +1,7 @@
 ---
 phase: 13
 title: "Place search and suggest-before-replace"
-status: pending
+status: completed
 priority: P2
 effort: "2d"
 dependencies: [8, 11]

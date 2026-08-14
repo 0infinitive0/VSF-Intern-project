@@ -51,6 +51,7 @@ from typing import Any
 
 from src.agents.graph.state import TravelGraphState
 from src.agents.graph.subgraphs.rebuild_day import build_rebuild_day_subgraph
+from src.domain.travel_state import Presence, TravelState
 from src.services.trip_planner import (
     _get_locked_days,
     _itinerary_record,
@@ -113,7 +114,9 @@ def _theme_for_day(trip_data: dict[str, Any], day_number: int) -> dict[str, Any]
 
 
 def _set_locked_days(trip_data: dict[str, Any], days_to_lock: list[int]) -> None:
-    """Write ``locked_days`` into ``planning_constraints`` in-place."""
+    """Write ``locked_days`` into ``planning_constraints`` in-place. Union
+    merge — additive, matching the ``lock_days`` action's "lock these too"
+    semantics (there is no matching "unlock" action)."""
     itinerary_rows = trip_data.get("itineraries") or [{}]
     itinerary = itinerary_rows[0] if isinstance(itinerary_rows, list) and itinerary_rows else {}
     if not isinstance(itinerary, dict):
@@ -125,10 +128,26 @@ def _set_locked_days(trip_data: dict[str, Any], days_to_lock: list[int]) -> None
     itinerary["planning_constraints"] = constraints
 
 
+def _sync_locked_days_from_travel_state(trip_data: dict[str, Any], locked_days: Any) -> None:
+    """Replace ``planning_constraints.locked_days`` with the patch-validated
+    `TravelState` ``locked_days`` slot (review finding F4) -- an authoritative
+    REPLACE, not `_set_locked_days`'s union-merge: the slot already reflects
+    both `append` and `remove`, so unioning it back in would make a `remove`
+    (unlocking a day) silently do nothing."""
+    itinerary_rows = trip_data.get("itineraries") or [{}]
+    itinerary = itinerary_rows[0] if isinstance(itinerary_rows, list) and itinerary_rows else {}
+    if not isinstance(itinerary, dict):
+        return
+    constraints = dict(itinerary.get("planning_constraints") or {})
+    constraints["locked_days"] = sorted({int(d) for d in (locked_days or [])})
+    itinerary["planning_constraints"] = constraints
+
+
 def _invoke_rebuild_day(
     trip_data: dict[str, Any],
     day_number: int,
     locked_days: list[int],
+    suggest_ops: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Call the ``rebuild_day`` subgraph for one day.
 
@@ -144,7 +163,8 @@ def _invoke_rebuild_day(
             "day_number": day_number,
             "day_theme": theme,
             "locked_days": locked_days,
-        },
+        }
+        | ({"suggest_operations": suggest_ops} if suggest_ops else {}),
         config={"configurable": {"thread_id": thread_id}},
     )
     error = result.get("rebuild_error")
@@ -169,11 +189,26 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
     action = str(task.get("action") or "build_itinerary")
 
     # ── grab working state ──────────────────────────────────────────────────
-    travel_state_dict: dict[str, Any] = dict(state.get("travel_state") or {})
-    # trip_data lives inside travel_state as a plain dict (the whole bundle).
-    # For the graph-v2 plane we read it from travel_state; the legacy plane
-    # stores it in a file — here we only deal with the in-memory copy.
-    trip_data: dict[str, Any] = dict(travel_state_dict.get("trip_data") or {})
+    # `trip_data` is its own top-level state key, NOT nested inside
+    # `travel_state` (review finding F1): `travel_state` round-trips through
+    # `TravelState.from_dict()`/`.to_dict()` every turn, which silently drops
+    # any key outside `ALLOWED_PATHS` -- `trip_data` isn't one, so nesting it
+    # there destroyed the built itinerary after exactly one more turn.
+    trip_data: dict[str, Any] = dict(state.get("trip_data") or {})
+
+    # `locked_days` set via the ordinary patch pipeline (`{"path":
+    # "locked_days", "operation": "append", ...}`) is authoritative over
+    # whatever `trip_data`'s own `planning_constraints.locked_days` holds --
+    # review finding F4: before this sync, patching that slot validated and
+    # stored the change but had ZERO effect on which days actually got
+    # locked, because `_get_locked_days`/`rebuild_day_data` only ever read
+    # `trip_data`'s embedded copy. This is a full replace (not the `lock_days`
+    # action's incremental union-merge below), since the TravelState slot
+    # already reflects append AND remove.
+    travel_state = TravelState.from_dict(state.get("travel_state") or {})
+    locked_days_slot = travel_state.get("locked_days")
+    if trip_data and locked_days_slot.presence is Presence.SET:
+        _sync_locked_days_from_travel_state(trip_data, locked_days_slot.value)
 
     rebuild_day_queue: list[int] = list(state.get("rebuild_day_queue") or [])
     rebuilt_days: list[int] = list(state.get("rebuilt_days") or [])
@@ -184,13 +219,13 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
         entry: dict[str, Any] = {"worker": _WORKER_NAME, "status": "ok", "reply": reply}
         if extra:
             entry.update(extra)
-        new_travel_state = {**travel_state_dict, "trip_data": trip_data}
         return {
             "pending_tasks": pending_tasks,
             "task_results": [*task_results, entry],
             "rebuild_day_queue": rebuild_day_queue,
             "rebuilt_days": rebuilt_days,
-            "travel_state": new_travel_state,
+            "pending_suggest_operations": state.get("pending_suggest_operations") or [],
+            "trip_data": trip_data,
         }
 
     def _err(reply: str) -> dict[str, Any]:
@@ -221,12 +256,47 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
             return _err("edit_item: không có lịch trình nào để chỉnh sửa.")
         working = deepcopy(trip_data)
         try:
+            from dataclasses import replace
             edit_plan = plan_trip_edit(user_request, working)
+            suggest_ops = [op for op in edit_plan.operations if op.operation == "suggest"]
+            other_ops = [op for op in edit_plan.operations if op.operation != "suggest"]
+            
+            if suggest_ops:
+                edit_plan = replace(edit_plan, operations=other_ops)
+            
             messages = apply_trip_edit_plan(working, edit_plan)
         except Exception as exc:
             logger.exception("itinerary_node: edit_item failed")
             return _err(f"Chỉnh sửa thất bại: {exc}")
+            
         trip_data = working
+        
+        if suggest_ops:
+            pending_suggest_ops = list(state.get("pending_suggest_operations") or [])
+            from dataclasses import asdict
+            for op in suggest_ops:
+                pending_suggest_ops.append(asdict(op))
+                if op.target and op.target.day_number:
+                    rebuild_day_queue.append(int(op.target.day_number))
+                else:
+                    # fallback to day 1 if we somehow don't know the day
+                    rebuild_day_queue.append(1)
+            
+            # De-duplicate rebuild queue, preserving order (newest first)
+            new_queue = []
+            for d in rebuild_day_queue:
+                if d not in new_queue:
+                    new_queue.append(d)
+            
+            return {
+                "pending_tasks": [*pending_tasks, _WORKER_NAME],  # re-queue self to process the rebuild_day_queue
+                "task_results": [*task_results, {"worker": _WORKER_NAME, "status": "ok", "reply": "; ".join(messages) or "Đã ghi nhận yêu cầu chỉnh sửa, đang tìm kiếm gợi ý..."}],
+                "rebuild_day_queue": new_queue,
+                "rebuilt_days": rebuilt_days,
+                "pending_suggest_operations": pending_suggest_ops,
+                "trip_data": trip_data,
+            }
+            
         return _ok("; ".join(messages) or "Đã chỉnh sửa lịch trình.")
 
     # ── build_itinerary / rebuild_days ────────────────────────────────────────
@@ -253,8 +323,12 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
     remaining_queue = rebuild_day_queue[1:]
     locked_days_list = sorted(_get_locked_days(trip_data))
 
+    pending_suggest_ops = list(state.get("pending_suggest_operations") or [])
+    current_day_suggest_ops = [op for op in pending_suggest_ops if str(op.get("target", {}).get("day_number")) == str(day_number) or (not op.get("target", {}).get("day_number") and day_number == 1)]
+    remaining_suggest_ops = [op for op in pending_suggest_ops if op not in current_day_suggest_ops]
+
     try:
-        trip_data = _invoke_rebuild_day(trip_data, day_number, locked_days_list)
+        trip_data = _invoke_rebuild_day(trip_data, day_number, locked_days_list, suggest_ops=current_day_suggest_ops)
     except Exception as exc:
         logger.exception("itinerary_node: rebuild_day failed for day %d", day_number)
         # Keep remaining queue so caller can decide whether to continue.
@@ -276,17 +350,21 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
     # If more days remain, return with a non-empty queue — the `all_tasks_done`
     # conditional edge will route back to supervisor which routes back here.
     if rebuild_day_queue:
-        new_travel_state = {**travel_state_dict, "trip_data": trip_data}
         return {
             "pending_tasks": [*pending_tasks, _WORKER_NAME],  # re-queue self
             "task_results": task_results,
             "rebuild_day_queue": rebuild_day_queue,
             "rebuilt_days": rebuilt_days,
-            "travel_state": new_travel_state,
+            "pending_suggest_operations": remaining_suggest_ops,
+            "trip_data": trip_data,
         }
 
     # All days done — report completion.
-    return _ok(
-        f"Đã xây dựng xong {len(rebuilt_days)} ngày: {rebuilt_days}.",
-        {"rebuilt_days": rebuilt_days},
-    )
+    return {
+        "pending_tasks": pending_tasks,
+        "task_results": task_results,
+        "rebuild_day_queue": [],
+        "rebuilt_days": rebuilt_days,
+        "pending_suggest_operations": remaining_suggest_ops,
+        "trip_data": trip_data,
+    }

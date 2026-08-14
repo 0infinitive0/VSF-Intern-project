@@ -16,6 +16,16 @@ whatever slot was pending at the END of the previous turn — the one signal
 last reply didn't answer it" apart from "this is the first time asking it",
 without which every re-ask would be indistinguishable from a first ask (see
 `nodes/ask_slot.py`'s docstring).
+
+`trip_data` and `selected_hotel_id` are ALSO deliberately not reset here,
+for the same reason (review findings F1/F2):
+- `trip_data` is the generated trip bundle, carried forward turn to turn
+  like `messages` — resetting it here would erase the itinerary on every
+  turn. `itinerary_node`/`hotel_node` are its only writers.
+- `selected_hotel_id` is set by `POST /hotels/select` as part of this
+  turn's `invoke()` input, which is merged into state BEFORE this node
+  runs — resetting it here would wipe it before `hotel_node` ever sees it.
+  `hotel_node` is the sole consumer and clears it itself on every return.
 """
 
 from __future__ import annotations
@@ -38,6 +48,7 @@ def load_context(state: TravelGraphState) -> dict[str, Any]:
         "next_question": None,
         "jailbreak_blocked": False,
         "supervisor_iterations": 0,
+        "day_rebuild_hops": 0,
         "pending_tasks": [],
         "next_worker": None,
         "task_description": "",
