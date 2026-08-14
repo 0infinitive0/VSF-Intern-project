@@ -278,6 +278,66 @@ def format_hotel_options(options: list[tuple[dict[str, Any], PlaceCandidate]], l
     return "\n".join(lines)
 
 
+def format_budget_status(
+    known_total: float | None,
+    trip_total: float | None,
+    items_with_cost: int,
+    total_items: int,
+    language: str = "vi",
+) -> str:
+    """Surface trip-total budget status in user-facing text (Phase 14).
+
+    Called by `budget_check` (the graph node owning `budget.trip_total`)
+    once it knows the current trip's known cost.  Always reports coverage —
+    never claims compliance over unknown costs.
+
+    Args:
+        known_total: The sum of all items with known prices (hotel + activities).
+        trip_total: The user-stated whole-trip budget cap.
+        items_with_cost: Number of itinerary items that have a known price.
+        total_items: Total itinerary items.
+        language: Language code for translation.
+
+    Returns:
+        A one-line status string suitable for appending to the trip summary.
+    """
+    if trip_total is None:
+        return ""
+    if known_total is None:
+        return t(
+            "Ngân sách toàn chuyến: {total:,.0f} VND (chưa có đủ giá để kiểm tra).",
+            language,
+            total=trip_total,
+        )
+
+    coverage_note = ""
+    if total_items > 0 and items_with_cost < total_items:
+        coverage_note = t(
+            " ({covered}/{all} mục có giá — có thể còn chi phí chưa biết)",
+            language,
+            covered=items_with_cost,
+            all=total_items,
+        )
+
+    if known_total <= trip_total:
+        return t(
+            "Ngân sách toàn chuyến: {known:,.0f} / {total:,.0f} VND (trong ngân sách){coverage}.",
+            language,
+            known=known_total,
+            total=trip_total,
+            coverage=coverage_note,
+        )
+    shortfall = known_total - trip_total
+    return t(
+        "Ngân sách toàn chuyến: {known:,.0f} / {total:,.0f} VND (VƯỢT {shortfall:,.0f} VND){coverage}.",
+        language,
+        known=known_total,
+        total=trip_total,
+        shortfall=shortfall,
+        coverage=coverage_note,
+    )
+
+
 def to_trip_plan_payload(trip_data: dict[str, Any] | None) -> dict[str, Any] | None:
     """Render a `current_trip_plan.json`-shaped bundle into Phase 3's `trip_plan` payload.
 

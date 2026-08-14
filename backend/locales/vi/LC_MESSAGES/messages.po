@@ -252,3 +252,77 @@ msgstr ""
 msgid "Mình chưa hiểu rõ ý bạn ở câu trả lời trước."
 msgstr ""
 
+msgid "chi phí hoạt động"
+msgstr ""
+
+msgid "chi phí khách sạn"
+msgstr ""
+
+#, python-brace-format
+msgid "Phần chiếm nhiều nhất là {dominant}."
+msgstr ""
+
+msgid "Không thể tính ngân sách mỗi đêm vì chưa có thông tin số đêm lưu trú."
+msgstr ""
+
+#, python-brace-format
+msgid ""
+"Chi phí hoạt động đã vượt tổng ngân sách {total:,.0f} VND — không còn "
+"ngân sách cho khách sạn."
+msgstr ""
+
+msgid "Không thể xác định điểm đến để tìm lại khách sạn."
+msgstr ""
+
+#, python-brace-format
+msgid "Tìm khách sạn trong ngân sách {ceiling:,.0f} VND/đêm thất bại: {exc}"
+msgstr ""
+
+#, python-brace-format
+msgid ""
+"Không tìm thấy khách sạn nào trong mức {ceiling:,.0f} VND/đêm tại "
+"{destination}."
+msgstr ""
+
+#, python-brace-format
+msgid "Không tìm được khách sạn rẻ hơn: {error}"
+msgstr ""
+
+#, python-brace-format
+msgid "Ngày {day}"
+msgstr ""
+
+#, python-brace-format
+msgid "Đã điều chỉnh sang khách sạn {hotel} để phù hợp ngân sách. "
+msgstr ""
+
+msgid "Đã điều chỉnh khách sạn để phù hợp ngân sách. "
+msgstr ""
+
+#, python-brace-format
+msgid ""
+"Sau khi tìm khách sạn rẻ hơn, tổng chi phí vẫn là {known:,.0f} VND (ngân "
+"sách {total:,.0f} VND, vượt {shortfall:,.0f} VND). Phần chiếm nhiều nhất "
+"là {dominant}."
+msgstr ""
+
+#, python-brace-format
+msgid "Ngân sách toàn chuyến: {total:,.0f} VND (chưa có đủ giá để kiểm tra)."
+msgstr ""
+
+#, python-brace-format
+msgid " ({covered}/{all} mục có giá — có thể còn chi phí chưa biết)"
+msgstr ""
+
+#, python-brace-format
+msgid ""
+"Ngân sách toàn chuyến: {known:,.0f} / {total:,.0f} VND (trong ngân "
+"sách){coverage}."
+msgstr ""
+
+#, python-brace-format
+msgid ""
+"Ngân sách toàn chuyến: {known:,.0f} / {total:,.0f} VND (VƯỢT "
+"{shortfall:,.0f} VND){coverage}."
+msgstr ""
+

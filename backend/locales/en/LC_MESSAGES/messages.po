@@ -272,3 +272,82 @@ msgstr "Updated: {joined}."
 msgid "Mình chưa hiểu rõ ý bạn ở câu trả lời trước."
 msgstr "I didn't quite catch your previous reply."
 
+msgid "chi phí hoạt động"
+msgstr "activity costs"
+
+msgid "chi phí khách sạn"
+msgstr "hotel costs"
+
+#, python-brace-format
+msgid "Phần chiếm nhiều nhất là {dominant}."
+msgstr "The largest share is {dominant}."
+
+msgid "Không thể tính ngân sách mỗi đêm vì chưa có thông tin số đêm lưu trú."
+msgstr "Could not compute a per-night budget because the number of nights is unknown."
+
+#, python-brace-format
+msgid ""
+"Chi phí hoạt động đã vượt tổng ngân sách {total:,.0f} VND — không còn "
+"ngân sách cho khách sạn."
+msgstr ""
+"Activity costs already exceed the total budget of {total:,.0f} VND — no "
+"budget left for a hotel."
+
+msgid "Không thể xác định điểm đến để tìm lại khách sạn."
+msgstr "Could not determine the destination to search hotels again."
+
+#, python-brace-format
+msgid "Tìm khách sạn trong ngân sách {ceiling:,.0f} VND/đêm thất bại: {exc}"
+msgstr "Hotel search within {ceiling:,.0f} VND/night failed: {exc}"
+
+#, python-brace-format
+msgid ""
+"Không tìm thấy khách sạn nào trong mức {ceiling:,.0f} VND/đêm tại "
+"{destination}."
+msgstr "No hotel found within {ceiling:,.0f} VND/night in {destination}."
+
+#, python-brace-format
+msgid "Không tìm được khách sạn rẻ hơn: {error}"
+msgstr "Could not find a cheaper hotel: {error}"
+
+#, python-brace-format
+msgid "Ngày {day}"
+msgstr "Day {day}"
+
+#, python-brace-format
+msgid "Đã điều chỉnh sang khách sạn {hotel} để phù hợp ngân sách. "
+msgstr "Switched to hotel {hotel} to fit the budget. "
+
+msgid "Đã điều chỉnh khách sạn để phù hợp ngân sách. "
+msgstr "Adjusted the hotel to fit the budget. "
+
+#, python-brace-format
+msgid ""
+"Sau khi tìm khách sạn rẻ hơn, tổng chi phí vẫn là {known:,.0f} VND (ngân "
+"sách {total:,.0f} VND, vượt {shortfall:,.0f} VND). Phần chiếm nhiều nhất "
+"là {dominant}."
+msgstr ""
+"After searching for a cheaper hotel, the total cost is still {known:,.0f} "
+"VND (budget {total:,.0f} VND, over by {shortfall:,.0f} VND). The largest "
+"share is {dominant}."
+
+#, python-brace-format
+msgid "Ngân sách toàn chuyến: {total:,.0f} VND (chưa có đủ giá để kiểm tra)."
+msgstr "Whole-trip budget: {total:,.0f} VND (not enough price data to check)."
+
+#, python-brace-format
+msgid " ({covered}/{all} mục có giá — có thể còn chi phí chưa biết)"
+msgstr " ({covered}/{all} items priced — actual cost may be higher)"
+
+#, python-brace-format
+msgid ""
+"Ngân sách toàn chuyến: {known:,.0f} / {total:,.0f} VND (trong ngân "
+"sách){coverage}."
+msgstr "Whole-trip budget: {known:,.0f} / {total:,.0f} VND (within budget){coverage}."
+
+#, python-brace-format
+msgid ""
+"Ngân sách toàn chuyến: {known:,.0f} / {total:,.0f} VND (VƯỢT "
+"{shortfall:,.0f} VND){coverage}."
+msgstr "Whole-trip budget: {known:,.0f} / {total:,.0f} VND (OVER by {shortfall:,.0f} VND){coverage}."
+

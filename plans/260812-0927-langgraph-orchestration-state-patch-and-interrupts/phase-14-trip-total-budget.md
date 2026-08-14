@@ -1,7 +1,7 @@
 ---
 phase: 14
 title: "Trip-total budget constraint"
-status: pending
+status: done
 priority: P2
 effort: "2.5d"
 dependencies: [9, 11]
