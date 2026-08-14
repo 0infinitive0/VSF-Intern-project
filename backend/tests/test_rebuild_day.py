@@ -242,7 +242,8 @@ class TestOneEditLeaveOtherDaysByteIdentical:
             session_id="test",
             language="vi",
             messages=[],
-            travel_state={"trip_data": trip_data},
+            travel_state={},
+            trip_data=trip_data,
             patch=[],
             intent="",
             proposed_travel_state={},
@@ -299,8 +300,7 @@ class TestOneEditLeaveOtherDaysByteIdentical:
             state = self._state(data, "rebuild_days", [1])
             result = itinerary_node(state)
 
-        updated_travel = result.get("travel_state") or {}
-        updated_trip = updated_travel.get("trip_data") or data
+        updated_trip = result.get("trip_data") or data
 
         day2_after = [i for i in updated_trip["itinerary_items"] if i["day_number"] == 2]
         day3_after = [i for i in updated_trip["itinerary_items"] if i["day_number"] == 3]
@@ -342,7 +342,8 @@ class TestLockedDayPreventedFromRebuild:
             session_id="test",
             language="vi",
             messages=[],
-            travel_state={"trip_data": data},
+            travel_state={},
+            trip_data=data,
             patch=[],
             intent="",
             proposed_travel_state={},
@@ -400,7 +401,8 @@ class TestItemLevelEditAction:
             session_id="test",
             language="vi",
             messages=[],
-            travel_state={"trip_data": data},
+            travel_state={},
+            trip_data=data,
             patch=[],
             intent="",
             proposed_travel_state={},

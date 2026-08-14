@@ -108,10 +108,13 @@ def test_only_validate_patch_and_hotel_node_call_interrupt():
 # --- qa_node: reduced tool list + explicit checkpointer subgraph -----------
 
 
-def test_qa_node_exposes_exactly_the_two_read_only_tools():
+def test_qa_node_exposes_exactly_the_read_only_tools():
     names = {tool.name for tool in QA_TOOLS}
-    assert names == {"query_hotel", "query_hotel_rooms"}
-    assert not names & {"recommend_hotels", "select_hotel", "modify_trip_plan"}
+    # Phase 13 (`phase-13-place-search.md`) adds `search_places` -- still
+    # read-only, no `select_place` (that pick is resolved via rebuild_day's
+    # pause/resume, not a qa_node tool call; see qa_node.py's docstring).
+    assert names == {"query_hotel", "query_hotel_rooms", "search_places"}
+    assert not names & {"recommend_hotels", "select_hotel", "select_place", "modify_trip_plan"}
 
 
 def test_qa_node_is_a_compiled_subgraph_with_an_explicit_checkpointer():

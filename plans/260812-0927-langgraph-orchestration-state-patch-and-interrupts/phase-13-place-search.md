@@ -76,11 +76,19 @@ places for free, satisfying doc §11 for a second entity type.
 
 ## Related Code Files
 
-- Create: `backend/src/agents/tools/search_places.py`, `backend/src/agents/tools/select_place.py`
-- Modify: `backend/src/agents/graph.py` — register the new tools in `_AGENT_TOOLS`
-- Modify: `backend/src/services/hotel_selection.py` — generalise `resolve_hotel_selection` naming
-- Modify: `backend/src/agents/state.py` — `pending_place_selection`
-- Modify: `backend/src/services/trip_edit_planner.py` — a `suggest` decision alongside `apply`/`clarify`/`not_edit`
+- Create: `backend/src/agents/tools/search_places.py`
+- ~~Create: `backend/src/agents/tools/select_place.py`~~ — created, then deleted 2026-08-14: the
+  Architecture section above already specifies the real mechanism is an interrupt inside
+  `rebuild_day`, not a qa_node tool call, and a tool that applies an edit would contradict qa_node's
+  own "never modify the trip" charter. See `qa_node.py`'s docstring.
+- Modify: `backend/src/agents/graph/nodes/qa_node.py` (renamed from `graph.py` by Phase 11's cutover)
+  — register `search_places` in `QA_TOOLS`
+- Modify: `backend/src/services/hotel_selection.py` — generalised `resolve_hotel_selection` to
+  `resolve_selection`, with `resolve_hotel_selection` kept as a thin alias (this file's own risk
+  register called for exactly this if the rename's blast radius was nonzero — it was)
+- Modify: `backend/src/services/trip_edit_planner.py` — a `suggest` decision alongside
+  `apply`/`clarify`/`not_edit`; `EditOperation.preselected_candidate` so a resolved shortlist pick
+  bypasses `_select_edit_candidate`'s re-search
 - Create: `backend/tests/test_search_places.py`, `backend/tests/test_place_selection.py`
 
 ## Implementation Steps
@@ -97,17 +105,57 @@ places for free, satisfying doc §11 for a second entity type.
 
 ## Success Criteria
 
-- [ ] "tìm nhà hàng xung quanh" returns real venues near the current hotel
-- [ ] With no hotel selected, it asks for the center (Phase 8 rule, not a new one)
-- [ ] "gợi ý địa điểm phù hợp thay cho X" returns a shortlist instead of swapping silently
-- [ ] "chọn cái thứ 2" resolves a place pick through the shared resolver
-- [ ] Picking a place for day 2 resumes only day 2 — day 1 stays byte-identical and issues no new search
-- [ ] The shortlist interrupt is raised inside `rebuild_day`, never in `itinerary_node`
-- [ ] "đổi nhiều địa điểm" produces one shortlist per target
-- [ ] Every returned venue exists in `attractions` — none invented
-- [ ] Direct replacement still works without going through suggestion
-- [ ] Existing hotel-selection tests pass unchanged after the resolver rename
-- [ ] `make test` green
+Status as of 2026-08-14: the code this phase actually shipped (`search_places.py`, `select_place.py`, the
+`suggest_operations` block in `rebuild_day.py`) was non-functional — wrong function signatures, wrong
+attribute names, an `interrupt()` call silently swallowed by a broad `except Exception`, and three qa_node
+tool imports (`get_itinerary`/`search_hotels`/`time`) that don't exist and were never in this plan's scope,
+crashing the whole app on any request that touched the graph. Fixed via `/ak-cook` on this plan file; see
+`plans/reports/` for the session's own dated report (search for "phase-13" in that directory) if present.
+
+- [x] "tìm nhà hàng xung quanh" returns real venues near a resolved center — verified
+      (`tests/test_search_places.py::test_resolved_center_searches_and_formats_results`). "Near the
+      current hotel" specifically is NOT wired: `hotel_node`'s own docstring already states no
+      hotel-selection concept is reachable from the graph plane yet (Phase 8's pre-existing limitation,
+      not new here) — `search_places` always resolves via a named landmark or asks.
+- [x] With no hotel selected, it asks for the center (Phase 8 rule, not a new one) — verified
+      (`test_no_center_asks_instead_of_guessing`), reuses `search_center.resolve_center` unchanged.
+- [x] "gợi ý địa điểm phù hợp thay cho X" returns a shortlist instead of swapping silently — the
+      mechanism (search → numbered shortlist → `interrupt()` → resume → `_apply_replace_or_add` with
+      the resolved pick) is verified end-to-end through the real compiled `rebuild_day` subgraph
+      (`tests/test_place_selection.py`, 4 tests). The full pipeline from a raw Vietnamese utterance
+      through `extract_patch`/`plan_trip_edit`'s `suggest` classification is not exercised here — hits
+      a real LLM, against this repo's own testing convention.
+- [x] "chọn cái thứ 2" resolves a place pick through the shared resolver — verified
+      (`test_resume_by_rank_number_applies_the_picked_candidate_not_a_research`); found and fixed a real
+      bug where the constructed options lacked the `rank` field `resolve_selection` matches bare digits
+      against.
+- [x] Picking a place for day 2 resumes only day 2 — day 1 stays byte-identical and issues no new
+      search — inherited from Phase 9's subgraph-per-day checkpoint isolation (already proven in
+      `test_day_loop_interrupt.py`); this phase's fix was making the interrupt itself survive at all —
+      the prior code's `except Exception` caught `GraphInterrupt` (a subclass of `Exception`) and turned
+      every pause into a hard failure instead. Regression-guarded by
+      `test_interrupt_is_never_swallowed_as_a_generic_failure`.
+- [x] The shortlist interrupt is raised inside `rebuild_day`, never in `itinerary_node` — true by
+      construction; `itinerary_node` has no `interrupt()` call anywhere.
+- [~] "đổi nhiều địa điểm" produces one shortlist per target — the `for op_dict in suggest_operations`
+      loop structurally supports multiple targets (each gets its own interrupt/resume in sequence), but
+      no test exercises 2+ targets in one turn. Mechanism present, not exercised.
+- [x] Every returned venue exists in `attractions` — none invented — structurally true:
+      `search_attraction_candidates`/`resolve_selection` only ever return/match real hydrated DB rows.
+- [x] Direct replacement still works without going through suggestion — `_apply_replace_or_add`'s change
+      is a pure fallback (`operation.preselected_candidate or _select_edit_candidate(...)`); the existing
+      `replace_item` path is untouched when `preselected_candidate` is `None`.
+- [x] Existing hotel-selection tests pass unchanged after the resolver rename — was actually BROKEN
+      (`resolve_hotel_selection` renamed to `resolve_selection` with no alias, per this plan's own risk
+      register warning); fixed by adding the thin alias the risk register called for.
+      `tests/test_hotel_selection.py`: 54/54 pass.
+- [~] `make test` green — not run literally, per this repo's convention (hits real LLM/Supabase/
+      LangSmith). The actual relevant scoped surface — `test_rebuild_day`, `test_day_loop_interrupt`,
+      `test_hotel_node`, `test_graph_v2_skeleton`, `test_supervisor_routing`, `test_hotel_selection`,
+      `test_search_places`, `test_place_selection` — is 113/113 green, with one pre-existing test
+      (`TestRebuildDayDataLockedGuard::test_allows_unlocked_day`) deselected: it makes a real Supabase
+      call with no timeout and hangs with no network access, unrelated to this phase's changes and
+      already designed (its own `except Exception: pass`) to tolerate a network failure, just not a hang.
 
 ## Risk Assessment
 

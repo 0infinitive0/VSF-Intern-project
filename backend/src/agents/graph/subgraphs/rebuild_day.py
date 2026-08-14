@@ -43,13 +43,17 @@ from copy import deepcopy
 from typing import Any, TypedDict
 
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.errors import GraphInterrupt
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import interrupt
 
+from src.i18n import t
 from src.services.trip_planner import rebuild_day_data, _current_trip_parameters, _get_destination_id, _apply_replace_or_add, EditOperation
+from src.services.trip_edit_planner import ItemTarget, NewItemRequirements
 from src.services.place_search import search_attraction_candidates
 from src.services.hotel_selection import resolve_selection
+from src.services.trip_scheduler import parse_coordinates
 
 logger = logging.getLogger(__name__)
 
@@ -112,80 +116,67 @@ def fetch_and_schedule_node(state: RebuildDayState) -> dict[str, Any]:
     working = deepcopy(trip_data)
     try:
         if suggest_operations:
-            from dataclasses import dataclass
-            
-            @dataclass(frozen=True)
-            class MockRequirements:
-                item_kind: str
-                semantic_query: str
-                
-            @dataclass(frozen=True)
-            class MockTarget:
-                item_id: str
-                
+            language = str(state.get("language") or "vi")
+            destination, _, _, _ = _current_trip_parameters(working)
+            destination_id = _get_destination_id(destination)
+            hotel_coordinates = parse_coordinates((working.get("hotel") or {}).get("coordinates"))
+
             for op_dict in suggest_operations:
                 op_target = op_dict.get("target") or {}
                 op_reqs = op_dict.get("requirements") or {}
                 query = op_reqs.get("semantic_query") or ""
-                
-                # Extract destination
-                destination, _, _, _ = _current_trip_parameters(working)
-                destination_id = _get_destination_id(destination)
-                
-                if not query or not destination_id:
+                item_kind = op_reqs.get("item_kind") or ""
+                item_id = op_target.get("item_id")
+
+                if not query or not destination_id or not item_id or not item_kind:
                     continue
-                    
-                # Search candidates
+
+                # Search candidates, anchored at the hotel (Phase 8's rule:
+                # never guess a center -- fall back to the trip-wide default
+                # radius when no hotel coordinates are known yet).
                 candidates = search_attraction_candidates(
-                    destination=destination,
-                    destination_id=destination_id,
-                    query=query,
-                    near=None,  # Fallback to no center for now if not provided
-                    limit=3,
+                    query,
+                    destination_id,
+                    match_count=3,
+                    root_latitude=hotel_coordinates[0] if hotel_coordinates else None,
+                    root_longitude=hotel_coordinates[1] if hotel_coordinates else None,
                 )
-                
                 if not candidates:
                     continue
-                    
-                # Format options text
-                from src.i18n import t
-                language = str(state.get("language") or "vi")
+
                 lines = [t("Mình tìm thấy một vài địa điểm phù hợp. Bạn chọn cái nào nhé?", language)]
                 for idx, c in enumerate(candidates, 1):
-                    lines.append(f"{idx}. {c.venue_name} ({c.description})")
+                    line = f"{idx}. {c.name}"
+                    if c.description:
+                        line += f" ({c.description})"
+                    lines.append(line)
                 message_text = "\n".join(lines)
-                    
-                # Prepare payload
+
                 payload = {
                     "type": "place_selection",
                     "message": message_text,
-                    "options": [
-                        {
-                            "id": c.venue_id,
-                            "name": c.venue_name,
-                            "description": c.description,
-                        }
-                        for c in candidates
-                    ],
+                    "options": [{"id": c.id, "name": c.name, "description": c.description} for c in candidates],
                 }
-                
-                # Interrupt and get user choice
                 resume_text = str(interrupt(payload) or "")
-                
-                # Resolve selection
-                resolution = resolve_selection(resume_text, candidates, "vi")
-                
-                if resolution.resolved and resolution.selection:
-                    # Apply replace_item
-                    from src.services.trip_edit_planner import EditOperation
+
+                # `resolve_selection` matches by exact id, rank number, or
+                # name substring against (data, candidate) tuples -- same
+                # resolver the legacy `select_hotel` tool uses. `rank` must
+                # match the 1-based numbering shown in `message_text` above,
+                # or a bare "2" reply can never resolve via the rank path.
+                resolved = resolve_selection(
+                    resume_text,
+                    [({"id": c.id, "name": c.name, "rank": idx}, c) for idx, c in enumerate(candidates, 1)],
+                )
+                if resolved is not None:
+                    _data, selected_candidate = resolved
                     replace_op = EditOperation(
                         operation="replace_item",
-                        target=MockTarget(item_id=op_target.get("item_id")),
-                        requirements=MockRequirements(item_kind=op_reqs.get("item_kind"), semantic_query=query),
-                        replacement_candidate=resolution.selection,
+                        target=ItemTarget(item_id=item_id, day_number=day_number),
+                        requirements=NewItemRequirements(item_kind=item_kind, semantic_query=query),
+                        preselected_candidate=selected_candidate,
                     )
                     _apply_replace_or_add(working, replace_op)
-                    
         else:
             rebuild_day_data(
                 working,
@@ -193,6 +184,12 @@ def fetch_and_schedule_node(state: RebuildDayState) -> dict[str, Any]:
                 day_theme,
                 locked_days=locked_days,
             )
+    except GraphInterrupt:
+        # `interrupt()` (above) raises this to pause the graph -- it MUST
+        # propagate to the graph executor, never get swallowed as a regular
+        # failure. `except Exception` below would otherwise catch it too,
+        # silently turning every shortlist pause into a `rebuild_error`.
+        raise
     except Exception as exc:
         logger.exception(
             "rebuild_day: failed to rebuild day %d: %s", day_number, exc

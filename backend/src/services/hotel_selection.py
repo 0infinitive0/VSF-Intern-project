@@ -523,6 +523,13 @@ def resolve_selection(
     return None
 
 
+# Phase 13 (`phase-13-place-search.md`) generalized this resolver beyond
+# hotels and renamed it. The plan's own risk register calls for "a thin
+# alias if callers are numerous" -- `tests/test_hotel_selection.py` (and any
+# other caller not yet migrated) keeps working under the old name.
+resolve_hotel_selection = resolve_selection
+
+
 def _normalize_for_match(value: str) -> str:
     decomposed = unicodedata.normalize("NFKD", value.replace("Đ", "D").replace("đ", "d"))
     return "".join(char for char in decomposed if not unicodedata.combining(char)).casefold().strip()

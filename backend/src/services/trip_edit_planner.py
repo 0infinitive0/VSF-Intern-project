@@ -14,7 +14,7 @@ from typing import Any, Literal
 
 from src.services.llm import get_reasoning_llm as get_llm
 from src.services.trip_intake import TripPreferenceUpdate, TripPreferenceUpdateError
-from src.services.trip_scheduler import parse_day_scope
+from src.services.trip_scheduler import PlaceCandidate, parse_day_scope
 
 EditDecision = Literal["apply", "clarify", "not_edit"]
 EditOperationName = Literal[
@@ -98,6 +98,15 @@ class EditOperation:
     hotel_query: str | None = None
     placement: dict[str, Any] | None = None
     trip_preferences: TripPreferenceUpdate | None = None
+    # Phase 13 (`phase-13-place-search.md`): the exact candidate a user
+    # picked from a `search_places`/suggest-before-replace shortlist. Never
+    # set by the LLM planner (this module's whole point is that the model
+    # never selects a database record) -- only the deterministic
+    # `rebuild_day` subgraph sets this, after `resolve_selection` has
+    # already turned the user's reply into one specific attraction row.
+    # `_apply_replace_or_add` uses it verbatim instead of re-searching via
+    # `_select_edit_candidate` when present.
+    preselected_candidate: PlaceCandidate | None = None
 
 
 @dataclass(frozen=True)

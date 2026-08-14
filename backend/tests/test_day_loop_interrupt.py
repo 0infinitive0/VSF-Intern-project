@@ -36,7 +36,8 @@ def _state(
         session_id="test",
         language="vi",
         messages=[],
-        travel_state={"trip_data": trip_data},
+        travel_state={},
+        trip_data=trip_data,
         patch=[],
         intent="",
         proposed_travel_state={},
@@ -97,10 +98,9 @@ class TestCheckpointIsolation:
 
         # Process day 2 (still in queue after r1)
         queue = r1.get("rebuild_day_queue") or []
-        td = (r1.get("travel_state") or {}).get("trip_data") or data
+        td = r1.get("trip_data") or data
         if queue:
             state2 = _state(td, "rebuild_days", [1, 2], rebuild_day_queue=queue, rebuilt_days=r1.get("rebuilt_days") or [])
-            state2["travel_state"] = r1.get("travel_state") or {"trip_data": data}
             with patch.object(_REBUILD_DAY_SUBGRAPH, "invoke", side_effect=recording_invoke):
                 itinerary_node(state2)
 
@@ -183,7 +183,7 @@ class TestInterruptIsolation:
         data = _make_trip_data(duration_days=3)
         call_log: list[int] = []
 
-        def record_invoke(td, dn, ld):
+        def record_invoke(td, dn, ld, suggest_ops=None):
             call_log.append(dn)
             return td
 
@@ -206,10 +206,9 @@ class TestInterruptIsolation:
         )
 
         # Turn 2 (resume): process next day from queue
-        td = (r1.get("travel_state") or {}).get("trip_data") or data
+        td = r1.get("trip_data") or data
         rebuilt = r1.get("rebuilt_days") or [1]
         state2 = _state(td, "rebuild_days", [1, 2, 3], rebuild_day_queue=queue_after_turn1, rebuilt_days=rebuilt)
-        state2["travel_state"] = r1.get("travel_state") or {"trip_data": data}
 
         with patch(
             "src.agents.graph.nodes.itinerary_node._invoke_rebuild_day",

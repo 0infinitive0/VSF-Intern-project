@@ -1,14 +1,29 @@
+"""`search_places` — Phase 13 (`phase-13-place-search.md`): on-demand place
+search ("tìm nhà hàng xung quanh") for `qa_node`'s ReAct tool list.
+
+`destination` is an explicit tool argument, not read from graph state:
+`qa_node`'s subgraph shares only the `messages` channel with the parent
+graph (see `nodes/qa_node.py`'s docstring) — `travel_state` is structurally
+unreachable from inside it. The model already has the destination from the
+conversation history it does share, so it fills the argument itself rather
+than this tool reaching for state that was never there.
+
+Center resolution reuses Phase 8's `search_center.resolve_center` — no
+second center implementation, per the plan's own requirement.
+"""
+
+from __future__ import annotations
+
 import logging
-from typing import Any
 
 from langchain.tools import ToolRuntime, tool
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
-from src.agents.graph.state import TravelGraphState
-from src.domain.travel_state import TravelState
+from src.i18n import t
 from src.services.place_search import search_attraction_candidates
 from src.services.search_center import resolve_center
+from src.services.trip_planner import _get_destination_id
 
 logger = logging.getLogger(__name__)
 
@@ -16,67 +31,68 @@ logger = logging.getLogger(__name__)
 @tool
 def search_places(
     query: str,
+    destination: str,
     near: str | None = None,
     category: str | None = None,
     limit: int = 10,
     *,
-    runtime: ToolRuntime[None, TravelGraphState],
+    runtime: ToolRuntime,
 ) -> Command:
+    """Search for places (restaurants, attractions, cafes) matching a query.
+
+    `destination` is the trip's destination -- infer it from the
+    conversation (e.g. "Đà Nẵng"). If `near` is given, searches near that
+    named landmark; otherwise this asks the user for a center rather than
+    guessing one (Phase 8's rule: never let the model calculate geographic
+    distance). `category` is currently unused -- reserved for a future
+    category filter, not yet supported by the underlying search.
     """
-    Search for places (restaurants, attractions, cafes) matching a query.
-    If 'near' is provided, it searches near that named place. If 'near' is omitted, it searches near the selected hotel.
-    """
-    state = runtime.state
-    travel_state = TravelState.from_dict(state.get("travel_state") or {})
-    destination_id = str(travel_state.get("destination.id").value or "")
-    language = str(state.get("language") or "vi")
-    
+    language = "vi"
+    tool_call_id = runtime.tool_call_id
+
+    destination_id = _get_destination_id(destination)
     if not destination_id:
-        reply = "Lỗi: Không xác định được điểm đến." if language == "vi" else "Error: Destination not set."
-        return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
-    
-    # 1. Resolve Center
+        reply = t("Không tìm thấy dữ liệu điểm đến cho {dest}.", language, dest=destination)
+        return Command(update={"messages": [ToolMessage(reply, tool_call_id=tool_call_id)]})
+
     resolution = resolve_center(
         destination_id=destination_id,
         named_place=near,
-        selected_hotel_coordinates=None  # Not supported in graph state yet
+        selected_hotel_coordinates=None,  # no hotel-selection concept reachable from qa_node yet
     )
-    
     if not resolution.resolved:
-        reply = (
-            f"Bạn muốn tìm '{query}' gần đâu? (Ví dụ: gần khách sạn, hoặc gần một địa danh cụ thể)"
-            if language == "vi" else
-            f"Where would you like to search for '{query}' near? (e.g. near the hotel or a specific landmark)"
+        reply = t(
+            "Bạn muốn tìm '{query}' gần đâu? (vd: gần một địa danh cụ thể)",
+            language,
+            query=query,
         )
-        return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
-    
-    # 2. Search
+        return Command(update={"messages": [ToolMessage(reply, tool_call_id=tool_call_id)]})
+
     try:
         candidates = search_attraction_candidates(
-            query=query,
-            destination_id=destination_id,
+            query,
+            destination_id,
             match_count=limit,
             root_latitude=resolution.latitude,
             root_longitude=resolution.longitude,
         )
     except Exception as exc:
-        logger.error("Failed to search places: %s", exc)
-        reply = "Lỗi: Tìm kiếm thất bại." if language == "vi" else "Error: Search failed."
-        return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
-    
+        logger.exception("search_places: search failed")
+        reply = t("Tìm địa điểm thất bại: {error}", language, error=str(exc))
+        return Command(update={"messages": [ToolMessage(reply, tool_call_id=tool_call_id)]})
+
     if not candidates:
-        reply = "Không tìm thấy địa điểm nào phù hợp." if language == "vi" else "No places found matching the criteria."
-        return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
-    
-    lines = []
-    for idx, c in enumerate(candidates, 1):
-        lines.append(f"{idx}. {c.name}")
-        if c.description:
-            lines.append(f"   {c.description}")
-        if c.rating:
-            lines.append(f"   Rating: {c.rating}")
-        if c.category:
-            lines.append(f"   Category: {c.category}")
-    
+        reply = t("Không tìm thấy địa điểm nào phù hợp.", language)
+        return Command(update={"messages": [ToolMessage(reply, tool_call_id=tool_call_id)]})
+
+    lines = [t("Mình tìm được {count} địa điểm phù hợp:", language, count=len(candidates))]
+    for idx, candidate in enumerate(candidates, 1):
+        line = f"{idx}. {candidate.name}"
+        if candidate.description:
+            line += f" — {candidate.description}"
+        if candidate.rating:
+            line += f" ({candidate.rating}★)"
+        lines.append(line)
+
     reply = "\n".join(lines)
-    return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
+    return Command(update={"messages": [ToolMessage(reply, tool_call_id=tool_call_id)]})

@@ -1192,7 +1192,11 @@ def _apply_replace_or_add(current_data: dict[str, Any], operation: EditOperation
     if operation.operation == "replace_item" and target is None:
         raise ValueError("Thiếu hoạt động cần thay thế.")
     start_time = operation.requirements.preferred_start_time or (target.start_time if target else "09:00:00")
-    candidate = _select_edit_candidate(
+    # Phase 13: a resolved shortlist pick (search_places -> suggest ->
+    # rebuild_day's interrupt -> resolve_selection) is applied verbatim --
+    # never re-searched, since re-searching could return a DIFFERENT venue
+    # than the one the user actually picked.
+    candidate = operation.preselected_candidate or _select_edit_candidate(
         current_data,
         scheduled,
         hotel,
