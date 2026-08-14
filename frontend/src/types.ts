@@ -53,6 +53,14 @@ export interface PreferencePayload {
   label: string
 }
 
+export interface AmenityCatalogOption {
+  id: string
+  label_vi: string
+  label_en: string
+  category: string
+  icon_key?: string | null
+}
+
 export interface HotelFilterData {
   minPrice: number | null
   maxPrice: number | null

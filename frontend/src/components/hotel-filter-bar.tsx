@@ -5,13 +5,13 @@ import { hotelPriceBounds, PRICE_SLIDER_STEP, roundedPriceSliderBounds, type Hot
 import type { HotelOption, PreferencePayload } from '../types'
 
 export default function HotelFilterBar({
-  hotels, apiPriceMin, apiPriceMax, allPreferences, minPrice, maxPrice, minStars, preferenceIds, sortOrder,
+  hotels, apiPriceMin, apiPriceMax, amenityOptions, minPrice, maxPrice, minStars, preferenceIds, sortOrder,
   onMinPriceChange, onMaxPriceChange, onMinStarsChange, onPreferenceIdsChange, onSortOrderChange, onClear,
 }: {
   hotels: HotelOption[]
   apiPriceMin: number | null
   apiPriceMax: number | null
-  allPreferences: PreferencePayload[]
+  amenityOptions: PreferencePayload[]
   minPrice: number | null
   maxPrice: number | null
   minStars: number | null
@@ -217,7 +217,7 @@ export default function HotelFilterBar({
           </div>}
         </div>
       </div>
-      {allPreferences.length > 0 && <div
+      {amenityOptions.length > 0 && <div
         ref={preferenceListRef}
         className="hotel-preference-scroll mt-2 flex gap-2 overflow-x-auto pb-1"
         role="group"
@@ -233,7 +233,7 @@ export default function HotelFilterBar({
           didDragRef.current = false
         }}
       >
-        {allPreferences.map(({ id, label }) => {
+        {amenityOptions.map(({ id, label }) => {
           const active = preferenceIds.includes(id)
           // active used to be literal #2C5FC9/white — same class of bug as
           // the sort dropdown fixed earlier: a hardcoded light-mode blue

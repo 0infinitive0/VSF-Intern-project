@@ -828,6 +828,10 @@ def hotel_matches_amenity_tag(
         return hotel_id is not None and str(hotel_id) in sea_view_hotel_ids
     if tag == "breakfast":
         return "breakfast" in (data.get("covered_meals") or [])
+    # Backfilled rows store canonical amenity IDs. Keep the old keyword path
+    # below for pre-backfill rows and for partially migrated datasets.
+    if tag in {str(item).strip().lower() for item in (data.get("amenities") or [])}:
+        return True
     keywords = _AMENITY_KEYWORD_TAGS.get(tag) or _catalog_match_keywords(tag)
     if not keywords:
         return False

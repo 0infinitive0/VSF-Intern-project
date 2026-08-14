@@ -8,6 +8,7 @@ import { useMapSync } from '../hooks/use-map-sync'
 import { hotelOptionSyncId } from '../lib/map-sync-id'
 import { hotelMapFields, hotelMapRays } from '../lib/map-presentation'
 import { useHotelDetail } from '../hooks/use-hotel-detail'
+import { useHotelAmenityCatalog } from '../hooks/use-hotel-amenity-catalog'
 import { filterAndSortHotels, type HotelSortOrder } from '../lib/hotel-filters'
 import type { useFocusMode } from '../hooks/use-focus-mode'
 import type { Theme } from '../hooks/use-theme'
@@ -71,6 +72,7 @@ export default function StageHotels({
 }) {
   const { t, i18n } = useTranslation()
   const hotels = hotelOptions
+  const amenityCatalog = useHotelAmenityCatalog()
   const [minPrice, setMinPrice] = useState<number | null>(null)
   const [maxPrice, setMaxPrice] = useState<number | null>(null)
   const [minStars, setMinStars] = useState<number | null>(null)
@@ -105,6 +107,20 @@ export default function StageHotels({
   useEffect(() => {
     setPreferenceIds(state.hotelFilterData.activePreferences.map(({ id }) => id))
   }, [hotels, state.hotelFilterData.activePreferences])
+
+  const filterPreferences = useMemo(() => {
+    if (amenityCatalog == null) return state.hotelFilterData.allPreferences
+    const visibleIds = new Set([
+      ...hotels.flatMap((hotel) => hotel.amenities ?? []),
+      ...state.hotelFilterData.activePreferences.map(({ id }) => id),
+    ])
+    return amenityCatalog
+      .filter((amenity) => visibleIds.has(amenity.id))
+      .map((amenity) => ({
+        id: amenity.id,
+        label: i18n.language.startsWith('en') ? amenity.label_en || amenity.label_vi : amenity.label_vi || amenity.label_en,
+      }))
+  }, [amenityCatalog, hotels, i18n.language, state.hotelFilterData.activePreferences, state.hotelFilterData.allPreferences])
 
   const listRef = useRef<HTMLDivElement>(null)
   const savedScroll = useRef(0)
@@ -210,7 +226,7 @@ export default function StageHotels({
             hotels={hotels}
             apiPriceMin={state.hotelFilterData.minPrice}
             apiPriceMax={state.hotelFilterData.maxPrice}
-            allPreferences={state.hotelFilterData.allPreferences}
+            amenityOptions={filterPreferences}
             minPrice={minPrice}
             maxPrice={maxPrice}
             minStars={minStars}

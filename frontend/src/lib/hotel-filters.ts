@@ -35,7 +35,7 @@ export function roundedPriceSliderBounds(bounds: { min: number; max: number }): 
 }
 
 function hasPreference(hotel: HotelOption, preferenceId: string): boolean {
-  return (hotel.preferences ?? []).includes(preferenceId)
+  return (hotel.amenities ?? []).includes(preferenceId) || (hotel.preferences ?? []).includes(preferenceId)
 }
 
 function priceForSort(hotel: HotelOption, direction: HotelSortOrder): number {

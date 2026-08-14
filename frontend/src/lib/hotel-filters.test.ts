@@ -32,6 +32,15 @@ describe('filterAndSortHotels', () => {
     expect(result.map((hotel) => hotel.index)).toEqual([3])
   })
 
+  it('filters by canonical amenity IDs even when the API did not mark them as preferences', () => {
+    const result = filterAndSortHotels(
+      [{ index: 4, name: 'Catalog-only wifi', amenities: ['wifi'], preferences: [] }],
+      { ...DEFAULT_FILTERS, preferenceIds: ['wifi'] },
+    )
+
+    expect(result.map((hotel) => hotel.index)).toEqual([4])
+  })
+
   it('applies both ends of the price range', () => {
     const result = filterAndSortHotels(HOTELS, { ...DEFAULT_FILTERS, minPrice: 1_000_000, maxPrice: 2_000_000 })
 
