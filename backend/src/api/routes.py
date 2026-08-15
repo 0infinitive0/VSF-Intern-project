@@ -244,14 +244,15 @@ def restore_session(
 def get_session_plan(
     session_id: str, current_user: AuthenticatedUser | None = Depends(get_current_user)
 ) -> dict:
-    """Trả về kế hoạch chuyến đi hiện tại của một phiên, hoặc 404 nếu không có."""
+    """Trả về kế hoạch chuyến đi hiện tại của một phiên, hoặc 404 nếu phiên không
+    tồn tại/không thuộc về caller. A session that exists but hasn't run a graph
+    turn yet (no checkpointed state) is a legitimate empty-plan session, not a
+    404 -- ownership is already the existence check here."""
     _owned_session_or_404(session_id, current_user)
 
     app = _get_graph_v2()
     snapshot = app.get_state({"configurable": {"thread_id": session_id}})
-    state = snapshot.values
-    if not state:
-        raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
+    state = snapshot.values or {}
     return {"trip_plan": to_trip_plan_payload(state.get("trip_data"))}
 
 
