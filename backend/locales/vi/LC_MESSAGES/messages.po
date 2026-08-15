@@ -326,3 +326,5 @@ msgid ""
 "{shortfall:,.0f} VND){coverage}."
 msgstr ""
 
+msgid "Bạn dự định đi và về ngày nào?"
+msgstr ""

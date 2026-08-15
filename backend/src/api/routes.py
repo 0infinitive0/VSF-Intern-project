@@ -28,7 +28,7 @@ from src.agents.session import (
     debug_persist_hook,
     supabase_persist_hook,
 )
-from src.api.streaming import STREAM_HEADERS, TurnEmitter, emitting_to, sse_stream
+from src.api.streaming import STREAM_HEADERS, TurnEmitter, emit_phase, emitting_to, sse_stream
 from src.config import get_settings
 from src.models.schemas import (
     AttractionDetailPayload,
@@ -279,12 +279,11 @@ def change_hotel(request: ChangeHotelRequest) -> PlannerChatResponse:
 
 
 # ---------------------------------------------------------------------------
-# graph_v2 dispatch (Phase 5, orchestrator=graph) — a separate code path from
-# process_chat_turn's legacy cascade below, never touching TripSession.state.
-# Compiled once, lazily, so the app-lifespan checkpointer (set on `registry`
-# after this module is imported) is captured at first use, not import time —
-# and imported lazily too, so a legacy-mode boot (`orchestrator=legacy`, the
-# default) never pulls in the graph_v2 tree at module-import time at all.
+# Graph dispatch — how every chat endpoint handles a turn, never touching
+# TripSession.state. There is no alternative plane and no setting selecting
+# one: the legacy process_chat_turn cascade is gone. Compiled once, lazily,
+# so the app-lifespan checkpointer (set on `registry` after this module is
+# imported) is captured at first use rather than at import time.
 # ---------------------------------------------------------------------------
 
 _graph_v2_app = None
@@ -349,7 +348,18 @@ def _run_turn_via_graph(
     message text. Only applied on the fresh-turn path: a turn that resumes a
     paused `interrupt()` must resolve that ambiguity first, and threading a
     hotel pick through a resume is an edge case rare enough not to bother.
+
+    `emit_phase("received")` (no-op on the plain POST path -- see
+    `emit_phase`'s own no-emitter-bound guard) fires before anything else
+    below: no graph_v2 node emits a `phase`/`delta` frame during an
+    intake-stage turn (`extract_patch`'s LLM call is the graph's only slow
+    step, and it is silent), so the client's `firstFrameTimeoutMs` (5s,
+    `stream-client.ts`) previously had nothing to see but the filtered-out
+    `: open` comment frame until `final` -- aborting the connection
+    ("BodyStreamBuffer was aborted") on any turn whose extraction call ran
+    past 5s, e.g. a compound "destination + dates + people + budget" message.
     """
+    emit_phase("received")
     app = _get_graph_v2()
     config = {"configurable": {"thread_id": session_id}}
 

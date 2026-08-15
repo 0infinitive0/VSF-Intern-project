@@ -37,6 +37,14 @@ class SlotSpec:
     # answers); without this, stating only budget.max would leave
     # budget.target UNKNOWN forever and re-ask the same question every turn.
     alt_names: tuple[str, ...] = ()
+    # Other required slots this spec's question asks about at the same time.
+    # Distinct from `alt_names`: an alt name is a DIFFERENT way to answer
+    # this one slot, while these are separate slots that still each need
+    # their own answer -- the question just gathers them in one breath, and
+    # the user is free to answer one, the other, or both. Only `dates.start`
+    # uses it today ("đi và về ngày nào?"), matching what the frontend's
+    # date-range widget has always asked in a single step.
+    asked_with: tuple[str, ...] = ()
 
 
 # Default ordering: destination -> people -> dates -> budget. Budget sorts
@@ -45,7 +53,7 @@ class SlotSpec:
 SLOT_REGISTRY: tuple[SlotSpec, ...] = (
     SlotSpec(name="destination", required=True, order=1, prompt_key="destination"),
     SlotSpec(name="people", required=True, order=2, prompt_key="people"),
-    SlotSpec(name="dates.start", required=True, order=3, prompt_key="dates_start"),
+    SlotSpec(name="dates.start", required=True, order=3, prompt_key="dates_start", asked_with=("dates.end",)),
     SlotSpec(name="dates.end", required=True, order=4, prompt_key="dates_end"),
     SlotSpec(
         name="budget.target",
@@ -91,3 +99,33 @@ def next_question(state: TravelState) -> SlotSpec | None:
         if spec.required and not _is_answered(spec, state):
             return spec
     return None
+
+
+def _spec_by_name(name: str) -> SlotSpec | None:
+    return next((spec for spec in SLOT_REGISTRY if spec.name == name), None)
+
+
+def pending_question_slots(state: TravelState) -> tuple[str, ...]:
+    """Every slot the NEXT question covers, in the order it presents them —
+    `next_question`'s own slot first, then any `asked_with` companion still
+    unanswered. Empty when nothing is left to ask.
+
+    One question can legitimately gather more than one slot ("bạn đi và về
+    ngày nào?"), and two consumers need to agree on exactly which: `ask_slot`
+    picks the wording from it, and `extract_patch` anchors its prompt on it
+    so a reply naming one date, the other, or both lands on the right paths.
+    Deriving both from this one function is what keeps the question the user
+    reads and the paths the extractor will accept from drifting apart.
+
+    A companion already answered drops out, so once `dates.start` is known
+    the question narrows back to `dates.end` alone rather than re-asking for
+    a date the user already gave."""
+    spec = next_question(state)
+    if spec is None:
+        return ()
+    companions = tuple(
+        name
+        for name in spec.asked_with
+        if (companion := _spec_by_name(name)) is not None and not _is_answered(companion, state)
+    )
+    return (spec.name, *companions)

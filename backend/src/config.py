@@ -93,17 +93,10 @@ class Settings(BaseSettings):
         description="How to handle high-confidence user jailbreak attempts before any LLM call.",
     )
 
-    # Orchestration plane (260812-0927-langgraph-orchestration-state-patch-and-interrupts, Phase 5)
-    orchestrator: Literal["graph", "legacy"] = Field(
-        default="graph",
-        description="Which control plane handles a chat turn. 'legacy' is today's process_chat_turn "
-        "cascade, frozen from Phase 5 on. 'graph' is the graph_v2 StateGraph (supervisor + worker "
-        "nodes) built out across Phases 5-11. As of Phase 5, 'graph' dispatch only covers the "
-        "POST /planner_chat fallback endpoint -- /planner_chat/stream (the frontend's default "
-        "transport), /hotels/select, /hotels/change, and the other session endpoints still always "
-        "run the legacy cascade regardless of this setting. Do not flip this in any environment the "
-        "frontend actually talks to until that gap closes (streaming dispatch, or Phase 11 cutover).",
-    )
+    # No `orchestrator` switch: the graph is the only control plane. The
+    # legacy `process_chat_turn` cascade it used to select between is gone,
+    # so a setting offering "legacy" could only ever have lied. Reintroduce
+    # one when there is a second plane to actually switch to.
 
     # Mapbox
     mapbox_access_token: str = ""

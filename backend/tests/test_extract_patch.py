@@ -16,17 +16,23 @@ into the correct final patch (or correctly rejects it).
 from __future__ import annotations
 
 import json
+from datetime import date, timedelta
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 import src.agents.graph.nodes.extract_patch as extract_patch_module
 from src.agents.graph.nodes.extract_patch import PatchExtractionError, extract_patch
-from src.agents.graph.state import initial_graph_state
+from src.agents.graph.state import TravelGraphState, initial_graph_state
 from src.domain.travel_state import TravelState
 from src.services.trip_intake import DestinationOption
 
 _DESTINATIONS = (DestinationOption("Đà Nẵng"), DestinationOption("Hội An", aliases=("HA",)))
+
+# `next_question` walks real `TravelState` slots, so a state standing in for
+# "dates already answered" needs dates the date validators still accept.
+_FUTURE_START = (date.today() + timedelta(days=30)).isoformat()
+_FUTURE_END = (date.today() + timedelta(days=35)).isoformat()
 
 
 class _FakeResponse:
@@ -40,9 +46,11 @@ class _FakeLLM:
     def __init__(self, contents: list[str]) -> None:
         self._contents = list(contents)
         self.call_count = 0
+        self.prompts: list[str] = []
 
-    def invoke(self, _prompt: str) -> _FakeResponse:
+    def invoke(self, prompt: str) -> _FakeResponse:
         self.call_count += 1
+        self.prompts.append(prompt)
         return _FakeResponse(self._contents.pop(0))
 
 
@@ -50,7 +58,7 @@ def _payload(intent: str, changes: list[dict] | None = None) -> str:
     return json.dumps({"intent": intent, "changes": changes or []})
 
 
-def _state(message: str, *, travel_state: dict | None = None) -> dict:
+def _state(message: str, *, travel_state: dict | None = None) -> TravelGraphState:
     state = initial_graph_state("t1")
     state["messages"] = [HumanMessage(content=message)]
     if travel_state is not None:
@@ -106,6 +114,117 @@ def test_no_human_message_short_circuits_without_calling_the_llm(monkeypatch):
     result = extract_patch(state)
 
     assert result == {"patch": [], "intent": "general_question"}
+
+
+# --- Pending-slot anchor ------------------------------------------------------
+#
+# The prompt is deliberately single-message, so a short reply ("Hồ Chí
+# Minh", "1", "20/7") is only interpretable if the slot it answers travels
+# with it. The anchor comes from `next_question(travel_state)`, not from
+# `state["missing_slots"]`, so it is also present on a thread's first turn —
+# the turn carrying the opening destination, when nothing has been asked
+# yet. These tests assert the anchor reaches the prompt; whether a real
+# model then answers correctly is Phase 10's accuracy eval, as with every
+# other case in this file.
+
+
+def test_first_turn_anchors_on_destination_before_anything_is_asked(monkeypatch):
+    llm = _patch(
+        monkeypatch,
+        _FakeLLM([_payload("update_trip", [{"path": "destination", "operation": "set", "value": "Đà Nẵng"}])]),
+    )
+    result = extract_patch(_state("Đà Nẵng"))
+
+    assert "asked the user for `destination`" in llm.prompts[0]
+    assert result["patch"] == [{"path": "destination", "operation": "set", "value": "Đà Nẵng"}]
+
+
+def test_anchor_advances_to_the_next_unanswered_slot(monkeypatch):
+    llm = _patch(monkeypatch, _FakeLLM([_payload("update_trip", [{"path": "people", "operation": "set", "value": 1}])]))
+    result = extract_patch(
+        _state("1", travel_state={"destination": {"presence": "set", "value": "Đà Nẵng"}})
+    )
+
+    assert "asked the user for `people`" in llm.prompts[0]
+    assert result["patch"] == [{"path": "people", "operation": "set", "value": 1}]
+
+
+def test_no_anchor_once_every_required_slot_is_answered(monkeypatch):
+    llm = _patch(monkeypatch, _FakeLLM([_payload("general_question", [])]))
+    extract_patch(
+        _state(
+            "khách sạn nào có hồ bơi?",
+            travel_state={
+                "destination": {"presence": "set", "value": "Đà Nẵng"},
+                "people": {"presence": "set", "value": 2},
+                "dates.start": {"presence": "set", "value": _FUTURE_START},
+                "dates.end": {"presence": "set", "value": _FUTURE_END},
+                "budget.target": {"presence": "n/a", "value": None},
+            },
+        )
+    )
+
+    assert "asked the user for" not in llm.prompts[0]
+
+
+def test_dates_anchor_names_both_ends_and_a_lone_date_defaults_to_the_start(monkeypatch):
+    """The dates question gathers both ends in one breath, so the anchor has
+    to accept a reply naming either one, and say which a single bare date
+    means — otherwise a lone "20/7" is dropped as under-specified."""
+    llm = _patch(
+        monkeypatch,
+        _FakeLLM([_payload("update_trip", [{"path": "dates.start", "operation": "set", "value": "20/7"}])]),
+    )
+    result = extract_patch(
+        _state(
+            "20/7",
+            travel_state={
+                "destination": {"presence": "set", "value": "Đà Nẵng"},
+                "people": {"presence": "set", "value": 2},
+            },
+        )
+    )
+
+    assert "asked the user for `dates.start` and `dates.end`" in llm.prompts[0]
+    assert "treat it as `dates.start`" in llm.prompts[0]
+    assert result["patch"] == [{"path": "dates.start", "operation": "set", "value": "20/7"}]
+
+
+def test_dates_anchor_narrows_to_the_end_once_the_start_is_known(monkeypatch):
+    llm = _patch(
+        monkeypatch,
+        _FakeLLM([_payload("update_trip", [{"path": "dates.end", "operation": "set", "value": "25/7"}])]),
+    )
+    extract_patch(
+        _state(
+            "25/7",
+            travel_state={
+                "destination": {"presence": "set", "value": "Đà Nẵng"},
+                "people": {"presence": "set", "value": 2},
+                "dates.start": {"presence": "set", "value": _FUTURE_START},
+            },
+        )
+    )
+
+    assert "asked the user for `dates.end`" in llm.prompts[0]
+    # Single-slot question: no "which one did you mean" tiebreak to give.
+    assert "treat it as" not in llm.prompts[0]
+
+
+def test_anchor_survives_the_repair_retry(monkeypatch):
+    llm = _patch(monkeypatch, _FakeLLM(["not json", _payload("general_question", [])]))
+    extract_patch(
+        _state(
+            "20/7",
+            travel_state={
+                "destination": {"presence": "set", "value": "Đà Nẵng"},
+                "people": {"presence": "set", "value": 2},
+            },
+        )
+    )
+
+    assert llm.call_count == 2
+    assert all("asked the user for `dates.start`" in prompt for prompt in llm.prompts)
 
 
 # --- Structural validation ---------------------------------------------------

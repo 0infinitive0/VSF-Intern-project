@@ -86,7 +86,7 @@ Allowed change paths, one change per fact actually stated (omit anything not men
 
 Already confirmed this conversation: {known_facts}
 Destinations this system supports, for reference only (do not invent one not on this list, but always copy what the user actually said into `destination` and let validation reject an unsupported one): {destination_choices}
-Today's date in the planning timezone is {today}.{repair}
+Today's date in the planning timezone is {today}.{pending_slots}{repair}
 
 Message: "{message}"
 """
@@ -102,8 +102,39 @@ def build_extract_patch_prompt(
     companion_labels: str,
     pace_labels: str,
     day_rhythm_labels: str,
+    pending_slots: tuple[str, ...] = (),
     repair: str | None = None,
 ) -> str:
+    # The one piece of conversational context a short reply needs. Anchoring
+    # the pending slots structurally -- rather than pasting the transcript --
+    # keeps this a single-message prompt: constant size no matter how long
+    # the conversation runs, and no earlier turn for the model to
+    # re-extract already-confirmed facts from. These are `SLOT_REGISTRY`
+    # names, which are already patch paths, so they drop straight in.
+    #
+    # More than one path arrives when a single question gathers several
+    # slots -- "bạn đi và về ngày nào?" asks dates.start and dates.end at
+    # once, and the reply may fill either, both, or give a range. Saying so
+    # explicitly is what stops a lone date from being dropped as
+    # under-specified. The "clearly talks about something else" escape keeps
+    # a genuine topic change (correcting the destination while the dates
+    # question is open) from being coerced into a pending path.
+    pending_suffix = ""
+    if pending_slots:
+        quoted = " and ".join(f"`{name}`" for name in pending_slots)
+        pending_suffix = (
+            f"\nThe assistant's previous message asked the user for {quoted}, so this message is most "
+            f"likely the answer to it. If it reads as a short answer (a number, a date, a date range, a "
+            f'place name, "không cần"), emit a change for each of those paths the message actually '
+            f"supplies -- one of them alone is a perfectly good answer, so never withhold a value just "
+            f"because the others are still unstated. If the message clearly talks about something else, "
+            f"ignore this hint and extract what it actually says."
+        )
+        if len(pending_slots) > 1:
+            pending_suffix += (
+                f" If it gives exactly one value and does not say which of {quoted} it means, treat it as "
+                f"`{pending_slots[0]}`."
+            )
     repair_suffix = f"\nPrevious response was rejected: {repair}. Return corrected JSON only." if repair else ""
     return _EXTRACT_PATCH_SYSTEM_PROMPT.format(
         preference_labels=preference_labels,
@@ -113,6 +144,7 @@ def build_extract_patch_prompt(
         known_facts=known_facts,
         destination_choices=destination_choices or "unknown",
         today=today,
+        pending_slots=pending_suffix,
         repair=repair_suffix,
         message=message,
     )

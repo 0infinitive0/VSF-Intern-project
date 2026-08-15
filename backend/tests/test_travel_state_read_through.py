@@ -12,10 +12,10 @@ from src.domain.travel_state import Presence, Slot, TravelState
 from src.services.hotel_selection import HotelPreferenceState
 from src.services.trip_intake import TripIntakeState
 
-# Phase 7 added a past-date rejection to the `dates.start`/`dates.end`
-# validators `to_travel_state()` routes through — these must stay in the
-# future relative to whenever the suite actually runs, not a date literal
-# frozen at authoring time.
+# Anchored to the run date, not a literal frozen at authoring time, so these
+# keep standing in for a realistic upcoming trip. Not a validator
+# requirement: the `dates.start`/`dates.end` validators `to_travel_state()`
+# routes through do NOT reject a past date today.
 _TRIP_START = (date.today() + timedelta(days=30)).isoformat()
 _TRIP_END = (date.today() + timedelta(days=35)).isoformat()
 

@@ -23,8 +23,6 @@ Per-change:
 
 Per-utterance:
 - ``exact_match``: 1 if produced changes == expected changes exactly, 0 otherwise.
-- ``ambiguous_correct``: for cases with ``expected_ambiguous=true``, 1 if
-  ``apply_patch`` produced a ``DateAmbiguity`` instead of applying the change.
 
 Aggregated:
 - Micro-average precision / recall / F1 over all changes.
@@ -38,8 +36,7 @@ See ``eval/datasets/state_patches.jsonl``:
   "utterance": "...",
   "context": {...},
   "patch_input": [{"path": "...", "operation": "set", "value": "..."}],
-  "expected": [{"path": "...", "operation": "set", "value": "..."}],
-  "expected_ambiguous": false
+  "expected": [{"path": "...", "operation": "set", "value": "..."}]
 }
 ```
 
@@ -153,7 +150,6 @@ def _score_case(case: dict[str, Any]) -> dict[str, Any]:
     utterance: str = case.get("utterance", "")
     patch_input: list[dict[str, Any]] = list(case.get("patch_input") or [])
     expected: list[dict[str, Any]] = list(case.get("expected") or [])
-    expected_ambiguous: bool = bool(case.get("expected_ambiguous", False))
     symptom: str | None = case.get("symptom")
 
     # Run apply_patch on a fresh empty state
@@ -168,24 +164,6 @@ def _score_case(case: dict[str, Any]) -> dict[str, Any]:
         {"path": r.path, "operation": r.operation, "value": r.value, "reason": r.reason}
         for r in result.rejected
     ]
-    has_ambiguous = len(result.ambiguous) > 0
-
-    # Ambiguous-expected cases: correct iff apply_patch flagged an ambiguity
-    if expected_ambiguous:
-        ambiguous_correct = 1 if has_ambiguous else 0
-        return {
-            "utterance": utterance,
-            "symptom": symptom,
-            "expected_ambiguous": True,
-            "ambiguous_correct": ambiguous_correct,
-            "tp": 0,
-            "produced": 0,
-            "expected_count": 0,
-            "exact_match": ambiguous_correct,
-            "produced_applied": produced_applied,
-            "produced_rejected": produced_rejected,
-            "has_ambiguous": has_ambiguous,
-        }
 
     tp, produced_count, expected_count = _match_changes(produced_applied, expected)
     exact_match = 1 if (produced_count == expected_count == tp and tp == expected_count) else 0
@@ -193,15 +171,12 @@ def _score_case(case: dict[str, Any]) -> dict[str, Any]:
     return {
         "utterance": utterance,
         "symptom": symptom,
-        "expected_ambiguous": False,
-        "ambiguous_correct": None,
         "tp": tp,
         "produced": produced_count,
         "expected_count": expected_count,
         "exact_match": exact_match,
         "produced_applied": produced_applied,
         "produced_rejected": produced_rejected,
-        "has_ambiguous": has_ambiguous,
     }
 
 
@@ -219,18 +194,10 @@ def _aggregate(results: list[dict[str, Any]]) -> dict[str, Any]:
     recall = total_tp / total_expected if total_expected else 1.0
     f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
 
-    non_ambiguous = [r for r in results if not r["expected_ambiguous"]]
     exact_match_rate = (
-        sum(r["exact_match"] for r in non_ambiguous) / len(non_ambiguous)
-        if non_ambiguous
+        sum(r["exact_match"] for r in results) / len(results)
+        if results
         else 1.0
-    )
-
-    ambiguous_cases = [r for r in results if r["expected_ambiguous"]]
-    ambiguous_accuracy = (
-        sum(r["ambiguous_correct"] for r in ambiguous_cases) / len(ambiguous_cases)
-        if ambiguous_cases
-        else None
     )
 
     symptom_cases = [r for r in results if r.get("symptom")]
@@ -245,7 +212,6 @@ def _aggregate(results: list[dict[str, Any]]) -> dict[str, Any]:
         "micro_recall": round(recall, 4),
         "micro_f1": round(f1, 4),
         "exact_match_rate": round(exact_match_rate, 4),
-        "ambiguous_accuracy": round(ambiguous_accuracy, 4) if ambiguous_accuracy is not None else None,
         "symptom_exact_match": round(symptom_exact_match, 4) if symptom_exact_match is not None else None,
         "total_cases": len(results),
         "total_changes_expected": total_expected,
@@ -275,8 +241,6 @@ def _print_summary(summary: dict[str, Any]) -> None:
     print(f"  Micro recall    : {summary['micro_recall']:.4f}")
     print(f"  Micro F1        : {summary['micro_f1']:.4f}")
     print(f"  Exact match rate: {summary['exact_match_rate']:.4f}")
-    if summary.get("ambiguous_accuracy") is not None:
-        print(f"  Ambiguous accuracy: {summary['ambiguous_accuracy']:.4f}")
     if summary.get("symptom_exact_match") is not None:
         print(f"  Symptom exact match: {summary['symptom_exact_match']:.4f}  (regression guard)")
     print(f"  Cases: {summary['total_cases']} | "

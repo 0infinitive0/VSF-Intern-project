@@ -1,5 +1,5 @@
-"""Assembles the `graph_v2` `StateGraph`: every node, every edge, running
-behind `orchestrator=graph`. See `plans/260812-0927-…/phase-05-graph-
+"""Assembles the `StateGraph`: every node, every edge, for the one control
+plane a chat turn runs through. See `plans/260812-0927-…/phase-05-graph-
 skeleton.md` for the full topology rationale — this module is its literal
 `add_node`/`add_edge` realization plus two deliberate, documented
 deviations from that doc's shorthand:
@@ -10,10 +10,12 @@ deviations from that doc's shorthand:
   the legacy plane. The doc's out-of-scope half of this edge (Phase 2's
   `guardrails/scope.py`) was never actually shipped — see
   `nodes/scope_guard.py`'s docstring — so only the jailbreak branch exists
-  today. `validate_patch → apply_patch` stays a plain edge even though
-  Phase 7 landed `interrupt()`: the pause/resume happens INSIDE
-  `validate_patch` (it calls `interrupt()` itself when a date is ambiguous),
-  not on a separate graph branch — see `nodes/validate_patch.py`.
+  today. `validate_patch → apply_patch` stays a plain edge: Phase 7 landed
+  `interrupt()` for a genuinely-ambiguous date, but `validate_patch` no
+  longer produces that case (day/month order always resolves to the DD-MM
+  reading) — `interrupt()` is still real infrastructure, just used
+  elsewhere (`nodes/hotel_node.py`), not on this edge. See
+  `nodes/validate_patch.py`.
 - `ask_slot`'s `"ask"` outcome routes to `respond`, not straight to `END`.
   Every path must build the frozen `PlannerChatResponse` shape (Phase 5's
   own functional requirement), and only `respond` does that — see

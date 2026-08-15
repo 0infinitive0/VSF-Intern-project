@@ -1,4 +1,4 @@
-"""`TravelGraphState` — execution state for the `orchestrator=graph` plane.
+"""`TravelGraphState` — execution state for the graph control plane.
 
 Deliberately small (doc §9): ids, messages, the patch pipeline's working
 data, and the supervisor loop's bookkeeping. The **business** state is the

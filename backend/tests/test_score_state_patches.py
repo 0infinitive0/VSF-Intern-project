@@ -53,7 +53,6 @@ def _case(
     patch_input: list[dict[str, Any]],
     expected: list[dict[str, Any]],
     *,
-    expected_ambiguous: bool = False,
     symptom: str | None = None,
 ) -> dict[str, Any]:
     return {
@@ -61,7 +60,6 @@ def _case(
         "context": {},
         "patch_input": patch_input,
         "expected": expected,
-        "expected_ambiguous": expected_ambiguous,
         "symptom": symptom,
     }
 
@@ -186,18 +184,19 @@ class TestScoreCase:
         result = scorer._score_case(case)
         assert result["exact_match"] == 1
 
-    def test_ambiguous_date_flags_correctly(self) -> None:
+    def test_day_month_order_no_longer_rejected_or_flagged(self) -> None:
+        # Both 1 and 7 are <= 12, so MM-DD (Jan 7) would also be valid --
+        # apply_patch always prefers the DD-MM reading (Jul 1), so this is
+        # accepted outright. `applied` echoes the raw submitted value
+        # (resolution to "2027-07-01" is unit-tested in test_travel_state.py).
         scorer = _import_scorer()
         case = _case(
-            "ngày 01/07",
-            patch_input=[{"path": "dates.start", "operation": "set", "value": "01/07"}],
-            expected=[],
-            expected_ambiguous=True,
+            "ngày 01/07/2027",
+            patch_input=[{"path": "dates.start", "operation": "set", "value": "01/07/2027"}],
+            expected=[{"path": "dates.start", "operation": "set", "value": "01/07/2027"}],
         )
         result = scorer._score_case(case)
-        assert result["expected_ambiguous"] is True
-        # apply_patch should flag this as ambiguous (missing year)
-        assert result["ambiguous_correct"] == 1
+        assert result["exact_match"] == 1
 
     def test_not_applicable_budget(self) -> None:
         scorer = _import_scorer()
@@ -231,8 +230,8 @@ class TestAggregate:
     def test_perfect_precision_recall(self) -> None:
         scorer = _import_scorer()
         results = [
-            {"tp": 2, "produced": 2, "expected_count": 2, "exact_match": 1, "expected_ambiguous": False, "ambiguous_correct": None},
-            {"tp": 1, "produced": 1, "expected_count": 1, "exact_match": 1, "expected_ambiguous": False, "ambiguous_correct": None},
+            {"tp": 2, "produced": 2, "expected_count": 2, "exact_match": 1},
+            {"tp": 1, "produced": 1, "expected_count": 1, "exact_match": 1},
         ]
         summary = scorer._aggregate(results)
         assert summary["micro_precision"] == 1.0
@@ -243,7 +242,7 @@ class TestAggregate:
     def test_partial_recall(self) -> None:
         scorer = _import_scorer()
         results = [
-            {"tp": 1, "produced": 1, "expected_count": 2, "exact_match": 0, "expected_ambiguous": False, "ambiguous_correct": None},
+            {"tp": 1, "produced": 1, "expected_count": 2, "exact_match": 0},
         ]
         summary = scorer._aggregate(results)
         assert summary["micro_recall"] == 0.5
@@ -252,10 +251,8 @@ class TestAggregate:
     def test_symptom_exact_match_reported(self) -> None:
         scorer = _import_scorer()
         results = [
-            {"tp": 1, "produced": 1, "expected_count": 1, "exact_match": 1,
-             "expected_ambiguous": False, "ambiguous_correct": None, "symptom": "Đổi theme ngày 1"},
-            {"tp": 0, "produced": 1, "expected_count": 1, "exact_match": 0,
-             "expected_ambiguous": False, "ambiguous_correct": None, "symptom": "Ngân sách"},
+            {"tp": 1, "produced": 1, "expected_count": 1, "exact_match": 1, "symptom": "Đổi theme ngày 1"},
+            {"tp": 0, "produced": 1, "expected_count": 1, "exact_match": 0, "symptom": "Ngân sách"},
         ]
         summary = scorer._aggregate(results)
         assert summary["symptom_exact_match"] == 0.5

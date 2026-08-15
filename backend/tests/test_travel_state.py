@@ -15,8 +15,9 @@ from src.domain.travel_state import (
     detect_impact,
 )
 
-# Phase 7 added a past-date rejection to dates.start/dates.end — these must
-# stay in the future relative to whenever the suite actually runs.
+# Anchored to the run date rather than hard-coded, so these keep standing in
+# for a realistic upcoming trip whenever the suite runs. Not a validator
+# requirement: `_validate_date_start` does NOT reject a past date today.
 _TRIP_START = (date.today() + timedelta(days=30)).isoformat()
 _TRIP_END = (date.today() + timedelta(days=35)).isoformat()  # 5-day trip
 
@@ -280,56 +281,67 @@ def test_inverted_date_range_in_the_same_patch_is_rejected() -> None:
     assert "end date" in result.rejected[0].reason
 
 
-# --- Phase 7: date validators — past-date rejection + ambiguity -----------
+# --- Date validators: year defaulting + day/month order (always DD-MM) ----
 
 
-def test_bare_numeric_date_with_no_year_is_ambiguous_not_rejected() -> None:
+def test_bare_numeric_date_with_no_year_defaults_to_current_year_when_unambiguous() -> None:
+    # 15 > 12, so only the DD-MM reading (15 Aug) is a real calendar date --
+    # the missing year defaults silently.
+    year = date.today().year
+    result = apply_patch(TravelState(), [{"path": "dates.start", "operation": "set", "value": "15-08"}])
+
+    assert result.rejected == ()
+    assert len(result.applied) == 1
+    assert result.state.get("dates.start").value == f"{year}-08-15"
+
+
+def test_bare_numeric_date_with_no_year_resolves_to_dd_mm_reading_using_current_year() -> None:
+    # Both components <= 12, so MM-DD (1 Jul) would also be a valid
+    # calendar date -- the DD-MM reading (7 Jan) wins outright, no ambiguity.
+    year = date.today().year
     result = apply_patch(TravelState(), [{"path": "dates.start", "operation": "set", "value": "01/07"}])
 
-    assert result.applied == ()
     assert result.rejected == ()
-    assert len(result.ambiguous) == 1
-    assert result.ambiguous[0].kind == "missing_year"
-    assert result.ambiguous[0].path == "dates.start"
+    assert len(result.applied) == 1
+    assert result.state.get("dates.start").value == f"{year}-07-01"
 
 
-def test_bare_numeric_date_with_both_components_under_13_is_day_month_ambiguous() -> None:
+def test_bare_numeric_date_with_both_components_under_13_resolves_to_dd_mm_reading() -> None:
+    # "1-2" -> DD-MM (1 Feb) wins over the also-valid MM-DD (2 Jan) reading.
     future_year = date.today().year + 1
 
     result = apply_patch(
         TravelState(), [{"path": "dates.start", "operation": "set", "value": f"1-2-{future_year}"}]
     )
 
-    assert result.applied == ()
     assert result.rejected == ()
-    assert len(result.ambiguous) == 1
-    ambiguity = result.ambiguous[0]
-    assert ambiguity.kind == "day_month_order"
-    # DD-MM reading (1 Feb) first, MM-DD reading (2 Jan) second.
-    assert ambiguity.candidates == (f"{future_year}-02-01", f"{future_year}-01-02")
+    assert len(result.applied) == 1
+    assert result.state.get("dates.start").value == f"{future_year}-02-01"
 
 
 def test_bare_numeric_date_where_one_reading_is_impossible_resolves_to_the_other_silently() -> None:
-    # 29-02-2026 is invalid (2026 is not a leap year). Only 02-29-2026 is impossible, 
-    # but wait, x=29, y=2 means 29th of Feb or 2nd of whatever month (if x,y were valid).
-    # Since we removed the "in the past" filter, the only filter is `_safe_date(year, y, x)`.
-    # Let's test a date where one reading is invalid (e.g. 13/26/2026) -> no, 26 is > 12.
+    # x=26, y=8: DD-MM is 26 Aug (valid); MM-DD would need month=26, which
+    # doesn't exist -- only one real calendar reading either way.
     result = apply_patch(TravelState(), [{"path": "dates.start", "operation": "set", "value": "26-08-2026"}])
-    assert result.ambiguous == ()
     assert len(result.applied) == 1
     assert result.state.get("dates.start").value == "2026-08-26"
 
 
-def test_bare_numeric_date_where_both_readings_valid_prompts_ambiguity() -> None:
+def test_bare_numeric_date_where_both_readings_valid_prefers_dd_mm_reading() -> None:
+    # "1-2-2020": DD-MM (1 Feb) and MM-DD (2 Jan) are both valid calendar
+    # dates -- DD-MM always wins, even for a year in the past (no "must be
+    # upcoming" filter exists here).
     result = apply_patch(TravelState(), [{"path": "dates.start", "operation": "set", "value": "1-2-2020"}])
 
-    assert result.applied == ()
-    assert len(result.ambiguous) == 1
-    assert result.ambiguous[0].kind == "day_month_order"
-    assert result.ambiguous[0].candidates == ("2020-02-01", "2020-01-02")
+    assert result.rejected == ()
+    assert len(result.applied) == 1
+    assert result.state.get("dates.start").value == "2020-02-01"
 
 
-def test_bare_numeric_date_with_one_component_over_12_resolves_silently() -> None:
+def test_bare_numeric_date_31_07_resolves_to_31_july_not_month_31() -> None:
+    # day=31, month=07: the DD-MM reading (31 Jul) is valid; the MM-DD
+    # reading would need month=31, which doesn't exist -- so this was never
+    # actually ambiguous, just the common example people ask about.
     future_year = date.today().year + 1
 
     result = apply_patch(
@@ -337,7 +349,6 @@ def test_bare_numeric_date_with_one_component_over_12_resolves_silently() -> Non
     )
 
     assert result.rejected == ()
-    assert result.ambiguous == ()
     assert len(result.applied) == 1
     assert result.state.get("dates.start").value == f"{future_year}-07-31"
 
@@ -349,12 +360,11 @@ def test_bare_numeric_date_with_equal_day_and_month_is_unambiguous() -> None:
         TravelState(), [{"path": "dates.start", "operation": "set", "value": f"5-5-{future_year}"}]
     )
 
-    assert result.ambiguous == ()
     assert len(result.applied) == 1
     assert result.state.get("dates.start").value == f"{future_year}-05-05"
 
 
-def test_bare_numeric_date_with_neither_reading_valid_is_rejected_not_ambiguous() -> None:
+def test_bare_numeric_date_with_neither_reading_valid_is_rejected() -> None:
     future_year = date.today().year + 1
 
     result = apply_patch(
@@ -362,24 +372,8 @@ def test_bare_numeric_date_with_neither_reading_valid_is_rejected_not_ambiguous(
     )
 
     assert result.applied == ()
-    assert result.ambiguous == ()
     assert len(result.rejected) == 1
     assert "not a valid calendar date" in result.rejected[0].reason
-
-
-def test_ambiguity_resolution_via_a_candidate_iso_value_applies_cleanly() -> None:
-    """The interrupt-resolution shape `validate_patch` (the graph node) relies
-    on: re-running `apply_patch` with the chosen candidate as the new value
-    resolves cleanly, no second ambiguity."""
-    future_year = date.today().year + 1
-    first = apply_patch(TravelState(), [{"path": "dates.start", "operation": "set", "value": f"1-2-{future_year}"}])
-    chosen = first.ambiguous[0].candidates[0]
-
-    resolved = apply_patch(TravelState(), [{"path": "dates.start", "operation": "set", "value": chosen}])
-
-    assert resolved.ambiguous == ()
-    assert resolved.rejected == ()
-    assert resolved.state.get("dates.start").value == chosen
 
 
 def test_wildcard_day_key_normalizes_equivalent_forms_to_one_slot() -> None:

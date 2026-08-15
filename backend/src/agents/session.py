@@ -118,6 +118,7 @@ class TripSession:
         preference_replacement_state: TripIntakeState | None = None,
         trip_data: dict[str, Any] | None = None,
         pending_hotel_selection: dict[str, Any] | None = None,
+        pending_place_selection: dict[str, Any] | None = None,
     ) -> None:
         self.session_id = session_id
         self.config = config
@@ -435,10 +436,10 @@ class SessionRegistry:
     @property
     def checkpointer(self) -> BaseCheckpointSaver | None:
         """Read-only access to the app-lifespan checkpointer, for shared
-        infra (e.g. `graph_v2`'s `orchestrator=graph` plane, Phase 5) that
-        needs the same Postgres/MemorySaver instance the legacy plane's
-        sessions use -- without reaching into the private `_checkpointer`
-        attribute or duplicating `set_checkpointer`'s injection timing."""
+        infra (the graph plane in `agents/graph`) that needs the same
+        Postgres/MemorySaver instance sessions use -- without reaching into
+        the private `_checkpointer` attribute or duplicating
+        `set_checkpointer`'s injection timing."""
         return self._checkpointer
 
     def create(self) -> TripSession:
@@ -465,37 +466,62 @@ class SessionRegistry:
             if session is not None:
                 session.last_seen_at = time.time()
                 return session
-            if self._load_hook is None:
-                return None
-            try:
-                row = self._load_hook(session_id)
-                if row is None:
-                    return None
-                from src.services.itinerary_store import ItineraryStore
-                from src.services.session_store import deserialize
 
-                session = create_chat_session(
-                    session_id, persist_hook=self._persist_hook, checkpointer=self._checkpointer
-                )
-                session.state = deserialize(session_id, row.get("context_data"), row.get("messages"))
-                current_trip = (row.get("context_data") or {}).get("current_trip") or {}
-                itinerary_id = current_trip.get("itinerary_id")
-                if itinerary_id:
-                    session.state["trip_data"] = ItineraryStore.from_default().load_session_trip_data(
-                        str(itinerary_id)
+            if self._load_hook is not None:
+                try:
+                    row = self._load_hook(session_id)
+                except Exception:
+                    logger.exception("Unable to rehydrate session %s; treating as unavailable", session_id)
+                    row = None
+                if row is not None:
+                    from src.services.itinerary_store import ItineraryStore
+                    from src.services.session_store import deserialize
+
+                    session = create_chat_session(
+                        session_id, persist_hook=self._persist_hook, checkpointer=self._checkpointer
                     )
-                created_at = row.get("created_at")
-                if isinstance(created_at, str):
-                    try:
-                        session.created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00")).timestamp()
-                    except ValueError:
-                        logger.warning("Ignoring invalid created_at for session %s", session_id)
-                session.last_seen_at = time.time()
-                self._sessions[session_id] = session
-                return session
-            except Exception:
-                logger.exception("Unable to rehydrate session %s; treating as unavailable", session_id)
-                return None
+                    session.state = deserialize(session_id, row.get("context_data"), row.get("messages"))
+                    current_trip = (row.get("context_data") or {}).get("current_trip") or {}
+                    itinerary_id = current_trip.get("itinerary_id")
+                    if itinerary_id:
+                        session.state["trip_data"] = ItineraryStore.from_default().load_session_trip_data(
+                            str(itinerary_id)
+                        )
+                    created_at = row.get("created_at")
+                    if isinstance(created_at, str):
+                        try:
+                            session.created_at = datetime.fromisoformat(
+                                created_at.replace("Z", "+00:00")
+                            ).timestamp()
+                        except ValueError:
+                            logger.warning("Ignoring invalid created_at for session %s", session_id)
+                    session.last_seen_at = time.time()
+                    self._sessions[session_id] = session
+                    return session
+
+            # Last resort: the graph_v2 checkpointer itself. `_run_turn_via_graph`
+            # never touches TripSession.state, so a thread the checkpointer already
+            # knows about is a live session even when its `sessions` row is missing
+            # (e.g. create_session()'s persist upsert failed silently -- see
+            # supabase_persist_hook's best-effort retry) or persistence is
+            # disabled. Without this, a process restart wipes the in-memory dict
+            # and every such session 404s here while GET /chat/{id}/plan -- which
+            # reads the same checkpointer directly -- still reports it as alive.
+            if self._checkpointer is not None:
+                try:
+                    exists = self._checkpointer.get_tuple({"configurable": {"thread_id": session_id}}) is not None
+                except Exception:
+                    logger.exception("Unable to check checkpointer state for session %s", session_id)
+                    exists = False
+                if exists:
+                    session = create_chat_session(
+                        session_id, persist_hook=self._persist_hook, checkpointer=self._checkpointer
+                    )
+                    session.last_seen_at = time.time()
+                    self._sessions[session_id] = session
+                    return session
+
+            return None
 
     def resolve(self, session_id: str) -> TripSession:
         """Atomically look up or create a session for a caller-supplied id.

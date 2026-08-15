@@ -22,7 +22,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.agents.graph.state import TravelGraphState
-from src.domain.slot_registry import SlotSpec, next_question
+from src.domain.slot_registry import SlotSpec, next_question, pending_question_slots
 from src.domain.travel_state import TravelState
 from src.i18n import t
 from src.services.trip_intake import DestinationOption
@@ -82,12 +82,20 @@ def _render_budget(language: str) -> str:
     )
 
 
-def _render_question(spec: SlotSpec, language: str) -> str:
+def _render_question(spec: SlotSpec, pending: tuple[str, ...], language: str) -> str:
     if spec.prompt_key == "destination":
         return _render_destination(language)
     if spec.prompt_key == "people":
         return t("Tuyệt vời. Chuyến đi này có bao nhiêu người tham gia?", language)
     if spec.prompt_key == "dates_start":
+        # Both dates in one breath when both are still missing -- the same
+        # thing the frontend's date-range widget has always asked
+        # ("intakeDatesQuestion"), which until now contradicted a backend
+        # asking for the start date alone. Answering only one date is a
+        # legitimate reply: the other slot simply stays pending and this
+        # narrows to the end-date question on the next turn.
+        if "dates.end" in pending:
+            return t("Bạn dự định đi và về ngày nào?", language)
         return t("Bạn dự định bắt đầu chuyến đi vào ngày nào?", language)
     if spec.prompt_key == "dates_end":
         return t("Bạn dự định kết thúc chuyến đi vào ngày nào?", language)
@@ -167,8 +175,12 @@ def ask_slot(state: TravelGraphState) -> dict[str, Any]:
         return {"missing_slots": [], "next_question": None}
 
     language = state.get("language") or "vi"
-    question = _render_question(spec, language)
+    # Every slot this one question covers, not just `spec` -- the dates
+    # question asks about both ends at once, and `missing_slots` is the
+    # record of what was actually put to the user.
+    pending = pending_question_slots(travel_state)
+    question = _render_question(spec, pending, language)
     context = _context_line(state, spec, language)
     full_text = f"{context}\n\n{question}" if context else question
 
-    return {"missing_slots": [spec.name], "next_question": full_text}
+    return {"missing_slots": list(pending), "next_question": full_text}

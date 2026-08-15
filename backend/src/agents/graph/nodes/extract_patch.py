@@ -20,6 +20,11 @@ them itself before a change is handed off:
   / `.day_rhythm` (`trip_intake.py`'s vocabulary, kept as the grounding
   authority per this phase's plan)
 
+The prompt sees exactly one message, never the transcript. The only
+cross-turn context it gets is the pending slot names (`_pending_slots`),
+which is what makes a short reply ("Hồ Chí Minh", "1", "20/7") interpretable
+without paying for unbounded history on every turn.
+
 Day-scope resolution ("ngày 1", "hôm đầu", "ngày cuối") is deterministic,
 not model-decided: `_resolve_day_scope`/`_rewrite_day_scope` force any
 theme-shaped change to `daily_preferences.<day>.theme` when the message
@@ -39,6 +44,7 @@ from typing import Any
 
 from src.agents.graph.prompts import build_extract_patch_prompt
 from src.agents.graph.state import TravelGraphState
+from src.domain.slot_registry import pending_question_slots
 from src.domain.travel_state import TravelState, trip_duration_days
 from src.services.llm import get_reasoning_llm
 from src.services.trip_intake import (
@@ -92,6 +98,38 @@ def _last_human_message(state: TravelGraphState) -> str:
         if getattr(message, "type", None) == "human":
             return str(getattr(message, "content", "") or "")
     return ""
+
+
+def _pending_slots(travel_state: TravelState) -> tuple[str, ...]:
+    """The slots the user is answering right now — the one piece of
+    conversational context a short reply needs before it means anything.
+
+    Shares `pending_question_slots` with `ask_slot` so the paths this prompt
+    will accept are exactly the ones the question put to the user. That
+    matters most for dates: one question asks "đi và về ngày nào?", and the
+    reply may name both dates, either one alone, or a range.
+
+    Derived from the registry rather than read off `state["missing_slots"]`
+    even though `load_context` preserves that field, because the two agree
+    everywhere except the case that matters most: `missing_slots` is empty
+    on a thread's FIRST turn (nothing has been asked yet), which is exactly
+    the turn carrying the opening "Hồ Chí Minh". The registry answers from
+    `travel_state`, which this node reads before any of this turn's changes
+    are applied, so it names the same slots `ask_slot` asked at the end of
+    the previous turn — and names `destination` on turn one.
+
+    Without an anchor the model reads a short reply as changing nothing:
+    "Hồ Chí Minh" and "1" both come back `general_question` with an empty
+    patch, and the slot gate re-asks the same question forever. Measured,
+    not assumed — the same message extracts correctly once anchored.
+
+    Passed as slot NAMES rather than as conversation history on purpose:
+    `messages` carries no assistant turns at all (`respond` writes only
+    `response`), it grows without bound, and replaying earlier turns
+    invites the model to re-emit already-confirmed facts as fresh changes.
+    `SLOT_REGISTRY` names are already patch paths, so no mapping is needed.
+    """
+    return pending_question_slots(travel_state)
 
 
 def _known_facts_summary(travel_state: TravelState) -> str:
@@ -239,6 +277,7 @@ def _extract_with_llm(
     travel_state: TravelState,
     destination_names: Sequence[str | DestinationOption],
     *,
+    pending_slots: tuple[str, ...] = (),
     llm: Any | None = None,
 ) -> tuple[str, list[dict[str, Any]]]:
     """Ask the configured model once, retrying exactly once for invalid
@@ -264,6 +303,7 @@ def _extract_with_llm(
                 companion_labels=", ".join(_COMPANION_LABELS),
                 pace_labels=", ".join(_PACE_LABELS),
                 day_rhythm_labels=", ".join(_DAY_RHYTHM_LABELS),
+                pending_slots=pending_slots,
                 repair=str(last_error) if attempt else None,
             )
             response = model.invoke(prompt)
@@ -286,7 +326,9 @@ def extract_patch(state: TravelGraphState) -> dict[str, Any]:
     travel_state = TravelState.from_dict(state.get("travel_state"))
     destination_names = _get_destination_names()
 
-    intent, raw_changes = _extract_with_llm(message, travel_state, destination_names)
+    intent, raw_changes = _extract_with_llm(
+        message, travel_state, destination_names, pending_slots=_pending_slots(travel_state)
+    )
     changes = _rewrite_day_scope(raw_changes, message, travel_state)
     changes = _ground_changes(changes, destination_names)
 

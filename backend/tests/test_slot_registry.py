@@ -5,7 +5,7 @@ ladder — `next_question` is the one expression the ladder becomes.
 
 from __future__ import annotations
 
-from src.domain.slot_registry import SLOT_REGISTRY, next_question
+from src.domain.slot_registry import SLOT_REGISTRY, next_question, pending_question_slots
 from src.domain.travel_state import TravelState, apply_patch
 
 _FUTURE_START = "2099-01-01"
@@ -103,3 +103,44 @@ def test_not_applicable_on_a_non_skippable_slot_does_not_satisfy_it() -> None:
     spec = next_question(state)
     assert spec is not None
     assert spec.name == "destination"
+
+
+# --- One question covering several slots ----------------------------------
+#
+# The dates question asks "đi và về ngày nào?" — both ends at once, matching
+# the frontend's date-range widget. `pending_question_slots` is the single
+# source both `ask_slot` (wording) and `extract_patch` (prompt anchor) read,
+# so the question the user sees and the paths the extractor accepts cannot
+# drift apart.
+
+
+def test_dates_question_covers_both_ends_while_both_are_missing() -> None:
+    state = _apply(TravelState(), "destination", "Đà Nẵng")
+    state = _apply(state, "people", 2)
+
+    assert pending_question_slots(state) == ("dates.start", "dates.end")
+
+
+def test_dates_question_narrows_to_the_end_once_the_start_is_answered() -> None:
+    """Answering only one of the two dates is a legitimate reply — the other
+    stays pending and the question stops re-asking for the date already
+    given."""
+    state = _apply(TravelState(), "destination", "Đà Nẵng")
+    state = _apply(state, "people", 2)
+    state = _apply(state, "dates.start", _FUTURE_START)
+
+    assert pending_question_slots(state) == ("dates.end",)
+
+
+def test_a_single_slot_question_reports_only_itself() -> None:
+    assert pending_question_slots(TravelState()) == ("destination",)
+
+
+def test_no_pending_slots_once_every_required_slot_is_answered() -> None:
+    state = _apply(TravelState(), "destination", "Đà Nẵng")
+    state = _apply(state, "people", 2)
+    state = _apply(state, "dates.start", _FUTURE_START)
+    state = _apply(state, "dates.end", _FUTURE_END)
+    state = _apply(state, "budget.target", None)  # skippable -> NOT_APPLICABLE
+
+    assert pending_question_slots(state) == ()

@@ -1,6 +1,6 @@
 """Phase 5 (260812-0927-langgraph-orchestration-state-patch-and-interrupts):
 topology, contract enforcement, and end-to-end shape tests for the
-`orchestrator=graph` skeleton. Supervisor routing behavior itself is
+graph skeleton. Supervisor routing behavior itself is
 covered by `test_supervisor_routing.py`.
 """
 
@@ -177,7 +177,7 @@ def test_booking_node_replies_in_english_when_requested():
     assert "book" in result["task_results"][-1]["reply"].lower()
 
 
-# --- End-to-end: orchestrator=graph returns a valid PlannerChatResponse ----
+# --- End-to-end: the graph returns a valid PlannerChatResponse ------------
 
 
 def test_graph_completes_a_turn_end_to_end_and_returns_a_planner_chat_response(monkeypatch):

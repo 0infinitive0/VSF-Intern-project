@@ -351,3 +351,5 @@ msgid ""
 "{shortfall:,.0f} VND){coverage}."
 msgstr "Whole-trip budget: {known:,.0f} / {total:,.0f} VND (OVER by {shortfall:,.0f} VND){coverage}."
 
+msgid "Bạn dự định đi và về ngày nào?"
+msgstr "When do you plan to depart and return?"

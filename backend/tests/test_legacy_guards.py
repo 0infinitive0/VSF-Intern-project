@@ -1,8 +1,8 @@
 """Phase 11: Behavior tests preserving the knowledge from legacy regex guards.
 
 These tests prove that when the legacy control plane (and its many custom
-guard functions in session.py/routing_decision.py) is deleted, `orchestrator=graph`
-preserves the correct behavior using the graph's built-in mechanisms (patch
+guard functions in session.py/routing_decision.py) is deleted, the graph
+preserves the correct behavior using its built-in mechanisms (patch
 validation, LLM extraction, supervisor logic, loop bounds).
 """
 

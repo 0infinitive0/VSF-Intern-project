@@ -3,12 +3,11 @@
 Two distinct controls live at this one node, and only one of them is
 actually shipped:
 
-- `guardrails/jailbreak.py`'s `detect_jailbreak` is real, wired-in legacy
-  infra (`session.py:935-955`, gated by `JAILBREAK_GUARD_MODE`). The graph
-  plane must honor the same operator-facing setting, or flipping
-  `orchestrator=graph` silently drops a control every other turn respects —
-  found during this phase's code review, not a stub deferred to a later
-  phase.
+- `guardrails/jailbreak.py`'s `detect_jailbreak` is real, wired-in infra
+  gated by `JAILBREAK_GUARD_MODE`. This node honors that same
+  operator-facing setting; without it the graph would silently drop a
+  control the operator believes is on — found during this phase's code
+  review, not a stub deferred to a later phase.
 - Phase 2's out-of-scope refusal (`guardrails/scope.py`, math/code/flight
   requests) was never actually built despite its plan doc being marked
   done — confirmed by scanning the repo during this phase's cook session.
@@ -54,7 +53,7 @@ def scope_guard(state: TravelGraphState) -> dict[str, Any]:
     if not decision.blocked:
         return {}
 
-    logger.warning("Blocked jailbreak input reason=%s (orchestrator=graph)", decision.reason)
+    logger.warning("Blocked jailbreak input reason=%s (node=scope_guard)", decision.reason)
     if guard_mode == "log":
         return {}
 
