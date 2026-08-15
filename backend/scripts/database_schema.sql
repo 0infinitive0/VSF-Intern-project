@@ -81,6 +81,7 @@ CREATE TABLE rooms (
                          -- — 2 nguồn khác ngữ nghĩa, không so sánh trực tiếp liên-nguồn
     view VARCHAR(255),
     room_facilities TEXT[], -- Canonical amenity_catalog IDs for this room
+    available_room_count INTEGER CHECK (available_room_count >= 0), -- Latest inventory snapshot for this room type; it is not date-specific
     embedding vector(1024), -- Semantic room-search vector
     amenity_groups JSONB, -- Nullable, chỉ có ở Agoda
     images TEXT[], -- Mảng URL hình ảnh của phòng
@@ -240,6 +241,83 @@ CREATE TABLE itinerary_items (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Booking records are intentionally separate from the crawler's room-price
+-- snapshots. Inventory stays as the latest count on rooms for now.
+CREATE TABLE bookings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    temporary_user_ref TEXT,
+    room_id UUID NOT NULL REFERENCES rooms(id) ON DELETE RESTRICT,
+    check_in_date DATE NOT NULL,
+    check_in_time TIME,
+    check_out_date DATE NOT NULL,
+    check_out_time TIME,
+    room_count INTEGER NOT NULL DEFAULT 1 CHECK (room_count > 0),
+    status TEXT NOT NULL DEFAULT 'PENDING'
+        CHECK (status IN ('PENDING', 'RESERVED', 'CONFIRMED', 'CANCELLED', 'EXPIRED')),
+    expires_at TIMESTAMPTZ,
+    total_amount NUMERIC(12, 2),
+    currency VARCHAR(10),
+    cancelled_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (check_out_date > check_in_date),
+    CHECK (status <> 'RESERVED' OR expires_at IS NOT NULL)
+);
+
+CREATE INDEX bookings_room_dates_idx ON bookings (room_id, check_in_date, check_out_date)
+    WHERE status = 'CONFIRMED';
+
+ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE bookings FROM anon, authenticated, PUBLIC;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE bookings TO service_role;
+
+-- The result is the minimum remaining count across every requested night.
+CREATE FUNCTION public.get_room_availability(
+    p_room_id UUID,
+    p_check_in_date DATE,
+    p_check_out_date DATE
+)
+RETURNS INTEGER
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_availability INTEGER;
+BEGIN
+    IF p_check_out_date <= p_check_in_date THEN
+        RAISE EXCEPTION 'check-out date must be after check-in date';
+    END IF;
+
+    SELECT min(
+        room.available_room_count - coalesce((
+            SELECT sum(b.room_count)::integer
+            FROM public.bookings AS b
+            WHERE b.room_id = room.id
+              AND (
+                  b.status = 'CONFIRMED'
+                  OR (b.status = 'RESERVED' AND b.expires_at > now())
+              )
+              AND b.check_in_date <= night.stay_date
+              AND b.check_out_date > night.stay_date
+        ), 0)
+    ) INTO v_availability
+    FROM public.rooms AS room
+    CROSS JOIN LATERAL generate_series(
+        p_check_in_date::timestamp,
+        (p_check_out_date - 1)::timestamp,
+        interval '1 day'
+    ) AS night(stay_date)
+    WHERE room.id = p_room_id;
+
+    RETURN greatest(coalesce(v_availability, 0), 0);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.get_room_availability(UUID, DATE, DATE) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_room_availability(UUID, DATE, DATE)
+    TO service_role;
+
 -- Approved, server-managed amenity definitions. Hotels and rooms store these
 -- canonical English IDs in their TEXT[] amenity columns; the backend resolves
 -- them to labels for search results and UI display.
@@ -332,6 +410,9 @@ AS $$
                 AND rp.check_out_date <= filter_end_date
                 AND rp.sold_out = false
             ) = (filter_end_date - filter_start_date)
+            AND public.get_room_availability(
+              r.id, filter_start_date, filter_end_date
+            ) > 0
         )
       )
   ),
@@ -354,6 +435,9 @@ AS $$
             AND rp.check_out_date <= filter_end_date
             AND rp.sold_out = false
         ) = (filter_end_date - filter_start_date)
+        AND public.get_room_availability(
+          r.id, filter_start_date, filter_end_date
+        ) > 0
       )
   ),
   combined AS (

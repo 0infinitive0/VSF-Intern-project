@@ -72,7 +72,7 @@ nhưng sai `itinerary_items`.
 
 | | |
 |---|---|
-| **Đọc** | `db: hotels.amenities TEXT[]` (VD `{"Hồ bơi","Spa","Wifi"}`) · `db: hotels.amenity_groups JSONB` · `db: rooms.room_facilities TEXT[]` · `db: hotel_amenity_catalog` (tag đã duyệt) |
+| **Đọc** | `db: hotels.amenities TEXT[]` (VD `{"Hồ bơi","Spa","Wifi"}`) · `db: hotels.amenity_groups JSONB` · `db: rooms.room_facilities TEXT[]` · `db: amenity_catalog` (catalog đã duyệt) |
 | **Ghi** | `state: hotel_preferences.amenities: []` — thao tác `append` / `remove`, không phải chỉ `set` |
 | **Thiếu** | gym/spa **không có** trong `_AMENITY_KEYWORD_TAGS` (7 tag) dù `hotels.amenities` chứa `"Spa"` thật · ngữ nghĩa AND/OR chưa chốt · chưa là filter |
 

@@ -98,3 +98,30 @@ async def test_detail_routes_found_not_found_invalid_id_and_service_error(client
 
     monkeypatch.setattr(routes, "get_hotel_detail", database_failure)
     assert (await client.get(f"/api/v1/hotels/{hotel_id}")).status_code == 500
+
+
+@pytest.mark.asyncio
+async def test_hotel_amenity_catalog_route_returns_only_approved_hotel_entries(client, monkeypatch):
+    from src.services.amenity_catalog import AmenityCatalogEntry
+
+    monkeypatch.setattr(
+        routes,
+        "query_approved_amenities",
+        lambda: [
+            AmenityCatalogEntry("wifi", "Wi-Fi", ("wifi",), label_en="Wi-Fi", scope="hotel", category="connectivity", icon_key="wifi"),
+            AmenityCatalogEntry("tv", "TV", ("tv",), label_en="TV", scope="room", category="room_comfort"),
+        ],
+    )
+
+    response = await client.get("/api/v1/hotel-amenities")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "id": "wifi",
+            "label_vi": "Wi-Fi",
+            "label_en": "Wi-Fi",
+            "category": "connectivity",
+            "icon_key": "wifi",
+        }
+    ]

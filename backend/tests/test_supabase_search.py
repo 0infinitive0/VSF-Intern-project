@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 import src.services.supabase_search as supabase_search_module
 from src.services.supabase_search import search_hotels_with_rooms
 
@@ -35,6 +39,45 @@ def _patch_client_and_embeddings(monkeypatch, data):
     monkeypatch.setattr(supabase_search_module, "get_supabase_client", lambda: client)
     monkeypatch.setattr(supabase_search_module, "get_embeddings", lambda: _FakeEmbeddings())
     return client
+
+
+def test_hotel_search_amenity_payload_migration_returns_catalog_labels():
+    migration = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "migrations"
+        / "20260814_add_amenity_details_to_match_hotels_with_rooms.sql"
+    ).read_text(encoding="utf-8")
+
+    assert '"amenities" jsonb' in migration
+    assert "jsonb_build_object" in migration
+    assert "'label_vi'" in migration
+    assert "'label_en'" in migration
+    assert "WITH ORDINALITY" in migration
+
+
+def test_database_schema_uses_shared_catalog_for_hotel_search_amenities():
+    schema = (Path(__file__).resolve().parents[1] / "scripts" / "database_schema.sql").read_text(
+        encoding="utf-8"
+    )
+
+    assert "CREATE TABLE amenity_catalog" in schema
+    assert "CREATE TABLE hotel_amenity_catalog" not in schema
+    assert '"amenities" jsonb' in schema.lower()
+    assert "CREATE FUNCTION public.match_hotels_with_rooms" in schema
+    assert schema.count("embedding vector(1024)") >= 2
+
+
+def test_legacy_hotel_amenity_catalog_drop_migration_requires_a_complete_copy():
+    migration = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "migrations"
+        / "20260814_drop_legacy_hotel_amenity_catalog.sql"
+    ).read_text(encoding="utf-8")
+
+    assert "legacy rows are missing from public.amenity_catalog" in migration
+    assert "DROP TABLE IF EXISTS public.hotel_amenity_catalog" in migration
 
 
 def test_search_hotels_forwards_min_and_max_price_as_rpc_params(monkeypatch):
@@ -183,10 +226,6 @@ def test_search_hotels_still_filters_by_star_rating(monkeypatch):
 
     assert [r["id"] for r in results] == ["high"]
     assert client.captured_params["match_count"] == 15
-
-
-import pytest
-
 
 def test_search_hotels_forwards_radius_params(monkeypatch):
     client = _patch_client_and_embeddings(monkeypatch, data=[])
