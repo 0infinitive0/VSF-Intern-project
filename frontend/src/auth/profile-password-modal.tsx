@@ -4,10 +4,11 @@ import { useAuth } from './auth-context'
 import { translateAuthError } from './translate-auth-error'
 import { EMAIL_RE } from './email-pattern'
 import { isValidPhone } from './phone-pattern'
-import { getDisplayName, getInitial } from './profile-display'
+import { getDisplayName } from './profile-display'
 import AuthTextField from './auth-text-field'
 import DateOfBirthField from './date-of-birth-field'
 import PasswordStrengthMeter, { passwordStrength } from './password-strength-meter'
+import UserAvatar from './user-avatar'
 
 /**
  * ProfilePasswordModal — the account slot's "Profile & password" screen
@@ -101,7 +102,6 @@ export default function ProfilePasswordModal({ onClose }: { onClose: () => void 
   }, [handleClose])
 
   const displayName = getDisplayName(user, t)
-  const initial = getInitial(displayName)
   const memberSinceYear = new Date(user.created_at).getFullYear()
   const verified = Boolean(user.email_confirmed_at)
   // Google-only accounts have no 'email' entry among their linked providers
@@ -198,16 +198,15 @@ export default function ProfilePasswordModal({ onClose }: { onClose: () => void 
         onClick={(e) => e.stopPropagation()}
       >
         <header className="relative flex items-center gap-3.5 px-6 py-5.5 border-b" style={{ borderColor: 'var(--color-line)' }}>
-          <span
-            className="w-[54px] h-[54px] shrink-0 rounded-[19px] flex items-center justify-center text-[19px] font-semibold text-on-primary"
-            style={{
+          <UserAvatar
+            user={user}
+            displayName={displayName}
+            className="w-[54px] h-[54px] shrink-0 rounded-[19px] text-[19px]"
+            fallbackStyle={{
               background: 'linear-gradient(145deg,#7FA8F2,#3A73DE)',
               boxShadow: '0 14px 30px -14px rgba(44,95,201,.7)',
             }}
-            aria-hidden="true"
-          >
-            {initial}
-          </span>
+          />
           <div className="flex-1 min-w-0">
             <nav aria-label="Breadcrumb" className="text-[10px] font-semibold tracking-widest uppercase text-on-surface-muted mb-1">
               V‑OTA · {t('authProfileCrumb')}

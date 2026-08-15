@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth/auth-context'
-import { getDisplayName, getInitial } from '../auth/profile-display'
+import { getDisplayName } from '../auth/profile-display'
 import ProfilePasswordModal from '../auth/profile-password-modal'
+import UserAvatar from '../auth/user-avatar'
 
 /**
  * UserMenu — SidebarRail's footer account slot (design: "User Account UI" /
@@ -70,7 +71,6 @@ export default function UserMenu({
   }
 
   const displayName = getDisplayName(user, t)
-  const initial = getInitial(displayName)
 
   return (
     <div ref={rootRef} className="shrink-0 flex flex-col gap-1.5 animate-[vFade_0.28s_ease_both]">
@@ -141,13 +141,7 @@ export default function UserMenu({
           collapsed ? 'justify-center px-0' : 'px-1.5'
         }`}
       >
-        <span
-          className="w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[11px] font-semibold text-on-primary"
-          style={{ background: 'linear-gradient(145deg,#5C93EE,#2C5FC9)' }}
-          aria-hidden="true"
-        >
-          {initial}
-        </span>
+        <UserAvatar user={user} displayName={displayName} className="w-6 h-6 shrink-0 rounded-full text-[11px]" />
         {!collapsed && (
           <>
             <span className="flex-1 min-w-0 text-[12px] font-medium text-on-surface truncate text-left">
