@@ -137,7 +137,7 @@ export default function SidebarRail({
             language/theme controls above (design: dc.html:48, the profile
             block is its own bordered-off footer group — same aside-level
             gap above the divider, then this element's own inset below it). */}
-        <div className="shrink-0 pt-2.5 border-t border-line2">
+        <div className="shrink-0 border-t border-line2">
           <UserMenu collapsed={collapsed} onOpenAuthPanel={onOpenAuthPanel} />
         </div>
       </aside>
