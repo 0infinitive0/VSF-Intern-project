@@ -45,7 +45,7 @@ export default function ConfirmDialog({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,.45)', animation: 'vFade .18s ease both' }}
+      style={{ background: 'rgba(12,18,30,.34)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', animation: 'vFade .18s ease both' }}
       onClick={onCancel}
     >
       <div
