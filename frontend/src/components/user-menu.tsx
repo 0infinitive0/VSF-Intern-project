@@ -138,7 +138,7 @@ export default function UserMenu({
         aria-haspopup="menu"
         title={displayName}
         className={`h-9 w-full rounded-xl border border-outline-variant bg-glass-1 flex items-center gap-2 hover:bg-glass-2 transition-colors ${
-          collapsed ? 'justify-center px-0' : 'px-1.5'
+          collapsed ? 'justify-center px-0' : 'px-0'
         }`}
       >
         <UserAvatar user={user} displayName={displayName} className="w-6 h-6 shrink-0 rounded-full text-[11px]" />
