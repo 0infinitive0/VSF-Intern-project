@@ -212,6 +212,9 @@ class _CatalogQuery:
     def limit(self, _value: int) -> _CatalogQuery:
         return self
 
+    def range(self, _start: int, _end: int) -> _CatalogQuery:
+        return self
+
     def execute(self) -> SimpleNamespace:
         self._calls.append(1)
         return SimpleNamespace(data=self._rows)
@@ -236,7 +239,9 @@ class TestRespondAllPreferences:
 
     def test_catalog_is_queried_once_and_then_served_from_cache(self, monkeypatch):
         calls: list[int] = []
-        rows = [{"id": "gym", "label": "Gym", "match_keywords": ["gym"]}]
+        rows = [
+            {"id": "gym", "label_vi": "Gym", "scope": "hotel", "category": "facility", "match_keywords": ["gym"]}
+        ]
 
         class _Client:
             def table(self, _name: str) -> _CatalogQuery:

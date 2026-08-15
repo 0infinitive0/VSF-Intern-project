@@ -97,7 +97,7 @@ export default function IntakePeopleStepper({
               onClick={() => selectOption(n)}
               className={`flex-1 py-2 rounded-[10px] text-[13px] transition-all disabled:opacity-60 ${
                 isSelected
-                  ? 'bg-glass-3 text-on-surface font-semibold shadow-[0_4px_12px_-6px_rgb(var(--shadow-rgb)/0.6)]'
+                  ? 'bg-glass-3 text-on-surface font-semibold shadow-[0_4px_12px_-6px_rgb(var(--shadow-rgb)/0.6),0_0_0_1px_var(--edge),inset_0_1px_0_var(--gloss)]'
                   : 'bg-transparent text-on-surface-variant font-normal'
               }`}
             >
@@ -107,7 +107,7 @@ export default function IntakePeopleStepper({
         })}
 
         {isEditing ? (
-          <div className="flex-[1.3] flex items-center justify-center gap-1 py-1 px-1 rounded-[10px] bg-glass-3 shadow-[0_4px_12px_-6px_rgb(var(--shadow-rgb)/0.6)]">
+          <div className="flex-[1.3] flex items-center justify-center gap-1 py-1 px-1 rounded-[10px] bg-glass-3 shadow-[0_4px_12px_-6px_rgb(var(--shadow-rgb)/0.6),0_0_0_1px_var(--edge),inset_0_1px_0_var(--gloss)]">
             <button
               type="button"
               aria-label={t('intakeDecreaseGuests')}
@@ -153,7 +153,7 @@ export default function IntakePeopleStepper({
             onClick={selectLast}
             className={`flex-[1.3] flex items-center justify-center gap-1 py-2 rounded-[10px] text-[13px] transition-all disabled:opacity-60 ${
               lastSelected
-                ? 'bg-glass-3 text-on-surface font-semibold shadow-[0_4px_12px_-6px_rgb(var(--shadow-rgb)/0.6)]'
+                ? 'bg-glass-3 text-on-surface font-semibold shadow-[0_4px_12px_-6px_rgb(var(--shadow-rgb)/0.6),0_0_0_1px_var(--edge),inset_0_1px_0_var(--gloss)]'
                 : 'bg-transparent text-on-surface-variant font-normal'
             }`}
           >

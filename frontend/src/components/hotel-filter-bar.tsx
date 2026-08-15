@@ -5,13 +5,13 @@ import { hotelPriceBounds, PRICE_SLIDER_STEP, roundedPriceSliderBounds, type Hot
 import type { HotelOption, PreferencePayload } from '../types'
 
 export default function HotelFilterBar({
-  hotels, apiPriceMin, apiPriceMax, allPreferences, minPrice, maxPrice, minStars, preferenceIds, sortOrder,
+  hotels, apiPriceMin, apiPriceMax, amenityOptions, minPrice, maxPrice, minStars, preferenceIds, sortOrder,
   onMinPriceChange, onMaxPriceChange, onMinStarsChange, onPreferenceIdsChange, onSortOrderChange, onClear,
 }: {
   hotels: HotelOption[]
   apiPriceMin: number | null
   apiPriceMax: number | null
-  allPreferences: PreferencePayload[]
+  amenityOptions: PreferencePayload[]
   minPrice: number | null
   maxPrice: number | null
   minStars: number | null
@@ -113,14 +113,34 @@ export default function HotelFilterBar({
         </div>
         <div className="flex justify-between text-[10px] text-on-surface-muted"><span>{formatCurrency(sliderBounds.min, i18n.language)}</span><span>{formatCurrency(sliderBounds.max, i18n.language)}</span></div>
       </div>}
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t('hotelFiltersLabel')}>
-        <div className="flex items-center rounded-full border border-fill2 bg-glass-2 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]" role="radiogroup" aria-label={t('hotelFiltersMinStars')}>
+      <div className="flex flex-wrap items-center justify-center gap-2" role="group" aria-label={t('hotelFiltersLabel')}>
+        {/* One shared bg-fill container (no nested pill-in-a-pill) — same
+            segmented-control language as intake-people-stepper.tsx: the
+            selected segment gets a soft raised bg-glass-3 chip + shadow,
+            never a solid dark fill, so it doesn't read as a separate block
+            sitting next to the small star icons. Both controls in this row
+            share one rendered height (34px: the star group's own 28px chips
+            + its 3px top/bottom padding, matched by the sort button's
+            explicit h-[34px] rather than the plain h-7 it had before —
+            those two heights don't naturally agree since only one of the
+            two sits inside a padded track) so the text chip and the round
+            star buttons line up evenly, and both use the app's real design
+            tokens instead of literal hex — the old #2C5FC9/white didn't
+            adapt to dark theme (a plain white dropdown surface in dark
+            mode). Star fill is one glyph (★) at two opacities rather than
+            swapping ★/☆, so all 5 render at identical metrics — mixing the
+            two glyphs from a fallback symbol font is what read as uneven. */}
+        <div className="flex items-center gap-0.5 rounded-[13px] bg-fill p-[3px]" role="radiogroup" aria-label={t('hotelFiltersMinStars')}>
           <button
             type="button"
             role="radio"
             aria-checked={minStars == null}
             onClick={() => onMinStarsChange(null)}
-            className={`rounded-full px-2.5 py-1.5 text-[11px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2C5FC9] ${minStars == null ? 'bg-[#2C5FC9] text-white shadow-sm' : 'text-on-surface-variant hover:bg-white/70 hover:text-[#2C5FC9]'}`}
+            className={`h-7 shrink-0 whitespace-nowrap rounded-[10px] px-3 text-[11px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+              minStars == null
+                ? 'bg-glass-3 text-on-surface font-[600] shadow-[0_4px_12px_-6px_rgb(var(--shadow-rgb)/0.6),0_0_0_1px_var(--edge),inset_0_1px_0_var(--gloss)]'
+                : 'text-on-surface-variant font-normal hover:text-on-surface'
+            }`}
           >
             {t('hotelFiltersAnyRating')}
           </button>
@@ -133,9 +153,9 @@ export default function HotelFilterBar({
               aria-label={t('hotelFiltersStarsAndUp', { stars })}
               title={t('hotelFiltersStarsAndUp', { stars })}
               onClick={() => onMinStarsChange(stars)}
-              className="grid size-7 place-items-center rounded-full text-[17px] leading-none transition-colors hover:bg-[#2C5FC9]/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2C5FC9]"
+              className="grid size-7 shrink-0 place-items-center rounded-[10px] text-[15px] leading-none transition-colors hover:bg-glass-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
-              <span aria-hidden="true" className={minStars != null && stars <= minStars ? 'text-[#D3812A]' : 'text-on-surface-muted'}>{minStars != null && stars <= minStars ? '★' : '☆'}</span>
+              <span aria-hidden="true" className={minStars != null && stars <= minStars ? 'text-warning' : 'text-on-surface-faint'}>★</span>
             </button>
           ))}
         </div>
@@ -148,12 +168,31 @@ export default function HotelFilterBar({
             aria-haspopup="listbox"
             aria-expanded={isSortMenuOpen}
             onClick={() => setIsSortMenuOpen((open) => !open)}
-            className="flex min-w-44 items-center justify-between gap-3 rounded-full border border-fill2 bg-glass-2 px-3.5 py-2 text-[12px] font-medium text-on-surface shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] transition-colors hover:border-[#2C5FC9]/40 hover:bg-white/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2C5FC9]"
+            className="flex h-[34px] min-w-44 items-center justify-between gap-2.5 rounded-full border border-stroke bg-glass-2 px-3.5 text-[11px] font-[530] text-on-surface transition-colors hover:bg-glass-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            <span>{selectedSortLabel}</span>
-            <span aria-hidden="true" className={`text-[#2C5FC9] transition-transform ${isSortMenuOpen ? 'rotate-180' : ''}`}>⌄</span>
+            <span className="truncate">{selectedSortLabel}</span>
+            {/* Material Symbols instead of the raw "⌄" glyph — that character
+                doesn't sit centered in its own em-box in most fonts, so
+                items-center alone couldn't line it up with the text next to
+                it. The icon font (used the same way everywhere else in this
+                app) is drawn centered in its box by design. */}
+            <span
+              className={`material-symbols-outlined shrink-0 text-[16px] text-on-surface-muted transition-transform ${isSortMenuOpen ? 'rotate-180' : ''}`}
+              aria-hidden="true"
+            >
+              expand_more
+            </span>
           </button>
-          {isSortMenuOpen && <div role="listbox" aria-label={t('hotelFiltersSort')} className="absolute left-0 z-20 mt-1.5 min-w-full overflow-hidden rounded-2xl border border-[#2C5FC9]/20 bg-white/95 p-1.5 shadow-[0_14px_32px_rgba(44,95,201,0.18)] backdrop-blur-xl">
+          {/* glass-panel's own background (--g1, 60% opacity — meant for large
+              surfaces like the chat/header panel, with plenty of blur behind
+              them) read as too see-through for a small floating menu with
+              arbitrary page content behind it. Inline style to override just
+              the background (wins over the utility class at equal
+              specificity, same as sidebar-rail.tsx's borderRight) up to
+              --g3 (92%), the same "elevated surface" tier hotel-card.tsx
+              already uses for hover/selected — keeps the blur/border/shadow
+              from glass-panel, only the opacity changes. */}
+          {isSortMenuOpen && <div role="listbox" aria-label={t('hotelFiltersSort')} className="glass-panel absolute left-0 z-20 mt-1.5 min-w-full overflow-hidden rounded-[16px] p-1.5" style={{ background: 'var(--g3)' }}>
             {sortOptions.map((option) => {
               const selected = option.value === sortOrder
               return <button
@@ -165,7 +204,12 @@ export default function HotelFilterBar({
                   onSortOrderChange(option.value)
                   setIsSortMenuOpen(false)
                 }}
-                className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-[12px] font-medium transition-colors ${selected ? 'bg-[#2C5FC9] text-white shadow-sm' : 'text-on-surface hover:bg-[#2C5FC9]/10 hover:text-[#2C5FC9]'}`}
+                // hover:bg-glass-3 used to be invisible here — the panel
+                // itself sits at --g3 (see the style={{background}} above),
+                // the top of the g0-g3 glass scale, so "hover one tier up"
+                // had nowhere left to go and just matched the panel. A soft
+                // accent tint reads clearly regardless of the panel's own tier.
+                className={`flex w-full items-center rounded-[12px] px-3 py-2 text-left text-[12px] font-[450] transition-colors ${selected ? 'bg-button text-on-button' : 'text-on-surface hover:bg-primary-soft'}`}
               >
                 {option.label}
               </button>
@@ -173,7 +217,7 @@ export default function HotelFilterBar({
           </div>}
         </div>
       </div>
-      {allPreferences.length > 0 && <div
+      {amenityOptions.length > 0 && <div
         ref={preferenceListRef}
         className="hotel-preference-scroll mt-2 flex gap-2 overflow-x-auto pb-1"
         role="group"
@@ -189,9 +233,15 @@ export default function HotelFilterBar({
           didDragRef.current = false
         }}
       >
-        {allPreferences.map(({ id, label }) => {
+        {amenityOptions.map(({ id, label }) => {
           const active = preferenceIds.includes(id)
-          return <button key={id} type="button" aria-pressed={active} onClick={() => togglePreference(id)} className={`shrink-0 rounded-full border px-3 py-2 text-[12px] transition-colors ${active ? 'border-[#2C5FC9] bg-[#2C5FC9] text-white shadow-sm' : 'border-fill2 bg-glass-2 text-on-surface-variant hover:text-on-surface'}`}>{label}</button>
+          // active used to be literal #2C5FC9/white — same class of bug as
+          // the sort dropdown fixed earlier: a hardcoded light-mode blue
+          // that doesn't become the dark-mode --acc (#6C9BF0), and white
+          // text that stays white instead of --on-acc. bg-button matches
+          // every other "picked/active" chip in the app (hotel Chọn, room
+          // pick, etc.).
+          return <button key={id} type="button" aria-pressed={active} onClick={() => togglePreference(id)} className={`shrink-0 rounded-full border px-3 py-2 text-[12px] transition-colors ${active ? 'border-button bg-button text-on-button shadow-sm' : 'border-fill2 bg-glass-2 text-on-surface-variant hover:text-on-surface'}`}>{label}</button>
         })}
       </div>}
     </section>

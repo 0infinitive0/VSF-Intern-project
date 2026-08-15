@@ -9,6 +9,8 @@
  */
 
 import type { PlannerChatResponse } from '../types'
+import { authHeaders } from './auth-headers'
+import { reportSessionExpired } from '../auth/session-expired-bus'
 
 const BASE = (import.meta.env.VITE_API_BASE || '') + '/api/v1'
 
@@ -131,7 +133,7 @@ export async function sendMessageStream(
   try {
     res = await fetch(BASE + '/planner_chat/stream', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({ session_id: sessionId, message, language }),
       signal: controller.signal,
     })
@@ -140,6 +142,8 @@ export async function sendMessageStream(
     signal.removeEventListener('abort', onOuterAbort)
     throw new StreamUnsupported(err instanceof Error ? err.message : String(err))
   }
+
+  if (res.status === 401) reportSessionExpired()
 
   if (!res.ok || !res.body || !(res.headers.get('content-type') || '').startsWith('text/event-stream')) {
     clearTimeout(firstFrameTimer)

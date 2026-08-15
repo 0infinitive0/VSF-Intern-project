@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import ConversationList from './conversation-list'
 import LanguageToggle from './language-toggle'
 import ThemeToggle from './theme-toggle'
+import UserMenu from './user-menu'
 import type { Theme } from '../hooks/use-theme'
 import type { SessionSummary } from '../types'
 
@@ -27,6 +28,7 @@ export default function SidebarRail({
   onPickSession,
   onDeleteSession,
   turnPending,
+  onOpenAuthPanel,
 }: {
   theme: Theme
   onToggleTheme: () => void
@@ -38,6 +40,7 @@ export default function SidebarRail({
   onPickSession: (sessionId: string) => void
   onDeleteSession: (sessionId: string) => void
   turnPending: boolean
+  onOpenAuthPanel: () => void
 }) {
   const { t } = useTranslation()
 
@@ -127,9 +130,15 @@ export default function SidebarRail({
           />
         </div>
 
-        <div className="shrink-0 flex flex-col gap-2">
-          <LanguageToggle />
-          <ThemeToggle theme={theme} onToggle={onToggleTheme} collapsed={collapsed} />
+        <LanguageToggle />
+        <ThemeToggle theme={theme} onToggle={onToggleTheme} collapsed={collapsed} />
+
+        {/* Account sits below its own hairline, separate from the
+            language/theme controls above (design: dc.html:48, the profile
+            block is its own bordered-off footer group — same aside-level
+            gap above the divider, then this element's own inset below it). */}
+        <div className="shrink-0 pt-2.5 border-t border-line2">
+          <UserMenu collapsed={collapsed} onOpenAuthPanel={onOpenAuthPanel} />
         </div>
       </aside>
     </>

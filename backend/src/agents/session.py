@@ -105,6 +105,7 @@ class TripSession:
         config: dict,
         *,
         persist_hook: Callable[[TripSession], None] | None = None,
+        owner_user_id: str | None = None,
         created_at: float | None = None,
         last_seen_at: float | None = None,
         lock: threading.Lock | None = None,
@@ -123,6 +124,12 @@ class TripSession:
         self.session_id = session_id
         self.config = config
         self.persist_hook = persist_hook
+        # Real auth.users.id for every visitor once the frontend sends a
+        # Supabase JWT (anonymous or permanent) — None for sessions created
+        # before plan 260814 shipped, or outside the HTTP API (the CLI never
+        # sets this). See src.api.routes._owned_session_or_404 for how a
+        # None owner is treated (permissively, not "open to everyone").
+        self.owner_user_id = owner_user_id
         self.created_at = created_at if created_at is not None else time.time()
         self.last_seen_at = last_seen_at if last_seen_at is not None else time.time()
         self.lock = lock if lock is not None else threading.Lock()
@@ -252,6 +259,7 @@ def create_chat_session(
     *,
     persist_hook: Callable[[TripSession], None] | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
+    owner_user_id: str | None = None,
 ) -> TripSession:
     """Build a fresh session with its own compiled agent and tool closures, so no
     tool ever reaches for a module-level file constant shared by every
@@ -260,6 +268,7 @@ def create_chat_session(
         session_id=session_id,
         config={"configurable": {"thread_id": session_id}},
         persist_hook=persist_hook,
+        owner_user_id=owner_user_id,
     )
     pass
     return session
@@ -442,14 +451,17 @@ class SessionRegistry:
         `set_checkpointer`'s injection timing."""
         return self._checkpointer
 
-    def create(self) -> TripSession:
+    def create(self, *, owner_user_id: str | None = None) -> TripSession:
         """The only way a session comes into being with a server-generated id."""
         import uuid
 
         session_id = str(uuid.uuid4())
         with self._registry_lock:
             session = create_chat_session(
-                session_id, persist_hook=self._persist_hook, checkpointer=self._checkpointer
+                session_id,
+                persist_hook=self._persist_hook,
+                checkpointer=self._checkpointer,
+                owner_user_id=owner_user_id,
             )
             self._sessions[session_id] = session
             return session
@@ -478,7 +490,10 @@ class SessionRegistry:
                     from src.services.session_store import deserialize
 
                     session = create_chat_session(
-                        session_id, persist_hook=self._persist_hook, checkpointer=self._checkpointer
+                        session_id,
+                        persist_hook=self._persist_hook,
+                        checkpointer=self._checkpointer,
+                        owner_user_id=row.get("user_id"),
                     )
                     session.state = deserialize(session_id, row.get("context_data"), row.get("messages"))
                     current_trip = (row.get("context_data") or {}).get("current_trip") or {}
@@ -523,7 +538,7 @@ class SessionRegistry:
 
             return None
 
-    def resolve(self, session_id: str) -> TripSession:
+    def resolve(self, session_id: str, *, owner_user_id: str | None = None) -> TripSession:
         """Atomically look up or create a session for a caller-supplied id.
 
         Holding _registry_lock for the whole check-then-create closes the race
@@ -537,7 +552,10 @@ class SessionRegistry:
             session = self._sessions.get(session_id)
             if session is None:
                 session = create_chat_session(
-                    session_id, persist_hook=self._persist_hook, checkpointer=self._checkpointer
+                    session_id,
+                    persist_hook=self._persist_hook,
+                    checkpointer=self._checkpointer,
+                    owner_user_id=owner_user_id,
                 )
                 self._sessions[session_id] = session
             session.last_seen_at = time.time()

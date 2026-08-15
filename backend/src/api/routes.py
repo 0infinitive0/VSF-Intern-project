@@ -11,6 +11,19 @@ Phase 3 changes:
   the event loop. The one exception is POST /planner_chat/stream: it is
   `async def` (required to yield SSE frames) but runs the blocking turn in
   the worker pool via run_in_executor, so the rule above still holds.
+
+Plan 260814-supabase-auth-and-per-user-history changes:
+- Every session-scoped handler gains `current_user: AuthenticatedUser | None
+  = Depends(get_current_user)`. None is a real, expected value (not an
+  error) whenever AUTH_REQUIRED is False and the caller sent no/an invalid
+  token — see src.auth.dependencies' module docstring for the full rollout
+  contract.
+- `_owned_session_or_404` replaces the repeated `registry.get()` + 404 block
+  that used to appear at every one of these call sites, adding an ownership
+  check on top of the existence check it already did.
+- `GET /chat/sessions` now scopes to the caller instead of listing every
+  persisted session in the database (a real privacy bug the ownership work
+  fixes, independent of whatever AUTH_REQUIRED is set to).
 """
 
 import asyncio
@@ -18,7 +31,7 @@ import logging
 from datetime import UTC, date
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 from langgraph.types import Command
@@ -29,24 +42,27 @@ from src.agents.session import (
     supabase_persist_hook,
 )
 from src.api.streaming import STREAM_HEADERS, TurnEmitter, emit_phase, emitting_to, sse_stream
+from src.auth import AuthenticatedUser, get_current_user
 from src.config import get_settings
 from src.models.schemas import (
+    AmenityCatalogPayload,
     AttractionDetailPayload,
     ChangeHotelRequest,
     HotelDetailPayload,
     IntakeStatus,
     PlannerChatRequest,
     PlannerChatResponse,
+    SelectHotelRequest,
+    SelectPlaceRequest,
     SessionListPayload,
     SessionRestorePayload,
     SessionSummaryPayload,
-    SelectHotelRequest,
-    SelectPlaceRequest,
     sanitize_system_error,
     to_hotel_options_payload,
     to_trip_plan_payload,
 )
 from src.services import session_store
+from src.services.amenity_catalog import query_approved_amenities
 from src.services.place_details import get_attraction_detail, get_hotel_detail
 
 logger = logging.getLogger(__name__)
@@ -79,9 +95,44 @@ registry = SessionRegistry(
 # __init__ above.
 
 
+def _owned_session_or_404(session_id: str, current_user: AuthenticatedUser | None):
+    """registry.get() + 404, plus an ownership check.
+
+    A session with no owner_user_id — rows persisted before this plan shipped,
+    or created outside the HTTP API (the CLI never sets one) — is treated as
+    accessible to any caller, matching exactly what happened before ownership
+    existed. A session that DOES have an owner is only accessible to that same
+    owner. Either way, a mismatch raises the same 404 as "doesn't exist" —
+    never 403, which would itself leak "this session_id is real, just not
+    yours" (a session-enumeration side channel).
+    """
+    session = registry.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
+    if session.owner_user_id is not None and (current_user is None or session.owner_user_id != current_user.id):
+        raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
+    return session
+
+
 # ---------------------------------------------------------------------------
 # Sessionless detail endpoints (Phase 3)
 # ---------------------------------------------------------------------------
+
+
+@router.get("/hotel-amenities", response_model=list[AmenityCatalogPayload])
+def hotel_amenity_catalog() -> list[AmenityCatalogPayload]:
+    """Return approved hotel-scoped catalog entries for client-side filtering."""
+    return [
+        AmenityCatalogPayload(
+            id=entry.id,
+            label_vi=entry.label,
+            label_en=entry.label_en,
+            category=entry.category,
+            icon_key=entry.icon_key,
+        )
+        for entry in query_approved_amenities()
+        if entry.scope in {"hotel", "both"}
+    ]
 
 
 @router.get("/hotels/{hotel_id}", response_model=HotelDetailPayload)
@@ -120,14 +171,14 @@ def attraction_detail(attraction_id: UUID) -> AttractionDetailPayload:
 
 
 @router.post("/chat/session")
-def create_session() -> dict:
+def create_session(current_user: AuthenticatedUser | None = Depends(get_current_user)) -> dict:
     """Tạo một phiên chat mới và trả về session_id do server cấp.
 
     Persists immediately (not just after the first turn) so the session shows
     up as its own row in the history rail right away — otherwise every
     never-chatted draft looked identical to any other and clicking
     "+ Chuyến đi mới" repeatedly appeared to do nothing."""
-    session = registry.create()
+    session = registry.create(owner_user_id=current_user.id if current_user else None)
     if session.persist_hook:
         session.persist_hook(session)
     from datetime import datetime
@@ -142,11 +193,18 @@ def create_session() -> dict:
 def list_persisted_sessions(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=10, ge=1, le=100),
+    current_user: AuthenticatedUser | None = Depends(get_current_user),
 ) -> SessionListPayload:
-    if not _persistence_enabled:
+    # current_user is None whenever the caller sent no/an invalid token AND
+    # AUTH_REQUIRED is False (see src.auth.dependencies) — unlike every other
+    # session-scoped endpoint below, there is no legitimate "existence check
+    # without an identity" use for the aggregate list, so this always returns
+    # empty rather than falling back to unscoped behavior. That's the actual
+    # fix for the endpoint previously returning every persisted session.
+    if not _persistence_enabled or current_user is None:
         return SessionListPayload(sessions=[], page=page, page_size=page_size, has_more=False)
     try:
-        persisted = session_store.list_sessions(page=page, page_size=page_size)
+        persisted = session_store.list_sessions(user_id=current_user.id, page=page, page_size=page_size)
         return SessionListPayload(
             sessions=[SessionSummaryPayload.model_validate(session_store.summarize(row)) for row in persisted.rows],
             page=persisted.page,
@@ -159,13 +217,17 @@ def list_persisted_sessions(
 
 
 @router.get("/chat/{session_id}/restore", response_model=SessionRestorePayload)
-def restore_session(session_id: str) -> SessionRestorePayload:
+def restore_session(
+    session_id: str, current_user: AuthenticatedUser | None = Depends(get_current_user)
+) -> SessionRestorePayload:
+    _owned_session_or_404(session_id, current_user)
+
     app = _get_graph_v2()
     snapshot = app.get_state({"configurable": {"thread_id": session_id}})
     state = snapshot.values
     if not state:
         raise HTTPException(status_code=404, detail="Session not found.")
-    
+
     return SessionRestorePayload(
         session_id=session_id,
         messages=[],
@@ -179,8 +241,12 @@ def restore_session(session_id: str) -> SessionRestorePayload:
 
 @router.get("/chat/{session_id}/plan")
 @router.get("/session/{session_id}/state")
-def get_session_plan(session_id: str) -> dict:
+def get_session_plan(
+    session_id: str, current_user: AuthenticatedUser | None = Depends(get_current_user)
+) -> dict:
     """Trả về kế hoạch chuyến đi hiện tại của một phiên, hoặc 404 nếu không có."""
+    _owned_session_or_404(session_id, current_user)
+
     app = _get_graph_v2()
     snapshot = app.get_state({"configurable": {"thread_id": session_id}})
     state = snapshot.values
@@ -190,8 +256,20 @@ def get_session_plan(session_id: str) -> dict:
 
 
 @router.delete("/chat/{session_id}", status_code=204)
-def delete_session(session_id: str) -> None:
-    """Xóa một phiên chat. Trả về 204 dù phiên có tồn tại hay không."""
+def delete_session(
+    session_id: str, current_user: AuthenticatedUser | None = Depends(get_current_user)
+) -> None:
+    """Xóa một phiên chat. Trả về 204 dù phiên có tồn tại hay không.
+
+    If the session exists but belongs to someone else, this stays a silent
+    no-op — still 204, preserving the existing "204 either way" contract —
+    but nothing is actually deleted. No new observable status code, so this
+    never leaks "this session_id exists, it's just not yours."
+    """
+    session = registry.get(session_id)
+    if session is not None and session.owner_user_id is not None:
+        if current_user is None or session.owner_user_id != current_user.id:
+            return
     registry.drop(session_id)
 
 
@@ -223,12 +301,12 @@ def _prepare_turn_inputs(session, request: PlannerChatRequest) -> tuple[str, str
 
 @router.post("/chat/select_hotel", response_model=PlannerChatResponse)
 @router.post("/hotels/select", response_model=PlannerChatResponse)
-def select_hotel(request: SelectHotelRequest) -> PlannerChatResponse:
+def select_hotel(
+    request: SelectHotelRequest, current_user: AuthenticatedUser | None = Depends(get_current_user)
+) -> PlannerChatResponse:
     session_id = str(request.session_id)
     registry.evict_expired()
-    session = registry.get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
+    session = _owned_session_or_404(session_id, current_user)
 
     with session.lock:
         try:
@@ -246,12 +324,12 @@ def select_hotel(request: SelectHotelRequest) -> PlannerChatResponse:
 
 @router.post("/chat/select_place", response_model=PlannerChatResponse)
 @router.post("/places/select", response_model=PlannerChatResponse)
-def select_place(request: SelectPlaceRequest) -> PlannerChatResponse:
+def select_place(
+    request: SelectPlaceRequest, current_user: AuthenticatedUser | None = Depends(get_current_user)
+) -> PlannerChatResponse:
     session_id = str(request.session_id)
     registry.evict_expired()
-    session = registry.get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
+    session = _owned_session_or_404(session_id, current_user)
 
     with session.lock:
         try:
@@ -263,12 +341,12 @@ def select_place(request: SelectPlaceRequest) -> PlannerChatResponse:
 
 
 @router.post("/hotels/change", response_model=PlannerChatResponse)
-def change_hotel(request: ChangeHotelRequest) -> PlannerChatResponse:
+def change_hotel(
+    request: ChangeHotelRequest, current_user: AuthenticatedUser | None = Depends(get_current_user)
+) -> PlannerChatResponse:
     session_id = str(request.session_id)
     registry.evict_expired()
-    session = registry.get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
+    session = _owned_session_or_404(session_id, current_user)
 
     with session.lock:
         try:
@@ -382,12 +460,12 @@ def _run_turn_via_graph(
 
 @router.post("/planner_chat", response_model=PlannerChatResponse)
 @router.post("/chat", response_model=PlannerChatResponse)
-def planner_chat(request: PlannerChatRequest) -> PlannerChatResponse:
+def planner_chat(
+    request: PlannerChatRequest, current_user: AuthenticatedUser | None = Depends(get_current_user)
+) -> PlannerChatResponse:
     session_id = str(request.session_id)
     registry.evict_expired()
-    session = registry.get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
+    session = _owned_session_or_404(session_id, current_user)
 
     with session.lock:
         try:
@@ -398,12 +476,12 @@ def planner_chat(request: PlannerChatRequest) -> PlannerChatResponse:
 
 
 @router.post("/planner_chat/stream")
-async def planner_chat_stream(request: PlannerChatRequest) -> StreamingResponse:
+async def planner_chat_stream(
+    request: PlannerChatRequest, current_user: AuthenticatedUser | None = Depends(get_current_user)
+) -> StreamingResponse:
     session_id = str(request.session_id)
     registry.evict_expired()
-    session = registry.get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
+    session = _owned_session_or_404(session_id, current_user)
 
     loop = asyncio.get_running_loop()
     emitter = TurnEmitter(loop)
@@ -505,12 +583,12 @@ class LoadMoreHotelsRequest(BaseModel):
     load_more: bool
 
 @router.post("/hotels/search")
-def hotels_search(request: LoadMoreHotelsRequest):
+def hotels_search(
+    request: LoadMoreHotelsRequest, current_user: AuthenticatedUser | None = Depends(get_current_user)
+):
     session_id = str(request.session_id)
     registry.evict_expired()
-    session = registry.get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
+    session = _owned_session_or_404(session_id, current_user)
 
     with session.lock:
         try:
@@ -574,12 +652,12 @@ def hotels_search(request: LoadMoreHotelsRequest):
             raise HTTPException(status_code=500, detail="Error fetching more hotels")
 
 @router.post("/itineraries/generate")
-def itineraries_generate(request: PlannerChatRequest):
+def itineraries_generate(
+    request: PlannerChatRequest, current_user: AuthenticatedUser | None = Depends(get_current_user)
+):
     session_id = str(request.session_id)
     registry.evict_expired()
-    session = registry.get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Phiên chat không tồn tại.")
+    session = _owned_session_or_404(session_id, current_user)
 
     with session.lock:
         if session.trip_data and session.trip_data.get("itineraries"):
@@ -588,11 +666,9 @@ def itineraries_generate(request: PlannerChatRequest):
             return {"status": "success", "trip_plan": trip_plan}
 
         try:
-            from src.agents.session import process_chat_turn
-            result = process_chat_turn(session, "Tạo lịch trình", language=request.language)
+            _run_turn_via_graph(session_id, "Tạo lịch trình", request.language)
             trip_plan = to_trip_plan_payload(session.trip_data)
             return {"status": "success", "trip_plan": trip_plan}
         except Exception:
             logger.exception("Error generating itinerary")
             raise HTTPException(status_code=500, detail="Error generating itinerary")
-

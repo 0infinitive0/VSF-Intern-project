@@ -8,6 +8,7 @@ import { useMapSync } from '../hooks/use-map-sync'
 import { hotelOptionSyncId } from '../lib/map-sync-id'
 import { hotelMapFields, hotelMapRays } from '../lib/map-presentation'
 import { useHotelDetail } from '../hooks/use-hotel-detail'
+import { useHotelAmenityCatalog } from '../hooks/use-hotel-amenity-catalog'
 import { filterAndSortHotels, type HotelSortOrder } from '../lib/hotel-filters'
 import type { useFocusMode } from '../hooks/use-focus-mode'
 import type { Theme } from '../hooks/use-theme'
@@ -71,6 +72,7 @@ export default function StageHotels({
 }) {
   const { t, i18n } = useTranslation()
   const hotels = hotelOptions
+  const amenityCatalog = useHotelAmenityCatalog()
   const [minPrice, setMinPrice] = useState<number | null>(null)
   const [maxPrice, setMaxPrice] = useState<number | null>(null)
   const [minStars, setMinStars] = useState<number | null>(null)
@@ -84,7 +86,18 @@ export default function StageHotels({
 
   const focusedId = focusMode.focus?.kind === 'hotel' ? focusMode.focus.id : null
   const focused = focusedId != null
-  const focusedHotel = hotels.find((h) => h.id === focusedId)
+  // The detail panel is always mounted now (never conditionally rendered) so
+  // it can animate its own close, not just its open — see design's hDet*
+  // tokens. That means its CONTENT must outlive `focusedId` going back to
+  // null the instant focus closes, or the close transition would fade out an
+  // already-blank panel. `lastFocusedId` is the sticky "last hotel actually
+  // viewed" value fed to HotelDetailPanel; `focusedId` itself still drives
+  // every visual open/closed state (including the card's own highlight ring)
+  // so nothing else lags behind the real focus state.
+  const [lastFocusedId, setLastFocusedId] = useState<string | null>(null)
+  useEffect(() => {
+    if (focusedId != null) setLastFocusedId(focusedId)
+  }, [focusedId])
   const selectedHotel = hotels.find((h) => h.index === selectedIndex) ?? null
   const nights = nightsFrom(state.intake?.start_date, state.intake?.end_date)
   const selectedId = selectedHotel ? hotelOptionSyncId(selectedHotel) : null
@@ -94,6 +107,20 @@ export default function StageHotels({
   useEffect(() => {
     setPreferenceIds(state.hotelFilterData.activePreferences.map(({ id }) => id))
   }, [hotels, state.hotelFilterData.activePreferences])
+
+  const filterPreferences = useMemo(() => {
+    if (amenityCatalog == null) return state.hotelFilterData.allPreferences
+    const visibleIds = new Set([
+      ...hotels.flatMap((hotel) => hotel.amenities ?? []),
+      ...state.hotelFilterData.activePreferences.map(({ id }) => id),
+    ])
+    return amenityCatalog
+      .filter((amenity) => visibleIds.has(amenity.id))
+      .map((amenity) => ({
+        id: amenity.id,
+        label: i18n.language.startsWith('en') ? amenity.label_en || amenity.label_vi : amenity.label_vi || amenity.label_en,
+      }))
+  }, [amenityCatalog, hotels, i18n.language, state.hotelFilterData.activePreferences, state.hotelFilterData.allPreferences])
 
   const listRef = useRef<HTMLDivElement>(null)
   const savedScroll = useRef(0)
@@ -121,15 +148,16 @@ export default function StageHotels({
     [filteredHotels, i18n.language],
   )
 
+  // Marker click mirrors the card's "Chọn" zone (user decision — an earlier
+  // pass had this open the detail panel instead, mirroring "Xem chi tiết",
+  // but the request coming back from actually using it is a plain pick:
+  // same as pressing "Chọn khách sạn này" on the card). focusOn scrolls the
+  // list to the corresponding card ("Click Marker → Scroll tới Card").
   function handleMarkerClick(marker: MapMarkerSpec) {
     const hotel = hotels.find((candidate) => hotelOptionSyncId(candidate) === marker.syncId)
     if (!hotel) return
     onSelectHotel(hotel.index)
     mapSync.focusOn(marker.syncId)
-    if (marker.openId) {
-      const openHotel = filteredHotels.find((h) => h.id === marker.openId)
-      if (openHotel) openFocus(openHotel)
-    }
   }
 
   useLayoutEffect(() => {
@@ -198,7 +226,7 @@ export default function StageHotels({
             hotels={hotels}
             apiPriceMin={state.hotelFilterData.minPrice}
             apiPriceMax={state.hotelFilterData.maxPrice}
-            allPreferences={state.hotelFilterData.allPreferences}
+            amenityOptions={filterPreferences}
             minPrice={minPrice}
             maxPrice={maxPrice}
             minStars={minStars}
@@ -239,9 +267,19 @@ export default function StageHotels({
           aria-hidden={focused}
           style={{
             flex: focused ? '0 0 0px' : '1 1 auto',
+            minWidth: focused ? '0px' : '340px',
             opacity: focused ? 0 : 1,
+            transform: focused ? 'scale(.94)' : 'none',
+            // Not in `transition` (see below) — animating blur radius forces
+            // a full re-rasterize of everything under it (here, the Mapbox
+            // WebGL canvas) EVERY frame for the whole .55-.62s the rest of
+            // this box is transitioning; instant toggle keeps the same
+            // before/after look for a fraction of the cost. Easy to miss
+            // that it snapped since it's always paired with the opacity
+            // fade already happening.
+            filter: focused ? 'blur(16px)' : 'blur(0px)',
             pointerEvents: focused ? 'none' : 'auto',
-            transition: 'flex .62s cubic-bezier(.22,1,.36,1), opacity .38s ease',
+            transition: 'flex .62s cubic-bezier(.22,1,.36,1), opacity .36s ease, transform .55s cubic-bezier(.22,1,.36,1)',
           }}
         >
           <MapView
@@ -257,13 +295,31 @@ export default function StageHotels({
           />
         </div>
 
-        {focused && (
+        {/* Always mounted (never conditionally rendered) so it can animate its
+            own open AND close via flex/opacity/scale/blur, per design's hDet*
+            tokens — see the lastFocusedId comment above for why its content
+            uses the sticky id, not the live focusedId. */}
+        <div
+          className="min-w-0 overflow-hidden rounded-[26px]"
+          aria-hidden={!focused}
+          style={{
+            flex: focused ? '1 1 auto' : '0 0 0px',
+            minWidth: focused ? '440px' : '0px',
+            opacity: focused ? 1 : 0,
+            transform: focused ? 'none' : 'scale(.96)',
+            // Instant toggle, not animated — same reasoning as the map
+            // column's own filter above.
+            filter: focused ? 'blur(0px)' : 'blur(12px)',
+            pointerEvents: focused ? 'auto' : 'none',
+            transition: 'flex .62s cubic-bezier(.22,1,.36,1), opacity .36s ease, transform .55s cubic-bezier(.22,1,.36,1)',
+          }}
+        >
           <HotelDetailPanel
-            hotelId={focusedId}
-            option={focusedHotel}
+            hotelId={lastFocusedId}
+            option={hotels.find((h) => h.id === lastFocusedId)}
             onClose={focusMode.closeFocus}
           />
-        )}
+        </div>
       </div>
     </div>
   )

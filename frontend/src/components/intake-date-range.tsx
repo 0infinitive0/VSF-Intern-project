@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DayPicker } from '@daypicker/react'
 import { addMonths, addYears, format, subMonths, subYears } from 'date-fns'
 import { vi as viLocale } from 'date-fns/locale/vi'
 import { enUS as enLocale } from 'date-fns/locale'
 import { formatFullDate } from '../lib/format-trip-dates'
+import { useCalendarGridFadeReplay } from '../lib/use-calendar-grid-fade'
 import '@daypicker/react/style.css'
 
 function toISODate(date: Date): string {
@@ -45,18 +46,7 @@ export default function IntakeDateRange({
   const [pending, setPending] = useState<{ start: string; end: string }>({ start, end })
   const locale = i18n.language === 'vi' ? viLocale : enLocale
   const calendarRef = useRef<HTMLDivElement>(null)
-
-  // Replay vFade on the day grid itself (not a remount of DayPicker, which
-  // owns keyboard focus internally — remounting on every month change would
-  // drop focus out of the grid mid-navigation for keyboard users).
-  useEffect(() => {
-    const grid = calendarRef.current?.querySelector<HTMLElement>('.rdp-month_grid')
-    if (!grid) return
-    const animClass = 'animate-[vFade_0.32s_ease_both]'
-    grid.classList.remove(animClass)
-    void grid.offsetWidth
-    grid.classList.add(animClass)
-  }, [month])
+  useCalendarGridFadeReplay(calendarRef, month)
 
   const range = useMemo(() => {
     const from = fromISODate(pending.start)
@@ -116,7 +106,7 @@ export default function IntakeDateRange({
       {/* vFade replays on the grid via the ref effect above, keyed by month —
           the design's `calKey`-driven month transition — without remounting
           DayPicker (which would drop keyboard focus mid-navigation). */}
-      <div ref={calendarRef} className="intake-calendar">
+      <div ref={calendarRef} className="day-calendar">
         <DayPicker
           mode="range"
           locale={locale}

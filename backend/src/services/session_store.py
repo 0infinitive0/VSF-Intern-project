@@ -222,6 +222,7 @@ def upsert(session: TripSession) -> None:
                 "p_messages": messages,
             },
         ).execute()
+        _stamp_owner(client, session)
         return
     except APIError as exc:
         # Keep persistence available while an older environment is waiting for
@@ -231,7 +232,7 @@ def upsert(session: TripSession) -> None:
             raise
 
     client.table("sessions").upsert(
-        {"session_id": session.session_id, "context_data": checkpoint},
+        {"session_id": session.session_id, "context_data": checkpoint, "user_id": session.owner_user_id},
         on_conflict="session_id",
     ).execute()
     client.table("chat_messages").delete().eq("session_id", session.session_id).execute()
@@ -241,11 +242,31 @@ def upsert(session: TripSession) -> None:
         ).execute()
 
 
+def _stamp_owner(client: Client, session: TripSession) -> None:
+    """Set `sessions.user_id` after a checkpoint write.
+
+    Separate from the RPC call above on purpose: `persist_session_checkpoint`'s
+    defining migration (20260811_add_session_checkpoint_persistence.sql) isn't
+    tracked in this repo (see backend/tests/test_session_store.py — that test
+    already fails independent of this change), so its live body/params aren't
+    knowable here. Stamping ownership as its own small update works regardless
+    of what that RPC does internally, and is idempotent — an anonymous
+    session's user_id never actually changes across writes to the same row
+    (Supabase's anonymous->permanent upgrade keeps the same auth.users.id), so
+    this is a no-op on every write after the first for a given session.
+    """
+    if session.owner_user_id is None:
+        return
+    client.table("sessions").update({"user_id": session.owner_user_id}).eq(
+        "session_id", session.session_id
+    ).execute()
+
+
 def load(session_id: str) -> dict[str, Any] | None:
     _require_safe_session_id(session_id)
     client = _get_supabase_client()
     rows = (
-        client.table("sessions").select("session_id,context_data,created_at,updated_at")
+        client.table("sessions").select("session_id,context_data,user_id,created_at,updated_at")
         .eq("session_id", session_id).limit(1).execute().data or []
     )
     if not rows:
@@ -261,17 +282,39 @@ def load(session_id: str) -> dict[str, Any] | None:
     return row
 
 
-def delete(session_id: str) -> None:
+def delete(session_id: str, *, user_id: str | None = None) -> None:
+    """Delete a persisted session row.
+
+    `user_id` is an optional second, DB-level safety net behind the route-level
+    ownership check in src.api.routes (_owned_session_or_404) — not load-bearing
+    on its own (the route never calls this for a session it has already
+    determined belongs to someone else), but cheap insurance on a destructive
+    operation. None (the default) preserves today's unscoped behavior, used by
+    SessionRegistry's delete_hook wiring, which only ever calls this after its
+    own caller has already checked ownership.
+    """
     _require_safe_session_id(session_id)
-    _get_supabase_client().table("sessions").delete().eq("session_id", session_id).execute()
+    query = _get_supabase_client().table("sessions").delete().eq("session_id", session_id)
+    if user_id is not None:
+        query = query.eq("user_id", user_id)
+    query.execute()
 
 
-def list_sessions(page: int = 1, page_size: int = 10) -> SessionPage:
+def list_sessions(user_id: str, page: int = 1, page_size: int = 10) -> SessionPage:
+    """List sessions owned by `user_id` only.
+
+    Previously took no user_id and listed every persisted session globally —
+    a real privacy bug once more than one visitor exists (plan
+    260814-supabase-auth-and-per-user-history). Every caller of this function
+    must now resolve a real caller identity first; src.api.routes returns an
+    empty page instead of calling this at all when there is none.
+    """
     safe_page = max(1, page)
     safe_page_size = max(1, min(page_size, 100))
     start = (safe_page - 1) * safe_page_size
     rows = (
         _get_supabase_client().table("sessions").select("session_id,context_data,created_at,updated_at")
+        .eq("user_id", user_id)
         .order("updated_at", desc=True).order("session_id", desc=True)
         .range(start, start + safe_page_size).execute().data or []
     )

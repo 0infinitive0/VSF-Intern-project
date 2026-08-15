@@ -81,37 +81,42 @@
 
   --color-button: var(--btn);
   --color-on-button: var(--btn-fg);
+
+  /* Project-derived tokens (surface-*, primary-fixed*, error-*) — no 1:1 design source,
+     so no copied design file defines them. Used to live as literal values in a plain
+     `@theme` block (see git history) — same bug the 06/08 audit fixed for the tokens
+     above: a plain `@theme` resolves its var() once at :root and freezes that value,
+     so body[data-theme="dark"]'s override was never reached by descendants (found
+     06/08 for --color-primary etc.; missed here because these have no aliased design
+     source to trip the same review). Symptom: language-toggle's selected pill, the
+     history-row delete button, the map's empty-state overlay, and the chat/hotel
+     error bubble all stayed light-theme-colored in dark mode. Fixed the same way:
+     alias through a plain custom property (declared below, at :root +
+     body[data-theme="dark"], where cascade actually works) instead of a literal value
+     living directly in `@theme`. */
+  --color-primary-fixed: var(--primary-fixed);
+  --color-primary-fixed-dim: var(--primary-fixed-dim);
+  --color-surface-background: var(--surface-background);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-container: var(--surface-container);
+  --color-surface-container-low: var(--surface-container-low);
+  --color-surface-container-high: var(--surface-container-high);
+  --color-surface-container-highest: var(--surface-container-highest);
+  --color-error-soft: var(--error-soft);
+  --color-error-ink: var(--error-ink);
+  --color-error-container: var(--error-container);
+  --color-on-error-container: var(--on-error-container);
 }
 
-/* Project-derived tokens — no 1:1 design source. Kept as literal values (verified equal
-   to the corresponding design t-values) because components reference them; changing them
-   would alter existing visuals. Declared at :root + body[data-theme="dark"] with the
-   unlayered override winning, same cascade trick the pre-06/08 build relied on. */
 @theme {
   /* Design's body{font-family} (V-OTA Planner.dc.html), not a Tailwind default —
      Apple system fonts first, 'Be Vietnam Pro' (loaded in index.html) as the
      Vietnamese-glyph fallback before Segoe UI/sans-serif. Previously undeclared,
-     so Tailwind emitted its own generic --font-sans default here instead. */
+     so Tailwind emitted its own generic --font-sans default here instead. Not
+     theme-dependent (font stack doesn't change between light/dark), so a plain,
+     unaliased @theme entry is fine here — unlike the color tokens above/below. */
   --font-sans: -apple-system, "SF Pro Display", "SF Pro Text", BlinkMacSystemFont,
     "Be Vietnam Pro", "Segoe UI", sans-serif;
-
-  --color-primary-fixed: rgba(58, 115, 222, 0.35);
-  --color-primary-fixed-dim: rgba(58, 115, 222, 0.35);
-
-  --color-surface-background: #ffffff;
-  --color-surface-muted: #f3f5fa;
-  --color-surface-container: #e6eaf5;
-  --color-surface-container-low: #edf0f8;
-  --color-surface-container-high: #dce1f0;
-  --color-surface-container-highest: #dce1f0;
-
-  /* -soft/-ink not defined for error in the design source (only --err itself is used
-     there); derived here following the same soft-tint/darker-ink pattern as
-     success/warning so the pre-existing error-container tokens have real values. */
-  --color-error-soft: rgba(192, 94, 112, 0.14);
-  --color-error-ink: #8c3f4d;
-  --color-error-container: rgba(192, 94, 112, 0.14);
-  --color-on-error-container: #8c3f4d;
 
   --ease-glide: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1);
@@ -120,7 +125,10 @@
 /* Not Tailwind utility namespaces — plain custom properties consumed directly via
    var(), same as the design source's --page/--sh. Declared at BOTH :root and
    body[data-theme="dark"] so the value recomputes per theme (inheritance copies the
-   computed value, so a single :root declaration would freeze the light gradient).
+   computed value, so a single :root declaration would freeze the light gradient) —
+   this is the mechanism the @theme inline aliases above point at for
+   surface-*, primary-fixed*, error-* specifically, verified working (it's what
+   --gradient-page/--shadow-rgb already prove out below).
    --shadow-rgb is intentionally SPACE-separated ("20 42 84", the space-form of the
    source's "20,42,84") so `rgb(var(--shadow-rgb) / alpha)` — the modern CSS Color 4
    syntax used in components — stays valid; the comma form only works with the legacy
@@ -128,26 +136,44 @@
 :root {
   --gradient-page: linear-gradient(165deg, #eaf0f9 0%, #f5f2ee 48%, #e8eff6 100%);
   --shadow-rgb: 20 42 84;
+
+  --primary-fixed: rgba(58, 115, 222, 0.35);
+  --primary-fixed-dim: rgba(58, 115, 222, 0.35);
+
+  --surface-background: #ffffff;
+  --surface-muted: #f3f5fa;
+  --surface-container: #e6eaf5;
+  --surface-container-low: #edf0f8;
+  --surface-container-high: #dce1f0;
+  --surface-container-highest: #dce1f0;
+
+  /* -soft/-ink not defined for error in the design source (only --err itself is used
+     there); derived here following the same soft-tint/darker-ink pattern as
+     success/warning so the pre-existing error-container tokens have real values. */
+  --error-soft: rgba(192, 94, 112, 0.14);
+  --error-ink: #8c3f4d;
+  --error-container: rgba(192, 94, 112, 0.14);
+  --on-error-container: #8c3f4d;
 }
 
 body[data-theme="dark"] {
-  --color-primary-fixed: rgba(108, 155, 240, 0.35);
-  --color-primary-fixed-dim: rgba(108, 155, 240, 0.35);
-
-  --color-surface-background: #1e2126;
-  --color-surface-muted: #262a30;
-  --color-surface-container: #2f343b;
-  --color-surface-container-low: #2a2f36;
-  --color-surface-container-high: #363c44;
-  --color-surface-container-highest: #363c44;
-
-  --color-error-soft: rgba(220, 130, 145, 0.2);
-  --color-error-ink: #f2b8c2;
-  --color-error-container: rgba(220, 130, 145, 0.2);
-  --color-on-error-container: #f2b8c2;
-
   --gradient-page: linear-gradient(165deg, #14171c 0%, #1b1d22 48%, #12161b 100%);
   --shadow-rgb: 0 4 12;
+
+  --primary-fixed: rgba(108, 155, 240, 0.35);
+  --primary-fixed-dim: rgba(108, 155, 240, 0.35);
+
+  --surface-background: #1e2126;
+  --surface-muted: #262a30;
+  --surface-container: #2f343b;
+  --surface-container-low: #2a2f36;
+  --surface-container-high: #363c44;
+  --surface-container-highest: #363c44;
+
+  --error-soft: rgba(220, 130, 145, 0.2);
+  --error-ink: #f2b8c2;
+  --error-container: rgba(220, 130, 145, 0.2);
+  --on-error-container: #f2b8c2;
 }
 
 body {
@@ -201,19 +227,19 @@ body {
   width: 8px;
 }
 .composer-scrollbar::-webkit-scrollbar-track {
-  background: var(--color-border-subtle);
+  background: var(--line);
   border-radius: 20px;
   margin-block: 4px;
 }
 .composer-scrollbar::-webkit-scrollbar-thumb {
-  background-color: var(--color-outline-variant);
+  background-color: var(--stroke);
   border-radius: 20px;
-  border: 2px solid var(--color-border-subtle);
+  border: 2px solid var(--line);
   background-clip: padding-box;
 }
 .composer-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: var(--color-outline-variant) var(--color-surface-muted);;
+  scrollbar-color: var(--stroke) var(--surface-muted);;
 }
 
 /* Two overlapped <input type="range"> forming one dual-thumb slider
@@ -233,8 +259,8 @@ body {
   height: 18px;
   margin-top: -1px;
   border-radius: 50%;
-  background: var(--color-primary);
-  border: 2px solid var(--color-surface-background);
+  background: var(--acc);
+  border: 2px solid var(--surface-background);
   box-shadow: 0 2px 6px -2px rgb(var(--shadow-rgb) / 0.6);
   cursor: pointer;
 }
@@ -246,8 +272,8 @@ body {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: var(--color-primary);
-  border: 2px solid var(--color-surface-background);
+  background: var(--acc);
+  border: 2px solid var(--surface-background);
   box-shadow: 0 2px 6px -2px rgb(var(--shadow-rgb) / 0.6);
   cursor: pointer;
 }
@@ -267,31 +293,31 @@ body {
    ============================================================ */
 
 @utility glass-panel {
-  background: var(--color-glass-1);
+  background: var(--g1);
   backdrop-filter: blur(30px) saturate(1.7);
   -webkit-backdrop-filter: blur(30px) saturate(1.7);
-  border: 1px solid var(--color-edge);
+  border: 1px solid var(--edge);
   box-shadow:
     0 24px 56px -28px rgb(var(--shadow-rgb) / 0.34),
-    inset 0 1px 0 var(--color-gloss);
+    inset 0 1px 0 var(--gloss);
 }
 
 @utility glass-card {
-  background: var(--color-glass-2);
+  background: var(--g2);
   backdrop-filter: blur(20px) saturate(1.6);
   -webkit-backdrop-filter: blur(20px) saturate(1.6);
-  border: 1px solid var(--color-edge);
+  border: 1px solid var(--edge);
   border-radius: 22px;
   box-shadow:
     0 16px 36px -20px rgb(var(--shadow-rgb) / 0.28),
-    inset 0 1px 0 var(--color-gloss);
+    inset 0 1px 0 var(--gloss);
 }
 
 @utility glass-chip {
-  background: var(--color-glass-3);
+  background: var(--g3);
   backdrop-filter: blur(14px) saturate(1.5);
   -webkit-backdrop-filter: blur(14px) saturate(1.5);
-  border: 1px solid var(--color-edge);
+  border: 1px solid var(--edge);
   border-radius: 999px;
 }
 
@@ -337,7 +363,7 @@ body {
   position: absolute;
   inset: -6px;
   border-radius: 50%;
-  border: 2px solid var(--color-primary);
+  border: 2px solid var(--acc);
   animation: map-marker-pulse-ring 1.6s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
   pointer-events: none;
 }
@@ -367,7 +393,7 @@ body {
   .glass-chip {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    background: var(--color-surface-background);
+    background: var(--surface-background);
   }
 }
 
@@ -400,7 +426,11 @@ body {
   --hc-bg: var(--g3);
   --hc-border: var(--btn);
   --hc-shadow: 0 26px 54px -26px rgb(var(--shadow-rgb) / 0.7);
-  --hc-transform: translateY(-3px) scale(1.008);
+  /* Design also has `scale(1.008)` here — dropped: in the narrow card list
+     (no overflow-x guard between the list/map columns) that 0.8% grow was
+     enough to spill the selected card's edge past its own column, and border
+     color + shadow already carry the "selected" read on their own. */
+  --hc-transform: translateY(-3px);
 }
 .hotel-card[data-focused='true'] {
   --hc-border: var(--acc);
@@ -456,42 +486,44 @@ body {
 /* ============================================================
    Calendar override — @daypicker/react (react-day-picker v10) ships with
    circular 44px cells, blue selected/range defaults, and a "blue" accent that
-   never matched this design. Scoped under .intake-calendar (only
-   IntakeDateRange uses it) so it doesn't leak to any other DayPicker
-   instance. Values ported from DatePicker.dc.html:16-25 and
+   never matched this design. Scoped under .day-calendar so it doesn't leak
+   to any other DayPicker instance — shared by IntakeDateRange (range mode,
+   uses the .rdp-range_* rules below too) and ProfilePasswordModal's
+   DateOfBirthField (single mode, never matches those range rules — harmless).
+   Values ported from DatePicker.dc.html:16-25 and
    V-OTA Planner.dc.html:2237-2243.
    ============================================================ */
 
 /* Custom nav row above (prev/next month + year buttons) replaces this —
    `hideNavigation` only removes the library's arrow buttons, not this
    caption, so it renders unstyled and duplicates the month/year label. */
-.intake-calendar .rdp-month_caption {
+.day-calendar .rdp-month_caption {
   display: none;
 }
 
-.intake-calendar .rdp-months,
-.intake-calendar .rdp-month {
+.day-calendar .rdp-months,
+.day-calendar .rdp-month {
   width: 100%;
   max-width: none;
 }
 
-.intake-calendar .rdp-month_grid {
+.day-calendar .rdp-month_grid {
   width: 100%;
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: 3px;
 }
 
-.intake-calendar .rdp-weekday {
+.day-calendar .rdp-weekday {
   font-size: 10px;
   font-weight: 400;
   text-transform: none;
   opacity: 1;
-  color: var(--color-on-surface-faint);
+  color: var(--t4);
   padding: 0;
 }
 
-.intake-calendar .rdp-day {
+.day-calendar .rdp-day {
   width: auto;
   height: 31px;
   padding: 0;
@@ -502,14 +534,14 @@ body {
    so this consistently outranks the library's own `.rdp-selected .rdp-day_button`
    border rule regardless of CSS import order — both are otherwise tied at
    two class selectors each. */
-.intake-calendar .rdp-day .rdp-day_button {
+.day-calendar .rdp-day .rdp-day_button {
   width: 100%;
   height: 31px;
   border: none;
   border-radius: 11px;
   font-size: 12.5px;
   font-weight: 400;
-  color: var(--color-on-surface);
+  color: var(--t1);
   background: transparent;
   transition:
     background 0.22s ease,
@@ -517,62 +549,62 @@ body {
     border-radius 0.22s ease;
 }
 
-.intake-calendar .rdp-day_button:hover:not(:disabled) {
+.day-calendar .rdp-day_button:hover:not(:disabled) {
   background: rgba(58, 115, 222, 0.12);
 }
 
-.intake-calendar .rdp-today:not(.rdp-outside) .rdp-day_button {
-  color: var(--color-primary);
+.day-calendar .rdp-today:not(.rdp-outside) .rdp-day_button {
+  color: var(--acc);
 }
 
-.intake-calendar .rdp-outside .rdp-day_button {
+.day-calendar .rdp-outside .rdp-day_button {
   opacity: 0.4;
 }
 
 /* The library already dims the day CELL (.rdp-disabled) to 0.5 opacity;
    neutralize that so this button-level 0.3 doesn't compound to ~0.15. */
-.intake-calendar .rdp-disabled {
+.day-calendar .rdp-disabled {
   opacity: 1;
 }
 
-.intake-calendar .rdp-disabled .rdp-day_button {
+.day-calendar .rdp-disabled .rdp-day_button {
   opacity: 0.3;
 }
 
-.intake-calendar .rdp-range_start,
-.intake-calendar .rdp-range_end {
+.day-calendar .rdp-range_start,
+.day-calendar .rdp-range_end {
   background: transparent;
 }
 
-.intake-calendar .rdp-range_middle {
+.day-calendar .rdp-range_middle {
   background: rgba(58, 115, 222, 0.13);
   border-radius: 5px;
 }
 
-.intake-calendar .rdp-range_middle .rdp-day_button {
+.day-calendar .rdp-range_middle .rdp-day_button {
   background: transparent;
-  color: var(--color-on-surface);
+  color: var(--t1);
   font-weight: 400;
   border-radius: 5px;
 }
 
-.intake-calendar .rdp-range_start .rdp-day_button,
-.intake-calendar .rdp-range_end .rdp-day_button {
-  background: var(--color-button);
-  color: var(--color-on-button);
+.day-calendar .rdp-range_start .rdp-day_button,
+.day-calendar .rdp-range_end .rdp-day_button {
+  background: var(--btn);
+  color: var(--btn-fg);
   font-weight: 600;
   border: none;
 }
 
-.intake-calendar .rdp-range_start .rdp-day_button {
+.day-calendar .rdp-range_start .rdp-day_button {
   border-radius: 11px 5px 5px 11px;
 }
 
-.intake-calendar .rdp-range_end .rdp-day_button {
+.day-calendar .rdp-range_end .rdp-day_button {
   border-radius: 5px 11px 11px 5px;
 }
 
-.intake-calendar .rdp-range_start.rdp-range_end .rdp-day_button {
+.day-calendar .rdp-range_start.rdp-range_end .rdp-day_button {
   border-radius: 11px;
 }
 
@@ -604,7 +636,7 @@ body {
   background: linear-gradient(
     to right,
     var(--color-fill2) 0 var(--range-low),
-    #2C5FC9 var(--range-low) var(--range-high),
+    var(--acc) var(--range-low) var(--range-high),
     var(--color-fill2) var(--range-high) 100%
   ) center / 100% 4px no-repeat;
 }
@@ -622,8 +654,8 @@ body {
 
 .hotel-price-range input::-webkit-slider-thumb {
   appearance: none;
-  background: #2C5FC9;
-  border: 2px solid #F8FBFF;
+  background: var(--acc);
+  border: 2px solid var(--surface-background);
   border-radius: 999px;
   cursor: grab;
   height: 14px;
@@ -632,8 +664,8 @@ body {
 }
 
 .hotel-price-range input::-moz-range-thumb {
-  background: #2C5FC9;
-  border: 2px solid #F8FBFF;
+  background: var(--acc);
+  border: 2px solid var(--surface-background);
   border-radius: 999px;
   cursor: grab;
   height: 10px;

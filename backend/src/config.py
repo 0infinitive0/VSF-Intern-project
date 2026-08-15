@@ -67,6 +67,15 @@ class Settings(BaseSettings):
     ollama_url: str = "http://localhost:11434"
     supabase_url: str = ""
     supabase_service_key: str = ""
+    # OPTIONAL legacy fallback for JWT verification (src/auth/jwt_verifier.py).
+    # Leave blank unless your Supabase project uses the old shared HS256 JWT
+    # secret — verified 2026-08-14 that THIS project does not: it publishes a
+    # real ES256 key at {SUPABASE_URL}/auth/v1/.well-known/jwks.json, so
+    # jwt_verifier.py verifies via that JWKS endpoint by default (no secret
+    # needed). If set, this HS256 secret is distinct from supabase_service_key
+    # either way: it only ever verifies tokens locally, never sent to
+    # Supabase, never used to construct a Postgres client.
+    supabase_jwt_secret: str = ""
 
     # Session registry (Phase 3)
     session_ttl_seconds: int = Field(default=7200, ge=60, description="TTL per session in seconds (default 2h)")
@@ -97,6 +106,16 @@ class Settings(BaseSettings):
     # legacy `process_chat_turn` cascade it used to select between is gone,
     # so a setting offering "legacy" could only ever have lied. Reintroduce
     # one when there is a second plane to actually switch to.
+
+    # Auth (plan 260814-supabase-auth-and-per-user-history)
+    auth_required: bool = Field(
+        default=False,
+        description="If True, session-scoped endpoints reject requests with no/invalid "
+        "Supabase JWT. Kept False by default (mirrors session_persistence_enabled's "
+        "rollout pattern) so the auth dependency can ship and be tested before traffic "
+        "is actually rejected — flip only once the frontend is confirmed sending the "
+        "Authorization header everywhere.",
+    )
 
     # Mapbox
     mapbox_access_token: str = ""

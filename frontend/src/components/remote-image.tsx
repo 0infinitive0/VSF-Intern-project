@@ -1,35 +1,38 @@
 import { useEffect, useState } from 'react'
-import type { CSSProperties } from 'react'
 
 /**
  * RemoteImage — the shared image box with an honest fallback chain (Phase 8;
  * Phase 9 reuses it for place photos). Hotel/room image URLs are external and
  * can 404 or be null, so every slot renders exactly one of three states:
  *
- *   loading      → shimmer block (the project's shimmer-block utility)
+ *   loading      → a plain, static bg-fill box — same neutral tone as the
+ *                  error state below, deliberately with NO animation. Used
+ *                  to be the shared shimmer-block utility (a moving-gradient
+ *                  sweep), dropped on request alongside `vSheen` (below):
+ *                  both read as the same "vệt sáng chạy" (running light
+ *                  streak) on a photo once an image is slow to load, even
+ *                  though they're two different mechanisms. shimmer-block
+ *                  itself is untouched — skeleton-card.tsx still uses it for
+ *                  whole-card generating-stage placeholders, a different,
+ *                  design-matched pattern this doesn't affect.
  *   error / null → neutral Material icon centred in the same box — the
  *                  placeholder pattern hotel-option-card.tsx had pre-Phase-8,
  *                  promoted to shared so no screen hand-rolls its own fallback
  *   success      → the image, object-cover, with a descriptive alt
  *
- * `sheen` is opt-in: the design runs an infinite vSheen sweep over its photo
- * boxes (HotelCard 6s/1.2s/40%, RoomCard 6.5s/1.6s/40%, hero 7s/1.4s/32%), so
- * callers pass the animation shorthand instead of duplicating the CSS formula.
+ * The design also runs an infinite `vSheen` light-sweep over its LOADED photo
+ * boxes; dropped here on request across every caller (no `sheen` prop anymore).
  */
 export default function RemoteImage({
   src,
   alt,
   className = '',
   icon = 'hotel',
-  sheen,
-  sheenWidth = '40%',
 }: {
   src?: string | null
   alt: string
   className?: string
   icon?: string
-  sheen?: string
-  sheenWidth?: string
 }) {
   const [status, setStatus] = useState<'loading' | 'ok' | 'error'>(src ? 'loading' : 'error')
 
@@ -51,19 +54,9 @@ export default function RemoteImage({
     )
   }
 
-  const sheenStyle: CSSProperties = {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: sheenWidth,
-    background: 'linear-gradient(90deg, transparent, var(--sheen), transparent)',
-    animation: sheen,
-    pointerEvents: 'none',
-  }
-
   return (
     <div className={`relative overflow-hidden ${className}`}>
-      {status === 'loading' && <div className="shimmer-block absolute inset-0" aria-hidden="true" />}
+      {status === 'loading' && <div className="bg-fill absolute inset-0" aria-hidden="true" />}
       <img
         src={src ?? undefined}
         alt={alt}
@@ -72,7 +65,6 @@ export default function RemoteImage({
         onLoad={() => setStatus('ok')}
         onError={() => setStatus('error')}
       />
-      {sheen && <div style={sheenStyle} aria-hidden="true" />}
     </div>
   )
 }

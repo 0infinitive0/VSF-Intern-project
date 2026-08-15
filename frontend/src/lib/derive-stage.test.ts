@@ -42,6 +42,30 @@ describe('deriveStageView', () => {
     expect(deriveStageView({ ...BASE, pending: true })).toBe('generating')
   })
 
+  it('stays on intake while pending if the required intake fields are not all answered', () => {
+    // Answering one more intake question must not swap the checklist the user
+    // is filling in for a full-panel progress view.
+    expect(deriveStageView({ ...BASE, pending: true }, false)).toBe('intake')
+  })
+
+  it('is generating while pending once the required intake fields are answered', () => {
+    expect(deriveStageView({ ...BASE, pending: true }, true)).toBe('generating')
+  })
+
+  it('is generating while pending as soon as the backend reports heavy work, even with an unfilled form', () => {
+    // The free-text path: everything typed in one message, so the local form
+    // is empty — the real `phases` are what say the search actually started.
+    expect(
+      deriveStageView({ ...BASE, pending: true, phases: [{ key: 'hotel_search', at: 0 }] }, false),
+    ).toBe('generating')
+  })
+
+  it('ignores phases that are not the heavy work', () => {
+    expect(
+      deriveStageView({ ...BASE, pending: true, phases: [{ key: 'intake_check', at: 0 }] }, false),
+    ).toBe('intake')
+  })
+
   it('is not generating once hotel options exist, even while pending (a follow-up turn)', () => {
     expect(deriveStageView({ ...BASE, pending: true, hotelOptions: SOME_HOTEL_OPTIONS })).toBe('hotels')
   })

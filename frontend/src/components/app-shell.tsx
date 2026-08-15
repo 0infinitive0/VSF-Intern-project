@@ -77,6 +77,7 @@ export default function AppShell({
   onPickSession,
   onDeleteSession,
   turnPending,
+  onOpenAuthPanel,
 }: {
   state: ChatState
   onSend: (text: string) => void
@@ -102,6 +103,7 @@ export default function AppShell({
   onPickSession: (sessionId: string) => void
   onDeleteSession: (sessionId: string) => void
   turnPending: boolean
+  onOpenAuthPanel: () => void
 }) {
   const { theme, toggleTheme } = useTheme()
   const focusMode = useFocusMode()
@@ -133,6 +135,16 @@ export default function AppShell({
   // nothing. At `lg`+ the rail is a real flex sibling and already pushes content,
   // so no manual gutter is needed.
   const sidebarGutter = isLgUp ? 0 : sidebarCollapsed ? SIDEBAR_COLLAPSED_PX : 0
+
+  // Step 2 (hotel selection) is a 3-panel split (list | map | detail) that
+  // wants all the horizontal room it can get — auto-collapse the rail once
+  // on ARRIVING at that stage. Only fires when `stage` actually changes to
+  // 'hotels' (the effect's dependency), not on every render while it stays
+  // 'hotels', so the user can freely re-expand the rail afterwards without
+  // this fighting them back.
+  useEffect(() => {
+    if (stage === 'hotels') setSidebarCollapsed(true)
+  }, [stage])
 
   return (
     <div className="h-screen overflow-hidden flex text-on-surface font-sans">
@@ -188,6 +200,7 @@ export default function AppShell({
         onPickSession={onPickSession}
         onDeleteSession={onDeleteSession}
         turnPending={turnPending}
+        onOpenAuthPanel={onOpenAuthPanel}
       />
 
       <div
@@ -233,7 +246,21 @@ export default function AppShell({
 
         <div
           className="flex-1 min-h-[70vh] md:min-h-0 md:h-full flex overflow-hidden"
-          style={{ paddingLeft: isDesktop ? chatGutter : 0 }}
+          style={{
+            paddingLeft: isDesktop ? chatGutter : 0,
+            // Was un-transitioned on purpose (see the file doc comment: "a
+            // single one-time reflow per toggle, not animated, not a
+            // per-frame cost") — but that made every stage panel (header,
+            // list, map, detail) snap sideways instantly the moment focus
+            // opens/closes, while the chat panel next to it is still
+            // sliding away over .62s. Same duration/easing as chat's own
+            // transform below, so the stage's left edge recedes in step
+            // with chat leaving instead of jumping ahead of it. Trade-off
+            // accepted: this reflows the stage subtree every frame for
+            // .62s now, not once — revisit if that turns out janky on
+            // lower-end devices.
+            transition: isDesktop ? 'padding-left .62s var(--ease-glide)' : undefined,
+          }}
         >
           <StageRouter
             stage={stage}

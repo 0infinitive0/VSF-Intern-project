@@ -626,3 +626,56 @@ timeline. `404` if `session_id` doesn't exist or was never persisted.
   "intake": { "...same shape as PlannerChatResponse.intake..." }
 }
 ```
+
+## Authentication (plan `260814-supabase-auth-and-per-user-history`)
+
+Every session-scoped endpoint below now accepts (and, once `AUTH_REQUIRED=true`, requires)
+`Authorization: Bearer <supabase-access-token>`. Sessionless catalog lookups
+(`GET /hotels/{id}`, `GET /attractions/{id}`, `GET /search_attractions`, `GET /search_hotels`,
+`GET /status`) are unaffected — they carry no per-user data.
+
+**Identity model.** Every visitor — signed in or not — is expected to hold a real Supabase
+JWT: guests get one transparently via Supabase Anonymous Auth (`supabase.auth.signInAnonymously()`
+on the frontend), so `current_user` is a genuine identity even before someone registers.
+Registering/logging in from an anonymous session upgrades that same `auth.users` row in place
+(`updateUser`/`linkIdentity`, not a new `signUp`), so a guest's chat history is not lost when
+they create an account — it was never keyed by anything else.
+
+**Rollout flag — `AUTH_REQUIRED` (backend `.env`, default `false`).** Governs only what
+happens when a request arrives with **no or an invalid token**:
+
+- `AUTH_REQUIRED=false` (default): such a request is treated as having no caller identity
+  (`current_user = None`), not rejected. This preserves every pre-auth client/test unchanged.
+- `AUTH_REQUIRED=true`: such a request gets `401 {"detail": "Chưa đăng nhập hoặc phiên đăng
+  nhập không hợp lệ."}`.
+
+A **valid** token is always honored and always identifies the caller, regardless of this flag —
+it only ever relaxes what happens to callers with no token, never whether a good one is trusted.
+
+**Ownership semantics — 404, never 403.** A session with an owner (`sessions.user_id`) is
+only reachable by that same caller. A mismatch — whether the caller is a different
+authenticated user or has no identity at all — returns the same `404 {"detail": "Phiên chat
+không tồn tại."}` used for a genuinely unknown `session_id`, never `403`: a distinct status
+code would itself leak "this session_id is real, it's just not yours" (session-enumeration
+side channel). Sessions with **no** owner (rows that predate this plan, or created outside
+the HTTP API — e.g. the CLI) remain accessible to any caller, matching exactly what happened
+before ownership existed; this is a deliberate, permissive gap for legacy/out-of-band
+sessions, not something to `403` shut.
+
+Applies to: `POST /chat/session` (stamps the caller as owner), `GET /chat/sessions` (now
+**scoped to the caller** — previously returned every persisted session in the database with
+no filtering at all; treat any client that assumed a global list as relying on a fixed bug),
+`GET /chat/{session_id}/restore`, `GET /chat/{session_id}/plan` (+ `/session/{session_id}/state`
+alias), `POST /planner_chat` (+ `/chat` alias), `POST /planner_chat/stream`, `POST
+/hotels/select` (+ `/chat/select_hotel` alias), `POST /hotels/change`, `POST /hotels/search`,
+`POST /itineraries/generate`.
+
+**`DELETE /chat/{session_id}`** keeps its existing "`204` whether the session exists or not"
+contract unchanged — a session owned by someone else is a **silent no-op** (still `204`,
+nothing actually deleted) rather than a new status code, for the same anti-enumeration reason
+as above.
+
+**Not part of this contract:** token issuance/refresh/OAuth itself — that's entirely a
+frontend↔Supabase Auth concern (`frontend/src/auth/`), this backend only ever verifies a
+token it's handed, via `backend/src/auth/jwt_verifier.py` (local HS256 verification against
+`SUPABASE_JWT_SECRET`, no per-request call to the Supabase Auth API).

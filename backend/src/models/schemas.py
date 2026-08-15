@@ -372,6 +372,16 @@ class PreferencePayload(BaseModel):
     label: str
 
 
+class AmenityCatalogPayload(BaseModel):
+    """Approved hotel amenity exposed to the browser for filters and pills."""
+
+    id: str
+    label_vi: str
+    label_en: str
+    category: str
+    icon_key: str | None = None
+
+
 class PlannerChatResponse(BaseModel):
     session_id: str
     reply: str

@@ -84,7 +84,6 @@ function HotelOptionCard({
           src={hotel.image_url}
           alt={t('hotelImgAlt', { name: hotel.name })}
           className="w-[112px] h-[112px] rounded-[20px] flex-none"
-          sheen="vSheen 6s 1.2s ease-in-out infinite"
         />
         <div className="flex-1 min-w-0">
           <div className="flex items-start gap-2.5">

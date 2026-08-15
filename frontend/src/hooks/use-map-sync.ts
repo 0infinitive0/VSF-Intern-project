@@ -33,7 +33,7 @@ export function useMapSync() {
   // strings; itemSyncId's synthetic "day-N-item-I" keys, from
   // lib/map-sync-id.ts, are already safe).
   const focusOn = useCallback((id: string) => {
-    document.querySelector(`[data-card="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest' })
+    document.querySelector(`[data-card="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [])
 
   // Hover that originated on a MARKER (not a card/timeline row, which is

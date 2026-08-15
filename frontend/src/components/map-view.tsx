@@ -3,7 +3,7 @@ import mapboxgl from 'mapbox-gl'
 import { useTranslation } from 'react-i18next'
 import { useMapboxMap } from '../hooks/use-mapbox-map'
 import { boundsOf, parseCoordinates, toLngLat } from '../lib/geo'
-import { dayColor, legColor } from '../lib/map-colors'
+import { LEG_COLORS, dayColor, legColor } from '../lib/map-colors'
 import type { HotelMapRay } from '../lib/map-presentation'
 import { highlightedRouteKeys } from '../lib/map-presentation'
 import type { RouteSegment } from '../lib/route-segments'
@@ -15,19 +15,28 @@ import MapStateOverlay from './map-state-overlay'
 const ROUTE_SOURCE = 'trip-routes'
 const RAY_SOURCE = 'hotel-distance-rays'
 const HALO_SOURCE = 'hotel-selection-halo'
-// Drive is 3 stacked layers at the same coordinates (map_line_animation_effects.md
-// §2.1): a white casing underneath, the per-leg-colored main line, and a
-// white moving bar on top. Walk has no casing (spec §2.2) — a colored line
-// with white dots marching along it. Both moving overlays are gradient
-// layers, see travelGradient below. Add order == z-order (casing at the
-// bottom, the two moving overlays on top so nothing paints over them).
+// Drive is 2 stacked layers at the same coordinates: a white casing
+// underneath, and the per-leg-colored main line with a small train of white
+// bars travelling on top of it (both the casing and the bars are part of
+// DRIVE_CASING_LAYER/DRIVE_LAYER's own paint — see travelGradient). Walk has
+// no casing and no separate colored base line either — the marching dots
+// ARE the whole visual for a walking leg, not an overlay on top of a solid
+// line underneath. Add order == z-order (casing at the bottom, drive's
+// moving bars painted via its own line-gradient on top of that).
 const DRIVE_CASING_LAYER = 'route-drive-casing'
 const DRIVE_LAYER = 'route-drive'
-const WALK_LAYER = 'route-walk'
 const FALLBACK_LAYER = 'route-fallback'
 const DRIVE_FLOW_LAYER = 'route-drive-flow'
-const WALK_FLOW_LAYER = 'route-walk-flow'
-const ROUTE_LAYER_IDS = [DRIVE_CASING_LAYER, DRIVE_LAYER, WALK_LAYER, FALLBACK_LAYER, DRIVE_FLOW_LAYER, WALK_FLOW_LAYER] as const
+// One walk layer PER color in the shared route palette (LEG_COLORS is the
+// superset — DAY_COLORS is its first 4 entries verbatim, see map-colors.ts),
+// each filtered to just the segments carrying that color — see LAYER_STYLE
+// and addRouteLayers below for why: line-gradient (what draws the walking
+// dots) is a per-LAYER Mapbox paint property, not data-driven per-feature
+// like line-color, so one shared layer can't paint each leg's dots in that
+// leg's own day/leg color. Splitting into one small (6, bounded, fixed)
+// layer per possible color is the workaround.
+const WALK_LAYER_IDS = LEG_COLORS.map((_, i) => `route-walk-${i}`)
+const ROUTE_LAYER_IDS = [DRIVE_CASING_LAYER, DRIVE_LAYER, ...WALK_LAYER_IDS, FALLBACK_LAYER, DRIVE_FLOW_LAYER] as const
 const RAY_LAYER = 'hotel-distance-rays-line'
 const HALO_LAYER = 'hotel-selection-halo-circle'
 
@@ -42,12 +51,13 @@ const ROUTE_FADE_MS = 400
 // because a dasharray fundamentally cannot animate smoothly.
 const FALLBACK_DASH: [number, number] = [0.6, 1.8]
 
-// Per-layer rest width/opacity/color, one row per role in
-// map_line_animation_effects.md §2: casing (white glow beneath drive),
-// main (drive/walk/fallback's own colored line), flow (white pulse on top
-// of drive only). opacityFn/widthFn wire each layer to the right hover/dim
-// behavior (see mainOpacity/mainWidth/accentOpacity below) — casing/flow
-// never brighten on hover per the spec's dimming snippet, only main lines do.
+// Per-layer rest width/opacity/color, one row per role: casing (white glow
+// beneath drive), main (drive/walk/fallback's own colored line), flow
+// (white marching-dash overlay on top of drive/walk). opacityFn/widthFn wire
+// each layer to the right hover/dim behavior (see mainOpacity/mainWidth/
+// accentOpacity below) — casing/flow never brighten on hover, only main
+// lines do (matches the design's dimming formula, see the hover/dim effect
+// below for the exact numbers).
 type PaintExpr = mapboxgl.DataDrivenPropertyValueSpecification<number>
 const LAYER_STYLE: Record<
   string,
@@ -58,63 +68,95 @@ const LAYER_STYLE: Record<
     opacityFn: (rest: number) => PaintExpr
     widthFn?: (rest: number) => PaintExpr
     dash?: [number, number]
-    /** Colored by an animated line-gradient instead of a flat line-color (see travelGradient). */
-    pulse?: PulseKind
+    /** Colored by an animated line-gradient instead of a flat line-color (see travelGradient) — `color` here is the mark color, NOT the same as the row's own `color` field, which line-gradient replaces outright and so goes unused. */
+    pulse?: { count: number; halfWidth: number; color: string; capFraction?: number }
   }
 > = {
   [DRIVE_CASING_LAYER]: { width: 7, opacity: 0.75, color: '#fff', opacityFn: accentOpacityExpr, widthFn: mainWidthExpr },
   [DRIVE_LAYER]: { width: 4, opacity: 0.92, color: ['get', 'color'], opacityFn: mainOpacityExpr, widthFn: mainWidthExpr },
-  [WALK_LAYER]: { width: 4.5, opacity: 0.92, color: ['get', 'color'], opacityFn: mainOpacityExpr, widthFn: mainWidthExpr },
   [FALLBACK_LAYER]: { width: 3, opacity: 0.45, color: ['get', 'color'], opacityFn: mainOpacityExpr, widthFn: mainWidthExpr, dash: FALLBACK_DASH },
-  // The two moving overlays, both at the spec's full 0.95 — they're meant to
-  // read as a bright white highlight travelling along the leg, so anything
-  // dimmer just disappears against the colored line underneath.
-  [DRIVE_FLOW_LAYER]: { width: 3, opacity: 0.95, color: '#fff', opacityFn: accentOpacityExpr, pulse: 'bar' },
-  [WALK_FLOW_LAYER]: { width: 2.6, opacity: 0.95, color: '#fff', opacityFn: accentOpacityExpr, pulse: 'dots' },
+  // Drive's moving overlay, at the spec's full 0.95 opacity: just a couple
+  // of long white BARS travelling the leg ("thanh ngang trắng di chuyển
+  // trên đường line" — a small, clearly countable number of separate
+  // rectangular bars, not a dense pattern). Real gaps between bars, so the
+  // colored line underneath — and its hover brighten/widen — stays visible
+  // in between.
+  [DRIVE_FLOW_LAYER]: { width: 3, opacity: 0.95, color: '#fff', opacityFn: accentOpacityExpr, pulse: { count: 2, halfWidth: 0.028, color: '#ffffff' } },
+}
+
+// Walk: the marching-dot gradient itself IS the whole visual — no solid/
+// colored base line underneath it, no separate "flow" layer on top of one.
+// mainOpacityExpr/mainWidthExpr still apply on top of the gradient
+// (line-opacity/line-width aren't replaced by line-gradient, only
+// line-color is), so hover still brightens+widens the dots and dimming
+// still fades them, exactly like a normal main line would. One entry per
+// WALK_LAYER_IDS color (see its own comment above) — each identical except
+// for which color its dots render in.
+for (const [i, id] of WALK_LAYER_IDS.entries()) {
+  LAYER_STYLE[id] = {
+    width: 4,
+    opacity: 0.85,
+    color: '#fff', // inert — line-gradient (pulse, below) replaces line-color
+    opacityFn: mainOpacityExpr,
+    widthFn: mainWidthExpr,
+    // Longer than the first pass (halfWidth 0.009 -> 0.016 — "dài ra 1
+    // chút") with a large capFraction (0.6, vs drive's crisp 0.18 default —
+    // "bo tròn các góc") so each mark is mostly rounded cap with just a
+    // short flat shaft — a pill, not a rectangle. Fewer of them (14 -> 9) so
+    // the longer marks don't run into each other, which reads calmer/
+    // smoother than a dense train of short marks.
+    pulse: { count: 9, halfWidth: 0.016, color: LEG_COLORS[i], capFraction: 0.6 },
+  }
 }
 
 /**
- * Direction-of-travel motion (map_line_animation_effects.md §2): a bright
- * white bar sweeping each drive leg, and white dots marching along each walk
- * leg.
+ * Direction-of-travel motion: a train of bright white dashes marching along
+ * each drive/walk leg — matches the original design's CSS
+ * `stroke-dasharray` + `stroke-dashoffset` marching-ants effect (many short
+ * segments visible along the WHOLE leg at once, continuously scrolling),
+ * not a single sweeping highlight.
  *
- * Both are animated `line-gradient`s, NOT scrolling `line-dasharray`s, and
- * that choice is the whole reason they can run at display rate. A dasharray
+ * This is an animated `line-gradient`, NOT a scrolling `line-dasharray`, and
+ * that choice is the whole reason it can run at display rate. A dasharray
  * pattern is baked into a texture atlas by the WORKER during tile parse
  * (LineBucket.populate -> addConstantDashes); the draw call only ever looks
  * the baked pattern up (LineAtlas.getDash returns this.positions[key], it
  * never adds one). So every new dasharray value has to wait on a tile
  * re-parse round-trip before it can show — which caps the effective frame
  * rate no matter how often setPaintProperty is called, and is exactly why
- * the earlier scrolling-dash version looked like ~30fps. A line-gradient is
+ * an earlier scrolling-dash version looked like ~30fps. A line-gradient is
  * instead rasterized into a small ramp texture on the MAIN thread inside the
  * render pass (keyed by gradientVersion), so rewriting it every frame is
  * cheap and lands in that same frame.
  *
- * That's also why walking lost its dashed line-dasharray: the dots ARE the
- * gradient now, which is the only way they can move smoothly.
- *
  * Trade-off worth knowing: `line-progress` is normalized per FEATURE, so a
- * leg's motion is timed and sized relative to that leg, not in absolute
- * pixels — every leg completes a cycle together regardless of length. It
- * reads as "this is the direction you travel" rather than as one continuous
- * stream flowing down the whole route like the Leaflet original.
+ * leg's dash count is fixed (not scaled to the leg's real-world length) —
+ * `line-gradient` is a per-LAYER paint property in Mapbox GL, not
+ * data-driven per feature like `line-color`/`line-width`, so every leg
+ * sharing a layer necessarily shares one gradient shape. This is an engine
+ * constraint, not a stylistic choice.
  */
-type PulseKind = 'bar' | 'dots'
+/** Time for the drive dash train to advance by exactly one dash spacing (so the loop is seamless). */
+const DRIVE_FLOW_CYCLE_MS = 4_800
+/** Time for the walk dash train to advance by exactly one dash spacing. */
+const WALK_FLOW_CYCLE_MS = 1_600
 
-/** One sweep of the drive bar from before a leg's start to past its end. */
-const BAR_CYCLE_MS = 3_400
-/** Half-extent of the bar's soft edge, and of its solid core, as a fraction of leg length. */
-const BAR_HALF_WIDTH = 0.075
-const BAR_CORE_HALF_WIDTH = 0.028
+/** Hex `#rrggbb` -> a function giving that color at any alpha, for a pure-alpha gradient fade (see travelGradient). */
+function alphaColorOf(hex: string): (alpha: number) => string {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return (alpha: number) => `rgba(${r},${g},${b},${alpha})`
+}
 
-/** Time for the walking dots to advance by exactly one dot spacing (so the loop is seamless). */
-const DOTS_CYCLE_MS = 1_600
-const DOTS_PER_LEG = 13
-const DOT_HALF_WIDTH = 0.013
+/** Classic 3t²-2t³ ease: 0 at t=0, 1 at t=1, S-curved (slow-fast-slow) in between — not a straight ramp. */
+function smoothstep(t: number): number {
+  const x = Math.min(1, Math.max(0, t))
+  return x * x * (3 - 2 * x)
+}
 
-const PULSE_CLEAR = 'rgba(255,255,255,0)'
-const PULSE_CORE = 'rgba(255,255,255,1)'
+/** Fractions sampled across one rounded cap, fed through smoothstep — a handful of points on the S-curve approximate a round end with mapbox's piecewise-LINEAR interpolate, the same way a many-sided polygon approximates a circle. */
+const CAP_STEPS = [0, 0.25, 0.5, 0.75, 1]
 
 /**
  * Builds a line-progress gradient from a caller-supplied set of stops.
@@ -140,37 +182,44 @@ function buildGradient(addStops: (push: (at: number, color: string) => void) => 
 }
 
 /**
- * `phase` runs 0->1 over one cycle for both kinds.
+ * `phase` runs 0->1 over one cycle: an evenly spaced train of `count` marks
+ * shifted by one whole spacing per cycle — at phase 1 each mark has taken
+ * its neighbour's place, so the loop is seamless. The -1/+1 iterations are
+ * the marks half in and half out at the two ends.
  *
- * bar:  one solid-cored bar travelling the leg, entering and leaving past
- *       the ends so it never pops into existence mid-line.
- * dots: an evenly spaced train of dots shifted by one whole spacing per
- *       cycle — at phase 1 each dot has taken its neighbour's place, so the
- *       loop is seamless. The -1/+1 iterations are the dots half in and half
- *       out at the two ends.
+ * Each mark is a rounded PILL: a flat full-opacity "shaft" in the middle
+ * (when `capFraction` leaves room for one) flanked by two curved caps. A
+ * first attempt fully skipped the flat middle and ramped clear->core->clear
+ * in one straight LINE per side — a straight ramp is a taper, not a curve,
+ * so it read as a pointed lens/diamond, not a rounded pill end. This samples
+ * each cap at CAP_STEPS through `smoothstep` instead of one straight line —
+ * several points on an S-curve, piecewise-linear-interpolated by mapbox
+ * between them, approximate an actual round end the way a many-sided
+ * polygon approximates a circle. `capFraction` is how much of `halfWidth`
+ * each cap eats into: small (drive's default) leaves a long flat shaft with
+ * just a light rounding at the very ends — a crisp BAR; larger (walk) eats
+ * more of the mark, leaving a short shaft between two clearly round ends —
+ * a pill/capsule. Gradient stops still can't draw a true geometric round
+ * line-cap on an internal color transition (only `line-cap` at a whole
+ * feature's start/end does that), but a curved alpha taper reads as
+ * "rounded" the same way a blurred/antialiased dot does.
  */
-function travelGradient(kind: PulseKind, phase: number): mapboxgl.ExpressionSpecification {
-  if (kind === 'bar') {
-    const center = phase * (1 + 2 * BAR_HALF_WIDTH) - BAR_HALF_WIDTH
-    return buildGradient((push) => {
-      push(0, PULSE_CLEAR)
-      push(center - BAR_HALF_WIDTH, PULSE_CLEAR)
-      push(center - BAR_CORE_HALF_WIDTH, PULSE_CORE)
-      push(center + BAR_CORE_HALF_WIDTH, PULSE_CORE)
-      push(center + BAR_HALF_WIDTH, PULSE_CLEAR)
-      push(1, PULSE_CLEAR)
-    })
-  }
+function travelGradient(count: number, halfWidth: number, phase: number, hexColor: string, capFraction = 0.18): mapboxgl.ExpressionSpecification {
+  const colorAt = alphaColorOf(hexColor)
+  const capWidth = halfWidth * capFraction
+  const coreHalf = halfWidth - capWidth
   return buildGradient((push) => {
-    push(0, PULSE_CLEAR)
-    for (let index = -1; index <= DOTS_PER_LEG; index++) {
-      const center = (index + phase) / DOTS_PER_LEG
-      if (center + DOT_HALF_WIDTH < 0 || center - DOT_HALF_WIDTH > 1) continue
-      push(center - DOT_HALF_WIDTH, PULSE_CLEAR)
-      push(center, PULSE_CORE)
-      push(center + DOT_HALF_WIDTH, PULSE_CLEAR)
+    push(0, colorAt(0))
+    for (let index = -1; index <= count; index++) {
+      const center = (index + phase) / count
+      if (center + halfWidth < 0 || center - halfWidth > 1) continue
+      const leftCapStart = center - halfWidth
+      for (const t of CAP_STEPS) push(leftCapStart + t * capWidth, colorAt(smoothstep(t)))
+      if (coreHalf > 0) push(center + coreHalf, colorAt(1)) // flat shaft: hold full opacity across the middle
+      const rightCapStart = center + coreHalf
+      for (const t of CAP_STEPS) push(rightCapStart + t * capWidth, colorAt(smoothstep(1 - t)))
     }
-    push(1, PULSE_CLEAR)
+    push(1, colorAt(0))
   })
 }
 
@@ -196,17 +245,28 @@ export interface MapViewProps {
   onMarkerClick: (marker: MapMarkerSpec) => void
   selectedId?: string | null
   hotelRays?: HotelMapRay[]
+  /** True on the Overview tab (matches the design's `perDay = tab !== 'overview'`
+   * split): color each segment by its DAY (dayColor) so a whole day reads as
+   * one consistent color across the trip, instead of by LEG (legColor) —
+   * which is what a single day's own tab uses, to tell that day's individual
+   * legs apart. Defaults to false (leg-colored) for callers that don't pass it. */
+  colorByDay?: boolean
 }
 
 type FeatureCollection = { type: 'FeatureCollection'; features: Array<Record<string, unknown>> }
 
-function routeData(segments: RouteSegment[]): FeatureCollection {
+function routeData(segments: RouteSegment[], colorByDay: boolean): FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: segments.map((segment) => ({
       type: 'Feature',
       id: segment.segKey,
-      properties: { segKey: segment.segKey, isFallback: segment.isFallback, profile: segment.profile, color: legColor(segment.legIndex) },
+      properties: {
+        segKey: segment.segKey,
+        isFallback: segment.isFallback,
+        profile: segment.profile,
+        color: colorByDay ? dayColor(segment.dayNumber) : legColor(segment.legIndex),
+      },
       geometry: { type: 'LineString', coordinates: segment.points.map(toLngLat) },
     })),
   }
@@ -238,21 +298,29 @@ function accentOpacityExpr(rest: number): PaintExpr {
 function addRouteLayers(map: mapboxgl.Map) {
   // lineMetrics precomputes normalized distance-along-line per vertex,
   // required for line-trim-offset — the entrance draw-in, see startDrawIn.
-  map.addSource(ROUTE_SOURCE, { type: 'geojson', lineMetrics: true, data: { type: 'FeatureCollection', features: [] } })
+  // promoteId (rather than relying on each Feature's top-level `id`) is
+  // Mapbox's own documented pattern for feature-state on a GeoJSON source —
+  // reads the id from the `segKey` property (already set on every feature,
+  // see routeData) instead. Same effective ids either way; switched to this
+  // after top-level `id` alone did not visibly light up hover/dim (still
+  // unconfirmed which mechanism was at fault without a live browser check).
+  map.addSource(ROUTE_SOURCE, { type: 'geojson', lineMetrics: true, promoteId: 'segKey', data: { type: 'FeatureCollection', features: [] } })
   const layout: mapboxgl.LineLayerSpecification['layout'] = { 'line-cap': 'round', 'line-join': 'round' }
   const realRouteFilter = ['==', ['get', 'isFallback'], false]
   const walkFilter = ['all', realRouteFilter, ['==', ['get', 'profile'], 'walking']]
   const driveFilter = ['all', realRouteFilter, ['!=', ['get', 'profile'], 'walking']]
   const fadeIn = { 'line-opacity-transition': { duration: ROUTE_FADE_MS, delay: 0 } }
 
-  for (const [id, filter] of [
+  const layerEntries: Array<[string, unknown]> = [
     [DRIVE_CASING_LAYER, driveFilter],
     [DRIVE_LAYER, driveFilter],
-    [WALK_LAYER, walkFilter],
     [FALLBACK_LAYER, ['==', ['get', 'isFallback'], true]],
     [DRIVE_FLOW_LAYER, driveFilter],
-    [WALK_FLOW_LAYER, walkFilter],
-  ] as const) {
+    // One walk layer per color, each only drawing the segments carrying
+    // that exact color (see WALK_LAYER_IDS's own comment for why).
+    ...WALK_LAYER_IDS.map((id, i): [string, unknown] => [id, ['all', walkFilter, ['==', ['get', 'color'], LEG_COLORS[i]]]]),
+  ]
+  for (const [id, filter] of layerEntries) {
     const style = LAYER_STYLE[id]
     map.addLayer({
       id,
@@ -269,7 +337,7 @@ function addRouteLayers(map: mapboxgl.Map) {
         'line-trim-offset': [0, 1],
         // line-gradient replaces line-color outright, so a moving overlay
         // sets one or the other, never both.
-        ...(style.pulse ? { 'line-gradient': travelGradient(style.pulse, 0) } : { 'line-color': style.color }),
+        ...(style.pulse ? { 'line-gradient': travelGradient(style.pulse.count, style.pulse.halfWidth, 0, style.pulse.color, style.pulse.capFraction) } : { 'line-color': style.color }),
         ...(style.dash ? { 'line-dasharray': style.dash } : {}),
       },
     } as mapboxgl.LineLayerSpecification)
@@ -352,8 +420,8 @@ function createMarkerElement(marker: MapMarkerSpec): { root: HTMLDivElement; con
   content.style.cursor = 'pointer'
   content.style.transition = 'transform .25s cubic-bezier(.34,1.5,.64,1), box-shadow .25s ease, opacity .2s ease'
   content.style.transformOrigin = 'center'
-  content.style.color = '#FCFDFE'
-  content.style.border = '2px solid #fff'
+  content.style.color = 'var(--on-acc)'
+  content.style.border = '2px solid var(--surface-background)'
   content.style.boxShadow = '0 4px 12px -3px rgba(0,0,0,.45)'
   if (marker.kind === 'hotel') {
     content.style.display = 'flex'
@@ -362,9 +430,9 @@ function createMarkerElement(marker: MapMarkerSpec): { root: HTMLDivElement; con
     content.style.whiteSpace = 'nowrap'
     content.style.padding = '5px 10px'
     content.style.borderRadius = '999px'
-    content.style.background = '#3A73DE'
+    content.style.background = 'var(--acc)'
     content.style.font = "500 11.5px/1.2 'Be Vietnam Pro', sans-serif"
-    content.style.setProperty('--base-marker', '#3A73DE')
+    content.style.setProperty('--base-marker', 'var(--acc)')
     if (marker.priceLabel) { const price = document.createElement('b'); price.textContent = marker.priceLabel; price.style.fontWeight = '590'; content.appendChild(price) }
     if (marker.matchLabel) { const match = document.createElement('span'); match.textContent = marker.matchLabel; match.style.opacity = '.75'; content.appendChild(match) }
   } else {
@@ -392,8 +460,11 @@ function applyMarkerState(content: HTMLElement, marker: MapMarkerSpec, hovered: 
   const root = content.parentElement as HTMLElement | null
   if (root) root.style.zIndex = hovered ? '1000' : selected ? '900' : '0'
   content.style.opacity = dimmed ? '.55' : '1'
-  content.style.boxShadow = hovered || selected ? '0 8px 20px -4px rgba(0,0,0,.5), 0 0 0 6px rgba(255,255,255,.55)' : '0 4px 12px -3px rgba(0,0,0,.45)'
-  if (marker.kind === 'hotel') content.style.background = selected ? '#0e1319' : 'var(--base-marker)'
+  content.style.boxShadow = hovered || selected ? '0 8px 20px -4px rgb(var(--shadow-rgb) / .6), 0 0 0 6px var(--g2)' : '0 4px 12px -3px rgb(var(--shadow-rgb) / .45)'
+  if (marker.kind === 'hotel') {
+    content.style.background = selected ? 'var(--btn)' : 'var(--base-marker)'
+    content.style.color = selected ? 'var(--btn-fg)' : 'var(--on-acc)'
+  }
 }
 
 function fitWorkspace(map: mapboxgl.Map, points: { lat: number; lng: number }[]) {
@@ -401,7 +472,7 @@ function fitWorkspace(map: mapboxgl.Map, points: { lat: number; lng: number }[])
   else if (points.length > 1) { const bounds = boundsOf(points)!; map.fitBounds([[bounds.sw.lng, bounds.sw.lat], [bounds.ne.lng, bounds.ne.lat]], { padding: 56, maxZoom: 15, duration: 900 }) }
 }
 
-export default function MapView({ variant, theme, markers, segments, hoveredId, onHoverChange, onMarkerClick, selectedId = null, hotelRays = [] }: MapViewProps) {
+export default function MapView({ variant, theme, markers, segments, hoveredId, onHoverChange, onMarkerClick, selectedId = null, hotelRays = [], colorByDay = false }: MapViewProps) {
   const { t } = useTranslation()
   const [styleKind, setStyleKind] = useState<MapStyleKind>('map')
   const { containerRef, mapRef, status, styleVersion, tokenMissing, retry } = useMapboxMap(theme, styleKind)
@@ -411,6 +482,28 @@ export default function MapView({ variant, theme, markers, segments, hoveredId, 
   const onHoverRef = useRef(onHoverChange); onHoverRef.current = onHoverChange
   const onClickRef = useRef(onMarkerClick); onClickRef.current = onMarkerClick
   const markerKey = useMemo(() => markers.map((marker) => JSON.stringify(marker)).join('|'), [markers])
+
+  // Route line animation rebuilds a line-gradient every frame per flow layer
+  // (see travelGradient's doc comment for why that's not cheap) — the loop
+  // below used to do that for all 7 flow layers (drive + all 6 walk colors)
+  // regardless of whether a given day actually used a color, which on a
+  // typical 1-2-color day meant 4-5 layers being recomputed and pushed to
+  // Mapbox 60x/second for nothing visible on screen. This narrows it to only
+  // the layers a real segment in the CURRENT `segments` will actually paint.
+  const activeFlowLayers = useMemo(() => {
+    const active = new Set<string>()
+    for (const segment of segments) {
+      if (segment.isFallback) continue
+      if (segment.profile === 'walking') {
+        const color = colorByDay ? dayColor(segment.dayNumber) : legColor(segment.legIndex)
+        const index = (LEG_COLORS as readonly string[]).indexOf(color)
+        if (index >= 0) active.add(WALK_LAYER_IDS[index])
+      } else {
+        active.add(DRIVE_FLOW_LAYER)
+      }
+    }
+    return active
+  }, [segments, colorByDay])
 
   useEffect(() => {
     const map = mapRef.current
@@ -441,7 +534,16 @@ export default function MapView({ variant, theme, markers, segments, hoveredId, 
       const marker = new mapboxgl.Marker({ element: root, anchor: spec.kind === 'hotel' ? 'bottom' : 'center', offset }).setLngLat(toLngLat(point)).addTo(map)
       markerRegistry.current.set(spec.syncId, { marker, spec })
     }
-    if (variant === 'hotels' && !hotelCameraSet.current) { map.jumpTo({ center: [108.24, 16.045], zoom: 12 }); hotelCameraSet.current = true }
+    // Frame the real hotel coordinates once on first load (not a hardcoded
+    // Đà Nẵng fallback — that put the camera somewhere with zero hotels for
+    // any other destination). Only "consumes" the one-time flag once there
+    // are actual points to fit, so an empty first render (options still
+    // loading) doesn't lock the camera out of framing the real markers once
+    // they arrive.
+    if (variant === 'hotels' && !hotelCameraSet.current && points.length > 0) {
+      fitWorkspace(map, points)
+      hotelCameraSet.current = true
+    }
     if (variant === 'workspace') fitWorkspace(map, points)
   }, [markerKey, markers, status, variant, mapRef])
 
@@ -465,9 +567,9 @@ export default function MapView({ variant, theme, markers, segments, hoveredId, 
     if (!map || status !== 'ready' || variant !== 'workspace') return
     if (!map.getSource(ROUTE_SOURCE)) addRouteLayers(map)
     const source = map.getSource(ROUTE_SOURCE) as mapboxgl.GeoJSONSource
-    source.setData(routeData(segments) as never)
+    source.setData(routeData(segments, colorByDay) as never)
     return startDrawIn(map)
-  }, [segments, status, styleVersion, variant, mapRef])
+  }, [segments, status, styleVersion, variant, colorByDay, mapRef])
 
   // Double-leg highlight (map_implementation_spec.md §2/§3): picking ONE
   // place lights up BOTH legs touching it — the one arriving at it and the
@@ -490,40 +592,52 @@ export default function MapView({ variant, theme, markers, segments, hoveredId, 
   }, [hoveredId, selectedId, segments, status, styleVersion, variant, mapRef])
 
   // Direction-of-travel motion: ONE requestAnimationFrame loop writing one
-  // paint property per moving overlay, regardless of how many legs/days are
-  // on screen — never one loop per segment. Runs at display rate with no
+  // paint property per moving overlay — filtered to activeFlowLayers (see
+  // its own comment above) so an idle color's layer is never touched, never
+  // one loop per segment either way. Runs at display rate with no
   // quantization at all, because line-gradient updates on the main thread
   // (see travelGradient's doc comment for why the earlier
   // scrolling-dasharray version could not).
   useEffect(() => {
     const map = mapRef.current
     if (!map || status !== 'ready' || variant !== 'workspace' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    // Built once per effect run (segments/style change), not per frame.
+    const allFlowLayers: Array<[string, number]> = [
+      [DRIVE_FLOW_LAYER, DRIVE_FLOW_CYCLE_MS],
+      ...WALK_LAYER_IDS.map((id): [string, number] => [id, WALK_FLOW_CYCLE_MS]),
+    ]
+    const flowLayers = allFlowLayers.filter(([id]) => activeFlowLayers.has(id))
+    if (flowLayers.length === 0) return
     let frame = 0
     let start = 0
     const tick = (time: number) => {
       if (!start) start = time
       const elapsed = time - start
-      for (const [id, kind, cycleMs] of [
-        [DRIVE_FLOW_LAYER, 'bar', BAR_CYCLE_MS],
-        [WALK_FLOW_LAYER, 'dots', DOTS_CYCLE_MS],
-      ] as const) {
-        if (!map.getLayer(id)) continue
-        map.setPaintProperty(id, 'line-gradient', travelGradient(kind, (elapsed % cycleMs) / cycleMs))
+      for (const [id, cycleMs] of flowLayers) {
+        const style = LAYER_STYLE[id]
+        if (!map.getLayer(id) || !style.pulse) continue
+        map.setPaintProperty(id, 'line-gradient', travelGradient(style.pulse.count, style.pulse.halfWidth, (elapsed % cycleMs) / cycleMs, style.pulse.color, style.pulse.capFraction))
       }
       frame = requestAnimationFrame(tick)
     }
     frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
-  }, [status, styleVersion, variant, mapRef])
+  }, [status, styleVersion, variant, mapRef, activeFlowLayers])
 
   useEffect(() => {
     const map = mapRef.current
     badgeRegistry.current.forEach((marker) => marker.remove()); badgeRegistry.current = []
     if (!map || status !== 'ready' || variant !== 'hotels') return
+    const lineColor = theme === 'dark' ? '#EDF0F4' : '#0e1319'
     if (!map.getSource(RAY_SOURCE)) map.addSource(RAY_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-    if (!map.getLayer(RAY_LAYER)) map.addLayer({ id: RAY_LAYER, type: 'line', source: RAY_SOURCE, paint: { 'line-color': '#0e1319', 'line-width': 1.6, 'line-opacity': .45, 'line-dasharray': [3, 7] } })
+    if (!map.getLayer(RAY_LAYER)) map.addLayer({ id: RAY_LAYER, type: 'line', source: RAY_SOURCE, paint: { 'line-color': lineColor, 'line-width': 1.6, 'line-opacity': .45, 'line-dasharray': [3, 7] } })
+    else map.setPaintProperty(RAY_LAYER, 'line-color', lineColor)
     if (!map.getSource(HALO_SOURCE)) map.addSource(HALO_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-    if (!map.getLayer(HALO_LAYER)) map.addLayer({ id: HALO_LAYER, type: 'circle', source: HALO_SOURCE, paint: { 'circle-radius': 26, 'circle-color': '#0e1319', 'circle-opacity': .07, 'circle-stroke-color': '#0e1319', 'circle-stroke-width': 1.4, 'circle-stroke-opacity': .5 } })
+    if (!map.getLayer(HALO_LAYER)) map.addLayer({ id: HALO_LAYER, type: 'circle', source: HALO_SOURCE, paint: { 'circle-radius': 26, 'circle-color': lineColor, 'circle-opacity': .07, 'circle-stroke-color': lineColor, 'circle-stroke-width': 1.4, 'circle-stroke-opacity': .5 } })
+    else {
+      map.setPaintProperty(HALO_LAYER, 'circle-color', lineColor)
+      map.setPaintProperty(HALO_LAYER, 'circle-stroke-color', lineColor)
+    }
     const selected = selectedId ? markers.find((marker) => marker.syncId === selectedId) : undefined
     const origin = selected ? parseCoordinates(selected.coordinates) : null
     const raySource = map.getSource(RAY_SOURCE) as mapboxgl.GeoJSONSource
@@ -534,7 +648,12 @@ export default function MapView({ variant, theme, markers, segments, hoveredId, 
     badgeRegistry.current = hotelRays.map((ray) => {
       const el = document.createElement('div')
       el.textContent = `${ray.name} · ${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 }).format(ray.distanceKm)} km`
-      el.style.cssText = "white-space:nowrap;padding:2px 8px;border-radius:99px;background:rgba(255,255,255,.85);border:1px solid var(--edge);box-shadow:0 4px 10px -6px rgb(var(--shadow-rgb) / .6);font:400 10px/1.3 'Be Vietnam Pro',sans-serif;color:var(--t1)"
+      // background used to be a literal rgba(255,255,255,.85) — in dark
+      // theme --t1 (the text color right after it) flips to a near-white
+      // ink, so light text landed on a still-near-white background: barely
+      // legible. --g3 is the same "elevated glass" surface every other
+      // badge/chip in the app uses, and actually inverts with the theme.
+      el.style.cssText = "white-space:nowrap;padding:2px 8px;border-radius:99px;background:var(--g3);border:1px solid var(--edge);box-shadow:0 4px 10px -6px rgb(var(--shadow-rgb) / .6);font:400 10px/1.3 'Be Vietnam Pro',sans-serif;color:var(--t1)"
       return new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([(origin.lng + ray.coordinates.lng) / 2, (origin.lat + ray.coordinates.lat) / 2]).addTo(map)
     })
   }, [hotelRays, markerKey, markers, selectedId, status, styleVersion, variant, mapRef])

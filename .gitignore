@@ -103,3 +103,7 @@ eval/**/.ragas_cache/
 # GitNexus local code-intelligence index/cache (see CLAUDE.md) — machine-
 # generated, not source, never shared between checkouts.
 .gitnexus/
+
+# Local LangGraph experimentation; sandbox source, traces, and Studio state.
+sandbox/agent_orchestration/
+.langgraph_api/

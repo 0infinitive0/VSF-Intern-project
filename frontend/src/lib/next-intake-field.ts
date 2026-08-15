@@ -107,6 +107,32 @@ export function isFieldFilled(
 }
 
 /**
+ * The field whose question the FRONTEND has to ask itself, or null when the
+ * backend's own last reply already asked it.
+ *
+ * Progressive disclosure advances LOCALLY: answering the people stepper only
+ * calls setForm, so the widget moves on to `dates` with no chat turn in
+ * between — and therefore no AI message asking about dates. `nextIntakeField`
+ * is what the BACKEND still considers first-missing (i.e. what its last reply
+ * asked about), so a mismatch means the user has walked past the backend and
+ * nobody has asked the active field's question yet.
+ *
+ * This is the anti-duplicate gate. An earlier attempt solved the same problem
+ * from the wrong end — it DELETED the backend's last message from the thread
+ * whenever a locally-rendered prompt existed (chat-panel's old
+ * hideDuplicateIntakeReply), which made real answered questions vanish and
+ * reappear depending on which widget happened to be open. Suppressing the
+ * redundant question is safe; deleting a real message never is.
+ */
+export function locallyAdvancedField(
+  intake: IntakeStatus | null,
+  activeField: IntakeField | null,
+): IntakeField | null {
+  if (!activeField) return null
+  return activeField === nextIntakeField(intake) ? null : activeField
+}
+
+/**
  * The widget field to show RIGHT NOW.
  *
  * Progressive-disclosure driver: walk the missing-gated fields first

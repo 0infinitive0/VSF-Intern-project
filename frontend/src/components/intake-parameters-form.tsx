@@ -1,4 +1,3 @@
-import { useTranslation } from 'react-i18next'
 import type { IntakeFormState } from '../lib/compose-intake-message'
 import { composeIntakeMessage } from '../lib/compose-intake-message'
 import type { PreferenceKey } from '../lib/intake-options'
@@ -9,7 +8,6 @@ import IntakePeopleStepper from './intake-people-stepper'
 import IntakeDateRange from './intake-date-range'
 import IntakeBudgetSlider from './intake-budget-slider'
 import IntakePreferenceChips from './intake-preference-chips'
-import MessageBubble from './message-bubble'
 
 /**
  * IntakeParametersForm — thin orchestrator (phase-06). Renders exactly ONE
@@ -20,6 +18,11 @@ import MessageBubble from './message-bubble'
  * can reflect the same in-progress answers); the final widget's button submits
  * ONE full composeIntakeMessage sentence — byte-identical to the pre-refactor
  * wire protocol (regression guarded by compose-intake-message.test.ts).
+ *
+ * This component renders the WIDGET ONLY. The question that goes with it is an
+ * AI bubble in the chat thread (MessageList), never a bubble nested inside the
+ * widget rail — matching the design, whose ask(step) pushes each intake
+ * question into `messages` and leaves the rail for input alone.
  *
  * `editingField` (set by IntakeChecklist's "Sửa" button, via App.tsx's
  * useIntakeForm) overrides `currentIntakeField` and forces that one widget
@@ -52,8 +55,6 @@ export default function IntakeParametersForm({
   editingField?: IntakeField | null
   onDoneEditing?: () => void
 }) {
-  const { t } = useTranslation()
-
   const destinations = intake?.available_destinations ?? []
 
   const activeField = editingField ?? currentIntakeField(intake, form)
@@ -101,61 +102,46 @@ export default function IntakeParametersForm({
       )
     case 'dates':
       return (
-        <>
-          <MessageBubble
-            message={{ id: 'dates-prompt', role: 'ai', stage: 'intake', text: t('intakeDatesQuestion') }}
-          />
-          <IntakeDateRange
-            start={form.startDate}
-            end={form.endDate}
-            onCommit={({ start, end }) =>
-              editingField
-                ? commitEdit({ ...form, startDate: start, endDate: end })
-                : setForm((prev) => ({ ...prev, startDate: start, endDate: end }))
-            }
-            disabled={false}
-          />
-        </>
+        <IntakeDateRange
+          start={form.startDate}
+          end={form.endDate}
+          onCommit={({ start, end }) =>
+            editingField
+              ? commitEdit({ ...form, startDate: start, endDate: end })
+              : setForm((prev) => ({ ...prev, startDate: start, endDate: end }))
+          }
+          disabled={false}
+        />
       )
     case 'budget':
       return (
-        <>
-          <MessageBubble
-            message={{ id: 'budget-prompt', role: 'ai', stage: 'intake', text: t('intakeBudgetQuestion') }}
-          />
-          <IntakeBudgetSlider
-            min={form.budgetMinVnd}
-            max={form.budgetMaxVnd}
-            onCommit={(min, max) =>
-              editingField
-                ? commitEdit({ ...form, budgetMinVnd: min, budgetMaxVnd: max, budgetSkipped: false })
-                : setForm((prev) => ({ ...prev, budgetMinVnd: min, budgetMaxVnd: max, budgetSkipped: false }))
-            }
-            onSkip={() =>
-              editingField
-                ? commitEdit({ ...form, budgetMinVnd: null, budgetMaxVnd: null, budgetSkipped: true })
-                : setForm((prev) => ({ ...prev, budgetMinVnd: null, budgetMaxVnd: null, budgetSkipped: true }))
-            }
-            disabled={false}
-          />
-        </>
+        <IntakeBudgetSlider
+          min={form.budgetMinVnd}
+          max={form.budgetMaxVnd}
+          onCommit={(min, max) =>
+            editingField
+              ? commitEdit({ ...form, budgetMinVnd: min, budgetMaxVnd: max, budgetSkipped: false })
+              : setForm((prev) => ({ ...prev, budgetMinVnd: min, budgetMaxVnd: max, budgetSkipped: false }))
+          }
+          onSkip={() =>
+            editingField
+              ? commitEdit({ ...form, budgetMinVnd: null, budgetMaxVnd: null, budgetSkipped: true })
+              : setForm((prev) => ({ ...prev, budgetMinVnd: null, budgetMaxVnd: null, budgetSkipped: true }))
+          }
+          disabled={false}
+        />
       )
     case 'preferences':
       return (
-        <>
-          <MessageBubble
-            message={{ id: 'preferences-prompt', role: 'ai', stage: 'intake', text: t('intakePreferencesQuestion') }}
-          />
-          <IntakePreferenceChips
-            selected={form.preferences}
-            onToggle={togglePreference}
-            onSubmit={() => {
-              submitAll()
-              if (editingField) onDoneEditing?.()
-            }}
-            disabled={false}
-          />
-        </>
+        <IntakePreferenceChips
+          selected={form.preferences}
+          onToggle={togglePreference}
+          onSubmit={() => {
+            submitAll()
+            if (editingField) onDoneEditing?.()
+          }}
+          disabled={false}
+        />
       )
     default:
       return null

@@ -68,6 +68,10 @@ export default function ConversationList({
     <>
       <div
         className="flex flex-col gap-1 overflow-y-auto overflow-x-hidden overscroll-contain custom-scrollbar min-h-0"
+        style={{
+          marginRight: collapsed ? '-13px' : '-12px',
+          paddingRight: collapsed ? '13px' : '12px',
+        }}
         role="list"
         aria-label={t('sidebarHistoryLabel')}
       >

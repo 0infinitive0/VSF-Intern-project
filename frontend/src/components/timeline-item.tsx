@@ -1,4 +1,6 @@
 import { useTranslation } from 'react-i18next'
+import { placeNameFromActivity } from '../lib/activity-name'
+import { formatItemDuration, minutesBetween, stripSeconds } from '../lib/item-duration'
 import { legBetween } from '../lib/leg'
 import { dayColor, legColor } from '../lib/map-colors'
 import { itemSyncId } from '../lib/map-sync-id'
@@ -22,13 +24,22 @@ const THUMB_ICONS: Record<string, string> = {
 /**
  * TimelineItem — one itinerary row plus the leg pill that follows it
  * (TimelineItem.dc.html). The left 44px column shows the start time (hidden
- * when null — the numbered dot stays, per phase-09: never invent an hour) and
- * a 24px numbered dot tinted with the day color; the 52×52 thumb is the item's
- * real photo (item.image_url, already on the wire — trip_formatter.py:335)
- * via the shared RemoteImage fallback chain, keyed by kind for the icon shown
- * while loading/missing; content is name + kind badge + a time-window meta
- * built from the real start/end fields (there is no note/cost on DayItem, so
- * those lines are simply omitted).
+ * when null — the numbered dot stays, per phase-09: never invent an hour),
+ * stripped of the backend's always-":00" seconds, and a 24px numbered dot
+ * tinted with the day color; the 52×52 thumb is the item's real photo
+ * (item.image_url, already on the wire — trip_formatter.py:335) via the
+ * shared RemoteImage fallback chain, keyed by kind for the icon shown while
+ * loading/missing.
+ *
+ * Content is three lines, matching the design's name/note/meta split:
+ *   - name: the place's own name (activity-name.ts strips the backend's
+ *     "Ăn trưa tại "-style lead-in off `item.activity`) + kind badge.
+ *   - note (design's `it.note` — dropped pre-phase-09 for lack of a backend
+ *     field, see plan.md "Phần chưa làm" #24): the full original `item.activity`
+ *     sentence, e.g. "Ăn trưa tại NHÀ HÀNG NGON". Real data, just re-slotted —
+ *     shown only when it actually adds something beyond the bare name.
+ *   - meta: a duration ("1 tiếng"), computed from the real start/end fields,
+ *     replacing a literal "start – end" range.
  *
  * Click affordance is gated on the real contract: only items with
  * reference_type 'Attraction' AND a non-empty reference_id open Place Detail
@@ -92,8 +103,15 @@ export default function TimelineItem({
     ? t(`kind${item.kind[0]?.toUpperCase() ?? ''}${item.kind.slice(1)}`, { defaultValue: item.kind })
     : ''
 
-  // Real metadata only: the item's own start/end window. Nothing is invented.
-  const meta = item.end_time ? (item.start_time ? `${item.start_time} – ${item.end_time}` : item.end_time) : ''
+  const placeName = placeNameFromActivity(item.activity)
+  // Only worth its own line when it says more than the bare name already does.
+  const activityNote = placeName !== item.activity ? item.activity : ''
+
+  // Real metadata only: a duration computed from the item's own start/end
+  // window. Nothing is invented — null (missing/unparseable/non-positive
+  // window) renders nothing rather than a guess.
+  const durationMinutes = minutesBetween(item.start_time, item.end_time)
+  const meta = durationMinutes != null ? formatItemDuration(durationMinutes, t) : ''
 
   function legLabel(): string {
     switch (leg.kind) {
@@ -138,7 +156,7 @@ export default function TimelineItem({
         <div className="flex flex-col items-center gap-[6px] flex-none w-[44px]">
           {item.start_time != null && (
             <div className="text-[11.5px] font-[530] text-on-surface-variant tabular-nums">
-              {item.start_time}
+              {stripSeconds(item.start_time)}
             </div>
           )}
           <div
@@ -157,7 +175,7 @@ export default function TimelineItem({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-[7px]">
             <div className="text-[14px] font-[590] tracking-[-0.2px] text-on-surface truncate">
-              {item.activity}
+              {placeName}
             </div>
             {kindLabel && (
               <div className="text-[9.5px] px-[7px] py-[2px] rounded-full bg-fill text-on-surface-variant whitespace-nowrap">
@@ -165,6 +183,11 @@ export default function TimelineItem({
               </div>
             )}
           </div>
+          {activityNote && (
+            <div className="text-[11.5px] text-on-surface-muted font-normal leading-[1.45] text-pretty mt-[3px]">
+              {activityNote}
+            </div>
+          )}
           {meta && <div className="text-[11px] text-on-surface-muted mt-[5px]">{meta}</div>}
         </div>
       </Row>
