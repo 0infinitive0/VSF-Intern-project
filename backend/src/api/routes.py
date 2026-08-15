@@ -41,28 +41,30 @@ from src.agents.session import (
     derive_stage,
     handle_frontend_hotel_change,
     process_chat_turn,
-    supabase_persist_hook,
     suggestions_for,
+    supabase_persist_hook,
 )
 from src.api.streaming import STREAM_HEADERS, TurnEmitter, emitting_to, sse_stream
 from src.auth import AuthenticatedUser, get_current_user
 from src.config import get_settings
 from src.models.schemas import (
+    AmenityCatalogPayload,
     AttractionDetailPayload,
     ChangeHotelRequest,
     HotelDetailPayload,
     IntakeStatus,
     PlannerChatRequest,
     PlannerChatResponse,
+    SelectHotelRequest,
     SessionListPayload,
     SessionRestorePayload,
     SessionSummaryPayload,
-    SelectHotelRequest,
     sanitize_system_error,
     to_hotel_options_payload,
     to_trip_plan_payload,
 )
 from src.services import session_store
+from src.services.amenity_catalog import query_approved_amenities
 from src.services.place_details import get_attraction_detail, get_hotel_detail
 
 logger = logging.getLogger(__name__)
@@ -113,6 +115,22 @@ def _owned_session_or_404(session_id: str, current_user: AuthenticatedUser | Non
 # ---------------------------------------------------------------------------
 # Sessionless detail endpoints (Phase 3)
 # ---------------------------------------------------------------------------
+
+
+@router.get("/hotel-amenities", response_model=list[AmenityCatalogPayload])
+def hotel_amenity_catalog() -> list[AmenityCatalogPayload]:
+    """Return approved hotel-scoped catalog entries for client-side filtering."""
+    return [
+        AmenityCatalogPayload(
+            id=entry.id,
+            label_vi=entry.label,
+            label_en=entry.label_en,
+            category=entry.category,
+            icon_key=entry.icon_key,
+        )
+        for entry in query_approved_amenities()
+        if entry.scope in {"hotel", "both"}
+    ]
 
 
 @router.get("/hotels/{hotel_id}", response_model=HotelDetailPayload)

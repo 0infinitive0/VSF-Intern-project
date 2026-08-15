@@ -39,7 +39,8 @@ CREATE TABLE hotels (
     area_name VARCHAR(100),
     location_highlight VARCHAR(255), -- Chỉ có ở Agoda
     coordinates VARCHAR(50), -- Tọa độ GPS (VD: '10.762622, 106.660172') để tính khoảng cách đi bộ
-    amenities TEXT[], -- Mảng phẳng tiện ích, ví dụ: '{"Hồ bơi", "Spa", "Wifi"}'
+    amenities TEXT[], -- Canonical amenity_catalog IDs, e.g. '{"swimming_pool", "wifi"}'
+    embedding vector(1024), -- Semantic hotel-search vector
     amenity_groups JSONB, -- Tiện ích nhóm theo danh mục (cấu trúc khác nhau giữa 2 nguồn)
     awards TEXT[], -- Chỉ có ở Agoda
     warnings TEXT[],
@@ -79,7 +80,9 @@ CREATE TABLE rooms (
     max_guests SMALLINT, -- Parse best-effort. LƯU Ý: Agoda chỉ tính người lớn, Booking là tổng khách
                          -- — 2 nguồn khác ngữ nghĩa, không so sánh trực tiếp liên-nguồn
     view VARCHAR(255),
-    room_facilities TEXT[], -- Tiện ích riêng của phòng (flatten amenity_groups với Agoda)
+    room_facilities TEXT[], -- Canonical amenity_catalog IDs for this room
+    available_room_count INTEGER CHECK (available_room_count >= 0), -- Latest inventory snapshot for this room type; it is not date-specific
+    embedding vector(1024), -- Semantic room-search vector
     amenity_groups JSONB, -- Nullable, chỉ có ở Agoda
     images TEXT[], -- Mảng URL hình ảnh của phòng
     image_count INT,
@@ -240,36 +243,276 @@ CREATE TABLE itinerary_items (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Approved, server-managed hotel amenity definitions. The browser must not
--- access this catalog directly; the backend service role owns it.
-CREATE TABLE hotel_amenity_catalog (
+-- Booking records are intentionally separate from the crawler's room-price
+-- snapshots. Inventory stays as the latest count on rooms for now.
+CREATE TABLE bookings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    temporary_user_ref TEXT,
+    room_id UUID NOT NULL REFERENCES rooms(id) ON DELETE RESTRICT,
+    check_in_date DATE NOT NULL,
+    check_in_time TIME,
+    check_out_date DATE NOT NULL,
+    check_out_time TIME,
+    room_count INTEGER NOT NULL DEFAULT 1 CHECK (room_count > 0),
+    status TEXT NOT NULL DEFAULT 'PENDING'
+        CHECK (status IN ('PENDING', 'RESERVED', 'CONFIRMED', 'CANCELLED', 'EXPIRED')),
+    expires_at TIMESTAMPTZ,
+    total_amount NUMERIC(12, 2),
+    currency VARCHAR(10),
+    cancelled_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (check_out_date > check_in_date),
+    CHECK (status <> 'RESERVED' OR expires_at IS NOT NULL)
+);
+
+CREATE INDEX bookings_room_dates_idx ON bookings (room_id, check_in_date, check_out_date)
+    WHERE status = 'CONFIRMED';
+
+ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE bookings FROM anon, authenticated, PUBLIC;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE bookings TO service_role;
+
+-- The result is the minimum remaining count across every requested night.
+CREATE FUNCTION public.get_room_availability(
+    p_room_id UUID,
+    p_check_in_date DATE,
+    p_check_out_date DATE
+)
+RETURNS INTEGER
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_availability INTEGER;
+BEGIN
+    IF p_check_out_date <= p_check_in_date THEN
+        RAISE EXCEPTION 'check-out date must be after check-in date';
+    END IF;
+
+    SELECT min(
+        room.available_room_count - coalesce((
+            SELECT sum(b.room_count)::integer
+            FROM public.bookings AS b
+            WHERE b.room_id = room.id
+              AND (
+                  b.status = 'CONFIRMED'
+                  OR (b.status = 'RESERVED' AND b.expires_at > now())
+              )
+              AND b.check_in_date <= night.stay_date
+              AND b.check_out_date > night.stay_date
+        ), 0)
+    ) INTO v_availability
+    FROM public.rooms AS room
+    CROSS JOIN LATERAL generate_series(
+        p_check_in_date::timestamp,
+        (p_check_out_date - 1)::timestamp,
+        interval '1 day'
+    ) AS night(stay_date)
+    WHERE room.id = p_room_id;
+
+    RETURN greatest(coalesce(v_availability, 0), 0);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.get_room_availability(UUID, DATE, DATE) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_room_availability(UUID, DATE, DATE)
+    TO service_role;
+
+-- Approved, server-managed amenity definitions. Hotels and rooms store these
+-- canonical English IDs in their TEXT[] amenity columns; the backend resolves
+-- them to labels for search results and UI display.
+CREATE TABLE amenity_catalog (
     id TEXT PRIMARY KEY CHECK (id ~ '^[a-z0-9_]{1,64}$'),
-    label TEXT NOT NULL CHECK (char_length(btrim(label)) BETWEEN 1 AND 80),
-    match_keywords JSONB NOT NULL DEFAULT '[]'::jsonb
-        CHECK (jsonb_typeof(match_keywords) = 'array'),
-    source TEXT NOT NULL DEFAULT 'seed'
-        CHECK (source IN ('seed', 'fast_model')),
+    label_vi TEXT NOT NULL CHECK (char_length(btrim(label_vi)) BETWEEN 1 AND 80),
+    label_en TEXT NOT NULL CHECK (char_length(btrim(label_en)) BETWEEN 1 AND 80),
+    scope TEXT NOT NULL CHECK (scope IN ('hotel', 'room', 'both')),
+    category TEXT NOT NULL CHECK (category IN (
+        'accessibility', 'business', 'connectivity', 'facility', 'family', 'food', 'general', 'language',
+        'outdoor', 'policies', 'room_comfort', 'safety', 'transport', 'wellness'
+    )),
+    icon_key TEXT CHECK (icon_key IS NULL OR char_length(btrim(icon_key)) BETWEEN 1 AND 64),
+    match_keywords TEXT[] NOT NULL DEFAULT '{}',
     is_approved BOOLEAN NOT NULL DEFAULT TRUE,
-    usage_count INTEGER NOT NULL DEFAULT 0 CHECK (usage_count >= 0),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-ALTER TABLE hotel_amenity_catalog ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE hotel_amenity_catalog FROM anon, authenticated, PUBLIC;
-GRANT SELECT, INSERT, UPDATE ON TABLE hotel_amenity_catalog TO service_role;
+ALTER TABLE amenity_catalog ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE amenity_catalog FROM anon, authenticated, PUBLIC;
+GRANT SELECT, INSERT, UPDATE ON TABLE amenity_catalog TO service_role;
 
-INSERT INTO hotel_amenity_catalog (
-    id, label, match_keywords, source, is_approved
+INSERT INTO amenity_catalog (
+    id, label_vi, label_en, scope, category, icon_key, match_keywords, is_approved
 ) VALUES
-    ('wifi', 'Wi-Fi', '["wifi", "wi-fi", "wi fi", "wireless internet"]'::jsonb, 'seed', TRUE),
-    ('swimming_pool', 'Hồ bơi', '["hồ bơi", "bể bơi", "swimming pool", "pool"]'::jsonb, 'seed', TRUE),
-    ('parking', 'Bãi đỗ xe', '["bãi đỗ xe", "chỗ để xe", "parking", "car park", "garage"]'::jsonb, 'seed', TRUE),
-    ('family', 'Phù hợp gia đình', '["gia đình", "trẻ em", "kids club", "family room"]'::jsonb, 'seed', TRUE),
-    ('non_smoking', 'Không hút thuốc', '["không hút thuốc", "non smoking", "non-smoking", "no smoking"]'::jsonb, 'seed', TRUE),
-    ('breakfast', 'Bao gồm bữa sáng', '["bữa sáng", "bao gồm bữa sáng", "breakfast", "breakfast included"]'::jsonb, 'seed', TRUE),
-    ('sea_view', 'View biển', '["view biển", "hướng biển", "sea view", "ocean view"]'::jsonb, 'seed', TRUE)
+    ('wifi', 'Wi-Fi', 'Wi-Fi', 'both', 'connectivity', 'wifi', ARRAY['wifi', 'wi-fi', 'wi fi', 'wireless internet'], TRUE),
+    ('swimming_pool', 'Hồ bơi', 'Swimming pool', 'hotel', 'wellness', 'pool', ARRAY['hồ bơi', 'bể bơi', 'swimming pool', 'pool'], TRUE),
+    ('tv', 'TV', 'TV', 'room', 'room_comfort', 'tv', ARRAY['tv', 'tivi', 'television'], TRUE),
+    ('parking', 'Bãi đỗ xe', 'Parking', 'hotel', 'transport', 'local_parking', ARRAY['bãi đỗ xe', 'chỗ để xe', 'parking', 'car park', 'garage'], TRUE),
+    ('family', 'Phù hợp gia đình', 'Family friendly', 'hotel', 'family', 'family_restroom', ARRAY['gia đình', 'trẻ em', 'kids club', 'family room'], TRUE),
+    ('non_smoking', 'Không hút thuốc', 'Non-smoking', 'both', 'policies', 'smoke_free', ARRAY['không hút thuốc', 'non smoking', 'non-smoking', 'no smoking'], TRUE),
+    ('breakfast', 'Bao gồm bữa sáng', 'Breakfast included', 'hotel', 'food', 'breakfast_dining', ARRAY['bữa sáng', 'bao gồm bữa sáng', 'breakfast', 'breakfast included'], TRUE),
+    ('sea_view', 'Hướng biển', 'Sea view', 'room', 'room_comfort', 'water', ARRAY['view biển', 'hướng biển', 'sea view', 'ocean view'], TRUE)
 ON CONFLICT (id) DO NOTHING;
+
+-- Semantic hotel and room search. The amenities output is a display-ready
+-- catalog join, ordered to match the canonical IDs stored on each hotel.
+CREATE FUNCTION public.match_hotels_with_rooms(
+    filter_exclude_hotel_ids UUID[],
+    query_embedding public.vector,
+    match_threshold DOUBLE PRECISION DEFAULT 0.3,
+    match_count INTEGER DEFAULT 10,
+    filter_destination_id UUID DEFAULT NULL::uuid,
+    filter_min_price NUMERIC DEFAULT NULL::numeric,
+    filter_max_price NUMERIC DEFAULT NULL::numeric,
+    root_latitude DOUBLE PRECISION DEFAULT NULL::double precision,
+    root_longitude DOUBLE PRECISION DEFAULT NULL::double precision,
+    max_radius_km DOUBLE PRECISION DEFAULT NULL::double precision,
+    filter_start_date DATE DEFAULT NULL::date,
+    filter_end_date DATE DEFAULT NULL::date
+)
+RETURNS TABLE(
+    id UUID,
+    name TEXT,
+    description TEXT,
+    star_rating DOUBLE PRECISION,
+    lowest_price NUMERIC,
+    average_nightly_price NUMERIC,
+    total_stay_price NUMERIC,
+    stay_night_count INTEGER,
+    currency TEXT,
+    priced_room_name TEXT,
+    similarity DOUBLE PRECISION,
+    matched_room_names TEXT[],
+    "amenities" JSONB
+)
+LANGUAGE sql
+STABLE
+AS $$
+  WITH hotel_scores AS (
+    SELECT
+      h.id AS hotel_id,
+      1 - (h.embedding <=> query_embedding) AS sim,
+      NULL::text AS room_name
+    FROM public.hotels AS h
+    WHERE h.embedding IS NOT NULL
+      AND (filter_destination_id IS NULL OR h.destination_id = filter_destination_id)
+      AND (
+        filter_start_date IS NULL OR filter_end_date IS NULL
+        OR EXISTS (
+          SELECT 1
+          FROM public.rooms AS r
+          WHERE r.hotel_id = h.id
+            AND (
+              SELECT count(*)
+              FROM public.room_prices AS rp
+              WHERE rp.room_id = r.id
+                AND rp.check_in_date >= filter_start_date
+                AND rp.check_out_date <= filter_end_date
+                AND rp.sold_out = false
+            ) = (filter_end_date - filter_start_date)
+            AND public.get_room_availability(
+              r.id, filter_start_date, filter_end_date
+            ) > 0
+        )
+      )
+  ),
+  room_scores AS (
+    SELECT
+      r.hotel_id,
+      1 - (r.embedding <=> query_embedding) AS sim,
+      r.name AS room_name
+    FROM public.rooms AS r
+    JOIN public.hotels AS h ON h.id = r.hotel_id
+    WHERE r.embedding IS NOT NULL
+      AND (filter_destination_id IS NULL OR h.destination_id = filter_destination_id)
+      AND (
+        filter_start_date IS NULL OR filter_end_date IS NULL
+        OR (
+          SELECT count(*)
+          FROM public.room_prices AS rp
+          WHERE rp.room_id = r.id
+            AND rp.check_in_date >= filter_start_date
+            AND rp.check_out_date <= filter_end_date
+            AND rp.sold_out = false
+        ) = (filter_end_date - filter_start_date)
+        AND public.get_room_availability(
+          r.id, filter_start_date, filter_end_date
+        ) > 0
+      )
+  ),
+  combined AS (
+    SELECT * FROM hotel_scores WHERE sim > match_threshold
+    UNION ALL
+    SELECT * FROM room_scores WHERE sim > match_threshold
+  ),
+  aggregated AS (
+    SELECT
+      hotel_id,
+      max(sim) AS max_sim,
+      array_remove(array_agg(DISTINCT room_name), NULL) AS matched_rooms
+    FROM combined
+    GROUP BY hotel_id
+  )
+  SELECT
+    h.id,
+    h.name,
+    h.description,
+    h.star_rating,
+    h.lowest_price,
+    h.lowest_price AS average_nightly_price,
+    h.lowest_price * coalesce(filter_end_date - filter_start_date, 1) AS total_stay_price,
+    coalesce(filter_end_date - filter_start_date, 1) AS stay_night_count,
+    h.currency,
+    NULL::text AS priced_room_name,
+    a.max_sim AS similarity,
+    a.matched_rooms AS matched_room_names,
+    coalesce(
+      (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'id', catalog.id,
+            'label_vi', catalog.label_vi,
+            'label_en', catalog.label_en,
+            'category', catalog.category,
+            'icon_key', catalog.icon_key
+          )
+          ORDER BY amenity.ordinality
+        )
+        FROM unnest(coalesce(h.amenities, ARRAY[]::text[])) WITH ORDINALITY
+          AS amenity(amenity_id, ordinality)
+        JOIN public.amenity_catalog AS catalog ON catalog.id = amenity.amenity_id
+        WHERE catalog.is_approved
+      ),
+      '[]'::jsonb
+    ) AS amenities
+  FROM aggregated AS a
+  JOIN public.hotels AS h ON h.id = a.hotel_id
+  WHERE (filter_min_price IS NULL OR h.lowest_price IS NULL OR h.lowest_price >= filter_min_price)
+    AND (filter_max_price IS NULL OR h.lowest_price IS NULL OR h.lowest_price <= filter_max_price)
+    AND (
+      cardinality(coalesce(filter_exclude_hotel_ids, ARRAY[]::uuid[])) = 0
+      OR h.id <> ALL(filter_exclude_hotel_ids)
+    )
+  ORDER BY a.max_sim DESC
+  LIMIT match_count;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.match_hotels_with_rooms(
+    UUID[],
+    public.vector,
+    DOUBLE PRECISION,
+    INTEGER,
+    UUID,
+    NUMERIC,
+    NUMERIC,
+    DOUBLE PRECISION,
+    DOUBLE PRECISION,
+    DOUBLE PRECISION,
+    DATE,
+    DATE
+) TO anon, authenticated, service_role;
 
 /*
 =========================================================
