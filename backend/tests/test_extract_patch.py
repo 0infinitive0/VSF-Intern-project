@@ -89,7 +89,7 @@ def test_invalid_json_retries_once_then_falls_back_without_raising(monkeypatch):
     result = extract_patch(_state("asdkjasd"))
 
     assert llm.call_count == 2
-    assert result == {"patch": [], "intent": "general_question"}
+    assert result == {"patch": [], "intent": "general_question", "extraction_failed": True}
 
 
 def test_invalid_first_response_recovers_on_retry(monkeypatch):
@@ -100,7 +100,7 @@ def test_invalid_first_response_recovers_on_retry(monkeypatch):
     result = extract_patch(_state("chào bạn"))
 
     assert llm.call_count == 2
-    assert result == {"patch": [], "intent": "general_question"}
+    assert result == {"patch": [], "intent": "general_question", "extraction_failed": False}
 
 
 def test_no_human_message_short_circuits_without_calling_the_llm(monkeypatch):
@@ -113,7 +113,7 @@ def test_no_human_message_short_circuits_without_calling_the_llm(monkeypatch):
 
     result = extract_patch(state)
 
-    assert result == {"patch": [], "intent": "general_question"}
+    assert result == {"patch": [], "intent": "general_question", "extraction_failed": True}
 
 
 # --- Pending-slot anchor ------------------------------------------------------

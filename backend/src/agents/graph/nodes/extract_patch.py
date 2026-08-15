@@ -1,9 +1,11 @@
 """`extract_patch` — one LLM call producing `{intent, changes[]}` (doc §36
 `understand_request`), replacing the three separate extraction calls the
 legacy plane still runs (`_llm_extract_intake_facts`, `TripPreferenceUpdate
-.from_message`, `plan_trip_edit`). `intent` is audit-trail only — it never
-selects a worker; `detect_impact` + `WORKFLOW_TO_WORKER` does that, off the
-validated patch (`validate_patch`/`apply_patch`).
+.from_message`, `plan_trip_edit`). `intent` never selects a WORKER —
+`detect_impact` + `WORKFLOW_TO_WORKER` does that, off the validated patch
+(`validate_patch`/`apply_patch`) — but it does separate read-only Q&A from
+state-changing turns on one routing edge (Phase 15,
+`routing.is_intake_question`); see `state.py`'s field comment.
 
 Defensive parsing mirrors `trip_edit_planner.plan_trip_edit`'s proven shape:
 strict JSON parse -> structural validate -> retry once with the rejection
@@ -279,10 +281,17 @@ def _extract_with_llm(
     *,
     pending_slots: tuple[str, ...] = (),
     llm: Any | None = None,
-) -> tuple[str, list[dict[str, Any]]]:
+) -> tuple[str, list[dict[str, Any]], bool]:
     """Ask the configured model once, retrying exactly once for invalid
     output (`plan_trip_edit`'s proven shape) — never more than that, and
-    never raises: a fallback here must still let the turn complete."""
+    never raises: a fallback here must still let the turn complete.
+
+    The third return value is `extraction_failed` — True only when both
+    attempts were unusable, so `route_ask_slot` (Phase 15) can tell that
+    apart from a parse that genuinely concluded "no change" and never route
+    a provider outage or garbled JSON to `intake_qa` as if it were a
+    real question.
+    """
     destination_choices = _destination_choices(destination_names)
     known_facts = _known_facts_summary(travel_state)
     today = date.today().isoformat()
@@ -308,28 +317,35 @@ def _extract_with_llm(
             )
             response = model.invoke(prompt)
             payload = json.loads(_strip_json_fence(getattr(response, "content", response)))
-            return _parse_extraction_payload(payload)
+            intent, changes = _parse_extraction_payload(payload)
+            return intent, changes, False
         except (json.JSONDecodeError, PatchExtractionError, TypeError, ValueError) as exc:
             last_error = exc
         except Exception as exc:  # provider failures must never crash the turn
             last_error = exc
 
     logger.warning("Patch extraction failed for message %r: %s", message, last_error)
-    return "general_question", []
+    return "general_question", [], True
 
 
 def extract_patch(state: TravelGraphState) -> dict[str, Any]:
     message = _last_human_message(state)
     if not message:
-        return {"patch": [], "intent": "general_question"}
+        return {"patch": [], "intent": "general_question", "extraction_failed": True}
 
     travel_state = TravelState.from_dict(state.get("travel_state"))
     destination_names = _get_destination_names()
 
-    intent, raw_changes = _extract_with_llm(
+    intent, raw_changes, extraction_failed = _extract_with_llm(
         message, travel_state, destination_names, pending_slots=_pending_slots(travel_state)
     )
     changes = _rewrite_day_scope(raw_changes, message, travel_state)
     changes = _ground_changes(changes, destination_names)
 
-    return {"patch": changes, "intent": intent}
+    # Written unconditionally, not only when True: this key gates Phase 15's
+    # `intake_qa` routing branch, and a node's partial return is merged over
+    # whatever the channel already held -- an omitted key here would leave
+    # a stale `True` in place for any caller that invokes this node outside
+    # `load_context`'s per-turn reset (a future subgraph, a resume path, a
+    # test), fail-closed-disabling that branch silently.
+    return {"patch": changes, "intent": intent, "extraction_failed": extraction_failed}

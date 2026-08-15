@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.agents.graph.routing import is_intake_question
 from src.agents.graph.state import TravelGraphState
 from src.domain.slot_registry import SlotSpec, next_question, pending_question_slots
 from src.domain.travel_state import TravelState
@@ -147,6 +148,11 @@ def _context_line(state: TravelGraphState, spec: SlotSpec, language: str) -> str
        that" framing distinct from the question's own first-time text.
        A slot's first-ever ask (not in the previous turn's `missing_slots`)
        never gets this framing — there is nothing to have "not caught" yet.
+
+    Exception (Phase 15): a turn `is_intake_question` is never a re-ask,
+    however `missing_slots` looks — the user asked something, not failed to
+    answer, so case 2 is skipped entirely and this returns `None`,
+    `intake_qa`'s answer taking that context line's place in `respond`.
     """
     updated = _updated_line(state.get("applied_changes") or [], language)
     if updated:
@@ -161,6 +167,13 @@ def _context_line(state: TravelGraphState, spec: SlotSpec, language: str) -> str
             if reason.startswith(prefix):
                 reason = reason[len(prefix):]
             return t("Dữ liệu chưa hợp lệ: {reason}", language, reason=reason)
+
+    # Phase 15: a genuine question routes to `intake_qa` right after this
+    # node runs (`route_ask_slot`/`is_intake_question`) -- it is not a
+    # failed attempt to answer the pending slot, so it must never get
+    # blamed for "not catching" an answer nobody tried to give.
+    if is_intake_question(state):
+        return None
 
     previously_pending = state.get("missing_slots") or []
     if spec.name in previously_pending:

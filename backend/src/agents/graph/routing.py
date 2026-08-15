@@ -55,13 +55,33 @@ def route_scope_guard(state: TravelGraphState) -> str:
     return "blocked" if state.get("jailbreak_blocked") else "proceed"
 
 
+def is_intake_question(state: TravelGraphState) -> bool:
+    """True when the patch pipeline concluded — not merely guessed — that
+    this turn's message is a genuine read-only question
+    (`intent == "general_question"` with `extraction_failed` false). Shared
+    by `route_ask_slot` (routes to `intake_qa`) and `ask_slot`
+    (`nodes/ask_slot.py::_context_line`, which must not blame the user for
+    "not answering" a slot when they asked a question instead — a question
+    is not a failed answer attempt).
+    """
+    return state.get("intent") == "general_question" and not state.get("extraction_failed")
+
+
 def route_ask_slot(state: TravelGraphState) -> str:
-    """`ask_slot` is a Phase 7 stub (`missing_slots` is always empty until
-    then), so this branch is unreachable today; `"ask"` routes through
-    `respond` rather than straight to `END` so the frozen
-    `PlannerChatResponse` shape is always built, including when Phase 7
-    starts populating `missing_slots` for real."""
-    return "ask" if state.get("missing_slots") else "supervisor"
+    """`"ask"` routes through `respond` rather than straight to `END` so the
+    frozen `PlannerChatResponse` shape is always built.
+
+    Phase 15's third branch: a required slot is still missing AND
+    `is_intake_question` — `intake_qa` answers it and `ask_slot`'s question
+    still follows in the same reply. A parse failure or an empty message
+    falls through to `"ask"` instead, so a provider outage is never sent to
+    an LLM to answer confidently.
+    """
+    if not state.get("missing_slots"):
+        return "supervisor"
+    if is_intake_question(state):
+        return "intake_qa"
+    return "ask"
 
 
 def route_supervisor(state: TravelGraphState) -> str:

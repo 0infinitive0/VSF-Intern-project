@@ -2,14 +2,18 @@
 whatever the turn's nodes actually did. Every path through the graph flows
 through this node before `END` (Phase 5 functional requirement: the graph
 must return a response indistinguishable in *shape* from the legacy
-plane), even a `max_iterations` bail-out or an `ask_slot` question.
+plane), even a `max_iterations` bail-out, an `ask_slot` question, or an
+`intake_qa` answer.
 
 Reply text priority:
-1. `ask_slot`'s `next_question` (Phase 7) — a required slot is still
-   missing, so nothing downstream of `ask_slot` ran this turn
-   (`route_ask_slot` sends `"ask"` straight here). This must win over
-   everything below: `messages`/`task_results` could otherwise carry a
-   stale prior-turn answer forward on a turn that asked a fresh question.
+1. `_compose(intake_answer, next_question)` (Phase 15) — when `intake_qa`
+   ran this turn, its answer is joined ahead of `ask_slot`'s pending
+   question so the user gets both in one reply, in that order. When
+   `intake_answer` is absent (every turn that didn't route through
+   `intake_qa`), `_compose` returns `next_question` unchanged, so this step
+   is byte-identical to the old bare `next_question` check on every other
+   path — including the plain `"ask"` branch, where `intake_answer` is
+   always `None`.
 2. The last worker's own reply (`booking_node`'s decline, or any future
    worker that sets one) — `task_results[-1]["reply"]`.
 3. `qa_node`'s answer — the last AI message in `messages`, the only
@@ -58,6 +62,18 @@ from src.services.trip_planner import _get_destination_names
 
 _ACK_VI = "Đã cập nhật thông tin chuyến đi."
 _ACK_EN = "Trip information updated."
+
+
+def _compose(intake_answer: str | None, next_question: str | None) -> str | None:
+    """Phase 15: joins `intake_qa`'s answer ahead of `ask_slot`'s pending
+    question with a blank line when both are present. Returns whichever one
+    is present otherwise -- `intake_answer` is `None` on every turn that
+    didn't route through `intake_qa`, so this is byte-identical to the old
+    bare `next_question` value on every other path, including plain
+    `"ask"` turns."""
+    if intake_answer and next_question:
+        return f"{intake_answer}\n\n{next_question}"
+    return intake_answer or next_question
 
 
 def _reply_from_task_results(state: TravelGraphState) -> str | None:
@@ -163,7 +179,7 @@ def _reply_from_messages(state: TravelGraphState) -> str | None:
 
 def respond(state: TravelGraphState) -> dict[str, Any]:
     reply = (
-        state.get("next_question")
+        _compose(state.get("intake_answer"), state.get("next_question"))
         or _reply_from_task_results(state)
         or _reply_from_messages(state)
         or (_ACK_EN if state.get("language") == "en" else _ACK_VI)

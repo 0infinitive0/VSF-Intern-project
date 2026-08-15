@@ -148,3 +148,44 @@ def build_extract_patch_prompt(
         repair=repair_suffix,
         message=message,
     )
+
+
+# --- intake_qa (Phase 15) ----------------------------------------------------
+#
+# Read-only escape valve on `ask_slot`'s "ask" branch: answers a genuine
+# question asked while a required slot is still missing, without letting the
+# model invent trip facts it has no source for, and without letting it ask a
+# slot question itself -- `ask_slot` stays the sole owner of `next_question`,
+# which this prompt is told about explicitly so it never duplicates it.
+
+_INTAKE_QA_SYSTEM_PROMPT = """You are a trip-planning assistant answering one user question while some trip details are still being collected. Answer briefly and only from what you actually know -- if you don't know something (weather, prices, availability, real-time facts), say so plainly instead of guessing.
+
+The message reaches you because an upstream classifier flagged it as "changes nothing about the trip" -- that classifier catches real questions, but ALSO greetings, acknowledgements ("ok", "cảm ơn"), and short replies it failed to connect to the pending question below. You must tell those apart: if the message does not actually ask something worth answering, reply with exactly the single word NO_ANSWER and nothing else -- do not greet back, do not comment, do not apologize.
+
+Rules:
+- Never invent a trip fact (destination, dates, budget, preferences) -- only use what is listed below as already known.
+- Never ask the user for any information yourself. Right after your answer, the assistant will separately ask: "{next_question}" -- do not repeat, rephrase, or anticipate that question.
+- Keep the answer short (1-3 sentences).
+- Reply in {language_name}.
+
+Already known so far: {known_facts}
+
+User's message: "{message}"
+"""
+
+# The prompt's own escape hatch for "not actually a question" (see prompt
+# text above) -- containment for the upstream classifier's known
+# over-inclusion (`extract_patch`'s `general_question` bucket also catches
+# greetings/acks/unrescued short replies), not a fix to that classifier.
+INTAKE_QA_NO_ANSWER_SENTINEL = "NO_ANSWER"
+
+_LANGUAGE_NAMES = {"vi": "Vietnamese", "en": "English"}
+
+
+def build_intake_qa_prompt(*, message: str, known_facts: str, next_question: str, language: str) -> str:
+    return _INTAKE_QA_SYSTEM_PROMPT.format(
+        message=message,
+        known_facts=known_facts,
+        next_question=next_question,
+        language_name=_LANGUAGE_NAMES.get(language, _LANGUAGE_NAMES["vi"]),
+    )

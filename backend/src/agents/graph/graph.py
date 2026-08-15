@@ -20,6 +20,11 @@ deviations from that doc's shorthand:
   Every path must build the frozen `PlannerChatResponse` shape (Phase 5's
   own functional requirement), and only `respond` does that — see
   `routing.route_ask_slot`'s docstring.
+- `ask_slot` has a third outcome, `"intake_qa"` (Phase 15): a genuine
+  read-only question asked while a slot is still missing gets answered
+  before `respond` appends the pending question, instead of the question
+  being blindly re-asked with a "didn't catch that" prefix. See
+  `nodes/intake_qa.py`.
 """
 
 from __future__ import annotations
@@ -36,6 +41,7 @@ from src.agents.graph.nodes.booking_node import booking_node
 from src.agents.graph.nodes.budget_check import budget_check
 from src.agents.graph.nodes.extract_patch import extract_patch
 from src.agents.graph.nodes.hotel_node import hotel_node
+from src.agents.graph.nodes.intake_qa import intake_qa
 from src.agents.graph.nodes.itinerary_node import itinerary_node
 from src.agents.graph.nodes.load_context import load_context
 from src.agents.graph.nodes.qa_node import build_qa_subgraph
@@ -56,6 +62,7 @@ NODE_NAMES: tuple[str, ...] = (
     "validate_patch",
     "apply_patch",
     "ask_slot",
+    "intake_qa",
     "supervisor",
     "hotel_node",
     "itinerary_node",
@@ -83,6 +90,7 @@ def build_graph(checkpointer: BaseCheckpointSaver | None = None) -> CompiledStat
     builder.add_node("validate_patch", validate_patch)
     builder.add_node("apply_patch", apply_patch)
     builder.add_node("ask_slot", ask_slot)
+    builder.add_node("intake_qa", intake_qa)
 
     builder.add_node("supervisor", supervisor)
     # CONTRACTS-declared workers are wrapped so a write outside their
@@ -104,7 +112,12 @@ def build_graph(checkpointer: BaseCheckpointSaver | None = None) -> CompiledStat
     builder.add_edge("extract_patch", "validate_patch")
     builder.add_edge("validate_patch", "apply_patch")
     builder.add_edge("apply_patch", "ask_slot")
-    builder.add_conditional_edges("ask_slot", route_ask_slot, {"ask": "respond", "supervisor": "supervisor"})
+    builder.add_conditional_edges(
+        "ask_slot",
+        route_ask_slot,
+        {"ask": "respond", "intake_qa": "intake_qa", "supervisor": "supervisor"},
+    )
+    builder.add_edge("intake_qa", "respond")
 
     # --- Supervisor -> worker delegation ---------------------------------
     builder.add_conditional_edges(

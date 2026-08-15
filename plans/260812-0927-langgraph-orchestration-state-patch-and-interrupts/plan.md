@@ -156,6 +156,8 @@ source means fabricating inventory state — the failure doc §32 names explicit
 | 12 | [Per-day itinerary constraints](./phase-12-per-day-constraints.md) | 9, 11 | 2.5d |
 | 13 | [Place search and suggest-before-replace](./phase-13-place-search.md) | 8, 11 | 2d |
 | 14 | [Trip-total budget constraint](./phase-14-trip-total-budget.md) | 9, 11 | 2.5d |
+| 15 | [Intake QA escape: answer questions while slots are pending](./phase-15-intake-qa-escape-answer-questions-while-slots-are-pending.md) | 7, 11 | 1.5d |
+| 16 | [Conversational polish layer for context lines and re-asks](./phase-16-conversational-polish-layer-for-context-lines-and-re-asks.md) | 15 | 1.5d |
 
 **Phases 1 and 2 are independent of the rewrite — ship them first, together, ~1 day.**
 Phase 1's bugs live in the domain layer and survive any orchestration change; Phase 2 closes
@@ -166,7 +168,12 @@ the refusal gap. Neither waits on anything.
 deleting the old one. Phase 10 lands *before* cutover because State Patch Accuracy plus the
 existing RAGAS end-to-end score are the evidence that the new plane is at least as good.
 
-Natural stop points: after 1+2, after 7 (deadlock class gone), after 11 (one plane), after 14.
+Natural stop points: after 1+2, after 7 (deadlock class gone), after 11 (one plane), after 14,
+after 15 (intake stops refusing to listen).
+
+**Phase 16 is optional polish and the only P3 in this plan.** It is separated from 15 on
+purpose: 15 fixes a defect, 16 changes tone. Ship and observe 15 before deciding 16 is worth
+its cost.
 
 ## Reported failure → phase mapping
 
@@ -186,6 +193,8 @@ Natural stop points: after 1+2, after 7 (deadlock class gone), after 11 (one pla
 | Gợi ý địa điểm trước khi đổi | Only hotels have a selection list | **13** |
 | Tổng ngân sách dưới 3tr | `_calculate_trip_budget` computes but never constrains | **14** |
 | Từ chối toán / code / vé máy bay | `guardrails/` covers jailbreak only | **2** |
+| Hỏi bất kỳ câu gì khi còn thiếu slot → "Mình chưa hiểu rõ ý bạn" | `route_ask_slot` short-circuits to `respond` (`graph.py:107`); no worker is reachable during intake | **15** |
+| Câu hỏi lại lặp nguyên văn từng chữ | Every `ask_slot` string is a fixed `t()` lookup | **16** |
 | Đi cùng người yêu · sang trọng/bình dân · đổi nhiều địa điểm | Already work | — |
 
 ## Risk register
@@ -198,6 +207,7 @@ Natural stop points: after 1+2, after 7 (deadlock class gone), after 11 (one pla
 | `normalize_day_themes` blast radius: CRITICAL, 14 symbols, 10 flows | High | Per-theme marker; absent ⇒ old behavior, *verified correct* for all three callers. Characterization tests first | 1 |
 | `select_hotel_candidates` blast radius: CRITICAL, 12 symbols, 10 flows | High | Keyword-only params defaulting to empty; existing 4 call sites untouched | 8 |
 | `PostgresSaver.from_conn_string` is a context manager; today's checkpointer is per-session | Medium | App-lifespan singleton, sessions keyed by `thread_id` | 4 |
+| **Accepted risk:** the polish layer rewrites a slot question and drops the `"không cần lọc theo giá"` hint `prompts.py:74` depends on, degrading extraction with no failing test | High | **Not mitigated by design** — user chose timeout-only, no content validation. Detection is indirect via `score_state_patches` and budget re-ask rate. Recommended fix if it materializes: assert must-keep phrases survived | 16 |
 | Frontend contract drift during the rewrite | Medium | `PlannerChatResponse` shape is frozen for the whole plan. The graph fills the same fields; no client change until after Phase 11 | 5, 11 |
 | Two planes coexisting 5→11 reintroduces the bug being fixed | Medium | The legacy plane is **frozen** — no edits to it after Phase 5 except reverts. Time-boxed to one window that Phase 11 closes | 5-11 |
 | **An interrupted node re-executes from its start**, so a per-day Python loop containing a shortlist interrupt re-runs completed days — re-searching and silently changing days the user never touched | **High** | Loops with interrupt points are **subgraphs invoked per iteration** (`rebuild_day`), not `for` inside a node. Interrupt-isolation test in Phase 9 step 8 is the proof | 5, 7, 9, 13 |

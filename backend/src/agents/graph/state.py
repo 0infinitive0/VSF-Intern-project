@@ -34,7 +34,12 @@ class TravelGraphState(TypedDict, total=False):
 
     # --- patch pipeline (Phase 6/3) --------------------------------------
     patch: list[dict[str, Any]]  # proposed {path, operation, value} changes
-    intent: str  # extract_patch's classification -- audit trail only, never routes (doc §36)
+    # extract_patch's classification. Selects no WORKER (`detect_impact` +
+    # `WORKFLOW_TO_WORKER` does that, off the validated patch) but does
+    # separate read-only Q&A from state-changing turns on one routing edge:
+    # `route_ask_slot`'s "ask" vs "intake_qa" branch (Phase 15). See
+    # plan.md's "Decided while planning" table.
+    intent: str
     proposed_travel_state: dict[str, Any]  # validate_patch's output; apply_patch commits it
     applied_changes: list[dict[str, Any]]
     rejected_changes: list[dict[str, Any]]
@@ -48,6 +53,18 @@ class TravelGraphState(TypedDict, total=False):
     # --- slot gate (Phase 7) --------------------------------------------
     missing_slots: list[str]
     next_question: str | None
+
+    # --- intake QA escape (Phase 15) -------------------------------------
+    # `extract_patch` sets this True on either of its two fallback returns
+    # (unparseable/exhausted-retry, or an empty message) -- separates "the
+    # extractor failed" from "the extractor ran and concluded this message
+    # changes nothing", both of which otherwise collapse to
+    # `intent == "general_question"`. Turn-scoped; reset by `load_context`.
+    extraction_failed: bool
+    # `intake_qa`'s answer, kept out of `task_results` because `intake_qa`
+    # is not a worker and consumes no `pending_tasks` entry. Turn-scoped;
+    # reset by `load_context`.
+    intake_answer: str | None
 
     # --- scope guard -------------------------------------------------------
     jailbreak_blocked: bool
@@ -176,6 +193,8 @@ def initial_graph_state(session_id: str, *, language: str = "vi") -> TravelGraph
         unresolved_resume_text=None,
         missing_slots=[],
         next_question=None,
+        extraction_failed=False,
+        intake_answer=None,
         jailbreak_blocked=False,
         supervisor_iterations=0,
         day_rebuild_hops=0,

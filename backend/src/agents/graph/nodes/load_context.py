@@ -46,6 +46,8 @@ def load_context(state: TravelGraphState) -> dict[str, Any]:
         "impacted_workflows": [],
         "unresolved_resume_text": None,
         "next_question": None,
+        "extraction_failed": False,
+        "intake_answer": None,
         "jailbreak_blocked": False,
         "supervisor_iterations": 0,
         "day_rebuild_hops": 0,
