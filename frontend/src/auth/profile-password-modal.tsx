@@ -174,28 +174,29 @@ export default function ProfilePasswordModal({ onClose }: { onClose: () => void 
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-5 py-6.5"
-      style={{
-        background: 'rgba(12,18,30,.34)',
-        backdropFilter: 'blur(10px)',
-        opacity: visible ? 1 : 0,
-        transition: 'opacity .34s ease',
-      }}
-      onClick={handleClose}
-    >
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-5 py-6.5">
+      <div
+        className="fixed inset-0"
+        style={{
+          background: 'rgba(12,18,30,.34)',
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
+          opacity: visible ? 1 : 0,
+          transition: 'opacity .34s ease',
+        }}
+        onClick={handleClose}
+      />
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="profile-modal-title"
-        className="glass-panel relative w-full max-w-[940px] rounded-[28px]"
+        className="glass-panel relative z-10 w-full max-w-[940px] rounded-[28px]"
         style={{
           opacity: visible ? 1 : 0,
           transform: visible ? 'none' : 'translateY(16px) scale(.975)',
           transition: 'opacity .38s cubic-bezier(.22,1,.36,1), transform .44s cubic-bezier(.22,1,.36,1)',
         }}
-        onClick={(e) => e.stopPropagation()}
       >
         <header className="relative flex items-center gap-3.5 px-6 py-5.5 border-b" style={{ borderColor: 'var(--color-line)' }}>
           <UserAvatar
