@@ -157,8 +157,16 @@ def test_impossible_actions_rejected() -> None:
     # 1. Editing itinerary with no trip
     no_trip_state = _state()
     assert is_impossible("itinerary_node", no_trip_state) is True
-    
-    # 2. Once destination exists, it is possible
+
+    # 2. Destination alone is NOT enough -- itinerary_node has no code path
+    # that builds trip_data from scratch (only hotel_node's selection branch
+    # does), so every one of its actions bails without trip_data too.
+    dest_only_state = _state()
+    dest_only_state["travel_state"]["destination"] = {"presence": "set", "value": "Nha Trang"}
+    assert is_impossible("itinerary_node", dest_only_state) is True
+
+    # 3. Once a trip actually exists (a hotel was selected), it is possible.
     trip_state = _state()
     trip_state["travel_state"]["destination"] = {"presence": "set", "value": "Nha Trang"}
+    trip_state["trip_data"] = {"destination": "Nha Trang"}
     assert is_impossible("itinerary_node", trip_state) is False

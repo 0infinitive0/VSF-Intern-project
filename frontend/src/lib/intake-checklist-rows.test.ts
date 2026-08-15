@@ -143,4 +143,32 @@ describe('buildIntakeChecklistRows', () => {
     expect(budget?.collected).toBe(false)
     expect(budget?.value).toBeNull()
   })
+
+  it('lights up budget from a server-confirmed range given via plain chat', () => {
+    const rows = buildIntakeChecklistRows(
+      { ...FULL_INTAKE, min_price: 800_000, max_price: 2_500_000 },
+      'vi',
+    )
+    const budget = rows.find((row) => row.key === 'budget')
+    expect(budget?.collected).toBe(true)
+    expect(budget?.value).toBe('800.000 ₫ – 2.500.000 ₫')
+  })
+
+  it('shows the skipped label when the backend recorded an explicit chat skip', () => {
+    const rows = buildIntakeChecklistRows({ ...FULL_INTAKE, budget_skipped: true }, 'vi', null, LABELS)
+    const budget = rows.find((row) => row.key === 'budget')
+    expect(budget?.collected).toBe(true)
+    expect(budget?.value).toBe('Không giới hạn')
+  })
+
+  it('server-confirmed budget wins over a stale local answer once both exist', () => {
+    const rows = buildIntakeChecklistRows(
+      { ...FULL_INTAKE, min_price: 800_000, max_price: 2_500_000 },
+      'vi',
+      { budgetSkipped: true },
+      LABELS,
+    )
+    const budget = rows.find((row) => row.key === 'budget')
+    expect(budget?.value).toBe('800.000 ₫ – 2.500.000 ₫')
+  })
 })

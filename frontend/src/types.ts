@@ -177,6 +177,9 @@ export interface IntakeStatus {
   notes: string
   available_destinations: string[] // real destinations the intake picker may choose from
   budget_options: string[] // real budget/accommodation tier labels from hotel_selection
+  min_price?: number | null // explicit budget.min slot (VND/night), when the user gave a range via chat
+  max_price?: number | null // explicit budget.max slot (VND/night), when the user gave a range via chat
+  budget_skipped?: boolean // true once the user explicitly opted out of a budget preference
   missing: string[]
 }
 

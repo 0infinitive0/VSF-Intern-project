@@ -7,8 +7,11 @@ pending. `next_question` then only asks about whatever is STILL missing —
 this is the structural fix for the deadlock class (a pending question can no
 longer block an unrelated fact from landing) and for the picker-gating bug
 (`dates.start`/`dates.end` sort ahead of `budget.target` in
-`SLOT_REGISTRY`, so the date question — and the frontend's date picker,
-`api/routes.py`'s `requires_stay_dates` — never waits on budget again).
+`SLOT_REGISTRY`, so the date question never waits on budget again — the
+frontend's own date-widget order comes from `next-intake-field.ts`'s
+missing-key mapping, not from a `requires_stay_dates` field; `routes.py`
+has no such symbol, only `request.stay_dates` on the input model, a
+different thing entirely).
 
 Renders here, not in `domain/slot_registry.py`: rendering needs
 `format_guided_question`/`t()` (services layer, e.g. the budget menu already

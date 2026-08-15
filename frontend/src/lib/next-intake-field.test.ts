@@ -136,6 +136,18 @@ describe('currentIntakeField', () => {
     expect(currentIntakeField(intake, f)).toBe('preferences')
   })
 
+  it('skips the widget when the backend already has a budget range from plain chat', () => {
+    const intake = intakeWith([], { min_price: 800_000, max_price: 2_500_000 })
+    const f = form({ destination: 'Đà Nẵng', guests: 2, startDate: 'a', endDate: 'b' })
+    expect(currentIntakeField(intake, f)).toBe('preferences')
+  })
+
+  it('skips the widget when the backend recorded an explicit budget skip from plain chat', () => {
+    const intake = intakeWith([], { budget_skipped: true })
+    const f = form({ destination: 'Đà Nẵng', guests: 2, startDate: 'a', endDate: 'b' })
+    expect(currentIntakeField(intake, f)).toBe('preferences')
+  })
+
   it('keeps preferences active once toggled — it is terminal, not a gate', () => {
     const intake = intakeWith([])
     const f = form({

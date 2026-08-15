@@ -58,6 +58,31 @@ def test_fast_path_delegates_without_any_llm_call(monkeypatch):
     assert result["supervisor_iterations"] == 1
 
 
+def test_first_intake_turn_with_no_trip_goes_to_hotel_node_not_a_coin_flip(monkeypatch):
+    """Regression: a single message that sets destination/dates/people/
+    preferences all at once impacts both `hotel` and `itinerary`
+    workflows, seeding `pending_tasks=["hotel_node", "itinerary_node"]`
+    (apply_patch.py). Before `itinerary_node` also required `trip_data` to
+    be possible, this forced the LLM path, and a wrong LLM pick of
+    `itinerary_node` bailed immediately ("chọn khách sạn trước") with
+    nothing to show -- the user had to resend the identical message.
+    `itinerary_node` being impossible with no `trip_data` restores the fast
+    path here: exactly one real candidate, zero LLM calls, `hotel_node`
+    every time."""
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", _unreachable_llm_factory)
+
+    state = _state(
+        pending_tasks=["hotel_node", "itinerary_node"],
+        task_results=[],
+        travel_state={"destination": {"presence": "set", "value": "Da Nang"}},
+        trip_data={},
+    )
+    result = supervisor(state)
+
+    assert result["next_worker"] == "hotel_node"
+    assert result["routing_source"] == "impact_map"
+
+
 def test_fast_path_does_not_apply_once_a_worker_has_already_reported(monkeypatch):
     """After the first worker completes, task_results is non-empty -- even
     a single remaining pending task must go through the LLM path, matching
@@ -69,6 +94,7 @@ def test_fast_path_does_not_apply_once_a_worker_has_already_reported(monkeypatch
         pending_tasks=["itinerary_node"],
         task_results=[{"worker": "hotel_node", "status": "stub_pass_through"}],
         travel_state={"destination": {"presence": "set", "value": "Da Nang"}},
+        trip_data={"destination": "Da Nang"},  # itinerary_node needs trip_data to be possible
     )
     result = supervisor(state)
 
@@ -87,6 +113,7 @@ def test_multi_workflow_turn_uses_the_llm_and_honors_its_choice(monkeypatch):
         pending_tasks=["hotel_node", "itinerary_node"],
         task_results=[],
         travel_state={"destination": {"presence": "set", "value": "Da Nang"}},
+        trip_data={"destination": "Da Nang"},  # itinerary_node needs trip_data to be possible
     )
     result = supervisor(state)
 
@@ -162,6 +189,7 @@ def test_supervisor_rejects_a_proposal_outside_this_turns_pending_tasks(monkeypa
         pending_tasks=["itinerary_node"],
         task_results=[{"worker": "hotel_node", "status": "stub_pass_through"}],
         travel_state={"destination": {"presence": "set", "value": "Da Nang"}},
+        trip_data={"destination": "Da Nang"},  # itinerary_node needs trip_data to be possible
     )
     result = supervisor(state)
 

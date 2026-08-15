@@ -75,6 +75,17 @@ export function nextIntakeField(intake: IntakeStatus | null): IntakeField | null
 
 /** Whether a widget field is already answered, considering both the local
  * form edits and the server snapshot the form was seeded from. */
+/** Whether the backend already has a real budget answer from a plain-chat
+ * reply — extract_patch's budget.min/max/target slots, echoed by respond.py
+ * as intake.min_price/max_price/budget_skipped. Checked independently of the
+ * local form so a budget answered via free-text chat (after the widget
+ * already mounted, so the one-time form seed missed it) still suppresses the
+ * redundant widget question instead of asking again. */
+function isBudgetAnsweredOnServer(intake: IntakeStatus | null): boolean {
+  if (!intake) return false
+  return Boolean(intake.budget_skipped) || (intake.min_price != null && intake.max_price != null)
+}
+
 export function isFieldFilled(
   form: IntakeFormShape,
   field: IntakeField,
@@ -122,7 +133,11 @@ export function currentIntakeField(
       continue
     }
   }
-  if (!isFieldFilled(form, 'budget') && (intake.budget_options?.length ?? 0) > 0) {
+  if (
+    !isFieldFilled(form, 'budget') &&
+    !isBudgetAnsweredOnServer(intake) &&
+    (intake.budget_options?.length ?? 0) > 0
+  ) {
     return 'budget'
   }
   return 'preferences'

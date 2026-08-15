@@ -11,6 +11,7 @@ from dataclasses import dataclass
 import json
 import logging
 import re
+import time
 from typing import Collection, Iterable
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -71,6 +72,33 @@ def query_approved_amenities(
     return _parse_catalog_entries(getattr(response, "data", None) or [])
 
 
+_ALL_AMENITIES_CACHE_SECONDS = 60.0
+_all_amenities_cache: tuple[tuple[AmenityCatalogEntry, ...], float] | None = None
+
+
+def all_approved_amenities() -> tuple[AmenityCatalogEntry, ...]:
+    """TTL-cached wrapper around `query_approved_amenities()` (no ID filter)
+    for hot-path callers -- e.g. `respond`'s per-turn `all_preferences` field
+    -- that need the full approved catalog without a Supabase round-trip on
+    every turn."""
+
+    global _all_amenities_cache
+    now = time.monotonic()
+    if _all_amenities_cache is not None and now - _all_amenities_cache[1] < _ALL_AMENITIES_CACHE_SECONDS:
+        return _all_amenities_cache[0]
+    entries = tuple(query_approved_amenities())
+    _all_amenities_cache = (entries, now)
+    return entries
+
+
+def clear_all_approved_amenities_cache() -> None:
+    """Invalidate `all_approved_amenities()` after a newly approved amenity
+    is stored, and for tests that need a fresh Supabase read."""
+
+    global _all_amenities_cache
+    _all_amenities_cache = None
+
+
 def discover_and_store_amenities(
     candidates: Collection[dict[str, str]],
 ) -> list[AmenityCatalogEntry]:
@@ -98,6 +126,7 @@ def discover_and_store_amenities(
         logger.warning("Amenity catalog discovery write failed: %s", type(exc).__name__)
         return []
 
+    clear_all_approved_amenities_cache()
     logger.info("Amenity catalog discovery added %d approved amenity entries", len(approved_rows))
     return [
         AmenityCatalogEntry(

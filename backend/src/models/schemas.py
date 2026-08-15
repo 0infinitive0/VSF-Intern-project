@@ -253,6 +253,10 @@ class IntakeStatus(BaseModel):
     )
     min_price: float | None = None
     max_price: float | None = None
+    budget_skipped: bool = Field(
+        default=False,
+        description="True when the user explicitly opted out of a budget preference",
+    )
     missing: list[str] = Field(
         default_factory=list,
         description="Names of fields still needed: 'destination', 'people', 'start_date', 'end_date'",

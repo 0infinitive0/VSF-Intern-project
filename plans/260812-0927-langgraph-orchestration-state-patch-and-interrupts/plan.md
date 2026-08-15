@@ -158,6 +158,7 @@ source means fabricating inventory state — the failure doc §32 names explicit
 | 14 | [Trip-total budget constraint](./phase-14-trip-total-budget.md) | 9, 11 | 2.5d |
 | 15 | [Intake QA escape: answer questions while slots are pending](./phase-15-intake-qa-escape-answer-questions-while-slots-are-pending.md) | 7, 11 | 1.5d |
 | 16 | [Conversational polish layer for context lines and re-asks](./phase-16-conversational-polish-layer-for-context-lines-and-re-asks.md) | 15 | 1.5d |
+| 17 | [Derive the response payload from graph state](./phase-17-derive-response-payload-from-graph-state.md) | 11, 15 | 1.5d |
 
 **Phases 1 and 2 are independent of the rewrite — ship them first, together, ~1 day.**
 Phase 1's bugs live in the domain layer and survive any orchestration change; Phase 2 closes
@@ -195,6 +196,10 @@ its cost.
 | Từ chối toán / code / vé máy bay | `guardrails/` covers jailbreak only | **2** |
 | Hỏi bất kỳ câu gì khi còn thiếu slot → "Mình chưa hiểu rõ ý bạn" | `route_ask_slot` short-circuits to `respond` (`graph.py:107`); no worker is reachable during intake | **15** |
 | Câu hỏi lại lặp nguyên văn từng chữ | Every `ask_slot` string is a fixed `t()` lookup | **16** |
+| Đã tìm được khách sạn nhưng UI vẫn hỏi "bạn thích kiểu trải nghiệm nào?" | `respond.py:219` hardcodes `stage: "intake"`, so `chat-panel.tsx:121` never unmounts the intake form and `next-intake-field.ts:143` sticks on its terminal `preferences` field | **17** |
+| Rail khách sạn không mở, StepNavigator kẹt ở bước intake | Same hardcoded `stage` — `inHotelStage` (`chat-panel.tsx:115`) can never be true | **17** |
+| Không có chip gợi ý nào ở mọi lượt | `respond.py` hardcodes `suggestions: []`; `generate_next_chat_suggestions` exists but only `cli/terminal_chat.py` calls it | **17** |
+| Bộ lọc khách sạn không có khoảng giá và không có pill tiện ích | `compound_min_price`/`compound_max_price`/`all_preferences`/`active_preferences` hardcoded; `stage-hotels.tsx:199-203` nhận hằng số | **17** |
 | Đi cùng người yêu · sang trọng/bình dân · đổi nhiều địa điểm | Already work | — |
 
 ## Risk register

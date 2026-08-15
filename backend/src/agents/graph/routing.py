@@ -30,8 +30,23 @@ def _never(_state: TravelGraphState) -> bool:
 # Structured output guarantees a valid *label*, not a *possible action* —
 # ported forward from the legacy router's `_IMPOSSIBLE`
 # (`routing_decision.py:174-177`).
+#
+# `itinerary_node` additionally requires `trip_data` (not just `destination`):
+# every one of its actions -- `lock_days`, `edit_item`, and the default
+# `build_itinerary`/`rebuild_days` -- bails with "chọn khách sạn trước" when
+# `trip_data` is empty (`itinerary_node.py`'s own `_err` calls). Only
+# `hotel_node`'s `selected_hotel_id` branch ever creates `trip_data`
+# (`_handle_hotel_selection` -> `build_selected_hotel_trip`); `itinerary_node`
+# has no code path that builds one from scratch. Without this second check, a
+# single message that sets destination/dates/people/preferences all at once
+# (the common first-intake turn) impacts both `hotel` and `itinerary`
+# workflows, so `itinerary_node` looked "possible" purely from `destination`
+# and became a supervisor-LLM coin flip against `hotel_node` -- reported bug:
+# the LLM sometimes picked `itinerary_node` first, which bailed immediately
+# with nothing to show, forcing the user to resend the identical message.
 _IMPOSSIBLE: dict[str, Callable[[TravelGraphState], bool]] = {
-    "itinerary_node": lambda s: not bool((s.get("travel_state") or {}).get("destination")),
+    "itinerary_node": lambda s: not bool((s.get("travel_state") or {}).get("destination"))
+    or not bool(s.get("trip_data")),
     "booking_node": lambda s: True,  # blocked until the booking plan lands
 }
 
