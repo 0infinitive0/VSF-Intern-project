@@ -43,18 +43,24 @@ export default function ConfirmDialog({
   if (!open) return null
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(12,18,30,.34)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', animation: 'vFade .18s ease both' }}
-      onClick={onCancel}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0"
+        style={{
+          background: 'rgba(12,18,30,.34)',
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
+          animation: 'vFade .18s ease both',
+        }}
+        onClick={onCancel}
+      />
       <div
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
         aria-describedby="confirm-dialog-message"
-        className="glass-card w-full max-w-[340px] p-5 flex flex-col gap-4"
-        onClick={(e) => e.stopPropagation()}
+        className="glass-card relative z-10 w-full max-w-[340px] p-5 flex flex-col gap-4"
+        style={{ animation: 'vFade .18s ease both' }}
       >
         <div className="flex flex-col gap-1.5">
           <div id="confirm-dialog-title" className="text-[14px] font-semibold text-on-surface">
