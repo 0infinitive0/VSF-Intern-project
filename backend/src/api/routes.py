@@ -174,13 +174,19 @@ def attraction_detail(attraction_id: UUID) -> AttractionDetailPayload:
 def create_session(current_user: AuthenticatedUser | None = Depends(get_current_user)) -> dict:
     """Tạo một phiên chat mới và trả về session_id do server cấp.
 
-    Persists immediately (not just after the first turn) so the session shows
-    up as its own row in the history rail right away — otherwise every
-    never-chatted draft looked identical to any other and clicking
-    "+ Chuyến đi mới" repeatedly appeared to do nothing."""
+    Deliberately does NOT persist here. It used to, so the session would show
+    up as its own row in the history rail right away — but an unstarted
+    session (no chat turn yet) has nothing to summarize, so every one of
+    those rows rendered as an indistinguishable, contentless "Chuyến đi mới"
+    entry — the accumulating-empty-history bug this fixes. The in-memory
+    registry entry created below already makes every other "+ Chuyến đi mới"
+    click behave correctly (a fresh, empty main chat panel); the first *real*
+    persisted row now only appears once a real chat turn runs
+    persist_hook(session) itself (src/agents/session.py — process_chat_turn
+    and friends already call it independent of this route). list_sessions()
+    additionally requires at least one chat_messages row per session, so any
+    already-persisted empty rows from before this change stay hidden too."""
     session = registry.create(owner_user_id=current_user.id if current_user else None)
-    if session.persist_hook:
-        session.persist_hook(session)
     from datetime import datetime
 
     return {

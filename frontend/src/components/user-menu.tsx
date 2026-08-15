@@ -59,7 +59,7 @@ export default function UserMenu({
         type="button"
         onClick={onOpenAuthPanel}
         title={t('authSignIn')}
-        className="shrink-0 h-9 rounded-xl border border-outline-variant bg-glass-1 flex items-center justify-center gap-2 text-[11.5px] font-medium text-on-surface-variant hover:text-on-surface transition-colors"
+        className="shrink-0 w-full h-9 rounded-xl border border-outline-variant bg-glass-1 flex items-center justify-center gap-2 text-[11.5px] font-medium text-on-surface-variant hover:text-on-surface transition-colors animate-[vFade_0.28s_ease_both]"
       >
         <span className="material-symbols-outlined text-[16px]" aria-hidden="true">
           login
@@ -73,7 +73,7 @@ export default function UserMenu({
   const initial = getInitial(displayName)
 
   return (
-    <div ref={rootRef} className="shrink-0 flex flex-col gap-1.5">
+    <div ref={rootRef} className="shrink-0 flex flex-col gap-1.5 animate-[vFade_0.28s_ease_both]">
       {open && (
         // In-flow, not `position: absolute` (design: V-OTA Planner.dc.html:127-138)
         // — SidebarRail's <aside> is `overflow-hidden`, so an absolutely

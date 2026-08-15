@@ -308,12 +308,23 @@ def list_sessions(user_id: str, page: int = 1, page_size: int = 10) -> SessionPa
     260814-supabase-auth-and-per-user-history). Every caller of this function
     must now resolve a real caller identity first; src.api.routes returns an
     empty page instead of calling this at all when there is none.
+
+    `chat_messages!inner(session_id)` forces an inner join, so a session with
+    zero messages (created_session() no longer persists on creation — see
+    routes.py — but old rows and any other empty-session edge case still
+    exist) never reaches the rail as a contentless "Chuyến đi mới" entry. A
+    join on real message rows is schema-version-agnostic — it doesn't care
+    whether context_data is the v1 or v2 checkpoint shape, unlike filtering
+    on a parsed JSON field would. The join column is minimal (session_id
+    only); it's discarded by summarize(), which never reads it.
     """
     safe_page = max(1, page)
     safe_page_size = max(1, min(page_size, 100))
     start = (safe_page - 1) * safe_page_size
     rows = (
-        _get_supabase_client().table("sessions").select("session_id,context_data,created_at,updated_at")
+        _get_supabase_client()
+        .table("sessions")
+        .select("session_id,context_data,created_at,updated_at,chat_messages!inner(session_id)")
         .eq("user_id", user_id)
         .order("updated_at", desc=True).order("session_id", desc=True)
         .range(start, start + safe_page_size).execute().data or []
