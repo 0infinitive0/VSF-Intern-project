@@ -77,6 +77,7 @@ export default function AppShell({
   onPickSession,
   onDeleteSession,
   turnPending,
+  onOpenAuthPanel,
 }: {
   state: ChatState
   onSend: (text: string) => void
@@ -102,6 +103,7 @@ export default function AppShell({
   onPickSession: (sessionId: string) => void
   onDeleteSession: (sessionId: string) => void
   turnPending: boolean
+  onOpenAuthPanel: () => void
 }) {
   const { theme, toggleTheme } = useTheme()
   const focusMode = useFocusMode()
@@ -198,6 +200,7 @@ export default function AppShell({
         onPickSession={onPickSession}
         onDeleteSession={onDeleteSession}
         turnPending={turnPending}
+        onOpenAuthPanel={onOpenAuthPanel}
       />
 
       <div

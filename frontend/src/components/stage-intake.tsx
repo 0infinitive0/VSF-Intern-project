@@ -37,7 +37,7 @@ export default function StageIntake({
             {t('intakeHeroTagline')}
           </div>
           <h1 className="text-[42px] font-[590] tracking-[-1.9px] leading-[1.06] text-on-surface text-pretty">
-            {t('intakeHeroA')}<br/>
+            {t('intakeHeroA')}{' '}
             <span
               className="font-[530] bg-clip-text text-transparent animate-[vHue_12s_ease-in-out_infinite]"
               style={{

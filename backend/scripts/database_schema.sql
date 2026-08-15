@@ -182,9 +182,11 @@ CREATE TABLE events (
 CREATE TABLE sessions (
     session_id VARCHAR(255) PRIMARY KEY,
     context_data JSONB, -- Lưu trữ profiling (Đi đâu, khi nào, với ai, vibe)
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE, -- Chủ sở hữu (kể cả user ẩn danh), thêm ở migration 20260814
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+CREATE INDEX idx_sessions_user_id_updated_at ON sessions (user_id, updated_at DESC);
 
 -- Bảng 8: Tin nhắn Chat (Lịch sử hội thoại)
 CREATE TABLE chat_messages (

@@ -7,19 +7,22 @@
  */
 
 import type { PlannerChatResponse, TripPlan } from '../types'
+import { authHeaders } from './auth-headers'
+import { reportSessionExpired } from '../auth/session-expired-bus'
 
 const BASE = (import.meta.env.VITE_API_BASE || '') + '/api/v1'
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const opts: RequestInit = {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
   }
   if (body !== undefined) {
     opts.body = JSON.stringify(body)
   }
 
   const res = await fetch(BASE + path, opts)
+  if (res.status === 401) reportSessionExpired()
 
   if (res.status === 204) return null as T
 

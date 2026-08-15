@@ -134,6 +134,7 @@ class TripSession:
         *,
         tools: Any = None,  # SessionTools — set by create_chat_session via build_trip_agent
         persist_hook: Callable[[TripSession], None] | None = None,
+        owner_user_id: str | None = None,
         created_at: float | None = None,
         last_seen_at: float | None = None,
         lock: threading.Lock | None = None,
@@ -153,6 +154,12 @@ class TripSession:
         self.config = config
         self.tools = tools
         self.persist_hook = persist_hook
+        # Real auth.users.id for every visitor once the frontend sends a
+        # Supabase JWT (anonymous or permanent) — None for sessions created
+        # before plan 260814 shipped, or outside the HTTP API (the CLI never
+        # sets this). See src.api.routes._owned_session_or_404 for how a
+        # None owner is treated (permissively, not "open to everyone").
+        self.owner_user_id = owner_user_id
         self.created_at = created_at if created_at is not None else time.time()
         self.last_seen_at = last_seen_at if last_seen_at is not None else time.time()
         self.lock = lock if lock is not None else threading.Lock()
@@ -267,7 +274,12 @@ class TripSession:
         self.state["pending_parameter_confirmation"] = value
 
 
-def create_chat_session(session_id: str, *, persist_hook: Callable[[TripSession], None] | None = None) -> TripSession:
+def create_chat_session(
+    session_id: str,
+    *,
+    persist_hook: Callable[[TripSession], None] | None = None,
+    owner_user_id: str | None = None,
+) -> TripSession:
     """Build a fresh session with its own compiled agent and tool closures, so no
     tool ever reaches for a module-level file constant shared by every
     conversation."""
@@ -276,6 +288,7 @@ def create_chat_session(session_id: str, *, persist_hook: Callable[[TripSession]
         agent=None,
         config={"configurable": {"thread_id": session_id}},
         persist_hook=persist_hook,
+        owner_user_id=owner_user_id,
     )
     session.agent, session.tools = build_trip_agent(session)
     return session
@@ -1541,13 +1554,13 @@ class SessionRegistry:
         self._load_hook = load_hook
         self._delete_hook = delete_hook
 
-    def create(self) -> TripSession:
+    def create(self, *, owner_user_id: str | None = None) -> TripSession:
         """The only way a session comes into being with a server-generated id."""
         import uuid
 
         session_id = str(uuid.uuid4())
         with self._registry_lock:
-            session = create_chat_session(session_id, persist_hook=self._persist_hook)
+            session = create_chat_session(session_id, persist_hook=self._persist_hook, owner_user_id=owner_user_id)
             self._sessions[session_id] = session
             return session
 
@@ -1572,7 +1585,9 @@ class SessionRegistry:
                 from src.services.itinerary_store import ItineraryStore
                 from src.services.session_store import deserialize
 
-                session = create_chat_session(session_id, persist_hook=self._persist_hook)
+                session = create_chat_session(
+                    session_id, persist_hook=self._persist_hook, owner_user_id=row.get("user_id")
+                )
                 session.state = deserialize(session_id, row.get("context_data"), row.get("messages"))
                 current_trip = (row.get("context_data") or {}).get("current_trip") or {}
                 itinerary_id = current_trip.get("itinerary_id")
@@ -1593,7 +1608,7 @@ class SessionRegistry:
                 logger.exception("Unable to rehydrate session %s; treating as unavailable", session_id)
                 return None
 
-    def resolve(self, session_id: str) -> TripSession:
+    def resolve(self, session_id: str, *, owner_user_id: str | None = None) -> TripSession:
         """Atomically look up or create a session for a caller-supplied id.
 
         Holding _registry_lock for the whole check-then-create closes the race
@@ -1606,7 +1621,7 @@ class SessionRegistry:
         with self._registry_lock:
             session = self._sessions.get(session_id)
             if session is None:
-                session = create_chat_session(session_id, persist_hook=self._persist_hook)
+                session = create_chat_session(session_id, persist_hook=self._persist_hook, owner_user_id=owner_user_id)
                 self._sessions[session_id] = session
             session.last_seen_at = time.time()
             return session

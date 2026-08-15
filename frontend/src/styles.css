@@ -486,33 +486,35 @@ body {
 /* ============================================================
    Calendar override — @daypicker/react (react-day-picker v10) ships with
    circular 44px cells, blue selected/range defaults, and a "blue" accent that
-   never matched this design. Scoped under .intake-calendar (only
-   IntakeDateRange uses it) so it doesn't leak to any other DayPicker
-   instance. Values ported from DatePicker.dc.html:16-25 and
+   never matched this design. Scoped under .day-calendar so it doesn't leak
+   to any other DayPicker instance — shared by IntakeDateRange (range mode,
+   uses the .rdp-range_* rules below too) and ProfilePasswordModal's
+   DateOfBirthField (single mode, never matches those range rules — harmless).
+   Values ported from DatePicker.dc.html:16-25 and
    V-OTA Planner.dc.html:2237-2243.
    ============================================================ */
 
 /* Custom nav row above (prev/next month + year buttons) replaces this —
    `hideNavigation` only removes the library's arrow buttons, not this
    caption, so it renders unstyled and duplicates the month/year label. */
-.intake-calendar .rdp-month_caption {
+.day-calendar .rdp-month_caption {
   display: none;
 }
 
-.intake-calendar .rdp-months,
-.intake-calendar .rdp-month {
+.day-calendar .rdp-months,
+.day-calendar .rdp-month {
   width: 100%;
   max-width: none;
 }
 
-.intake-calendar .rdp-month_grid {
+.day-calendar .rdp-month_grid {
   width: 100%;
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: 3px;
 }
 
-.intake-calendar .rdp-weekday {
+.day-calendar .rdp-weekday {
   font-size: 10px;
   font-weight: 400;
   text-transform: none;
@@ -521,7 +523,7 @@ body {
   padding: 0;
 }
 
-.intake-calendar .rdp-day {
+.day-calendar .rdp-day {
   width: auto;
   height: 31px;
   padding: 0;
@@ -532,7 +534,7 @@ body {
    so this consistently outranks the library's own `.rdp-selected .rdp-day_button`
    border rule regardless of CSS import order — both are otherwise tied at
    two class selectors each. */
-.intake-calendar .rdp-day .rdp-day_button {
+.day-calendar .rdp-day .rdp-day_button {
   width: 100%;
   height: 31px;
   border: none;
@@ -547,62 +549,62 @@ body {
     border-radius 0.22s ease;
 }
 
-.intake-calendar .rdp-day_button:hover:not(:disabled) {
+.day-calendar .rdp-day_button:hover:not(:disabled) {
   background: rgba(58, 115, 222, 0.12);
 }
 
-.intake-calendar .rdp-today:not(.rdp-outside) .rdp-day_button {
+.day-calendar .rdp-today:not(.rdp-outside) .rdp-day_button {
   color: var(--acc);
 }
 
-.intake-calendar .rdp-outside .rdp-day_button {
+.day-calendar .rdp-outside .rdp-day_button {
   opacity: 0.4;
 }
 
 /* The library already dims the day CELL (.rdp-disabled) to 0.5 opacity;
    neutralize that so this button-level 0.3 doesn't compound to ~0.15. */
-.intake-calendar .rdp-disabled {
+.day-calendar .rdp-disabled {
   opacity: 1;
 }
 
-.intake-calendar .rdp-disabled .rdp-day_button {
+.day-calendar .rdp-disabled .rdp-day_button {
   opacity: 0.3;
 }
 
-.intake-calendar .rdp-range_start,
-.intake-calendar .rdp-range_end {
+.day-calendar .rdp-range_start,
+.day-calendar .rdp-range_end {
   background: transparent;
 }
 
-.intake-calendar .rdp-range_middle {
+.day-calendar .rdp-range_middle {
   background: rgba(58, 115, 222, 0.13);
   border-radius: 5px;
 }
 
-.intake-calendar .rdp-range_middle .rdp-day_button {
+.day-calendar .rdp-range_middle .rdp-day_button {
   background: transparent;
   color: var(--t1);
   font-weight: 400;
   border-radius: 5px;
 }
 
-.intake-calendar .rdp-range_start .rdp-day_button,
-.intake-calendar .rdp-range_end .rdp-day_button {
+.day-calendar .rdp-range_start .rdp-day_button,
+.day-calendar .rdp-range_end .rdp-day_button {
   background: var(--btn);
   color: var(--btn-fg);
   font-weight: 600;
   border: none;
 }
 
-.intake-calendar .rdp-range_start .rdp-day_button {
+.day-calendar .rdp-range_start .rdp-day_button {
   border-radius: 11px 5px 5px 11px;
 }
 
-.intake-calendar .rdp-range_end .rdp-day_button {
+.day-calendar .rdp-range_end .rdp-day_button {
   border-radius: 5px 11px 11px 5px;
 }
 
-.intake-calendar .rdp-range_start.rdp-range_end .rdp-day_button {
+.day-calendar .rdp-range_start.rdp-range_end .rdp-day_button {
   border-radius: 11px;
 }
 

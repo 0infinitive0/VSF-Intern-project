@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { deleteSession } from './api/session-client'
+import { useAuth } from './auth/auth-context'
+import { consumeOAuthRedirectError, isIdentityAlreadyLinkedError } from './auth/oauth-redirect-error'
+import { translateAuthError } from './auth/translate-auth-error'
 import { useChatSession } from './hooks/use-chat-session'
 import { useIntakeForm } from './hooks/use-intake-form'
 import { usePanelResize } from './hooks/use-panel-resize'
@@ -8,14 +12,86 @@ import { deriveStageView, type StageView } from './lib/derive-stage'
 import { isFieldFilled } from './lib/next-intake-field'
 import type { HotelOption } from './types'
 import AppShell from './components/app-shell'
+import AuthPanel from './auth/auth-panel'
+import SessionExpiredModal from './components/session-expired-modal'
+import BootSplash from './components/boot-splash'
 
 /**
- * App — thin composition layer. Owns session/panel-width state and derives
- * the stage view; all layout and shell mechanics live in AppShell so future
- * phases (6-10) only fill in the areas it creates, never touching this file
- * or AppShell's structure again.
+ * App — the auth boot gate (plan 260814-supabase-auth-and-per-user-history).
+ * Every visitor gets a real Supabase session (anonymous or permanent) before
+ * anything below this line mounts: PlannerApp — and therefore
+ * use-chat-session.ts's own bootstrap effect, and every api/*-client.ts call
+ * it triggers — is not created as a component instance at all until
+ * `auth.status === 'ready'`, so no request ever goes out with no
+ * Authorization header; PlannerApp below is the original App component,
+ * verbatim, renamed. The other auth-related piece living here is the
+ * consumeOAuthRedirectError() effect below — the one place in the boot
+ * sequence positioned to catch a Google redirect landing back with an
+ * error before any other component has mounted.
  */
 export default function App() {
+  const auth = useAuth()
+  const { retryGoogleSignIn } = auth
+  const { t } = useTranslation()
+  const [authPanelOpen, setAuthPanelOpen] = useState(false)
+  const [authPanelError, setAuthPanelError] = useState('')
+
+  // Runs once on mount, independent of auth.status: a failed OAuth link
+  // shows up as error params on the very first render after Google
+  // redirects back, not as something signInWithGoogle()'s own await ever
+  // sees — see oauth-redirect-error.ts. "This Google email already belongs
+  // to a different account" is not shown as an error here — from the
+  // visitor's side, clicking "Continue with Google" for an account that
+  // already exists should just sign them in, so this silently retries as a
+  // plain sign-in instead (auth-context.tsx's retryGoogleSignIn). Any other
+  // OAuth failure still surfaces through AuthPanel as before.
+  useEffect(() => {
+    const oauthError = consumeOAuthRedirectError()
+    if (!oauthError) return
+    if (isIdentityAlreadyLinkedError(oauthError)) {
+      retryGoogleSignIn().then(({ error }) => {
+        if (!error) return
+        setAuthPanelError(translateAuthError(error, t))
+        setAuthPanelOpen(true)
+      })
+      return
+    }
+    setAuthPanelError(translateAuthError(oauthError, t))
+    setAuthPanelOpen(true)
+  }, [retryGoogleSignIn, t])
+
+  if (auth.status === 'loading') {
+    return <BootSplash />
+  }
+
+  return (
+    <>
+      <PlannerApp onOpenAuthPanel={() => setAuthPanelOpen(true)} />
+      <AuthPanel
+        open={authPanelOpen}
+        initialError={authPanelError}
+        onClose={() => {
+          setAuthPanelOpen(false)
+          setAuthPanelError('')
+        }}
+      />
+      <SessionExpiredModal
+        onSignInAgain={() => {
+          auth.dismissSessionExpired()
+          setAuthPanelOpen(true)
+        }}
+      />
+    </>
+  )
+}
+
+/**
+ * PlannerApp — thin composition layer. Owns session/panel-width state and
+ * derives the stage view; all layout and shell mechanics live in AppShell so
+ * future phases (6-10) only fill in the areas it creates, never touching
+ * this file or AppShell's structure again.
+ */
+function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   const { state, send, selectHotel: selectHotelDirect, startNew, restore, changeHotel } = useChatSession()
   const {
     form: intakeForm,
@@ -143,6 +219,7 @@ export default function App() {
       onPickSession={handlePickSession}
       onDeleteSession={handleDeleteSession}
       turnPending={state.pending}
+      onOpenAuthPanel={onOpenAuthPanel}
     />
   )
 }

@@ -11,6 +11,27 @@ import pytest
 
 import src.agents.session as session_module
 from src.agents.session import TripSession
+from src.config import get_settings
+
+
+@pytest.fixture(autouse=True)
+def _auth_not_required_by_default(monkeypatch):
+    """Pin AUTH_REQUIRED=false for this module's baseline, explicitly rather
+    than relying on config.py's default: Settings reads backend/.env
+    directly (env_file=".env"), so on a dev machine that has since flipped
+    AUTH_REQUIRED=true there for real, an un-pinned test would silently
+    inherit that and 401 on every request below that sends no token —
+    same class of bug already documented in test_jwt_verifier.py's
+    test_no_supabase_url_configured_raises. Most tests here exercise
+    business logic (session lifecycle, hotel flows, planner turns) that is
+    orthogonal to the auth rollout flag; the handful that specifically test
+    ownership/AUTH_REQUIRED behavior use the auth_override fixture below or
+    set the env var themselves.
+    """
+    monkeypatch.setenv("AUTH_REQUIRED", "false")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 @pytest.fixture(autouse=True)
@@ -26,6 +47,7 @@ def _fake_planner_agent(monkeypatch):
             session_id=thread_id,
             agent=object(),
             config={"configurable": {"thread_id": thread_id}},
+            owner_user_id=kwargs.get("owner_user_id"),
         )
 
     monkeypatch.setattr(session_module, "create_chat_session", _fake_create_chat_session)
@@ -174,3 +196,127 @@ async def test_health(client):
 async def test_agent_status(client):
     response = await client.get("/api/v1/status")
     assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Ownership / cross-user isolation (plan 260814-supabase-auth-and-per-user-history)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def auth_override():
+    """Overrides the get_current_user dependency for the app under test.
+
+    Call with a user id to simulate an authenticated caller, or with None to
+    simulate no/an invalid token (AUTH_REQUIRED defaults to False, so that is
+    "anonymous", not "rejected" — see src/auth/dependencies.py). Always
+    cleared after the test, pass or fail.
+    """
+    from src.auth import AuthenticatedUser, get_current_user
+    from src.main import app
+
+    def _set(user_id: str | None):
+        if user_id is None:
+            app.dependency_overrides.pop(get_current_user, None)
+            return
+        app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+            id=user_id, email=f"{user_id}@example.com", is_anonymous=False
+        )
+
+    yield _set
+    app.dependency_overrides.pop(get_current_user, None)
+
+
+@pytest.mark.asyncio
+async def test_create_session_stamps_the_caller_as_owner(client, auth_override):
+    import src.api.routes as _routes
+
+    auth_override("user-a")
+    response = await client.post("/api/v1/chat/session")
+    session_id = response.json()["session_id"]
+
+    session = _routes.registry.get(session_id)
+    assert session.owner_user_id == "user-a"
+
+
+@pytest.mark.asyncio
+async def test_a_session_created_with_no_caller_identity_has_no_owner(client, auth_override):
+    """AUTH_REQUIRED=False (the default) must not regress today's behavior:
+    a caller sending no token still gets a working, unowned session."""
+    import src.api.routes as _routes
+
+    auth_override(None)
+    response = await client.post("/api/v1/chat/session")
+    session_id = response.json()["session_id"]
+
+    session = _routes.registry.get(session_id)
+    assert session.owner_user_id is None
+
+
+@pytest.mark.asyncio
+async def test_the_owning_user_can_reach_their_own_session(client, auth_override):
+    auth_override("user-a")
+    session_id = (await client.post("/api/v1/chat/session")).json()["session_id"]
+
+    response = await client.get(f"/api/v1/chat/{session_id}/plan")
+
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_a_different_authenticated_user_gets_404_not_someone_elses_session(client, auth_override):
+    auth_override("user-a")
+    session_id = (await client.post("/api/v1/chat/session")).json()["session_id"]
+
+    auth_override("user-b")
+    response = await client.get(f"/api/v1/chat/{session_id}/plan")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_an_unauthenticated_caller_cannot_reach_someone_elses_session_either(client, auth_override):
+    """The security fix does not depend on AUTH_REQUIRED being on: a caller
+    with no identity at all must be just as unable to reach an owned session
+    as a caller authenticated as someone else."""
+    auth_override("user-a")
+    session_id = (await client.post("/api/v1/chat/session")).json()["session_id"]
+
+    auth_override(None)
+    response = await client.get(f"/api/v1/chat/{session_id}/plan")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_planner_chat_also_enforces_ownership(client, auth_override):
+    auth_override("user-a")
+    session_id = (await client.post("/api/v1/chat/session")).json()["session_id"]
+
+    auth_override("user-b")
+    response = await client.post(
+        "/api/v1/planner_chat", json={"session_id": session_id, "message": "hello"}
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_session_is_a_silent_noop_for_a_different_owner(client, auth_override):
+    """Preserves the existing '204 either way' contract (never leaks
+    existence via status code) while still not actually deleting a session
+    that belongs to someone else."""
+    import src.api.routes as _routes
+
+    auth_override("user-a")
+    session_id = (await client.post("/api/v1/chat/session")).json()["session_id"]
+
+    auth_override("user-b")
+    response = await client.delete(f"/api/v1/chat/{session_id}")
+    assert response.status_code == 204
+    assert _routes.registry.get(session_id) is not None
+
+    auth_override("user-a")
+    response = await client.delete(f"/api/v1/chat/{session_id}")
+    assert response.status_code == 204
+    assert _routes.registry.get(session_id) is None

@@ -160,7 +160,7 @@ def test_registry_rehydrates_only_when_loader_is_enabled(monkeypatch):
     }
     created = []
 
-    def fake_create(session_id, *, persist_hook=None):
+    def fake_create(session_id, *, persist_hook=None, owner_user_id=None):
         created.append(session_id)
         return _session(session_id, persist_hook)
 
@@ -199,6 +199,10 @@ def test_list_sessions_fetches_one_extra_row_for_stable_pagination(monkeypatch):
     ]
 
     class FakeQuery:
+        def eq(self, key, value):
+            assert (key, value) == ("user_id", "user-1")
+            return self
+
         def order(self, *_args, **_kwargs):
             return self
 
@@ -219,7 +223,7 @@ def test_list_sessions_fetches_one_extra_row_for_stable_pagination(monkeypatch):
 
     monkeypatch.setattr(session_store, "_get_supabase_client", lambda: FakeSupabase())
 
-    page = session_store.list_sessions(page=2, page_size=10)
+    page = session_store.list_sessions(user_id="user-1", page=2, page_size=10)
 
     assert len(page.rows) == 10
     assert page.rows[0]["session_id"] == "session-00"
@@ -262,6 +266,9 @@ def test_drop_deletes_persisted_row_and_swallows_delete_failure():
 
 @pytest.mark.asyncio
 async def test_list_and_restore_routes_use_persisted_payload_contract(client, monkeypatch):
+    from src.auth import AuthenticatedUser, get_current_user
+    from src.main import app
+
     session = _session("persisted-session")
     session.state["messages"] = [
         HumanMessage(content="hello", additional_kwargs={"stage": "intake", "at": "2026-08-07T00:00:00Z"})
@@ -272,16 +279,26 @@ async def test_list_and_restore_routes_use_persisted_payload_contract(client, mo
     monkeypatch.setattr(
         session_store,
         "list_sessions",
-        lambda page=1, page_size=10: session_store.SessionPage(
+        lambda user_id, page=1, page_size=10: session_store.SessionPage(
             rows=[{"session_id": session.session_id, "context_data": session_store.serialize(session), "created_at": "2026-08-07T00:00:00Z", "updated_at": "2026-08-07T00:00:01Z"}],
             page=page,
             page_size=page_size,
             has_more=True,
         ),
     )
-
-    listed = await client.get("/api/v1/chat/sessions")
-    restored = await client.get(f"/api/v1/chat/{session.session_id}/restore")
+    # GET /chat/sessions is scoped to a real caller (plan 260814) — the fake
+    # session above has no owner (owner_user_id defaults to None), so
+    # /restore stays reachable regardless; the list endpoint additionally
+    # needs an authenticated identity, provided here via FastAPI's dependency
+    # override rather than a real signed JWT.
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        id="user-1", email="user-1@example.com", is_anonymous=False
+    )
+    try:
+        listed = await client.get("/api/v1/chat/sessions")
+        restored = await client.get(f"/api/v1/chat/{session.session_id}/restore")
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
 
     assert listed.status_code == 200
     assert listed.json()["sessions"][0]["status"] == "draft"
