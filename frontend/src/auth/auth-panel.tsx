@@ -3,12 +3,15 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from './auth-context'
 import { translateAuthError } from './translate-auth-error'
 import { EMAIL_RE } from './email-pattern'
+import { useMountTransition } from '../lib/use-mount-transition'
 import LoginForm from './login-form'
 import RegisterForm from './register-form'
 import ForgotPasswordForm from './forgot-password-form'
 import GoogleButton from './google-button'
 
 type Screen = 'login' | 'register' | 'forgot' | 'sent'
+
+const CLOSE_TRANSITION_MS = 320
 
 /**
  * AuthPanel — the whole Login/Register/Forgot-password/Sent experience as
@@ -22,6 +25,12 @@ type Screen = 'login' | 'register' | 'forgot' | 'sent'
  * reimplemented against real Supabase calls instead of a setTimeout mock —
  * see auth-context.tsx for the actual signInWithPassword/registerWithPassword/
  * signInWithGoogle/sendPasswordReset calls this dispatches to.
+ *
+ * Open/close transition via useMountTransition (lib/use-mount-transition.ts):
+ * this component is always rendered by App.tsx (`open` just toggles it), so
+ * closing — including the implicit close on a successful login/register,
+ * both of which just call `onClose()` same as before — now fades/scales out
+ * instead of vanishing the instant `open` goes false.
  */
 export default function AuthPanel({
   open,
@@ -45,6 +54,7 @@ export default function AuthPanel({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const panelRef = useRef<HTMLDivElement>(null)
+  const { mounted, visible } = useMountTransition(open, CLOSE_TRANSITION_MS)
 
   // Fresh state every time the panel is (re)opened — a half-filled register
   // form from a previous visit should not resurface silently.
@@ -68,7 +78,7 @@ export default function AuthPanel({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [open, loading, onClose])
 
-  if (!open) return null
+  if (!mounted) return null
 
   function goTo(next: Screen) {
     setScreen(next)
@@ -139,7 +149,12 @@ export default function AuthPanel({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(10,14,20,.32)', backdropFilter: 'blur(8px)', animation: 'vFade .3s ease both' }}
+      style={{
+        background: 'rgba(10,14,20,.32)',
+        backdropFilter: 'blur(8px)',
+        opacity: visible ? 1 : 0,
+        transition: 'opacity .3s ease',
+      }}
       onClick={() => !loading && onClose()}
     >
       <div
@@ -148,7 +163,11 @@ export default function AuthPanel({
         aria-modal="true"
         aria-labelledby="auth-panel-title"
         className="glass-panel relative w-full max-w-[400px] p-6 rounded-[28px] overflow-hidden"
-        style={{ animation: 'vRise .45s var(--ease-glide) both' }}
+        style={{
+          opacity: visible ? 1 : 0,
+          transform: visible ? 'none' : 'translateY(14px) scale(.98)',
+          transition: 'opacity .32s cubic-bezier(.22,1,.36,1), transform .38s cubic-bezier(.22,1,.36,1)',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex flex-col gap-1 mb-4.5">
