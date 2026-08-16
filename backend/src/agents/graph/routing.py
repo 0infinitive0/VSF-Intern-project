@@ -30,29 +30,68 @@ def _never(_state: TravelGraphState) -> bool:
 # Structured output guarantees a valid *label*, not a *possible action* —
 # ported forward from the legacy router's `_IMPOSSIBLE`
 # (`routing_decision.py:174-177`).
-#
-# `itinerary_node` additionally requires `trip_data` (not just `destination`):
-# every one of its actions -- `lock_days`, `edit_item`, and the default
-# `build_itinerary`/`rebuild_days` -- bails with "chọn khách sạn trước" when
-# `trip_data` is empty (`itinerary_node.py`'s own `_err` calls). Only
-# `hotel_node`'s `selected_hotel_id` branch ever creates `trip_data`
-# (`_handle_hotel_selection` -> `build_selected_hotel_trip`); `itinerary_node`
-# has no code path that builds one from scratch. Without this second check, a
-# single message that sets destination/dates/people/preferences all at once
-# (the common first-intake turn) impacts both `hotel` and `itinerary`
-# workflows, so `itinerary_node` looked "possible" purely from `destination`
-# and became a supervisor-LLM coin flip against `hotel_node` -- reported bug:
-# the LLM sometimes picked `itinerary_node` first, which bailed immediately
-# with nothing to show, forcing the user to resend the identical message.
+
+
+def _no_destination(state: TravelGraphState) -> bool:
+    """No worker can act on a trip with no destination. `ask_slot` normally
+    gates this long before the supervisor sees the turn; this is the
+    backstop for the paths that skip it."""
+    return not bool((state.get("travel_state") or {}).get("destination"))
+
+
+def requires_existing_trip(state: TravelGraphState) -> bool:
+    """`itinerary_node` is an EDITOR, not a builder.
+
+    Every action it has — `rebuild_days`, `edit_item`, `lock_days` — operates
+    on a `trip_data` that already exists; none of them can create one. The
+    trip is created by `hotel_node` when the user picks a hotel
+    (`_handle_hotel_selection` -> `build_selected_hotel_trip`, which builds
+    the hotel *and* the whole itinerary in one pass).
+
+    That ordering is a causal constraint of the product, not a preference:
+    the itinerary is scheduled around the hotel's location, so it cannot be
+    built before we know where the user is staying. `WORKER_ORDER` encodes
+    the same reason.
+
+    Without this check, a single message setting destination/dates/people/
+    preferences at once (the common first-intake turn) impacts both the
+    `hotel` and `itinerary` workflows, so `itinerary_node` looked "possible"
+    purely from `destination` and became a supervisor-LLM coin flip against
+    `hotel_node` — reported bug: the LLM sometimes picked `itinerary_node`
+    first, which bailed immediately with nothing to show, forcing the user
+    to resend the identical message.
+    """
+    return not bool(state.get("trip_data"))
+
+
 _IMPOSSIBLE: dict[str, Callable[[TravelGraphState], bool]] = {
-    "itinerary_node": lambda s: not bool((s.get("travel_state") or {}).get("destination"))
-    or not bool(s.get("trip_data")),
+    "itinerary_node": lambda s: _no_destination(s) or requires_existing_trip(s),
     "booking_node": lambda s: True,  # blocked until the booking plan lands
 }
 
 
 def is_impossible(worker: str, state: TravelGraphState) -> bool:
     return _IMPOSSIBLE.get(worker, _never)(state)
+
+
+def needs_trip_first(state: TravelGraphState) -> bool:
+    """The turn asked for itinerary work before a trip exists.
+
+    This is the one reason `itinerary_node` is impossible that has an
+    obvious next step rather than being a dead end: the trip is created by
+    picking a hotel, so the turn should go do that (see
+    `requires_existing_trip`). The supervisor acts on this instead of
+    delegating to nobody and answering with nothing.
+
+    Narrow on purpose: a missing *destination* is `ask_slot`'s job, and
+    redirecting that turn would only produce `hotel_node`'s own "no
+    destination" defensive reply.
+    """
+    if "itinerary_node" not in (state.get("pending_tasks") or []):
+        return False
+    if _no_destination(state) or not requires_existing_trip(state):
+        return False
+    return not is_impossible("hotel_node", state)
 
 
 def all_tasks_done(state: TravelGraphState) -> bool:

@@ -62,54 +62,46 @@ def _state(
 
 
 # ---------------------------------------------------------------------------
-# Checkpoint isolation: unique thread_id per day
+# The subgraph runs nested inside the turn, never on a thread of its own
 # ---------------------------------------------------------------------------
 
 
-class TestCheckpointIsolation:
-    """Each `_invoke_rebuild_day` call must use a distinct thread_id so
-    interrupts on day N cannot share state with day M≠N.
+class TestSubgraphRunsNested:
+    """`_invoke_rebuild_day` must hand the subgraph no config at all.
 
-    We verify this by intercepting the subgraph `invoke` call and checking
-    that the `thread_id` in `config.configurable` differs across days.
+    The ambient config of the running turn is what makes the call a *nested*
+    subgraph run, and only a nested run carries `Command(resume=...)` into
+    the shortlist `interrupt()` inside `fetch_and_schedule_node`. Supplying
+    our own `thread_id` detaches it: the subgraph then catches its own
+    `GraphInterrupt` and returns it as `__interrupt__` in the result dict,
+    where `_invoke_rebuild_day` reads no `trip_data` and moves on — the user
+    is never asked, and their pick is silently dropped.
+    (`test_place_selection.py` proves the resume end to end.)
     """
 
-    def test_unique_thread_id_per_day(self) -> None:
+    def test_invocation_passes_no_thread_id_of_its_own(self) -> None:
         from src.agents.graph.nodes.itinerary_node import (
             _REBUILD_DAY_SUBGRAPH,
             itinerary_node,
         )
 
         data = _make_trip_data(duration_days=2)
-        thread_ids_seen: list[str] = []
-
-        original_invoke = _REBUILD_DAY_SUBGRAPH.invoke
+        configs_seen: list[dict] = []
 
         def recording_invoke(input_state, config=None, **kwargs):
-            tid = (config or {}).get("configurable", {}).get("thread_id", "")
-            thread_ids_seen.append(tid)
-            # Return minimal success state
+            configs_seen.append(config or {})
             return {"trip_data": input_state.get("trip_data", {}), "rebuild_error": None}
 
-        # Process day 1
-        state1 = _state(data, "rebuild_days", [1, 2])
+        state = _state(data, "rebuild_days", [1, 2])
         with patch.object(_REBUILD_DAY_SUBGRAPH, "invoke", side_effect=recording_invoke):
-            r1 = itinerary_node(state1)
+            itinerary_node(state)
 
-        # Process day 2 (still in queue after r1)
-        queue = r1.get("rebuild_day_queue") or []
-        td = r1.get("trip_data") or data
-        if queue:
-            state2 = _state(td, "rebuild_days", [1, 2], rebuild_day_queue=queue, rebuilt_days=r1.get("rebuilt_days") or [])
-            with patch.object(_REBUILD_DAY_SUBGRAPH, "invoke", side_effect=recording_invoke):
-                itinerary_node(state2)
-
-        # Each invocation should have used a distinct thread_id
-        assert len(thread_ids_seen) >= 1
-        assert len(set(thread_ids_seen)) == len(thread_ids_seen), (
-            f"Duplicate thread_ids found: {thread_ids_seen} — "
-            "checkpoint isolation guarantee violated"
-        )
+        assert configs_seen, "the subgraph was never invoked"
+        for config in configs_seen:
+            assert not (config.get("configurable") or {}).get("thread_id"), (
+                f"subgraph was given its own thread_id ({config}) — "
+                "that detaches it from the turn and breaks interrupt resume"
+            )
 
 
 # ---------------------------------------------------------------------------

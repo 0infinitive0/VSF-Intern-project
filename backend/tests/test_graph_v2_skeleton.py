@@ -149,7 +149,16 @@ def test_enforce_contract_allows_a_write_within_the_declared_contract():
     def _compliant_hotel_node(state):
         travel_state = dict(state.get("travel_state") or {})
         travel_state["hotel_preferences.radius_km"] = {"presence": "set", "value": 5.0}
-        return {"travel_state": travel_state}
+        # hotel_node also declares `emits_reply`, so a stand-in for it has to
+        # speak like it does — see test_reply_contract.py for that obligation
+        # on its own.
+        return {
+            "travel_state": travel_state,
+            "task_results": [
+                *(state.get("task_results") or []),
+                {"worker": "hotel_node", "status": "ok", "reply": "Mình đã mở rộng bán kính tìm kiếm."},
+            ],
+        }
 
     wrapped = enforce_contract("hotel_node", _compliant_hotel_node)
     state = initial_graph_state("t1")
@@ -276,3 +285,14 @@ def test_graph_routes_a_completed_worker_through_budget_check_to_respond(monkeyp
 
     response = PlannerChatResponse(**result["response"])
     assert response.reply  # respond ran and built the frozen shape after budget_check
+
+
+def test_budget_check_goes_straight_to_respond():
+    """Nothing sits between the worker completion check and the assembler:
+    the text `budget_check` hands on carries real prices and counts, and
+    every node that could rewrite it on the way is one that could rewrite a
+    number."""
+    graph_repr = build_graph().get_graph()
+
+    budget_targets = {edge.target for edge in graph_repr.edges if edge.source == "budget_check"}
+    assert budget_targets == {"respond"}

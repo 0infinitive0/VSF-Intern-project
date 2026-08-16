@@ -14,9 +14,8 @@ so Phase 3 (backend) and Phase 4 (React frontend) can build against it independe
 | `DELETE` | `/api/v1/chat/{session_id}` | — | `204` | Phase 3 |
 | `POST` | `/api/v1/planner_chat` | `{message, session_id, language, stay_dates, min_price, max_price}` | `PlannerChatResponse` | Shipped (extended in Phase 3) |
 | `POST` | `/api/v1/planner_chat/stream` | same as `/planner_chat` | `text/event-stream` (SSE) | Shipped (plan 260806-1602, Phase 1) |
-| `POST` | `/api/v1/hotels/search` | `{session_id, load_more}` | `{hotels, has_more}` | Phase 3 |
 | `POST` | `/api/v1/hotels/select` | `{session_id, hotel_id}` | `PlannerChatResponse` | Alias: `/chat/select_hotel` |
-| `POST` | `/api/v1/itineraries/generate` | `{session_id, language}` | `{status, trip_plan}` | Phase 3 |
+| `POST` | `/api/v1/hotels/change` | `{session_id}` | `PlannerChatResponse` | Shipped |
 | `GET` | `/api/v1/search_attractions` | `?q=...&k=10` | `{status, results}` | Phase 3 |
 | `GET` | `/api/v1/search_hotels` | `?q=...&k=10` | `{status, results}` | Phase 3 |
 | `GET` | `/api/v1/hotels/{hotel_id}` | `?check_in=YYYY-MM-DD&check_out=YYYY-MM-DD` | `HotelDetail` | Phase 3 |
@@ -27,6 +26,34 @@ so Phase 3 (backend) and Phase 4 (React frontend) can build against it independe
 `message` stays required with `min_length=1`, and `session_id` stays required on
 `planner_chat`, so `tests/test_api/test_routes.py` passes unchanged (backwards
 compatibility, per D10).
+
+### Removed endpoints — breaking change, 2026-08-15
+
+Three endpoints were **deleted**, not deprecated. They are gone from the running
+app; a call to any of them now returns `404`.
+
+| Removed | Was documented as | Why |
+|---|---|---|
+| `POST /api/v1/hotels/search` | `{session_id, load_more}` → `{hotels, has_more}` | Read `session.pending_hotel_selection`, `session.intake_state`, `session.hotel_pref_state` |
+| `POST /api/v1/itineraries/generate` | `{session_id, language}` → `{status, trip_plan}` | Read `session.trip_data` |
+| `POST /api/v1/chat/select_place` (+ `/places/select` alias) | `{session_id, place_id}` → `PlannerChatResponse` | Sent `"Tôi chọn địa điểm ID …"` to an extractor; no node reads `place_id` |
+
+All three read state belonging to the control plane that the graph cutover
+removed. Nothing in the graph writes those fields any more, so the endpoints
+had been answering from state frozen at session creation — `/itineraries/generate`
+in particular returned `{"status": "success", "trip_plan": null}` for every call.
+They were removed rather than ported to graph state because nothing calls them:
+no `frontend/src/`, `backend/tests/`, or `eval/` file references any of the three,
+and this document was their only remaining consumer. Place selection is resolved
+through the `rebuild_day` interrupt, not an endpoint (see `qa_node`'s docstring
+for why it deliberately has no `select_place` tool).
+
+**Known debt — `POST /hotels/change`.** It works and the frontend uses it, but it
+drives the turn by sending the natural-language string `"đổi khách sạn"` into the
+graph for an extractor to interpret, rather than setting a deterministic state
+signal. `POST /hotels/select` shows the shape this should take
+(`extra_state={"selected_hotel_id": …}`). Fixing it needs a new signal that
+`hotel_node` reads, so it is recorded here rather than changed quietly.
 
 ## Endpoint Details
 
@@ -219,35 +246,6 @@ never rely on a fixed order beyond `received` first and the terminal frame last.
 
 ### Hotel Selection & Itinerary Flow
 
-#### `POST /hotels/search`
-Requests additional hotel recommendations for the current session (Pagination). Returns up to 5 new hotels that haven't been shown in the current session.
-
-**Request Body:**
-```json
-{
-  "session_id": "uuid-string",
-  "load_more": true
-}
-```
-
-**Response:**
-```json
-{
-  "hotels": [
-    {
-      "id": "uuid",
-      "index": 6,
-      "name": "Hotel Name",
-      "star_rating": 4,
-      "average_nightly_price": 1200000,
-      "description": "...",
-      "matched_rooms": []
-    }
-  ],
-  "has_more": true
-}
-```
-
 #### `POST /hotels/select` (Alias: `/chat/select_hotel`)
 Explicitly selects a hotel from the provided options. The AI engine registers the selection in the session state.
 
@@ -260,38 +258,6 @@ Explicitly selects a hotel from the provided options. The AI engine registers th
 ```
 
 **Response:** `PlannerChatResponse` (Same as `/planner_chat` response)
-
-#### `POST /itineraries/generate`
-Forces the generation of an itinerary based on the current session state. Call this after a hotel is selected if the itinerary isn't immediately attached to the hotel selection response.
-
-**Request Body:**
-```json
-{
-  "session_id": "uuid-string",
-  "language": "string (optional)"
-}
-```
-
-**Response:**
-```json
-{
-  "status": "success",
-  "trip_plan": {
-    "hotel": {},
-    "days": [
-      {
-        "day_number": 1,
-        "theme": "string",
-        "items": [
-           { "activity": "string", "start_time": "08:00", "end_time": "12:00" }
-        ]
-      }
-    ],
-    "status": "Draft",
-    "adjustments": []
-  }
-}
-```
 
 ### Detail Lookups
 
@@ -667,8 +633,7 @@ Applies to: `POST /chat/session` (stamps the caller as owner), `GET /chat/sessio
 no filtering at all; treat any client that assumed a global list as relying on a fixed bug),
 `GET /chat/{session_id}/restore`, `GET /chat/{session_id}/plan` (+ `/session/{session_id}/state`
 alias), `POST /planner_chat` (+ `/chat` alias), `POST /planner_chat/stream`, `POST
-/hotels/select` (+ `/chat/select_hotel` alias), `POST /hotels/change`, `POST /hotels/search`,
-`POST /itineraries/generate`.
+/hotels/select` (+ `/chat/select_hotel` alias), `POST /hotels/change`.
 
 **`DELETE /chat/{session_id}`** keeps its existing "`204` whether the session exists or not"
 contract unchanged — a session owned by someone else is a **silent no-op** (still `204`,

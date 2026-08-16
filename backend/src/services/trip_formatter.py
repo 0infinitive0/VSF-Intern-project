@@ -85,6 +85,58 @@ def build_natural_activity_string(name: str, category: str = "") -> str:
         return f"Tham quan {s}"
 
 
+def format_trip_summary_reply(trip_data: dict[str, Any], language: str = "vi") -> str:
+    """Short confirmation that a trip was built, for the chat reply.
+
+    The itinerary itself is rendered by the UI from `trip_plan`
+    (`trip-overview-tab.tsx`, `day-timeline.tsx` — hotel card, per-day route,
+    times, activities). Repeating all of that as chat text made the user read
+    the same plan twice, once in a format built for a panel and once as a wall
+    of lines.
+
+    So this names what changed and points at where to look, and nothing more.
+    It is still a *specific* reply, not a generic acknowledgement: it carries
+    the hotel and the day count, so a silent worker (the bug `emits_reply`
+    exists to catch) still cannot masquerade as a successful build.
+
+    Deterministic, like every reply carrying data — it reads the built trip,
+    so no number in it can be invented.
+    """
+    hotel = trip_data.get("hotel") or {}
+    hotel_name = str(hotel.get("name") or "").strip()
+
+    itineraries = trip_data.get("itineraries") or []
+    if isinstance(itineraries, dict):
+        itineraries = [itineraries]
+    first = itineraries[0] if itineraries and isinstance(itineraries[0], dict) else {}
+    try:
+        days = int(first.get("duration_days") or 0)
+    except (TypeError, ValueError):
+        days = 0
+    if not days:
+        day_numbers = {
+            item.get("day_number")
+            for item in (trip_data.get("itinerary_items") or [])
+            if isinstance(item, dict) and item.get("day_number")
+        }
+        days = len(day_numbers)
+
+    if hotel_name and days:
+        return t(
+            "Đã dựng xong lịch trình {days} ngày quanh {hotel}. Chi tiết từng ngày ở bảng lịch trình bên cạnh.",
+            language,
+            days=days,
+            hotel=hotel_name,
+        )
+    if days:
+        return t(
+            "Đã dựng xong lịch trình {days} ngày. Chi tiết từng ngày ở bảng lịch trình bên cạnh.",
+            language,
+            days=days,
+        )
+    return t("Đã dựng xong lịch trình. Chi tiết ở bảng lịch trình bên cạnh.", language)
+
+
 def format_trip_response_from_json(trip_data: dict[str, Any], language: str = "vi") -> str:
     """Format structured trip JSON into concise user text response."""
     hotel = trip_data.get("hotel", {})

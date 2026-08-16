@@ -150,11 +150,15 @@ def serialize(session: TripSession) -> dict[str, Any]:
     }
 
 
-def _deserialize_v1(session_id: str, context: dict[str, Any]) -> dict[str, Any]:
-    state: dict[str, Any] = {}
-    for key in state:
-        if key not in {"messages", "remaining_steps"} and key in context:
-            state[key] = context[key]
+def _deserialize_v1(context: dict[str, Any]) -> dict[str, Any]:
+    """Restore a pre-v2 checkpoint, which stored its fields flat at the top
+    level of ``context_data`` instead of under ``workflow``.
+
+    The field list is `_CHECKPOINT_FIELDS` — the same durable set v2 restores
+    — so an old row rehydrates the same workflow state a new one does.
+    ``messages`` is rebuilt separately below; runtime-only keys are not
+    restored at all."""
+    state: dict[str, Any] = {field: context[field] for field in _CHECKPOINT_FIELDS if field in context}
     state["messages"] = messages_from_dict(context.get("messages") or [])
     return state
 
@@ -180,7 +184,7 @@ def deserialize(
     """Rebuild checkpoint state; v1 contexts remain readable until next save."""
     context = context_data or {}
     if context.get("schema_version") != _CONTEXT_SCHEMA_VERSION:
-        state = _deserialize_v1(session_id, context)
+        state = _deserialize_v1(context)
     else:
         state = {}
         workflow = context.get("workflow") or {}

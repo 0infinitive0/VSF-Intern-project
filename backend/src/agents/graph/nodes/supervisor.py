@@ -24,7 +24,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from src.agents.graph.routing import WORKER_ORDER, is_impossible
+from src.agents.graph.routing import WORKER_ORDER, is_impossible, needs_trip_first
 from src.agents.graph.prompts import build_supervisor_prompt
 from src.agents.graph.state import TravelGraphState, build_manifest
 from src.services.llm import get_fast_llm
@@ -62,6 +62,50 @@ def _delegate(
 def _eligible_workers(state: TravelGraphState) -> list[str]:
     pending = state.get("pending_tasks") or []
     return [worker for worker in WORKER_ORDER if worker in pending and not is_impossible(worker, state)]
+
+
+def _has_reported(state: TravelGraphState, worker: str) -> bool:
+    """Did *worker* already leave a result this turn? `task_results` is
+    turn-scoped (`load_context` clears it), so a hit means "ran, this turn"."""
+    return any((entry or {}).get("worker") == worker for entry in (state.get("task_results") or []))
+
+
+def _awaiting_hotel_choice(state: TravelGraphState) -> dict[str, Any]:
+    """`hotel_node` already ran this turn and there is still no trip: it
+    presented options and is waiting on the user's pick.
+
+    Redirecting again would re-run the whole search — RPC, hydration,
+    ranking — only to ask the identical question, and append a second
+    `hotel_node` entry to `task_results` while doing it. The turn is
+    finished; `respond` speaks the reply hotel_node already left.
+
+    `itinerary_node` is dropped rather than left pending for the same reason
+    `_redirect_to_hotel_node` drops it: it cannot act without a trip, and the
+    patch that follows the pick impacts it again anyway.
+    """
+    return {
+        "next_worker": "respond",
+        "routing_source": "awaiting_hotel_choice",
+        "routing_reasoning": "",
+        "pending_tasks": [worker for worker in (state.get("pending_tasks") or []) if worker != "itinerary_node"],
+    }
+
+
+def _redirect_to_hotel_node(state: TravelGraphState) -> dict[str, Any]:
+    """Hand the pending slot over, do not add to it.
+
+    `all_tasks_done` is `not pending_tasks`, and `hotel_node` only ever
+    removes *itself* from that list. Leaving `itinerary_node` pending would
+    bring the turn straight back here with the trip still missing — search,
+    redirect, search again, until the iteration cap. Replacing it is also
+    the honest description of the turn: the pending work really is "pick a
+    hotel", and `itinerary_node` will be impacted again by the patch that
+    follows the pick.
+    """
+    pending = [worker for worker in (state.get("pending_tasks") or []) if worker != "itinerary_node"]
+    if "hotel_node" not in pending:
+        pending.append("hotel_node")
+    return {**_delegate("hotel_node", "needs_trip_first", state), "pending_tasks": pending}
 
 
 def supervisor(state: TravelGraphState) -> dict[str, Any]:
@@ -108,8 +152,31 @@ def supervisor(state: TravelGraphState) -> dict[str, Any]:
 
     workers = _eligible_workers(state)
 
-    # Fast path: exactly one possible worker and no prior failure -> no LLM needed.
-    if len(workers) == 1 and not state.get("task_results"):
+    # An itinerary request with no trip yet is not a dead end, it is a
+    # request for the step before it. Checked ahead of the LLM path because
+    # no amount of reasoning turns an empty eligible set into a worker.
+    if not workers and needs_trip_first(state):
+        if _has_reported(state, "hotel_node"):
+            return _awaiting_hotel_choice(state)
+        return _redirect_to_hotel_node(state)
+
+    # Fast path: a first delegation, whatever its size -> no LLM needed.
+    #
+    # `WORKER_ORDER` already fixes the order, for a causal reason (the hotel
+    # anchors the itinerary — see routing.py), and the model is constrained
+    # to choose from that same ordered list. Of its three possible answers,
+    # `workers[0]` matches the table, an off-list pick is rejected straight
+    # back to the table, and the only genuinely different answer — a
+    # later-in-order worker — is the wrong order. That last branch is not
+    # hypothetical: it is the reported bug that `_IMPOSSIBLE`'s `trip_data`
+    # check was added to patch, where the model picked `itinerary_node`
+    # first and it bailed with nothing to show.
+    #
+    # `task_results` is the boundary, not the worker count: empty means
+    # first delegation (the table is enough), non-empty means a worker has
+    # already run and possibly failed, which is where reasoning earns its
+    # call.
+    if workers and not state.get("task_results"):
         return _delegate(workers[0], "impact_map", state)
 
     try:

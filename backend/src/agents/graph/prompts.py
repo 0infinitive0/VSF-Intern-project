@@ -64,10 +64,10 @@ intent meanings:
 - select_hotel: the user is picking/confirming one hotel from a list already shown.
 - finalize: the user wants to confirm/lock in the current plan.
 - general_question: a read-only question, greeting, or anything that changes nothing.
-Use general_question with an empty changes list whenever nothing in the message asks for a change.
+Emit a change only for a fact the user STATES about their own trip. A value the message merely MENTIONS -- as the subject of a question, in a comparison, or as a hypothetical -- is not stated, so it produces no change no matter which path it would fit. A value paired with a TOPIC (what to see, weather, food, prices, what is good there) is a request for information about that topic, not a statement, even with no question mark. When the message states nothing, the intent is general_question with an empty changes list.
 
 Allowed change paths, one change per fact actually stated (omit anything not mentioned):
-- destination (string): the place name copied verbatim, exactly as the user wrote it. Never substitute or invent a different city.
+- destination (string): the place name copied verbatim, exactly as the user wrote it -- the name alone, never the surrounding words. Never substitute or invent a different city.
 - dates.start / dates.end: resolve a relative date yourself (e.g. "ngày mai") to "YYYY-MM-DD" against today's date below. For a date given as bare numbers (e.g. "01/07", "1-2-2026"), copy the digits and separators EXACTLY as the user typed them -- do NOT convert to ISO, guess the day/month order, or invent a missing year; a deterministic step resolves that safely afterward and asks the user when it's genuinely unclear.
 - people (integer 1-50): number of travelers.
 - budget.max / budget.min (number, VND per NIGHT): a hotel price ceiling/floor per night.
@@ -128,7 +128,9 @@ def build_extract_patch_prompt(
             f'place name, "không cần"), emit a change for each of those paths the message actually '
             f"supplies -- one of them alone is a perfectly good answer, so never withhold a value just "
             f"because the others are still unstated. If the message clearly talks about something else, "
-            f"ignore this hint and extract what it actually says."
+            f"ignore this hint and extract what it actually says. Asking about {quoted} is not answering "
+            f"it: a message that questions a value rather than stating it stays general_question with an "
+            f"empty changes list."
         )
         if len(pending_slots) > 1:
             pending_suffix += (

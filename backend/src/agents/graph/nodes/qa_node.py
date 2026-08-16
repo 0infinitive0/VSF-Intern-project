@@ -31,6 +31,11 @@ The general interrupt-resume path (`routes.py::_run_turn_via_graph`) already
 carries a shortlist reply back to whichever node paused — no separate tool
 is needed for the user's reply to reach it.
 
+This is the only node handed the whole `messages` channel, so it is also
+the only one whose prompt grows with the conversation — every other prompt
+in the graph is a single message plus structured facts. `fit_context_window`
+(`pre_model_hook`) is what bounds it; see its docstring.
+
 Deliberately NOT wired here: `get_current_itinerary`/`search_hotels`/
 `current_time` tools some in-progress branches reference. Those modules
 don't exist and aren't in any accepted plan (`phase-13-place-search.md`
@@ -42,6 +47,7 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
+from langchain_core.messages.utils import count_tokens_approximately, trim_messages
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import create_react_agent
@@ -49,6 +55,7 @@ from langgraph.prebuilt import create_react_agent
 from src.agents.tools.query_hotel import query_hotel
 from src.agents.tools.query_hotel_rooms import query_hotel_rooms
 from src.agents.tools.search_places import search_places
+from src.config import get_settings
 from src.services.llm import get_fast_llm
 
 QA_TOOLS: Sequence[Any] = (
@@ -65,6 +72,44 @@ QA_SYSTEM_PROMPT = (
 )
 
 
+def fit_context_window(state: dict[str, Any]) -> dict[str, Any]:
+    """Keep the newest slice of the transcript within a token budget.
+
+    Runs as `create_react_agent`'s `pre_model_hook`, i.e. before EVERY LLM
+    call in the ReAct loop rather than once per turn — so a single question
+    that fans out into several tool calls cannot grow past the budget
+    mid-turn either.
+
+    Returns `llm_input_messages`, the key LangGraph adds to the agent's
+    state schema for exactly this (`chat_agent_executor.py`): it is what
+    `call_model` reads, while the persisted `messages` channel is left
+    untouched. Trimming here therefore changes what the model is shown, not
+    what the conversation remembers — the parent graph's transcript, and
+    `respond`'s `asked_slot` tags on it, stay whole.
+
+    `start_on`/`end_on` are load-bearing, not tuning: this agent's history
+    interleaves `AIMessage(tool_calls=...)` with the `ToolMessage` answering
+    it, and a window boundary landing between the two produces an orphaned
+    half that the provider rejects outright (`tool_call_id not found`) — a
+    hard failure, not a quality loss. Both arguments force the cut onto a
+    valid boundary.
+
+    Counting is `count_tokens_approximately` (local, tokenizer-free): an
+    estimate is the right tool for a budget whose purpose is bounding cost,
+    and it costs no API round-trip to compute.
+    """
+    return {
+        "llm_input_messages": trim_messages(
+            state["messages"],
+            strategy="last",
+            token_counter=count_tokens_approximately,
+            max_tokens=get_settings().qa_context_token_budget,
+            start_on="human",
+            end_on=("human", "tool"),
+        )
+    }
+
+
 def build_qa_subgraph(checkpointer: BaseCheckpointSaver, *, temperature: float = 0.2) -> CompiledStateGraph:
     llm = get_fast_llm(temperature=temperature)
     return create_react_agent(
@@ -72,4 +117,5 @@ def build_qa_subgraph(checkpointer: BaseCheckpointSaver, *, temperature: float =
         list(QA_TOOLS),
         checkpointer=checkpointer,
         prompt=QA_SYSTEM_PROMPT,
+        pre_model_hook=fit_context_window,
     )

@@ -12,10 +12,15 @@ since it raises a control-flow exception that only a running graph catches.
 
 from __future__ import annotations
 
+import json
+
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command
 
 import src.agents.graph.subgraphs.rebuild_day as rebuild_day_module
+from src.agents.graph.nodes.itinerary_node import itinerary_node
+from src.agents.graph.state import TravelGraphState, initial_graph_state
 from src.agents.graph.subgraphs.rebuild_day import build_rebuild_day_subgraph
 from src.services.trip_scheduler import PlaceCandidate
 
@@ -154,3 +159,64 @@ def test_interrupt_is_never_swallowed_as_a_generic_failure(monkeypatch):
     )
     assert result.get("rebuild_error") is None
     assert "__interrupt__" in result
+
+
+# ---------------------------------------------------------------------------
+# Through the parent turn — the path the API actually runs
+# ---------------------------------------------------------------------------
+
+
+def _parent_graph():
+    """A one-node stand-in for the real graph: enough to run `itinerary_node`
+    the way a turn does, with a checkpointer, so `interrupt()` and
+    `Command(resume=...)` behave as they do in `_run_turn_via_graph`."""
+    builder: StateGraph = StateGraph(TravelGraphState)
+    builder.add_node("itinerary", itinerary_node)
+    builder.add_edge(START, "itinerary")
+    builder.add_edge("itinerary", END)
+    return builder.compile(checkpointer=MemorySaver())
+
+
+def _turn_state() -> TravelGraphState:
+    state = initial_graph_state("s-place")
+    state.update(
+        trip_data=_trip_data(),
+        task_description=json.dumps({"action": "rebuild_days", "day_numbers": [1]}),
+        pending_suggest_operations=[_suggest_task()],
+        pending_tasks=["itinerary_node"],
+    )
+    return state
+
+
+def test_shortlist_reaches_the_user_and_the_pick_applies_through_the_parent_turn(monkeypatch):
+    """Regression: `_invoke_rebuild_day` used to hand the subgraph its own
+    `uuid4` thread_id. That detached it from the turn, so the subgraph caught
+    its own `GraphInterrupt` and returned `__interrupt__` in the result dict
+    — the parent saw a normal return, the shortlist question never reached
+    the user, and the suggest operation was dropped without a trace."""
+    monkeypatch.setattr(rebuild_day_module, "search_attraction_candidates", lambda *_a, **_kw: _CANDIDATES)
+    monkeypatch.setattr(rebuild_day_module, "_current_trip_parameters", lambda _data: ("Đà Nẵng", "1", "2", ""))
+    monkeypatch.setattr(rebuild_day_module, "_get_destination_id", lambda _name: "dest-1")
+
+    applied: list = []
+    monkeypatch.setattr(
+        rebuild_day_module,
+        "_apply_replace_or_add",
+        lambda _data, operation: applied.append(operation) or ["applied"],
+    )
+
+    app = _parent_graph()
+    config = {"configurable": {"thread_id": "parent-place-1"}}
+
+    paused = app.invoke(_turn_state(), config=config)
+
+    interrupts = paused.get("__interrupt__")
+    assert interrupts, "the shortlist must surface as an interrupt on the PARENT turn"
+    assert interrupts[0].value["type"] == "place_selection"
+    assert applied == [], "nothing may be applied before the user answers"
+
+    resumed = app.invoke(Command(resume="2"), config=config)
+
+    assert "__interrupt__" not in resumed, "the answered turn must not pause again"
+    assert len(applied) == 1, "the user's pick must be applied exactly once"
+    assert applied[0].preselected_candidate.id == "attr-2"

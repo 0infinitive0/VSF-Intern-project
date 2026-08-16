@@ -13,13 +13,29 @@ Reply text priority:
    `intake_qa`), `_compose` returns `next_question` unchanged, so this step
    is byte-identical to the old bare `next_question` check on every other
    path — including the plain `"ask"` branch, where `intake_answer` is
-   always `None`.
-2. The last worker's own reply (`booking_node`'s decline, or any future
-   worker that sets one) — `task_results[-1]["reply"]`.
+   always `None`. `_question_for_this_reply` sits in front of it and drops
+   the question when the previous reply already asked that same slot and an
+   answer is going out in its place, so two consecutive replies never end
+   with the identical question.
+
+Every reply is appended back to `messages` as a tagged `AIMessage` — the
+transcript held only the user's half before this (`routes.py` adds the
+`HumanMessage`, `qa_node`'s subgraph its own agent messages, nothing the
+assistant actually sent). The tag carries `asked_slot`, which is how the
+next turn knows what the last reply asked without matching reply text.
+2. The last worker's own reply — `task_results[-1]["reply"]`. Every worker
+   the supervisor delegates to owes one, declared as `emits_reply` on its
+   `NodeContract` and checked at the node boundary.
 3. `qa_node`'s answer — the last AI message in `messages`, the only
    channel that subgraph shares with the parent.
-4. A generic acknowledgement, for the pass-through stub workers
-   (`hotel_node`/`itinerary_node`) that have nothing to say yet.
+4. A generic acknowledgement — the safety net, and *only* the safety net.
+   `respond` assembles a reply, it does not write one: reaching step 4
+   means a node finished a turn silently, which is a bug, so this step
+   logs at ERROR rather than quietly papering over it. It used to be the
+   ordinary ending of every successful itinerary build, back when
+   `hotel_node`/`itinerary_node` were pass-through stubs with nothing to
+   say; both have real bodies now and the `emits_reply` contract keeps
+   them honest.
 
 `stage` (Phase 17): `_derive_stage` — `missing_slots` outranks everything
 (intake is genuinely incomplete), `trip_data` outranks a pending hotel pick
@@ -65,8 +81,11 @@ value landed.
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from typing import Any
+
+from langchain_core.messages import AIMessage
 
 from src.agents.graph.state import TravelGraphState
 from src.domain.travel_state import Presence, TravelState
@@ -76,8 +95,16 @@ from src.services.hotel_selection import budget_option_labels
 from src.services.suggestions import generate_next_chat_suggestions
 from src.services.trip_planner import _get_destination_names
 
+logger = logging.getLogger(__name__)
+
 _ACK_VI = "Đã cập nhật thông tin chuyến đi."
 _ACK_EN = "Trip information updated."
+
+# Marks the AI messages this node appends, so the reply it sent can be told
+# apart from `qa_node`'s own subgraph messages, which share the same
+# channel. `asked_slot` records which slot's question that reply actually
+# carried — `None` when it carried none.
+_EMITTED_BY_RESPOND = "respond"
 
 
 def _compose(intake_answer: str | None, next_question: str | None) -> str | None:
@@ -90,6 +117,54 @@ def _compose(intake_answer: str | None, next_question: str | None) -> str | None
     if intake_answer and next_question:
         return f"{intake_answer}\n\n{next_question}"
     return intake_answer or next_question
+
+
+def _previously_asked_slot(state: TravelGraphState) -> str | None:
+    """The slot the PREVIOUS reply asked about, read back off the transcript.
+
+    The newest `_EMITTED_BY_RESPOND` message is that reply — the tag is what
+    makes this exact instead of a text match on wording that is free to
+    change. Untagged AI messages (`qa_node`'s) are skipped: they never carry
+    a slot question.
+    """
+    for message in reversed(state.get("messages") or []):
+        if getattr(message, "type", None) != "ai":
+            continue
+        metadata = getattr(message, "additional_kwargs", None) or {}
+        if metadata.get("emitted_by") != _EMITTED_BY_RESPOND:
+            continue
+        slot = metadata.get("asked_slot")
+        return str(slot) if slot else None
+    return None
+
+
+def _question_for_this_reply(state: TravelGraphState) -> tuple[str | None, str | None]:
+    """`(question text to send, the slot it asks about)`.
+
+    The question is dropped when the previous reply already asked this same
+    slot AND `intake_qa` produced an answer to send in its place — the
+    "answer, then re-ask the identical question" pattern a user reads as the
+    bot not listening. Dropping requires that replacement: a reply with
+    neither an answer nor a question would be empty, and the intake would
+    stall with nothing on screen to move it forward.
+
+    Never drops on the plain `"ask"` branch, whatever the transcript says.
+    That branch is where an answer failed validation or wasn't understood
+    (`ask_slot._context_line`), and re-asking is the only thing that can
+    unblock the turn.
+
+    Returning both values from one place is what keeps the reply and the
+    `asked_slot` tag recorded next to it from disagreeing — the tag is what
+    the NEXT turn reads back.
+    """
+    question = state.get("next_question")
+    if not question:
+        return None, None
+    pending = state.get("missing_slots") or []
+    slot = str(pending[0]) if pending else None
+    if state.get("intake_answer") and slot and slot == _previously_asked_slot(state):
+        return None, None
+    return question, slot
 
 
 def _reply_from_task_results(state: TravelGraphState) -> str | None:
@@ -270,6 +345,12 @@ def _reply_from_messages(state: TravelGraphState) -> str | None:
     `hotel_node`/`itinerary_node` turn today, since both are pass-through
     stubs) — reproduced empirically during review. Stopping at the first
     `human` message bounds the scan to this turn's own exchange.
+
+    A reply this node itself sent is skipped outright, ahead of that guard:
+    it is something already said, never a fresh answer for this turn, and a
+    resume turn (`Command(resume=...)`, which adds no `HumanMessage` — see
+    `routes.py::_run_turn_via_graph`) would otherwise hit the previous
+    turn's reply before any human message could stop the scan, and echo it.
     """
     messages = state.get("messages") or []
     for message in reversed(messages):
@@ -277,19 +358,44 @@ def _reply_from_messages(state: TravelGraphState) -> str | None:
         if message_type == "human":
             return None
         if message_type == "ai":
+            metadata = getattr(message, "additional_kwargs", None) or {}
+            if metadata.get("emitted_by") == _EMITTED_BY_RESPOND:
+                continue
             content = getattr(message, "content", None)
             if content:
                 return str(content)
     return None
 
 
-def respond(state: TravelGraphState) -> dict[str, Any]:
-    reply = (
-        _compose(state.get("intake_answer"), state.get("next_question"))
+def select_reply(state: TravelGraphState) -> str | None:
+    """This turn's reply, in priority order, or `None` if no node spoke."""
+    question, _slot = _question_for_this_reply(state)
+    return (
+        _compose(state.get("intake_answer"), question)
         or _reply_from_task_results(state)
         or _reply_from_messages(state)
-        or (_ACK_EN if state.get("language") == "en" else _ACK_VI)
     )
+
+
+def respond(state: TravelGraphState) -> dict[str, Any]:
+    reply = select_reply(state)
+    if reply is None:
+        # The generic ack is the last safety net, not a route. Reaching it
+        # means some node finished a turn without saying anything — the
+        # `emits_reply` contract catches that at the node boundary in CI, so
+        # a hit here is either a worker with no contract or production
+        # running `contract_enforcement_mode=log`. Either way it is a bug
+        # with a user on the other end of it, so it is logged loudly enough
+        # to find rather than absorbed silently.
+        logger.error(
+            "respond fell through to the generic ack — no node produced a reply. "
+            "routing_source=%s next_worker=%s task_results=%s has_trip_data=%s",
+            state.get("routing_source"),
+            state.get("next_worker"),
+            state.get("task_results"),
+            bool(state.get("trip_data")),
+        )
+        reply = _ACK_EN if state.get("language") == "en" else _ACK_VI
 
     travel_state = TravelState.from_dict(state.get("travel_state"))
     hotel_options = _hotel_options_from_task_results(state)
@@ -310,4 +416,14 @@ def respond(state: TravelGraphState) -> dict[str, Any]:
         "all_preferences": _all_preferences_for_stage(stage),
         "active_preferences": _active_preferences_from_travel_state(travel_state),
     }
-    return {"response": response}
+    # The reply goes back into `messages` so the transcript holds both sides
+    # of the conversation, not just the user's half — until now nothing wrote
+    # the assistant's turn back (`routes.py` only ever adds the `HumanMessage`,
+    # and `qa_node`'s subgraph its own agent messages). `asked_slot` is what
+    # the next turn reads to avoid asking the same question twice in a row.
+    _question, asked_slot = _question_for_this_reply(state)
+    sent = AIMessage(
+        content=reply,
+        additional_kwargs={"emitted_by": _EMITTED_BY_RESPOND, "asked_slot": asked_slot},
+    )
+    return {"response": response, "messages": [sent]}

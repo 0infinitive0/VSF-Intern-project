@@ -1,9 +1,19 @@
-"""`itinerary_node` — Phase 9 worker.
+"""`itinerary_node` — the itinerary **editor**.
 
-Replaces the Phase 5 stub.  This node:
+This node edits a trip that already exists; it cannot create one. Every
+action it has operates on `trip_data`, and `trip_data` is created by
+`hotel_node` when the user picks a hotel (`build_selected_hotel_trip`, which
+builds the hotel and the whole itinerary in one pass). That ordering is
+causal, not stylistic: the itinerary is scheduled around the hotel's
+location, so it cannot be laid out before we know where the user is staying.
+`routing.requires_existing_trip` is the guard that states this, and the
+supervisor's `needs_trip_first` redirect is what happens when a user asks for
+an itinerary before there is a trip to edit.
+
+This node:
 
 1. Reads the action from ``task_description`` (set by the supervisor).
-2. For day-rebuild actions (``build_itinerary``, ``rebuild_days``):
+2. For day-rebuild actions (``rebuild_days``):
    - Determines the set of affected days.
    - Subtracts ``locked_days`` (read from ``planning_constraints``).
    - Stores the result in ``rebuild_day_queue``.
@@ -21,37 +31,48 @@ Replaces the Phase 5 stub.  This node:
 
 ### Interrupt isolation
 
-Each ``rebuild_day`` invocation is a *compiled subgraph* with its own
-MemorySaver checkpoint.  If the subgraph suspends mid-execution (Phase 13 will
-add a shortlist-pick suspension hook there), the resume restarts from inside the
-subgraph for *that day only* — days already processed are not re-run.
+Each ``rebuild_day`` invocation is a *compiled subgraph* run nested inside the
+current turn, so it gets its own checkpoint namespace under the parent task.
+When the subgraph suspends mid-execution (the shortlist pick in
+``fetch_and_schedule_node``), the interrupt propagates to the parent and the
+resume restarts from inside the subgraph for *that day only* — days already
+checkpointed complete are not re-run.  Handing the subgraph a ``thread_id`` of
+our own would break that chain; ``_invoke_rebuild_day`` says why.
 
 ### `task_description` format
 
 The supervisor sets ``task_description`` to a JSON string:
 ```json
 {
-  "action": "build_itinerary" | "rebuild_days" | "edit_item" | "lock_days",
+  "action": "rebuild_days" | "edit_item" | "lock_days",
   "day_numbers": [1, 2],        // for rebuild_days; absent → all days
   "user_request": "...",        // for edit_item
   "days_to_lock": [1]           // for lock_days
 }
 ```
+``build_itinerary`` is accepted as a **historical alias** for ``rebuild_days``,
+not a fourth action: a checkpointer thread written before the rename can still
+carry it in a stored ``task_description``. It never built anything from
+scratch — every path through it bails when ``trip_data`` is empty.
+
 If ``task_description`` is a plain string (legacy supervisor calls that haven't
-been updated yet), the node falls back to ``build_itinerary`` for all days.
+been updated yet), the node falls back to ``rebuild_days`` for all days.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import uuid
 from copy import deepcopy
 from typing import Any
+
+from langgraph.errors import GraphInterrupt
 
 from src.agents.graph.state import TravelGraphState
 from src.agents.graph.subgraphs.rebuild_day import build_rebuild_day_subgraph
 from src.domain.travel_state import Presence, TravelState
+from src.i18n import t
+from src.services.trip_formatter import format_trip_summary_reply
 from src.services.trip_planner import (
     _get_locked_days,
     _itinerary_record,
@@ -63,8 +84,10 @@ logger = logging.getLogger(__name__)
 
 _WORKER_NAME = "itinerary_node"
 
-# One compiled subgraph instance shared across turns — stateless from the
-# parent's perspective because each invocation uses a distinct thread_id.
+# One compiled subgraph instance shared across turns. It carries no state of
+# its own: every invocation runs nested inside the calling turn, so the
+# checkpoint namespace (and the checkpointer itself) comes from the parent —
+# see `_invoke_rebuild_day`.
 _REBUILD_DAY_SUBGRAPH = build_rebuild_day_subgraph()
 
 
@@ -76,10 +99,13 @@ _REBUILD_DAY_SUBGRAPH = build_rebuild_day_subgraph()
 def _parse_task(task_description: str) -> dict[str, Any]:
     """Parse the supervisor-supplied task description into a plain dict.
 
-    Supports both JSON (preferred) and legacy plain-string fallback.
+    Supports both JSON (preferred) and legacy plain-string fallback. The
+    default is ``rebuild_days`` (all days) because that is what this node
+    actually does; ``build_itinerary`` remains an accepted alias for it, not
+    a distinct capability — see the module docstring.
     """
     if not task_description:
-        return {"action": "build_itinerary"}
+        return {"action": "rebuild_days"}
     try:
         parsed = json.loads(task_description)
         if isinstance(parsed, dict):
@@ -87,7 +113,7 @@ def _parse_task(task_description: str) -> dict[str, Any]:
     except (json.JSONDecodeError, ValueError):
         pass
     # Legacy/plain string fallback — treat as a rebuild request.
-    return {"action": "build_itinerary", "user_request": task_description}
+    return {"action": "rebuild_days", "user_request": task_description}
 
 
 def _affected_days(trip_data: dict[str, Any], day_numbers: list[int] | None) -> list[int]:
@@ -152,10 +178,20 @@ def _invoke_rebuild_day(
     """Call the ``rebuild_day`` subgraph for one day.
 
     Returns the updated ``trip_data`` dict or raises on unrecoverable error.
-    Each call uses a unique ``thread_id`` so subgraph checkpoints are
-    isolated — resuming from an interrupt on day N never re-runs day M≠N.
+
+    Invoked with **no config of its own**, on purpose: the ambient config of
+    the running turn makes this a nested subgraph run, which is what carries
+    `Command(resume=...)` from `_run_turn_via_graph` into the place-selection
+    pause inside `fetch_and_schedule_node`. Handing it a `thread_id` of our
+    own detaches it from the turn — the subgraph then
+    catches its own `GraphInterrupt` and returns it as `__interrupt__` in the
+    result dict, so the question never reaches the user and their pick is
+    silently dropped.
+
+    Day isolation is unaffected: this node rebuilds ONE day per invocation,
+    and on resume LangGraph replays only the day whose subgraph was
+    suspended — days already checkpointed complete are not re-executed.
     """
-    thread_id = f"rebuild-day-{day_number}-{uuid.uuid4()}"
     theme = _theme_for_day(trip_data, day_number)
     result = _REBUILD_DAY_SUBGRAPH.invoke(
         {
@@ -165,7 +201,6 @@ def _invoke_rebuild_day(
             "locked_days": locked_days,
         }
         | ({"suggest_operations": suggest_ops} if suggest_ops else {}),
-        config={"configurable": {"thread_id": thread_id}},
     )
     error = result.get("rebuild_error")
     if error:
@@ -186,7 +221,7 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
     language = state.get("language") or "vi"
     task_description = state.get("task_description") or ""
     task = _parse_task(task_description)
-    action = str(task.get("action") or "build_itinerary")
+    action = str(task.get("action") or "rebuild_days")
 
     # ── grab working state ──────────────────────────────────────────────────
     # `trip_data` is its own top-level state key, NOT nested inside
@@ -229,6 +264,7 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
         }
 
     def _err(reply: str) -> dict[str, Any]:
+        """A failure the user can act on — the text goes to them verbatim."""
         entry: dict[str, Any] = {"worker": _WORKER_NAME, "status": "error", "reply": reply}
         return {
             "pending_tasks": pending_tasks,
@@ -237,13 +273,21 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
             "rebuilt_days": rebuilt_days,
         }
 
+    def _malformed_task(detail: str) -> dict[str, Any]:
+        """A task the supervisor built wrong — nothing the user can do about
+        it, and naming our internals at them ("lock_days: days_to_lock is
+        empty") only makes a bad turn confusing as well. The detail goes to
+        the log, where whoever can fix it will look."""
+        logger.error("%s: malformed task — %s", _WORKER_NAME, detail)
+        return _err(t("Mình chưa hiểu yêu cầu này, bạn nói rõ hơn giúp mình nhé.", language))
+
     # ── lock_days ────────────────────────────────────────────────────────────
     if action == "lock_days":
         days_to_lock = [int(d) for d in (task.get("days_to_lock") or [])]
         if not days_to_lock:
-            return _err("lock_days: days_to_lock is empty")
+            return _malformed_task("lock_days received an empty days_to_lock")
         if not trip_data:
-            return _err("lock_days: không có lịch trình nào để khoá ngày.")
+            return _err(t("Chưa có lịch trình nào để khoá ngày.", language))
         _set_locked_days(trip_data, days_to_lock)
         return _ok(f"Đã khoá ngày: {days_to_lock}.")
 
@@ -251,9 +295,9 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
     if action == "edit_item":
         user_request = str(task.get("user_request") or "")
         if not user_request:
-            return _err("edit_item: user_request is empty")
+            return _malformed_task("edit_item received an empty user_request")
         if not trip_data:
-            return _err("edit_item: không có lịch trình nào để chỉnh sửa.")
+            return _err(t("Chưa có lịch trình nào để chỉnh sửa.", language))
         working = deepcopy(trip_data)
         try:
             from dataclasses import replace
@@ -299,15 +343,25 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
             
         return _ok("; ".join(messages) or "Đã chỉnh sửa lịch trình.")
 
-    # ── build_itinerary / rebuild_days ────────────────────────────────────────
-    # Both actions share the same day-queue logic; build_itinerary → all days.
-    if action not in ("build_itinerary", "rebuild_days"):
-        return _err(f"itinerary_node: unknown action '{action}'")
+    # ── rebuild_days (alias: build_itinerary) ─────────────────────────────────
+    # One name, one behaviour: rebuild the affected days of an EXISTING trip.
+    # `build_itinerary` is kept as an accepted alias because a checkpointer
+    # thread written before the rename can still carry it in a stored
+    # `task_description`.
+    if action not in ("rebuild_days", "build_itinerary"):
+        return _malformed_task(f"unknown action {action!r}")
 
     # On the FIRST invocation for this turn, populate rebuild_day_queue.
     if not rebuild_day_queue:
         if not trip_data:
-            return _err("itinerary_node: không có lịch trình nào để xây dựng. Hãy chọn khách sạn trước.")
+            # Reached only if the supervisor's `needs_trip_first` redirect
+            # was bypassed — say what to do next, not what went wrong.
+            return _err(
+                t(
+                    "Mình cần bạn chọn khách sạn trước — lịch trình sẽ được xếp quanh vị trí đó.",
+                    language,
+                )
+            )
         locked: frozenset[int] = _get_locked_days(trip_data)
         requested_days = task.get("day_numbers")
         all_days = _affected_days(trip_data, requested_days if isinstance(requested_days, list) else None)
@@ -329,6 +383,13 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
 
     try:
         trip_data = _invoke_rebuild_day(trip_data, day_number, locked_days_list, suggest_ops=current_day_suggest_ops)
+    except GraphInterrupt:
+        # The shortlist pause inside the subgraph -- control flow, not a
+        # failure. Now that the subgraph runs nested in this turn, that pause
+        # propagates out through here, and `except Exception` below would
+        # catch it: the question the user was about to be asked would reach
+        # them as "Ngày N thất bại" instead.
+        raise
     except Exception as exc:
         logger.exception("itinerary_node: rebuild_day failed for day %d", day_number)
         # Keep remaining queue so caller can decide whether to continue.
@@ -359,10 +420,28 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
             "trip_data": trip_data,
         }
 
-    # All days done — report completion.
+    # All days done — report completion *out loud*. This is the path every
+    # successful build ends on, and until the `emits_reply` contract it
+    # returned `task_results` untouched: `respond` found nothing to say and
+    # fell through to the generic acknowledgement, so a finished five-day
+    # itinerary was announced as "Đã cập nhật thông tin chuyến đi.".
+    #
+    # A short confirmation, not the whole itinerary as text: the UI already
+    # renders the plan from `trip_plan` (day timeline, per-day route, hotel
+    # card), so dumping it again as chat text made the user read the same
+    # thing twice. It still names the hotel and the day count, so it stays a
+    # specific reply — a silent worker cannot hide behind it. Deterministic,
+    # read from the trip actually built, so no number can be invented.
     return {
         "pending_tasks": pending_tasks,
-        "task_results": task_results,
+        "task_results": [
+            *task_results,
+            {
+                "worker": _WORKER_NAME,
+                "status": "ok",
+                "reply": format_trip_summary_reply(trip_data, language),
+            },
+        ],
         "rebuild_day_queue": [],
         "rebuilt_days": rebuilt_days,
         "pending_suggest_operations": remaining_suggest_ops,

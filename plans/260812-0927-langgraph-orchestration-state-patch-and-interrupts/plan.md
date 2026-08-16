@@ -6,9 +6,22 @@ priority: P1
 effort: "~28d"
 tags: [langgraph, orchestration, rewrite, state-management]
 created: 2026-08-12
-blockedBy: []
+updated: 2026-08-15
+blockedBy: [260815-2300-reply-contract-and-graph-plane-cleanup]
 blocks: []
 ---
+
+> **2026-08-15 — Phase 16 bị chặn.** 16/17 phase đã hoàn thành; chỉ còn Phase 16
+> (conversational polish cho context lines/re-asks, P3). Một lần review sau cutover
+> phát hiện lỗ hổng contract ở tầng reply: không worker nào bị bắt buộc phát ngôn, nên
+> một lịch trình build thành công trả về câu ack cứng của `respond`. Việc đó được xử lý
+> trong [`260815-2300-reply-contract-and-graph-plane-cleanup`](../260815-2300-reply-contract-and-graph-plane-cleanup/plan.md).
+>
+> Phase 16 giữ `pending` và chờ plan đó, vì hai lý do: (1) contract `emits_reply` chạm
+> cùng vùng code; (2) Phase 6 của plan đó (polish node rewrite-only + eval gate
+> number-parity) sẽ trả lời bằng số liệu câu hỏi mà Phase 16 đang giả định — LLM-hoá
+> reply có an toàn không. Nếu eval gate đó thất bại, Phase 16 nhiều khả năng nên huỷ
+> thay vì thực hiện.
 
 # Single control plane — LangGraph rewrite of the orchestration layer
 

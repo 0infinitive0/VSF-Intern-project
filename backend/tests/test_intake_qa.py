@@ -186,17 +186,24 @@ def test_respond_without_intake_answer_is_unchanged() -> None:
 # --- End-to-end through the compiled graph -----------------------------------
 
 
-def test_question_during_intake_answers_and_still_asks_the_pending_slot(monkeypatch) -> None:
+def test_question_during_intake_is_answered_without_repeating_the_last_question(monkeypatch) -> None:
     """Turn 1 leaves `dates.*` pending (so `missing_slots` carries them into
     the checkpoint); turn 2, on the SAME thread, asks a genuine question
     about one of those still-pending slots. This is the scenario the blame
     line only fires on -- a fresh thread's first turn never has a
     previously-pending slot to misfire against, so a single-turn test would
-    pass identically whether or not the suppression exists."""
+    pass identically whether or not the suppression exists.
+
+    Turn 1 already put the dates question on screen, so turn 2 answers and
+    stops there; turn 3 asks again and, with no question in the reply
+    directly above it, the dates question comes back. The intake never goes
+    two consecutive replies without a way forward, and never repeats the
+    identical question back-to-back."""
 
     extract_llm = _FakeLLM(
         [
             json.dumps({"intent": "update_trip", "changes": [{"path": "people", "operation": "set", "value": 2}]}),
+            json.dumps({"intent": "general_question", "changes": []}),
             json.dumps({"intent": "general_question", "changes": []}),
         ]
     )
@@ -217,16 +224,26 @@ def test_question_during_intake_answers_and_still_asks_the_pending_slot(monkeypa
         config=thread,
     )
     assert turn1["missing_slots"] == ["dates.start", "dates.end"]
+    assert "đi và về" in turn1["response"]["reply"]
 
     turn2 = app.invoke(
         {"messages": [HumanMessage(content="Đà Nẵng tháng 7 mưa không?")]},
         config=thread,
     )
 
-    reply = turn2["response"]["reply"]
-    assert "mưa rải rác" in reply
-    assert "đi và về" in reply
-    assert "chưa hiểu rõ ý bạn" not in reply
+    reply2 = turn2["response"]["reply"]
+    assert "mưa rải rác" in reply2
+    assert "đi và về" not in reply2
+    assert "chưa hiểu rõ ý bạn" not in reply2
+
+    turn3 = app.invoke(
+        {"messages": [HumanMessage(content="Đà Nẵng tháng 7 nóng không?")]},
+        config=thread,
+    )
+
+    reply3 = turn3["response"]["reply"]
+    assert "mưa rải rác" in reply3
+    assert "đi và về" in reply3
 
 
 def test_intake_turn_without_a_question_makes_exactly_one_llm_call(monkeypatch) -> None:

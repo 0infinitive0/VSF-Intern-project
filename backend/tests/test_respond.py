@@ -11,14 +11,18 @@ intake widget re-asks a budget the user already answered via plain chat.
 
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 from typing import Any
+
+from langchain_core.messages import AIMessage
 
 import src.agents.graph.nodes.respond as respond_module
 import src.services.amenity_catalog as amenity_catalog_module
 from src.agents.graph.nodes.respond import _budget_from_travel_state, respond
 from src.agents.graph.state import TravelGraphState, initial_graph_state
 from src.domain.travel_state import TravelState, apply_patch
+from src.services.trip_formatter import format_trip_summary_reply
 
 
 def _state(**overrides: Any) -> TravelGraphState:
@@ -258,3 +262,170 @@ class TestRespondAllPreferences:
             assert len(calls) == 1
         finally:
             amenity_catalog_module.clear_all_approved_amenities_cache()
+
+
+class TestRespondNeverSpeaksForASilentWorker:
+    """The generic acknowledgement is the safety net, not the main road.
+
+    A finished five-day itinerary used to arrive as "Đã cập nhật thông tin
+    chuyến đi." because `itinerary_node`'s all-days-done path returned
+    `task_results` untouched and `respond` found nothing to say.
+    """
+
+    def _built_trip(self) -> dict[str, Any]:
+        return {
+            "hotel": {"name": "Khách sạn Mường Thanh", "star_rating": 4},
+            "itineraries": [
+                {
+                    "duration_days": 2,
+                    "day_themes": [
+                        {"day_number": 1, "title": "Khám phá trung tâm", "query": ""},
+                        {"day_number": 2, "title": "Biển và hải sản", "query": ""},
+                    ],
+                }
+            ],
+            "itinerary_items": [
+                {"day_number": 1, "start_time": "08:00:00", "activity": "Chợ Hàn", "order_index": 1},
+                {"day_number": 2, "start_time": "09:00:00", "activity": "Bãi biển Mỹ Khê", "order_index": 1},
+            ],
+        }
+
+    def _itinerary_task_results(self, trip_data: dict[str, Any]) -> list[dict[str, Any]]:
+        # The entry itinerary_node's all-days-done path now appends.
+        return [
+            {
+                "worker": "itinerary_node",
+                "status": "ok",
+                "reply": format_trip_summary_reply(trip_data, "vi"),
+            }
+        ]
+
+    def test_a_finished_build_names_the_hotel_and_the_day_count(self):
+        """Specific, not generic — but not the whole itinerary either. The UI
+        renders the plan from `trip_plan`; the reply says what happened and
+        points at it."""
+        trip_data = self._built_trip()
+        response = respond(
+            _state(trip_data=trip_data, task_results=self._itinerary_task_results(trip_data))
+        )["response"]
+
+        assert response["reply"] != respond_module._ACK_VI
+        assert "Khách sạn Mường Thanh" in response["reply"]
+        assert "2 ngày" in response["reply"]
+        assert response["stage"] == "planned"
+        # The plan itself travels as structure, not as chat text.
+        assert response["trip_plan"] is not None
+
+    def test_the_reply_does_not_repeat_the_itinerary_the_ui_already_shows(self):
+        trip_data = self._built_trip()
+        reply = respond(
+            _state(trip_data=trip_data, task_results=self._itinerary_task_results(trip_data))
+        )["response"]["reply"]
+
+        # No per-day activity dump: those live in day-timeline.tsx.
+        assert "08:00" not in reply
+        assert "Chợ Hàn" not in reply
+        assert reply.count("\n") == 0
+
+    def test_a_finished_build_never_names_internals_at_the_user(self):
+        trip_data = self._built_trip()
+        response = respond(
+            _state(trip_data=trip_data, task_results=self._itinerary_task_results(trip_data))
+        )["response"]
+
+        for internal in ("itinerary_node:", "lock_days:", "edit_item:"):
+            assert internal not in response["reply"]
+
+    def test_falling_through_to_the_ack_is_logged_as_an_error(self, caplog):
+        with caplog.at_level(logging.ERROR, logger=respond_module.__name__):
+            response = respond(_state())["response"]
+
+        assert response["reply"] == respond_module._ACK_VI
+        assert any(
+            "fell through to the generic ack" in record.getMessage() for record in caplog.records
+        )
+
+
+class TestTranscriptEcho:
+    """Every reply goes back into `messages` tagged, and the tag is what the
+    next turn reads to keep the same question out of two replies in a row.
+    """
+
+    @staticmethod
+    def _sent(result: dict[str, Any]):
+        return result["messages"][0]
+
+    @staticmethod
+    def _previous_reply(asked_slot: str | None) -> AIMessage:
+        return AIMessage(
+            content="Bạn dự định đi và về ngày nào?",
+            additional_kwargs={"emitted_by": "respond", "asked_slot": asked_slot},
+        )
+
+    def test_the_reply_is_appended_tagged_with_the_slot_it_asked(self):
+        result = respond(_state(missing_slots=["destination"], next_question="Bạn muốn đi đâu?"))
+
+        sent = self._sent(result)
+        assert sent.content == "Bạn muốn đi đâu?"
+        assert sent.additional_kwargs == {"emitted_by": "respond", "asked_slot": "destination"}
+
+    def test_a_worker_turn_records_no_asked_slot(self):
+        result = respond(_state(task_results=[{"worker": "hotel_node", "status": "ok", "reply": "Có 3 khách sạn."}]))
+
+        assert self._sent(result).additional_kwargs["asked_slot"] is None
+
+    def test_an_answer_replaces_a_question_the_previous_reply_already_asked(self):
+        result = respond(
+            _state(
+                messages=[self._previous_reply("dates.start")],
+                missing_slots=["dates.start", "dates.end"],
+                next_question="Bạn dự định đi và về ngày nào?",
+                intake_answer="Tháng 7 Đà Nẵng có mưa rải rác.",
+            )
+        )
+
+        assert result["response"]["reply"] == "Tháng 7 Đà Nẵng có mưa rải rác."
+        # Dropped, so the next turn is free to ask it again.
+        assert self._sent(result).additional_kwargs["asked_slot"] is None
+
+    def test_the_question_returns_once_the_reply_above_it_carried_none(self):
+        result = respond(
+            _state(
+                messages=[self._previous_reply(None)],
+                missing_slots=["dates.start", "dates.end"],
+                next_question="Bạn dự định đi và về ngày nào?",
+                intake_answer="Tháng 7 Đà Nẵng có mưa rải rác.",
+            )
+        )
+
+        reply = result["response"]["reply"]
+        assert "mưa rải rác" in reply
+        assert "đi và về" in reply
+        assert self._sent(result).additional_kwargs["asked_slot"] == "dates.start"
+
+    def test_a_failed_answer_still_gets_re_asked(self):
+        """The plain "ask" branch has no answer to send in the question's
+        place — dropping it there would leave the intake with nothing on
+        screen to move it forward."""
+        result = respond(
+            _state(
+                messages=[self._previous_reply("dates.start")],
+                missing_slots=["dates.start", "dates.end"],
+                next_question="Bạn dự định đi và về ngày nào?",
+            )
+        )
+
+        assert result["response"]["reply"] == "Bạn dự định đi và về ngày nào?"
+        assert self._sent(result).additional_kwargs["asked_slot"] == "dates.start"
+
+    def test_a_qa_node_message_is_never_mistaken_for_a_previous_question(self):
+        result = respond(
+            _state(
+                messages=[AIMessage(content="Phòng đó còn trống.")],
+                missing_slots=["destination"],
+                next_question="Bạn muốn đi đâu?",
+                intake_answer="Huế có Đại Nội và chùa Thiên Mụ.",
+            )
+        )
+
+        assert "Bạn muốn đi đâu?" in result["response"]["reply"]

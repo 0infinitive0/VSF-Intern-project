@@ -206,8 +206,10 @@ def fetch_and_schedule_node(state: RebuildDayState) -> dict[str, Any]:
 # Subgraph compilation
 # ---------------------------------------------------------------------------
 
-# One shared MemorySaver instance for the subgraph — each call to `invoke`
-# uses a distinct `thread_id` so checkpoints are isolated per day per turn.
+# Fallback checkpointer for a STANDALONE invocation (tests drive the subgraph
+# directly with their own `thread_id`). In production the subgraph always runs
+# nested inside a turn, and a nested run takes the parent's checkpointer and
+# namespace instead — nothing accumulates here.
 _SUBGRAPH_CHECKPOINTER = MemorySaver()
 
 

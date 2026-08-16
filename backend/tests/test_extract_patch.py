@@ -139,6 +139,19 @@ def test_first_turn_anchors_on_destination_before_anything_is_asked(monkeypatch)
     assert result["patch"] == [{"path": "destination", "operation": "set", "value": "Đà Nẵng"}]
 
 
+def test_anchor_tells_the_model_a_question_naming_the_slot_value_is_not_an_answer(monkeypatch):
+    """"địa danh nổi tiếng huế" while `destination` is pending asks about Huế,
+    it does not choose Huế. Without this the anchor's "a place name is a
+    perfectly good answer" pull turns every question that mentions a city
+    into a destination set, and the trip silently starts."""
+    llm = _patch(monkeypatch, _FakeLLM([_payload("general_question", [])]))
+
+    result = extract_patch(_state("địa danh nổi tiến huế"))
+
+    assert "Asking about `destination` is not answering it" in llm.prompts[0]
+    assert result == {"patch": [], "intent": "general_question", "extraction_failed": False}
+
+
 def test_anchor_advances_to_the_next_unanswered_slot(monkeypatch):
     llm = _patch(monkeypatch, _FakeLLM([_payload("update_trip", [{"path": "people", "operation": "set", "value": 1}])]))
     result = extract_patch(

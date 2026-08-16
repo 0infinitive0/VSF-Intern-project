@@ -53,7 +53,6 @@ from src.models.schemas import (
     PlannerChatRequest,
     PlannerChatResponse,
     SelectHotelRequest,
-    SelectPlaceRequest,
     SessionListPayload,
     SessionRestorePayload,
     SessionSummaryPayload,
@@ -285,27 +284,6 @@ def delete_session(
 # ---------------------------------------------------------------------------
 
 
-def _prepare_turn_inputs(session, request: PlannerChatRequest) -> tuple[str, str] | None:
-    """Apply the optional price-preference override and derive the stay_dates
-    tuple. Shared by planner_chat and planner_chat_stream so the two endpoints
-    cannot drift apart."""
-    if request.min_price is not None or request.max_price is not None:
-        from src.services.hotel_selection import HotelPreferenceState
-
-        session.hotel_pref_state = HotelPreferenceState(
-            stage="done",
-            min_price=request.min_price,
-            max_price=request.max_price,
-            target_price=request.max_price or request.min_price,
-        )
-
-    return (
-        (request.stay_dates.start_date.isoformat(), request.stay_dates.end_date.isoformat())
-        if request.stay_dates is not None
-        else None
-    )
-
-
 @router.post("/chat/select_hotel", response_model=PlannerChatResponse)
 @router.post("/hotels/select", response_model=PlannerChatResponse)
 def select_hotel(
@@ -324,24 +302,6 @@ def select_hotel(
             return _run_turn_via_graph(
                 session_id, message, session.language, extra_state={"selected_hotel_id": str(request.hotel_id)}
             )
-        except Exception as exc:
-            logger.exception("Chat error for session %s", session_id)
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
-@router.post("/chat/select_place", response_model=PlannerChatResponse)
-@router.post("/places/select", response_model=PlannerChatResponse)
-def select_place(
-    request: SelectPlaceRequest, current_user: AuthenticatedUser | None = Depends(get_current_user)
-) -> PlannerChatResponse:
-    session_id = str(request.session_id)
-    registry.evict_expired()
-    session = _owned_session_or_404(session_id, current_user)
-
-    with session.lock:
-        try:
-            message = f"Tôi chọn địa điểm ID {request.place_id}"
-            return _run_turn_via_graph(session_id, message, session.language)
         except Exception as exc:
             logger.exception("Chat error for session %s", session_id)
             raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -580,102 +540,3 @@ async def search_hotels(q: str, k: int = 10):
     except Exception:
         logger.exception("search_hotels error")
         raise HTTPException(status_code=500, detail="Đã xảy ra lỗi máy chủ. Vui lòng thử lại.")
-
-
-from pydantic import BaseModel
-
-
-class LoadMoreHotelsRequest(BaseModel):
-    session_id: str
-    load_more: bool
-
-@router.post("/hotels/search")
-def hotels_search(
-    request: LoadMoreHotelsRequest, current_user: AuthenticatedUser | None = Depends(get_current_user)
-):
-    session_id = str(request.session_id)
-    registry.evict_expired()
-    session = _owned_session_or_404(session_id, current_user)
-
-    with session.lock:
-        try:
-            from src.services.hotel_selection import select_hotel_candidates
-
-            existing = session.pending_hotel_selection.get("options", []) if session.pending_hotel_selection else []
-            exclude_ids = [opt["id"] for opt in existing if "id" in opt]
-
-            dest_id = session.pending_hotel_selection.get("destination_id") if session.pending_hotel_selection else None
-            print(f"DEBUG: pending_hotel_selection destination_id = {dest_id}")
-            if not dest_id:
-                from src.services.trip_planner import _get_destination_id
-                dest_id = _get_destination_id(session.intake_state.destination)
-                print(f"DEBUG: _get_destination_id({session.intake_state.destination}) = {dest_id}")
-
-            final_dest_id = str(dest_id) if dest_id else ""
-            print(f"DEBUG: calling select_hotel_candidates with destination_id = {final_dest_id}")
-
-            results = select_hotel_candidates(
-                destination=session.intake_state.destination or "",
-                destination_id=final_dest_id,
-                people=session.intake_state.people or "2",
-                hotel_query=",".join(session.intake_state.preferences) if session.intake_state.preferences else None,
-                match_count=5,
-                max_price=session.hotel_pref_state.target_price,
-                start_date=session.intake_state.start_date,
-                end_date=session.intake_state.end_date,
-                exclude_hotel_ids=exclude_ids
-            )
-            results = [item[0] for item in results]
-
-            # Identify which hotels we already have
-            existing = session.pending_hotel_selection.get("options", []) if session.pending_hotel_selection else []
-            existing_names = {h.get("name") for h in existing if isinstance(h, dict)}
-
-            new_hotels = []
-            for r in results:
-                if r.get("name") not in existing_names:
-                    new_hotels.append(r)
-                if len(new_hotels) == 5:
-                    break
-
-            if not session.pending_hotel_selection:
-                session.pending_hotel_selection = {"options": []}
-
-            start_idx = len(existing) + 1
-            added_hotels = []
-            for i, h in enumerate(new_hotels):
-                # Ensure it's a dict and append
-                hotel_dict = dict(h)
-                hotel_dict["index"] = start_idx + i
-                session.pending_hotel_selection["options"].append(hotel_dict)
-                added_hotels.append(hotel_dict)
-
-            return {
-                "hotels": added_hotels,
-                "has_more": len(results) >= 10
-            }
-        except Exception:
-            logger.exception("Error in hotels_search")
-            raise HTTPException(status_code=500, detail="Error fetching more hotels")
-
-@router.post("/itineraries/generate")
-def itineraries_generate(
-    request: PlannerChatRequest, current_user: AuthenticatedUser | None = Depends(get_current_user)
-):
-    session_id = str(request.session_id)
-    registry.evict_expired()
-    session = _owned_session_or_404(session_id, current_user)
-
-    with session.lock:
-        if session.trip_data and session.trip_data.get("itineraries"):
-            # Already generated during select_hotel
-            trip_plan = to_trip_plan_payload(session.trip_data)
-            return {"status": "success", "trip_plan": trip_plan}
-
-        try:
-            _run_turn_via_graph(session_id, "Tạo lịch trình", request.language)
-            trip_plan = to_trip_plan_payload(session.trip_data)
-            return {"status": "success", "trip_plan": trip_plan}
-        except Exception:
-            logger.exception("Error generating itinerary")
-            raise HTTPException(status_code=500, detail="Error generating itinerary")
