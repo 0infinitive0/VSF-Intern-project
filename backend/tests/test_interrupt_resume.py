@@ -118,8 +118,9 @@ def test_unambiguous_bare_numeric_date_resolves_without_any_interrupt(monkeypatc
 def test_deadlock_regression_date_change_applies_and_budget_returns_with_context(monkeypatch):
     """The reported failure, reproduced exactly: budget is the only slot
     still pending, the user sends an UNRELATED date change -- the date must
-    apply, and budget must be asked again, not silently dropped or repeated
-    verbatim (it must carry a "what changed" context line)."""
+    apply, and budget must be asked again, not silently dropped, and never
+    mislabeled as a failed/misunderstood answer just because budget is still
+    pending (the date change landed fine, only for a different slot)."""
 
     # Within the seeded [2099-01-01, 2099-01-05) window so this exercises
     # the date CHANGE itself, not an unrelated end-before-start rejection.
@@ -151,8 +152,8 @@ def test_deadlock_regression_date_change_applies_and_budget_returns_with_context
     assert result["missing_slots"] == ["budget.target"]
 
     response = PlannerChatResponse(**result["response"])
-    assert "Đã cập nhật" in response.reply  # context, not a verbatim repeat
     assert "giá" in response.reply.lower()  # the budget question itself still follows
+    assert "chưa hiểu" not in response.reply.lower()  # never mislabeled -- the date change did land
 
 
 def test_deadlock_regression_budget_reply_after_answered_advances_past_it(monkeypatch):

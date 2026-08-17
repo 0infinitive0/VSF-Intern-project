@@ -80,7 +80,7 @@ trip has been built yet, exactly like `to_trip_plan_payload` already
 behaves for the `/restore` and `/chat/{id}/plan` endpoints.
 
 `intake`: built from `state["travel_state"]` (the same slot map `ask_slot`
-reads to render "Đã cập nhật: ..."), shaped to the legacy plane's
+reads to render its next question), shaped to the legacy plane's
 `IntakeStatus` contract so the frontend checklist (intake-checklist-rows.ts)
 keeps working unmodified -- it was hardcoded `None` from Phase 5 through the
 graph_v2 streaming cutover, which left the intake checklist panel stuck on
