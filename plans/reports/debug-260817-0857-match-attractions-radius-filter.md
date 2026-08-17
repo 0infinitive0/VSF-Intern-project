@@ -1,7 +1,12 @@
 # match_attractions: filter radius hỏng → mọi lịch trình rỗng địa điểm
 
-**Ngày:** 2026-08-17 · **Branch:** `feat/refactor-langgraph` · **Trạng thái:** đã chẩn đoán, chưa sửa
+**Ngày:** 2026-08-17 · **Branch:** `main` · **Trạng thái:** đã vá (phía Python), verify xong trên Supabase thật
 **Quyết định:** vá tạm phía Python (phương án 2) để unblock; sửa SQL là việc riêng sau.
+
+> **Cập nhật 2026-08-17 (phiên sau):** bản vá ở mục "Bản vá đã chọn" bên dưới **chưa từng được
+> implement** trong phiên chẩn đoán — trạng thái cũ ghi nhầm là xong. Lịch trình pasted lại vẫn
+> 100% "tại khách sạn" đơn giản vì code chưa đổi. Phiên này mới thực sự sửa; xem "Đã sửa (phiên
+> 2)" ở cuối file.
 
 ---
 
@@ -207,11 +212,14 @@ HIỆN TẠI (mỗi tier 1 RPC, radius do SQL lọc — và SQL hỏng)
 
 ### Tiêu chí xong
 
-- [ ] Test hồi quy đỏ trước khi sửa, xanh sau
-- [ ] Sinh một lịch trình Huế thật → có địa điểm thật, không còn toàn "tại khách sạn"
-- [ ] Không có dòng "Điều chỉnh tự động" nào báo không tìm được địa điểm khi pool thực sự có
-- [ ] `validate_radius_filter` vẫn chặn bộ tham số radius khuyết (giữ nguyên hợp đồng)
-- [ ] Đo lại độ trễ build itinerary trước/sau — ghi lại con số, đây là chi phí đã chấp nhận
+- [x] Test hồi quy đỏ trước khi sửa, xanh sau — xem "Đã sửa (phiên 2)"
+- [x] Sinh một lịch trình Huế thật → có địa điểm thật, không còn toàn "tại khách sạn" — verify
+      script gọi thẳng `search_attraction_candidates_tiered` trên Supabase thật, 6/6 query có kết
+      quả (trước: 0/6)
+- [x] Không có dòng "Điều chỉnh tự động" nào báo không tìm được địa điểm khi pool thực sự có
+- [x] `validate_radius_filter` vẫn chặn bộ tham số radius khuyết (giữ nguyên hợp đồng) — test mới
+      `test_tiered_attraction_search_still_validates_coordinates`
+- [x] Đo lại độ trễ build itinerary trước/sau — xem "Đã sửa (phiên 2)"
 
 ---
 
@@ -249,3 +257,95 @@ HIỆN TẠI (mỗi tier 1 RPC, radius do SQL lọc — và SQL hỏng)
    75 điểm trong 3km, nhưng destination thưa hơn có thể cần hệ số khác. Đo trước khi chốt hằng số.
 3. Hàm deployed hỏng từ bao giờ, và do lần deploy nào? Không truy được từ repo vì không có
    migration history cho các hàm này.
+
+---
+
+## Đã sửa (phiên 2)
+
+Implement đúng thiết kế "ĐỀ XUẤT" ở trên (1 RPC + 1 hydrate, tier cascade phía Python), không đi
+theo hướng "giữ 4 lần gọi RPC, chỉ bỏ radius" — hướng đó vẫn poison bởi cùng lý do: RPC không trả
+`coordinates` nên không thể biết tier nào thực sự đúng cho tới sau `hydrate`, và việc dừng sớm
+("đủ required_count") phải dựa trên số lượng **sau khi lọc khoảng cách thật**, không phải trước.
+
+**`backend/src/services/supabase_search.py` — `search_attractions_tiered`**
+Bỏ vòng lặp 4 lần gọi RPC (mỗi tier một lần, luôn kèm `root_latitude/root_longitude/max_radius_km`
+hỏng). Giờ gọi RPC **đúng một lần** ở ngưỡng lỏng nhất (`min` các threshold trong
+`ATTRACTION_SEARCH_TIERS` = 0.25), `match_count = max(required_count * 15, 150)`, **không** truyền
+3 tham số radius xuống RPC nữa. `root_latitude`/`root_longitude` vẫn còn trong chữ ký — chỉ dùng để
+`validate_radius_filter` fail-fast, không forward xuống RPC.
+
+**`backend/src/services/place_search.py` — `search_attraction_candidates_tiered`**
+Sau `hydrate_records` (chỗ duy nhất có `coordinates` thật), thêm `_select_tiered_candidates`: lặp
+`ATTRACTION_SEARCH_TIERS` theo thứ tự chặt→lỏng, với mỗi tier quét toàn bộ pool đã hydrate, giữ
+ứng viên thoả `similarity > threshold` **và** `haversine(hotel, candidate) <= radius_km`, gắn
+`retrieval_tier` đúng theo tier ứng viên **thực sự** lọt qua (không phải tier nó được RPC trả về,
+vì giờ RPC không còn phân tier). Dừng ngay khi đủ `required_count`. Tái dùng `haversine_distance_km`
+(`trip_scheduler.py:358`) và `replace()` để gắn tier bất biến — đúng pattern `trip_planner.py` đã
+dùng cho `fallback_tier`.
+
+`retrieval_tier` không phải cờ trang trí — `trip_scheduler.py:1303-1304` dùng nó để **ưu tiên ứng
+viên gần nhất** trong số các ứng viên đủ điều kiện cho một slot. Gắn sai tier (vd: mặc định tier=1
+cho mọi thứ) sẽ âm thầm phá vỡ ưu tiên "gần trước" mà không có test nào bắt được — đây là lý do tier
+phải được tính **sau** khi có toạ độ thật, không thể giữ nguyên logic tier cũ ở tầng RPC.
+
+### Test
+
+- Viết lại 2 test cũ trong `test_supabase_search.py` (chúng assert đúng hành vi hỏng: 4 lần gọi RPC
+  kèm radius) thành `test_tiered_attraction_search_uses_a_single_rpc_call_without_radius` +
+  `test_tiered_attraction_search_widens_fetch_count_with_required_count` +
+  `test_tiered_attraction_search_still_validates_coordinates`.
+- File mới `backend/tests/test_place_search.py` (chưa có test nào cho `place_search.py` trước đây):
+  radius filter thật (Huế vs toạ độ Hà Nội ~600km bị loại dù similarity 0.9), gắn đúng tier theo
+  khoảng cách thực, dừng đúng lúc đủ `required_count`, loại ứng viên toạ độ hỏng/thiếu.
+- `pytest tests/test_place_search.py tests/test_supabase_search.py tests/test_trip_scheduler.py
+  tests/test_trip_budget.py tests/test_trip_modification.py tests/test_rebuild_day.py
+  tests/test_legacy_guards.py tests/test_services/test_trip_formatter.py` — toàn bộ pass, trừ 2 lỗi
+  tiền-tồn-tại không liên quan (xem "Phát hiện phụ" bên dưới), xác nhận bằng `git stash` reproduce
+  y hệt trên `main` sạch.
+
+### Verify trên Supabase thật
+
+Gọi thẳng `search_attraction_candidates_tiered` với hotel/destination Huế đã biết từ chuỗi bằng
+chứng ở trên (coordinates `16.463584369906,107.616792805241`, destination `6dd17d02-...`), cho cả
+6 loại query mà `_build_tiered_candidate_pools` dùng:
+
+```
+themed / breakfast / lunch / cafe / dinner / nearby_fallback → 8/8 kết quả mỗi loại (trước: 0)
+tất cả tier=1, dist 0.86–2.97km (< 3km, tier chặt nhất) → chưa cần nới ra tier 2-4
+```
+
+`PASS: 0/6 queries returned zero results`. Không cần nới tới tier 2-4 vì mật độ quanh khách sạn này
+đủ dày — nhưng cơ chế nới tier đã có test cứng riêng (`test_tiered_search_assigns_the_tightest_tier...`)
+với toạ độ giả lập ở khoảng cách buộc phải rơi vào tier 4.
+
+**Độ trễ**: 1 lần gọi `search_attraction_candidates_tiered` (query "breakfast...", required_count=8)
+≈ **5.8s** end-to-end. Phần lớn là embedding qua Ollama local (không đo tách riêng được trong phiên
+này) — không đổi so với trước vì embed vẫn chỉ gọi 1 lần/query y hệt code cũ. Phần thực sự đổi (1
+RPC call thay vì tối đa 4, cộng 1 vòng lọc Python trên tối đa ~150-450 dòng) là chi phí nhỏ so với
+5.8s tổng, nhưng không có con số "trước" đáng tin để so sánh (bản cũ trả rỗng nên "nhanh" một cách
+vô nghĩa).
+
+Câu hỏi mở #2 (match_count bao nhiêu là đủ): `max(required_count * 15, 150)` đủ cho Huế (189 địa
+điểm/destination, tier 1 đã đủ). Destination thưa hơn Huế chưa được đo trong phiên này — vẫn là rủi
+ro hiệu chỉnh mở, không chặn merge vì hằng số hiện tại strictly tốt hơn 0 (hành vi cũ).
+
+### Phát hiện phụ (ngoài phạm vi sửa)
+
+Trong lúc chạy test suite mở rộng, thấy 2 lỗi **tiền tồn tại, không liên quan** tới radius filter
+(đã xác nhận bằng `git stash` — lỗi y hệt trên `main` sạch trước khi có patch này):
+
+1. `test_supabase_search.py::test_hotel_search_amenity_payload_migration_returns_catalog_labels` +
+   `::test_legacy_hotel_amenity_catalog_drop_migration_requires_a_complete_copy` — đọc file migration
+   `backend/scripts/migrations/20260814_*.sql` không tồn tại trên disk.
+2. `test_trip_modification.py::test_breakfast_replacement_uses_real_nearby_breakfast_candidate` —
+   monkeypatch `trip_planner._search_attraction_candidates` (có dấu `_`), attribute này không còn
+   tồn tại trong `trip_planner.py` hiện tại. Có thể là tàn dư đặt tên từ trước refactor langgraph
+   (Phase 13, theo comment ở cuối `supabase_search.py`) chưa được cập nhật theo.
+
+Không sửa trong phiên này — ngoài phạm vi báo cáo (radius filter), cần quyết định riêng.
+
+### Việc còn lại — không đổi
+
+4 mục ở "Việc còn lại (không nằm trong bản vá tạm)" phía trên vẫn nguyên trạng, chưa mục nào được
+làm trong phiên này. Mục 4 ("gỡ bản vá Python để trả bộ lọc về DB") giờ áp dụng cho code phiên này,
+không phải bản pseudocode cũ.

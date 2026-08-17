@@ -1,12 +1,14 @@
 import logging
+from dataclasses import replace
 from typing import Any, Collection
 
 from src.clients.supabase_client import get_supabase_client
 from src.services.supabase_search import (
+    ATTRACTION_SEARCH_TIERS,
     rpc_search_attractions,
     rpc_search_attractions_tiered,
 )
-from src.services.trip_scheduler import PlaceCandidate
+from src.services.trip_scheduler import PlaceCandidate, haversine_distance_km
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +78,15 @@ def search_attraction_candidates_tiered(
     required_count: int,
     exclude_attraction_ids: Collection[str] | None = None,
 ) -> list[PlaceCandidate]:
-    """Hydrate explicitly tiered attraction results rooted at one hotel."""
+    """Hydrate explicitly tiered attraction results rooted at one hotel.
+
+    The deployed ``match_attractions`` radius predicate always evaluates to
+    NULL, so ``rpc_search_attractions_tiered`` now returns one broad,
+    threshold-only pool instead of per-tier, distance-filtered rows (see
+    plans/reports/debug-260817-0857-match-attractions-radius-filter.md). This
+    function hydrates that pool once (the only place real coordinates are
+    available) and applies the (radius, threshold) tier cascade itself.
+    """
     coordinates = hotel.coordinate_pair
     if not coordinates:
         raise ValueError("A hotel with coordinates is required for tiered attraction search.")
@@ -99,4 +109,34 @@ def search_attraction_candidates_tiered(
             "opening_time,closing_time,rating,coordinates,images,ticket_price_adult"
         ),
     )
-    return to_place_candidates(hydrated)
+    candidates = to_place_candidates(hydrated)
+    return _select_tiered_candidates(candidates, coordinates, required_count=required_count)
+
+
+def _select_tiered_candidates(
+    candidates: list[PlaceCandidate],
+    root_coordinates: tuple[float, float],
+    *,
+    required_count: int,
+) -> list[PlaceCandidate]:
+    """Assign each candidate to the tightest (radius, threshold) tier it satisfies.
+
+    Tiers are checked in order (closest + strictest first) across the whole
+    pool before widening, matching the original RPC-tier semantics. A
+    candidate is tagged with the tier it was actually selected at, since
+    ``trip_scheduler`` prefers the lowest ``retrieval_tier`` among eligible
+    candidates for a slot.
+    """
+    seen_ids: set[str] = set()
+    collected: list[PlaceCandidate] = []
+    for tier_number, (radius_km, match_threshold) in enumerate(ATTRACTION_SEARCH_TIERS, start=1):
+        for candidate in candidates:
+            if candidate.id in seen_ids or candidate.similarity <= match_threshold:
+                continue
+            if haversine_distance_km(root_coordinates, candidate.coordinate_pair) > radius_km:
+                continue
+            seen_ids.add(candidate.id)
+            collected.append(replace(candidate, retrieval_tier=tier_number))
+            if len(collected) >= required_count:
+                return collected
+    return collected

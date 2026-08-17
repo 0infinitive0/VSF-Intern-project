@@ -416,12 +416,17 @@ def search_attractions_tiered(
     root_longitude: float,
     exclude_attraction_ids: Collection[str] | None = None,
 ) -> List[Dict[str, Any]]:
-    """Return unique semantic attraction matches from explicit GPS search tiers.
+    """Return a broad, threshold-only semantic attraction pool for one destination.
 
-    The public ``search_attractions`` contract remains the general-purpose
-    attraction search API. This helper is intentionally planner-specific: it
-    embeds once, keeps every call rooted at the selected hotel, and only
-    expands the radius when a closer tier cannot supply enough unique records.
+    The deployed ``match_attractions`` radius predicate always evaluates to
+    NULL, discarding every row once ``root_latitude``/``root_longitude``/
+    ``max_radius_km`` are all supplied (see
+    plans/reports/debug-260817-0857-match-attractions-radius-filter.md).
+    ``root_latitude``/``root_longitude`` are therefore kept in this signature
+    only to fail fast on invalid coordinates and are never forwarded to the
+    RPC. Distance-based tiering happens in
+    ``place_search.search_attraction_candidates_tiered``, the only layer that
+    hydrates rows with real coordinates.
     """
     if required_count <= 0:
         return []
@@ -430,35 +435,23 @@ def search_attractions_tiered(
 
     validate_radius_filter(root_latitude, root_longitude, ATTRACTION_SEARCH_TIERS[0][0])
     query_vector = get_embeddings().embed_query(query)
-    per_tier_count = max(required_count * 2, 10)
+    loosest_threshold = min(threshold for _, threshold in ATTRACTION_SEARCH_TIERS)
+    fetch_count = max(required_count * 15, 150)
     valid_excluded_ids = _normalized_attraction_exclusion_ids(exclude_attraction_ids)
-    excluded_id_set = set(valid_excluded_ids)
-    seen_ids: set[str] = set()
-    collected: List[Dict[str, Any]] = []
 
-    for tier_number, (radius_km, match_threshold) in enumerate(ATTRACTION_SEARCH_TIERS, start=1):
-        params: dict[str, Any] = {
-            "query_embedding": query_vector,
-            "match_threshold": match_threshold,
-            "match_count": per_tier_count,
-            "filter_destination_id": filter_destination_id,
-            "root_latitude": float(root_latitude),
-            "root_longitude": float(root_longitude),
-            "max_radius_km": radius_km,
-        }
-        if valid_excluded_ids:
-            params["filter_exclude_attraction_ids"] = valid_excluded_ids
-        data = _execute_attraction_rpc(params, valid_excluded_ids)
-        for row in data:
-            attraction_id = str(row.get("id") or "")
-            if not attraction_id or attraction_id in excluded_id_set or attraction_id in seen_ids:
-                continue
-            seen_ids.add(attraction_id)
-            collected.append({**row, "retrieval_tier": tier_number})
-            if len(collected) >= required_count:
-                return collected
-
-    return collected
+    params: dict[str, Any] = {
+        "query_embedding": query_vector,
+        "match_threshold": loosest_threshold,
+        "match_count": fetch_count,
+        "filter_destination_id": filter_destination_id,
+    }
+    if valid_excluded_ids:
+        params["filter_exclude_attraction_ids"] = valid_excluded_ids
+    data = _execute_attraction_rpc(params, valid_excluded_ids)
+    if valid_excluded_ids:
+        excluded_id_set = set(valid_excluded_ids)
+        data = [row for row in data if str(row.get("id")) not in excluded_id_set]
+    return data
 
 
 # `src.services.place_search` (Phase 13) imports these two names -- same
