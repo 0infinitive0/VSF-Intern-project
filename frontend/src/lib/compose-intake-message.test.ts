@@ -98,4 +98,18 @@ describe('composeIntakeMessage', () => {
     const message = composeIntakeMessage(fill({ destination: '', guests: 0, startDate: '' }))
     expect(message).toBe('')
   })
+
+  // The state the form lands in after the backend re-opens the date slot
+  // (mergeIntakeIntoForm clears exactly those two fields). The sentence must
+  // drop out whole rather than emit a truncated "trong 0 ngày từ " — the user
+  // is being asked for new dates, and answering with the old ones would undo
+  // the very change they requested.
+  it('drops the trip-facts sentence, not just the dates, when dates were cleared', () => {
+    const message = composeIntakeMessage(
+      fill({ destination: 'Đà Nẵng', guests: 2, startDate: '', endDate: '', budgetSkipped: true }),
+    )
+    expect(message).not.toContain('Đà Nẵng')
+    expect(message).not.toContain('0 ngày')
+    expect(message).toContain('Ngân sách khách sạn')
+  })
 })

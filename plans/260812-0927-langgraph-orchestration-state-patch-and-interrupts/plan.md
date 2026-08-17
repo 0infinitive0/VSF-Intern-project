@@ -7,7 +7,7 @@ effort: "~28d"
 tags: [langgraph, orchestration, rewrite, state-management]
 created: 2026-08-12
 updated: 2026-08-15
-blockedBy: [260815-2300-reply-contract-and-graph-plane-cleanup]
+blockedBy: [260815-2300-reply-contract-and-graph-plane-cleanup, 260816-2205-fe-be-contract-reconciliation]
 blocks: []
 ---
 

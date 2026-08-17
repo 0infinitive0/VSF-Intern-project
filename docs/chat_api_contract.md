@@ -176,9 +176,6 @@ data: {"key":"hotel_search","tool":"recommend_hotels","at":1754...}
 event: delta
 data: {"text":"Khách sạn này "}
 
-event: reset
-data: {"reason":"discarded_tool_call_json"}
-
 event: final
 data: {"session_id":"...","reply":"...","suggestions":[...],"stage":"hotel_options",
        "hotel_options":[...],"trip_plan":null,"intake":{...},"requires_stay_dates":false}
@@ -193,10 +190,11 @@ data: {"detail":"Đã xảy ra lỗi máy chủ. Vui lòng thử lại."}
 - `: heartbeat` — comment frame every 15s of silence, guarding proxy idle timeouts.
 - `phase` — real pipeline progress (see key table below). `key` is **opaque**:
   the backend never sends display text; the frontend owns i18n labels.
-- `delta` — real LLM tokens, only on the `_run_chat_agent` branch (Phase 3).
-  Clients must NOT assume every turn has deltas.
-- `reset` — safety net telling the client to discard buffered delta text
-  (an agent attempt was dropped after streaming had started) (Phase 3).
+- `delta` — real LLM tokens, and only from the graph nodes that write prose for
+  the user (`agents/graph/phase_keys.py`'s `STREAMING_NODES`: `qa_node`,
+  `intake_qa`). Clients must NOT assume every turn has deltas — a turn whose
+  work is deterministic (hotel search, itinerary build, a slot question) has no
+  tokens to stream and sends none.
 - `final` — terminal frame carrying the full `PlannerChatResponse` dict.
 - `error` — terminal frame for turn failures; `detail` is sanitized, no internals.
 
@@ -206,9 +204,11 @@ data: {"detail":"Đã xảy ra lỗi máy chủ. Vui lòng thử lại."}
   never zero (`emitter.close()` is in the worker's `finally`).
 - `final.data` is the same dict `POST /planner_chat` serializes for the same
   scenario — no extra/missing/renamed fields.
-- Concatenating all `delta.text` (after the most recent `reset`) equals
-  `final.reply` on turns that streamed tokens. Asserted by tests, not hoped for.
-- `delta` only appears on the `_run_chat_agent` branch.
+- `delta` text is a prefix of the answer `final.reply` carries; `final` is
+  always the authoritative reply.
+- `delta` never carries a node's structured output. Filtering is by producing
+  node, not by inspecting the text, so JSON from `extract_patch`/`supervisor`
+  and the finished reply from `respond` are excluded structurally.
 - `phase.key` is an opaque key — no display text crosses the wire.
 
 **`phase` key table** (every key = a real code position it is emitted at; nothing is
@@ -218,16 +218,21 @@ exist for that turn, and UIs must tolerate missing steps):
 | `key` | Emitted at | Deterministic or LLM |
 |---|---|---|
 | `received` | start of the turn (stream endpoint worker, `routes.py`) | — |
-| `routing` | immediately before `_decide_route` (`agents/session.py`) — only when the supervisor router is enabled | LLM supervisor |
-| `route_decided` | after `_decide_route`, carries `route` | — |
-| `compacting_history` | inside `_compact_history`, only when compaction actually runs (`agents/session.py`) | LLM |
-| `intake_check` | entry of `_run_intake` (`agents/session.py`) | deterministic |
-| `hotel_search` | before `tools.recommend_hotels.invoke` (`agents/session.py`) | DB + vector |
-| `tool_start` / `tool_end` | agent event loop (`agents/session.py`), carries `tool` | — |
+| `routing` | after the `supervisor` node runs | LLM supervisor |
+| `compacting_history` | after the `load_context` node runs | deterministic |
+| `intake_check` | after the `extract_patch` node runs | LLM |
+| `hotel_search` | after the `hotel_node` node runs | DB + vector |
 | `itinerary_build` | entry of `_generate_and_save_itinerary` (`services/trip_planner.py`) | LLM + scheduler |
 | `routing_legs` | inside `recalculate_itinerary_routes` (`services/routing.py`), once before the day loop, carries `days` | HTTP routing |
 | `persisting` | right before the first external DB write — inside BOTH `_persist_itinerary_metadata` (`services/trip_planner.py`) and `ItineraryStore.finalize_trip_data` (`services/itinerary_store.py`) | DB write |
-| `generating` | first prose token of the agent (Phase 3) | LLM |
+| `generating` | after `qa_node` / `intake_qa` runs — the two nodes that also stream `delta` | LLM |
+
+Node-derived keys come from `PHASE_KEY_BY_NODE` (`agents/graph/phase_keys.py`),
+emitted while draining LangGraph's `updates` stream. `itinerary_build`,
+`routing_legs` and `persisting` are emitted from inside the services instead,
+because they describe steps within one node's work that the node boundary
+cannot see; `itinerary_node` is deliberately absent from the node map so
+`itinerary_build` is not reported twice for one turn.
 
 **Not shipped:** turn cancellation (`POST /chat/{session_id}/cancel`, a `cancelled`
 terminal frame, and the "Dừng" stop control). This is plan `260806-1602`'s Phase 4,

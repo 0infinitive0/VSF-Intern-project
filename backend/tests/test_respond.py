@@ -1,5 +1,5 @@
-"""`respond` node — `_budget_from_travel_state` mapping onto IntakeStatus,
-`_derive_stage`, and the stage-gated `suggestions`/`all_preferences`/
+"""`respond` node — `budget_from_travel_state` mapping onto IntakeStatus,
+`derive_stage`, and the stage-gated `suggestions`/`all_preferences`/
 `active_preferences`/`compound_*` fields (phase-17).
 
 Presence-aware budget echo: an explicit "no preference" answer sets
@@ -12,6 +12,7 @@ intake widget re-asks a budget the user already answered via plain chat.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from types import SimpleNamespace
 from typing import Any
 
@@ -19,7 +20,8 @@ from langchain_core.messages import AIMessage
 
 import src.agents.graph.nodes.respond as respond_module
 import src.services.amenity_catalog as amenity_catalog_module
-from src.agents.graph.nodes.respond import _budget_from_travel_state, respond
+from src.agents.graph.nodes.respond import respond
+from src.agents.graph.response_payload import budget_from_travel_state, derive_stage
 from src.agents.graph.state import TravelGraphState, initial_graph_state
 from src.domain.travel_state import TravelState, apply_patch
 from src.services.trip_formatter import format_trip_summary_reply
@@ -52,12 +54,12 @@ def _seeded(changes: list[dict]) -> TravelState:
 
 class TestBudgetFromTravelState:
     def test_unanswered_budget_is_neither_skipped_nor_priced(self):
-        min_price, max_price, skipped = _budget_from_travel_state(TravelState())
+        min_price, max_price, skipped = budget_from_travel_state(TravelState())
         assert (min_price, max_price, skipped) == (None, None, False)
 
     def test_explicit_no_preference_sets_skipped_without_a_price(self):
         state = _seeded([{"path": "budget.target", "operation": "set", "value": None}])
-        min_price, max_price, skipped = _budget_from_travel_state(state)
+        min_price, max_price, skipped = budget_from_travel_state(state)
         assert (min_price, max_price, skipped) == (None, None, True)
 
     def test_explicit_range_surfaces_min_and_max_without_skipped(self):
@@ -67,7 +69,7 @@ class TestBudgetFromTravelState:
                 {"path": "budget.max", "operation": "set", "value": 2_500_000},
             ]
         )
-        min_price, max_price, skipped = _budget_from_travel_state(state)
+        min_price, max_price, skipped = budget_from_travel_state(state)
         assert (min_price, max_price, skipped) == (800_000, 2_500_000, False)
 
     def test_bare_target_answers_neither_range_nor_skip(self):
@@ -75,37 +77,66 @@ class TestBudgetFromTravelState:
         # deliberately not forced into the range shape (respond.py's own
         # docstring on _budget_from_travel_state explains why).
         state = _seeded([{"path": "budget.target", "operation": "set", "value": 1_000_000}])
-        min_price, max_price, skipped = _budget_from_travel_state(state)
+        min_price, max_price, skipped = budget_from_travel_state(state)
         assert (min_price, max_price, skipped) == (None, None, False)
 
 
 class TestDeriveStage:
     def test_missing_slots_is_intake(self):
         state = _state(missing_slots=["destination"])
-        assert respond_module._derive_stage(state, hotel_options=[]) == "intake"
+        assert derive_stage(state, hotel_options=[], reply="") == "intake"
 
     def test_trip_data_outranks_hotel_options(self):
         state = _state(trip_data={"destination": "Đà Nẵng"})
-        assert respond_module._derive_stage(state, hotel_options=[{"id": "h1"}]) == "planned"
+        assert derive_stage(state, hotel_options=[{"id": "h1"}], reply="") == "planned"
 
     def test_hotel_options_with_no_trip_data_is_hotel_options(self):
         state = _state()
-        assert respond_module._derive_stage(state, hotel_options=[{"id": "h1"}]) == "hotel_options"
+        assert derive_stage(state, hotel_options=[{"id": "h1"}], reply="") == "hotel_options"
 
     def test_empty_state_is_intake(self):
-        assert respond_module._derive_stage(_state(), hotel_options=[]) == "intake"
+        assert derive_stage(_state(), hotel_options=[], reply="") == "intake"
+
+    def test_a_system_error_reply_is_an_error_turn(self):
+        """Without this the frontend cannot tell a failure from an answer:
+        `use-chat-session.ts` keys its error styling off `stage === 'error'`,
+        and nothing ever produced that value, so "SYSTEM ERROR: ..." rendered
+        in a normal assistant bubble as though the bot had said it."""
+        state = _state(trip_data={"destination": "Đà Nẵng"})
+        assert derive_stage(state, hotel_options=[], reply="SYSTEM ERROR: không tải được dữ liệu") == "error"
+
+    def test_a_failed_turn_outranks_every_other_signal(self):
+        """A turn that broke is not a `planned` turn that happens to mention an
+        error — the failure is the whole story of that turn."""
+        state = _state(missing_slots=["destination"], trip_data={"x": 1})
+        assert derive_stage(state, hotel_options=[{"id": "h1"}], reply="SYSTEM ERROR: x") == "error"
+
+    def test_an_ordinary_reply_mentioning_an_error_is_not_an_error_turn(self):
+        """The prefix is a contract (`sanitize_system_error`), not a keyword
+        search — a user asking about errors must not turn their own turn red."""
+        reply = "Khách sạn này không có lỗi gì về đặt phòng cả."
+        assert derive_stage(_state(), hotel_options=[], reply=reply) == "intake"
 
     def test_every_reachable_stage_is_a_valid_chat_stage(self):
-        # ChatStage (schemas.py) also allows "finalized"/"modified"/"error" —
-        # none of the three has a graph producer yet, so they must never
-        # appear here (phase-17's vocabulary-bound requirement).
         reachable = {
-            respond_module._derive_stage(_state(missing_slots=["destination"]), hotel_options=[]),
-            respond_module._derive_stage(_state(trip_data={"x": 1}), hotel_options=[{"id": "h1"}]),
-            respond_module._derive_stage(_state(), hotel_options=[{"id": "h1"}]),
-            respond_module._derive_stage(_state(), hotel_options=[]),
+            derive_stage(_state(missing_slots=["destination"]), hotel_options=[], reply=""),
+            derive_stage(_state(trip_data={"x": 1}), hotel_options=[{"id": "h1"}], reply=""),
+            derive_stage(_state(), hotel_options=[{"id": "h1"}], reply=""),
+            derive_stage(_state(), hotel_options=[], reply=""),
+            derive_stage(_state(), hotel_options=[], reply="SYSTEM ERROR: x"),
         }
-        assert reachable == {"intake", "planned", "hotel_options"}
+        assert reachable == {"intake", "planned", "hotel_options", "error"}
+
+    def test_the_stage_vocabulary_has_no_values_without_a_producer(self):
+        """Every name `ChatStage` allows must be one `derive_stage` can return.
+        `finalized`/`modified` were declared for years and never emitted, which
+        is how `stage === 'error'` came to be dead frontend code nobody noticed.
+        """
+        from typing import get_args
+
+        from src.models.schemas import ChatStage
+
+        assert set(get_args(ChatStage)) == {"intake", "planned", "hotel_options", "error"}
 
 
 # `generate_next_chat_suggestions` swallows any exception from the LLM call
@@ -367,7 +398,17 @@ class TestTranscriptEcho:
 
         sent = self._sent(result)
         assert sent.content == "Bạn muốn đi đâu?"
-        assert sent.additional_kwargs == {"emitted_by": "respond", "asked_slot": "destination"}
+        assert sent.additional_kwargs["emitted_by"] == "respond"
+        assert sent.additional_kwargs["asked_slot"] == "destination"
+
+    def test_the_reply_carries_the_moment_it_was_sent(self):
+        """`at` is what keeps the persisted transcript in order: every write
+        re-sends the whole conversation (session_store's
+        `_graph_message_records`), so a message without its own timestamp gets
+        re-stamped "now" on every later turn."""
+        result = respond(_state(missing_slots=["destination"], next_question="Bạn muốn đi đâu?"))
+
+        assert datetime.fromisoformat(self._sent(result).additional_kwargs["at"]).tzinfo is not None
 
     def test_a_worker_turn_records_no_asked_slot(self):
         result = respond(_state(task_results=[{"worker": "hotel_node", "status": "ok", "reply": "Có 3 khách sạn."}]))

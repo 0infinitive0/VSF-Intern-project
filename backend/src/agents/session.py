@@ -16,7 +16,6 @@ import threading
 import time
 from collections.abc import Callable
 from copy import deepcopy
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -37,45 +36,13 @@ DEFAULT_SESSION_TTL_SECONDS = 2 * 60 * 60
 DEFAULT_SESSION_CAP = 200
 
 
-@dataclass
-class TurnResult:
-    """Thin carrier returned by process_chat_turn so the HTTP layer can derive
-    `stage` without re-implementing routing logic.
-
-    text  — the user-facing reply string (may start with "SYSTEM ERROR:").
-    tool  — the name of the tool that actually ran, or None when the turn only
-            asked a question (intake / hotel-preference gate / edit clarify).
-            Values: 'select_hotel' | 'finalize_trip_plan' |
-                    'execute_trip_edit_request' | 'recommend_hotels' |
-                    'agent_stream' | None.
-    """
-
-    text: str
-    tool: str | None = None
-
-
-_STAGE_MAP: dict[str | None, str] = {
-    "select_hotel": "planned",
-    "finalize_trip_plan": "finalized",
-    "execute_trip_edit_request": "modified",
-    "recommend_hotels": "hotel_options",
-}
-
-
-def derive_stage(result: TurnResult, session: TripSession | None = None) -> str:
-    """Derive the `stage` value from a TurnResult.
-
-    Keeps stage derivation in one place — do NOT re-derive it in the endpoint
-    handler or per branch of process_chat_turn.
-    """
-    if result.text.startswith("SYSTEM ERROR:"):
-        return "error"
-    if session and (result.tool == "agent_stream" or result.tool is None or result.tool == "chat"):
-        if getattr(session, "initial_plan_complete", False):
-            return "modified" if getattr(session, "pending_trip_edit_request", None) else "planned"
-        if getattr(session, "pending_hotel_selection", None):
-            return "hotel_options"
-    return _STAGE_MAP.get(result.tool, "intake")
+# `TurnResult`, `_STAGE_MAP` and `derive_stage` used to live here: the HTTP
+# layer built a stage from whichever tool `process_chat_turn` had run. That
+# cascade was deleted with the graph cutover and took every caller with it,
+# leaving the trio unreachable — and `_STAGE_MAP` was the sole producer of the
+# `modified`/`finalized` stages, which is why `ChatStage` kept declaring two
+# values nothing could emit. Stage derivation now belongs to
+# `agents/graph/response_payload.py::derive_stage`, off graph state.
 
 
 class TripSession:
@@ -487,7 +454,7 @@ class SessionRegistry:
                     row = None
                 if row is not None:
                     from src.services.itinerary_store import ItineraryStore
-                    from src.services.session_store import deserialize
+                    from src.services.session_store import _CONTEXT_SCHEMA_VERSION_V3, deserialize
 
                     session = create_chat_session(
                         session_id,
@@ -495,13 +462,20 @@ class SessionRegistry:
                         checkpointer=self._checkpointer,
                         owner_user_id=row.get("user_id"),
                     )
-                    session.state = deserialize(session_id, row.get("context_data"), row.get("messages"))
-                    current_trip = (row.get("context_data") or {}).get("current_trip") or {}
-                    itinerary_id = current_trip.get("itinerary_id")
-                    if itinerary_id:
-                        session.state["trip_data"] = ItineraryStore.from_default().load_session_trip_data(
-                            str(itinerary_id)
-                        )
+                    context_data = row.get("context_data") or {}
+                    session.state = deserialize(session_id, context_data, row.get("messages"))
+                    # v3 rows come from the graph plane, which reads `trip_data`
+                    # from its own checkpointer — rebuilding it into
+                    # `TripSession.state` here would create a second copy that
+                    # nothing on the HTTP path reads and nothing keeps current.
+                    # Older rows still get the legacy rehydration they need.
+                    if context_data.get("schema_version") != _CONTEXT_SCHEMA_VERSION_V3:
+                        current_trip = context_data.get("current_trip") or {}
+                        itinerary_id = current_trip.get("itinerary_id")
+                        if itinerary_id:
+                            session.state["trip_data"] = ItineraryStore.from_default().load_session_trip_data(
+                                str(itinerary_id)
+                            )
                     created_at = row.get("created_at")
                     if isinstance(created_at, str):
                         try:

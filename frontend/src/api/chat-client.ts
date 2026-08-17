@@ -96,12 +96,50 @@ export async function getPlan(sessionId: string): Promise<{ trip_plan: TripPlan 
   return request('GET', `/chat/${encodeURIComponent(sessionId)}/plan`)
 }
 
+export type SessionPing = 'alive' | 'gone' | 'unauthorized' | 'unknown'
+
+/**
+ * Ping a stored session to find out whether the server still accepts it.
+ *
+ * Deliberately does NOT throw and deliberately is not `getPlan`: bootstrap has
+ * to tell three failure modes apart, and an exception collapses them into one.
+ * 404 means the session is genuinely gone (start fresh); 401 means the *token*
+ * is stale, which AuthProvider refreshes on its own — so it must never be read
+ * as "session gone" or a live conversation gets thrown away for a reason that
+ * fixes itself seconds later. Anything else (network down, 5xx) is no evidence
+ * either way, so the caller keeps what it has.
+ *
+ * GET /chat/{id}/plan doubles as the ping — it is already ownership-checked
+ * (routes.py `_owned_session_or_404`), so no dedicated endpoint is needed.
+ */
+export async function pingSession(sessionId: string): Promise<SessionPing> {
+  try {
+    const res = await fetch(`${BASE}/chat/${encodeURIComponent(sessionId)}/plan`, {
+      headers: { ...(await authHeaders()) },
+    })
+    if (res.status === 401) {
+      reportSessionExpired()
+      return 'unauthorized'
+    }
+    if (res.status === 404) return 'gone'
+    return res.ok ? 'alive' : 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
+
 /**
  * Rebuild the hotel list for an already-built trip — backs the "đổi khách
  * sạn" step-nav action (step-navigator.tsx). Deliberately NOT `sendMessage`:
- * this hits a dedicated deterministic endpoint (no LLM call, see
- * backend/src/api/routes.py's `change_hotel`) and never produces a chat
- * message, so it must not go through the chat turn machinery at all.
+ * it carries no user text, so there is nothing for the extractor to read.
+ *
+ * The backend re-enters its graph directly at the hotel-search step
+ * (`routes.py`'s `change_hotel` -> `_rerun_hotel_search`), skipping the
+ * extraction/validation pipeline entirely — so this really is LLM-free, which
+ * this comment previously claimed while the endpoint was in fact running a
+ * full chat turn on a hardcoded Vietnamese string. It still returns a normal
+ * PlannerChatResponse, and it can still come back paused if the search needs
+ * to ask which landmark to search around.
  */
 export async function changeHotel(sessionId: string): Promise<PlannerChatResponse> {
   return request('POST', '/hotels/change', { session_id: sessionId })

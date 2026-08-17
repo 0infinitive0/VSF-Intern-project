@@ -1,6 +1,5 @@
 {
   "navBrand": "V-OTA",
-
   "sidebarLabel": "Điều hướng chính",
   "sidebarCollapseHint": "Thu gọn thanh bên",
   "sidebarExpandHint": "Mở rộng thanh bên",
@@ -15,10 +14,8 @@
   "sidebarDeleteSessionConfirmMessage": "\"{{title}}\" sẽ bị xoá vĩnh viễn. Không thể hoàn tác.",
   "sidebarDeleteSessionConfirmAction": "Xoá",
   "sidebarDeleteSessionCancel": "Huỷ",
-
   "themeToggleSwitchToDark": "Giao diện tối",
   "themeToggleSwitchToLight": "Giao diện sáng",
-
   "intakeHeroTagline": "V‑OTA AI Travel Planner",
   "intakeHeroA": "Chuyến đi tiếp theo của bạn,",
   "intakeHeroB": "lên kế hoạch trong 2 phút",
@@ -39,15 +36,12 @@
   "intakeStep3Num": "BƯỚC 3",
   "intakeStep3Title": "Lịch trình & bản đồ",
   "intakeStep3Desc": "Timeline theo ngày, lộ trình tối ưu quanh khách sạn.",
-
   "chatPanelTitle": "AI Assistant",
   "chatPanelMoreHint": "Tùy chọn (chưa hỗ trợ)",
   "chatPanelExpandHint": "Toàn màn hình (chưa hỗ trợ)",
-
   "composerPlaceholder": "Nhắn cho V-OTA…",
   "sendBtn": "Gửi",
   "newChatBtn": "Chuyến đi mới",
-
   "stepNavigatorLabel": "Các bước lên kế hoạch",
   "stepDetails": "Thông tin",
   "stepHotel": "Khách sạn",
@@ -65,29 +59,22 @@
   "budgetLabel": "Ngân sách",
   "interestLabel": "Sở thích",
   "messageTimestampLabel": "Gửi lúc {{time}}",
-
   "greeting": "Xin chào 👋 Mình là V-OTA. Bạn muốn đi đâu lần này?",
   "quickSuggestionsHint": "Gợi ý nhanh hoặc gõ tự do trong chat",
   "itineraryEmptyTitle": "Lịch trình của bạn",
   "itineraryEmptyBody": "Lịch trình sẽ hiển thị ở đây sau khi bạn chọn khách sạn.",
-
   "pendingDefault": "Đang xử lý...",
   "pendingSearchingHotels": "Đang tìm khách sạn phù hợp...",
   "pendingBuildingPlan": "Đang lên lịch trình...",
-
   "phaseReceived": "Đã nhận yêu cầu",
   "phaseRouting": "Đang xác định hướng xử lý",
-  "phaseRouteDecided": "Đã xác định hướng xử lý",
   "phaseCompactingHistory": "Đang tóm tắt lịch sử hội thoại",
   "phaseIntakeCheck": "Đang kiểm tra thông tin chuyến đi",
   "phaseHotelSearch": "Đang tìm khách sạn phù hợp",
-  "phaseToolStart": "Đang thực hiện tác vụ",
-  "phaseToolEnd": "Đã hoàn tất tác vụ",
   "phaseItineraryBuild": "Đang dựng lịch trình",
   "phaseRoutingLegs": "Đang tính quãng đường di chuyển",
   "phasePersisting": "Đang lưu lịch trình",
   "phaseGenerating": "Đang soạn câu trả lời",
-
   "itineraryTitle": "Lịch trình dự kiến",
   "hotelLabel": "Khách sạn",
   "dayLabel": "Ngày {{n}}",
@@ -116,7 +103,6 @@
   "itineraryExpandHint": "Toàn màn hình (chưa hỗ trợ)",
   "itineraryEditHint": "Chỉnh sửa (chưa hỗ trợ)",
   "itineraryShareHint": "Chia sẻ (chưa hỗ trợ)",
-
   "kindBreakfast": "Ăn sáng",
   "kindLunch": "Ăn trưa",
   "kindDinner": "Ăn tối",
@@ -126,7 +112,6 @@
   "kindEvening": "Buổi tối",
   "kindTransport": "Di chuyển",
   "kindHotel": "Khách sạn",
-
   "intakeDestinationLabel": "Điểm đến",
   "intakeDestinationPlaceholder": "Chọn điểm đến",
   "intakeDatesLabel": "Ngày đi & thời lượng",
@@ -148,7 +133,6 @@
   "intakeDecreaseGuests": "Giảm số khách",
   "intakeIncreaseGuests": "Tăng số khách",
   "intakeNoBudgetOptions": "Không có tùy chọn ngân sách.",
-
   "intakeQuickHint": "Nhanh chóng: chọn điểm đến có sẵn",
   "intakePeopleLabel": "Số người",
   "intakeConfirm": "Xác nhận",
@@ -171,7 +155,6 @@
   "ttPrevMonth": "Tháng trước",
   "ttNextMonth": "Tháng sau",
   "ttNextYear": "Năm sau",
-
   "intake": {
     "preferenceOptions": {
       "beach": "biển",
@@ -202,10 +185,8 @@
       "lateNight": "về khuya"
     }
   },
-
   "hotelPickBtn": "Chọn khách sạn này",
   "hotelPickBtnSelected": "✓ Đã chọn",
-
   "viewDetail": "Xem chi tiết",
   "perNight": "mỗi đêm",
   "perNightSep": "/ đêm",
@@ -221,13 +202,11 @@
     "strong_similarity": "Khớp với mô tả chuyến đi của bạn",
     "near_center": "Nằm ở {{value}}, gần trung tâm"
   },
-
   "hotelHeadSub": "Lịch trình sẽ được dựng quanh vị trí khách sạn bạn chọn",
   "buildFromHotel": "Tạo lịch trình từ khách sạn này",
   "hotelBadgeEmpty": "Chọn một khách sạn để xem khoảng cách tới các điểm nổi bật",
   "hotelBadgeSelected": "{{name}} — điểm xuất phát & kết thúc mỗi ngày",
   "hotelPickedMessage": "Mình chọn {{name}}",
-
   "hotelFiltersLabel": "Lọc khách sạn",
   "hotelFiltersClear": "Xóa bộ lọc",
   "hotelFiltersMaxPrice": "Giá tối đa mỗi đêm",
@@ -259,7 +238,6 @@
   "policyCheckOut": "Trả phòng",
   "policyReception": "Lễ tân mở đến",
   "distanceKm": "{{km}} km",
-
   "legDistanceKm": "{{km}} km",
   "legDurationMins": "~{{mins}} phút",
   "durationHoursOne": "{{count}} tiếng",
@@ -272,7 +250,6 @@
   "routeProfile.driving": "Ô tô",
   "routeProfile.walking": "Đi bộ",
   "routeProfile.cycling": "Xe đạp",
-
   "placeFactCategory": "Loại",
   "placeFactHours": "Giờ mở cửa",
   "placeFactDuration": "Thời gian",
@@ -290,7 +267,6 @@
   "placeImgAlt": "Ảnh {{name}}",
   "placeDetailNoInfo": "Không có thông tin chi tiết cho địa điểm này.",
   "placeDetailCloseLabel": "Đóng chi tiết địa điểm",
-
   "roomPriceOnRequest": "Giá theo yêu cầu",
   "roomAvailable": "Còn phòng",
   "roomSoldOut": "Hết phòng",
@@ -300,17 +276,13 @@
   "roomSqm": "{{n}} m²",
   "roomSleeps": "{{count}} khách",
   "roomViewPrefix": "view {{view}}",
-
   "hotelImgAlt": "Ảnh khách sạn {{name}}",
   "roomImgAlt": "Ảnh phòng {{name}}",
   "galleryImgAlt": "Ảnh {{index}} của {{name}}",
-
   "errorPrefix": "Lỗi: ",
   "errorNetwork": "Lỗi kết nối: {{msg}}",
   "errorStage": "SYSTEM ERROR",
-
   "resetTitle": "Tạo lại từ đầu",
-
   "mapUnavailableTitle": "Bản đồ chưa khả dụng",
   "mapUnavailableBody": "Thiếu cấu hình token bản đồ (VITE_MAPBOX_TOKEN).",
   "mapLegendDriving": "Ô tô",
@@ -334,7 +306,6 @@
   "mapMyLocation": "Vị trí của tôi",
   "mapShowSatellite": "Xem vệ tinh",
   "mapShowStreets": "Xem đường phố",
-
   "authBootLoading": "Đang đăng nhập…",
   "authSignIn": "Đăng nhập",
   "authSignOut": "Đăng xuất",

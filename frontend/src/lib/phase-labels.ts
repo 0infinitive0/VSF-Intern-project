@@ -12,12 +12,9 @@ import type { PhaseKey } from '../types'
 const PHASE_LABEL_I18N_KEY: Record<PhaseKey, string> = {
   received: 'phaseReceived',
   routing: 'phaseRouting',
-  route_decided: 'phaseRouteDecided',
   compacting_history: 'phaseCompactingHistory',
   intake_check: 'phaseIntakeCheck',
   hotel_search: 'phaseHotelSearch',
-  tool_start: 'phaseToolStart',
-  tool_end: 'phaseToolEnd',
   itinerary_build: 'phaseItineraryBuild',
   routing_legs: 'phaseRoutingLegs',
   persisting: 'phasePersisting',

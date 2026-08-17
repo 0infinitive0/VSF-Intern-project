@@ -3,7 +3,9 @@
 Phase 3 changes:
 - One module-level SessionRegistry replaces the bare _CHAT_SESSIONS dict.
 - planner_chat: registry.get() + 404 (never auto-creates); per-session lock;
-  sanitised errors; one-place PlannerChatResponse assembly from TurnResult.
+  sanitised errors; one-place PlannerChatResponse assembly (built by the
+  `respond` node now — the TurnResult carrier this once referred to went away
+  with the process_chat_turn cascade).
 - Three new endpoints: POST /chat/session, GET /chat/{session_id}/plan,
   DELETE /chat/{session_id}.
 - All handlers are plain `def` (not async def) so FastAPI runs them in the
@@ -28,7 +30,8 @@ Plan 260814-supabase-auth-and-per-user-history changes:
 
 import asyncio
 import logging
-from datetime import UTC, date
+from datetime import UTC, date, datetime
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -36,20 +39,34 @@ from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 
+from src.agents.graph.nodes.load_context import load_context
+from src.agents.graph.phase_keys import PHASE_KEY_BY_NODE, STREAMING_NODES
+from src.agents.graph.response_payload import (
+    derive_stage,
+    hotel_options_from_task_results,
+    intake_status_from_travel_state,
+)
 from src.agents.session import (
     SessionRegistry,
     debug_persist_hook,
     supabase_persist_hook,
 )
-from src.api.streaming import STREAM_HEADERS, TurnEmitter, emit_phase, emitting_to, sse_stream
+from src.api.streaming import (
+    STREAM_HEADERS,
+    TurnEmitter,
+    emit_delta,
+    emit_phase,
+    emitting_to,
+    sse_stream,
+)
 from src.auth import AuthenticatedUser, get_current_user
 from src.config import get_settings
+from src.domain.travel_state import TravelState
 from src.models.schemas import (
     AmenityCatalogPayload,
     AttractionDetailPayload,
     ChangeHotelRequest,
     HotelDetailPayload,
-    IntakeStatus,
     PlannerChatRequest,
     PlannerChatResponse,
     SelectHotelRequest,
@@ -57,7 +74,6 @@ from src.models.schemas import (
     SessionRestorePayload,
     SessionSummaryPayload,
     sanitize_system_error,
-    to_hotel_options_payload,
     to_trip_plan_payload,
 )
 from src.services import session_store
@@ -180,13 +196,14 @@ def create_session(current_user: AuthenticatedUser | None = Depends(get_current_
     entry — the accumulating-empty-history bug this fixes. The in-memory
     registry entry created below already makes every other "+ Chuyến đi mới"
     click behave correctly (a fresh, empty main chat panel); the first *real*
-    persisted row now only appears once a real chat turn runs
-    persist_hook(session) itself (src/agents/session.py — process_chat_turn
-    and friends already call it independent of this route). list_sessions()
-    additionally requires at least one chat_messages row per session, so any
+    persisted row appears once a chat turn runs, written by `_persist_turn`
+    below. (Until that writer existed, this docstring pointed at
+    `persist_hook(session)` and "process_chat_turn and friends" — a cascade
+    the graph cutover deleted, which is exactly how the history rail came to
+    be permanently empty with no test failing.) list_sessions() additionally
+    requires at least one chat_messages row per session, so any
     already-persisted empty rows from before this change stay hidden too."""
     session = registry.create(owner_user_id=current_user.id if current_user else None)
-    from datetime import datetime
 
     return {
         "session_id": session.session_id,
@@ -221,26 +238,62 @@ def list_persisted_sessions(
         raise HTTPException(status_code=500, detail="Unable to retrieve session history.")
 
 
+def _restored_transcript(session_id: str) -> list[dict[str, str]]:
+    """The persisted conversation, or nothing.
+
+    Graph state lives in the checkpointer, the transcript in Supabase — two
+    stores, two failure modes. Losing the second must cost the transcript
+    alone, not the whole panel: an intake checklist and an itinerary are still
+    worth restoring without the chat bubbles.
+    """
+    if not _persistence_enabled:
+        return []
+    try:
+        row = session_store.load(session_id)
+    except Exception:
+        logger.exception("Unable to load the transcript for session %s", session_id)
+        return []
+    return session_store.restored_messages((row or {}).get("messages") or [])
+
+
 @router.get("/chat/{session_id}/restore", response_model=SessionRestorePayload)
 def restore_session(
     session_id: str, current_user: AuthenticatedUser | None = Depends(get_current_user)
 ) -> SessionRestorePayload:
+    """Rehydrate a past conversation for the frontend.
+
+    Every field is built by the same helpers `respond` uses for a live turn
+    (`agents/graph/response_payload.py`) — a restored conversation and the turn
+    that produced it must not be able to disagree.
+
+    `suggestions` is deliberately empty, and is not an oversight: a suggestion
+    belongs to one specific turn ("đặt khách sạn này?"), not to durable session
+    state. Replaying a stale one next to a conversation the user left days ago
+    would be worse than showing none.
+
+    A session that exists but has never run a turn restores as a valid empty
+    payload rather than 404. 404 tells the frontend the server lost the
+    session, and it responds by silently creating a new one — throwing away the
+    id the user is currently sitting on.
+    """
     _owned_session_or_404(session_id, current_user)
 
     app = _get_graph_v2()
-    snapshot = app.get_state({"configurable": {"thread_id": session_id}})
-    state = snapshot.values
-    if not state:
-        raise HTTPException(status_code=404, detail="Session not found.")
+    state = app.get_state({"configurable": {"thread_id": session_id}}).values or {}
+    travel_state = TravelState.from_dict(state.get("travel_state"))
+    hotel_options = hotel_options_from_task_results(state)
 
     return SessionRestorePayload(
         session_id=session_id,
-        messages=[],
+        messages=_restored_transcript(session_id),
         suggestions=[],
-        stage="intake",
-        hotel_options=to_hotel_options_payload(state.get("hotel_options")),
+        # `reply=""`: a stored session is not a turn in flight, so there is no
+        # reply to judge. A past turn that failed is recorded as such in its own
+        # `chat_messages` row, not re-derived for the session as a whole.
+        stage=derive_stage(state, hotel_options, reply=""),
+        hotel_options=hotel_options,
         trip_plan=to_trip_plan_payload(state.get("trip_data")),
-        intake=IntakeStatus.from_state(None, None),
+        intake=intake_status_from_travel_state(travel_state),
     )
 
 
@@ -284,6 +337,10 @@ def delete_session(
 # ---------------------------------------------------------------------------
 
 
+# `/chat/select_hotel` is an ALIAS of `/hotels/select`, not a second endpoint —
+# same handler, same behavior. The frontend calls only the `/hotels/select`
+# form; the alias is kept for CLI/test callers written against the older path.
+# (`/chat` and `/session/{id}/state` below are aliases in the same way.)
 @router.post("/chat/select_hotel", response_model=PlannerChatResponse)
 @router.post("/hotels/select", response_model=PlannerChatResponse)
 def select_hotel(
@@ -295,10 +352,13 @@ def select_hotel(
 
     with session.lock:
         try:
-            message = f"Tôi chọn khách sạn ID {request.hotel_id}"
-            # `selected_hotel_id` is the deterministic signal `hotel_node`
-            # acts on (review finding F2) -- the message text above stays
-            # for the conversation transcript/audit trail only.
+            # The client sends the label the user actually clicked ("Chọn khách
+            # sạn Mường Thanh"); the fallback is for older clients that send
+            # none. Either way this is transcript text only —
+            # `selected_hotel_id` below is the deterministic signal `hotel_node`
+            # acts on (review finding F2), so the wording never changes what
+            # happens, only what the saved conversation reads like.
+            message = request.selection_message or f"Tôi chọn khách sạn ID {request.hotel_id}"
             return _run_turn_via_graph(
                 session_id, message, session.language, extra_state={"selected_hotel_id": str(request.hotel_id)}
             )
@@ -317,10 +377,46 @@ def change_hotel(
 
     with session.lock:
         try:
-            return _run_turn_via_graph(session_id, "đổi khách sạn", session.language)
+            return _rerun_hotel_search(session_id)
         except Exception as exc:
             logger.exception("Hotel-change error for session %s", session_id)
             raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+def _rerun_hotel_search(session_id: str) -> PlannerChatResponse:
+    """Re-enter the graph directly at `hotel_node`.
+
+    This endpoint carries no user text — "rebuild the hotel list" is the whole
+    request, and `hotel_node` reads every input it needs from the already
+    committed `travel_state`. The old implementation ran a full turn on the
+    hardcoded Vietnamese string "đổi khách sạn", which meant sending a known
+    intent through `extract_patch` — a lossy channel — to get it back, with a
+    non-zero chance of the extractor inventing a patch along the way, and no
+    regard for `session.language`.
+
+    Still through the graph, not a direct `hotel_node(state)` call: that would
+    lose the checkpointer write, `enforce_contract`, `respond`'s payload, and
+    `interrupt()` (the node can pause to ask which center a radius search
+    should use). `Command(goto=...)` keeps all four while skipping
+    `load_context -> scope_guard -> extract_patch -> validate_patch ->
+    apply_patch`.
+
+    `update=load_context(...)` is required, not cosmetic: it resets the
+    turn-scoped fields, and without it `respond` re-serves the previous turn's
+    `task_results` and re-asks its `next_question`. Calling the node function
+    keeps one definition of which fields belong to a turn instead of a copied
+    list that rots. See `tests/test_hotels_change_entrypoint.py`.
+    """
+    app = _get_graph_v2()
+    config = {"configurable": {"thread_id": session_id}}
+    snapshot = app.get_state(config)
+
+    result = app.invoke(
+        Command(goto="hotel_node", update=load_context(snapshot.values or {})), config=config
+    )
+
+    _persist_turn(session_id, app, config)
+    return _response_from_result(session_id, result)
 
 
 # ---------------------------------------------------------------------------
@@ -351,22 +447,104 @@ def _get_graph_v2():
     return _graph_v2_app
 
 
-def _invoke_fresh_turn(
-    app, config: dict, session_id: str, message: str, language: str, extra_state: dict | None = None
-) -> dict:
-    return app.invoke(
-        {
-            "session_id": session_id,
-            "language": language,
-            "messages": [HumanMessage(content=message)],
-            **(extra_state or {}),
-        },
-        config=config,
-    )
+def _fresh_turn_input(session_id: str, message: str, language: str, extra_state: dict | None = None) -> dict:
+    return {
+        "session_id": session_id,
+        "language": language,
+        # `at` is stamped here, once, because this is the moment the user
+        # sent it. The transcript is re-written whole on every persist, so
+        # a message that doesn't carry its own timestamp gets "now" on
+        # every later turn and the conversation collapses to one instant.
+        "messages": [
+            HumanMessage(content=message, additional_kwargs={"at": datetime.now(UTC).isoformat()})
+        ],
+        **(extra_state or {}),
+    }
+
+
+def _drive_turn(app, config: dict, turn_input, *, stream: bool) -> dict:
+    """Run one turn and return its result dict, streaming or not.
+
+    The two modes differ only here, which is the point: everything around this
+    — building the input, the resume branch, interrupt handling, persistence,
+    response assembly — is shared, so streaming and plain POST cannot answer
+    the same message differently.
+
+    `app.stream()` does not hand back a merged state the way `invoke()` does,
+    so the final state is read from the checkpointer once the generator is
+    drained. An interrupt arrives as an `__interrupt__` key in `updates` and is
+    put back onto the result, giving both modes the same shape.
+
+    Frames come from two stream modes at once:
+    - `updates` names the node that just finished -> a `phase` frame, for the
+      nodes worth reporting (`PHASE_KEY_BY_NODE`).
+    - `messages` carries LLM tokens tagged with the node that produced them ->
+      a `delta` frame, but only from `STREAMING_NODES`. That filter is the
+      whole design: every other producer on this channel is either JSON
+      (`extract_patch`, `supervisor`) or the finished reply itself (`respond`,
+      which would otherwise be sent twice — once as deltas, once in `final`).
+    """
+    if not stream:
+        return app.invoke(turn_input, config=config)
+
+    interrupts: Any = None
+    for mode, chunk in app.stream(turn_input, config=config, stream_mode=["updates", "messages"]):
+        if mode == "updates":
+            for node_name, update in chunk.items():
+                if node_name == "__interrupt__":
+                    interrupts = update
+                    continue
+                phase_key = PHASE_KEY_BY_NODE.get(node_name)
+                if phase_key:
+                    emit_phase(phase_key)
+        elif mode == "messages":
+            message_chunk, metadata = chunk
+            if metadata.get("langgraph_node") in STREAMING_NODES:
+                content = getattr(message_chunk, "content", "")
+                if isinstance(content, str):
+                    emit_delta(content)
+
+    result = dict(app.get_state(config).values or {})
+    if interrupts:
+        result["__interrupt__"] = interrupts
+    return result
+
+
+def _persist_turn(session_id: str, app, config: dict) -> None:
+    """Write the turn's session row and transcript — best effort.
+
+    The reply is already computed by the time this runs, so a database outage
+    must cost a log line and nothing else; the same contract
+    `supabase_persist_hook` held for the plane this replaces.
+
+    State comes from `app.get_state(...)` rather than the `invoke()` result: a
+    turn that stopped at `interrupt()` returns `__interrupt__` instead of the
+    merged state, and that turn still needs persisting.
+
+    Re-resolving the session through the registry keeps `_run_turn_via_graph`'s
+    signature as it is; it is a dict lookup, since every caller resolved the
+    same session moments ago. Runs inside the caller's `session.lock` — two
+    concurrent turns on one session would otherwise race to rewrite the same
+    transcript.
+    """
+    if not _persistence_enabled:
+        return
+    try:
+        session = registry.get(session_id)
+        if session is None:
+            return
+        session_store.persist_graph_session(session, app.get_state(config).values or {})
+    except Exception:
+        logger.exception("Unable to persist graph session %s; continuing in memory", session_id)
 
 
 def _run_turn_via_graph(
-    session_id: str, message: str, language: str, extra_state: dict | None = None
+    session_id: str,
+    message: str,
+    language: str,
+    extra_state: dict | None = None,
+    *,
+    stream: bool = False,
 ) -> PlannerChatResponse:
     """Phase 7: a thread can be PAUSED at `interrupt()` (an ambiguous date --
     see `nodes/validate_patch.py`) from the previous turn. `get_state(...)
@@ -410,13 +588,34 @@ def _run_turn_via_graph(
 
     snapshot = app.get_state(config)
     if snapshot.interrupts:
-        result = app.invoke(Command(resume=message), config=config)
+        result = _drive_turn(app, config, Command(resume=message), stream=stream)
         unresolved = result.get("unresolved_resume_text")
         if unresolved and "__interrupt__" not in result:
-            result = _invoke_fresh_turn(app, config, session_id, unresolved, language, extra_state)
+            result = _drive_turn(
+                app, config, _fresh_turn_input(session_id, unresolved, language, extra_state), stream=stream
+            )
     else:
-        result = _invoke_fresh_turn(app, config, session_id, message, language, extra_state)
+        result = _drive_turn(
+            app, config, _fresh_turn_input(session_id, message, language, extra_state), stream=stream
+        )
 
+    # Before the interrupt branch below, so a turn that pauses waiting on a
+    # clarification is persisted too — that exchange happened and must survive
+    # a reload like any other.
+    _persist_turn(session_id, app, config)
+
+    return _response_from_result(session_id, result)
+
+
+def _response_from_result(session_id: str, result: dict) -> PlannerChatResponse:
+    """Turn a graph result into the wire response.
+
+    Shared by both graph entry points (`_run_turn_via_graph` and
+    `change_hotel`'s `Command(goto=...)`) rather than copied into each: a turn
+    that stops at `interrupt()` returns `__interrupt__` in place of
+    `response` — `respond` never ran — and two copies of that branch would
+    drift the first time either entry point changed.
+    """
     interrupts = result.get("__interrupt__")
     if interrupts:
         payload = interrupts[0].value or {}
@@ -436,7 +635,7 @@ def planner_chat(
 
     with session.lock:
         try:
-            return _run_turn_via_graph(session_id, request.message or "", request.language)
+            return _run_turn_via_graph(session_id, request.message, request.language)
         except Exception:
             logger.exception("Unexpected error in planner_chat for session %s", session_id)
             raise HTTPException(status_code=500, detail="Đã xảy ra lỗi máy chủ. Vui lòng thử lại.")
@@ -456,7 +655,9 @@ async def planner_chat_stream(
     def _run_turn() -> None:
         try:
             with emitting_to(emitter), session.lock:
-                response = _run_turn_via_graph(session_id, request.message or "", request.language)
+                response = _run_turn_via_graph(
+                    session_id, request.message, request.language, stream=True
+                )
             emitter.emit("final", **response.model_dump(mode="json"))
         except Exception:
             logger.exception("Unexpected error in planner_chat_stream for session %s", session_id)

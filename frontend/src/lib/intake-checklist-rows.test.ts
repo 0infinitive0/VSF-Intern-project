@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { buildIntakeChecklistRows } from './intake-checklist-rows'
 import type { IntakeStatus } from '../types'
+import { intakeStatus } from '../test-fixtures'
 
-const FULL_INTAKE: IntakeStatus = {
+const FULL_INTAKE: IntakeStatus = intakeStatus({
   destination: 'Đà Nẵng',
   duration: '3 ngày 2 đêm',
   start_date: '2026-10-12T00:00:00',
@@ -16,7 +17,7 @@ const FULL_INTAKE: IntakeStatus = {
   available_destinations: ['Đà Nẵng'],
   budget_options: ['Tiết kiệm (dưới 800,000 VND/đêm)'],
   missing: [],
-}
+})
 
 const LABELS = { peopleWord: 'người', budgetSkipped: 'Không giới hạn' }
 

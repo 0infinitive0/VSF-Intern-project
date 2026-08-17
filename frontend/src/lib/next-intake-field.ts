@@ -123,12 +123,22 @@ export function isFieldFilled(
  * hideDuplicateIntakeReply), which made real answered questions vanish and
  * reappear depending on which widget happened to be open. Suppressing the
  * redundant question is safe; deleting a real message never is.
+ *
+ * A field the user has ALREADY answered locally is never asked about, whatever
+ * the backend thinks. Without that clause the terminal `preferences` card —
+ * which by design stays open after the user picks a chip, since its own button
+ * is the only way to submit — re-rendered its question on every intake-stage
+ * turn: `nextIntakeField` is null once the gated fields are answered, and
+ * `'preferences' !== null` is true forever. That is the second bubble users
+ * saw next to an unrelated reply.
  */
 export function locallyAdvancedField(
   intake: IntakeStatus | null,
   activeField: IntakeField | null,
+  form: IntakeFormShape,
 ): IntakeField | null {
   if (!activeField) return null
+  if (isFieldFilled(form, activeField)) return null
   return activeField === nextIntakeField(intake) ? null : activeField
 }
 
@@ -156,6 +166,13 @@ export function currentIntakeField(
   for (const field of INTAKE_FIELD_ORDER) {
     if (isFieldMissing(intake, field)) {
       if (!isFieldFilled(form, field)) return field
+      // Load-bearing: the backend emits every unfilled gated key at once
+      // (respond.py's _intake_status_from_travel_state), not one per turn. So
+      // "missing but already filled locally" is the normal state during
+      // progressive disclosure — the user answered this widget without a chat
+      // turn, and the next widget is what should open. Returning `field` here
+      // instead would pin the widget on the first unsent answer until a chat
+      // turn happens, which is the whole flow.
       continue
     }
   }

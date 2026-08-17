@@ -124,7 +124,9 @@ export default function ConversationList({
                   </div>
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <span className="text-[10px] text-on-surface-muted whitespace-nowrap">
-                      {formatSessionDate(session.updated_at, i18n.language, t('sidebarToday'))}
+                      {session.updated_at
+                        ? formatSessionDate(session.updated_at, i18n.language, t('sidebarToday'))
+                        : ''}
                     </span>
                     <span
                       className={`text-[9px] px-1.5 py-px rounded-full font-medium whitespace-nowrap ${
