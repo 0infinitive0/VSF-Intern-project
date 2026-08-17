@@ -1,9 +1,5 @@
-import { beforeAll, describe, expect, it, vi } from 'vitest'
-import type {
-  chatSessionReducer as ChatSessionReducer,
-  INITIAL_STATE as InitialStateType,
-  resolveBootstrapSession as ResolveBootstrapSession,
-} from './use-chat-session'
+import { beforeAll, describe, expect, it } from 'vitest'
+import type { chatSessionReducer as ChatSessionReducer, INITIAL_STATE as InitialStateType } from './use-chat-session'
 import type { ChatState, SessionRestore } from '../types'
 
 // use-chat-session.ts imports ../i18n, which reads localStorage at
@@ -12,7 +8,6 @@ import type { ChatState, SessionRestore } from '../types'
 // dynamically, after stubbing the minimal API it needs.
 let chatSessionReducer: typeof ChatSessionReducer
 let INITIAL_STATE: typeof InitialStateType
-let resolveBootstrapSession: typeof ResolveBootstrapSession
 
 describe('chatSessionReducer â€” direct hotel selection', () => {
   it('records the named hotel choice and concise completion message', () => {
@@ -75,70 +70,7 @@ beforeAll(async () => {
     key: () => null,
     length: 0,
   } as Storage
-  ;({ chatSessionReducer, INITIAL_STATE, resolveBootstrapSession } = await import('./use-chat-session'))
-})
-
-// ── Bootstrap decision table ────────────────────────────────────────────────
-// The stored-session ping has four possible outcomes and only ONE of them may
-// abandon the stored conversation. 401 in particular is a token problem that
-// AuthProvider refreshes within seconds — creating a new session there throws
-// away a live conversation for a reason that fixes itself.
-
-describe('resolveBootstrapSession', () => {
-  const created = { session_id: 'server-new', created_at: '2026-08-16T00:00:00Z' }
-
-  function deps(overrides: Partial<Parameters<typeof resolveBootstrapSession>[0]> = {}) {
-    return {
-      stored: 'stored-id',
-      ping: vi.fn().mockResolvedValue('alive' as const),
-      create: vi.fn().mockResolvedValue(created),
-      fallbackId: () => 'fallback-id',
-      ...overrides,
-    }
-  }
-
-  it('keeps the stored session when the ping says alive', async () => {
-    const d = deps()
-    await expect(resolveBootstrapSession(d)).resolves.toEqual({ sessionId: 'stored-id', persist: false })
-    expect(d.create).not.toHaveBeenCalled()
-  })
-
-  it('creates a new session when the server no longer has the stored one (404)', async () => {
-    const d = deps({ ping: vi.fn().mockResolvedValue('gone' as const) })
-    await expect(resolveBootstrapSession(d)).resolves.toEqual({ sessionId: 'server-new', persist: true })
-    expect(d.create).toHaveBeenCalledOnce()
-  })
-
-  it('keeps the stored session on 401 instead of silently starting a new one', async () => {
-    const d = deps({ ping: vi.fn().mockResolvedValue('unauthorized' as const) })
-    await expect(resolveBootstrapSession(d)).resolves.toEqual({ sessionId: 'stored-id', persist: false })
-    expect(d.create).not.toHaveBeenCalled()
-  })
-
-  it('keeps the stored session optimistically when the ping itself fails', async () => {
-    const d = deps({ ping: vi.fn().mockResolvedValue('unknown' as const) })
-    await expect(resolveBootstrapSession(d)).resolves.toEqual({ sessionId: 'stored-id', persist: false })
-    expect(d.create).not.toHaveBeenCalled()
-  })
-
-  it('keeps the stored session when the replacement session cannot be created', async () => {
-    const d = deps({
-      ping: vi.fn().mockResolvedValue('gone' as const),
-      create: vi.fn().mockRejectedValue(new Error('backend down')),
-    })
-    await expect(resolveBootstrapSession(d)).resolves.toEqual({ sessionId: 'stored-id', persist: false })
-  })
-
-  it('creates a session when nothing is stored, without pinging', async () => {
-    const d = deps({ stored: null })
-    await expect(resolveBootstrapSession(d)).resolves.toEqual({ sessionId: 'server-new', persist: true })
-    expect(d.ping).not.toHaveBeenCalled()
-  })
-
-  it('falls back to a client-side id when nothing is stored and creation fails', async () => {
-    const d = deps({ stored: null, create: vi.fn().mockRejectedValue(new Error('backend down')) })
-    await expect(resolveBootstrapSession(d)).resolves.toEqual({ sessionId: 'fallback-id', persist: true })
-  })
+  ;({ chatSessionReducer, INITIAL_STATE } = await import('./use-chat-session'))
 })
 
 function restoreDataFor(sessionId: string): SessionRestore {
