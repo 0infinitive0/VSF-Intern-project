@@ -27,6 +27,16 @@ class Settings(BaseSettings):
     cloudflare_api_token: str = ""
     model_name: str = "gpt-4o-mini"
     llm_temperature: float = Field(default=0.3, ge=0.0, le=2.0)
+    llm_reasoning_effort: Literal["minimal", "low", "medium", "high"] = Field(
+        default="low",
+        description="Effort level sent to OpenAI reasoning models (gpt-5/o1/o3/o4 family) "
+        "via ChatOpenAI's `reasoning_effort` kwarg -- these models ignore `temperature` "
+        "entirely, so this is their equivalent dial. The API's own default ('medium') was "
+        "measured spending 76s and 1536 hidden reasoning tokens to answer a plain "
+        "capabilities question in `qa_node`, 89% of that turn's 119s total latency. "
+        "Non-reasoning models never receive this kwarg (see "
+        "`_openai_model_supports_temperature` in `services/llm.py`).",
+    )
     llm_provider: str = "ollama"
     llm_model: str = "llama3.1"
     llm_fast_model: str = "llama3.1"

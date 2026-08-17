@@ -93,6 +93,71 @@ def test_get_llm_keeps_temperature_for_models_that_support_it():
     assert factory.call_args.kwargs["temperature"] == 0.3
 
 
+@pytest.mark.parametrize("model", ["gpt-5", "o1", "o3-mini", "o4-mini"])
+def test_get_llm_defaults_reasoning_effort_to_low_for_reasoning_models(model: str):
+    """Regression: the API's own default ('medium') measured 76s/1536 hidden reasoning
+    tokens to answer a plain capabilities question in qa_node -- 89% of that turn's
+    latency. 'low' is the safe default until a call site opts into something heavier."""
+    with patch("src.services.llm.ChatOpenAI") as factory:
+        get_llm(provider="openai", model=model, api_key="sk-dummykey123")
+
+    assert factory.call_args.kwargs["reasoning_effort"] == "low"
+
+
+def test_get_llm_omits_reasoning_effort_for_models_that_reject_it():
+    with patch("src.services.llm.ChatOpenAI") as factory:
+        get_llm(provider="openai", model="gpt-4o-mini", api_key="sk-dummykey123")
+
+    assert "reasoning_effort" not in factory.call_args.kwargs
+
+
+def test_get_llm_reasoning_effort_configurable_via_env(monkeypatch):
+    monkeypatch.setenv("LLM_REASONING_EFFORT", "high")
+    get_settings.cache_clear()
+    try:
+        with patch("src.services.llm.ChatOpenAI") as factory:
+            get_llm(provider="openai", model="gpt-5", api_key="sk-dummykey123")
+        assert factory.call_args.kwargs["reasoning_effort"] == "high"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_get_llm_reasoning_effort_explicit_override_wins_over_env(monkeypatch):
+    monkeypatch.setenv("LLM_REASONING_EFFORT", "high")
+    get_settings.cache_clear()
+    try:
+        with patch("src.services.llm.ChatOpenAI") as factory:
+            get_llm(provider="openai", model="gpt-5", api_key="sk-dummykey123", reasoning_effort="minimal")
+        assert factory.call_args.kwargs["reasoning_effort"] == "minimal"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_get_llm_streaming_unset_by_default():
+    """No call site should get an implicit 'streaming' kwarg -- most nodes (supervisor,
+    extract_patch) must NOT stream their JSON output to the client."""
+    with patch("src.services.llm.ChatOpenAI") as factory:
+        get_llm(provider="openai", model="gpt-4o-mini", api_key="sk-dummykey123")
+
+    assert "streaming" not in factory.call_args.kwargs
+
+
+def test_get_llm_streaming_opt_in():
+    with patch("src.services.llm.ChatOpenAI") as factory:
+        get_llm(provider="openai", model="gpt-4o-mini", api_key="sk-dummykey123", streaming=True)
+
+    assert factory.call_args.kwargs["streaming"] is True
+
+
+def test_get_fast_llm_streaming_opt_in_reaches_get_llm():
+    """qa_node/intake_qa pass streaming=True explicitly; other callers (e.g. supervisor)
+    that omit it must produce the exact same kwargs as before this feature existed."""
+    with patch("src.services.llm.get_llm") as factory:
+        get_fast_llm(temperature=0.2, streaming=True)
+
+    assert factory.call_args.kwargs["streaming"] is True
+
+
 def test_get_llm_unknown_provider_falls_back():
     """Verify that an unknown provider safely falls back to local ChatOllama."""
     llm = get_llm(provider="unknown_provider_xyz")

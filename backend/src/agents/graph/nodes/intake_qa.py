@@ -96,7 +96,7 @@ def intake_qa(state: TravelGraphState) -> dict[str, Any]:
     )
 
     try:
-        llm = get_fast_llm(temperature=0.2)
+        llm = get_fast_llm(temperature=0.2, streaming=True)
         response = llm.invoke(prompt)
         answer = _response_text(response)
     except Exception:

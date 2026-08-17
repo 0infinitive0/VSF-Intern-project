@@ -111,7 +111,7 @@ def fit_context_window(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_qa_subgraph(checkpointer: BaseCheckpointSaver, *, temperature: float = 0.2) -> CompiledStateGraph:
-    llm = get_fast_llm(temperature=temperature)
+    llm = get_fast_llm(temperature=temperature, streaming=True)
     return create_react_agent(
         llm,
         list(QA_TOOLS),

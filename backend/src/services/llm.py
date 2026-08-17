@@ -78,6 +78,8 @@ def get_llm(
     api_key: str | None = None,
     temperature: float | None = None,
     base_url: str | None = None,
+    reasoning_effort: str | None = None,
+    streaming: bool | None = None,
 ) -> BaseChatModel:
     """Return configured Chat LLM instance with local Ollama fallback.
 
@@ -87,6 +89,12 @@ def get_llm(
         api_key: API key for remote providers.
         temperature: Sampling temperature.
         base_url: Custom API endpoint base URL.
+        reasoning_effort: "minimal"/"low"/"medium"/"high", OpenAI-only. Applied only to
+            gpt-5/o1/o3/o4-family models (the same family that rejects `temperature`);
+            defaults to `settings.llm_reasoning_effort`.
+        streaming: OpenAI-only. Left unset (ChatOpenAI's own default: no streaming)
+            unless a caller opts in -- most call sites (e.g. `supervisor`, `extract_patch`)
+            must NOT stream their JSON output to the client.
     """
     settings = get_settings()
 
@@ -122,6 +130,12 @@ def get_llm(
         else getattr(settings, "llm_temperature", 0.3)
     )
 
+    target_reasoning_effort = (
+        reasoning_effort
+        if reasoning_effort is not None
+        else getattr(settings, "llm_reasoning_effort", "low")
+    )
+
     if target_provider in {"ollama", "local"}:
         return _get_local_llm(model=target_model, temperature=target_temp, base_url=target_base)
 
@@ -137,8 +151,12 @@ def get_llm(
             }
             if _openai_model_supports_temperature(str(kwargs["model"])):
                 kwargs["temperature"] = target_temp
+            else:
+                kwargs["reasoning_effort"] = target_reasoning_effort
             if target_base:
                 kwargs["base_url"] = target_base
+            if streaming is not None:
+                kwargs["streaming"] = streaming
             return ChatOpenAI(**kwargs)
         except Exception as exc:
             logger.warning("Failed to initialize ChatOpenAI (%s). Falling back to local Ollama LLM.", exc)
@@ -275,16 +293,26 @@ def get_fast_llm(
     *,
     model: str | None = None,
     temperature: float | None = None,
+    streaming: bool | None = None,
 ) -> BaseChatModel:
-    """Return the economical model for short Q&A and summarization work."""
-    return get_llm(
-        model=_get_role_model(
+    """Return the economical model for short Q&A and summarization work.
+
+    `streaming` is opt-in per call site (left unset here on purpose): only nodes whose
+    output is meant to reach the user token-by-token (`qa_node`, `intake_qa` --
+    `STREAMING_NODES` in `phase_keys.py`) should pass `streaming=True`. `supervisor` uses
+    this same factory for routing JSON and must keep it unset.
+    """
+    kwargs: dict[str, Any] = {
+        "model": _get_role_model(
             explicit_model=model,
             environment_key="LLM_FAST_MODEL",
             settings_key="llm_fast_model",
         ),
-        temperature=temperature,
-    )
+        "temperature": temperature,
+    }
+    if streaming is not None:
+        kwargs["streaming"] = streaming
+    return get_llm(**kwargs)
 
 
 @lru_cache
