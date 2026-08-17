@@ -11,11 +11,15 @@ export default function IntakeDestinationChips({
   selected,
   onPick,
   disabled,
+  hint,
 }: {
   destinations: string[]
   selected: string
   onPick: (value: string) => void
   disabled: boolean
+  /** Overrides the default `intakeQuickHint` caption — e.g. the empty-conversation
+   * entry point reuses this widget but keeps its own "or type freely" wording. */
+  hint?: string
 }) {
   const { t } = useTranslation()
 
@@ -23,7 +27,7 @@ export default function IntakeDestinationChips({
 
   return (
     <div className="flex flex-col gap-2 animate-[vPop_0.5s_cubic-bezier(0.22,1,0.36,1)_both]">
-      <div className="text-[10.5px] text-on-surface-muted pl-1">{t('intakeQuickHint')}</div>
+      <div className="text-[10.5px] text-on-surface-muted pl-1">{hint ?? t('intakeQuickHint')}</div>
       <div className="flex flex-wrap gap-2" role="group" aria-label={t('intakeDestinationLabel')}>
         {destinations.map((name) => {
           const isSelected = selected === name

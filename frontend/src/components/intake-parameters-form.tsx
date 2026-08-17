@@ -73,7 +73,10 @@ export default function IntakeParametersForm({
 
   // The preferences card is terminal and stays mounted (with its own submit
   // button) until submitAll actually sends — see currentIntakeField's doc.
-  if (!intake) return null
+  // `intake` may be null pre-first-turn (empty-conversation destination pick
+  // already happened, walking people/dates locally with no backend contact
+  // yet) — currentIntakeField never returns 'budget'/'preferences' in that
+  // case, so those two cases below are unreachable without a real `intake`.
   if (disabled) return null
 
   switch (activeField) {

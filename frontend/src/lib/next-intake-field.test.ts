@@ -125,8 +125,18 @@ describe('locallyAdvancedField', () => {
 })
 
 describe('currentIntakeField', () => {
-  it('returns null for null intake', () => {
-    expect(currentIntakeField(null, form())).toBeNull()
+  // Pre-first-turn (empty-conversation quick-start destination chips): no
+  // backend snapshot exists yet, so the walk is local-only, in the full
+  // destination -> people -> dates -> budget -> preferences order — budget's
+  // `intake.budget_options` existence gate only applies once a real intake
+  // snapshot exists (see currentIntakeField's pre-intake doc).
+  it('walks destination -> people -> dates -> budget -> preferences locally when there is no intake yet', () => {
+    expect(currentIntakeField(null, form())).toBe('destination')
+    expect(currentIntakeField(null, form({ destination: 'Hà Nội' }))).toBe('people')
+    expect(currentIntakeField(null, form({ destination: 'Hà Nội', guests: 2 }))).toBe('dates')
+    const withDates = form({ destination: 'Hà Nội', guests: 2, startDate: '2026-08-10', endDate: '2026-08-13' })
+    expect(currentIntakeField(null, withDates)).toBe('budget')
+    expect(currentIntakeField(null, { ...withDates, budgetSkipped: true })).toBe('preferences')
   })
 
   it('walks required fields first, in order, until one is missing', () => {

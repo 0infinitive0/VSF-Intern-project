@@ -90,6 +90,18 @@ describe('buildIntakeChecklistRows', () => {
 
   // ---- local form fallback (checklist live-update) -------------------------
 
+  it('lights up destination from the local form before the server confirms it (pre-first-turn empty conversation)', () => {
+    const rows = buildIntakeChecklistRows(null, 'en', { destination: 'Hà Nội' }, LABELS)
+    const destination = rows.find((row) => row.key === 'destination')
+    expect(destination?.collected).toBe(true)
+    expect(destination?.value).toBe('Hà Nội')
+  })
+
+  it('server-confirmed destination wins over a stale local pick once both exist', () => {
+    const rows = buildIntakeChecklistRows(FULL_INTAKE, 'en', { destination: 'Huế' }, LABELS)
+    expect(rows.find((row) => row.key === 'destination')?.value).toBe('Đà Nẵng')
+  })
+
   it('lights up people from the local form before the server confirms it', () => {
     const rows = buildIntakeChecklistRows(
       { ...FULL_INTAKE, people: null, missing: ['people'] },

@@ -11,10 +11,11 @@
  * backend does not gate them, see next-intake-field.ts) and are handled
  * explicitly below.
  *
- * people/dates/budget also light up from `form` the moment the user answers
- * the widget locally — IntakeParametersForm only round-trips ONE combined
- * message at the very last step, so waiting for server confirmation left
- * these rows stuck on "—" the entire time the user was stepping through them.
+ * destination/people/dates/budget also light up from `form` the moment the
+ * user answers the widget locally — IntakeParametersForm only round-trips ONE
+ * combined message at the very last step, so waiting for server confirmation
+ * left these rows stuck on "—" the entire time the user was stepping through
+ * them.
  * `isFieldFilled` (next-intake-field.ts) is reused as the single source of
  * truth for "is this field answered locally" — no separate logic invented
  * here. Once the server confirms a row, its formatted value wins (it's the
@@ -70,7 +71,10 @@ export function buildIntakeChecklistRows(
   const serverDateRange = formatTripDateRange(intake?.start_date, intake?.end_date, locale)
   const preferenceKeys = intake?.preferences ?? []
 
-  const destinationCollected = Boolean(intake?.destination) && !missingAny(MISSING_KEYS.destination)
+  const destinationServerCollected =
+    Boolean(intake?.destination) && !missingAny(MISSING_KEYS.destination)
+  const destinationLocalCollected = isFieldFilled(form ?? {}, 'destination')
+  const destinationCollected = destinationServerCollected || destinationLocalCollected
 
   const peopleServerCollected = Boolean(intake?.people) && !missingAny(MISSING_KEYS.people)
   const peopleLocalCollected = isFieldFilled(form ?? {}, 'people')
@@ -108,7 +112,11 @@ export function buildIntakeChecklistRows(
     {
       key: 'destination',
       collected: destinationCollected,
-      value: destinationCollected ? (intake?.destination ?? null) : null,
+      value: destinationServerCollected
+        ? (intake?.destination ?? null)
+        : destinationLocalCollected
+          ? (form?.destination ?? null)
+          : null,
       preferenceKeys: [],
     },
     {

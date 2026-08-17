@@ -4,6 +4,7 @@ import Composer from './composer'
 import StepNavigator from './step-navigator'
 import SuggestionChips from './suggestion-chips'
 import IntakeParametersForm from './intake-parameters-form'
+import IntakeDestinationChips from './intake-destination-chips'
 import { QUICK_START_DESTINATIONS } from '../lib/quick-start-destinations'
 import type { IntakeFormState } from '../lib/compose-intake-message'
 import type { PreferenceKey } from '../lib/intake-options'
@@ -123,11 +124,18 @@ export default function ChatPanel({
   // stage override (e.g. jumped back from Khách sạn to Thông tin) — the backend's
   // last stage there is whatever it actually was (e.g. 'hotel_options'), so that
   // alone would hide the edit widget the tap is supposed to open.
-  const showIntakeForm = Boolean(intake) && !pending && (lastStage === 'intake' || editingIntakeField != null)
   // Before the first turn, offer the real, currently-covered destinations
   // (data/UX-improvements-doc #1) so the user isn't stuck facing a blank
   // composer — same tap-or-type-freely chip pattern as server suggestions.
   const isEmptyConversation = messages.length === 0
+  const showIntakeForm =
+    !pending &&
+    (Boolean(intake)
+      ? lastStage === 'intake' || editingIntakeField != null
+      : // Pre-first-turn: once the quick-start destination chip is picked
+        // locally, keep walking people/dates the same way — see
+        // currentIntakeField's pre-intake doc.
+        isEmptyConversation && Boolean(intakeForm.destination))
 
   const activeIntakeField = editingIntakeField ?? currentIntakeField(intake, intakeForm)
   // The widget's question, asked in the thread only when the backend's own
@@ -193,7 +201,7 @@ export default function ChatPanel({
         <div className="flex-none max-h-[56vh] overflow-y-auto custom-scrollbar px-4 pb-1 flex flex-col gap-2.5">
           {showIntakeForm ? (
             <IntakeParametersForm
-              intake={intake!}
+              intake={intake}
               form={intakeForm}
               setForm={setIntakeForm}
               togglePreference={toggleIntakePreference}
@@ -203,16 +211,18 @@ export default function ChatPanel({
               onDoneEditing={onDoneEditingIntakeField}
             />
           ) : isEmptyConversation ? (
-            <>
-              <div className="text-[10.5px] font-normal text-on-surface-muted pl-1">
-                {t('quickSuggestionsHint')}
-              </div>
-              <SuggestionChips
-                suggestions={QUICK_START_DESTINATIONS}
-                onSelect={onSend}
-                disabled={false}
-              />
-            </>
+            // Local pick only — no chat turn (same as IntakeDestinationChips'
+            // real, backend-fed sibling once `intake` exists). Storing it in
+            // `intakeForm.destination` here means mergeIntakeIntoForm carries
+            // it forward once the first real turn's intake snapshot lands, so
+            // it isn't asked twice — see use-intake-form.ts's merge doc.
+            <IntakeDestinationChips
+              destinations={QUICK_START_DESTINATIONS.map((d) => d.value)}
+              selected={intakeForm.destination}
+              onPick={(destination) => setIntakeForm((prev) => ({ ...prev, destination }))}
+              disabled={false}
+              hint={t('quickSuggestionsHint')}
+            />
           ) : (
             <>
               {lastStage !== 'intake' && (

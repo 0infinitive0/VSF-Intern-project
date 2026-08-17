@@ -47,6 +47,12 @@ export const INTAKE_FIELD_ORDER = [
 
 export type IntakeField = (typeof INTAKE_FIELD_ORDER)[number]
 
+// The subset of INTAKE_FIELD_ORDER the backend actually gates via `missing`
+// (budget/preferences never appear there — see FIELD_TO_REAL_KEYS below).
+// currentIntakeField walks only these; budget/preferences are handled by its
+// own post-loop fallback since they need real backend data either way.
+const GATED_FIELD_ORDER: readonly IntakeField[] = ['destination', 'people', 'dates']
+
 // Real keys emitted in `intake.missing` for each widget field. Budget and
 // preferences intentionally have no real keys (backend never gates them) —
 // they surface only once every missing-gated field is answered.
@@ -157,14 +163,31 @@ export function locallyAdvancedField(
  * user picks one interest (that button is the only way `submitAll` runs). The
  * card only goes away when the parent hides the whole form after a real
  * submission changes `intake`.
+ *
+ * Pre-first-turn (`intake === null`, no backend contact yet — the
+ * empty-conversation quick-start destination chips), there is no real
+ * `missing` signal to gate on. The three gated fields (destination → people →
+ * dates) still walk by `isFieldFilled` alone — the local-only equivalent of
+ * "missing" — so picking a destination auto-advances straight to asking
+ * people, then dates, entirely client-side. Budget and preferences are both
+ * self-contained widgets (IntakeBudgetSlider's range is hardcoded from the
+ * real backend tier bounds, not `intake.budget_options`; PREFERENCE_KEYS is a
+ * static client-side list), so the `intake.budget_options` existence check
+ * only applies once a real snapshot exists — pre-intake it's skipped and
+ * budget is offered unconditionally, same walk order as post-intake. The walk
+ * ends on preferences, which owns the only submit button that matters here
+ * (IntakePreferenceChips' "Tìm khách sạn"), firing the first real turn — same
+ * as the post-intake terminal step, no separate "auto-send" path needed.
  */
 export function currentIntakeField(
   intake: IntakeStatus | null,
   form: IntakeFormShape,
 ): IntakeField | null {
-  if (!intake) return null
-  for (const field of INTAKE_FIELD_ORDER) {
-    if (isFieldMissing(intake, field)) {
+  for (const field of GATED_FIELD_ORDER) {
+    // No backend snapshot yet: every gated field is implicitly still needed
+    // until the user answers it locally.
+    const stillNeeded = intake ? isFieldMissing(intake, field) : true
+    if (stillNeeded) {
       if (!isFieldFilled(form, field)) return field
       // Load-bearing: the backend emits every unfilled gated key at once
       // (respond.py's _intake_status_from_travel_state), not one per turn. So
@@ -176,11 +199,9 @@ export function currentIntakeField(
       continue
     }
   }
-  if (
-    !isFieldFilled(form, 'budget') &&
-    !isBudgetAnsweredOnServer(intake) &&
-    (intake.budget_options?.length ?? 0) > 0
-  ) {
+  // No intake yet: nothing to gate budget on, so offer it unconditionally.
+  const budgetOptionsExist = intake ? (intake.budget_options?.length ?? 0) > 0 : true
+  if (!isFieldFilled(form, 'budget') && !isBudgetAnsweredOnServer(intake) && budgetOptionsExist) {
     return 'budget'
   }
   return 'preferences'
