@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import RemoteImage from './remote-image'
 import { formatCurrency } from '../lib/format-currency'
-import type { RoomDetail } from '../types'
+import { displayAmenityLabels } from '../lib/hotel-filters'
+import type { AmenityCatalogOption, RoomDetail } from '../types'
 
 /**
  * RoomCard — the read-only room accordion (RoomCard.dc.html minus the removed
@@ -30,11 +31,14 @@ export default function RoomCard({
   delay,
   selected,
   onPick,
+  amenityDetails,
 }: {
   room: RoomDetail
   delay: string
   selected: boolean
   onPick: () => void
+  /** Shared room/both catalog data from the surrounding hotel-detail response. */
+  amenityDetails: AmenityCatalogOption[]
 }) {
   const { t, i18n } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -88,6 +92,11 @@ export default function RoomCard({
   // null check must come first, without coercion.)
   const hasPriceAmount =
     price?.amount != null && Number.isFinite(price.amount) && price.amount > 0
+  const roomFacilityLabels = displayAmenityLabels(
+    room.room_facilities ?? [],
+    amenityDetails,
+    i18n.language,
+  )
 
   return (
     <div
@@ -175,9 +184,9 @@ export default function RoomCard({
                 ))}
               </div>
             )}
-            {room.room_facilities && room.room_facilities.length > 0 && (
+            {roomFacilityLabels.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
-                {room.room_facilities.map((facility) => (
+                {roomFacilityLabels.map((facility) => (
                   <span
                     key={facility}
                     className="text-[11px] font-[450] px-2.5 py-1 rounded-full bg-fill text-on-surface-variant"

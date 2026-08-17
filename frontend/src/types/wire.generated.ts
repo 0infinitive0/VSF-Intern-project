@@ -675,6 +675,11 @@ export interface components {
             available_room_count: number | null;
             /** Rooms */
             rooms: components["schemas"]["RoomDetailPayload"][];
+            /**
+             * Room Amenities
+             * @description Unique approved room amenity catalog records for all returned rooms
+             */
+            room_amenities: components["schemas"]["AmenityCatalogPayload"][];
             /** Source Platform */
             source_platform: string | null;
             /** Source Url */

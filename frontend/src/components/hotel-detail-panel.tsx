@@ -273,6 +273,7 @@ export default function HotelDetailPanel({
                           delay={`${i * 90}ms`}
                           selected={roomPicks[hotelId] === roomKey}
                           onPick={() => setRoomPicks((prev) => ({ ...prev, [hotelId]: roomKey }))}
+                          amenityDetails={detail.room_amenities ?? []}
                         />
                       )
                     })}

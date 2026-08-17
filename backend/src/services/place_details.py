@@ -11,6 +11,7 @@ from typing import Any
 from supabase import Client, create_client
 
 from src.config import get_settings
+from src.services.amenity_catalog import query_all_approved_amenities_by_ids
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +127,30 @@ def _normalize_agoda_nearby_attractions(value: Any) -> Any:
     return normalized
 
 
+def _room_amenities_from_rooms(rooms: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Join each returned room facility ID to its approved catalog row once."""
+    amenity_ids = list(dict.fromkeys(
+        facility
+        for room in rooms
+        for facility in room.get("room_facilities") or []
+        if isinstance(facility, str)
+    ))
+    if not amenity_ids:
+        return []
+    by_id = {
+        entry.id: {
+            "id": entry.id,
+            "label_vi": entry.label,
+            "label_en": entry.label_en,
+            "category": entry.category,
+            "icon_key": entry.icon_key,
+        }
+        for entry in query_all_approved_amenities_by_ids(amenity_ids)
+        if entry.scope in {"room", "both"}
+    }
+    return [by_id[amenity_id] for amenity_id in amenity_ids if amenity_id in by_id]
+
+
 def get_hotel_detail(
     hotel_id: str, check_in: date | None = None, check_out: date | None = None
 ) -> dict[str, Any] | None:
@@ -182,6 +207,7 @@ def get_hotel_detail(
         room_detail["available_room_count"] = availability_by_room.get(str(room.get("id")), 0)
         hotel["available_room_count"] += room_detail["available_room_count"]
         hotel["rooms"].append(room_detail)
+    hotel["room_amenities"] = _room_amenities_from_rooms(hotel["rooms"])
     return hotel
 
 

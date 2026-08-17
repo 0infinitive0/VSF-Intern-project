@@ -106,6 +106,40 @@ def test_hotel_detail_handles_no_rooms_and_no_matching_price(monkeypatch):
     assert place_details.get_hotel_detail("hotel-1")["rooms"][0]["price"] is None
 
 
+def test_hotel_detail_joins_unique_room_amenities_from_the_catalog(monkeypatch):
+    from src.services.amenity_catalog import AmenityCatalogEntry
+
+    client = FakeClient({
+        "hotels": [_hotel()],
+        "rooms": [
+            {**_room(), "room_facilities": ["tv", "wifi", "unknown_facility"]},
+            {"id": "room-2", "name": "City Room", "room_facilities": ["hair_dryer", "tv"]},
+        ],
+        "room_prices": [],
+        "rpc": {"room-1": 2, "room-2": 1},
+    })
+    monkeypatch.setattr(place_details, "_get_supabase_client", lambda: client)
+    monkeypatch.setattr(
+        place_details,
+        "query_all_approved_amenities_by_ids",
+        lambda amenity_ids: [
+            AmenityCatalogEntry("tv", "Tivi", ("tv",), label_en="TV", scope="room", category="room_comfort"),
+            AmenityCatalogEntry("wifi", "Wi-Fi", ("wifi",), label_en="Wi-Fi", scope="both", category="connectivity"),
+            AmenityCatalogEntry("hair_dryer", "Máy sấy tóc", ("hair dryer",), label_en="Hair dryer", scope="room", category="room_comfort"),
+        ],
+        raising=False,
+    )
+
+    result = place_details.get_hotel_detail("hotel-1")
+
+    assert result["room_amenities"] == [
+        {"id": "tv", "label_vi": "Tivi", "label_en": "TV", "category": "room_comfort", "icon_key": None},
+        {"id": "wifi", "label_vi": "Wi-Fi", "label_en": "Wi-Fi", "category": "connectivity", "icon_key": None},
+        {"id": "hair_dryer", "label_vi": "Máy sấy tóc", "label_en": "Hair dryer", "category": "room_comfort", "icon_key": None},
+    ]
+    assert HotelDetailPayload.model_validate(result).room_amenities[0].id == "tv"
+
+
 def test_agoda_nearby_attraction_strings_are_normalized_without_coordinates(monkeypatch):
     client = FakeClient({
         "hotels": [{

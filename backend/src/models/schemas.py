@@ -184,6 +184,10 @@ class HotelDetailPayload(ResponsePayload):
         description="Sum of booking-aware remaining room units across this hotel",
     )
     rooms: list[RoomDetailPayload] = Field(default_factory=list)
+    room_amenities: list["AmenityCatalogPayload"] = Field(
+        default_factory=list,
+        description="Unique approved room amenity catalog records for all returned rooms",
+    )
     source_platform: str | None = None  # 'agoda' | 'booking' — powers the OTA handoff button
     source_url: str | None = None  # original listing URL on the source OTA
 

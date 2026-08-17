@@ -1846,6 +1846,14 @@
             "type": "array",
             "title": "Rooms"
           },
+          "room_amenities": {
+            "items": {
+              "$ref": "#/components/schemas/AmenityCatalogPayload"
+            },
+            "type": "array",
+            "title": "Room Amenities",
+            "description": "Unique approved room amenity catalog records for all returned rooms"
+          },
           "source_platform": {
             "anyOf": [
               {
@@ -1899,6 +1907,7 @@
           "currency",
           "available_room_count",
           "rooms",
+          "room_amenities",
           "source_platform",
           "source_url"
         ],
