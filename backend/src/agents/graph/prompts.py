@@ -11,6 +11,7 @@ emits a trip fact itself.
 from __future__ import annotations
 
 from src.agents.graph.state import SessionManifest
+from src.services.trip_intake import _COMPANION_LABELS, _DAY_RHYTHM_LABELS, _PACE_LABELS, _PREFERENCE_LABELS
 
 SUPERVISOR_SYSTEM_PROMPT = """You are the delegation supervisor for a trip-planning agent graph.
 
@@ -54,7 +55,8 @@ Schema:
   "intent": "hotel_search | update_itinerary | update_trip | select_hotel | finalize | general_question",
   "changes": [
     {{"path": "<one of the allowed paths below>", "operation": "set | unset | append | remove", "value": <string, number, list, or null>}}
-  ]
+  ],
+  "reason": "missing_value | no_change"
 }}
 
 intent meanings:
@@ -65,6 +67,7 @@ intent meanings:
 - finalize: the user wants to confirm/lock in the current plan.
 - general_question: a read-only question, greeting, or anything that changes nothing.
 Emit a change only for a fact the user STATES about their own trip. A value the message merely MENTIONS -- as the subject of a question, in a comparison, or as a hypothetical -- is not stated, so it produces no change no matter which path it would fit. A value paired with a TOPIC (what to see, weather, food, prices, what is good there) is a request for information about that topic, not a statement, even with no question mark. When the message states nothing, the intent is general_question with an empty changes list.
+"reason" explains an EMPTY changes list and is ignored when changes is non-empty. Use "missing_value" when the message clearly asks to change something but never says what to change it TO -- "đổi theme ngày 1" names a day's theme with no theme. Use "no_change" for everything else that changes nothing: a request to redo work from facts already known ("tìm lại khách sạn", "lên lịch lại"), a question, a greeting, an acknowledgement.
 
 Allowed change paths, one change per fact actually stated (omit anything not mentioned):
 - destination (string): the place name copied verbatim, exactly as the user wrote it -- the name alone, never the surrounding words. Never substitute or invent a different city.
@@ -152,21 +155,32 @@ def build_extract_patch_prompt(
     )
 
 
-# --- intake_qa (Phase 15) ----------------------------------------------------
+# --- intake_qa (Phase 15/16) --------------------------------------------------
 #
-# Read-only escape valve on `ask_slot`'s "ask" branch: answers a genuine
-# question asked while a required slot is still missing, without letting the
-# model invent trip facts it has no source for, and without letting it ask a
-# slot question itself -- `ask_slot` stays the sole owner of `next_question`,
-# which this prompt is told about explicitly so it never duplicates it.
+# Read-only escape valve with two entry points. Mid-intake (Phase 15,
+# `ask_slot`'s "ask" branch): answers a genuine question asked while a
+# required slot is still missing, without letting the model invent trip
+# facts it has no source for, and without letting it ask a slot question
+# itself -- `ask_slot` stays the sole owner of `next_question`, which this
+# prompt is told about explicitly so it never duplicates it. Post-intake
+# (Phase 16, `route_ask_slot`'s `is_incomplete_edit` branch): the message
+# named an edit target but no value, so this asks for the one value instead
+# of leaving the turn to commit nothing silently.
+#
+# `{role_line}` and `{question_rule}` are the only two things that differ
+# between the two modes -- everything else (never invent a fact, stay
+# brief, reply in `{language_name}`, the NO_ANSWER sentinel) is shared, one
+# source of truth for both. `build_intake_qa_prompt`'s `clarify` flag picks
+# which pair renders; intake mode (`clarify=False`, the default) renders
+# byte-identically to the pre-Phase-16 prompt.
 
-_INTAKE_QA_SYSTEM_PROMPT = """You are a trip-planning assistant answering one user question while some trip details are still being collected. Answer briefly and only from what you actually know -- if you don't know something (weather, prices, availability, real-time facts), say so plainly instead of guessing.
+_INTAKE_QA_SYSTEM_PROMPT = """{role_line} Answer briefly and only from what you actually know -- if you don't know something (weather, prices, availability, real-time facts), say so plainly instead of guessing.
 
 The message reaches you because an upstream classifier flagged it as "changes nothing about the trip" -- that classifier catches real questions, but ALSO greetings, acknowledgements ("ok", "cảm ơn"), and short replies it failed to connect to the pending question below. You must tell those apart: if the message does not actually ask something worth answering, reply with exactly the single word NO_ANSWER and nothing else -- do not greet back, do not comment, do not apologize.
 
 Rules:
 - Never invent a trip fact (destination, dates, budget, preferences) -- only use what is listed below as already known.
-- Never ask the user for any information yourself. Right after your answer, the assistant will separately ask: "{next_question}" -- do not repeat, rephrase, or anticipate that question.
+{question_rule}
 - Keep the answer short (1-3 sentences).
 - Reply in {language_name}.
 
@@ -174,6 +188,37 @@ Already known so far: {known_facts}
 
 User's message: "{message}"
 """
+
+_INTAKE_ROLE_LINE = (
+    "You are a trip-planning assistant answering one user question while some trip details are still being "
+    "collected."
+)
+# Post-intake: no slot is pending, so "still being collected" would be false
+# -- this replaces it with what actually happened this turn instead. Does
+# NOT claim "a plan exists": `is_incomplete_edit` only requires every intake
+# slot to be answered (`missing_slots` empty), not `trip_data` to be built
+# (that's a separate, later step -- picking a hotel) -- so a plan may not
+# exist yet the first time this branch can fire.
+_CLARIFY_ROLE_LINE = (
+    "You are a trip-planning assistant. The user's trip details are already collected -- this message asked to "
+    "change something but named no value to change it to, so nothing was applied."
+)
+
+# The day-theme sentence below is deliberately free-text (not a closed
+# list): `_validate_daily_theme` (`domain/travel_state.py`) accepts any
+# string up to 200 chars, so presenting a menu here would imply a
+# constraint the validator does not enforce.
+_CLARIFY_QUESTION_RULE = (
+    "- Ask for exactly the one missing value, in one short question. Name what the user referred to "
+    '(e.g. "ngày 1") so it is clear you understood them.\n'
+    "- When a value must come from a fixed list, offer that list and nothing outside it -- trip themes: "
+    f"{', '.join(_PREFERENCE_LABELS)}; companions: {', '.join(_COMPANION_LABELS)}; pace: "
+    f"{', '.join(_PACE_LABELS)}; daily rhythm: {', '.join(_DAY_RHYTHM_LABELS)}. A specific day's theme is free "
+    "text: give two or three examples, do not present a menu.\n"
+    '- If the message is instead asking to REDO work from facts already known ("tìm lại khách sạn", "lên lịch '
+    'lại", "gợi ý khách sạn khác"), then nothing is missing and no question is needed -- reply with exactly '
+    "NO_ANSWER."
+)
 
 # The prompt's own escape hatch for "not actually a question" (see prompt
 # text above) -- containment for the upstream classifier's known
@@ -184,10 +229,22 @@ INTAKE_QA_NO_ANSWER_SENTINEL = "NO_ANSWER"
 _LANGUAGE_NAMES = {"vi": "Vietnamese", "en": "English"}
 
 
-def build_intake_qa_prompt(*, message: str, known_facts: str, next_question: str, language: str) -> str:
+def build_intake_qa_prompt(
+    *, message: str, known_facts: str, next_question: str, language: str, clarify: bool = False
+) -> str:
+    if clarify:
+        role_line = _CLARIFY_ROLE_LINE
+        question_rule = _CLARIFY_QUESTION_RULE
+    else:
+        role_line = _INTAKE_ROLE_LINE
+        question_rule = (
+            "- Never ask the user for any information yourself. Right after your answer, the assistant will "
+            f'separately ask: "{next_question}" -- do not repeat, rephrase, or anticipate that question.'
+        )
     return _INTAKE_QA_SYSTEM_PROMPT.format(
+        role_line=role_line,
+        question_rule=question_rule,
         message=message,
         known_facts=known_facts,
-        next_question=next_question,
         language_name=_LANGUAGE_NAMES.get(language, _LANGUAGE_NAMES["vi"]),
     )

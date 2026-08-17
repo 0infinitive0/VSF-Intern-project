@@ -61,6 +61,25 @@ class TravelGraphState(TypedDict, total=False):
     # changes nothing", both of which otherwise collapse to
     # `intent == "general_question"`. Turn-scoped; reset by `load_context`.
     extraction_failed: bool
+    # Why this turn's patch is empty, when it is -- `extract_patch`'s own
+    # account, not an inference drawn from it later. Meaningful only
+    # alongside an empty `patch`; "" whenever the model omitted it or named
+    # something unrecognized. Turn-scoped; reset by `load_context`.
+    patch_reason: str
+    # The day `extract_patch` is, this turn, asking `intake_qa` to clarify
+    # a theme for (Phase 16) -- `None` otherwise. Deliberately NOT
+    # turn-scoped and NOT reset by `load_context`, same convention as
+    # `missing_slots`: it has to survive from the end of the clarify turn
+    # into the START of the very next one, where `extract_patch` reads it
+    # back as a fallback day scope for a bare reply ("biển") that names no
+    # day itself. `extract_patch` is the sole writer on both ends and
+    # always overwrites it with the ONE day the current message itself
+    # named (or clears it), never the carried-over value, so an unrelated
+    # later turn can't renew it. Known gap: a few graph paths never call
+    # `extract_patch` at all (a blocked turn, a hotel pick, an interrupt
+    # resume), so a day can still outlive more than one turn across those.
+    # See extract_patch.py's module docstring.
+    pending_clarify_day: int | None
     # `intake_qa`'s answer, kept out of `task_results` because `intake_qa`
     # is not a worker and consumes no `pending_tasks` entry. Turn-scoped;
     # reset by `load_context`.
@@ -203,6 +222,8 @@ def initial_graph_state(session_id: str, *, language: str = "vi") -> TravelGraph
         missing_slots=[],
         next_question=None,
         extraction_failed=False,
+        patch_reason="",
+        pending_clarify_day=None,
         intake_answer=None,
         jailbreak_blocked=False,
         supervisor_iterations=0,

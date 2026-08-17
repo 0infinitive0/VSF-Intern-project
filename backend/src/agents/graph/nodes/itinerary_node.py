@@ -129,8 +129,33 @@ def _affected_days(trip_data: dict[str, Any], day_numbers: list[int] | None) -> 
     return list(range(1, total + 1)) if total else []
 
 
-def _theme_for_day(trip_data: dict[str, Any], day_number: int) -> dict[str, Any]:
-    """Return the stored theme for *day_number*, or a minimal fallback."""
+def _theme_for_day(trip_data: dict[str, Any], travel_state: TravelState, day_number: int) -> dict[str, Any]:
+    """Return the theme to rebuild *day_number* with.
+
+    `daily_preferences.<day>.theme` (set via the ordinary patch pipeline —
+    `extract_patch`'s day-scope rewrite, Phase 16's clarify branch) takes
+    priority over whatever `trip_data` has stored: without this, a user's
+    "change day 1's theme" edit validates, stores, and correctly triggers
+    this exact rebuild, then gets silently ignored, because `trip_data`'s
+    own `day_themes` record is a separate copy this node never synced it
+    into (the same class of bug `_sync_locked_days_from_travel_state`
+    already fixes for `locked_days` — this is that fix's counterpart for
+    day themes).
+
+    `selection_mode: "user_specified"` is the second half of that: it is
+    the flag `normalize_day_themes` (`trip_scheduler.py`) already checks to
+    preserve a theme's `title`/`query` verbatim instead of re-deriving them
+    from trip-level `preferences.themes` — the same mechanism
+    `trip_edit_planner.py`'s `replan_day` operation already relies on for a
+    user-specified day theme. Without this flag, even a correctly-read
+    theme would still be overwritten by a preference-rotation pick.
+    """
+    slot = travel_state.get(f"daily_preferences.{day_number}.theme")
+    if slot.presence is Presence.SET and slot.value:
+        value = str(slot.value).strip()
+        if value:
+            return {"day_number": day_number, "title": value, "query": value, "selection_mode": "user_specified"}
+
     itinerary_rows = trip_data.get("itineraries") or [{}]
     itinerary = itinerary_rows[0] if isinstance(itinerary_rows, list) else itinerary_rows
     for theme in itinerary.get("day_themes") or []:
@@ -171,6 +196,7 @@ def _sync_locked_days_from_travel_state(trip_data: dict[str, Any], locked_days: 
 
 def _invoke_rebuild_day(
     trip_data: dict[str, Any],
+    travel_state: TravelState,
     day_number: int,
     locked_days: list[int],
     suggest_ops: list[dict[str, Any]] | None = None,
@@ -192,7 +218,7 @@ def _invoke_rebuild_day(
     and on resume LangGraph replays only the day whose subgraph was
     suspended — days already checkpointed complete are not re-executed.
     """
-    theme = _theme_for_day(trip_data, day_number)
+    theme = _theme_for_day(trip_data, travel_state, day_number)
     result = _REBUILD_DAY_SUBGRAPH.invoke(
         {
             "trip_data": trip_data,
@@ -382,7 +408,9 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
     remaining_suggest_ops = [op for op in pending_suggest_ops if op not in current_day_suggest_ops]
 
     try:
-        trip_data = _invoke_rebuild_day(trip_data, day_number, locked_days_list, suggest_ops=current_day_suggest_ops)
+        trip_data = _invoke_rebuild_day(
+            trip_data, travel_state, day_number, locked_days_list, suggest_ops=current_day_suggest_ops
+        )
     except GraphInterrupt:
         # The shortlist pause inside the subgraph -- control flow, not a
         # failure. Now that the subgraph runs nested in this turn, that pause

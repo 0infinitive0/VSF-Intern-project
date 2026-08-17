@@ -54,8 +54,11 @@ class _FakeLLM:
         return _FakeResponse(self._contents.pop(0))
 
 
-def _payload(intent: str, changes: list[dict] | None = None) -> str:
-    return json.dumps({"intent": intent, "changes": changes or []})
+def _payload(intent: str, changes: list[dict] | None = None, reason: object = None) -> str:
+    body: dict[str, object] = {"intent": intent, "changes": changes or []}
+    if reason is not None:
+        body["reason"] = reason
+    return json.dumps(body)
 
 
 def _state(message: str, *, travel_state: dict | None = None) -> TravelGraphState:
@@ -82,6 +85,9 @@ def test_valid_response_makes_exactly_one_llm_call(monkeypatch):
     assert llm.call_count == 1
     assert result["patch"] == [{"path": "people", "operation": "set", "value": 4}]
     assert result["intent"] == "update_trip"
+    # Fail-open: a response with no `reason` key -- every response from a
+    # model that hasn't seen the new prompt yet -- costs no retry.
+    assert result["patch_reason"] == ""
 
 
 def test_invalid_json_retries_once_then_falls_back_without_raising(monkeypatch):
@@ -89,7 +95,13 @@ def test_invalid_json_retries_once_then_falls_back_without_raising(monkeypatch):
     result = extract_patch(_state("asdkjasd"))
 
     assert llm.call_count == 2
-    assert result == {"patch": [], "intent": "general_question", "extraction_failed": True}
+    assert result == {
+        "patch": [],
+        "intent": "general_question",
+        "extraction_failed": True,
+        "patch_reason": "",
+        "pending_clarify_day": None,
+    }
 
 
 def test_invalid_first_response_recovers_on_retry(monkeypatch):
@@ -100,7 +112,13 @@ def test_invalid_first_response_recovers_on_retry(monkeypatch):
     result = extract_patch(_state("chào bạn"))
 
     assert llm.call_count == 2
-    assert result == {"patch": [], "intent": "general_question", "extraction_failed": False}
+    assert result == {
+        "patch": [],
+        "intent": "general_question",
+        "extraction_failed": False,
+        "patch_reason": "",
+        "pending_clarify_day": None,
+    }
 
 
 def test_no_human_message_short_circuits_without_calling_the_llm(monkeypatch):
@@ -113,7 +131,87 @@ def test_no_human_message_short_circuits_without_calling_the_llm(monkeypatch):
 
     result = extract_patch(state)
 
-    assert result == {"patch": [], "intent": "general_question", "extraction_failed": True}
+    assert result == {
+        "patch": [],
+        "intent": "general_question",
+        "extraction_failed": True,
+        "patch_reason": "",
+        "pending_clarify_day": None,
+    }
+
+
+# --- patch_reason (Phase 16): why extractor's own account of an empty ------
+# patch, threaded through non-strictly. `intent`/`changes` keep today's
+# strict validation (see the Structural validation section below); only
+# `reason` falls open on anything it doesn't recognize.
+
+
+def test_the_prompt_defines_both_reason_values_not_just_the_schema_key(monkeypatch):
+    """The schema line alone gives the model an enum with no semantics, and
+    every other test here simulates the response rather than producing it --
+    so nothing else would notice the rule going missing. `missing_value` is
+    what the routing branch keys on, and mislabeling it as `no_change`
+    silently reverts the turn to the behavior this field exists to fix."""
+    llm = _FakeLLM([_payload("update_itinerary", [], reason="missing_value")])
+    _patch(monkeypatch, llm)
+    extract_patch(_state("đổi theme ngày 1"))
+
+    prompt = llm.prompts[0]
+    assert "explains an EMPTY changes list" in prompt
+    assert "ignored when changes is non-empty" in prompt
+    assert "never says what to change it TO" in prompt
+    assert "redo work from facts already known" in prompt
+
+
+def test_missing_value_reason_on_an_under_specified_edit(monkeypatch):
+    _patch(monkeypatch, _FakeLLM([_payload("update_itinerary", [], reason="missing_value")]))
+    result = extract_patch(_state("đổi theme ngày 1"))
+
+    assert result["patch"] == []
+    assert result["patch_reason"] == "missing_value"
+
+
+def test_no_change_reason_on_a_rerun_request(monkeypatch):
+    _patch(monkeypatch, _FakeLLM([_payload("hotel_search", [], reason="no_change")]))
+    result = extract_patch(_state("tìm lại khách sạn"))
+
+    assert result["patch_reason"] == "no_change"
+
+
+def test_unrecognized_reason_value_falls_open(monkeypatch):
+    _patch(monkeypatch, _FakeLLM([_payload("general_question", [], reason="banana")]))
+    result = extract_patch(_state("chào bạn"))
+
+    assert result["patch_reason"] == ""
+
+
+def test_wrong_type_reason_falls_open_without_raising(monkeypatch):
+    """A list isn't just "not one of the two labels" -- it's unhashable, so
+    a naive `reason in _PATCH_REASONS` would raise TypeError instead of
+    falling open."""
+    _patch(monkeypatch, _FakeLLM([_payload("general_question", [], reason=["missing_value"])]))
+    result = extract_patch(_state("chào bạn"))
+
+    assert result["patch_reason"] == ""
+
+
+def test_reason_is_carried_even_when_changes_is_non_empty(monkeypatch):
+    """`extract_patch` doesn't suppress `reason` itself when a real change
+    is present -- `routing.is_incomplete_edit` is what ignores it in that
+    case, via its own `patch` guard. This is that guard's precondition, so
+    it runs through the whole node: the change has to survive the day-scope
+    rewrite and grounding to be there for the guard to see."""
+    _patch(
+        monkeypatch,
+        _FakeLLM(
+            [_payload("update_trip", [{"path": "people", "operation": "set", "value": 4}], reason="missing_value")]
+        ),
+    )
+    result = extract_patch(_state("4 người nhé"))
+
+    assert result["intent"] == "update_trip"
+    assert result["patch"] == [{"path": "people", "operation": "set", "value": 4}]
+    assert result["patch_reason"] == "missing_value"
 
 
 # --- Pending-slot anchor ------------------------------------------------------
@@ -149,7 +247,13 @@ def test_anchor_tells_the_model_a_question_naming_the_slot_value_is_not_an_answe
     result = extract_patch(_state("địa danh nổi tiến huế"))
 
     assert "Asking about `destination` is not answering it" in llm.prompts[0]
-    assert result == {"patch": [], "intent": "general_question", "extraction_failed": False}
+    assert result == {
+        "patch": [],
+        "intent": "general_question",
+        "extraction_failed": False,
+        "patch_reason": "",
+        "pending_clarify_day": None,
+    }
 
 
 def test_anchor_advances_to_the_next_unanswered_slot(monkeypatch):
@@ -359,7 +463,10 @@ def test_numeric_day_scope_rewrites_trip_level_theme_to_the_day_path(monkeypatch
     )
     result = extract_patch(_state("Ngày 1 tôi muốn thiên nhiên"))
 
-    assert result["patch"] == [{"path": "daily_preferences.1.theme", "operation": "set", "value": ["thiên nhiên"]}]
+    # preferences.themes is a label list; daily_preferences.<day>.theme is
+    # free text (_validate_daily_theme) -- the rewrite joins the list so
+    # the change survives that validator instead of being silently rejected.
+    assert result["patch"] == [{"path": "daily_preferences.1.theme", "operation": "set", "value": "thiên nhiên"}]
 
 
 def test_first_day_ordinal_phrase_resolves_to_day_1(monkeypatch):
@@ -369,7 +476,7 @@ def test_first_day_ordinal_phrase_resolves_to_day_1(monkeypatch):
     )
     result = extract_patch(_state("Ngày đầu tôi muốn đi biển"))
 
-    assert result["patch"] == [{"path": "daily_preferences.1.theme", "operation": "set", "value": ["biển"]}]
+    assert result["patch"] == [{"path": "daily_preferences.1.theme", "operation": "set", "value": "biển"}]
 
 
 def test_last_day_ordinal_phrase_resolves_only_when_trip_length_is_known(monkeypatch):
@@ -385,7 +492,7 @@ def test_last_day_ordinal_phrase_resolves_only_when_trip_length_is_known(monkeyp
     )
     result = extract_patch(_state("ngày cuối tôi muốn ra biển", travel_state=known_trip))
 
-    assert result["patch"] == [{"path": "daily_preferences.3.theme", "operation": "set", "value": ["biển"]}]
+    assert result["patch"] == [{"path": "daily_preferences.3.theme", "operation": "set", "value": "biển"}]
 
 
 def test_last_day_ordinal_phrase_does_not_guess_when_trip_length_is_unknown(monkeypatch):
@@ -408,6 +515,21 @@ def test_day_and_theme_in_one_phrase_produces_the_day_scoped_change(monkeypatch)
     result = extract_patch(_state("Ngày 1 nature"))
 
     assert result["patch"] == [{"path": "daily_preferences.1.theme", "operation": "set", "value": "nature"}]
+
+
+def test_multiple_themes_in_a_day_scoped_message_join_into_one_string(monkeypatch):
+    """Without joining, `_validate_daily_theme` (a string-only validator)
+    would reject this outright and the theme would never apply -- silently,
+    with no error surfaced to the user."""
+    _patch(
+        monkeypatch,
+        _FakeLLM(
+            [_payload("update_itinerary", [{"path": "preferences.themes", "operation": "set", "value": ["biển", "ẩm thực"]}])]
+        ),
+    )
+    result = extract_patch(_state("Ngày 2 tôi muốn biển và ẩm thực"))
+
+    assert result["patch"] == [{"path": "daily_preferences.2.theme", "operation": "set", "value": "biển, ẩm thực"}]
 
 
 def test_ambiguous_reference_without_a_day_keyword_is_not_forced_into_a_day_path(monkeypatch):
@@ -439,6 +561,157 @@ def test_lock_day_phrase_passes_through_unchanged(monkeypatch):
     result = extract_patch(_state("Giữ nguyên ngày 2"))
 
     assert result["patch"] == [{"path": "locked_days", "operation": "append", "value": 2}]
+
+
+# --- pending_clarify_day: the clarify-turn anchor (Phase 16) ---------------
+#
+# `_pending_slots` anchors a short reply during intake; nothing analogous
+# existed for `intake_qa`'s post-intake clarify question until this field.
+# Write side: `extract_patch` persists the day THIS turn was about whenever
+# it is itself heading into the clarify branch. Read side: the very next
+# call falls back to it when the new message names no day of its own.
+
+
+def test_a_day_scoped_missing_value_turn_persists_that_day(monkeypatch):
+    _patch(monkeypatch, _FakeLLM([_payload("update_itinerary", [], reason="missing_value")]))
+    result = extract_patch(_state("đổi theme ngày 1"))
+
+    assert result["patch"] == []
+    assert result["pending_clarify_day"] == 1
+
+
+def test_no_day_mentioned_persists_nothing(monkeypatch):
+    _patch(monkeypatch, _FakeLLM([_payload("update_itinerary", [], reason="missing_value")]))
+    result = extract_patch(_state("đổi theme"))
+
+    assert result["pending_clarify_day"] is None
+
+
+def test_reason_no_change_persists_nothing_even_with_a_day_mentioned(monkeypatch):
+    """`lên lịch lại ngày 1` clears guard 1 (`update_itinerary`) and even
+    names a day, but `reason: "no_change"` means this was never a clarify
+    turn -- persisting a day here would misattribute an unrelated later
+    reply to day 1."""
+    _patch(monkeypatch, _FakeLLM([_payload("update_itinerary", [], reason="no_change")]))
+    result = extract_patch(_state("lên lịch lại ngày 1"))
+
+    assert result["pending_clarify_day"] is None
+
+
+def test_excluded_intent_persists_nothing_even_with_missing_value_and_a_day(monkeypatch):
+    """Guard 1's exclusion applies here too: a `hotel_search` turn never
+    feeds the clarify branch, so it must never seed its anchor either."""
+    _patch(monkeypatch, _FakeLLM([_payload("hotel_search", [], reason="missing_value")]))
+    result = extract_patch(_state("đổi khách sạn ngày 1"))
+
+    assert result["pending_clarify_day"] is None
+
+
+def test_a_complete_edit_persists_nothing(monkeypatch):
+    """`changes` non-empty means nothing was left to clarify -- the
+    `reason`-ignored-when-changes-exist rule applies to the anchor too."""
+    _patch(
+        monkeypatch,
+        _FakeLLM(
+            [_payload("update_itinerary", [{"path": "daily_preferences.1.theme", "operation": "set", "value": "biển"}])]
+        ),
+    )
+    result = extract_patch(_state("ngày 1 biển"))
+
+    assert result["pending_clarify_day"] is None
+
+
+def test_carried_over_day_rewrites_a_bare_followup_reply(monkeypatch):
+    """The read side: this message names no day of its own, so the day
+    carried over from the previous turn's clarify question is what
+    `_rewrite_day_scope` uses -- the fix for the finding Phase 2's own test
+    plan anticipated (a bare "biển" landing trip-wide instead of on the day
+    that was actually asked about)."""
+    _patch(
+        monkeypatch,
+        _FakeLLM([_payload("update_itinerary", [{"path": "preferences.themes", "operation": "set", "value": ["biển"]}])]),
+    )
+    # `pending_clarify_day` lives on graph state, not `travel_state` -- set
+    # it directly, matching how `extract_patch` reads it.
+    state = _state("biển")
+    state["pending_clarify_day"] = 1
+
+    result = extract_patch(state)
+
+    assert result["patch"] == [{"path": "daily_preferences.1.theme", "operation": "set", "value": "biển"}]
+    # Consumed, not left to leak into a third, unrelated turn.
+    assert result["pending_clarify_day"] is None
+
+
+def test_this_messages_own_day_mention_outranks_the_carried_over_one(monkeypatch):
+    _patch(
+        monkeypatch,
+        _FakeLLM([_payload("update_itinerary", [{"path": "preferences.themes", "operation": "set", "value": ["biển"]}])]),
+    )
+    state = _state("ngày 2 biển")
+    state["pending_clarify_day"] = 1
+
+    result = extract_patch(state)
+
+    assert result["patch"] == [{"path": "daily_preferences.2.theme", "operation": "set", "value": "biển"}]
+    assert result["pending_clarify_day"] is None
+
+
+def test_no_carried_over_day_and_no_message_day_leaves_the_change_trip_wide(monkeypatch):
+    """No anchor to fall back on (first turn, or the anchor already
+    expired) -- the pre-existing, unmodified behavior."""
+    _patch(
+        monkeypatch,
+        _FakeLLM([_payload("update_trip", [{"path": "preferences.themes", "operation": "set", "value": ["biển"]}])]),
+    )
+    result = extract_patch(_state("biển"))
+
+    assert result["patch"] == [{"path": "preferences.themes", "operation": "set", "value": ["biển"]}]
+
+
+def test_an_unrelated_empty_missing_value_turn_does_not_renew_the_carried_day(monkeypatch):
+    """The write side persists THIS message's own day mention, never the
+    effective (fallback-inclusive) one -- otherwise any later empty,
+    `missing_value`, included-intent turn about something else entirely
+    (a budget edit with no amount, here) would silently re-arm the old
+    anchor for a THIRD turn that never mentioned any day at all."""
+    _patch(monkeypatch, _FakeLLM([_payload("update_trip", [], reason="missing_value")]))
+    state = _state("đổi ngân sách")
+    state["pending_clarify_day"] = 1
+
+    result = extract_patch(state)
+
+    assert result["pending_clarify_day"] is None
+
+
+def test_carried_day_is_not_consumed_while_a_slot_is_still_missing(monkeypatch):
+    """The read side is gated on `missing_slots` too: a day named mid-intake
+    must not anchor a LATER intake reply that has nothing to do with it --
+    `missing_slots` here is the value `ask_slot` left at the end of the
+    PREVIOUS turn (`load_context` preserves it), the same signal
+    `_pending_slots` above already relies on."""
+    _patch(
+        monkeypatch,
+        _FakeLLM([_payload("update_trip", [{"path": "preferences.themes", "operation": "set", "value": ["biển"]}])]),
+    )
+    state = _state("biển")
+    state["pending_clarify_day"] = 1
+    state["missing_slots"] = ["destination"]
+
+    result = extract_patch(state)
+
+    assert result["patch"] == [{"path": "preferences.themes", "operation": "set", "value": ["biển"]}]
+
+
+def test_a_multi_day_missing_value_turn_persists_nothing(monkeypatch):
+    """One int can't carry two days -- guessing day 1 while silently
+    dropping day 2 from a follow-up would be worse than the follow-up
+    simply landing trip-wide, so a multi-day mention isn't persisted at
+    all."""
+    _patch(monkeypatch, _FakeLLM([_payload("update_itinerary", [], reason="missing_value")]))
+    result = extract_patch(_state("đổi theme ngày 1 và ngày 2"))
+
+    assert result["pending_clarify_day"] is None
 
 
 # --- Remaining doc §34 phrases: pass-through paths, no special grounding ---

@@ -121,6 +121,73 @@ def is_intake_question(state: TravelGraphState) -> bool:
     return state.get("intent") == "general_question" and not state.get("extraction_failed")
 
 
+# Only the two intents whose empty-patch case is genuinely "a value is
+# missing". `hotel_search`, `select_hotel`, and `finalize` all have
+# legitimate empty-patch semantics that already work today (a re-run
+# search, a hotel pick `hotel_node` resolves, a confirm that needs a
+# worker) -- excluding them structurally means their behavior never depends
+# on `patch_reason` being labeled correctly.
+_INCOMPLETE_EDIT_INTENTS = frozenset({"update_itinerary", "update_trip"})
+
+
+def is_incomplete_edit(state: TravelGraphState) -> bool:
+    """True when the turn was understood as an edit but committed nothing,
+    and no worker is going to speak in its place.
+
+    Three guards stand between this and over-triggering on a turn that
+    already worked (a re-run search, a hotel pick, a confirm):
+
+    1. Structural: only `_INCOMPLETE_EDIT_INTENTS` qualifies. `hotel_search`
+       / `select_hotel` / `finalize` never reach this function's last line
+       at all.
+    2. This function: `patch_reason == "missing_value"`, the extractor's own
+       account of why the patch is empty, not an inference drawn from it
+       here. `""` (absent or unrecognized) is the fail-open value and
+       routes as this turn does today.
+    3. Downstream, once this returns True and `intake_qa` actually runs:
+       `route_intake_qa`'s safety net, for a decline or a failure.
+
+    `pending_tasks` — not `applied_changes` — is the "a worker will reply"
+    signal: `selected_hotel_id` seeds `hotel_node` with zero applied changes
+    (`apply_patch.py`), and that turn already has a reply coming.
+
+    `extraction_failed` excludes a provider outage, the same way
+    `is_intake_question` already does: a garbled response is not a user
+    asking for something.
+    """
+    if state.get("pending_tasks") or state.get("extraction_failed"):
+        return False
+    if state.get("patch"):
+        return False
+    if state.get("intent") not in _INCOMPLETE_EDIT_INTENTS:
+        return False
+    return state.get("patch_reason") == "missing_value"
+
+
+def route_intake_qa(state: TravelGraphState) -> str:
+    """`intake_qa` has two callers, and "no answer" means something
+    different to each.
+
+    On the intake branch (`missing_slots` non-empty) a `NO_ANSWER` still has
+    to reach `respond`, because `ask_slot` left a pending question that must
+    be delivered either way.
+
+    Post-intake there is no pending question, so an absent answer would
+    leave `respond` with nothing at all: `_compose(None, None)` is `None`,
+    no worker ran, and the turn ends on the generic-ack ERROR branch.
+    `supervisor` is where that turn would have gone without this whole
+    feature, so it is both the safe fallback and the honest one.
+
+    This is a safety net, not the mechanism: `is_incomplete_edit` already
+    decided, deterministically, that this turn is worth asking about.
+    Reaching the `supervisor` leg means the node declined or failed after
+    that.
+    """
+    if state.get("missing_slots"):
+        return "respond"
+    return "respond" if state.get("intake_answer") else "supervisor"
+
+
 def route_ask_slot(state: TravelGraphState) -> str:
     """`"ask"` routes through `respond` rather than straight to `END` so the
     frozen `PlannerChatResponse` shape is always built.
@@ -130,9 +197,15 @@ def route_ask_slot(state: TravelGraphState) -> str:
     still follows in the same reply. A parse failure or an empty message
     falls through to `"ask"` instead, so a provider outage is never sent to
     an LLM to answer confidently.
+
+    Phase 16: once no slot is missing, `is_incomplete_edit` gets the same
+    branch for a different reason — not a question to answer, but a value
+    to ask for so the turn doesn't silently commit nothing. The
+    `missing_slots` check stays first either way, which keeps `ask_slot`
+    the sole owner of the intake gate.
     """
     if not state.get("missing_slots"):
-        return "supervisor"
+        return "intake_qa" if is_incomplete_edit(state) else "supervisor"
     if is_intake_question(state):
         return "intake_qa"
     return "ask"

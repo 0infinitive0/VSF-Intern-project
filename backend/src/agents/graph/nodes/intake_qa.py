@@ -1,16 +1,26 @@
-"""`intake_qa` — a read-only escape valve on `ask_slot`'s "ask" branch
-(Phase 15, `phase-15-intake-qa-escape-answer-questions-while-slots-are-
-pending.md`).
+"""`intake_qa` — a read-only escape valve with two entry points.
 
-While a required slot is still missing, `route_ask_slot` used to send every
-turn straight to `respond`, so a genuine question ("Đà Nẵng tháng 7 mưa
-không?") got the pending-slot question re-asked with a "didn't catch that"
-prefix instead of an answer. This node runs on that branch only when
-`routing.is_intake_question` is true (the extractor concluded the message
-was a real, parseable question) and produces an answer that `respond`
-composes ahead of `next_question` (`respond._compose`), never in place of
-it. `ask_slot` itself also consults `is_intake_question` to suppress that
-same "didn't catch that" framing on this branch — see its docstring.
+Mid-intake (Phase 15, `ask_slot`'s "ask" branch): while a required slot is
+still missing, `route_ask_slot` used to send every turn straight to
+`respond`, so a genuine question ("Đà Nẵng tháng 7 mưa không?") got the
+pending-slot question re-asked with a "didn't catch that" prefix instead of
+an answer. This entry runs when `routing.is_intake_question` is true (the
+extractor concluded the message was a real, parseable question) and
+produces an answer that `respond` composes ahead of `next_question`
+(`respond._compose`), never in place of it. `ask_slot` itself also consults
+`is_intake_question` to suppress that same "didn't catch that" framing on
+this branch — see its docstring.
+
+Post-intake (Phase 16, `route_ask_slot`'s other branch): once no slot is
+missing, `routing.is_incomplete_edit` sends a turn here too when the
+message named an edit target (`update_itinerary`/`update_trip`) but no
+value to set it to, so the turn asks for that one value instead of
+committing nothing and leaving the supervisor to guess. `clarify=True`
+(passed by this node, decided by the caller — see below) switches the
+prompt's job from "answer, don't ask" to "ask for the one missing value";
+everything else about the node is identical between the two entries.
+`routing.route_intake_qa` is what tells a declined/failed answer apart on
+each entry, not this node.
 
 `is_intake_question`'s underlying signal (`intent == "general_question"`)
 is the extractor's catch-all for "changes nothing" — it also catches
@@ -79,6 +89,10 @@ def intake_qa(state: TravelGraphState) -> dict[str, Any]:
         known_facts=_known_facts_summary(travel_state),
         next_question=state.get("next_question") or "",
         language=language,
+        # Read from state, not recomputed: this is exactly `route_ask_slot`'s
+        # own `missing_slots` check, so the router and the prompt can never
+        # disagree about which entry point this turn came through.
+        clarify=not state.get("missing_slots"),
     )
 
     try:

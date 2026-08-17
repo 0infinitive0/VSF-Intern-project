@@ -7,6 +7,7 @@ covered by `test_supervisor_routing.py`.
 from __future__ import annotations
 
 import inspect
+import json
 from collections import deque
 
 import pytest
@@ -15,12 +16,14 @@ from langgraph.checkpoint.memory import MemorySaver
 
 import src.agents.graph.nodes.extract_patch as extract_patch_module
 import src.agents.graph.nodes.hotel_node as hotel_node_module
+import src.agents.graph.nodes.intake_qa as intake_qa_module
 import src.agents.graph.nodes.supervisor as supervisor_module
 import src.agents.graph.nodes.validate_patch as validate_patch_module
 from src.agents.graph.contracts import CONTRACTS, ContractViolation, enforce_contract
 from src.agents.graph.graph import NODE_NAMES, build_graph
 from src.agents.graph.nodes.booking_node import booking_node
 from src.agents.graph.nodes.qa_node import QA_TOOLS, build_qa_subgraph
+from src.agents.graph.prompts import INTAKE_QA_NO_ANSWER_SENTINEL
 from src.agents.graph.state import initial_graph_state
 from src.models.schemas import PlannerChatResponse
 
@@ -62,6 +65,15 @@ def test_qa_node_has_exactly_one_outgoing_edge():
     outgoing = [edge for edge in app.get_graph().edges if edge.source == "qa_node"]
     assert len(outgoing) == 1
     assert outgoing[0].target == "respond"
+
+
+def test_intake_qa_has_two_outgoing_edges():
+    """Phase 16 replaced the plain `intake_qa -> respond` edge with a
+    conditional one (`routing.route_intake_qa`) -- both legs must still be
+    reachable and the graph must still compile."""
+    app = build_graph()
+    targets = {edge.target for edge in app.get_graph().edges if edge.source == "intake_qa"}
+    assert targets == {"respond", "supervisor"}
 
 
 def test_only_validate_patch_and_hotel_node_call_interrupt():
@@ -285,6 +297,306 @@ def test_graph_routes_a_completed_worker_through_budget_check_to_respond(monkeyp
 
     response = PlannerChatResponse(**result["response"])
     assert response.reply  # respond ran and built the frozen shape after budget_check
+
+
+# --- End-to-end: clarify branch for an incomplete edit (Phase 16) ----------
+#
+# The extractor is faked at the node level in every case below so
+# `patch_reason` is a controlled state value -- guard 2 is exercised
+# deterministically, not as an inference about real model behavior (see
+# plan.md's "Decided while planning" table). `intake_qa` itself runs for
+# real wherever it's reached (only its LLM call is stubbed), so its own
+# sentinel/exception handling and `routing.route_intake_qa`'s two-callers
+# logic both run for real too -- only the two model calls this phase's plan
+# names are ever stubbed.
+
+
+class _FakeQaResponse:
+    def __init__(self, content: str) -> None:
+        self.content = content
+
+
+class _FakeQaLLM:
+    """One canned response or exception per call -- every intake_qa/
+    extract_patch call site in these tests invokes its model exactly once."""
+
+    def __init__(self, content: str | Exception) -> None:
+        self._content = content
+
+    def invoke(self, _prompt: str) -> _FakeQaResponse:
+        if isinstance(self._content, Exception):
+            raise self._content
+        return _FakeQaResponse(self._content)
+
+
+class _FakeSupervisorStructuredLLM:
+    def __init__(self, decision) -> None:
+        self._decision = decision
+
+    def invoke(self, _prompt):
+        return self._decision
+
+
+class _FakeSupervisorLLM:
+    def __init__(self, decision) -> None:
+        self._decision = decision
+
+    def with_structured_output(self, _model):
+        return _FakeSupervisorStructuredLLM(self._decision)
+
+
+def _all_slots_set_travel_state() -> dict:
+    """destination/people/dates/budget all answered -- `ask_slot` returns
+    empty `missing_slots`, clearing the first guard `route_ask_slot`'s
+    post-intake branch checks."""
+    from src.domain.travel_state import TravelState, apply_patch
+
+    changes = [
+        {"path": "destination", "operation": "set", "value": "Đà Nẵng"},
+        {"path": "people", "operation": "set", "value": 2},
+        {"path": "dates.start", "operation": "set", "value": "2099-01-01"},
+        {"path": "dates.end", "operation": "set", "value": "2099-01-05"},
+        {"path": "budget.target", "operation": "set", "value": None},  # explicit "no preference"
+    ]
+    return apply_patch(TravelState(), changes).state.to_dict()
+
+
+def _fake_itinerary_node(state):
+    pending = [worker for worker in (state.get("pending_tasks") or []) if worker != "itinerary_node"]
+    return {
+        "trip_data": {"destination": "Đà Nẵng"},
+        "pending_tasks": pending,
+        "task_results": [
+            *(state.get("task_results") or []),
+            {"worker": "itinerary_node", "status": "ok", "reply": "Đã cập nhật kế hoạch."},
+        ],
+    }
+
+
+def test_incomplete_edit_asks_the_missing_value_instead_of_a_generic_ack(monkeypatch, caplog):
+    """Case 1: `đổi theme ngày 1` on a built trip with every slot already
+    answered. `patch_reason == "missing_value"` routes to `intake_qa`
+    instead of falling through to the supervisor's free pick, and
+    `intake_qa`'s question becomes the reply -- not the generic-ack ERROR
+    branch, not a worker bailing out with nothing to show."""
+    import src.agents.graph.graph as graph_module
+
+    def _fake_extract_patch(_state):
+        return {"patch": [], "intent": "update_itinerary", "patch_reason": "missing_value"}
+
+    monkeypatch.setattr(graph_module, "extract_patch", _fake_extract_patch)
+    monkeypatch.setattr(
+        intake_qa_module,
+        "get_fast_llm",
+        lambda **_kwargs: _FakeQaLLM("Ngày 1 bạn muốn theo hướng biển, thiên nhiên hay văn hoá?"),
+    )
+
+    app = graph_module.build_graph()
+    with caplog.at_level("ERROR"):
+        result = app.invoke(
+            {
+                "session_id": "turn-clarify",
+                "language": "vi",
+                "travel_state": _all_slots_set_travel_state(),
+                "trip_data": {"destination": "Đà Nẵng"},
+                "messages": [HumanMessage(content="đổi theme ngày 1")],
+            },
+            config={"configurable": {"thread_id": "test-clarify-thread"}},
+        )
+
+    assert result["response"]["reply"] == "Ngày 1 bạn muốn theo hướng biển, thiên nhiên hay văn hoá?"
+    assert result["response"]["stage"] == "planned"
+    assert result["task_results"] == []
+    assert "fell through to the generic ack" not in caplog.text
+
+
+def test_the_followup_answer_to_a_clarify_question_lands_on_the_day_it_answers(monkeypatch):
+    """Case 2, chained on the same thread as case 1's exact scenario. The
+    reply is an ORDINARY turn -- real `extract_patch`, only its LLM
+    stubbed -- proving the design's "no new interrupt state" claim rather
+    than assuming it.
+
+    A bare "biển" names no day itself; with no anchor at all, this would
+    land as a trip-wide `preferences.themes` change instead of the day that
+    was actually asked about -- Phase 2's own test plan anticipated exactly
+    this possibility ("if the bare reply does not extract to the day path
+    on its own, record it as a finding and raise it"), and it was real
+    (verified in code review). `pending_clarify_day` (Phase 16, module
+    docstring of `extract_patch.py`) closes it: turn 1 persists the day the
+    clarify question was about, turn 2 falls back to it since "biển" itself
+    names none.
+    """
+    import src.agents.graph.graph as graph_module
+
+    saver = MemorySaver()
+    thread = {"configurable": {"thread_id": "test-clarify-then-followup"}}
+    seeded_travel_state = _all_slots_set_travel_state()
+
+    def _fake_extract_patch_turn1(_state):
+        return {
+            "patch": [],
+            "intent": "update_itinerary",
+            "patch_reason": "missing_value",
+            "pending_clarify_day": 1,
+        }
+
+    monkeypatch.setattr(graph_module, "extract_patch", _fake_extract_patch_turn1)
+    monkeypatch.setattr(intake_qa_module, "get_fast_llm", lambda **_kwargs: _FakeQaLLM("Ngày 1 bạn muốn gì?"))
+
+    app_turn1 = graph_module.build_graph(checkpointer=saver)
+    turn1 = app_turn1.invoke(
+        {
+            "session_id": "turn-clarify",
+            "language": "vi",
+            "travel_state": seeded_travel_state,
+            "trip_data": {"destination": "Đà Nẵng"},
+            "messages": [HumanMessage(content="đổi theme ngày 1")],
+        },
+        config=thread,
+    )
+    assert turn1["pending_clarify_day"] == 1
+
+    # Turn 2: restore the real extract_patch, stub only the LLM call under it
+    # -- the day-scope rewrite and the pending_clarify_day read/clear both
+    # run for real.
+    monkeypatch.setattr(graph_module, "extract_patch", extract_patch_module.extract_patch)
+    fake_response = json.dumps(
+        {
+            "intent": "update_itinerary",
+            "changes": [{"path": "preferences.themes", "operation": "set", "value": ["biển"]}],
+        }
+    )
+    monkeypatch.setattr(extract_patch_module, "get_reasoning_llm", lambda **_kwargs: _FakeQaLLM(fake_response))
+    monkeypatch.setattr(extract_patch_module, "_get_destination_names", lambda: ())
+    monkeypatch.setattr(graph_module, "itinerary_node", _fake_itinerary_node)
+    decision = supervisor_module.SupervisorDecision(next_worker="itinerary_node", task_description="x", reasoning="x")
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeSupervisorLLM(decision))
+
+    app_turn2 = graph_module.build_graph(checkpointer=saver)
+    result = app_turn2.invoke({"messages": [HumanMessage(content="biển")]}, config=thread)
+
+    # daily_preferences.<day>.theme is a free-text string, not a label list
+    # -- the rewrite joins preferences.themes' list value so it survives
+    # _validate_daily_theme instead of being silently rejected.
+    assert result["travel_state"]["daily_preferences.1.theme"]["value"] == "biển"
+    assert "preferences.themes" not in result["travel_state"]
+    assert result["pending_clarify_day"] is None  # consumed, doesn't leak to a third turn
+    assert result["task_results"][-1]["worker"] == "itinerary_node"
+
+
+def test_reason_no_change_skips_intake_qa_entirely_and_reaches_a_worker(monkeypatch):
+    """Case 3, guard 2's own regression pin: `lên lịch lại` clears guard 1
+    (an included intent) but `reason: "no_change"` stops it before
+    `intake_qa` is ever invoked -- the one call `reason` was built to save.
+    `intake_qa` explodes if reached, so this is a hard assertion, not an
+    inference from the final reply."""
+    import src.agents.graph.graph as graph_module
+
+    def _fake_extract_patch(_state):
+        return {"patch": [], "intent": "update_itinerary", "patch_reason": "no_change"}
+
+    def _unreachable_intake_qa(_state):
+        raise AssertionError("guard 2 must stop this turn before intake_qa ever runs")
+
+    decision = supervisor_module.SupervisorDecision(
+        next_worker="itinerary_node", task_description="redo", reasoning="x"
+    )
+
+    monkeypatch.setattr(graph_module, "extract_patch", _fake_extract_patch)
+    monkeypatch.setattr(graph_module, "intake_qa", _unreachable_intake_qa)
+    monkeypatch.setattr(graph_module, "itinerary_node", _fake_itinerary_node)
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeSupervisorLLM(decision))
+
+    app = graph_module.build_graph()
+    result = app.invoke(
+        {
+            "session_id": "turn-no-change",
+            "language": "vi",
+            "travel_state": _all_slots_set_travel_state(),
+            "trip_data": {"destination": "Đà Nẵng"},
+            "messages": [HumanMessage(content="lên lịch lại")],
+        },
+        config={"configurable": {"thread_id": "test-no-change-thread"}},
+    )
+
+    assert result["routing_source"] == "supervisor"
+    assert result["task_results"][-1]["worker"] == "itinerary_node"
+    assert result["response"]["reply"] == result["task_results"][-1]["reply"]
+
+
+def test_intake_qa_no_answer_post_intake_routes_to_supervisor_not_the_generic_ack(monkeypatch, caplog):
+    """Case 4, guard 3: `is_incomplete_edit` correctly decided this turn was
+    worth asking about, but `intake_qa` declined -- its own NO_ANSWER
+    sentinel, exercised for real here (only its LLM is stubbed). There is
+    no pending question to fall back on post-intake, so `route_intake_qa`
+    must not let this land on `_compose(None, None) -> None` and the
+    generic-ack ERROR branch; it goes to `supervisor` instead."""
+    import src.agents.graph.graph as graph_module
+
+    def _fake_extract_patch(_state):
+        return {"patch": [], "intent": "update_itinerary", "patch_reason": "missing_value"}
+
+    decision = supervisor_module.SupervisorDecision(next_worker="itinerary_node", task_description="x", reasoning="x")
+
+    monkeypatch.setattr(graph_module, "extract_patch", _fake_extract_patch)
+    monkeypatch.setattr(intake_qa_module, "get_fast_llm", lambda **_kwargs: _FakeQaLLM(INTAKE_QA_NO_ANSWER_SENTINEL))
+    monkeypatch.setattr(graph_module, "itinerary_node", _fake_itinerary_node)
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeSupervisorLLM(decision))
+
+    app = graph_module.build_graph()
+    with caplog.at_level("ERROR"):
+        result = app.invoke(
+            {
+                "session_id": "turn-no-answer",
+                "language": "vi",
+                "travel_state": _all_slots_set_travel_state(),
+                "trip_data": {"destination": "Đà Nẵng"},
+                "messages": [HumanMessage(content="đổi theme ngày 1")],
+            },
+            config={"configurable": {"thread_id": "test-guard3-no-answer-thread"}},
+        )
+
+    assert result["intake_answer"] is None
+    assert result["routing_source"] == "supervisor"
+    assert "fell through to the generic ack" not in caplog.text
+    assert result["response"]["reply"]
+
+
+def test_intake_qa_raising_post_intake_routes_to_supervisor_and_the_turn_completes(monkeypatch, caplog):
+    """Case 5, guard 3's other trigger: intake_qa's LLM call fails outright.
+    Its own `except Exception` (nodes/intake_qa.py) already returns
+    `{"intake_answer": None}` rather than propagating -- exercised for real
+    here, proving the graph-level consequence is identical to a decline,
+    not a crashed turn."""
+    import src.agents.graph.graph as graph_module
+
+    def _fake_extract_patch(_state):
+        return {"patch": [], "intent": "update_itinerary", "patch_reason": "missing_value"}
+
+    decision = supervisor_module.SupervisorDecision(next_worker="itinerary_node", task_description="x", reasoning="x")
+
+    monkeypatch.setattr(graph_module, "extract_patch", _fake_extract_patch)
+    monkeypatch.setattr(intake_qa_module, "get_fast_llm", lambda **_kwargs: _FakeQaLLM(RuntimeError("provider down")))
+    monkeypatch.setattr(graph_module, "itinerary_node", _fake_itinerary_node)
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeSupervisorLLM(decision))
+
+    app = graph_module.build_graph()
+    with caplog.at_level("ERROR"):
+        result = app.invoke(
+            {
+                "session_id": "turn-raises",
+                "language": "vi",
+                "travel_state": _all_slots_set_travel_state(),
+                "trip_data": {"destination": "Đà Nẵng"},
+                "messages": [HumanMessage(content="đổi theme ngày 1")],
+            },
+            config={"configurable": {"thread_id": "test-guard3-raises-thread"}},
+        )
+
+    assert result["intake_answer"] is None
+    assert result["routing_source"] == "supervisor"
+    assert "fell through to the generic ack" not in caplog.text
+    assert result["response"]["reply"]
 
 
 def test_budget_check_goes_straight_to_respond():

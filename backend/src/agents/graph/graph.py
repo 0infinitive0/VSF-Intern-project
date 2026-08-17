@@ -23,8 +23,17 @@ deviations from that doc's shorthand:
 - `ask_slot` has a third outcome, `"intake_qa"` (Phase 15): a genuine
   read-only question asked while a slot is still missing gets answered
   before `respond` appends the pending question, instead of the question
-  being blindly re-asked with a "didn't catch that" prefix. See
-  `nodes/intake_qa.py`.
+  being blindly re-asked with a "didn't catch that" prefix. Phase 16 adds a
+  second entry: once no slot is missing, an edit intent whose patch came
+  back empty because the message never said what to change it TO also
+  reaches `intake_qa`, asking for that one value instead of silently
+  committing nothing (`routing.is_incomplete_edit`). Both entries share one
+  exit shape: a conditional edge, not a plain one, sends `intake_qa`'s
+  answer to `respond` and a declined (`NO_ANSWER`) or failed answer back to
+  `respond` (mid-intake, where `ask_slot`'s pending question still has to go
+  out) or `supervisor` (post-intake, the safe fallback for a turn that would
+  otherwise end on the generic-ack ERROR branch) — see
+  `routing.route_intake_qa` and `nodes/intake_qa.py`.
 """
 
 from __future__ import annotations
@@ -34,9 +43,9 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
+from src.agents.graph.contracts import enforce_contract
 from src.agents.graph.nodes.apply_patch import apply_patch
 from src.agents.graph.nodes.ask_slot import ask_slot
-from src.agents.graph.contracts import enforce_contract
 from src.agents.graph.nodes.booking_node import booking_node
 from src.agents.graph.nodes.budget_check import budget_check
 from src.agents.graph.nodes.extract_patch import extract_patch
@@ -49,7 +58,13 @@ from src.agents.graph.nodes.respond import respond
 from src.agents.graph.nodes.scope_guard import scope_guard
 from src.agents.graph.nodes.supervisor import supervisor
 from src.agents.graph.nodes.validate_patch import validate_patch
-from src.agents.graph.routing import all_tasks_done, route_ask_slot, route_scope_guard, route_supervisor
+from src.agents.graph.routing import (
+    all_tasks_done,
+    route_ask_slot,
+    route_intake_qa,
+    route_scope_guard,
+    route_supervisor,
+)
 from src.agents.graph.state import TravelGraphState
 
 # Every node this graph wires, by name — used by the topology test to
@@ -117,7 +132,9 @@ def build_graph(checkpointer: BaseCheckpointSaver | None = None) -> CompiledStat
         route_ask_slot,
         {"ask": "respond", "intake_qa": "intake_qa", "supervisor": "supervisor"},
     )
-    builder.add_edge("intake_qa", "respond")
+    builder.add_conditional_edges(
+        "intake_qa", route_intake_qa, {"respond": "respond", "supervisor": "supervisor"}
+    )
 
     # --- Supervisor -> worker delegation ---------------------------------
     builder.add_conditional_edges(

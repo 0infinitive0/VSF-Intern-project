@@ -26,6 +26,17 @@ for the same reason (review findings F1/F2):
   turn's `invoke()` input, which is merged into state BEFORE this node
   runs — resetting it here would wipe it before `hotel_node` ever sees it.
   `hotel_node` is the sole consumer and clears it itself on every return.
+
+`pending_clarify_day` (Phase 16) is not reset here either, for the same
+reason as `missing_slots`: `extract_patch` is its sole writer, and it has
+to still hold the day a clarify question was about when `extract_patch`
+reads it back on the very next call, as the fallback anchor for a bare
+follow-up reply that names no day itself. `extract_patch` always overwrites
+it with the day the CURRENT message named (or clears it), so an unrelated
+later turn can't renew it -- except on the handful of paths that skip
+`extract_patch` entirely (a blocked turn, a hotel pick, an interrupt
+resume), where it can outlive more than the one turn it's meant for. See
+`extract_patch.py`'s module docstring.
 """
 
 from __future__ import annotations
@@ -47,6 +58,7 @@ def load_context(state: TravelGraphState) -> dict[str, Any]:
         "unresolved_resume_text": None,
         "next_question": None,
         "extraction_failed": False,
+        "patch_reason": "",
         "intake_answer": None,
         "jailbreak_blocked": False,
         "supervisor_iterations": 0,

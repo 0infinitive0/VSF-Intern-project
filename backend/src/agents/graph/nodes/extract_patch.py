@@ -1,11 +1,14 @@
-"""`extract_patch` — one LLM call producing `{intent, changes[]}` (doc §36
-`understand_request`), replacing the three separate extraction calls the
-legacy plane still runs (`_llm_extract_intake_facts`, `TripPreferenceUpdate
-.from_message`, `plan_trip_edit`). `intent` never selects a WORKER —
-`detect_impact` + `WORKFLOW_TO_WORKER` does that, off the validated patch
-(`validate_patch`/`apply_patch`) — but it does separate read-only Q&A from
-state-changing turns on one routing edge (Phase 15,
-`routing.is_intake_question`); see `state.py`'s field comment.
+"""`extract_patch` — one LLM call producing `{intent, changes[], reason}`
+(doc §36 `understand_request`), replacing the three separate extraction
+calls the legacy plane still runs (`_llm_extract_intake_facts`,
+`TripPreferenceUpdate.from_message`, `plan_trip_edit`). `intent` never
+selects a WORKER — `detect_impact` + `WORKFLOW_TO_WORKER` does that, off the
+validated patch (`validate_patch`/`apply_patch`) — but it does separate
+read-only Q&A from state-changing turns on one routing edge (Phase 15,
+`routing.is_intake_question`); see `state.py`'s field comment. `reason`
+selects no route by itself either — it only feeds `routing.is_incomplete_edit`,
+which reads it alongside `intent` and `patch` (see `plan.md`'s "Decided
+while planning" table).
 
 Defensive parsing mirrors `trip_edit_planner.plan_trip_edit`'s proven shape:
 strict JSON parse -> structural validate -> retry once with the rejection
@@ -13,7 +16,11 @@ reason. Unlike that function, a fallback here never raises —
 `{"patch": [], "intent": "general_question"}` lets the turn complete exactly
 as an empty patch always has (`validate_patch`/`apply_patch` commit nothing,
 `pending_tasks` stays empty, the supervisor's existing IMPACT_MAP/LLM
-fallback takes it from there).
+fallback takes it from there). `reason` is parsed non-strictly, unlike
+`intent`/`changes`: it is an enhancement on top of that same fallback shape,
+not part of the turn's own correctness, so a missing key, a null, a
+non-string, or an unrecognized value all fall open to `""` rather than
+spending the retry (see `_parse_extraction_payload`).
 
 Two things `apply_patch`'s validators do NOT enforce, so this node grounds
 them itself before a change is handed off:
@@ -32,6 +39,34 @@ not model-decided: `_resolve_day_scope`/`_rewrite_day_scope` force any
 theme-shaped change to `daily_preferences.<day>.theme` when the message
 names a day, removing the prompt collision `trip_edit_planner.py:442/445`
 used to have between "day theme" and "vibe/preferences" routing.
+
+`pending_clarify_day` (Phase 16) extends that same rewrite across a turn
+boundary. This prompt is single-message with no transcript (see
+`_pending_slots` below), so a bare follow-up reply to `intake_qa`'s clarify
+question ("which theme for day 1?" -> "biển") names no day itself and would
+otherwise land as a trip-wide `preferences.themes` change instead of that
+day's. `state["pending_clarify_day"]`, read back at the top of the next
+call as a fallback when the new message names no day of its own and no slot
+is missing, is not reset by `load_context` (same convention as
+`missing_slots`) so it survives the turn boundary. It is always overwritten
+on the way out -- to the ONE day this message itself named (never the
+carried-over one, and never when it named more than one), whenever that
+leaves the patch empty with `patch_reason: "missing_value"` on an included
+intent, or to `None` otherwise. Persisting only a message's own mention
+(not the effective, fallback-inclusive one) is what keeps this from
+renewing indefinitely: an unrelated later turn that also comes back empty
+and `missing_value` -- a budget edit with no amount, say -- clears the
+anchor rather than re-arming it for a message two turns later that never
+mentioned any day at all.
+
+This is a single-hop anchor, not a durable one, and it has a known gap:
+three graph paths never call this node at all -- `scope_guard` blocking a
+turn, `POST /hotels/select`'s `Command(goto="hotel_node", ...)`, and an
+interrupt resume's `Command(resume=...)` (`routes.py`) -- so a day named
+right before any of them can still be read back on whichever LATER turn
+finally reaches this node again, past the one-turn boundary the rest of
+this mechanism assumes. Accepted for now: closing it means clearing the
+field from outside this node, on paths this module doesn't own.
 """
 
 from __future__ import annotations
@@ -45,6 +80,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from src.agents.graph.prompts import build_extract_patch_prompt
+from src.agents.graph.routing import _INCOMPLETE_EDIT_INTENTS
 from src.agents.graph.state import TravelGraphState
 from src.domain.slot_registry import pending_question_slots
 from src.domain.travel_state import TravelState, trip_duration_days
@@ -66,6 +102,9 @@ _INTENTS = frozenset(
     {"hotel_search", "update_itinerary", "update_trip", "select_hotel", "finalize", "general_question"}
 )
 _OPERATIONS = frozenset({"set", "unset", "append", "remove"})
+# Parsed non-strictly (see module docstring) -- anything else, including a
+# non-string value that `in` can't even hash, falls open to "".
+_PATCH_REASONS = frozenset({"missing_value", "no_change"})
 _MAX_DAY_NUMBER_FALLBACK = 90  # mirrors travel_state.py's own pre-dates ceiling
 
 # Theme-shaped paths eligible for the deterministic day-scope rewrite --
@@ -164,10 +203,19 @@ def _resolve_day_scope(message: str, known_duration_days: int | None) -> tuple[i
     return parse_day_scope(message, known_duration_days or _MAX_DAY_NUMBER_FALLBACK)
 
 
-def _rewrite_day_scope(
-    changes: list[dict[str, Any]], message: str, travel_state: TravelState
-) -> list[dict[str, Any]]:
-    day_scope = _resolve_day_scope(message, trip_duration_days(travel_state))
+def _rewrite_day_scope(changes: list[dict[str, Any]], day_scope: tuple[int, ...] | None) -> list[dict[str, Any]]:
+    """Pure rewrite: forces any theme-shaped change to `daily_preferences.
+    <day>.theme` for each day in `day_scope`. Resolving `day_scope` itself
+    is the caller's job (`extract_patch`) -- this is reused for both a
+    message's own day mention and Phase 16's carried-over clarify-day
+    fallback, which is exactly the same rewrite once a day number is known,
+    however it was known.
+
+    `preferences.themes` is a list of closed-set labels; `daily_preferences.
+    <day>.theme` is one free-text string (`_validate_daily_theme`). A change
+    rewritten from the former keeps the latter's shape too, joining the
+    list -- otherwise a day-scoped theme silently fails `validate_patch`
+    and never applies, with nothing telling the user why."""
     if not day_scope:
         return changes
 
@@ -177,8 +225,11 @@ def _rewrite_day_scope(
         if not _THEME_PATH_RE.match(path):
             rewritten.append(change)
             continue
+        value = change.get("value")
+        if isinstance(value, list):
+            value = ", ".join(str(item) for item in value)
         for day in day_scope:
-            rewritten.append({**change, "path": f"daily_preferences.{day}.theme"})
+            rewritten.append({**change, "path": f"daily_preferences.{day}.theme", "value": value})
     return rewritten
 
 
@@ -308,7 +359,7 @@ def _strip_json_fence(value: object) -> str:
     return text.strip()
 
 
-def _parse_extraction_payload(payload: object) -> tuple[str, list[dict[str, Any]]]:
+def _parse_extraction_payload(payload: object) -> tuple[str, list[dict[str, Any]], str]:
     if not isinstance(payload, dict):
         raise PatchExtractionError("response must be a JSON object")
     intent = str(payload.get("intent") or "")
@@ -332,7 +383,13 @@ def _parse_extraction_payload(payload: object) -> tuple[str, list[dict[str, Any]
         if operation not in _OPERATIONS:
             raise PatchExtractionError(f"each change's operation must be one of {sorted(_OPERATIONS)}")
         changes.append({"path": path.strip(), "operation": operation, "value": item.get("value")})
-    return intent, changes
+
+    # Non-strict on purpose (module docstring): `isinstance` first so a
+    # non-string value (a list, a number) never reaches `in` on a frozenset,
+    # which would raise for anything unhashable instead of falling open.
+    raw_reason = payload.get("reason")
+    reason = raw_reason if isinstance(raw_reason, str) and raw_reason in _PATCH_REASONS else ""
+    return intent, changes, reason
 
 
 def _extract_with_llm(
@@ -342,16 +399,17 @@ def _extract_with_llm(
     *,
     pending_slots: tuple[str, ...] = (),
     llm: Any | None = None,
-) -> tuple[str, list[dict[str, Any]], bool]:
+) -> tuple[str, list[dict[str, Any]], str, bool]:
     """Ask the configured model once, retrying exactly once for invalid
     output (`plan_trip_edit`'s proven shape) — never more than that, and
     never raises: a fallback here must still let the turn complete.
 
-    The third return value is `extraction_failed` — True only when both
+    The last return value is `extraction_failed` — True only when both
     attempts were unusable, so `route_ask_slot` (Phase 15) can tell that
     apart from a parse that genuinely concluded "no change" and never route
     a provider outage or garbled JSON to `intake_qa` as if it were a
-    real question.
+    real question. `reason` (third) is "" on that same fallback, for the
+    same reason.
     """
     destination_choices = _destination_choices(destination_names)
     known_facts = _known_facts_summary(travel_state)
@@ -378,37 +436,81 @@ def _extract_with_llm(
             )
             response = model.invoke(prompt)
             payload = json.loads(_strip_json_fence(getattr(response, "content", response)))
-            intent, changes = _parse_extraction_payload(payload)
-            return intent, changes, False
+            intent, changes, reason = _parse_extraction_payload(payload)
+            return intent, changes, reason, False
         except (json.JSONDecodeError, PatchExtractionError, TypeError, ValueError) as exc:
             last_error = exc
         except Exception as exc:  # provider failures must never crash the turn
             last_error = exc
 
     logger.warning("Patch extraction failed for message %r: %s", message, last_error)
-    return "general_question", [], True
+    return "general_question", [], "", True
 
 
 def extract_patch(state: TravelGraphState) -> dict[str, Any]:
     message = _last_human_message(state)
     if not message:
-        return {"patch": [], "intent": "general_question", "extraction_failed": True}
+        return {
+            "patch": [],
+            "intent": "general_question",
+            "extraction_failed": True,
+            "patch_reason": "",
+            "pending_clarify_day": None,
+        }
 
     travel_state = TravelState.from_dict(state.get("travel_state"))
     destination_names = _get_destination_names()
 
-    intent, raw_changes, extraction_failed = _extract_with_llm(
+    intent, raw_changes, reason, extraction_failed = _extract_with_llm(
         message, travel_state, destination_names, pending_slots=_pending_slots(travel_state)
     )
-    changes = _rewrite_day_scope(raw_changes, message, travel_state)
-    changes = _derive_end_date_from_duration(changes, message, travel_state)
+
+    # This message's own day mention, falling back to the day
+    # `intake_qa`'s clarify question asked about last turn -- but only when
+    # this turn is in the same context that question was: no slot missing.
+    # `missing_slots` here is the value `ask_slot` left at the END of the
+    # PREVIOUS turn (`load_context` deliberately preserves it, same value
+    # `_pending_slots` above already relies on) -- gating on it stops a day
+    # named mid-intake from anchoring a later intake reply that has nothing
+    # to do with it.
+    own_day_scope = _resolve_day_scope(message, trip_duration_days(travel_state))
+    carried_day = state.get("pending_clarify_day") if not state.get("missing_slots") else None
+    day_scope = own_day_scope or ((carried_day,) if carried_day is not None else None)
+
+    changes = _rewrite_day_scope(raw_changes, day_scope)
     changes = _ground_changes(changes, destination_names)
     changes = _ground_included_breakfast(changes, message)
+    changes = _derive_end_date_from_duration(changes, message, travel_state)
 
-    # Written unconditionally, not only when True: this key gates Phase 15's
-    # `intake_qa` routing branch, and a node's partial return is merged over
-    # whatever the channel already held -- an omitted key here would leave
-    # a stale `True` in place for any caller that invokes this node outside
-    # `load_context`'s per-turn reset (a future subgraph, a resume path, a
-    # test), fail-closed-disabling that branch silently.
-    return {"patch": changes, "intent": intent, "extraction_failed": extraction_failed}
+    # Persist the day THIS message itself named -- never the carried-over
+    # one, or a later turn that also happens to be empty/missing_value but
+    # is about something else entirely (a budget edit with no amount, say)
+    # would silently renew the old anchor instead of expiring it. A
+    # multi-day mention ("ngày 1 và ngày 2") isn't persisted either: one
+    # int can't carry both, and guessing day 1 while silently dropping day
+    # 2 is worse than the follow-up simply landing trip-wide.
+    pending_clarify_day = (
+        own_day_scope[0]
+        if (
+            not changes
+            and reason == "missing_value"
+            and intent in _INCOMPLETE_EDIT_INTENTS
+            and own_day_scope
+            and len(own_day_scope) == 1
+        )
+        else None
+    )
+
+    # Written unconditionally, not only when truthy: these keys gate
+    # Phase 15/16's `intake_qa` routing branches, and a node's partial
+    # return is merged over whatever the channel already held -- an omitted
+    # key here would leave a stale value in place for any caller that
+    # invokes this node outside `load_context`'s per-turn reset (a future
+    # subgraph, a resume path, a test), silently misrouting on stale state.
+    return {
+        "patch": changes,
+        "intent": intent,
+        "extraction_failed": extraction_failed,
+        "patch_reason": reason,
+        "pending_clarify_day": pending_clarify_day,
+    }

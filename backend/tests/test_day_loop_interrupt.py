@@ -128,7 +128,7 @@ class TestCrashMidLoop:
             rebuilt_days=[1],
         )
 
-        def crash_on_day2(td, dn, ld):
+        def crash_on_day2(td, ts, dn, ld, suggest_ops=None):
             if dn == 2:
                 raise RuntimeError("Day 2 search failed (simulated)")
             return td
@@ -175,7 +175,7 @@ class TestInterruptIsolation:
         data = _make_trip_data(duration_days=3)
         call_log: list[int] = []
 
-        def record_invoke(td, dn, ld, suggest_ops=None):
+        def record_invoke(td, ts, dn, ld, suggest_ops=None):
             call_log.append(dn)
             return td
 
