@@ -56,6 +56,40 @@ def test_hotel_search_amenity_payload_migration_returns_catalog_labels():
     assert "WITH ORDINALITY" in migration
 
 
+def test_hotel_search_filters_eligible_hotels_before_vector_ranking():
+    migration = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "migrations"
+        / "20260817_filter_eligible_hotels_before_vector_ranking.sql"
+    ).read_text(encoding="utf-8")
+
+    eligible_start = migration.index("eligible_hotels AS MATERIALIZED")
+    candidates_start = migration.index("hotel_vector_candidates AS MATERIALIZED")
+    eligible_sql = migration[eligible_start:candidates_start]
+
+    assert "filter_destination_id IS NULL OR hotel.destination_id = filter_destination_id" in eligible_sql
+    assert "filter_min_price IS NULL OR hotel.lowest_price IS NULL OR hotel.lowest_price >= filter_min_price" in eligible_sql
+    assert "filter_max_price IS NULL OR hotel.lowest_price IS NULL OR hotel.lowest_price <= filter_max_price" in eligible_sql
+    assert "get_room_availability" in eligible_sql
+    assert candidates_start > eligible_start
+
+
+def test_hotel_search_has_indexes_for_eligibility_filters():
+    migration = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "migrations"
+        / "20260817_add_hotel_search_eligibility_indexes.sql"
+    ).read_text(encoding="utf-8")
+
+    assert "CREATE INDEX IF NOT EXISTS idx_hotels_destination_lowest_price" in migration
+    assert "ON public.hotels (destination_id, lowest_price)" in migration
+    assert "CREATE INDEX IF NOT EXISTS idx_room_prices_available_stay_dates" in migration
+    assert "ON public.room_prices (room_id, check_in_date, check_out_date)" in migration
+    assert "WHERE sold_out = false" in migration
+
+
 def test_database_schema_uses_shared_catalog_for_hotel_search_amenities():
     schema = (Path(__file__).resolve().parents[1] / "scripts" / "database_schema.sql").read_text(
         encoding="utf-8"
@@ -113,6 +147,31 @@ def test_search_hotels_omits_price_params_when_not_given(monkeypatch):
     assert client.captured_params is not None
     assert "filter_min_price" not in client.captured_params
     assert "filter_max_price" not in client.captured_params
+
+
+def test_search_hotels_reuses_embedding_for_repeated_normalized_query(monkeypatch):
+    class CountingEmbeddings:
+        def __init__(self):
+            self.calls: list[str] = []
+
+        def embed_query(self, text):
+            self.calls.append(text)
+            return [0.0]
+
+    client = _FakeSupabaseClient(data=[])
+    embeddings = CountingEmbeddings()
+    monkeypatch.setattr(supabase_search_module, "get_supabase_client", lambda: client)
+    monkeypatch.setattr(supabase_search_module, "get_embeddings", lambda: embeddings)
+    supabase_search_module._embed_hotel_query.cache_clear()
+
+    for _ in range(2):
+        search_hotels_with_rooms(
+            "Hotel near Ben Thanh",
+            match_count=5,
+            use_llm_filter=False,
+        )
+
+    assert embeddings.calls == ["Hotel near Ben Thanh"]
 
 
 def test_search_hotels_forwards_excluded_hotel_ids_as_rpc_param(monkeypatch):

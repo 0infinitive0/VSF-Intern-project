@@ -2,6 +2,14 @@
 
 Bản đồ thực thể liên kết (ERD) chi tiết dưới đây thể hiện kiến trúc dữ liệu **ĐẦY ĐỦ 100% CÁC CỘT (FIELDS)** của toàn bộ 10 bảng trong PostgreSQL, bao gồm cả mảng, thời gian, và tracking.
 
+**Cập nhật (plan `260814-supabase-auth-and-per-user-history`):** `sessions.user_id` tham
+chiếu `auth.users.id` — bảng do Supabase Auth tự quản lý, không nằm trong 10 bảng ứng dụng
+kể trên nên không có block riêng trong sơ đồ dưới đây. Mọi visitor (kể cả khách chưa đăng
+nhập, qua Supabase Anonymous Auth) đều có một `auth.users` row thật, nên cột này về lý thuyết
+luôn có giá trị cho session mới; vẫn để nullable để không phá session cũ tạo trước migration
+này hoặc tạo ngoài HTTP API (CLI). Chi tiết ngữ nghĩa phân quyền: `docs/chat_api_contract.md`
+§Authentication.
+
 ```mermaid
 erDiagram
     destinations {
@@ -129,6 +137,7 @@ erDiagram
     sessions {
         VARCHAR session_id PK
         JSONB context_data
+        UUID user_id FK "auth.users.id — nullable, plan 260814"
         TIMESTAMP created_at
         TIMESTAMP updated_at
     }

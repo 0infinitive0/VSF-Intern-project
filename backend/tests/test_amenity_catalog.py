@@ -101,6 +101,22 @@ def test_query_approved_amenities_reads_every_catalog_page(monkeypatch):
     assert len(amenity_catalog.query_approved_amenities()) == 1_001
 
 
+def test_query_all_approved_amenities_by_ids_batches_without_truncating(monkeypatch):
+    calls = []
+
+    def query(ids):
+        calls.append(list(ids or []))
+        return []
+
+    monkeypatch.setattr(amenity_catalog, "query_approved_amenities", query)
+
+    amenity_catalog.query_all_approved_amenities_by_ids([f"amenity_{index}" for index in range(205)])
+
+    assert [len(batch) for batch in calls] == [100, 100, 5]
+    assert calls[0][0] == "amenity_0"
+    assert calls[-1][-1] == "amenity_204"
+
+
 def test_discover_and_store_amenities_inserts_only_fast_model_approved_candidates(monkeypatch):
     inserted_rows = []
     captured_messages = []
@@ -507,6 +523,40 @@ def test_bind_amenities_resolves_known_aliases_without_calling_the_model(monkeyp
         ["Hồ bơi ngoài trời", "swimming_pool", "Hồ bơi"], scope="hotel"
     ) == amenity_catalog.AmenityBindingResult(ids=("swimming_pool",), unresolved=(), created=0)
     assert amenity_catalog.bind_amenities(["Tivi"], scope="room").ids == ("tv",)
+
+
+def test_resolve_hotel_amenity_ids_uses_only_approved_hotel_catalog_entries(monkeypatch):
+    entries = [
+        amenity_catalog.AmenityCatalogEntry(
+            id="swimming_pool",
+            label="Hồ bơi",
+            label_en="Swimming pool",
+            scope="hotel",
+            category="wellness",
+            icon_key="pool",
+            match_keywords=("hồ bơi", "pool"),
+        ),
+        amenity_catalog.AmenityCatalogEntry(
+            id="tv",
+            label="TV",
+            label_en="TV",
+            scope="room",
+            category="room_comfort",
+            icon_key="tv",
+            match_keywords=("tv", "tivi"),
+        ),
+    ]
+    monkeypatch.setattr(amenity_catalog, "all_approved_amenities", lambda: tuple(entries))
+    monkeypatch.setattr(
+        amenity_catalog,
+        "get_fast_llm",
+        lambda **_: (_ for _ in ()).throw(AssertionError("LLM must not be called")),
+    )
+
+    result = amenity_catalog.resolve_hotel_amenity_ids(["pool", "tv", "unknown amenity"])
+
+    assert result.ids == ("swimming_pool",)
+    assert result.unresolved == ("tv", "unknown amenity")
 
 
 def test_bind_amenities_reuses_a_hotel_catalog_item_for_a_room_value(monkeypatch):

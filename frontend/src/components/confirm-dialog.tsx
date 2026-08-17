@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 /**
  * ConfirmDialog — small reusable alert-dialog: backdrop + glass-card with a
@@ -30,6 +30,27 @@ export default function ConfirmDialog({
 }) {
   const confirmRef = useRef<HTMLButtonElement>(null)
 
+  const [render, setRender] = useState(open)
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    if (open) {
+      setRender(true)
+      let raf2 = 0
+      const raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => setVisible(true))
+      })
+      return () => {
+        cancelAnimationFrame(raf1)
+        cancelAnimationFrame(raf2)
+      }
+    } else {
+      setVisible(false)
+      const timer = setTimeout(() => setRender(false), 200)
+      return () => clearTimeout(timer)
+    }
+  }, [open])
+
   useEffect(() => {
     if (!open) return
     confirmRef.current?.focus()
@@ -40,21 +61,32 @@ export default function ConfirmDialog({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [open, onCancel])
 
-  if (!open) return null
+  if (!render) return null
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,.45)', animation: 'vFade .18s ease both' }}
-      onClick={onCancel}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0"
+        style={{
+          background: 'rgba(12,18,30,.34)',
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
+          opacity: visible ? 1 : 0,
+          transition: 'opacity .2s ease',
+        }}
+        onClick={onCancel}
+      />
       <div
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
         aria-describedby="confirm-dialog-message"
-        className="glass-card w-full max-w-[340px] p-5 flex flex-col gap-4"
-        onClick={(e) => e.stopPropagation()}
+        className="glass-card relative z-10 w-full max-w-[340px] p-5 flex flex-col gap-4"
+        style={{
+          opacity: visible ? 1 : 0,
+          transform: visible ? 'none' : 'scale(0.95)',
+          transition: 'opacity .2s ease, transform .2s ease',
+        }}
       >
         <div className="flex flex-col gap-1.5">
           <div id="confirm-dialog-title" className="text-[14px] font-semibold text-on-surface">

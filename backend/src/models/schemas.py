@@ -8,23 +8,28 @@ Phase 3 additions:
   working without changes (D10).
 - Payload models: HotelOption, TripPlanPayload, DayPlan, ItineraryItem,
   IntakeStatus.
-- Converter helpers: to_hotel_options_payload(), to_trip_plan_payload(),
-  IntakeStatus.from_state() — live here so route handlers never re-implement
-  serialisation logic.
+- Converter helpers: to_hotel_options_payload(), to_trip_plan_payload() —
+  live here so route handlers never re-implement serialisation logic.
+  `IntakeStatus.from_state()` used to sit alongside them, building the status
+  from a `TripIntakeState`; the graph plane derives it from `travel_state`
+  instead (`agents/graph/response_payload.py`), and the last caller went away
+  with the restore-endpoint rewrite.
 """
 
 from __future__ import annotations
 
 import re
 import unicodedata
-from datetime import date
+from datetime import date, datetime, time
+from decimal import Decimal
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from src.i18n import DEFAULT_LANGUAGE, t
 from src.observability import log_sanitized_system_error
+from src.services.amenity_catalog import query_all_approved_amenities_by_ids
 
 # ---------------------------------------------------------------------------
 # Basic chat models (pre-Phase 3, unchanged)
@@ -67,7 +72,60 @@ class RoomPayload(BaseModel):
     view: str | None = Field(default=None, description="Hướng nhìn")
 
 
-class RoomPricePayload(BaseModel):
+class ResponsePayload(BaseModel):
+    """Base for models the API only ever *sends*.
+
+    `json_schema_serialization_defaults_required` makes a field with a default
+    required in the response schema while leaving it optional for input. That
+    matches reality: a response always carries every field, defaults included,
+    so a generated client should see `days: Day[]`, not `days?: Day[]`. Without
+    it every list-with-a-default became optional in `openapi.json`, and the
+    frontend had to null-check collections the backend guarantees.
+
+    Only for response models — a request model's defaults really are optional.
+    """
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
+
+class MatchReasonPayload(ResponsePayload):
+    """One piece of ranking evidence behind "AI đề xuất vì…".
+
+    `code` is an i18n key the frontend owns (matchReason.*); `value` is the raw
+    number or label it describes. The backend never sends display text — the
+    shape `hotel_selection._match_reasons` has always produced, now declared so
+    a generated client sees it instead of an open dict.
+    """
+
+    code: str
+    value: float | str
+
+
+class NearbyPlacePayload(ResponsePayload):
+    """An entry of `hotels.nearby_attractions` (a jsonb column).
+
+    `extra="allow"` because these rows are crawled data: the four fields below
+    are the ones the UI reads and were confirmed against real rows, but the
+    column may carry more and dropping it on serialization would be a silent
+    lie of a different kind.
+
+    `distance_text` is a pre-formatted Vietnamese string from the crawl — data,
+    not a UI string. Clients should rebuild the figure from `distance_km` so it
+    honours their locale.
+    """
+
+    model_config = ConfigDict(
+        json_schema_serialization_defaults_required=True, extra="allow"
+    )
+
+    name: str | None = None
+    category: str | None = None
+    coordinates: str | None = None
+    distance_km: float | None = None
+    distance_text: str | None = None
+
+
+class RoomPricePayload(ResponsePayload):
     amount: float | None = None
     currency: str | None = None
     check_in_date: date | None = None
@@ -76,7 +134,7 @@ class RoomPricePayload(BaseModel):
     package_details: str | None = None
 
 
-class RoomDetailPayload(BaseModel):
+class RoomDetailPayload(ResponsePayload):
     id: str
     name: str
     bed_description: str | None = None
@@ -86,9 +144,14 @@ class RoomDetailPayload(BaseModel):
     room_facilities: list[str] | None = None
     images: list[str] | None = None
     price: RoomPricePayload | None = None
+    available_room_count: int | None = Field(
+        default=None,
+        ge=0,
+        description="Booking-aware remaining room units for the requested stay",
+    )
 
 
-class HotelDetailPayload(BaseModel):
+class HotelDetailPayload(ResponsePayload):
     id: str
     name: str
     star_rating: float | None = None
@@ -111,16 +174,21 @@ class HotelDetailPayload(BaseModel):
     check_in_until: str | None = None
     check_out_time: str | None = None
     reception_open_until: str | None = None
-    nearby_attractions: Any | None = None
+    nearby_attractions: list[NearbyPlacePayload] | None = None
     nearby_essentials: Any | None = None
     lowest_price: float | None = None
     currency: str | None = None
+    available_room_count: int | None = Field(
+        default=None,
+        ge=0,
+        description="Sum of booking-aware remaining room units across this hotel",
+    )
     rooms: list[RoomDetailPayload] = Field(default_factory=list)
     source_platform: str | None = None  # 'agoda' | 'booking' — powers the OTA handoff button
     source_url: str | None = None  # original listing URL on the source OTA
 
 
-class AttractionDetailPayload(BaseModel):
+class AttractionDetailPayload(ResponsePayload):
     id: str
     name: str
     description: str | None = None
@@ -142,7 +210,7 @@ class AttractionDetailPayload(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class HotelOption(BaseModel):
+class HotelOption(ResponsePayload):
     """One hotel in the pending selection list sent to the React UI.
 
     index is the 1-based ordinal that must equal suggestions[i].value (as int)
@@ -171,19 +239,19 @@ class HotelOption(BaseModel):
     review_score: float | None = None
     review_count: int | None = None
     match_score: float | None = Field(default=None, ge=0.0, le=1.0)
-    match_reasons: list[dict[str, float | str]] = Field(default_factory=list)
+    match_reasons: list[MatchReasonPayload] = Field(default_factory=list)
     city: str | None = None
-    preferences: list[str] = Field(default_factory=list)
 
 
-class RouteInfoPayload(BaseModel):
+class RouteInfoPayload(ResponsePayload):
     distance_km: float
     duration_mins: float
     polyline: str
     profile: str | None = None
 
-class ItineraryItem(BaseModel):
-    order_index: int | None = None
+class ItineraryItem(ResponsePayload):
+    # `int(item.get("order_index") or 0)` in trip_formatter — never absent.
+    order_index: int
     start_time: str | None = None
     end_time: str | None = None
     activity: str | None = None
@@ -196,13 +264,15 @@ class ItineraryItem(BaseModel):
     route_from_hotel: RouteInfoPayload | None = None
 
 
-class DayPlan(BaseModel):
-    day_number: int | None = None
-    theme: str | None = None
+class DayPlan(ResponsePayload):
+    # Both always set by trip_formatter: `day_number` comes from `range(1, n+1)`
+    # and `theme` falls back to "" rather than None.
+    day_number: int
+    theme: str
     items: list[ItineraryItem] = Field(default_factory=list)
 
 
-class TripPlanHotel(BaseModel):
+class TripPlanHotel(ResponsePayload):
     id: str | None = None
     name: str | None = None
     star_rating: float | None = None
@@ -214,23 +284,26 @@ class TripPlanHotel(BaseModel):
     source_url: str | None = None  # original listing URL on the source OTA
 
 
-class TripPlanPayload(BaseModel):
+class TripPlanPayload(ResponsePayload):
     """Phase 3 payload for the trip plan right panel."""
 
-    status: str | None = None
+    # `itinerary.get("status") or "Draft"` — always a string.
+    status: str
     destination: str | None = None
-    duration_days: int | None = None
+    # `int(...)` over the itinerary or the day count — always an int.
+    duration_days: int
     start_date: str | None = None
     end_date: str | None = None
     number_of_adults: int | None = None
     budget: float | None = None
-    budget_currency: str | None = None
+    # `hotel.get("currency") or "VND"` — always a string.
+    budget_currency: str
     hotel: TripPlanHotel | None = None
     days: list[DayPlan] = Field(default_factory=list)
     adjustments: list[str] = Field(default_factory=list)
 
 
-class IntakeStatus(BaseModel):
+class IntakeStatus(ResponsePayload):
     """Snapshot of what the intake gate has collected so far."""
 
     destination: str | None = None
@@ -253,98 +326,61 @@ class IntakeStatus(BaseModel):
     )
     min_price: float | None = None
     max_price: float | None = None
+    budget_skipped: bool = Field(
+        default=False,
+        description="True when the user explicitly opted out of a budget preference",
+    )
     missing: list[str] = Field(
         default_factory=list,
         description="Names of fields still needed: 'destination', 'people', 'start_date', 'end_date'",
     )
 
-    @classmethod
-    def from_state(cls, intake_state: Any, hotel_pref_state: Any = None) -> IntakeStatus:
-        """Build from a TripIntakeState and optional HotelPreferenceState."""
-        destination = getattr(intake_state, "destination", None)
-        duration = getattr(intake_state, "duration", None)
-        start_date = getattr(intake_state, "start_date", None)
-        end_date = getattr(intake_state, "end_date", None)
-        people = getattr(intake_state, "people", None)
-        missing = [
-            field
-            for field, value in [
-                ("destination", destination),
-                ("duration", duration),
-                ("start_date", start_date),
-                ("people", people),
-            ]
-            if not value
-        ]
-        preferences = list(getattr(intake_state, "preferences", ()) or ())
-        companions = getattr(intake_state, "companions", None)
-        pace = getattr(intake_state, "pace", None)
-        day_rhythm = list(getattr(intake_state, "day_rhythm", ()) or ())
-        notes = getattr(intake_state, "notes", "") or ""
-        min_price = getattr(hotel_pref_state, "min_price", None) if hotel_pref_state else None
-        max_price = getattr(hotel_pref_state, "max_price", None) if hotel_pref_state else None
-        return cls(
-            destination=destination,
-            duration=duration,
-            start_date=start_date,
-            end_date=end_date,
-            people=people,
-            preferences=preferences,
-            companions=companions,
-            pace=pace,
-            day_rhythm=day_rhythm,
-            notes=notes,
-            available_destinations=_available_destination_names(),
-            budget_options=_budget_tier_labels(),
-            min_price=min_price,
-            max_price=max_price,
-            missing=missing,
-        )
 
-
-class SuggestionPayload(BaseModel):
+class SuggestionPayload(ResponsePayload):
     label: str = Field(..., description="Chữ hiển thị trên nút gợi ý")
     value: str = Field(..., description="Nội dung gửi đi khi bấm nút")
 
 
-class StayDatesInput(BaseModel):
-    """Date-range data emitted by the frontend control."""
-
-    start_date: date
-    end_date: date
-
-    @model_validator(mode="after")
-    def end_date_must_follow_start_date(self) -> StayDatesInput:
-        if self.end_date <= self.start_date:
-            raise ValueError("end_date must be after start_date")
-        return self
-
-
-ChatStage = Literal["intake", "hotel_options", "planned", "modified", "finalized", "error"]
+#: Every value here must be one `response_payload.derive_stage` can actually
+#: return. `modified` and `finalized` were declared here for a long time with
+#: no producer anywhere: `modified` came from the deleted `process_chat_turn`
+#: cascade's `_STAGE_MAP`, and `finalized` from the same map's
+#: `finalize_trip_plan` tool, which the graph plane has no counterpart for
+#: (`booking_node` is unconditionally unroutable — `routing.py`'s
+#: `_IMPOSSIBLE["booking_node"] = lambda s: True` — and declines rather than
+#: completes when it does run). A declared-but-unreachable value is how
+#: `stage === 'error'` sat in the frontend for months as dead code that looked
+#: alive; do not add one back without its producer in the same change.
+ChatStage = Literal["intake", "hotel_options", "planned", "error"]
 
 
 class PlannerChatRequest(BaseModel):
+    """A chat turn. Every field here reaches the graph.
+
+    `stay_dates`, `min_price` and `max_price` used to be declared alongside
+    `message`, guarded by a validator demanding "at least one of" them — and
+    then dropped: `_run_turn_via_graph` only ever forwarded `message`. No
+    client sent them either, so the contract was dead at both ends.
+
+    They were deleted rather than connected. Feeding structured values into
+    `travel_state` means a path around `extract_patch -> validate_patch ->
+    apply_patch`, and that pipeline is where ambiguity gets resolved (an
+    unclear date pauses the turn to ask) and where every write is checked
+    against `ALLOWED_PATHS`. A side door for three fields nobody uses is not
+    worth a second, unvalidated way into the same slots. The widget's existing
+    route — compose a sentence, let the extractor parse it — is slower by one
+    LLM call and correct by construction. A fast structured path is a real
+    design problem for its own plan, not a dormant field woken up.
+
+    `message` is required now, which is what the old validator was trying to
+    say the long way around.
+    """
+
     session_id: UUID
-    message: str | None = None
-    stay_dates: StayDatesInput | None = None
-    min_price: float | None = None
-    max_price: float | None = None
+    message: str = Field(..., min_length=1, max_length=5000)
     language: Literal["vi", "en"] = Field(
         DEFAULT_LANGUAGE, description="UI language for this turn's reply (vi | en)"
     )
-
-    @model_validator(mode="after")
-    def includes_message_or_stay_dates(self) -> PlannerChatRequest:
-        if (
-            not self.message
-            and self.stay_dates is None
-            and self.min_price is None
-            and self.max_price is None
-        ):
-            raise ValueError(
-                "Must specify at least one of message, stay_dates, min_price, or max_price."
-            )
-        return self
 
 
 class SelectHotelRequest(BaseModel):
@@ -357,12 +393,48 @@ class ChangeHotelRequest(BaseModel):
     session_id: UUID
 
 
+class BookingReservationRequest(BaseModel):
+    room_id: UUID
+    temporary_user_ref: str = Field(min_length=1, max_length=128)
+    check_in_date: date
+    check_in_time: time = time(14, 0)
+    check_out_date: date
+    check_out_time: time = time(12, 0)
+    room_count: int = Field(default=1, ge=1, le=20)
+    total_amount: Decimal | None = Field(default=None, ge=0)
+    currency: str | None = Field(default=None, min_length=3, max_length=16)
+
+    @model_validator(mode="after")
+    def check_out_must_follow_check_in(self) -> BookingReservationRequest:
+        if self.check_out_date <= self.check_in_date:
+            raise ValueError("check_out_date must be after check_in_date")
+        return self
+
+
+class BookingOwnershipRequest(BaseModel):
+    temporary_user_ref: str = Field(min_length=1, max_length=128)
+
+
+class BookingPayload(BaseModel):
+    id: UUID
+    room_id: UUID
+    check_in_date: date
+    check_in_time: time
+    check_out_date: date
+    check_out_time: time
+    room_count: int
+    status: Literal["PENDING", "RESERVED", "CONFIRMED", "CANCELLED", "EXPIRED"]
+    expires_at: datetime | None = None
+    total_amount: Decimal | None = None
+    currency: str | None = None
+
+
 class PreferencePayload(BaseModel):
     id: str
     label: str
 
 
-class AmenityCatalogPayload(BaseModel):
+class AmenityCatalogPayload(ResponsePayload):
     """Approved hotel amenity exposed to the browser for filters and pills."""
 
     id: str
@@ -372,12 +444,16 @@ class AmenityCatalogPayload(BaseModel):
     icon_key: str | None = None
 
 
-class PlannerChatResponse(BaseModel):
+class PlannerChatResponse(ResponsePayload):
     session_id: str
     reply: str
     suggestions: list[SuggestionPayload] = Field(default_factory=list)
     stage: ChatStage
     hotel_options: list[HotelOption] = Field(default_factory=list)
+    hotel_amenities: list[AmenityCatalogPayload] = Field(
+        default_factory=list,
+        description="Unique approved amenity catalog records for all returned hotel options",
+    )
     trip_plan: TripPlanPayload | None = None
     intake: IntakeStatus | None = None
     requires_stay_dates: bool = False
@@ -387,7 +463,7 @@ class PlannerChatResponse(BaseModel):
     active_preferences: list[PreferencePayload] = Field(default_factory=list)
 
 
-class SessionSummaryPayload(BaseModel):
+class SessionSummaryPayload(ResponsePayload):
     session_id: str
     title: str | None = None
     destination: str | None = None
@@ -398,26 +474,30 @@ class SessionSummaryPayload(BaseModel):
     thumbnail_url: str | None = None
 
 
-class SessionListPayload(BaseModel):
+class SessionListPayload(ResponsePayload):
     sessions: list[SessionSummaryPayload] = Field(default_factory=list)
     page: int
     page_size: int
     has_more: bool
 
 
-class RestoredMessagePayload(BaseModel):
+class RestoredMessagePayload(ResponsePayload):
     role: Literal["user", "assistant"]
     text: str
-    stage: str
+    # The same vocabulary a live turn uses. `session_store.restored_messages`
+    # currently reports "intake" for every restored row (chat_messages has no
+    # stage column), but the type is the contract, not that limitation.
+    stage: ChatStage
     at: str
 
 
-class SessionRestorePayload(BaseModel):
+class SessionRestorePayload(ResponsePayload):
     session_id: str
     messages: list[RestoredMessagePayload] = Field(default_factory=list)
     suggestions: list[SuggestionPayload] = Field(default_factory=list)
     stage: str
     hotel_options: list[HotelOption] = Field(default_factory=list)
+    hotel_amenities: list[AmenityCatalogPayload] = Field(default_factory=list)
     trip_plan: TripPlanPayload | None = None
     intake: IntakeStatus | None = None
 
@@ -425,26 +505,6 @@ class SessionRestorePayload(BaseModel):
 # ---------------------------------------------------------------------------
 # Converters & Sanitizers
 # ---------------------------------------------------------------------------
-
-
-def _available_destination_names() -> list[str]:
-    """Real, current destination list reused from the intake grounding source."""
-    try:
-        from src.services.trip_planner import _get_destination_names
-
-        return [option.name for option in _get_destination_names() if option.name]
-    except Exception:
-        return []
-
-
-def _budget_tier_labels() -> list[str]:
-    """Real budget/accommodation tier labels, never a hardcoded copy."""
-    try:
-        from src.services.hotel_selection import budget_option_labels
-
-        return list(budget_option_labels())
-    except Exception:
-        return []
 
 
 _GENERIC_ERROR_MSG = "Đã xảy ra lỗi phía máy chủ. Vui lòng thử lại."
@@ -706,8 +766,9 @@ def to_hotel_options_payload(pending: dict[str, Any] | None) -> list[HotelOption
     if not pending or not isinstance(pending, dict):
         return []
     active_preferences = pending.get("active_preferences") or []
+    raw_options = [option for option in pending.get("options") or [] if isinstance(option, dict)]
     options = []
-    for index, option in enumerate(pending.get("options") or [], start=1):
+    for index, option in enumerate(raw_options, start=1):
         name = str(option.get("name") or "").strip()
         if not name:
             continue
@@ -743,10 +804,42 @@ def to_hotel_options_payload(pending: dict[str, Any] | None) -> list[HotelOption
                 match_score=option.get("match_score"),
                 match_reasons=list(option.get("match_reasons") or []),
                 city=option.get("city"),
-                preferences=list(option.get("preferences") or []),
             )
         )
     return options
+
+
+def hotel_amenities_from_hotel_options(
+    hotel_options: list[HotelOption] | list[dict[str, Any]],
+) -> list[AmenityCatalogPayload]:
+    """Join the unique amenity IDs from all returned hotel cards once.
+
+    Card payloads deliberately retain only canonical IDs.  The shared catalog
+    lives beside ``hotel_options`` in the response, avoiding the same catalog
+    row being serialized repeatedly for every hotel that has that amenity.
+    """
+    amenity_ids: list[str] = []
+    for hotel in hotel_options:
+        if isinstance(hotel, HotelOption):
+            values = [*hotel.amenities, *hotel.display_amenities]
+        else:
+            values = [*(hotel.get("amenities") or []), *(hotel.get("display_amenities") or [])]
+        amenity_ids.extend(value for value in values if isinstance(value, str))
+    ordered_ids = list(dict.fromkeys(amenity_ids))
+    if not ordered_ids:
+        return []
+    by_id = {
+        entry.id: AmenityCatalogPayload(
+            id=entry.id,
+            label_vi=entry.label,
+            label_en=entry.label_en,
+            category=entry.category,
+            icon_key=entry.icon_key,
+        )
+        for entry in query_all_approved_amenities_by_ids(ordered_ids)
+        if entry.scope in {"hotel", "both"}
+    }
+    return [by_id[amenity_id] for amenity_id in ordered_ids if amenity_id in by_id]
 
 
 def to_trip_plan_payload(trip_data: dict[str, Any] | None) -> TripPlanPayload | None:

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import date
+import re
+from datetime import date, timedelta
 from typing import Any
 
 from supabase import Client, create_client
@@ -19,11 +20,18 @@ _HOTEL_FIELDS = (
     "category_scores,check_in_time,check_in_until,check_out_time,reception_open_until,"
     "nearby_attractions,nearby_essentials,lowest_price,currency,source_platform,source_url"
 )
-_ROOM_FIELDS = "id,name,bed_description,room_size_sqm,max_guests,view,room_facilities,images"
+_ROOM_FIELDS = (
+    "id,name,bed_description,room_size_sqm,max_guests,view,room_facilities,images,"
+    "available_room_count"
+)
 _PRICE_FIELDS = "room_id,price,currency,check_in_date,check_out_date,sold_out,crawled_at"
 _ATTRACTION_FIELDS = (
     "id,name,description,category,is_tour,estimated_duration_minutes,opening_time,closing_time,"
     "ticket_price_adult,ticket_price_child,rating,review_count,coordinates,images"
+)
+_AGODA_NEARBY_DISTANCE = re.compile(
+    r"^(?P<name>.+?)\s*[-–—]\s*(?P<distance_text>.*?(?P<value>\d+(?:[.,]\d+)?)\s*(?P<unit>km|m))\s*$",
+    re.IGNORECASE,
 )
 
 
@@ -65,10 +73,68 @@ def _choose_price(
     return max(matches, key=lambda row: str(row.get("crawled_at") or "")) if matches else None
 
 
+def _room_availability(
+    client: Client,
+    room_id: str,
+    check_in: date,
+    check_out: date,
+) -> int:
+    """Return booking-aware inventory for one room type and stay interval."""
+    result = client.rpc(
+        "get_room_availability",
+        {
+            "p_room_id": room_id,
+            "p_check_in_date": check_in.isoformat(),
+            "p_check_out_date": check_out.isoformat(),
+        },
+    ).execute().data
+    return max(int(result or 0), 0)
+
+
+def _normalize_agoda_nearby_attractions(value: Any) -> Any:
+    """Turn Agoda's text-only nearby entries into the public detail shape.
+
+    Agoda supplies a place name plus a preformatted distance, but no reliable
+    attraction coordinates.  Keep that factual data and explicitly expose a
+    null coordinate so clients can render the distance list without creating a
+    false map ray.
+    """
+    if not isinstance(value, list):
+        return value
+
+    normalized: list[Any] = []
+    for entry in value:
+        if not isinstance(entry, str):
+            normalized.append(entry)
+            continue
+        text = entry.strip()
+        match = _AGODA_NEARBY_DISTANCE.match(text)
+        if match is None:
+            normalized.append({"name": text, "coordinates": None})
+            continue
+        distance = float(match["value"].replace(",", "."))
+        if match["unit"].casefold() == "m":
+            distance /= 1000
+        normalized.append(
+            {
+                "name": match["name"].strip(),
+                "distance_km": distance,
+                "distance_text": match["distance_text"].strip(),
+                "coordinates": None,
+            }
+        )
+    return normalized
+
+
 def get_hotel_detail(
     hotel_id: str, check_in: date | None = None, check_out: date | None = None
 ) -> dict[str, Any] | None:
-    """Fetch a hotel, its rooms, and at most one applicable price per room."""
+    """Fetch a hotel, rooms, prices, and booking-aware inventory.
+
+    Inventory applies to the requested stay.  Without a requested stay it is
+    calculated for today through tomorrow, which makes the detail response's
+    ``available_room_count`` a current value rather than static capacity.
+    """
     try:
         client = _get_supabase_client()
         hotel_rows = (
@@ -77,6 +143,10 @@ def get_hotel_detail(
         if not hotel_rows:
             return None
         hotel = dict(hotel_rows[0])
+        if str(hotel.get("source_platform") or "").casefold() == "agoda":
+            hotel["nearby_attractions"] = _normalize_agoda_nearby_attractions(
+                hotel.get("nearby_attractions")
+            )
         rooms = client.table("rooms").select(_ROOM_FIELDS).eq("hotel_id", hotel_id).execute().data or []
         room_ids = [str(room["id"]) for room in rooms if room.get("id")]
         prices: list[dict[str, Any]] = []
@@ -87,6 +157,14 @@ def get_hotel_detail(
             else:
                 query = query.eq("sold_out", False)
             prices = query.execute().data or []
+        availability_check_in = check_in or date.today()
+        availability_check_out = check_out or availability_check_in + timedelta(days=1)
+        availability_by_room = {
+            room_id: _room_availability(
+                client, room_id, availability_check_in, availability_check_out
+            )
+            for room_id in room_ids
+        }
     except Exception:
         logger.exception("Failed to fetch hotel detail for %s", hotel_id)
         raise
@@ -96,10 +174,13 @@ def get_hotel_detail(
         if price.get("room_id"):
             prices_by_room.setdefault(str(price["room_id"]), []).append(price)
     hotel["rooms"] = []
+    hotel["available_room_count"] = 0
     for room in rooms:
         room_detail = dict(room)
         selected = _choose_price(prices_by_room.get(str(room.get("id")), []), check_in, check_out)
         room_detail["price"] = _price_payload(selected) if selected else None
+        room_detail["available_room_count"] = availability_by_room.get(str(room.get("id")), 0)
+        hotel["available_room_count"] += room_detail["available_room_count"]
         hotel["rooms"].append(room_detail)
     return hotel
 

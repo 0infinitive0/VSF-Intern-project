@@ -235,13 +235,7 @@ export default function HotelFilterBar({
       >
         {amenityOptions.map(({ id, label }) => {
           const active = preferenceIds.includes(id)
-          // active used to be literal #2C5FC9/white — same class of bug as
-          // the sort dropdown fixed earlier: a hardcoded light-mode blue
-          // that doesn't become the dark-mode --acc (#6C9BF0), and white
-          // text that stays white instead of --on-acc. bg-button matches
-          // every other "picked/active" chip in the app (hotel Chọn, room
-          // pick, etc.).
-          return <button key={id} type="button" aria-pressed={active} onClick={() => togglePreference(id)} className={`shrink-0 rounded-full border px-3 py-2 text-[12px] transition-colors ${active ? 'border-button bg-button text-on-button shadow-sm' : 'border-fill2 bg-glass-2 text-on-surface-variant hover:text-on-surface'}`}>{label}</button>
+          return <button key={id} type="button" aria-pressed={active} onClick={() => togglePreference(id)} className={`shrink-0 rounded-full border px-3 py-2 text-[12px] transition-colors ${active ? 'border-primary bg-primary text-on-primary shadow-sm' : 'border-fill2 bg-glass-2 text-on-surface-variant hover:text-on-surface'}`}>{label}</button>
         })}
       </div>}
     </section>

@@ -24,7 +24,7 @@ from langchain_core.tools import InjectedToolCallId
 from langgraph.prebuilt import InjectedState
 
 from src.i18n import t
-from src.services.hotel_selection import resolve_hotel_selection
+from src.services.hotel_selection import resolve_selection
 from src.services.trip_formatter import format_hotel_options
 from src.services.trip_planner import build_selected_hotel_trip
 from src.services.trip_scheduler import PlaceCandidate
@@ -74,7 +74,7 @@ def select_hotel(selection: str, state: Annotated[dict, InjectedState], tool_cal
         for data in raw_options
         if isinstance(data, dict)
     ]
-    resolved = resolve_hotel_selection(selection, options)
+    resolved = resolve_selection(selection, options)
     if not resolved:
         reply = t(
             "Mình chưa xác định được đúng khách sạn bạn muốn chọn, bạn trả lời rõ hơn giúp mình nhé "

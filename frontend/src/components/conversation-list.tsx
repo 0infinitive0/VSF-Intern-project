@@ -124,7 +124,9 @@ export default function ConversationList({
                   </div>
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <span className="text-[10px] text-on-surface-muted whitespace-nowrap">
-                      {formatSessionDate(session.updated_at, i18n.language, t('sidebarToday'))}
+                      {session.updated_at
+                        ? formatSessionDate(session.updated_at, i18n.language, t('sidebarToday'))
+                        : ''}
                     </span>
                     <span
                       className={`text-[9px] px-1.5 py-px rounded-full font-medium whitespace-nowrap ${
@@ -152,7 +154,7 @@ export default function ConversationList({
                   e.stopPropagation()
                   setPendingDeleteId(session.session_id)
                 }}
-                className="absolute top-2 right-2 w-6 h-6 rounded-lg border border-border-subtle bg-surface-background text-on-surface-variant items-center justify-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 hover:bg-error hover:text-on-error hover:border-error transition-colors flex"
+                className="absolute top-1/2 -translate-y-1/2 right-2 w-6 h-6 rounded-lg border border-border-subtle bg-surface-background text-on-surface-variant items-center justify-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 hover:bg-error hover:text-on-error hover:border-error transition-colors flex"
               >
                 <span className="material-symbols-outlined text-[14px] cursor-pointer" aria-hidden="true">
                   close

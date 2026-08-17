@@ -6,7 +6,7 @@ from langchain.tools import ToolRuntime, tool
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
-from src.agents.state import TripState
+from src.agents.graph.state import TravelGraphState
 from src.i18n import t
 from src.services.supabase_search import get_supabase_client
 
@@ -18,7 +18,7 @@ def query_hotel_rooms(
     hotel_identifier: str,
     room_name: Optional[str] = None,
     *,
-    runtime: ToolRuntime[None, TripState],
+    runtime: ToolRuntime[None, TravelGraphState],
 ) -> Command:
     """
     CRITICAL: Use this tool ONLY when the user asks a specific question about room types, beds, capacity,
@@ -50,16 +50,16 @@ def query_hotel_rooms(
                     ) if language == "vi" else "Error: You just called this tool with the same args but the info wasn't there. DO NOT CALL IT AGAIN. Tell the user you don't have the info."
                     return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
 
-    pending_hotel_selection = runtime.state.get("pending_hotel_selection")
+    hotel_options = runtime.state.get("hotel_options")
     
-    if not pending_hotel_selection or not pending_hotel_selection.get("options"):
+    if not hotel_options or not hotel_options.get("options"):
         reply = t(
             "SYSTEM ERROR: Không có danh sách khách sạn nào hiện đang được chọn. Hãy dùng công cụ recommend_hotels trước.",
             language,
         ) if language == "vi" else "SYSTEM ERROR: No hotel list is currently active. Use recommend_hotels first."
         return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
 
-    options = pending_hotel_selection["options"]
+    options = hotel_options["options"]
     matched_hotel = None
     
     hotel_identifier_str = str(hotel_identifier).strip().lower()

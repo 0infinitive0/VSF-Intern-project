@@ -1,7 +1,7 @@
 ---
 phase: 12
 title: "Per-day itinerary constraints"
-status: pending
+status: completed
 priority: P2
 effort: "2.5d"
 dependencies: [9, 11]

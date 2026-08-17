@@ -3,12 +3,25 @@ title: "Single control plane — LangGraph rewrite of the orchestration layer"
 description: "Replace the deterministic cascade + ReAct plane with one LangGraph graph: patch-validated state, interrupts, hard filters, day-level regeneration. Delete the old plane."
 status: pending
 priority: P1
-effort: "~27d"
+effort: "~28d"
 tags: [langgraph, orchestration, rewrite, state-management]
 created: 2026-08-12
-blockedBy: []
+updated: 2026-08-15
+blockedBy: [260815-2300-reply-contract-and-graph-plane-cleanup, 260816-2205-fe-be-contract-reconciliation]
 blocks: []
 ---
+
+> **2026-08-15 — Phase 16 bị chặn.** 16/17 phase đã hoàn thành; chỉ còn Phase 16
+> (conversational polish cho context lines/re-asks, P3). Một lần review sau cutover
+> phát hiện lỗ hổng contract ở tầng reply: không worker nào bị bắt buộc phát ngôn, nên
+> một lịch trình build thành công trả về câu ack cứng của `respond`. Việc đó được xử lý
+> trong [`260815-2300-reply-contract-and-graph-plane-cleanup`](../260815-2300-reply-contract-and-graph-plane-cleanup/plan.md).
+>
+> Phase 16 giữ `pending` và chờ plan đó, vì hai lý do: (1) contract `emits_reply` chạm
+> cùng vùng code; (2) Phase 6 của plan đó (polish node rewrite-only + eval gate
+> number-parity) sẽ trả lời bằng số liệu câu hỏi mà Phase 16 đang giả định — LLM-hoá
+> reply có an toàn không. Nếu eval gate đó thất bại, Phase 16 nhiều khả năng nên huỷ
+> thay vì thực hiện.
 
 # Single control plane — LangGraph rewrite of the orchestration layer
 
@@ -156,6 +169,9 @@ source means fabricating inventory state — the failure doc §32 names explicit
 | 12 | [Per-day itinerary constraints](./phase-12-per-day-constraints.md) | 9, 11 | 2.5d |
 | 13 | [Place search and suggest-before-replace](./phase-13-place-search.md) | 8, 11 | 2d |
 | 14 | [Trip-total budget constraint](./phase-14-trip-total-budget.md) | 9, 11 | 2.5d |
+| 15 | [Intake QA escape: answer questions while slots are pending](./phase-15-intake-qa-escape-answer-questions-while-slots-are-pending.md) | 7, 11 | 1.5d |
+| 16 | [Conversational polish layer for context lines and re-asks](./phase-16-conversational-polish-layer-for-context-lines-and-re-asks.md) | 15 | 1.5d |
+| 17 | [Derive the response payload from graph state](./phase-17-derive-response-payload-from-graph-state.md) | 11, 15 | 1.5d |
 
 **Phases 1 and 2 are independent of the rewrite — ship them first, together, ~1 day.**
 Phase 1's bugs live in the domain layer and survive any orchestration change; Phase 2 closes
@@ -166,7 +182,12 @@ the refusal gap. Neither waits on anything.
 deleting the old one. Phase 10 lands *before* cutover because State Patch Accuracy plus the
 existing RAGAS end-to-end score are the evidence that the new plane is at least as good.
 
-Natural stop points: after 1+2, after 7 (deadlock class gone), after 11 (one plane), after 14.
+Natural stop points: after 1+2, after 7 (deadlock class gone), after 11 (one plane), after 14,
+after 15 (intake stops refusing to listen).
+
+**Phase 16 is optional polish and the only P3 in this plan.** It is separated from 15 on
+purpose: 15 fixes a defect, 16 changes tone. Ship and observe 15 before deciding 16 is worth
+its cost.
 
 ## Reported failure → phase mapping
 
@@ -186,6 +207,12 @@ Natural stop points: after 1+2, after 7 (deadlock class gone), after 11 (one pla
 | Gợi ý địa điểm trước khi đổi | Only hotels have a selection list | **13** |
 | Tổng ngân sách dưới 3tr | `_calculate_trip_budget` computes but never constrains | **14** |
 | Từ chối toán / code / vé máy bay | `guardrails/` covers jailbreak only | **2** |
+| Hỏi bất kỳ câu gì khi còn thiếu slot → "Mình chưa hiểu rõ ý bạn" | `route_ask_slot` short-circuits to `respond` (`graph.py:107`); no worker is reachable during intake | **15** |
+| Câu hỏi lại lặp nguyên văn từng chữ | Every `ask_slot` string is a fixed `t()` lookup | **16** |
+| Đã tìm được khách sạn nhưng UI vẫn hỏi "bạn thích kiểu trải nghiệm nào?" | `respond.py:219` hardcodes `stage: "intake"`, so `chat-panel.tsx:121` never unmounts the intake form and `next-intake-field.ts:143` sticks on its terminal `preferences` field | **17** |
+| Rail khách sạn không mở, StepNavigator kẹt ở bước intake | Same hardcoded `stage` — `inHotelStage` (`chat-panel.tsx:115`) can never be true | **17** |
+| Không có chip gợi ý nào ở mọi lượt | `respond.py` hardcodes `suggestions: []`; `generate_next_chat_suggestions` exists but only `cli/terminal_chat.py` calls it | **17** |
+| Bộ lọc khách sạn không có khoảng giá và không có pill tiện ích | `compound_min_price`/`compound_max_price`/`all_preferences`/`active_preferences` hardcoded; `stage-hotels.tsx:199-203` nhận hằng số | **17** |
 | Đi cùng người yêu · sang trọng/bình dân · đổi nhiều địa điểm | Already work | — |
 
 ## Risk register
@@ -198,6 +225,7 @@ Natural stop points: after 1+2, after 7 (deadlock class gone), after 11 (one pla
 | `normalize_day_themes` blast radius: CRITICAL, 14 symbols, 10 flows | High | Per-theme marker; absent ⇒ old behavior, *verified correct* for all three callers. Characterization tests first | 1 |
 | `select_hotel_candidates` blast radius: CRITICAL, 12 symbols, 10 flows | High | Keyword-only params defaulting to empty; existing 4 call sites untouched | 8 |
 | `PostgresSaver.from_conn_string` is a context manager; today's checkpointer is per-session | Medium | App-lifespan singleton, sessions keyed by `thread_id` | 4 |
+| **Accepted risk:** the polish layer rewrites a slot question and drops the `"không cần lọc theo giá"` hint `prompts.py:74` depends on, degrading extraction with no failing test | High | **Not mitigated by design** — user chose timeout-only, no content validation. Detection is indirect via `score_state_patches` and budget re-ask rate. Recommended fix if it materializes: assert must-keep phrases survived | 16 |
 | Frontend contract drift during the rewrite | Medium | `PlannerChatResponse` shape is frozen for the whole plan. The graph fills the same fields; no client change until after Phase 11 | 5, 11 |
 | Two planes coexisting 5→11 reintroduces the bug being fixed | Medium | The legacy plane is **frozen** — no edits to it after Phase 5 except reverts. Time-boxed to one window that Phase 11 closes | 5-11 |
 | **An interrupted node re-executes from its start**, so a per-day Python loop containing a shortlist interrupt re-runs completed days — re-searching and silently changing days the user never touched | **High** | Loops with interrupt points are **subgraphs invoked per iteration** (`rebuild_day`), not `for` inside a node. Interrupt-isolation test in Phase 9 step 8 is the proof | 5, 7, 9, 13 |
@@ -250,8 +278,10 @@ Decided while planning, recorded so the reasoning is not lost:
 | "4 sao" = stars or review score? | Different columns; both filterable. "N sao" ⇒ stars, "N/10" ⇒ review score, ambiguous ⇒ ask |
 | "1-2-2026" fixed rule or ask? | **Ask**, but only when genuinely ambiguous — `31/07` has one valid reading |
 | Node or subgraph for each flow? | `hotel_node` and `itinerary_node` are worker nodes. `qa_node` and `rebuild_day` are **subgraphs** — the first already is one (`create_react_agent` returns a compiled graph), the second must be, because an interrupted node re-executes from its start and the per-day loop contains an interrupt |
-| Routing: deterministic or LLM? | **Supervisor LLM** with `IMPACT_MAP` as deterministic fallback. Supervisor creates task list + checks completion; `IMPACT_MAP` catches LLM failures |
+| Routing: deterministic or LLM? | **Deterministic first.** Single-workflow turns route by `IMPACT_MAP` with no LLM call. The supervisor's LLM is consulted only for multi-workflow turns and post-failure recovery. Doc §36: completion checks *"remain deterministic Python"* |
 | Supervisor loop limit? | **Max 5 iterations/turn** — prevents infinite delegation. Enforced by counter, not by trust |
+| Intent and extraction: one call or two? | **One** (`extract_patch`, doc §36 `understand_request`). They read the same message and state; splitting costs a second local-model round-trip to re-derive what the first already knew |
+| Does `intent` pick the worker? | **No.** Worker selection is `detect_impact(changes)` → `WORKFLOW_TO_WORKER`, a table lookup on the validated patch. `intent` only separates read-only Q&A from state-changing turns |
 | Adopt doc §36 folder layout? | **Partially** — `domain/` for new pure files; reject the renames; defer `repositories/` |
 
 <!-- slug: langgraph-orchestration-state-patch-and-interrupts -->

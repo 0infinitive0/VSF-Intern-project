@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 import unicodedata
 from collections.abc import Collection, Iterable
 from dataclasses import dataclass
@@ -93,6 +94,69 @@ def query_approved_amenities(amenity_ids: Collection[str] | None = None) -> list
     return _parse_catalog_entries(rows)
 
 
+def query_all_approved_amenities_by_ids(amenity_ids: Collection[str]) -> list[AmenityCatalogEntry]:
+    """Return every approved catalog entry requested by a trusted response path.
+
+    ``query_approved_amenities`` intentionally retains its 100-ID limit for
+    general callers. Hotel response serialization already owns the IDs from a
+    finite list of returned cards, so it can safely preserve every distinct ID
+    by issuing bounded PostgREST ``IN`` queries in batches.
+    """
+    requested_ids = _valid_amenity_ids_unbounded(amenity_ids)
+    entries: list[AmenityCatalogEntry] = []
+    for start in range(0, len(requested_ids), _MAX_REQUESTED_IDS):
+        entries.extend(query_approved_amenities(requested_ids[start : start + _MAX_REQUESTED_IDS]))
+    return entries
+
+
+_ALL_AMENITIES_CACHE_SECONDS = 60.0
+_all_amenities_cache: tuple[tuple[AmenityCatalogEntry, ...], float] | None = None
+
+
+def all_approved_amenities() -> tuple[AmenityCatalogEntry, ...]:
+    """TTL-cached wrapper around `query_approved_amenities()` (no ID filter)
+    for hot-path callers -- e.g. `respond`'s per-turn `all_preferences` field
+    -- that need the full approved catalog without a Supabase round-trip on
+    every turn."""
+
+    global _all_amenities_cache
+    now = time.monotonic()
+    if _all_amenities_cache is not None and now - _all_amenities_cache[1] < _ALL_AMENITIES_CACHE_SECONDS:
+        return _all_amenities_cache[0]
+    entries = tuple(query_approved_amenities())
+    _all_amenities_cache = (entries, now)
+    return entries
+
+
+def clear_all_approved_amenities_cache() -> None:
+    """Invalidate `all_approved_amenities()` after a newly approved amenity
+    is stored, and for tests that need a fresh Supabase read."""
+
+    global _all_amenities_cache
+    _all_amenities_cache = None
+
+
+def resolve_hotel_amenity_ids(values: Collection[object]) -> AmenityBindingResult:
+    """Resolve chat-supplied hotel amenities to approved catalog IDs only.
+
+    This lookup deliberately never invokes discovery: a request term that is
+    not an unambiguous approved hotel/both catalog entry remains unresolved
+    instead of becoming an unverified hard search constraint.
+    """
+    entries = all_approved_amenities()
+    ids: list[str] = []
+    unresolved: list[str] = []
+    for raw in _valid_raw_values(values):
+        entry = _match_catalog_entry(raw, entries, "hotel")
+        if entry is None:
+            if raw not in unresolved:
+                unresolved.append(raw)
+            continue
+        if entry.id not in ids:
+            ids.append(entry.id)
+    return AmenityBindingResult(ids=tuple(ids), unresolved=tuple(unresolved))
+
+
 def bind_amenities(
     values: Collection[object], *, scope: AmenityScope, persist: bool = True
 ) -> AmenityBindingResult:
@@ -162,6 +226,7 @@ def bind_amenity_rows(
                 }
                 for entry in scope_promotions.values()
             ], on_conflict="id").execute()
+            clear_all_approved_amenities_cache()
         except Exception as exc:
             logger.warning("Amenity catalog scope promotion failed: %s", type(exc).__name__)
 
@@ -212,6 +277,7 @@ def discover_and_store_amenities(
             db_rows = list(db_rows_by_id.values())
             if db_rows:
                 get_supabase_client().table(_CATALOG_TABLE).upsert(db_rows, on_conflict="id").execute()
+                clear_all_approved_amenities_cache()
         except Exception as exc:
             logger.warning("Amenity catalog discovery write failed: %s", type(exc).__name__)
             return []
@@ -567,12 +633,16 @@ def _normalize_for_match(value: str) -> str:
 
 
 def _valid_amenity_ids(amenity_ids: Collection[str] | None) -> list[str]:
+    return _valid_amenity_ids_unbounded(amenity_ids)[:_MAX_REQUESTED_IDS]
+
+
+def _valid_amenity_ids_unbounded(amenity_ids: Collection[str] | None) -> list[str]:
     valid: list[str] = []
     for raw in amenity_ids or ():
         amenity_id = str(raw).strip().lower()
         if _AMENITY_ID_PATTERN.fullmatch(amenity_id) and amenity_id not in valid:
             valid.append(amenity_id)
-    return valid[:_MAX_REQUESTED_IDS]
+    return valid
 
 
 def _parse_catalog_entries(rows: Iterable[object]) -> list[AmenityCatalogEntry]:

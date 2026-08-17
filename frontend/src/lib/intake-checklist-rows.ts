@@ -81,12 +81,25 @@ export function buildIntakeChecklistRows(
     ? formatTripDateRange(form?.startDate, form?.endDate, locale)
     : null
 
-  const budgetCollected = isFieldFilled(form ?? {}, 'budget')
-  const budgetValue = form?.budgetSkipped
-    ? labels.budgetSkipped
-    : form?.budgetMinVnd != null && form?.budgetMaxVnd != null
-      ? `${formatCurrency(form.budgetMinVnd, locale)} – ${formatCurrency(form.budgetMaxVnd, locale)}`
-      : null
+  // Server-confirmed wins over the local form once both exist — same
+  // precedence as people/dates above. A budget answered via plain-text chat
+  // (extract_patch's budget.min/max/target, echoed as intake.min_price/
+  // max_price/budget_skipped) never touches the local form, so without this
+  // the row would stay stuck on "—" even though the backend already has it.
+  const budgetServerCollected = Boolean(intake?.budget_skipped) || (intake?.min_price != null && intake?.max_price != null)
+  const budgetLocalCollected = isFieldFilled(form ?? {}, 'budget')
+  const budgetCollected = budgetServerCollected || budgetLocalCollected
+  const budgetValue = budgetServerCollected
+    ? intake?.budget_skipped
+      ? labels.budgetSkipped
+      : intake?.min_price != null && intake?.max_price != null
+        ? `${formatCurrency(intake.min_price, locale)} – ${formatCurrency(intake.max_price, locale)}`
+        : null
+    : form?.budgetSkipped
+      ? labels.budgetSkipped
+      : form?.budgetMinVnd != null && form?.budgetMaxVnd != null
+        ? `${formatCurrency(form.budgetMinVnd, locale)} – ${formatCurrency(form.budgetMaxVnd, locale)}`
+        : null
 
   // Values are gated on `collected` even though the backend never emits a
   // contradictory payload (value present AND key in `missing`) — the gated
@@ -119,7 +132,9 @@ export function buildIntakeChecklistRows(
       preferenceKeys: [],
     },
     {
-      // Never gated by the backend (see file header) — local-only signal.
+      // Never gated by `missing` (see file header), but still echoed back
+      // once answered — via intake.min_price/max_price/budget_skipped (chat)
+      // or the local form (widget) — see budgetServerCollected above.
       key: 'budget',
       collected: budgetCollected,
       value: budgetValue,

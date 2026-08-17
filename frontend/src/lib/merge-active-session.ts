@@ -27,7 +27,7 @@ export function mergeActiveSession(
 
   const optimisticRow: SessionSummary = {
     session_id: activeSessionId,
-    title: undefined,
+    title: null,
     destination: null,
     duration_days: null,
     status: 'draft',

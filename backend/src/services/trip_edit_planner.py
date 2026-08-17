@@ -14,7 +14,7 @@ from typing import Any, Literal
 
 from src.services.llm import get_reasoning_llm as get_llm
 from src.services.trip_intake import TripPreferenceUpdate, TripPreferenceUpdateError
-from src.services.trip_scheduler import parse_day_scope
+from src.services.trip_scheduler import PlaceCandidate, parse_day_scope
 
 EditDecision = Literal["apply", "clarify", "not_edit"]
 EditOperationName = Literal[
@@ -27,6 +27,7 @@ EditOperationName = Literal[
     "change_hotel",
     "replan_day",
     "update_trip_preferences",
+    "suggest",
 ]
 ItemKind = Literal["breakfast", "attraction", "lunch", "rest", "coffee", "dinner", "evening"]
 
@@ -41,9 +42,10 @@ _OPERATIONS = frozenset(
         "change_hotel",
         "replan_day",
         "update_trip_preferences",
+        "suggest",
     }
 )
-_TARGETED_OPERATIONS = frozenset({"replace_item", "remove_item", "update_time"})
+_TARGETED_OPERATIONS = frozenset({"replace_item", "remove_item", "update_time", "suggest"})
 _ITEM_KINDS = frozenset({"breakfast", "attraction", "lunch", "rest", "coffee", "dinner", "evening"})
 _TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$")
 
@@ -96,6 +98,15 @@ class EditOperation:
     hotel_query: str | None = None
     placement: dict[str, Any] | None = None
     trip_preferences: TripPreferenceUpdate | None = None
+    # Phase 13 (`phase-13-place-search.md`): the exact candidate a user
+    # picked from a `search_places`/suggest-before-replace shortlist. Never
+    # set by the LLM planner (this module's whole point is that the model
+    # never selects a database record) -- only the deterministic
+    # `rebuild_day` subgraph sets this, after `resolve_selection` has
+    # already turned the user's reply into one specific attraction row.
+    # `_apply_replace_or_add` uses it verbatim instead of re-searching via
+    # `_select_edit_candidate` when present.
+    preselected_candidate: PlaceCandidate | None = None
 
 
 @dataclass(frozen=True)
@@ -316,10 +327,10 @@ def _parse_operation(value: object, trip_data: dict[str, Any]) -> EditOperation:
         }
     target = _parse_target(target_value, trip_data) if operation in _TARGETED_OPERATIONS else None
     requirements_source = value.get("requirements") or value.get("replacement_requirements") or value.get("new_item_requirements")
-    requirements = _parse_requirements(requirements_source) if operation in {"replace_item", "add_item"} else None
-    if operation in {"replace_item", "add_item"} and requirements is None:
-        raise TripEditPlanError(f"{operation} requires requirements")
-    if operation == "replace_item" and target and requirements and target.item_kind != requirements.item_kind:
+    requirements = _parse_requirements(requirements_source) if operation in {"replace_item", "add_item", "suggest"} else None
+    if operation in {"replace_item", "add_item", "suggest"} and requirements is None:
+        raise TripEditPlanError("Missing requirements")
+    if operation in {"replace_item", "suggest"} and target and requirements and target.item_kind != requirements.item_kind:
         raise TripEditPlanError("replacement item_kind must match the target item kind")
     duration_days = _duration_days(trip_data)
     days = _parse_days(value.get("day_numbers"), duration_days)
@@ -433,15 +444,16 @@ Current authoritative itinerary context: {context}
 Return this schema:
 {{"decision":"apply|clarify|not_edit","summary":"Vietnamese summary","confidence":0.0,"clarification_question":null,"operations":[]}}
 
-Operations are replace_item, remove_item, update_time, add_item, set_schedule_policy, set_meal_preference, change_hotel, replan_day, update_trip_preferences.
+Operations are replace_item, remove_item, update_time, add_item, set_schedule_policy, set_meal_preference, change_hotel, replan_day, update_trip_preferences, suggest.
 For a targeted operation, use exactly {{"target":{{"item_id":"one context.items item_id"}}}}. Never invent an item_id, venue UUID, venue name, hours, coordinates, or availability.
-replace_item/add_item requirements must contain item_kind and semantic_query; express desired categories, location, time and duration as requirements only.
+replace_item/add_item/suggest requirements must contain item_kind and semantic_query; express desired categories, location, time and duration as requirements only.
 remove_item gap_policy is leave_blank, close_gap, or replace. A bare removal is leave_blank.
 For time changes use start_time, end_time, or shift_minutes and cascade_policy.
 For time limits like 'after Xh do not go out' or 'do nothing after Xh' (e.g. không làm gì sau Xh), you MUST use set_schedule_policy. Example: {{"operation": "set_schedule_policy", "latest_end_time": "18:00"}}. NEVER use remove_item because it only removes one item.
 For ANY requests to change the theme/focus of an entire day (e.g. "ngày đầu đi thưởng thức ẩm thực", "hôm sau đi mua sắm"), ALWAYS use replan_day. Example: {{"operation": "replan_day", "day_number": 1, "theme": {{"selection_mode":"user_specified", "title":"...", "semantic_query":"..."}}}}.
 For adding a new item, use add_item. Example: {{"operation": "add_item", "day_number": 1, "requirements": {{"item_kind": "attraction", "semantic_query": "địa điểm vui chơi"}}, "latest_start_time": "20:00"}}.
 For replacing an item, use replace_item. Example: {{"operation": "replace_item", "target": {{"item_id": "1"}}, "requirements": {{"item_kind": "lunch", "semantic_query": "quán ăn trưa"}}}}.
+For asking for suggestions instead of a direct replacement (e.g. "gợi ý địa điểm phù hợp", "bạn có gợi ý gì không?"), use suggest. Example: {{"operation": "suggest", "target": {{"item_id": "1"}}, "requirements": {{"item_kind": "lunch", "semantic_query": "quán ăn trưa"}}}}.
 For changes to the whole trip's destination, duration, start date, traveler count, or vibe/preferences, use update_trip_preferences as the only operation. Include trip_preferences with changed_fields and only the values explicitly changed: destination, duration_days, start_date, people_count, preference_labels. Vibe labels must be one or more of: biển, văn hóa, ẩm thực, thiên nhiên, lịch sử, mua sắm, cuộc sống về đêm, trẻ em. Example: {{"operation":"update_trip_preferences","trip_preferences":{{"changed_fields":["duration","people"],"duration_days":5,"people_count":4}}}}.
 For requests to change hotel budget, price ceiling, price limit, or hotel quality/type (e.g. "ngân sách tối đa 300k", "đổi sang khách sạn 5 sao", "tìm khách sạn rẻ hơn"), ALWAYS use change_hotel as the only operation. Put the user's full budget or hotel requirement in hotel_query. Example: {{"operation":"change_hotel","hotel_query":"ngân sách tối đa 300000 VNĐ/đêm"}}.
 If the user wants to handle a meal/activity themselves (e.g. "tự ăn sáng", "tự túc ăn trưa"), ALWAYS use remove_item to delete it. Do NOT use replace_item.

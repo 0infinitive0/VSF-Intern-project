@@ -12,10 +12,14 @@
     "check:tokens": "node scripts/check-design-tokens.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "openapi:dump": "cd ../backend && python3 -c \"import json;from src.main import app;print(json.dumps(app.openapi(),indent=2,ensure_ascii=False))\" > ../frontend/openapi.json",
+    "openapi:gen": "npx -y -p typescript@5.9.3 -p openapi-typescript@7.13.0 openapi-typescript openapi.json -o src/types/wire.generated.ts",
+    "openapi:check": "npm run openapi:dump && npm run openapi:gen && git diff --exit-code -- openapi.json src/types/wire.generated.ts"
   },
   "dependencies": {
     "@daypicker/react": "^10.0.1",
+    "@supabase/supabase-js": "^2.109.0",
     "@tailwindcss/vite": "^4.3.3",
     "date-fns": "^4.4.0",
     "i18next": "^26.3.6",
@@ -28,11 +32,13 @@
   "devDependencies": {
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^6.0.4",
     "oxlint": "^1.75.0",
     "typescript": "^7.0.2",
     "vite": "^8.2.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "ws": "^8.21.3"
   },
   "optionalDependencies": {
     "@rolldown/binding-win32-x64-msvc": "^1.2.3"

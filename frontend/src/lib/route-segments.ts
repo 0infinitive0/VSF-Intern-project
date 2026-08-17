@@ -39,6 +39,7 @@ import { haversineKm, parseCoordinates, type LatLng } from './geo'
 import { classifyRoute } from './leg'
 import { decodePolyline } from './polyline'
 import { itemSyncId, TRIP_HOTEL_SYNC_KEY } from './map-sync-id'
+import { asRouteProfile } from '../types'
 import type { Day, RouteInfo, RouteProfile } from '../types'
 
 export interface RouteSegment {
@@ -103,7 +104,7 @@ export function buildDaySegments(day: Day, hotel: HotelLike): RouteSegment[] {
         toKey: itemSyncId(day.day_number, items[0], 0),
         points,
         isFallback,
-        profile: route?.profile ?? null,
+        profile: asRouteProfile(route?.profile),
         distanceKm,
         durationMins,
       })
@@ -129,7 +130,7 @@ export function buildDaySegments(day: Day, hotel: HotelLike): RouteSegment[] {
       toKey: itemSyncId(day.day_number, items[i + 1], i + 1),
       points,
       isFallback,
-      profile: route?.profile ?? null,
+      profile: asRouteProfile(route?.profile),
       distanceKm,
       durationMins,
     })
@@ -152,7 +153,7 @@ export function buildDaySegments(day: Day, hotel: HotelLike): RouteSegment[] {
           toKey: TRIP_HOTEL_SYNC_KEY,
           points,
           isFallback,
-          profile: route?.profile ?? null,
+          profile: asRouteProfile(route?.profile),
           distanceKm,
           durationMins,
         })

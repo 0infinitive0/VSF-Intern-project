@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { filterAndSortHotels, hotelPriceBounds, roundedPriceSliderBounds, type HotelFilterState } from './hotel-filters'
-import type { HotelOption } from '../types'
+import { activeAmenityPills, displayAmenityLabels, filterAndSortHotels, hotelPriceBounds, roundedPriceSliderBounds, sortAmenityLabels, type HotelFilterState } from './hotel-filters'
+import type { AmenityCatalogOption, HotelOption, PreferencePayload } from '../types'
+import { hotelOption } from '../test-fixtures'
 
 const HOTELS: HotelOption[] = [
-  { index: 1, name: 'Recommended first', average_nightly_price: 2_000_000, star_rating: 5, preferences: ['breakfast'], match_score: 0.95 },
-  { index: 2, name: 'Budget stay', average_nightly_price: 900_000, star_rating: 4, preferences: ['pool'], match_score: 0.8 },
-  { index: 3, name: 'Price on request', star_rating: 3, preferences: ['breakfast', 'pool'], match_score: 0.7 },
+  hotelOption({ index: 1, name: 'Recommended first', average_nightly_price: 2_000_000, star_rating: 5, amenities: ['breakfast'], match_score: 0.95 }),
+  hotelOption({ index: 2, name: 'Budget stay', average_nightly_price: 900_000, star_rating: 4, amenities: ['swimming_pool'], match_score: 0.8 }),
+  hotelOption({ index: 3, name: 'Price on request', star_rating: 3, amenities: ['breakfast', 'swimming_pool'], match_score: 0.7 }),
 ]
 
 const DEFAULT_FILTERS: HotelFilterState = {
@@ -32,13 +33,19 @@ describe('filterAndSortHotels', () => {
     expect(result.map((hotel) => hotel.index)).toEqual([3])
   })
 
-  it('filters by canonical amenity IDs even when the API did not mark them as preferences', () => {
+  it('filters by canonical amenity IDs', () => {
     const result = filterAndSortHotels(
-      [{ index: 4, name: 'Catalog-only wifi', amenities: ['wifi'], preferences: [] }],
+      [hotelOption({ index: 4, name: 'Catalog-only wifi', amenities: ['wifi'] })],
       { ...DEFAULT_FILTERS, preferenceIds: ['wifi'] },
     )
 
     expect(result.map((hotel) => hotel.index)).toEqual([4])
+  })
+
+  it('does not use the removed legacy preferences field as an amenity source', () => {
+    const legacyOnlyHotel = Object.assign(hotelOption({ index: 5, amenities: [] }), { preferences: ['wifi'] })
+
+    expect(filterAndSortHotels([legacyOnlyHotel], { ...DEFAULT_FILTERS, preferenceIds: ['wifi'] })).toEqual([])
   })
 
   it('applies both ends of the price range', () => {
@@ -60,5 +67,50 @@ describe('filterAndSortHotels', () => {
 
   it('rounds slider bounds to VND 10,000 increments', () => {
     expect(roundedPriceSliderBounds({ min: 803_123, max: 2_507_888 })).toEqual({ min: 800_000, max: 2_510_000 })
+  })
+})
+
+describe('activeAmenityPills', () => {
+  const active: PreferencePayload[] = [
+    { id: 'swimming_pool', label: 'generated pool label' },
+    { id: 'breakfast', label: 'generated breakfast label' },
+  ]
+  const catalog: AmenityCatalogOption[] = [
+    { id: 'swimming_pool', label_vi: 'Hồ bơi', label_en: 'Swimming pool', category: 'wellness', icon_key: 'pool' },
+    { id: 'breakfast', label_vi: 'Bao gồm bữa sáng', label_en: 'Breakfast included', category: 'food', icon_key: 'breakfast' },
+    { id: 'wifi', label_vi: 'Wi-Fi', label_en: 'Wi-Fi', category: 'connectivity', icon_key: 'wifi' },
+  ]
+
+  it('shows only user-requested hotel amenities and resolves their labels from the catalog', () => {
+    expect(activeAmenityPills(active, catalog, 'vi')).toEqual([
+      { id: 'swimming_pool', label: 'Hồ bơi' },
+      { id: 'breakfast', label: 'Bao gồm bữa sáng' },
+    ])
+  })
+
+  it('retains the active payload label while the catalog is unavailable', () => {
+    expect(activeAmenityPills(active, null, 'en')).toEqual(active)
+  })
+})
+
+describe('displayAmenityLabels', () => {
+  const details: AmenityCatalogOption[] = [
+    { id: 'swimming_pool', label_vi: 'Hồ bơi', label_en: 'Swimming pool', category: 'wellness', icon_key: 'pool' },
+    { id: 'wifi', label_vi: 'Wi-Fi', label_en: 'Wi-Fi', category: 'connectivity', icon_key: 'wifi' },
+  ]
+
+  it('uses joined amenity metadata in the selected language', () => {
+    expect(displayAmenityLabels(['swimming_pool', 'wifi'], details, 'en')).toEqual(['Swimming pool', 'Wi-Fi'])
+    expect(displayAmenityLabels(['swimming_pool', 'wifi'], details, 'vi')).toEqual(['Hồ bơi', 'Wi-Fi'])
+  })
+})
+
+describe('sortAmenityLabels', () => {
+  it('deduplicates and sorts localized amenity labels alphabetically', () => {
+    expect(sortAmenityLabels(['Wi-Fi', 'Bữa sáng', 'Hồ bơi', 'Wi-Fi'], 'vi')).toEqual([
+      'Bữa sáng',
+      'Hồ bơi',
+      'Wi-Fi',
+    ])
   })
 })

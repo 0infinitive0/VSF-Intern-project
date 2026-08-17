@@ -75,6 +75,17 @@ export function nextIntakeField(intake: IntakeStatus | null): IntakeField | null
 
 /** Whether a widget field is already answered, considering both the local
  * form edits and the server snapshot the form was seeded from. */
+/** Whether the backend already has a real budget answer from a plain-chat
+ * reply — extract_patch's budget.min/max/target slots, echoed by respond.py
+ * as intake.min_price/max_price/budget_skipped. Checked independently of the
+ * local form so a budget answered via free-text chat (after the widget
+ * already mounted, so the one-time form seed missed it) still suppresses the
+ * redundant widget question instead of asking again. */
+function isBudgetAnsweredOnServer(intake: IntakeStatus | null): boolean {
+  if (!intake) return false
+  return Boolean(intake.budget_skipped) || (intake.min_price != null && intake.max_price != null)
+}
+
 export function isFieldFilled(
   form: IntakeFormShape,
   field: IntakeField,
@@ -112,12 +123,22 @@ export function isFieldFilled(
  * hideDuplicateIntakeReply), which made real answered questions vanish and
  * reappear depending on which widget happened to be open. Suppressing the
  * redundant question is safe; deleting a real message never is.
+ *
+ * A field the user has ALREADY answered locally is never asked about, whatever
+ * the backend thinks. Without that clause the terminal `preferences` card —
+ * which by design stays open after the user picks a chip, since its own button
+ * is the only way to submit — re-rendered its question on every intake-stage
+ * turn: `nextIntakeField` is null once the gated fields are answered, and
+ * `'preferences' !== null` is true forever. That is the second bubble users
+ * saw next to an unrelated reply.
  */
 export function locallyAdvancedField(
   intake: IntakeStatus | null,
   activeField: IntakeField | null,
+  form: IntakeFormShape,
 ): IntakeField | null {
   if (!activeField) return null
+  if (isFieldFilled(form, activeField)) return null
   return activeField === nextIntakeField(intake) ? null : activeField
 }
 
@@ -145,10 +166,21 @@ export function currentIntakeField(
   for (const field of INTAKE_FIELD_ORDER) {
     if (isFieldMissing(intake, field)) {
       if (!isFieldFilled(form, field)) return field
+      // Load-bearing: the backend emits every unfilled gated key at once
+      // (respond.py's _intake_status_from_travel_state), not one per turn. So
+      // "missing but already filled locally" is the normal state during
+      // progressive disclosure — the user answered this widget without a chat
+      // turn, and the next widget is what should open. Returning `field` here
+      // instead would pin the widget on the first unsent answer until a chat
+      // turn happens, which is the whole flow.
       continue
     }
   }
-  if (!isFieldFilled(form, 'budget') && (intake.budget_options?.length ?? 0) > 0) {
+  if (
+    !isFieldFilled(form, 'budget') &&
+    !isBudgetAnsweredOnServer(intake) &&
+    (intake.budget_options?.length ?? 0) > 0
+  ) {
     return 'budget'
   }
   return 'preferences'

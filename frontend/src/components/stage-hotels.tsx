@@ -8,8 +8,7 @@ import { useMapSync } from '../hooks/use-map-sync'
 import { hotelOptionSyncId } from '../lib/map-sync-id'
 import { hotelMapFields, hotelMapRays } from '../lib/map-presentation'
 import { useHotelDetail } from '../hooks/use-hotel-detail'
-import { useHotelAmenityCatalog } from '../hooks/use-hotel-amenity-catalog'
-import { filterAndSortHotels, type HotelSortOrder } from '../lib/hotel-filters'
+import { activeAmenityPills, filterAndSortHotels, type HotelSortOrder } from '../lib/hotel-filters'
 import type { useFocusMode } from '../hooks/use-focus-mode'
 import type { Theme } from '../hooks/use-theme'
 import type { ChatState, HotelOption } from '../types'
@@ -72,7 +71,7 @@ export default function StageHotels({
 }) {
   const { t, i18n } = useTranslation()
   const hotels = hotelOptions
-  const amenityCatalog = useHotelAmenityCatalog()
+  const amenityCatalog = state.hotelFilterData.hotelAmenities
   const [minPrice, setMinPrice] = useState<number | null>(null)
   const [maxPrice, setMaxPrice] = useState<number | null>(null)
   const [minStars, setMinStars] = useState<number | null>(null)
@@ -108,19 +107,10 @@ export default function StageHotels({
     setPreferenceIds(state.hotelFilterData.activePreferences.map(({ id }) => id))
   }, [hotels, state.hotelFilterData.activePreferences])
 
-  const filterPreferences = useMemo(() => {
-    if (amenityCatalog == null) return state.hotelFilterData.allPreferences
-    const visibleIds = new Set([
-      ...hotels.flatMap((hotel) => hotel.amenities ?? []),
-      ...state.hotelFilterData.activePreferences.map(({ id }) => id),
-    ])
-    return amenityCatalog
-      .filter((amenity) => visibleIds.has(amenity.id))
-      .map((amenity) => ({
-        id: amenity.id,
-        label: i18n.language.startsWith('en') ? amenity.label_en || amenity.label_vi : amenity.label_vi || amenity.label_en,
-      }))
-  }, [amenityCatalog, hotels, i18n.language, state.hotelFilterData.activePreferences, state.hotelFilterData.allPreferences])
+  const filterPreferences = useMemo(
+    () => activeAmenityPills(state.hotelFilterData.allPreferences, amenityCatalog, i18n.language),
+    [amenityCatalog, i18n.language, state.hotelFilterData.allPreferences],
+  )
 
   const listRef = useRef<HTMLDivElement>(null)
   const savedScroll = useRef(0)
@@ -250,6 +240,7 @@ export default function StageHotels({
             selectedIndex={selectedIndex}
             focusedId={focusedId}
             nights={nights}
+            hotelAmenities={amenityCatalog}
             onSelect={(hotel) => onSelectHotel(hotel.index)}
             onOpen={openFocus}
             hoveredId={mapSync.hoveredId}
@@ -317,6 +308,8 @@ export default function StageHotels({
           <HotelDetailPanel
             hotelId={lastFocusedId}
             option={hotels.find((h) => h.id === lastFocusedId)}
+            hotelAmenities={amenityCatalog}
+            selectedAmenityIds={preferenceIds}
             onClose={focusMode.closeFocus}
           />
         </div>

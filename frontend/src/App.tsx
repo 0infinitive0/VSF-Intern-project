@@ -1,5 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { deleteSession } from './api/session-client'
+import { useAuth } from './auth/auth-context'
+import { consumeOAuthRedirectError, isIdentityAlreadyLinkedError } from './auth/oauth-redirect-error'
+import { translateAuthError } from './auth/translate-auth-error'
 import { useChatSession } from './hooks/use-chat-session'
 import { useIntakeForm } from './hooks/use-intake-form'
 import { usePanelResize } from './hooks/use-panel-resize'
@@ -8,14 +12,106 @@ import { deriveStageView, type StageView } from './lib/derive-stage'
 import { isFieldFilled } from './lib/next-intake-field'
 import type { HotelOption } from './types'
 import AppShell from './components/app-shell'
+import AuthPanel from './auth/auth-panel'
+import SessionExpiredModal from './components/session-expired-modal'
+import BootSplash from './components/boot-splash'
 
 /**
- * App — thin composition layer. Owns session/panel-width state and derives
- * the stage view; all layout and shell mechanics live in AppShell so future
- * phases (6-10) only fill in the areas it creates, never touching this file
- * or AppShell's structure again.
+ * App — the auth boot gate (plan 260814-supabase-auth-and-per-user-history).
+ * Every visitor gets a real Supabase session (anonymous or permanent) before
+ * anything below this line mounts: PlannerApp — and therefore
+ * use-chat-session.ts's own bootstrap effect, and every api/*-client.ts call
+ * it triggers — is not created as a component instance at all until
+ * `auth.status === 'ready'`, so no request ever goes out with no
+ * Authorization header; PlannerApp below is the original App component,
+ * verbatim, renamed. The other auth-related piece living here is the
+ * consumeOAuthRedirectError() effect below — the one place in the boot
+ * sequence positioned to catch a Google redirect landing back with an
+ * error before any other component has mounted.
  */
 export default function App() {
+  const auth = useAuth()
+  const { retryGoogleSignIn } = auth
+  const { t } = useTranslation()
+  const [authPanelOpen, setAuthPanelOpen] = useState(false)
+  const [authPanelError, setAuthPanelError] = useState('')
+  // True for the brief window between "this Google identity already belongs
+  // to a real, pre-existing account" being detected and the resulting
+  // retryGoogleSignIn() redirect actually navigating the browser away —
+  // every RETURNING Google user hits this path (their identity is always
+  // already linked to their own account by the time they come back on a
+  // fresh anonymous session), so it's the common case, not an edge case.
+  // Without this flag, PlannerApp/AppShell render normally in that window —
+  // a guest's empty history flashes on screen for a moment before the
+  // second redirect fires — which is exactly the "results flash empty,
+  // then reload again with the real history" you saw. Showing BootSplash
+  // instead keeps that window looking like ordinary loading, not a broken
+  // flash of the wrong account's (empty) state. The second redirect itself
+  // is unavoidable — Supabase has no way to "just sign in" without a fresh
+  // OAuth round-trip once the link attempt has already failed.
+  const [retryingGoogleSignIn, setRetryingGoogleSignIn] = useState(false)
+
+  // Runs once on mount, independent of auth.status: a failed OAuth link
+  // shows up as error params on the very first render after Google
+  // redirects back, not as something signInWithGoogle()'s own await ever
+  // sees — see oauth-redirect-error.ts. "This Google email already belongs
+  // to a different account" is not shown as an error here — from the
+  // visitor's side, clicking "Continue with Google" for an account that
+  // already exists should just sign them in, so this silently retries as a
+  // plain sign-in instead (auth-context.tsx's retryGoogleSignIn). Any other
+  // OAuth failure still surfaces through AuthPanel as before.
+  useEffect(() => {
+    const oauthError = consumeOAuthRedirectError()
+    if (!oauthError) return
+    if (isIdentityAlreadyLinkedError(oauthError)) {
+      setRetryingGoogleSignIn(true)
+      retryGoogleSignIn().then(({ error }) => {
+        // Success navigates the browser away — nothing left to do here, and
+        // retryingGoogleSignIn never needs to go false in that case.
+        if (!error) return
+        setRetryingGoogleSignIn(false)
+        setAuthPanelError(translateAuthError(error, t))
+        setAuthPanelOpen(true)
+      })
+      return
+    }
+    setAuthPanelError(translateAuthError(oauthError, t))
+    setAuthPanelOpen(true)
+  }, [retryGoogleSignIn, t])
+
+  if (auth.status === 'loading' || retryingGoogleSignIn) {
+    return <BootSplash />
+  }
+
+  return (
+    <>
+      <PlannerApp onOpenAuthPanel={() => setAuthPanelOpen(true)} />
+      <AuthPanel
+        open={authPanelOpen}
+        initialError={authPanelError}
+        onClose={() => {
+          setAuthPanelOpen(false)
+          setAuthPanelError('')
+        }}
+      />
+      <SessionExpiredModal
+        onSignInAgain={() => {
+          auth.dismissSessionExpired()
+          setAuthPanelOpen(true)
+        }}
+      />
+    </>
+  )
+}
+
+/**
+ * PlannerApp — thin composition layer. Owns session/panel-width state and
+ * derives the stage view; all layout and shell mechanics live in AppShell so
+ * future phases (6-10) only fill in the areas it creates, never touching
+ * this file or AppShell's structure again.
+ */
+function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
+  const auth = useAuth()
   const { state, send, selectHotel: selectHotelDirect, startNew, restore, changeHotel } = useChatSession()
   const {
     form: intakeForm,
@@ -91,6 +187,62 @@ export default function App() {
     refresh()
   }
 
+  // Resets the active chat session + history rail whenever the signed-in
+  // identity actually changes — sign-out (real user -> a new anonymous
+  // user), or signing into a different pre-existing account (email/password
+  // or Google). Reuses handleNewTrip() verbatim rather than a bespoke reset:
+  // same "fresh session + cleared intake + refetched history" outcome the
+  // "+ Chuyến đi mới" button already produces.
+  //
+  // Deliberately does NOT fire on the very first render (guarded by
+  // identityInitializedRef) — that's just normal boot, not a switch — and
+  // deliberately does NOT fire when an anonymous session is upgraded in
+  // place (register / link Google from a guest session): that keeps the
+  // same auth.users id throughout (see auth-context.tsx's module doc
+  // comment), so this effect never sees a change and the guest's chat
+  // history correctly carries over instead of getting wiped.
+  //
+  // Also covers the Google OAuth redirect case where the first render after
+  // landing back can still be transiently un-settled (the code/token
+  // exchange finishing a beat after mount): whenever auth.user?.id lands on
+  // its real final value, this fires and re-syncs — no manual refresh
+  // needed, regardless of exactly how long that settling takes.
+  //
+  // Skips a null auth.user?.id entirely — signOut() (auth-context.tsx) goes
+  // real-user -> null -> new-anonymous-user, awaiting supabase.auth.signOut()
+  // and supabase.auth.signInAnonymously() in sequence; auth.user is
+  // genuinely absent for that brief real window, not just an intermediate
+  // render. Firing handleNewTrip() (and therefore a session-creating fetch)
+  // right then sends it with no Authorization header — AUTH_REQUIRED=true
+  // in this project's backend .env, so that request gets a real 401, which
+  // session-expired-bus.ts reads as "your login died", surfacing the
+  // "Phiên làm việc đã hết hạn" modal on every sign-out. Waiting for the
+  // *next* non-null id (the new anonymous session) instead means this only
+  // ever fires once auth-headers.ts has a real token to attach, and still
+  // catches the net change (old real id -> new anonymous id) correctly.
+  const identityInitializedRef = useRef(false)
+  const previousUserIdRef = useRef<string | null>(null)
+  // Ref-to-latest-closure rather than a dep-array entry: handleNewTrip is
+  // recreated every render (it closes over resetIntakeForm, itself
+  // unmemoized in use-intake-form.ts), so putting it directly in the effect
+  // below would re-run on every render instead of only when the identity
+  // actually changes — same "cache without an Effect" ref pattern already
+  // used in use-session-history.ts's optimisticRowCreatedAtRef.
+  const handleNewTripRef = useRef(handleNewTrip)
+  handleNewTripRef.current = handleNewTrip
+  useEffect(() => {
+    const currentUserId = auth.user?.id ?? null
+    if (!identityInitializedRef.current) {
+      identityInitializedRef.current = true
+      previousUserIdRef.current = currentUserId
+      return
+    }
+    if (currentUserId === null) return
+    if (previousUserIdRef.current === currentUserId) return
+    previousUserIdRef.current = currentUserId
+    handleNewTripRef.current()
+  }, [auth.user?.id])
+
   async function handlePickSession(sessionId: string) {
     if (state.pending || sessionId === state.sessionId) return
     const restored = await restore(sessionId)
@@ -143,6 +295,7 @@ export default function App() {
       onPickSession={handlePickSession}
       onDeleteSession={handleDeleteSession}
       turnPending={state.pending}
+      onOpenAuthPanel={onOpenAuthPanel}
     />
   )
 }

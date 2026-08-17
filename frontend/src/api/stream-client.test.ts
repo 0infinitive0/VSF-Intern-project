@@ -44,10 +44,10 @@ describe('parseSse', () => {
 
   it('parses multiple frames delivered in a single chunk', async () => {
     const frames = await collect([
-      'event: phase\ndata: {"key":"received","at":1}\n\nevent: phase\ndata: {"key":"route_decided","at":2}\n\n',
+      'event: phase\ndata: {"key":"received","at":1}\n\nevent: phase\ndata: {"key":"hotel_search","at":2}\n\n',
     ])
     expect(frames.map((f) => f.event)).toEqual(['phase', 'phase'])
-    expect(frames[1].data).toEqual({ key: 'route_decided', at: 2 })
+    expect(frames[1].data).toEqual({ key: 'hotel_search', at: 2 })
   })
 
   it('yields the final frame even without a trailing blank-line terminator', async () => {
@@ -166,24 +166,21 @@ describe('sendMessageStream', () => {
     )
   })
 
-  it('invokes onPhase/onDelta/onReset handlers as frames arrive', async () => {
+  it('invokes onPhase/onDelta handlers as frames arrive', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
         mockResponse([
           'event: phase\ndata: {"key":"received","at":1}\n\n',
           'event: delta\ndata: {"text":"xin "}\n\n',
-          'event: reset\ndata: {"reason":"tool_error"}\n\n',
           'event: final\ndata: {"reply":"ok"}\n\n',
         ]),
       ),
     )
     const onPhase = vi.fn()
     const onDelta = vi.fn()
-    const onReset = vi.fn()
-    await sendMessageStream('sid', 'hi', 'vi', { onPhase, onDelta, onReset }, new AbortController().signal)
+    await sendMessageStream('sid', 'hi', 'vi', { onPhase, onDelta }, new AbortController().signal)
     expect(onPhase).toHaveBeenCalledWith('received', 1, { key: 'received', at: 1 })
     expect(onDelta).toHaveBeenCalledWith('xin ')
-    expect(onReset).toHaveBeenCalledWith('tool_error')
   })
 })

@@ -6,9 +6,10 @@ import RemoteImage from './remote-image'
 import RoomCard from './room-card'
 import { useHotelDetail } from '../hooks/use-hotel-detail'
 import { formatCurrency } from '../lib/format-currency'
+import { displayAmenityLabels } from '../lib/hotel-filters'
 import { formatHotelStars } from '../lib/format-stars'
 import { formatSourcePlatform } from '../lib/format-source-platform'
-import type { HotelOption } from '../types'
+import type { AmenityCatalogOption, HotelOption } from '../types'
 
 const NUM_LOCALE = (lang: string) => (lang === 'vi' ? 'vi-VN' : 'en-US')
 
@@ -35,6 +36,8 @@ const SECTION_EYEBROW =
 export default function HotelDetailPanel({
   hotelId,
   option,
+  hotelAmenities,
+  selectedAmenityIds,
   onClose,
 }: {
   /** null while no hotel has ever been focused yet this session (the caller
@@ -42,6 +45,10 @@ export default function HotelDetailPanel({
    * lastFocusedId — so this only happens transiently, before the first open). */
   hotelId: string | null
   option?: HotelOption
+  /** Shared catalog returned alongside the current hotel list. */
+  hotelAmenities: AmenityCatalogOption[]
+  /** Canonical amenity filters currently active in the hotel list. */
+  selectedAmenityIds: string[]
   onClose: () => void
 }) {
   const { t, i18n } = useTranslation()
@@ -51,6 +58,7 @@ export default function HotelDetailPanel({
   // hotel (matches the design's `state.rooms[hid]`, which never resets it
   // either) while a different hotel naturally shows nothing picked.
   const [roomPicks, setRoomPicks] = useState<Record<string, string>>({})
+  const [expandedAmenitiesHotelId, setExpandedAmenitiesHotelId] = useState<string | null>(null)
 
   if (hotelId == null) return <div className="flex-1 min-w-0" />
   const numFmt = new Intl.NumberFormat(NUM_LOCALE(i18n.language))
@@ -71,8 +79,30 @@ export default function HotelDetailPanel({
     detail?.amenities && detail.amenities.length > 0
       ? detail.amenities
       : detail?.amenity_groups
-        ? Object.values(detail.amenity_groups).flat()
+        ? // `amenity_groups` is a crawled jsonb column typed `dict[str, Any]`:
+          // narrow at runtime rather than assuming string[] and rendering
+          // `[object Object]` the first time a row disagrees.
+          Object.values(detail.amenity_groups)
+            .flat()
+            .filter((value): value is string => typeof value === 'string')
         : []
+  const labelForAmenity = (amenityId: string) =>
+    displayAmenityLabels([amenityId], hotelAmenities, i18n.language)[0] ?? amenityId
+  const displayAmenityIds = [...new Set(option?.display_amenities ?? [])]
+  const allAmenityIds = [...new Set([
+    ...displayAmenityIds,
+    ...(option?.amenities ?? []),
+    ...amenities,
+  ])]
+  const displayAmenityItems = displayAmenityIds.map((id) => ({ id, label: labelForAmenity(id) }))
+  const allAmenityItems = allAmenityIds
+    .map((id) => ({ id, label: labelForAmenity(id) }))
+    .sort((left, right) => left.label.localeCompare(right.label, i18n.language.startsWith('vi') ? 'vi' : 'en'))
+  const amenitiesExpanded = expandedAmenitiesHotelId === hotelId
+  const visibleAmenityItems = amenitiesExpanded || displayAmenityItems.length === 0
+    ? allAmenityItems
+    : displayAmenityItems
+  const canExpandAmenities = allAmenityItems.length > displayAmenityItems.length
   const policies = [
     { label: t('policyCheckIn'), value: detail?.check_in_time
         ? detail.check_in_time + (detail.check_in_until ? `–${detail.check_in_until}` : '')
@@ -300,19 +330,36 @@ export default function HotelDetailPanel({
               )}
 
               {/* Amenities */}
-              {amenities.length > 0 && (
+              {visibleAmenityItems.length > 0 && (
                 <div>
                   <div className={SECTION_EYEBROW}>{t('detailAmen')}</div>
                   <div className="flex flex-wrap gap-[7px]">
-                    {amenities.map((amenity) => (
+                    {visibleAmenityItems.map((amenity) => (
                       <span
-                        key={amenity}
-                        className="text-[11.5px] font-[450] px-[11px] py-[5px] rounded-full bg-fill text-on-surface-variant"
+                        key={amenity.id}
+                        className={`text-[11.5px] font-[450] px-[11px] py-[5px] rounded-full ${
+                          selectedAmenityIds.includes(amenity.id)
+                            ? 'bg-primary text-on-primary'
+                            : 'bg-fill text-on-surface-variant'
+                        }`}
                       >
-                        {amenity}
+                        {amenity.label}
                       </span>
                     ))}
                   </div>
+                  {canExpandAmenities && (
+                    <button
+                      type="button"
+                      aria-expanded={amenitiesExpanded}
+                      onClick={() => setExpandedAmenitiesHotelId(amenitiesExpanded ? null : hotelId)}
+                      className="mt-3 inline-flex items-center gap-1 text-[12px] font-[530] text-primary cursor-pointer bg-transparent border-0 p-0 hover:text-primary-strong"
+                    >
+                      {t(amenitiesExpanded ? 'detailAmenShowLess' : 'detailAmenShowAll')}
+                      <span className="material-symbols-outlined text-[16px]" aria-hidden="true">
+                        {amenitiesExpanded ? 'expand_less' : 'expand_more'}
+                      </span>
+                    </button>
+                  )}
                 </div>
               )}
             </div>

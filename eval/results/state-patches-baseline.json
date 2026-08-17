@@ -1,0 +1,298 @@
+{
+  "generated_at": "2026-08-13T09:12:33.052807+00:00",
+  "dataset": "state_patches.jsonl",
+  "summary": {
+    "micro_precision": 1.0,
+    "micro_recall": 0.8462,
+    "micro_f1": 0.9167,
+    "exact_match_rate": 0.8462,
+    "ambiguous_accuracy": 1.0,
+    "symptom_exact_match": 1.0,
+    "total_cases": 15,
+    "total_changes_expected": 13,
+    "total_changes_produced": 11,
+    "total_tp": 11
+  },
+  "cases": [
+    {
+      "utterance": "ngày 1 tôi muốn thiên nhiên khám phá",
+      "symptom": "Đổi theme ngày 1 không ăn",
+      "expected_ambiguous": false,
+      "ambiguous_correct": null,
+      "tp": 1,
+      "produced": 1,
+      "expected_count": 1,
+      "exact_match": 1,
+      "produced_applied": [
+        {
+          "path": "daily_preferences.1.theme",
+          "operation": "set",
+          "value": "thiên nhiên"
+        }
+      ],
+      "produced_rejected": [],
+      "has_ambiguous": false
+    },
+    {
+      "utterance": "tôi muốn ngân sách tối đa 2 triệu một đêm",
+      "symptom": "Ngân sách chưa nhập chưa cho edit",
+      "expected_ambiguous": false,
+      "ambiguous_correct": null,
+      "tp": 1,
+      "produced": 1,
+      "expected_count": 1,
+      "exact_match": 1,
+      "produced_applied": [
+        {
+          "path": "budget.max",
+          "operation": "set",
+          "value": 2000000
+        }
+      ],
+      "produced_rejected": [],
+      "has_ambiguous": false
+    },
+    {
+      "utterance": "tôi muốn đi từ ngày 01/07",
+      "symptom": "Ngày 01/07 thiếu năm đoán rồi khoá cứng",
+      "expected_ambiguous": true,
+      "ambiguous_correct": 1,
+      "tp": 0,
+      "produced": 0,
+      "expected_count": 0,
+      "exact_match": 1,
+      "produced_applied": [],
+      "produced_rejected": [],
+      "has_ambiguous": true
+    },
+    {
+      "utterance": "đi từ ngày 1-2-2027",
+      "symptom": "Ngày 1-2-2026 31/07 thứ tự ngày tháng",
+      "expected_ambiguous": true,
+      "ambiguous_correct": 1,
+      "tp": 0,
+      "produced": 0,
+      "expected_count": 0,
+      "exact_match": 1,
+      "produced_applied": [],
+      "produced_rejected": [],
+      "has_ambiguous": true
+    },
+    {
+      "utterance": "bạn có thể giải phương trình x bình phương bằng 4 không",
+      "symptom": "Từ chối toán code vé máy bay",
+      "expected_ambiguous": false,
+      "ambiguous_correct": null,
+      "tp": 0,
+      "produced": 0,
+      "expected_count": 0,
+      "exact_match": 1,
+      "produced_applied": [],
+      "produced_rejected": [],
+      "has_ambiguous": false
+    },
+    {
+      "utterance": "tôi muốn đi Đà Nẵng",
+      "symptom": null,
+      "expected_ambiguous": false,
+      "ambiguous_correct": null,
+      "tp": 1,
+      "produced": 1,
+      "expected_count": 1,
+      "exact_match": 1,
+      "produced_applied": [
+        {
+          "path": "destination",
+          "operation": "set",
+          "value": "Đà Nẵng"
+        }
+      ],
+      "produced_rejected": [],
+      "has_ambiguous": false
+    },
+    {
+      "utterance": "đi 5 ngày",
+      "symptom": null,
+      "expected_ambiguous": false,
+      "ambiguous_correct": null,
+      "tp": 2,
+      "produced": 2,
+      "expected_count": 2,
+      "exact_match": 1,
+      "produced_applied": [
+        {
+          "path": "dates.start",
+          "operation": "set",
+          "value": "2026-09-01"
+        },
+        {
+          "path": "dates.end",
+          "operation": "set",
+          "value": "2026-09-05"
+        }
+      ],
+      "produced_rejected": [],
+      "has_ambiguous": false
+    },
+    {
+      "utterance": "2 người lớn 1 trẻ em",
+      "symptom": null,
+      "expected_ambiguous": false,
+      "ambiguous_correct": null,
+      "tp": 0,
+      "produced": 0,
+      "expected_count": 1,
+      "exact_match": 0,
+      "produced_applied": [],
+      "produced_rejected": [
+        {
+          "path": "people",
+          "operation": "set",
+          "value": "2 người lớn 1 trẻ em",
+          "reason": "people: expected an integer"
+        }
+      ],
+      "has_ambiguous": false
+    },
+    {
+      "utterance": "thêm sở thích ẩm thực và văn hóa",
+      "symptom": null,
+      "expected_ambiguous": false,
+      "ambiguous_correct": null,
+      "tp": 1,
+      "produced": 1,
+      "expected_count": 1,
+      "exact_match": 1,
+      "produced_applied": [
+        {
+          "path": "preferences.themes",
+          "operation": "set",
+          "value": [
+            "ẩm thực",
+            "văn hóa"
+          ]
+        }
+      ],
+      "produced_rejected": [],
+      "has_ambiguous": false
+    },
+    {
+      "utterance": "thêm sở thích biển",
+      "symptom": null,
+      "expected_ambiguous": false,
+      "ambiguous_correct": null,
+      "tp": 1,
+      "produced": 1,
+      "expected_count": 1,
+      "exact_match": 1,
+      "produced_applied": [
+        {
+          "path": "preferences.themes",
+          "operation": "append",
+          "value": "biển"
+        }
+      ],
+      "produced_rejected": [],
+      "has_ambiguous": false
+    },
+    {
+      "utterance": "tôi không có ngân sách cụ thể",
+      "symptom": null,
+      "expected_ambiguous": false,
+      "ambiguous_correct": null,
+      "tp": 1,
+      "produced": 1,
+      "expected_count": 1,
+      "exact_match": 1,
+      "produced_applied": [
+        {
+          "path": "budget.max",
+          "operation": "set",
+          "value": null
+        }
+      ],
+      "produced_rejected": [],
+      "has_ambiguous": false
+    },
+    {
+      "utterance": "khoá ngày 1 và 2 không thay đổi",
+      "symptom": null,
+      "expected_ambiguous": false,
+      "ambiguous_correct": null,
+      "tp": 1,
+      "produced": 1,
+      "expected_count": 1,
+      "exact_match": 1,
+      "produced_applied": [
+        {
+          "path": "locked_days",
+          "operation": "set",
+          "value": [
+            1,
+            2
+          ]
+        }
+      ],
+      "produced_rejected": [],
+      "has_ambiguous": false
+    },
+    {
+      "utterance": "khách sạn gần biển bán kính 3km",
+      "symptom": null,
+      "expected_ambiguous": false,
+      "ambiguous_correct": null,
+      "tp": 1,
+      "produced": 1,
+      "expected_count": 1,
+      "exact_match": 1,
+      "produced_applied": [
+        {
+          "path": "hotel_preferences.radius_km",
+          "operation": "set",
+          "value": 3.0
+        }
+      ],
+      "produced_rejected": [],
+      "has_ambiguous": false
+    },
+    {
+      "utterance": "khách sạn từ 4 sao trở lên",
+      "symptom": null,
+      "expected_ambiguous": false,
+      "ambiguous_correct": null,
+      "tp": 1,
+      "produced": 1,
+      "expected_count": 1,
+      "exact_match": 1,
+      "produced_applied": [
+        {
+          "path": "hotel_preferences.min_star_rating",
+          "operation": "set",
+          "value": 4
+        }
+      ],
+      "produced_rejected": [],
+      "has_ambiguous": false
+    },
+    {
+      "utterance": "xoá bỏ sở thích biển",
+      "symptom": null,
+      "expected_ambiguous": false,
+      "ambiguous_correct": null,
+      "tp": 0,
+      "produced": 0,
+      "expected_count": 1,
+      "exact_match": 0,
+      "produced_applied": [],
+      "produced_rejected": [
+        {
+          "path": "preferences.themes",
+          "operation": "remove",
+          "value": "biển",
+          "reason": "preferences.themes: cannot remove from a slot with no value"
+        }
+      ],
+      "has_ambiguous": false
+    }
+  ]
+}

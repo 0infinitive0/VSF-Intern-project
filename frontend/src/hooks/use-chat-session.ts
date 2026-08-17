@@ -2,9 +2,9 @@
  * use-chat-session.ts — single useReducer managing the entire chat state.
  *
  * Session lifecycle:
- *   - On mount: try to rehydrate session_id from sessionStorage.
- *     If none, create a new session.
- *     If found but the server returns 404 (server restarted), silently create a new session (D1).
+ *   - On mount: try to rehydrate session_id from sessionStorage, then ping it.
+ *     Only a 404 (the server genuinely lost it) starts a new session silently
+ *     — see resolveBootstrapSession for the full decision table.
  *   - startNew(): create a new session, no DELETE — the old one stays persisted
  *     and stays in the history rail (deleting a conversation is a separate,
  *     explicit action against session-client.ts's deleteSession()).
@@ -14,7 +14,14 @@
  */
 
 import { useReducer, useEffect, useRef, useCallback } from 'react'
-import { changeHotel as changeHotelRequest, createSession, selectHotel as selectHotelRequest, sendMessage } from '../api/chat-client'
+import {
+  changeHotel as changeHotelRequest,
+  createSession,
+  pingSession,
+  selectHotel as selectHotelRequest,
+  sendMessage,
+} from '../api/chat-client'
+import type { CreateSessionResponse, SessionPing } from '../api/chat-client'
 import { restoreSession } from '../api/session-client'
 import { sendMessageStream, StreamUnsupported } from '../api/stream-client'
 import i18n from '../i18n'
@@ -32,7 +39,7 @@ export const INITIAL_STATE: ChatState = {
   messages: [],
   suggestions: [],
   hotelOptions: [],
-  hotelFilterData: { minPrice: null, maxPrice: null, allPreferences: [], activePreferences: [] },
+  hotelFilterData: { minPrice: null, maxPrice: null, hotelAmenities: [], allPreferences: [], activePreferences: [] },
   tripPlan: null,
   intake: null,
   pending: false,
@@ -67,7 +74,6 @@ export type Action =
   | { type: 'RESTORE'; sessionId: string; data: SessionRestore }
   | { type: 'STREAM_PHASE'; key: PhaseKey; at: number; turnId: number }
   | { type: 'STREAM_DELTA'; text: string; turnId: number }
-  | { type: 'STREAM_RESET'; turnId: number }
   // Dedicated hotels/change round-trip (step-navigator.tsx's "đổi khách sạn"
   // action) — never part of the chat turn machinery: no message, no LLM call,
   // just a hotel-list refresh. Own pending flag (`hotelsLoading`) so Composer/
@@ -87,6 +93,7 @@ function applyPlannerResponse(state: ChatState, data: PlannerChatResponse, messa
     hotelFilterData: {
       minPrice: data.compound_min_price ?? null,
       maxPrice: data.compound_max_price ?? null,
+      hotelAmenities: data.hotel_amenities ?? [],
       allPreferences: data.all_preferences ?? [],
       activePreferences: data.active_preferences ?? [],
     },
@@ -231,11 +238,22 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
           role: m.role === 'assistant' ? ('ai' as const) : ('user' as const),
           text: m.text,
           stage: m.stage,
+          // Known limitation, not an oversight: a restored bubble can never be
+          // marked as an error today, because `chat_messages` has no `stage`
+          // column (backend/scripts/database_schema.sql) and
+          // `session_store.restored_messages` therefore hardcodes "intake" for
+          // every row. A live turn does get error styling (its `stage` comes
+          // straight off the response). Storing the real stage needs a
+          // migration; this line is already correct for the day that lands.
           isError: m.stage === 'error',
           at: m.at || undefined,
         })),
         suggestions: data.suggestions || [],
         hotelOptions: data.hotel_options || [],
+        hotelFilterData: {
+          ...INITIAL_STATE.hotelFilterData,
+          hotelAmenities: data.hotel_amenities ?? [],
+        },
         tripPlan: data.trip_plan ?? null,
         intake: data.intake ?? null,
       }
@@ -249,14 +267,6 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
       if (action.turnId !== state.turnId) return state
       return { ...state, streamingText: state.streamingText + action.text }
 
-    // Agent discarded this attempt (textual tool-call JSON / SYSTEM ERROR
-    // caught late, or a retry) — drop whatever text was flushed so far. The
-    // growing phase list is deliberately left alone: those steps really did
-    // happen and stay true regardless of which attempt's prose wins.
-    case 'STREAM_RESET':
-      if (action.turnId !== state.turnId) return state
-      return { ...state, streamingText: '' }
-
     case 'HOTELS_CHANGE_START':
       return { ...state, hotelsLoading: true, error: null }
 
@@ -266,6 +276,12 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
         ...state,
         hotelsLoading: false,
         hotelOptions: data.hotel_options || [],
+        hotelFilterData: {
+          ...state.hotelFilterData,
+          hotelAmenities: data.hotel_amenities ?? [],
+          allPreferences: data.all_preferences ?? [],
+          activePreferences: data.active_preferences ?? [],
+        },
         tripPlan: data.trip_plan || state.tripPlan,
         intake: data.intake || state.intake,
         error: null,
@@ -277,6 +293,57 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
 
     default:
       return state
+  }
+}
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
+
+export interface BootstrapDeps {
+  stored: string | null
+  ping: (sessionId: string) => Promise<SessionPing>
+  create: () => Promise<CreateSessionResponse>
+  fallbackId: () => string
+}
+
+/**
+ * Decides which session id the app starts on. Pure apart from its injected
+ * dependencies, so all four ping outcomes are unit-testable without rendering
+ * the hook (no React Testing Library in this project — see INITIAL_STATE).
+ *
+ * Only ONE outcome may abandon the stored conversation: `gone`, the server
+ * saying it has no such session. `unauthorized` is a token problem
+ * AuthProvider refreshes on its own (pingSession has already alerted the
+ * session-expired bus by then), and `unknown` is no evidence at all — both
+ * keep the stored id rather than discarding a live conversation.
+ *
+ * `persist: true` means the returned id is new and the caller must write it to
+ * sessionStorage; storage stays with the caller so this function has no
+ * side effects of its own.
+ */
+export async function resolveBootstrapSession({
+  stored,
+  ping,
+  create,
+  fallbackId,
+}: BootstrapDeps): Promise<{ sessionId: string; persist: boolean }> {
+  if (stored) {
+    if ((await ping(stored)) !== 'gone') return { sessionId: stored, persist: false }
+    try {
+      return { sessionId: (await create()).session_id, persist: true }
+    } catch {
+      // The replacement could not be created — keep the stored id rather than
+      // leaving the app with none; the next turn will 404 loudly if it really
+      // is gone.
+      return { sessionId: stored, persist: false }
+    }
+  }
+
+  try {
+    return { sessionId: (await create()).session_id, persist: true }
+  } catch {
+    // Backend unreachable on a first visit: a client-side id still lets the UI
+    // mount, and the server adopts it on the first successful turn.
+    return { sessionId: fallbackId(), persist: true }
   }
 }
 
@@ -311,42 +378,15 @@ export function useChatSession() {
     let cancelled = false
 
     async function bootstrap() {
-      const stored = sessionStorage.getItem(SESSION_KEY)
-
-      if (stored) {
-        // Validate stored session — server may have restarted (D1)
-        try {
-          const res = await fetch(`/api/v1/chat/${encodeURIComponent(stored)}/plan`)
-          if (res.status === 404) {
-            // Server lost this session — start fresh silently
-            const data = await createSession()
-            if (cancelled) return
-            sessionStorage.setItem(SESSION_KEY, data.session_id)
-            dispatch({ type: 'SESSION_READY', sessionId: data.session_id })
-          } else {
-            // Session still alive
-            if (cancelled) return
-            dispatch({ type: 'SESSION_READY', sessionId: stored })
-          }
-        } catch {
-          // Network error during ping — still use stored id optimistically
-          if (cancelled) return
-          dispatch({ type: 'SESSION_READY', sessionId: stored })
-        }
-      } else {
-        try {
-          const data = await createSession()
-          if (cancelled) return
-          sessionStorage.setItem(SESSION_KEY, data.session_id)
-          dispatch({ type: 'SESSION_READY', sessionId: data.session_id })
-        } catch {
-          // If session creation fails, generate a client-side fallback UUID
-          if (cancelled) return
-          const fallback = crypto.randomUUID()
-          sessionStorage.setItem(SESSION_KEY, fallback)
-          dispatch({ type: 'SESSION_READY', sessionId: fallback })
-        }
-      }
+      const { sessionId, persist } = await resolveBootstrapSession({
+        stored: sessionStorage.getItem(SESSION_KEY),
+        ping: pingSession,
+        create: createSession,
+        fallbackId: () => crypto.randomUUID(),
+      })
+      if (cancelled) return
+      if (persist) sessionStorage.setItem(SESSION_KEY, sessionId)
+      dispatch({ type: 'SESSION_READY', sessionId })
     }
 
     bootstrap()
@@ -387,7 +427,6 @@ export function useChatSession() {
           {
             onPhase: (key, at) => dispatch({ type: 'STREAM_PHASE', key: key as PhaseKey, at, turnId }),
             onDelta: (deltaText) => dispatch({ type: 'STREAM_DELTA', text: deltaText, turnId }),
-            onReset: () => dispatch({ type: 'STREAM_RESET', turnId }),
           },
           controller.signal,
         )

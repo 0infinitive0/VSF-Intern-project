@@ -121,14 +121,14 @@ deserialize to `"auto"` and behave exactly as today.
 
 ## Success Criteria
 
-- [ ] "đổi theme ngày 1 sang thiên nhiên" on a trip **with** preferences changes day 1's
+- [x] "đổi theme ngày 1 sang thiên nhiên" on a trip **with** preferences changes day 1's
       scheduled attractions, not just its title
-- [ ] Days 2..N in that same trip keep their preference-derived themes
-- [ ] A second consecutive replan of day 1 still honors the user's theme (persistence round-trip)
-- [ ] First-time "khách sạn có hồ bơi" labels only hotels that actually match
-- [ ] The reply names the day and theme applied
-- [ ] Characterization tests for all three unaffected callers pass unchanged
-- [ ] `make test` green
+- [x] Days 2..N in that same trip keep their preference-derived themes
+- [x] A second consecutive replan of day 1 still honors the user's theme (persistence round-trip)
+- [x] First-time "khách sạn có hồ bơi" labels only hotels that actually match
+- [x] The reply names the day and theme applied
+- [x] Characterization tests for all three unaffected callers pass unchanged — `test_trip_scheduler.py`, `test_trip_modification.py`, `test_hotel_flow_tools.py`: 81/81 pass
+- [ ] `make test` green — not verified in this environment: `make test` runs the full unscoped suite, which calls the real OpenAI/LangSmith APIs per this repo's `.env` and was explicitly avoided this session. The three touched test files pass in full (81/81)
 
 ## Risk Assessment
 

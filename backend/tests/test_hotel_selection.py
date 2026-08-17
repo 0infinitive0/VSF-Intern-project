@@ -330,6 +330,21 @@ def test_select_hotel_candidates_filters_destination_and_hydrates(monkeypatch):
     assert candidate.coordinate_pair is not None
 
 
+def test_select_hotel_candidates_keeps_canonical_amenities_when_rpc_omits_them(monkeypatch):
+    monkeypatch.setattr(
+        hotel_selection_module,
+        "search_hotels_with_rooms",
+        lambda **_kwargs: [{"id": "hotel-1", "similarity": 0.77, "amenities": [], "amenity_groups": {}}],
+    )
+    monkeypatch.setattr(
+        hotel_selection_module, "_get_supabase_client", lambda: _FakeSupabaseClient(_CANONICAL_ROWS)
+    )
+
+    data, _candidate = select_hotel_candidates("Đà Nẵng", "dest-1", "2 người")[0]
+
+    assert data["amenities"] == ["wifi", "pool"]
+
+
 def test_select_hotel_candidates_forwards_min_and_max_price_as_hard_filter(monkeypatch):
     """A resolved budget range must reach the search's hard price filter, not just the
     ranking bonus — this is the regression coverage for the "budget accepted but

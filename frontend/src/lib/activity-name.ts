@@ -38,7 +38,11 @@ const ACTIVITY_PREFIXES = [
  * "Ăn trưa tại NHÀ HÀNG NGON" -> "NHÀ HÀNG NGON". Falls back to the full
  * string unchanged when no known template matches (never invents a name).
  */
-export function placeNameFromActivity(activity: string): string {
+export function placeNameFromActivity(activity: string | null | undefined): string {
+  // `ItineraryItem.activity` is genuinely nullable on the wire (trip_formatter
+  // passes the DB value straight through), and an item with no activity has no
+  // place name to extract — '' is the honest answer, not a crash.
+  if (!activity) return ''
   for (const prefix of ACTIVITY_PREFIXES) {
     if (activity.startsWith(prefix)) return activity.slice(prefix.length)
   }

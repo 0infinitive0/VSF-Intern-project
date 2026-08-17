@@ -14,9 +14,8 @@ so Phase 3 (backend) and Phase 4 (React frontend) can build against it independe
 | `DELETE` | `/api/v1/chat/{session_id}` | — | `204` | Phase 3 |
 | `POST` | `/api/v1/planner_chat` | `{message, session_id, language, stay_dates, min_price, max_price}` | `PlannerChatResponse` | Shipped (extended in Phase 3) |
 | `POST` | `/api/v1/planner_chat/stream` | same as `/planner_chat` | `text/event-stream` (SSE) | Shipped (plan 260806-1602, Phase 1) |
-| `POST` | `/api/v1/hotels/search` | `{session_id, load_more}` | `{hotels, has_more}` | Phase 3 |
 | `POST` | `/api/v1/hotels/select` | `{session_id, hotel_id}` | `PlannerChatResponse` | Alias: `/chat/select_hotel` |
-| `POST` | `/api/v1/itineraries/generate` | `{session_id, language}` | `{status, trip_plan}` | Phase 3 |
+| `POST` | `/api/v1/hotels/change` | `{session_id}` | `PlannerChatResponse` | Shipped |
 | `GET` | `/api/v1/search_attractions` | `?q=...&k=10` | `{status, results}` | Phase 3 |
 | `GET` | `/api/v1/search_hotels` | `?q=...&k=10` | `{status, results}` | Phase 3 |
 | `GET` | `/api/v1/hotels/{hotel_id}` | `?check_in=YYYY-MM-DD&check_out=YYYY-MM-DD` | `HotelDetail` | Phase 3 |
@@ -27,6 +26,34 @@ so Phase 3 (backend) and Phase 4 (React frontend) can build against it independe
 `message` stays required with `min_length=1`, and `session_id` stays required on
 `planner_chat`, so `tests/test_api/test_routes.py` passes unchanged (backwards
 compatibility, per D10).
+
+### Removed endpoints — breaking change, 2026-08-15
+
+Three endpoints were **deleted**, not deprecated. They are gone from the running
+app; a call to any of them now returns `404`.
+
+| Removed | Was documented as | Why |
+|---|---|---|
+| `POST /api/v1/hotels/search` | `{session_id, load_more}` → `{hotels, has_more}` | Read `session.pending_hotel_selection`, `session.intake_state`, `session.hotel_pref_state` |
+| `POST /api/v1/itineraries/generate` | `{session_id, language}` → `{status, trip_plan}` | Read `session.trip_data` |
+| `POST /api/v1/chat/select_place` (+ `/places/select` alias) | `{session_id, place_id}` → `PlannerChatResponse` | Sent `"Tôi chọn địa điểm ID …"` to an extractor; no node reads `place_id` |
+
+All three read state belonging to the control plane that the graph cutover
+removed. Nothing in the graph writes those fields any more, so the endpoints
+had been answering from state frozen at session creation — `/itineraries/generate`
+in particular returned `{"status": "success", "trip_plan": null}` for every call.
+They were removed rather than ported to graph state because nothing calls them:
+no `frontend/src/`, `backend/tests/`, or `eval/` file references any of the three,
+and this document was their only remaining consumer. Place selection is resolved
+through the `rebuild_day` interrupt, not an endpoint (see `qa_node`'s docstring
+for why it deliberately has no `select_place` tool).
+
+**Known debt — `POST /hotels/change`.** It works and the frontend uses it, but it
+drives the turn by sending the natural-language string `"đổi khách sạn"` into the
+graph for an extractor to interpret, rather than setting a deterministic state
+signal. `POST /hotels/select` shows the shape this should take
+(`extra_state={"selected_hotel_id": …}`). Fixing it needs a new signal that
+`hotel_node` reads, so it is recorded here rather than changed quietly.
 
 ## Endpoint Details
 
@@ -149,9 +176,6 @@ data: {"key":"hotel_search","tool":"recommend_hotels","at":1754...}
 event: delta
 data: {"text":"Khách sạn này "}
 
-event: reset
-data: {"reason":"discarded_tool_call_json"}
-
 event: final
 data: {"session_id":"...","reply":"...","suggestions":[...],"stage":"hotel_options",
        "hotel_options":[...],"trip_plan":null,"intake":{...},"requires_stay_dates":false}
@@ -166,10 +190,11 @@ data: {"detail":"Đã xảy ra lỗi máy chủ. Vui lòng thử lại."}
 - `: heartbeat` — comment frame every 15s of silence, guarding proxy idle timeouts.
 - `phase` — real pipeline progress (see key table below). `key` is **opaque**:
   the backend never sends display text; the frontend owns i18n labels.
-- `delta` — real LLM tokens, only on the `_run_chat_agent` branch (Phase 3).
-  Clients must NOT assume every turn has deltas.
-- `reset` — safety net telling the client to discard buffered delta text
-  (an agent attempt was dropped after streaming had started) (Phase 3).
+- `delta` — real LLM tokens, and only from the graph nodes that write prose for
+  the user (`agents/graph/phase_keys.py`'s `STREAMING_NODES`: `qa_node`,
+  `intake_qa`). Clients must NOT assume every turn has deltas — a turn whose
+  work is deterministic (hotel search, itinerary build, a slot question) has no
+  tokens to stream and sends none.
 - `final` — terminal frame carrying the full `PlannerChatResponse` dict.
 - `error` — terminal frame for turn failures; `detail` is sanitized, no internals.
 
@@ -179,9 +204,11 @@ data: {"detail":"Đã xảy ra lỗi máy chủ. Vui lòng thử lại."}
   never zero (`emitter.close()` is in the worker's `finally`).
 - `final.data` is the same dict `POST /planner_chat` serializes for the same
   scenario — no extra/missing/renamed fields.
-- Concatenating all `delta.text` (after the most recent `reset`) equals
-  `final.reply` on turns that streamed tokens. Asserted by tests, not hoped for.
-- `delta` only appears on the `_run_chat_agent` branch.
+- `delta` text is a prefix of the answer `final.reply` carries; `final` is
+  always the authoritative reply.
+- `delta` never carries a node's structured output. Filtering is by producing
+  node, not by inspecting the text, so JSON from `extract_patch`/`supervisor`
+  and the finished reply from `respond` are excluded structurally.
 - `phase.key` is an opaque key — no display text crosses the wire.
 
 **`phase` key table** (every key = a real code position it is emitted at; nothing is
@@ -191,16 +218,21 @@ exist for that turn, and UIs must tolerate missing steps):
 | `key` | Emitted at | Deterministic or LLM |
 |---|---|---|
 | `received` | start of the turn (stream endpoint worker, `routes.py`) | — |
-| `routing` | immediately before `_decide_route` (`agents/session.py`) — only when the supervisor router is enabled | LLM supervisor |
-| `route_decided` | after `_decide_route`, carries `route` | — |
-| `compacting_history` | inside `_compact_history`, only when compaction actually runs (`agents/session.py`) | LLM |
-| `intake_check` | entry of `_run_intake` (`agents/session.py`) | deterministic |
-| `hotel_search` | before `tools.recommend_hotels.invoke` (`agents/session.py`) | DB + vector |
-| `tool_start` / `tool_end` | agent event loop (`agents/session.py`), carries `tool` | — |
+| `routing` | after the `supervisor` node runs | LLM supervisor |
+| `compacting_history` | after the `load_context` node runs | deterministic |
+| `intake_check` | after the `extract_patch` node runs | LLM |
+| `hotel_search` | after the `hotel_node` node runs | DB + vector |
 | `itinerary_build` | entry of `_generate_and_save_itinerary` (`services/trip_planner.py`) | LLM + scheduler |
 | `routing_legs` | inside `recalculate_itinerary_routes` (`services/routing.py`), once before the day loop, carries `days` | HTTP routing |
 | `persisting` | right before the first external DB write — inside BOTH `_persist_itinerary_metadata` (`services/trip_planner.py`) and `ItineraryStore.finalize_trip_data` (`services/itinerary_store.py`) | DB write |
-| `generating` | first prose token of the agent (Phase 3) | LLM |
+| `generating` | after `qa_node` / `intake_qa` runs — the two nodes that also stream `delta` | LLM |
+
+Node-derived keys come from `PHASE_KEY_BY_NODE` (`agents/graph/phase_keys.py`),
+emitted while draining LangGraph's `updates` stream. `itinerary_build`,
+`routing_legs` and `persisting` are emitted from inside the services instead,
+because they describe steps within one node's work that the node boundary
+cannot see; `itinerary_node` is deliberately absent from the node map so
+`itinerary_build` is not reported twice for one turn.
 
 **Not shipped:** turn cancellation (`POST /chat/{session_id}/cancel`, a `cancelled`
 terminal frame, and the "Dừng" stop control). This is plan `260806-1602`'s Phase 4,
@@ -219,35 +251,6 @@ never rely on a fixed order beyond `received` first and the terminal frame last.
 
 ### Hotel Selection & Itinerary Flow
 
-#### `POST /hotels/search`
-Requests additional hotel recommendations for the current session (Pagination). Returns up to 5 new hotels that haven't been shown in the current session.
-
-**Request Body:**
-```json
-{
-  "session_id": "uuid-string",
-  "load_more": true
-}
-```
-
-**Response:**
-```json
-{
-  "hotels": [
-    {
-      "id": "uuid",
-      "index": 6,
-      "name": "Hotel Name",
-      "star_rating": 4,
-      "average_nightly_price": 1200000,
-      "description": "...",
-      "matched_rooms": []
-    }
-  ],
-  "has_more": true
-}
-```
-
 #### `POST /hotels/select` (Alias: `/chat/select_hotel`)
 Explicitly selects a hotel from the provided options. The AI engine registers the selection in the session state.
 
@@ -260,38 +263,6 @@ Explicitly selects a hotel from the provided options. The AI engine registers th
 ```
 
 **Response:** `PlannerChatResponse` (Same as `/planner_chat` response)
-
-#### `POST /itineraries/generate`
-Forces the generation of an itinerary based on the current session state. Call this after a hotel is selected if the itinerary isn't immediately attached to the hotel selection response.
-
-**Request Body:**
-```json
-{
-  "session_id": "uuid-string",
-  "language": "string (optional)"
-}
-```
-
-**Response:**
-```json
-{
-  "status": "success",
-  "trip_plan": {
-    "hotel": {},
-    "days": [
-      {
-        "day_number": 1,
-        "theme": "string",
-        "items": [
-           { "activity": "string", "start_time": "08:00", "end_time": "12:00" }
-        ]
-      }
-    ],
-    "status": "Draft",
-    "adjustments": []
-  }
-}
-```
 
 ### Detail Lookups
 
@@ -626,3 +597,55 @@ timeline. `404` if `session_id` doesn't exist or was never persisted.
   "intake": { "...same shape as PlannerChatResponse.intake..." }
 }
 ```
+
+## Authentication (plan `260814-supabase-auth-and-per-user-history`)
+
+Every session-scoped endpoint below now accepts (and, once `AUTH_REQUIRED=true`, requires)
+`Authorization: Bearer <supabase-access-token>`. Sessionless catalog lookups
+(`GET /hotels/{id}`, `GET /attractions/{id}`, `GET /search_attractions`, `GET /search_hotels`,
+`GET /status`) are unaffected — they carry no per-user data.
+
+**Identity model.** Every visitor — signed in or not — is expected to hold a real Supabase
+JWT: guests get one transparently via Supabase Anonymous Auth (`supabase.auth.signInAnonymously()`
+on the frontend), so `current_user` is a genuine identity even before someone registers.
+Registering/logging in from an anonymous session upgrades that same `auth.users` row in place
+(`updateUser`/`linkIdentity`, not a new `signUp`), so a guest's chat history is not lost when
+they create an account — it was never keyed by anything else.
+
+**Rollout flag — `AUTH_REQUIRED` (backend `.env`, default `false`).** Governs only what
+happens when a request arrives with **no or an invalid token**:
+
+- `AUTH_REQUIRED=false` (default): such a request is treated as having no caller identity
+  (`current_user = None`), not rejected. This preserves every pre-auth client/test unchanged.
+- `AUTH_REQUIRED=true`: such a request gets `401 {"detail": "Chưa đăng nhập hoặc phiên đăng
+  nhập không hợp lệ."}`.
+
+A **valid** token is always honored and always identifies the caller, regardless of this flag —
+it only ever relaxes what happens to callers with no token, never whether a good one is trusted.
+
+**Ownership semantics — 404, never 403.** A session with an owner (`sessions.user_id`) is
+only reachable by that same caller. A mismatch — whether the caller is a different
+authenticated user or has no identity at all — returns the same `404 {"detail": "Phiên chat
+không tồn tại."}` used for a genuinely unknown `session_id`, never `403`: a distinct status
+code would itself leak "this session_id is real, it's just not yours" (session-enumeration
+side channel). Sessions with **no** owner (rows that predate this plan, or created outside
+the HTTP API — e.g. the CLI) remain accessible to any caller, matching exactly what happened
+before ownership existed; this is a deliberate, permissive gap for legacy/out-of-band
+sessions, not something to `403` shut.
+
+Applies to: `POST /chat/session` (stamps the caller as owner), `GET /chat/sessions` (now
+**scoped to the caller** — previously returned every persisted session in the database with
+no filtering at all; treat any client that assumed a global list as relying on a fixed bug),
+`GET /chat/{session_id}/restore`, `GET /chat/{session_id}/plan` (+ `/session/{session_id}/state`
+alias), `POST /planner_chat` (+ `/chat` alias), `POST /planner_chat/stream`, `POST
+/hotels/select` (+ `/chat/select_hotel` alias), `POST /hotels/change`.
+
+**`DELETE /chat/{session_id}`** keeps its existing "`204` whether the session exists or not"
+contract unchanged — a session owned by someone else is a **silent no-op** (still `204`,
+nothing actually deleted) rather than a new status code, for the same anti-enumeration reason
+as above.
+
+**Not part of this contract:** token issuance/refresh/OAuth itself — that's entirely a
+frontend↔Supabase Auth concern (`frontend/src/auth/`), this backend only ever verifies a
+token it's handed, via `backend/src/auth/jwt_verifier.py` (local HS256 verification against
+`SUPABASE_JWT_SECRET`, no per-request call to the Supabase Auth API).

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { highlightedRouteKeys, hotelMapFields, hotelMapRays } from './map-presentation'
 import type { RouteSegment } from './route-segments'
+import { hotelDetail, hotelOption } from '../test-fixtures'
 
 const SEGMENTS = [
   { segKey: 'a', fromKey: 'hotel', toKey: 'place-1' },
@@ -10,23 +11,23 @@ const SEGMENTS = [
 
 describe('hotelMapFields', () => {
   it('uses only real price and match data', () => {
-    expect(hotelMapFields({ index: 1, name: 'A', average_nightly_price: 1_250_000, match_score: 0.875 }, 'vi')).toEqual({
+    expect(hotelMapFields(hotelOption({ index: 1, name: 'A', average_nightly_price: 1_250_000, match_score: 0.875 }), 'vi')).toEqual({
       priceLabel: '1.250.000 ₫',
       matchLabel: '88%',
     })
-    expect(hotelMapFields({ index: 2, name: 'B' }, 'vi')).toEqual({ priceLabel: undefined, matchLabel: undefined })
+    expect(hotelMapFields(hotelOption({ index: 2, name: 'B' }), 'vi')).toEqual({ priceLabel: undefined, matchLabel: undefined })
   })
 })
 
 describe('hotelMapRays', () => {
   it('keeps only nearby attractions with valid map data', () => {
-    expect(hotelMapRays({
+    expect(hotelMapRays(hotelDetail({
       nearby_attractions: [
-        { name: 'Cầu Rồng', coordinates: '16.061,108.227', distance_km: 1.2 },
-        { name: 'No coordinate', distance_km: 2 },
-        { name: 'No distance', coordinates: '16.06,108.22' },
+        { name: 'Cầu Rồng', category: null, coordinates: '16.061,108.227', distance_km: 1.2, distance_text: null },
+        { name: 'No coordinate', category: null, coordinates: null, distance_km: 2, distance_text: null },
+        { name: 'No distance', category: null, coordinates: '16.06,108.22', distance_km: null, distance_text: null },
       ],
-    })).toEqual([{ name: 'Cầu Rồng', coordinates: { lat: 16.061, lng: 108.227 }, distanceKm: 1.2 }])
+    }))).toEqual([{ name: 'Cầu Rồng', coordinates: { lat: 16.061, lng: 108.227 }, distanceKm: 1.2 }])
   })
 })
 

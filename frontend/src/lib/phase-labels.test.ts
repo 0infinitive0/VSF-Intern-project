@@ -6,12 +6,9 @@ import vi from '../i18n/locales/vi.json'
 const ALL_PHASE_KEYS = [
   'received',
   'routing',
-  'route_decided',
   'compacting_history',
   'intake_check',
   'hotel_search',
-  'tool_start',
-  'tool_end',
   'itinerary_build',
   'routing_legs',
   'persisting',
