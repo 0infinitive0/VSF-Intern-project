@@ -59,6 +59,7 @@ describe('chatSessionReducer hotel filter API data', () => {
 
     expect(next.hotelFilterData).toEqual({
       minPrice: 800_000, maxPrice: 2_000_000,
+      hotelAmenities: [],
       allPreferences: [{ id: 'pool', label: 'Pool' }],
       activePreferences: [{ id: 'pool', label: 'Pool' }],
     })

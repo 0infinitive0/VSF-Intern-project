@@ -104,8 +104,8 @@ from src.agents.graph.response_payload import (
 )
 from src.agents.graph.state import TravelGraphState
 from src.domain.travel_state import Presence, TravelState
-from src.models.schemas import to_trip_plan_payload
-from src.services.amenity_catalog import all_approved_amenities
+from src.models.schemas import AmenityCatalogPayload, hotel_amenities_from_hotel_options, to_trip_plan_payload
+from src.services.amenity_catalog import AmenityCatalogEntry, all_approved_amenities, resolve_hotel_amenity_ids
 from src.services.suggestions import generate_next_chat_suggestions
 
 logger = logging.getLogger(__name__)
@@ -216,25 +216,60 @@ def _suggestions_for_stage(stage: str, reply: str) -> list[dict[str, str]]:
     ]
 
 
-def _active_preferences_from_travel_state(travel_state: TravelState) -> list[dict[str, str]]:
-    """Mirrors `hotel_node.py`'s own `active_preferences` shape (`{id,
-    label}`, the raw amenity tag standing in for both) — the same
-    `hotel_preferences.amenities` slot, read the same presence-aware way."""
+def _catalog_preferences(ids: list[str], catalog: tuple[AmenityCatalogEntry, ...]) -> list[dict[str, str]]:
+    by_id = {entry.id: entry for entry in catalog if entry.scope in {"hotel", "both"}}
+    return [
+        {"id": amenity_id, "label": by_id[amenity_id].label}
+        for amenity_id in dict.fromkeys(ids)
+        if amenity_id in by_id
+    ]
+
+
+def _active_preferences_from_travel_state(
+    travel_state: TravelState, catalog: tuple[AmenityCatalogEntry, ...]
+) -> list[dict[str, str]]:
+    """Bind user hotel-amenity requests to approved canonical catalog IDs."""
     amenities_slot = travel_state.get("hotel_preferences.amenities")
     if amenities_slot.presence is not Presence.SET:
         return []
-    return [{"id": str(tag), "label": str(tag)} for tag in amenities_slot.value]
+    return _catalog_preferences(list(resolve_hotel_amenity_ids(amenities_slot.value).ids), catalog)
 
 
-def _all_preferences_for_stage(stage: str) -> list[dict[str, str]]:
-    """Gated on `stage == "hotel_options"` — the only stage whose filter
-    panel can render the catalog (`stage-hotels.tsx`) — so every other
-    turn stays free of the catalog's Supabase round-trip.
-    `all_approved_amenities` is TTL-cached, so even a run of consecutive
-    `hotel_options` turns hits Supabase at most once per cache window."""
-    if stage != "hotel_options":
-        return []
-    return [{"id": entry.id, "label": entry.label} for entry in all_approved_amenities()]
+def _available_preferences_from_hotel_options(
+    hotel_options: list[dict[str, Any]], catalog: tuple[AmenityCatalogEntry, ...]
+) -> list[dict[str, str]]:
+    """Catalog-bound filters limited to the amenities shown on current cards."""
+    amenity_ids = [
+        amenity_id
+        for hotel in hotel_options
+        for amenity_id in hotel.get("display_amenities") or []
+        if isinstance(amenity_id, str)
+    ]
+    return _catalog_preferences(amenity_ids, catalog)
+
+
+def _payload_preferences(ids: list[str], catalog: list[AmenityCatalogPayload]) -> list[dict[str, str]]:
+    by_id = {entry.id: entry for entry in catalog}
+    return [
+        {"id": amenity_id, "label": by_id[amenity_id].label_vi}
+        for amenity_id in dict.fromkeys(ids)
+        if amenity_id in by_id
+    ]
+
+
+def _active_hotel_preference_ids(state: TravelGraphState) -> list[str]:
+    """Read canonical IDs emitted by hotel_node without re-querying the catalog."""
+    for result in reversed(state.get("task_results") or []):
+        search_result = result.get("hotel_search_result")
+        if not isinstance(search_result, dict):
+            continue
+        preferences = search_result.get("active_preferences") or []
+        return [
+            preference["id"]
+            for preference in preferences
+            if isinstance(preference, dict) and isinstance(preference.get("id"), str)
+        ]
+    return []
 
 
 def _reply_from_messages(state: TravelGraphState) -> str | None:
@@ -304,6 +339,28 @@ def respond(state: TravelGraphState) -> dict[str, Any]:
     hotel_options = hotel_options_from_task_results(state)
     stage = derive_stage(state, hotel_options, reply)
     min_price, max_price, _skipped = budget_from_travel_state(travel_state)
+    amenity_slot = travel_state.get("hotel_preferences.amenities")
+    hotel_amenities = hotel_amenities_from_hotel_options(hotel_options) if stage == "hotel_options" else []
+    if stage == "hotel_options":
+        active_ids = _active_hotel_preference_ids(state)
+        if not active_ids and amenity_slot.presence is Presence.SET:
+            # A re-search/change-hotel turn can retain its cards while the
+            # latest worker result omits active_preferences.  The travel state
+            # is the session-wide source of the user's amenity request.
+            session_catalog = all_approved_amenities()
+            active_ids = [
+                preference["id"]
+                for preference in _active_preferences_from_travel_state(travel_state, session_catalog)
+            ]
+        # The filter choices are the user's accumulated amenity requests for
+        # this session, not every facility on the cards.  Mapping through the
+        # shared card catalog removes requests that no displayed hotel offers.
+        all_preferences = _payload_preferences(active_ids, hotel_amenities)
+        active_preferences = _payload_preferences(active_ids, hotel_amenities)
+    else:
+        catalog = all_approved_amenities() if amenity_slot.presence is Presence.SET else ()
+        active_preferences = _active_preferences_from_travel_state(travel_state, catalog)
+        all_preferences = []
 
     response = {
         "session_id": state.get("session_id", ""),
@@ -311,13 +368,14 @@ def respond(state: TravelGraphState) -> dict[str, Any]:
         "suggestions": _suggestions_for_stage(stage, reply),
         "stage": stage,
         "hotel_options": hotel_options,
+        "hotel_amenities": hotel_amenities,
         "trip_plan": to_trip_plan_payload(state.get("trip_data")),
         "intake": intake_status_from_travel_state(travel_state),
         "requires_stay_dates": False,
         "compound_min_price": min_price,
         "compound_max_price": max_price,
-        "all_preferences": _all_preferences_for_stage(stage),
-        "active_preferences": _active_preferences_from_travel_state(travel_state),
+        "all_preferences": all_preferences,
+        "active_preferences": active_preferences,
     }
     # The reply goes back into `messages` so the transcript holds both sides
     # of the conversation, not just the user's half — until now nothing wrote

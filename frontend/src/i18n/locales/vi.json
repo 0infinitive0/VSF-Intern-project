@@ -230,6 +230,8 @@
   "detailRooms": "Danh sách phòng",
   "detailNearby": "Khoảng cách tới các điểm chính",
   "detailAmen": "Tiện nghi khách sạn",
+  "detailAmenShowAll": "Xem tất cả tiện nghi",
+  "detailAmenShowLess": "Thu gọn tiện nghi",
   "detailPriceFrom": "Giá từ",
   "detailHandoff": "Xem trang gốc trên {{platform}}",
   "detailNoInfo": "Không có thông tin chi tiết cho khách sạn này.",

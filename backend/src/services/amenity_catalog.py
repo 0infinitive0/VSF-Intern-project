@@ -94,6 +94,21 @@ def query_approved_amenities(amenity_ids: Collection[str] | None = None) -> list
     return _parse_catalog_entries(rows)
 
 
+def query_all_approved_amenities_by_ids(amenity_ids: Collection[str]) -> list[AmenityCatalogEntry]:
+    """Return every approved catalog entry requested by a trusted response path.
+
+    ``query_approved_amenities`` intentionally retains its 100-ID limit for
+    general callers. Hotel response serialization already owns the IDs from a
+    finite list of returned cards, so it can safely preserve every distinct ID
+    by issuing bounded PostgREST ``IN`` queries in batches.
+    """
+    requested_ids = _valid_amenity_ids_unbounded(amenity_ids)
+    entries: list[AmenityCatalogEntry] = []
+    for start in range(0, len(requested_ids), _MAX_REQUESTED_IDS):
+        entries.extend(query_approved_amenities(requested_ids[start : start + _MAX_REQUESTED_IDS]))
+    return entries
+
+
 _ALL_AMENITIES_CACHE_SECONDS = 60.0
 _all_amenities_cache: tuple[tuple[AmenityCatalogEntry, ...], float] | None = None
 
@@ -119,6 +134,27 @@ def clear_all_approved_amenities_cache() -> None:
 
     global _all_amenities_cache
     _all_amenities_cache = None
+
+
+def resolve_hotel_amenity_ids(values: Collection[object]) -> AmenityBindingResult:
+    """Resolve chat-supplied hotel amenities to approved catalog IDs only.
+
+    This lookup deliberately never invokes discovery: a request term that is
+    not an unambiguous approved hotel/both catalog entry remains unresolved
+    instead of becoming an unverified hard search constraint.
+    """
+    entries = all_approved_amenities()
+    ids: list[str] = []
+    unresolved: list[str] = []
+    for raw in _valid_raw_values(values):
+        entry = _match_catalog_entry(raw, entries, "hotel")
+        if entry is None:
+            if raw not in unresolved:
+                unresolved.append(raw)
+            continue
+        if entry.id not in ids:
+            ids.append(entry.id)
+    return AmenityBindingResult(ids=tuple(ids), unresolved=tuple(unresolved))
 
 
 def bind_amenities(
@@ -597,12 +633,16 @@ def _normalize_for_match(value: str) -> str:
 
 
 def _valid_amenity_ids(amenity_ids: Collection[str] | None) -> list[str]:
+    return _valid_amenity_ids_unbounded(amenity_ids)[:_MAX_REQUESTED_IDS]
+
+
+def _valid_amenity_ids_unbounded(amenity_ids: Collection[str] | None) -> list[str]:
     valid: list[str] = []
     for raw in amenity_ids or ():
         amenity_id = str(raw).strip().lower()
         if _AMENITY_ID_PATTERN.fullmatch(amenity_id) and amenity_id not in valid:
             valid.append(amenity_id)
-    return valid[:_MAX_REQUESTED_IDS]
+    return valid
 
 
 def _parse_catalog_entries(rows: Iterable[object]) -> list[AmenityCatalogEntry]:

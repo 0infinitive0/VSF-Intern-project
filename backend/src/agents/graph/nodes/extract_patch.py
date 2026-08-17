@@ -41,7 +41,7 @@ import logging
 import re
 import unicodedata
 from collections.abc import Sequence
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 from src.agents.graph.prompts import build_extract_patch_prompt
@@ -75,6 +75,9 @@ _THEME_PATH_RE = re.compile(r"^(preferences\.themes|daily_preferences\.\d+\.them
 
 _FIRST_DAY_RE = re.compile(r"\b(?:ngay|hom)\s+dau(?:\s+tien)?\b")
 _LAST_DAY_RE = re.compile(r"\b(?:ngay|hom)\s+cuoi(?:\s+cung)?\b")
+_DURATION_DAYS_RE = re.compile(r"\b(?P<days>[1-9]\d?)\s*(?:ngay|day)\b")
+_BREAKFAST_INCLUDED_RE = re.compile(r"\b(?:bao\s+gom|included)\s+(?:(?:an|bua)\s+sang|breakfast)\b")
+_BREAKFAST_NEGATED_RE = re.compile(r"\b(?:khong|without|no)\s+(?:bao\s+gom\s+)?(?:(?:an|bua)\s+sang|breakfast)\b")
 
 _CLOSED_LIST_PATHS: dict[str, tuple[str, ...]] = {
     "preferences.themes": _PREFERENCE_LABELS,
@@ -177,6 +180,64 @@ def _rewrite_day_scope(
         for day in day_scope:
             rewritten.append({**change, "path": f"daily_preferences.{day}.theme"})
     return rewritten
+
+
+def _ground_included_breakfast(changes: list[dict[str, Any]], message: str) -> list[dict[str, Any]]:
+    """Bind an included-breakfast hotel request to the canonical amenity ID.
+
+    The phrase is a hotel-search constraint, not an itinerary breakfast item.
+    It must therefore reach ``hotel_preferences.amenities`` even when the
+    extractor only returns the other amenity in a compound request.
+    """
+    normalized = _normalize(message)
+    if not _BREAKFAST_INCLUDED_RE.search(normalized) or _BREAKFAST_NEGATED_RE.search(normalized):
+        return changes
+    has_breakfast = any(
+        change.get("path") == "hotel_preferences.amenities" and str(change.get("value") or "").strip().lower() == "breakfast"
+        for change in changes
+    )
+    if has_breakfast:
+        return changes
+    return [*changes, {"path": "hotel_preferences.amenities", "operation": "append", "value": "breakfast"}]
+
+
+def _derive_end_date_from_duration(
+    changes: list[dict[str, Any]], message: str, travel_state: TravelState
+) -> list[dict[str, Any]]:
+    """Fill the exclusive checkout date from an explicit day count and ISO start.
+
+    The graph stores an end date rather than a duration slot.  A phrase such
+    as ``2 ngày từ 2026-07-01`` is therefore complete hotel-search input and
+    must not trigger a redundant checkout-date question.  An explicit end
+    date returned by the extractor always wins.
+    """
+    if any(change.get("path") == "dates.end" for change in changes):
+        return changes
+
+    match = _DURATION_DAYS_RE.search(_normalize(message))
+    if match is None:
+        return changes
+
+    start_value: Any = travel_state.get("dates.start").value
+    for change in reversed(changes):
+        if change.get("path") == "dates.start" and change.get("operation") == "set":
+            start_value = change.get("value")
+            break
+
+    try:
+        start = date.fromisoformat(str(start_value))
+    except (TypeError, ValueError):
+        return changes
+
+    days = int(match.group("days"))
+    return [
+        *changes,
+        {
+            "path": "dates.end",
+            "operation": "set",
+            "value": (start + timedelta(days=days)).isoformat(),
+        },
+    ]
 
 
 def _ground_closed_label(value: Any, allowed: tuple[str, ...]) -> str | None:
@@ -340,7 +401,9 @@ def extract_patch(state: TravelGraphState) -> dict[str, Any]:
         message, travel_state, destination_names, pending_slots=_pending_slots(travel_state)
     )
     changes = _rewrite_day_scope(raw_changes, message, travel_state)
+    changes = _derive_end_date_from_duration(changes, message, travel_state)
     changes = _ground_changes(changes, destination_names)
+    changes = _ground_included_breakfast(changes, message)
 
     # Written unconditionally, not only when True: this key gates Phase 15's
     # `intake_qa` routing branch, and a node's partial return is merged over

@@ -13,17 +13,17 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from types import SimpleNamespace
 from typing import Any
 
 from langchain_core.messages import AIMessage
 
 import src.agents.graph.nodes.respond as respond_module
-import src.services.amenity_catalog as amenity_catalog_module
+import src.models.schemas as schemas
 from src.agents.graph.nodes.respond import respond
 from src.agents.graph.response_payload import budget_from_travel_state, derive_stage
 from src.agents.graph.state import TravelGraphState, initial_graph_state
 from src.domain.travel_state import TravelState, apply_patch
+from src.services.amenity_catalog import AmenityBindingResult, AmenityCatalogEntry
 from src.services.trip_formatter import format_trip_summary_reply
 
 
@@ -166,7 +166,6 @@ class TestRespondSuggestions:
     def test_hotel_options_turn_gets_the_hardcoded_list_without_calling_the_llm(self, monkeypatch):
         calls: list[int] = []
         monkeypatch.setattr("src.services.suggestions.get_llm", _counting_llm(calls))
-        monkeypatch.setattr(respond_module, "all_approved_amenities", lambda: ())
 
         response = respond(_state(task_results=_hotel_task_results()))["response"]
 
@@ -222,77 +221,132 @@ class TestRespondActivePreferences:
         response = respond(_state())["response"]
         assert response["active_preferences"] == []
 
-    def test_reflects_hotel_preferences_amenities(self):
+    def test_binds_hotel_preferences_to_approved_amenity_ids(self, monkeypatch):
+        monkeypatch.setattr(
+            respond_module,
+            "resolve_hotel_amenity_ids",
+            lambda _values: AmenityBindingResult(ids=("gym", "swimming_pool"), unresolved=("unknown",)),
+        )
+        monkeypatch.setattr(
+            respond_module,
+            "all_approved_amenities",
+            lambda: (
+                AmenityCatalogEntry("gym", "Phòng gym", ("gym",), "Gym", "hotel", "wellness", "fitness_center"),
+                AmenityCatalogEntry("swimming_pool", "Hồ bơi", ("pool",), "Swimming pool", "both", "wellness", "pool"),
+            ),
+        )
         travel_state = _seeded(
-            [{"path": "hotel_preferences.amenities", "operation": "set", "value": ["gym", "pool"]}]
+            [{"path": "hotel_preferences.amenities", "operation": "set", "value": ["gym", "pool", "unknown"]}]
         )
         response = respond(_state(travel_state=travel_state.to_dict()))["response"]
         assert response["active_preferences"] == [
-            {"id": "gym", "label": "gym"},
-            {"id": "pool", "label": "pool"},
+            {"id": "gym", "label": "Phòng gym"},
+            {"id": "swimming_pool", "label": "Hồ bơi"},
         ]
 
 
-class _CatalogQuery:
-    def __init__(self, rows: list[dict[str, Any]], calls: list[int]):
-        self._rows = rows
-        self._calls = calls
-
-    def select(self, _fields: str) -> _CatalogQuery:
-        return self
-
-    def eq(self, _field: str, _value: Any) -> _CatalogQuery:
-        return self
-
-    def limit(self, _value: int) -> _CatalogQuery:
-        return self
-
-    def range(self, _start: int, _end: int) -> _CatalogQuery:
-        return self
-
-    def execute(self) -> SimpleNamespace:
-        self._calls.append(1)
-        return SimpleNamespace(data=self._rows)
-
-
 class TestRespondAllPreferences:
-    def test_catalog_is_not_queried_on_an_intake_stage_turn(self, monkeypatch):
-        calls: list[int] = []
-
-        class _Client:
-            def table(self, _name: str) -> _CatalogQuery:
-                return _CatalogQuery([], calls)
-
-        monkeypatch.setattr(amenity_catalog_module, "get_supabase_client", lambda: _Client())
-        amenity_catalog_module.clear_all_approved_amenities_cache()
-
+    def test_intake_stage_has_no_hotel_filter_pills(self):
         response = respond(_state(missing_slots=["destination"]))["response"]
 
         assert response["stage"] == "intake"
         assert response["all_preferences"] == []
-        assert calls == []
 
-    def test_catalog_is_queried_once_and_then_served_from_cache(self, monkeypatch):
-        calls: list[int] = []
-        rows = [
-            {"id": "gym", "label_vi": "Gym", "scope": "hotel", "category": "facility", "match_keywords": ["gym"]}
+    def test_hotel_filter_preferences_are_bound_to_displayed_hotel_amenities(self, monkeypatch):
+        catalog = (
+            AmenityCatalogEntry("gym", "Phòng gym", ("gym",), "Gym", "hotel", "wellness", "fitness_center"),
+            AmenityCatalogEntry("swimming_pool", "Hồ bơi", ("pool",), "Swimming pool", "both", "wellness", "pool"),
+            AmenityCatalogEntry("wifi", "Wi-Fi", ("wifi",), "Wi-Fi", "both", "connectivity", "wifi"),
+        )
+        monkeypatch.setattr(respond_module, "all_approved_amenities", lambda: catalog)
+        monkeypatch.setattr(
+            respond_module,
+            "hotel_amenities_from_hotel_options",
+            lambda _hotels: [
+                schemas.AmenityCatalogPayload(
+                    id="swimming_pool",
+                    label_vi="Hồ bơi",
+                    label_en="Swimming pool",
+                    category="wellness",
+                    icon_key="pool",
+                ),
+                schemas.AmenityCatalogPayload(
+                    id="wifi",
+                    label_vi="Wi-Fi",
+                    label_en="Wi-Fi",
+                    category="connectivity",
+                    icon_key="wifi",
+                ),
+            ],
+        )
+        monkeypatch.setattr(
+            respond_module,
+            "resolve_hotel_amenity_ids",
+            lambda _values: AmenityBindingResult(ids=("swimming_pool",), unresolved=()),
+        )
+        travel_state = _seeded(
+            [{"path": "hotel_preferences.amenities", "operation": "set", "value": ["pool"]}]
+        )
+        task_results = [
+            {
+                "worker": "hotel_node",
+                "status": "ok",
+                "reply": "Mình tìm được 1 khách sạn phù hợp.",
+                "hotel_search_result": {
+                    "options": [{"id": "h1", "name": "Hotel A", "amenities": ["swimming_pool", "wifi"]}],
+                    "active_preferences": [{"id": "swimming_pool", "label": "swimming_pool"}],
+                },
+            }
         ]
 
-        class _Client:
-            def table(self, _name: str) -> _CatalogQuery:
-                return _CatalogQuery(rows, calls)
+        response = respond(_state(task_results=task_results, travel_state=travel_state.to_dict()))["response"]
 
-        monkeypatch.setattr(amenity_catalog_module, "get_supabase_client", lambda: _Client())
-        amenity_catalog_module.clear_all_approved_amenities_cache()
-        try:
-            first = respond(_state(task_results=_hotel_task_results()))["response"]
-            second = respond(_state(task_results=_hotel_task_results()))["response"]
+        assert response["all_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi"}]
+        assert response["active_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi"}]
+        assert [amenity.id for amenity in response["hotel_amenities"]] == ["swimming_pool", "wifi"]
 
-            assert first["all_preferences"] == [{"id": "gym", "label": "Gym"}]
-            assert second["all_preferences"] == [{"id": "gym", "label": "Gym"}]
-            assert len(calls) == 1
-        finally:
-            amenity_catalog_module.clear_all_approved_amenities_cache()
+    def test_hotel_filters_fall_back_to_the_session_amenity_request(self, monkeypatch):
+        catalog = (
+            AmenityCatalogEntry("swimming_pool", "Hồ bơi", ("pool",), "Swimming pool", "both", "wellness", "pool"),
+        )
+        monkeypatch.setattr(respond_module, "all_approved_amenities", lambda: catalog)
+        monkeypatch.setattr(
+            respond_module,
+            "resolve_hotel_amenity_ids",
+            lambda _values: AmenityBindingResult(ids=("swimming_pool",), unresolved=()),
+        )
+        monkeypatch.setattr(
+            respond_module,
+            "hotel_amenities_from_hotel_options",
+            lambda _hotels: [
+                schemas.AmenityCatalogPayload(
+                    id="swimming_pool",
+                    label_vi="Hồ bơi",
+                    label_en="Swimming pool",
+                    category="wellness",
+                    icon_key="pool",
+                )
+            ],
+        )
+        travel_state = _seeded(
+            [{"path": "hotel_preferences.amenities", "operation": "set", "value": ["bể bơi"]}]
+        )
+        task_results = [
+            {
+                "worker": "hotel_node",
+                "status": "ok",
+                "reply": "Mình tìm được 1 khách sạn phù hợp.",
+                "hotel_search_result": {
+                    "options": [{"id": "h1", "name": "Hotel A", "amenities": ["swimming_pool"]}],
+                    "active_preferences": [],
+                },
+            }
+        ]
+
+        response = respond(_state(task_results=task_results, travel_state=travel_state.to_dict()))["response"]
+
+        assert response["all_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi"}]
+        assert response["active_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi"}]
 
 
 class TestRespondNeverSpeaksForASilentWorker:

@@ -39,7 +39,7 @@ export const INITIAL_STATE: ChatState = {
   messages: [],
   suggestions: [],
   hotelOptions: [],
-  hotelFilterData: { minPrice: null, maxPrice: null, allPreferences: [], activePreferences: [] },
+  hotelFilterData: { minPrice: null, maxPrice: null, hotelAmenities: [], allPreferences: [], activePreferences: [] },
   tripPlan: null,
   intake: null,
   pending: false,
@@ -93,6 +93,7 @@ function applyPlannerResponse(state: ChatState, data: PlannerChatResponse, messa
     hotelFilterData: {
       minPrice: data.compound_min_price ?? null,
       maxPrice: data.compound_max_price ?? null,
+      hotelAmenities: data.hotel_amenities ?? [],
       allPreferences: data.all_preferences ?? [],
       activePreferences: data.active_preferences ?? [],
     },
@@ -249,6 +250,10 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
         })),
         suggestions: data.suggestions || [],
         hotelOptions: data.hotel_options || [],
+        hotelFilterData: {
+          ...INITIAL_STATE.hotelFilterData,
+          hotelAmenities: data.hotel_amenities ?? [],
+        },
         tripPlan: data.trip_plan ?? null,
         intake: data.intake ?? null,
       }
@@ -271,6 +276,12 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
         ...state,
         hotelsLoading: false,
         hotelOptions: data.hotel_options || [],
+        hotelFilterData: {
+          ...state.hotelFilterData,
+          hotelAmenities: data.hotel_amenities ?? [],
+          allPreferences: data.all_preferences ?? [],
+          activePreferences: data.active_preferences ?? [],
+        },
         tripPlan: data.trip_plan || state.tripPlan,
         intake: data.intake || state.intake,
         error: null,

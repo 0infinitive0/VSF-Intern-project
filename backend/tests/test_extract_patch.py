@@ -224,6 +224,27 @@ def test_dates_anchor_narrows_to_the_end_once_the_start_is_known(monkeypatch):
     assert "treat it as" not in llm.prompts[0]
 
 
+def test_duration_from_iso_start_derives_the_required_end_date(monkeypatch):
+    _patch(
+        monkeypatch,
+        _FakeLLM(
+            [
+                _payload(
+                    "update_trip",
+                    [{"path": "dates.start", "operation": "set", "value": "2026-07-01"}],
+                )
+            ]
+        ),
+    )
+
+    result = extract_patch(_state("Tôi muốn đi trong 2 ngày từ 2026-07-01"))
+
+    assert result["patch"] == [
+        {"path": "dates.start", "operation": "set", "value": "2026-07-01"},
+        {"path": "dates.end", "operation": "set", "value": "2026-07-03"},
+    ]
+
+
 def test_anchor_survives_the_repair_retry(monkeypatch):
     llm = _patch(monkeypatch, _FakeLLM(["not json", _payload("general_question", [])]))
     extract_patch(
@@ -436,6 +457,22 @@ def test_amenity_and_budget_phrases_pass_through(monkeypatch, message, change):
     result = extract_patch(_state(message))
 
     assert result["patch"] == [change]
+
+
+def test_included_breakfast_is_added_as_a_canonical_hotel_amenity(monkeypatch):
+    _patch(
+        monkeypatch,
+        _FakeLLM(
+            [_payload("hotel_search", [{"path": "hotel_preferences.amenities", "operation": "append", "value": "swimming_pool"}])]
+        ),
+    )
+
+    result = extract_patch(_state("Lọc khách sạn có bể bơi và bao gồm ăn sáng"))
+
+    assert result["patch"] == [
+        {"path": "hotel_preferences.amenities", "operation": "append", "value": "swimming_pool"},
+        {"path": "hotel_preferences.amenities", "operation": "append", "value": "breakfast"},
+    ]
 
 
 def test_ambiguous_date_without_a_year_is_left_for_the_model_to_omit(monkeypatch):

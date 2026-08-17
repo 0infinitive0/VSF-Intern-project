@@ -20,14 +20,16 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from datetime import date
+from datetime import date, datetime, time
+from decimal import Decimal
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from src.i18n import DEFAULT_LANGUAGE, t
 from src.observability import log_sanitized_system_error
+from src.services.amenity_catalog import query_all_approved_amenities_by_ids
 
 # ---------------------------------------------------------------------------
 # Basic chat models (pre-Phase 3, unchanged)
@@ -142,6 +144,11 @@ class RoomDetailPayload(ResponsePayload):
     room_facilities: list[str] | None = None
     images: list[str] | None = None
     price: RoomPricePayload | None = None
+    available_room_count: int | None = Field(
+        default=None,
+        ge=0,
+        description="Booking-aware remaining room units for the requested stay",
+    )
 
 
 class HotelDetailPayload(ResponsePayload):
@@ -171,6 +178,11 @@ class HotelDetailPayload(ResponsePayload):
     nearby_essentials: Any | None = None
     lowest_price: float | None = None
     currency: str | None = None
+    available_room_count: int | None = Field(
+        default=None,
+        ge=0,
+        description="Sum of booking-aware remaining room units across this hotel",
+    )
     rooms: list[RoomDetailPayload] = Field(default_factory=list)
     source_platform: str | None = None  # 'agoda' | 'booking' — powers the OTA handoff button
     source_url: str | None = None  # original listing URL on the source OTA
@@ -229,7 +241,6 @@ class HotelOption(ResponsePayload):
     match_score: float | None = Field(default=None, ge=0.0, le=1.0)
     match_reasons: list[MatchReasonPayload] = Field(default_factory=list)
     city: str | None = None
-    preferences: list[str] = Field(default_factory=list)
 
 
 class RouteInfoPayload(ResponsePayload):
@@ -382,7 +393,43 @@ class ChangeHotelRequest(BaseModel):
     session_id: UUID
 
 
-class PreferencePayload(ResponsePayload):
+class BookingReservationRequest(BaseModel):
+    room_id: UUID
+    temporary_user_ref: str = Field(min_length=1, max_length=128)
+    check_in_date: date
+    check_in_time: time = time(14, 0)
+    check_out_date: date
+    check_out_time: time = time(12, 0)
+    room_count: int = Field(default=1, ge=1, le=20)
+    total_amount: Decimal | None = Field(default=None, ge=0)
+    currency: str | None = Field(default=None, min_length=3, max_length=16)
+
+    @model_validator(mode="after")
+    def check_out_must_follow_check_in(self) -> BookingReservationRequest:
+        if self.check_out_date <= self.check_in_date:
+            raise ValueError("check_out_date must be after check_in_date")
+        return self
+
+
+class BookingOwnershipRequest(BaseModel):
+    temporary_user_ref: str = Field(min_length=1, max_length=128)
+
+
+class BookingPayload(BaseModel):
+    id: UUID
+    room_id: UUID
+    check_in_date: date
+    check_in_time: time
+    check_out_date: date
+    check_out_time: time
+    room_count: int
+    status: Literal["PENDING", "RESERVED", "CONFIRMED", "CANCELLED", "EXPIRED"]
+    expires_at: datetime | None = None
+    total_amount: Decimal | None = None
+    currency: str | None = None
+
+
+class PreferencePayload(BaseModel):
     id: str
     label: str
 
@@ -403,6 +450,10 @@ class PlannerChatResponse(ResponsePayload):
     suggestions: list[SuggestionPayload] = Field(default_factory=list)
     stage: ChatStage
     hotel_options: list[HotelOption] = Field(default_factory=list)
+    hotel_amenities: list[AmenityCatalogPayload] = Field(
+        default_factory=list,
+        description="Unique approved amenity catalog records for all returned hotel options",
+    )
     trip_plan: TripPlanPayload | None = None
     intake: IntakeStatus | None = None
     requires_stay_dates: bool = False
@@ -446,6 +497,7 @@ class SessionRestorePayload(ResponsePayload):
     suggestions: list[SuggestionPayload] = Field(default_factory=list)
     stage: str
     hotel_options: list[HotelOption] = Field(default_factory=list)
+    hotel_amenities: list[AmenityCatalogPayload] = Field(default_factory=list)
     trip_plan: TripPlanPayload | None = None
     intake: IntakeStatus | None = None
 
@@ -714,8 +766,9 @@ def to_hotel_options_payload(pending: dict[str, Any] | None) -> list[HotelOption
     if not pending or not isinstance(pending, dict):
         return []
     active_preferences = pending.get("active_preferences") or []
+    raw_options = [option for option in pending.get("options") or [] if isinstance(option, dict)]
     options = []
-    for index, option in enumerate(pending.get("options") or [], start=1):
+    for index, option in enumerate(raw_options, start=1):
         name = str(option.get("name") or "").strip()
         if not name:
             continue
@@ -751,10 +804,42 @@ def to_hotel_options_payload(pending: dict[str, Any] | None) -> list[HotelOption
                 match_score=option.get("match_score"),
                 match_reasons=list(option.get("match_reasons") or []),
                 city=option.get("city"),
-                preferences=list(option.get("preferences") or []),
             )
         )
     return options
+
+
+def hotel_amenities_from_hotel_options(
+    hotel_options: list[HotelOption] | list[dict[str, Any]],
+) -> list[AmenityCatalogPayload]:
+    """Join the unique amenity IDs from all returned hotel cards once.
+
+    Card payloads deliberately retain only canonical IDs.  The shared catalog
+    lives beside ``hotel_options`` in the response, avoiding the same catalog
+    row being serialized repeatedly for every hotel that has that amenity.
+    """
+    amenity_ids: list[str] = []
+    for hotel in hotel_options:
+        if isinstance(hotel, HotelOption):
+            values = [*hotel.amenities, *hotel.display_amenities]
+        else:
+            values = [*(hotel.get("amenities") or []), *(hotel.get("display_amenities") or [])]
+        amenity_ids.extend(value for value in values if isinstance(value, str))
+    ordered_ids = list(dict.fromkeys(amenity_ids))
+    if not ordered_ids:
+        return []
+    by_id = {
+        entry.id: AmenityCatalogPayload(
+            id=entry.id,
+            label_vi=entry.label,
+            label_en=entry.label_en,
+            category=entry.category,
+            icon_key=entry.icon_key,
+        )
+        for entry in query_all_approved_amenities_by_ids(ordered_ids)
+        if entry.scope in {"hotel", "both"}
+    }
+    return [by_id[amenity_id] for amenity_id in ordered_ids if amenity_id in by_id]
 
 
 def to_trip_plan_payload(trip_data: dict[str, Any] | None) -> TripPlanPayload | None:

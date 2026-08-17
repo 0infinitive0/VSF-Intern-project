@@ -46,7 +46,6 @@ export function hotelOption(overrides: Partial<HotelOption> = {}): HotelOption {
     match_score: null,
     match_reasons: [],
     city: null,
-    preferences: [],
     ...overrides,
   }
 }

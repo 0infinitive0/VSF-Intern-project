@@ -4,8 +4,9 @@ import MatchReasons from './match-reasons'
 import RemoteImage from './remote-image'
 import { formatCurrency } from '../lib/format-currency'
 import { formatHotelStars } from '../lib/format-stars'
+import { displayAmenityLabels } from '../lib/hotel-filters'
 import { hotelOptionSyncId } from '../lib/map-sync-id'
-import type { HotelOption } from '../types'
+import type { AmenityCatalogOption, HotelOption } from '../types'
 
 const PRICE_LOCALE = (lang: string) => (lang === 'vi' ? 'vi-VN' : 'en-US')
 
@@ -31,6 +32,7 @@ function HotelOptionCard({
   focused,
   delay,
   nights,
+  hotelAmenities,
   onSelect,
   onOpen,
   hovered,
@@ -41,6 +43,7 @@ function HotelOptionCard({
   focused: boolean
   delay: string
   nights: number | null
+  hotelAmenities: AmenityCatalogOption[]
   onSelect: (hotel: HotelOption) => void
   onOpen: (hotel: HotelOption) => void
   /** Phase 10 map hover sync — optional so this component still works standalone. */
@@ -51,6 +54,7 @@ function HotelOptionCard({
   const numFmt = new Intl.NumberFormat(PRICE_LOCALE(i18n.language))
   const canOpen = Boolean(hotel.id)
   const syncId = hotelOptionSyncId(hotel)
+  const displayAmenities = displayAmenityLabels(hotel.display_amenities, hotelAmenities, i18n.language)
 
   // null/undefined and 0 all mean "no price known" — hide the price block
   // instead of rendering "0 ₫" (Number() coercion turns null into 0, so the
@@ -134,9 +138,9 @@ function HotelOptionCard({
               </div>
             )}
           </div>
-          {hotel.display_amenities && hotel.display_amenities.length > 0 && (
+          {displayAmenities.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-[9px]">
-              {hotel.display_amenities.map((amenity) => (
+              {displayAmenities.map((amenity) => (
                 <span
                   key={amenity}
                   className="text-[10.5px] px-[9px] py-[3px] rounded-full bg-fill text-on-surface-variant"
@@ -203,6 +207,7 @@ export default function HotelOptionCards({
   selectedIndex,
   focusedId,
   nights,
+  hotelAmenities,
   onSelect,
   onOpen,
   hoveredId,
@@ -212,6 +217,7 @@ export default function HotelOptionCards({
   selectedIndex: number | null
   focusedId?: string | null
   nights: number | null
+  hotelAmenities: AmenityCatalogOption[]
   onSelect: (hotel: HotelOption) => void
   onOpen: (hotel: HotelOption) => void
   /** Phase 10 map hover sync (lib/map-sync-id.ts ids) — optional so this component still works standalone. */
@@ -230,6 +236,7 @@ export default function HotelOptionCards({
           focused={focusedId != null && hotel.id === focusedId}
           delay={`${i * 90}ms`}
           nights={nights}
+          hotelAmenities={hotelAmenities}
           onSelect={onSelect}
           onOpen={onOpen}
           hovered={hoveredId != null && hoveredId === hotelOptionSyncId(hotel)}

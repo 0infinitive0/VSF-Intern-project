@@ -6,6 +6,7 @@ import pytest
 
 import src.api.routes as routes
 import src.services.place_details as place_details
+from src.models.schemas import HotelDetailPayload
 
 
 class FakeQuery:
@@ -35,9 +36,14 @@ class FakeQuery:
 class FakeClient:
     def __init__(self, responses):
         self.responses, self.queries = responses, []
+        self.rpc_calls: list[tuple[str, dict]] = []
 
     def table(self, name):
         return FakeQuery(self, name)
+
+    def rpc(self, name, params):
+        self.rpc_calls.append((name, params))
+        return SimpleNamespace(execute=lambda: SimpleNamespace(data=self.responses["rpc"][params["p_room_id"]]))
 
 
 def _hotel():
@@ -55,6 +61,7 @@ def test_hotel_detail_selects_matching_room_price_and_never_uses_hotel_lowest_pr
             {"room_id": "room-1", "price": 1250000, "currency": "VND", "check_in_date": "2026-09-01", "check_out_date": "2026-09-03", "sold_out": False, "crawled_at": "2026-08-01T00:00:00"},
             {"room_id": "room-1", "price": 1, "currency": "VND", "check_in_date": "2026-09-01", "check_out_date": "2026-09-03", "sold_out": True, "crawled_at": "2026-08-02T00:00:00"},
         ],
+        "rpc": {"room-1": 9},
     })
     monkeypatch.setattr(place_details, "_get_supabase_client", lambda: client)
 
@@ -65,15 +72,73 @@ def test_hotel_detail_selects_matching_room_price_and_never_uses_hotel_lowest_pr
     assert result["rooms"][0]["price"]["package_details"] is None
 
 
+def test_hotel_detail_returns_booking_aware_room_inventory_for_the_requested_stay(monkeypatch):
+    client = FakeClient({
+        "hotels": [_hotel()],
+        "rooms": [{**_room(), "available_room_count": 9}],
+        "room_prices": [],
+        "rpc": {"room-1": 3},
+    })
+    monkeypatch.setattr(place_details, "_get_supabase_client", lambda: client)
+
+    result = place_details.get_hotel_detail("hotel-1", date(2026, 9, 1), date(2026, 9, 3))
+
+    assert result["available_room_count"] == 3
+    assert result["rooms"][0]["available_room_count"] == 3
+    assert client.rpc_calls == [(
+        "get_room_availability",
+        {
+            "p_room_id": "room-1",
+            "p_check_in_date": "2026-09-01",
+            "p_check_out_date": "2026-09-03",
+        },
+    )]
+
+
 def test_hotel_detail_handles_no_rooms_and_no_matching_price(monkeypatch):
-    no_rooms = FakeClient({"hotels": [_hotel()], "rooms": [], "room_prices": []})
+    no_rooms = FakeClient({"hotels": [_hotel()], "rooms": [], "room_prices": [], "rpc": {}})
     monkeypatch.setattr(place_details, "_get_supabase_client", lambda: no_rooms)
     assert place_details.get_hotel_detail("hotel-1")["rooms"] == []
     assert no_rooms.queries == ["hotels", "rooms"]
 
-    no_price = FakeClient({"hotels": [_hotel()], "rooms": [_room()], "room_prices": []})
+    no_price = FakeClient({"hotels": [_hotel()], "rooms": [_room()], "room_prices": [], "rpc": {"room-1": 9}})
     monkeypatch.setattr(place_details, "_get_supabase_client", lambda: no_price)
     assert place_details.get_hotel_detail("hotel-1")["rooms"][0]["price"] is None
+
+
+def test_agoda_nearby_attraction_strings_are_normalized_without_coordinates(monkeypatch):
+    client = FakeClient({
+        "hotels": [{
+            **_hotel(),
+            "source_platform": "agoda",
+            "nearby_attractions": [
+                "Dinh Độc Lập - Cách nơi ở 990 m",
+                "UBND Thành phố Hồ Chí Minh - cách nơi ở 1.04 km",
+            ],
+        }],
+        "rooms": [],
+        "room_prices": [],
+        "rpc": {},
+    })
+    monkeypatch.setattr(place_details, "_get_supabase_client", lambda: client)
+
+    result = place_details.get_hotel_detail("hotel-1")
+
+    assert result["nearby_attractions"] == [
+        {
+            "name": "Dinh Độc Lập",
+            "distance_km": 0.99,
+            "distance_text": "Cách nơi ở 990 m",
+            "coordinates": None,
+        },
+        {
+            "name": "UBND Thành phố Hồ Chí Minh",
+            "distance_km": 1.04,
+            "distance_text": "cách nơi ở 1.04 km",
+            "coordinates": None,
+        },
+    ]
+    assert HotelDetailPayload.model_validate(result).nearby_attractions[0].coordinates is None
 
 
 @pytest.mark.asyncio

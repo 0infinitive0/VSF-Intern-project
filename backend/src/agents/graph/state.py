@@ -128,6 +128,15 @@ class TravelGraphState(TypedDict, total=False):
     # turn (review finding F2).
     selected_hotel_id: str | None
 
+    # --- persisted hotel search cards ------------------------------------
+    # Unlike `task_results`, these cards deliberately survive `load_context`.
+    # A follow-up hotel-preference request uses them to retain the cards the
+    # user has already seen, then appends only unseen matching candidates.
+    # The context prevents reusing availability-sensitive cards after the
+    # destination, stay dates, or party size changes.
+    previous_hotel_options: list[dict[str, Any]]
+    previous_hotel_search_context: dict[str, Any]
+
     # --- output -----------------------------------------------------------
     response: dict[str, Any]  # PlannerChatResponse field shape (Phase 5 non-functional freeze)
 

@@ -41,6 +41,7 @@ from langgraph.types import interrupt
 from src.agents.graph.state import TravelGraphState
 from src.domain.travel_state import Presence, TravelState, apply_patch
 from src.i18n import t
+from src.services.amenity_catalog import resolve_hotel_amenity_ids
 from src.services.hotel_selection import (
     NoHotelsMatchAmenities,
     NoHotelsMatchRating,
@@ -55,6 +56,8 @@ from src.services.trip_scheduler import parse_coordinates
 logger = logging.getLogger(__name__)
 
 _WORKER_NAME = "hotel_node"
+_HOTEL_OPTION_LIMIT = 10
+_HOTEL_DISPLAY_LIMIT = 5
 
 
 def _last_human_message(state: TravelGraphState) -> str:
@@ -245,9 +248,10 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
     target_price = float(target_price_slot.value) if target_price_slot.presence is Presence.SET else None
 
     amenities_slot = travel_state.get("hotel_preferences.amenities")
-    required_amenities = (
+    requested_amenities = (
         [str(tag) for tag in amenities_slot.value] if amenities_slot.presence is Presence.SET else []
     )
+    required_amenities = list(resolve_hotel_amenity_ids(requested_amenities).ids)
     star_slot = travel_state.get("hotel_preferences.min_star_rating")
     min_star_rating = float(star_slot.value) if star_slot.presence is Presence.SET else None
     review_slot = travel_state.get("hotel_preferences.min_review_score")
@@ -299,21 +303,42 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
             update["travel_state"] = updated_travel_state_dict
         return update
 
+    current_search_context = {
+        "destination_id": destination_id,
+        "start_date": start_date,
+        "end_date": end_date,
+        "people": people,
+    }
+    previous_context = state.get("previous_hotel_search_context") or {}
+    previous_options = state.get("previous_hotel_options") or []
+    if previous_context != current_search_context:
+        previous_options = []
+    previous_options = [
+        option for option in previous_options if isinstance(option, dict) and option.get("id")
+    ]
+    previous_ids = [str(option["id"]) for option in previous_options]
+
     try:
+        selection_kwargs: dict[str, Any] = {
+            "match_count": _HOTEL_OPTION_LIMIT,
+            "min_price": min_price,
+            "max_price": max_price,
+            "start_date": start_date,
+            "end_date": end_date,
+            "root_latitude": root_latitude,
+            "root_longitude": root_longitude,
+            "max_radius_km": max_radius_km,
+            "required_amenities": required_amenities,
+            "min_star_rating": min_star_rating,
+            "min_review_score": min_review_score,
+        }
+        if previous_ids:
+            selection_kwargs["exclude_hotel_ids"] = previous_ids
         options = select_hotel_candidates(
             destination,
             destination_id,
             people,
-            min_price=min_price,
-            max_price=max_price,
-            start_date=start_date,
-            end_date=end_date,
-            root_latitude=root_latitude,
-            root_longitude=root_longitude,
-            max_radius_km=max_radius_km,
-            required_amenities=required_amenities,
-            min_star_rating=min_star_rating,
-            min_review_score=min_review_score,
+            **selection_kwargs,
         )
     except NoHotelsMatchAmenities as exc:
         return _result("no_results_amenities", _binding_constraint_reply(exc, language))
@@ -323,18 +348,22 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
         logger.exception("hotel_node: hotel search failed")
         return _result("error", t("Tìm khách sạn thất bại: {error}", language, error=str(exc)))
 
-    if not options:
+    if not options and not previous_options:
         return _result("no_results", t("Không tìm thấy khách sạn phù hợp tại {dest}.", language, dest=destination))
 
     ranked = rank_hotel_candidates(options, target_price=target_price)
     active_preferences = [{"id": tag, "label": tag} for tag in required_amenities]
-    hotel_options = []
-    for data, _candidate in ranked:
-        # Every returned hotel already satisfies every required tag (hard
-        # filter) -- unlike the legacy plane's accumulated, softer
-        # per-hotel check, this is just the requested set itself.
-        hotel_options.append({**data, "preferences": list(required_amenities)})
+    hotel_options = [*previous_options]
+    known_ids = set(previous_ids)
+    for data, _candidate in ranked[:_HOTEL_DISPLAY_LIMIT]:
+        hotel_id = str(data.get("id") or "")
+        if hotel_id and hotel_id not in known_ids:
+            known_ids.add(hotel_id)
+            hotel_options.append(data)
     reply = t("Mình tìm được {count} khách sạn phù hợp.", language, count=len(hotel_options))
-    return _result(
+    result = _result(
         "ok", reply, {"options": hotel_options, "active_preferences": active_preferences}
     )
+    result["previous_hotel_options"] = hotel_options
+    result["previous_hotel_search_context"] = current_search_context
+    return result

@@ -154,6 +154,32 @@ async def test_agent_status(client):
     assert response.status_code == 200
 
 
+@pytest.mark.asyncio
+async def test_search_hotels_defaults_to_five_candidates(client, monkeypatch):
+    import src.services.supabase_search as supabase_search_module
+
+    captured: dict[str, int] = {}
+
+    def fake_search_hotels_with_rooms(_query, *, match_count):
+        captured["match_count"] = match_count
+        return [
+            {"id": str(index), "similarity": 0.9, "name": f"Hotel {index}"}
+            for index in range(match_count)
+        ]
+
+    monkeypatch.setattr(
+        supabase_search_module,
+        "search_hotels_with_rooms",
+        fake_search_hotels_with_rooms,
+    )
+
+    response = await client.get("/api/v1/search_hotels", params={"q": "hotel"})
+
+    assert response.status_code == 200
+    assert captured["match_count"] == 5
+    assert len(response.json()["results"]) == 5
+
+
 # ---------------------------------------------------------------------------
 # Ownership / cross-user isolation (plan 260814-supabase-auth-and-per-user-history)
 # ---------------------------------------------------------------------------

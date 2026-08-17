@@ -112,6 +112,12 @@ def get_embeddings() -> Embeddings:
     return factory_get_embeddings()
 
 
+@lru_cache(maxsize=256)
+def _embed_hotel_query(query: str) -> tuple[float, ...]:
+    """Reuse deterministic hotel-query embeddings within one backend process."""
+    return tuple(get_embeddings().embed_query(query))
+
+
 def extract_search_filters(query: str, search_type: str = "hotel", model: Optional[str] = None) -> Dict[str, Any]:
     """Sử dụng LLM (configured via Settings/get_llm) để trích xuất filters từ câu truy vấn."""
     if search_type == "hotel":
@@ -198,8 +204,6 @@ def search_hotels_with_rooms(
     stay_dates = validate_stay_dates(start_date, end_date)
 
     supabase = get_supabase_client()
-    embeddings = get_embeddings()
-
     search_query = query
     min_star_rating = None
     resolved_min_price = min_price
@@ -215,7 +219,7 @@ def search_hotels_with_rooms(
         if resolved_max_price is None:
             resolved_max_price = filters.get("max_price")
 
-    query_vector = embeddings.embed_query(search_query)
+    query_vector = list(_embed_hotel_query(search_query))
 
     fetch_count = match_count * 3 if min_star_rating else match_count
     params: Dict[str, Any] = {

@@ -142,6 +142,7 @@ export interface ChatMessage {
 export interface HotelFilterData {
   minPrice: number | null
   maxPrice: number | null
+  hotelAmenities: AmenityCatalogOption[]
   allPreferences: PreferencePayload[]
   activePreferences: PreferencePayload[]
 }

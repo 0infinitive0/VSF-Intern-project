@@ -58,6 +58,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bookings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Booking */
+        post: operations["create_booking_api_v1_bookings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bookings/{booking_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Booking Endpoint */
+        post: operations["confirm_booking_endpoint_api_v1_bookings__booking_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bookings/{booking_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Booking Endpoint */
+        post: operations["cancel_booking_endpoint_api_v1_bookings__booking_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chat/session": {
         parameters: {
             query?: never;
@@ -445,6 +496,98 @@ export interface components {
             /** Images */
             images: string[] | null;
         };
+        /** BookingOwnershipRequest */
+        BookingOwnershipRequest: {
+            /** Temporary User Ref */
+            temporary_user_ref: string;
+        };
+        /** BookingPayload */
+        BookingPayload: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Room Id
+             * Format: uuid
+             */
+            room_id: string;
+            /**
+             * Check In Date
+             * Format: date
+             */
+            check_in_date: string;
+            /**
+             * Check In Time
+             * Format: time
+             */
+            check_in_time: string;
+            /**
+             * Check Out Date
+             * Format: date
+             */
+            check_out_date: string;
+            /**
+             * Check Out Time
+             * Format: time
+             */
+            check_out_time: string;
+            /** Room Count */
+            room_count: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "PENDING" | "RESERVED" | "CONFIRMED" | "CANCELLED" | "EXPIRED";
+            /** Expires At */
+            expires_at?: string | null;
+            /** Total Amount */
+            total_amount?: string | null;
+            /** Currency */
+            currency?: string | null;
+        };
+        /** BookingReservationRequest */
+        BookingReservationRequest: {
+            /**
+             * Room Id
+             * Format: uuid
+             */
+            room_id: string;
+            /** Temporary User Ref */
+            temporary_user_ref: string;
+            /**
+             * Check In Date
+             * Format: date
+             */
+            check_in_date: string;
+            /**
+             * Check In Time
+             * Format: time
+             * @default 14:00:00
+             */
+            check_in_time: string;
+            /**
+             * Check Out Date
+             * Format: date
+             */
+            check_out_date: string;
+            /**
+             * Check Out Time
+             * Format: time
+             * @default 12:00:00
+             */
+            check_out_time: string;
+            /**
+             * Room Count
+             * @default 1
+             */
+            room_count: number;
+            /** Total Amount */
+            total_amount?: number | string | null;
+            /** Currency */
+            currency?: string | null;
+        };
         /** ChangeHotelRequest */
         ChangeHotelRequest: {
             /**
@@ -525,6 +668,11 @@ export interface components {
             lowest_price: number | null;
             /** Currency */
             currency: string | null;
+            /**
+             * Available Room Count
+             * @description Sum of booking-aware remaining room units across this hotel
+             */
+            available_room_count: number | null;
             /** Rooms */
             rooms: components["schemas"]["RoomDetailPayload"][];
             /** Source Platform */
@@ -618,8 +766,6 @@ export interface components {
             match_reasons: components["schemas"]["MatchReasonPayload"][];
             /** City */
             city: string | null;
-            /** Preferences */
-            preferences: string[];
         };
         /**
          * IntakeStatus
@@ -797,6 +943,11 @@ export interface components {
             stage: "intake" | "hotel_options" | "planned" | "error";
             /** Hotel Options */
             hotel_options: components["schemas"]["HotelOption"][];
+            /**
+             * Hotel Amenities
+             * @description Unique approved amenity catalog records for all returned hotel options
+             */
+            hotel_amenities: components["schemas"]["AmenityCatalogPayload"][];
             trip_plan: components["schemas"]["TripPlanPayload"] | null;
             intake: components["schemas"]["IntakeStatus"] | null;
             /**
@@ -856,6 +1007,11 @@ export interface components {
             /** Images */
             images: string[] | null;
             price: components["schemas"]["RoomPricePayload"] | null;
+            /**
+             * Available Room Count
+             * @description Booking-aware remaining room units for the requested stay
+             */
+            available_room_count: number | null;
         };
         /** RoomPricePayload */
         RoomPricePayload: {
@@ -918,6 +1074,8 @@ export interface components {
             stage: string;
             /** Hotel Options */
             hotel_options: components["schemas"]["HotelOption"][];
+            /** Hotel Amenities */
+            hotel_amenities: components["schemas"]["AmenityCatalogPayload"][];
             trip_plan: components["schemas"]["TripPlanPayload"] | null;
             intake: components["schemas"]["IntakeStatus"] | null;
         };
@@ -1012,6 +1170,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
     };
     responses: never;
@@ -1094,6 +1256,109 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AttractionDetailPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_booking_api_v1_bookings_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BookingReservationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_booking_endpoint_api_v1_bookings__booking_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                booking_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BookingOwnershipRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_booking_endpoint_api_v1_bookings__booking_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                booking_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BookingOwnershipRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingPayload"];
                 };
             };
             /** @description Validation Error */

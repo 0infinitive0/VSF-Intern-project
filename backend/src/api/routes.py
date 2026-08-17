@@ -65,8 +65,12 @@ from src.domain.travel_state import TravelState
 from src.models.schemas import (
     AmenityCatalogPayload,
     AttractionDetailPayload,
+    BookingOwnershipRequest,
+    BookingPayload,
+    BookingReservationRequest,
     ChangeHotelRequest,
     HotelDetailPayload,
+    hotel_amenities_from_hotel_options,
     PlannerChatRequest,
     PlannerChatResponse,
     SelectHotelRequest,
@@ -79,6 +83,7 @@ from src.models.schemas import (
 from src.services import session_store
 from src.services.amenity_catalog import query_approved_amenities
 from src.services.place_details import get_attraction_detail, get_hotel_detail
+from src.services.booking_service import BookingError, cancel_booking, confirm_booking, reserve_booking
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +183,44 @@ def attraction_detail(attraction_id: UUID) -> AttractionDetailPayload:
     if detail is None:
         raise HTTPException(status_code=404, detail="Attraction not found.")
     return AttractionDetailPayload.model_validate(detail)
+
+
+def _booking_http_error(exc: BookingError) -> HTTPException:
+    if str(exc) == "booking_not_found":
+        return HTTPException(status_code=404, detail="Booking not found.")
+    if str(exc) in {"insufficient_room_availability", "booking_reservation_expired", "booking_not_confirmable"}:
+        return HTTPException(status_code=409, detail=str(exc))
+    logger.exception("Booking operation failed", exc_info=exc)
+    return HTTPException(status_code=500, detail="Unable to process booking.")
+
+
+@router.post("/bookings", response_model=BookingPayload, status_code=201)
+def create_booking(request: BookingReservationRequest) -> BookingPayload:
+    try:
+        booking = reserve_booking(**request.model_dump())
+        return BookingPayload.model_validate(booking)
+    except BookingError as exc:
+        raise _booking_http_error(exc) from exc
+
+
+@router.post("/bookings/{booking_id}/confirm", response_model=BookingPayload)
+def confirm_booking_endpoint(booking_id: UUID, request: BookingOwnershipRequest) -> BookingPayload:
+    try:
+        return BookingPayload.model_validate(
+            confirm_booking(booking_id=booking_id, temporary_user_ref=request.temporary_user_ref)
+        )
+    except BookingError as exc:
+        raise _booking_http_error(exc) from exc
+
+
+@router.post("/bookings/{booking_id}/cancel", response_model=BookingPayload)
+def cancel_booking_endpoint(booking_id: UUID, request: BookingOwnershipRequest) -> BookingPayload:
+    try:
+        return BookingPayload.model_validate(
+            cancel_booking(booking_id=booking_id, temporary_user_ref=request.temporary_user_ref)
+        )
+    except BookingError as exc:
+        raise _booking_http_error(exc) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -292,6 +335,7 @@ def restore_session(
         # `chat_messages` row, not re-derived for the session as a whole.
         stage=derive_stage(state, hotel_options, reply=""),
         hotel_options=hotel_options,
+        hotel_amenities=hotel_amenities_from_hotel_options(hotel_options),
         trip_plan=to_trip_plan_payload(state.get("trip_data")),
         intake=intake_status_from_travel_state(travel_state),
     )
@@ -712,7 +756,7 @@ async def search_attractions(q: str, k: int = 10):
 
 
 @router.get("/search_hotels")
-async def search_hotels(q: str, k: int = 10):
+async def search_hotels(q: str, k: int = 5):
     """Tìm kiếm semantic cho hotels và rooms sử dụng Supabase RPC."""
     try:
         from src.services.supabase_search import search_hotels_with_rooms

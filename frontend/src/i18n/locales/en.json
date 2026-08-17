@@ -230,6 +230,8 @@
   "detailRooms": "Rooms",
   "detailNearby": "Distance to key points",
   "detailAmen": "Hotel amenities",
+  "detailAmenShowAll": "Show all amenities",
+  "detailAmenShowLess": "Show fewer amenities",
   "detailPriceFrom": "From",
   "detailHandoff": "View original listing on {{platform}}",
   "detailNoInfo": "No details available for this hotel.",

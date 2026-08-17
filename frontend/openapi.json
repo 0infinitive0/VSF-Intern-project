@@ -143,6 +143,144 @@
         }
       }
     },
+    "/api/v1/bookings": {
+      "post": {
+        "summary": "Create Booking",
+        "operationId": "create_booking_api_v1_bookings_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookingReservationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingPayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bookings/{booking_id}/confirm": {
+      "post": {
+        "summary": "Confirm Booking Endpoint",
+        "operationId": "confirm_booking_endpoint_api_v1_bookings__booking_id__confirm_post",
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookingOwnershipRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingPayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bookings/{booking_id}/cancel": {
+      "post": {
+        "summary": "Cancel Booking Endpoint",
+        "operationId": "cancel_booking_endpoint_api_v1_bookings__booking_id__cancel_post",
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookingOwnershipRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingPayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/chat/session": {
       "post": {
         "summary": "Create Session",
@@ -902,7 +1040,7 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "default": 10,
+              "default": 5,
               "title": "K"
             }
           }
@@ -1153,6 +1291,198 @@
           "images"
         ],
         "title": "AttractionDetailPayload"
+      },
+      "BookingOwnershipRequest": {
+        "properties": {
+          "temporary_user_ref": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Temporary User Ref"
+          }
+        },
+        "type": "object",
+        "required": [
+          "temporary_user_ref"
+        ],
+        "title": "BookingOwnershipRequest"
+      },
+      "BookingPayload": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "room_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Room Id"
+          },
+          "check_in_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Check In Date"
+          },
+          "check_in_time": {
+            "type": "string",
+            "format": "time",
+            "title": "Check In Time"
+          },
+          "check_out_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Check Out Date"
+          },
+          "check_out_time": {
+            "type": "string",
+            "format": "time",
+            "title": "Check Out Time"
+          },
+          "room_count": {
+            "type": "integer",
+            "title": "Room Count"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "RESERVED",
+              "CONFIRMED",
+              "CANCELLED",
+              "EXPIRED"
+            ],
+            "title": "Status"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "total_amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Amount"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "room_id",
+          "check_in_date",
+          "check_in_time",
+          "check_out_date",
+          "check_out_time",
+          "room_count",
+          "status"
+        ],
+        "title": "BookingPayload"
+      },
+      "BookingReservationRequest": {
+        "properties": {
+          "room_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Room Id"
+          },
+          "temporary_user_ref": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Temporary User Ref"
+          },
+          "check_in_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Check In Date"
+          },
+          "check_in_time": {
+            "type": "string",
+            "format": "time",
+            "title": "Check In Time",
+            "default": "14:00:00"
+          },
+          "check_out_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Check Out Date"
+          },
+          "check_out_time": {
+            "type": "string",
+            "format": "time",
+            "title": "Check Out Time",
+            "default": "12:00:00"
+          },
+          "room_count": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Room Count",
+            "default": 1
+          },
+          "total_amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Amount"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 16,
+                "minLength": 3
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          }
+        },
+        "type": "object",
+        "required": [
+          "room_id",
+          "temporary_user_ref",
+          "check_in_date",
+          "check_out_date"
+        ],
+        "title": "BookingReservationRequest"
       },
       "ChangeHotelRequest": {
         "properties": {
@@ -1496,6 +1826,19 @@
             ],
             "title": "Currency"
           },
+          "available_room_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Room Count",
+            "description": "Sum of booking-aware remaining room units across this hotel"
+          },
           "rooms": {
             "items": {
               "$ref": "#/components/schemas/RoomDetailPayload"
@@ -1554,6 +1897,7 @@
           "nearby_essentials",
           "lowest_price",
           "currency",
+          "available_room_count",
           "rooms",
           "source_platform",
           "source_url"
@@ -1769,13 +2113,6 @@
               }
             ],
             "title": "City"
-          },
-          "preferences": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Preferences"
           }
         },
         "type": "object",
@@ -1800,8 +2137,7 @@
           "review_count",
           "match_score",
           "match_reasons",
-          "city",
-          "preferences"
+          "city"
         ],
         "title": "HotelOption",
         "description": "One hotel in the pending selection list sent to the React UI.\n\nindex is the 1-based ordinal that must equal suggestions[i].value (as int)\nfor the same turn — they are two views of one list and must not disagree."
@@ -2274,6 +2610,14 @@
             "type": "array",
             "title": "Hotel Options"
           },
+          "hotel_amenities": {
+            "items": {
+              "$ref": "#/components/schemas/AmenityCatalogPayload"
+            },
+            "type": "array",
+            "title": "Hotel Amenities",
+            "description": "Unique approved amenity catalog records for all returned hotel options"
+          },
           "trip_plan": {
             "anyOf": [
               {
@@ -2343,6 +2687,7 @@
           "suggestions",
           "stage",
           "hotel_options",
+          "hotel_amenities",
           "trip_plan",
           "intake",
           "requires_stay_dates",
@@ -2500,6 +2845,19 @@
                 "type": "null"
               }
             ]
+          },
+          "available_room_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Room Count",
+            "description": "Booking-aware remaining room units for the requested stay"
           }
         },
         "type": "object",
@@ -2512,7 +2870,8 @@
           "view",
           "room_facilities",
           "images",
-          "price"
+          "price",
+          "available_room_count"
         ],
         "title": "RoomDetailPayload"
       },
@@ -2734,6 +3093,13 @@
             "type": "array",
             "title": "Hotel Options"
           },
+          "hotel_amenities": {
+            "items": {
+              "$ref": "#/components/schemas/AmenityCatalogPayload"
+            },
+            "type": "array",
+            "title": "Hotel Amenities"
+          },
           "trip_plan": {
             "anyOf": [
               {
@@ -2762,6 +3128,7 @@
           "suggestions",
           "stage",
           "hotel_options",
+          "hotel_amenities",
           "trip_plan",
           "intake"
         ],
@@ -3127,6 +3494,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",

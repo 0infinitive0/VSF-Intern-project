@@ -67,7 +67,13 @@ def _hydrate_hotel_records(search_results: List[Dict[str, Any]]) -> List[Dict[st
         if canonical:
             # Canonical rows supply stable hotel metadata, while the RPC is the
             # authority for the requested stay's price and room selection.
-            hydrated.append({**canonical, **result})
+            merged = {**canonical, **result}
+            # The compact RPC has no amenity payload. Some deployments expose
+            # empty placeholders for these fields, which must not erase the
+            # canonical hotel's real facilities before card serialization.
+            merged["amenities"] = canonical.get("amenities") or []
+            merged["amenity_groups"] = canonical.get("amenity_groups") or {}
+            hydrated.append(merged)
     return hydrated
 
 

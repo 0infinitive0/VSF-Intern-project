@@ -1,4 +1,4 @@
-import type { HotelOption } from '../types'
+import type { AmenityCatalogOption, HotelOption, PreferencePayload } from '../types'
 
 export type HotelSortOrder = 'match' | 'priceAsc' | 'priceDesc'
 
@@ -10,6 +10,45 @@ export interface HotelFilterState {
   minStars: number | null
   preferenceIds: string[]
   sortOrder: HotelSortOrder
+}
+
+/** Resolve the user's active hotel-amenity IDs through the approved catalog. */
+export function activeAmenityPills(
+  activePreferences: PreferencePayload[],
+  catalog: AmenityCatalogOption[] | null,
+  language: string,
+): PreferencePayload[] {
+  const byId = new Map(catalog?.map((amenity) => [amenity.id, amenity]))
+  return activePreferences.map((preference) => {
+    const amenity = byId.get(preference.id)
+    if (!amenity) return preference
+    return {
+      id: preference.id,
+      label: language.startsWith('en') ? amenity.label_en || amenity.label_vi : amenity.label_vi || amenity.label_en,
+    }
+  })
+}
+
+/** Localize joined hotel amenity records without changing canonical filter IDs. */
+export function displayAmenityLabels(
+  amenityIds: string[],
+  details: AmenityCatalogOption[],
+  language: string,
+): string[] {
+  const byId = new Map(details.map((amenity) => [amenity.id, amenity]))
+  return amenityIds.map((id) => {
+    const amenity = byId.get(id)
+    if (!amenity) return id
+    return language.startsWith('en') ? amenity.label_en || amenity.label_vi : amenity.label_vi || amenity.label_en
+  })
+}
+
+/** Present a full amenity list deterministically in the active UI language. */
+export function sortAmenityLabels(labels: string[], language: string): string[] {
+  const locale = language.startsWith('vi') ? 'vi' : 'en'
+  return [...new Set(labels.filter(Boolean))].sort(
+    new Intl.Collator(locale, { sensitivity: 'base' }).compare,
+  )
 }
 
 export function hotelPriceBounds(
@@ -35,7 +74,7 @@ export function roundedPriceSliderBounds(bounds: { min: number; max: number }): 
 }
 
 function hasPreference(hotel: HotelOption, preferenceId: string): boolean {
-  return (hotel.amenities ?? []).includes(preferenceId) || (hotel.preferences ?? []).includes(preferenceId)
+  return (hotel.amenities ?? []).includes(preferenceId)
 }
 
 function priceForSort(hotel: HotelOption, direction: HotelSortOrder): number {

@@ -18,6 +18,7 @@ import src.agents.graph.nodes.supervisor as supervisor_module
 import src.services.search_center as search_center_module
 from src.agents.graph.nodes.hotel_node import hotel_node
 from src.domain.travel_state import TravelState, apply_patch
+from src.services.amenity_catalog import AmenityBindingResult
 from src.services.hotel_selection import NoHotelsMatchAmenities, NoHotelsMatchRating
 from src.services.trip_scheduler import PlaceCandidate
 
@@ -130,16 +131,81 @@ def test_unknown_destination_id_returns_error(monkeypatch):
 
 
 def test_successful_search_populates_hotel_search_result_for_respond(monkeypatch):
+    captured: dict = {}
+
+    def _select(*_args, **kwargs):
+        captured.update(kwargs)
+        return [_option(f"h{index}") for index in range(1, 11)]
+
     monkeypatch.setattr(hotel_node_module, "_get_destination_id", lambda _d: "dest-1")
-    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", lambda *_a, **_k: [_option("h1")])
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _select)
     monkeypatch.setattr(hotel_node_module, "rank_hotel_candidates", lambda options, **_k: options)
 
     result = hotel_node(_graph_state(_seeded_travel_state()))
 
     entry = result["task_results"][-1]
     assert entry["status"] == "ok"
-    assert entry["hotel_search_result"]["options"][0]["id"] == "h1"
+    assert [option["id"] for option in entry["hotel_search_result"]["options"]] == ["h1", "h2", "h3", "h4", "h5"]
+    assert captured["match_count"] == 10
     assert result["pending_tasks"] == []
+
+
+def test_preference_update_retains_prior_cards_and_appends_unseen_matches(monkeypatch):
+    captured: dict = {}
+
+    def _select(*_args, **kwargs):
+        captured.update(kwargs)
+        return [_option("h6"), _option("h7")]
+
+    monkeypatch.setattr(hotel_node_module, "_get_destination_id", lambda _d: "dest-1")
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _select)
+    monkeypatch.setattr(hotel_node_module, "rank_hotel_candidates", lambda options, **_k: options)
+
+    state = _graph_state(_seeded_travel_state(hotel_preferences__amenities=["swimming_pool"]))
+    state["previous_hotel_options"] = [_option(f"h{index}")[0] for index in range(1, 6)]
+    state["previous_hotel_search_context"] = {
+        "destination_id": "dest-1",
+        "start_date": "2099-01-01",
+        "end_date": "2099-01-05",
+        "people": "2",
+    }
+
+    result = hotel_node(state)
+
+    assert captured["exclude_hotel_ids"] == ["h1", "h2", "h3", "h4", "h5"]
+    assert [option["id"] for option in result["task_results"][-1]["hotel_search_result"]["options"]] == [
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "h7",
+    ]
+
+
+def test_hotel_search_uses_catalog_ids_for_chat_amenity_aliases(monkeypatch):
+    captured: dict = {}
+
+    def _select(*_args, **kwargs):
+        captured.update(kwargs)
+        return [_option("h1")]
+
+    monkeypatch.setattr(hotel_node_module, "_get_destination_id", lambda _d: "dest-1")
+    monkeypatch.setattr(
+        hotel_node_module,
+        "resolve_hotel_amenity_ids",
+        lambda _values: AmenityBindingResult(ids=("swimming_pool",), unresolved=("unknown amenity",)),
+    )
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _select)
+    monkeypatch.setattr(hotel_node_module, "rank_hotel_candidates", lambda options, **_k: options)
+
+    result = hotel_node(_graph_state(_seeded_travel_state(hotel_preferences__amenities=["pool", "unknown amenity"])))
+
+    assert captured["required_amenities"] == ["swimming_pool"]
+    assert result["task_results"][-1]["hotel_search_result"]["active_preferences"] == [
+        {"id": "swimming_pool", "label": "swimming_pool"}
+    ]
 
 
 def test_zero_results_is_a_generic_no_results_status(monkeypatch):
