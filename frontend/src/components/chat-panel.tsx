@@ -124,6 +124,16 @@ export default function ChatPanel({
   // stage override (e.g. jumped back from Khách sạn to Thông tin) — the backend's
   // last stage there is whatever it actually was (e.g. 'hotel_options'), so that
   // alone would hide the edit widget the tap is supposed to open.
+  // The `&& !intakeComplete` guard on the first branch is load-bearing for a
+  // RESTORED session: `session_store.restored_messages` hardcodes every
+  // restored message's `stage` to "intake" (see the RESTORE reducer case's
+  // comment in use-chat-session.ts — a real backend limitation, no `stage`
+  // column on `chat_messages` yet), so `lastStage` is ALWAYS 'intake' right
+  // after a reload, even for a fully-planned trip. Without this guard the
+  // terminal preferences card (or whatever currentIntakeField resolves to)
+  // would resurrect itself over an already-completed trip on every reload.
+  // `intakeComplete` (hotelOptions/tripPlan, real backend truth untouched by
+  // the restored-stage bug) is the honest signal instead.
   // Before the first turn, offer the real, currently-covered destinations
   // (data/UX-improvements-doc #1) so the user isn't stuck facing a blank
   // composer — same tap-or-type-freely chip pattern as server suggestions.
@@ -131,7 +141,7 @@ export default function ChatPanel({
   const showIntakeForm =
     !pending &&
     (Boolean(intake)
-      ? lastStage === 'intake' || editingIntakeField != null
+      ? (lastStage === 'intake' && !intakeComplete) || editingIntakeField != null
       : // Pre-first-turn: once the quick-start destination chip is picked
         // locally, keep walking people/dates the same way — see
         // currentIntakeField's pre-intake doc.
