@@ -6,6 +6,7 @@ import {
   locallyAdvancedField,
   nextIntakeField,
   resyncField,
+  serverAskedFieldFor,
   type IntakeField,
 } from './next-intake-field'
 import type { IntakeStatus } from '../types'
@@ -327,6 +328,36 @@ describe('resyncField', () => {
     const intake = intakeWith(['people', 'start_date', 'duration'])
     const f = form({ destination: 'Đà Nẵng', guests: 2 })
     expect(resyncField(intake, f, null)).toBe('people')
+  })
+})
+
+// The "budget asked twice" regression: user answers `dates` via free-text
+// chat instead of the date-range widget. The real reply is the backend's OWN
+// budget question (ask_slot.py asks about it once dates/people resolve,
+// independent of this widget rail) — and budget/preferences never appear in
+// `intake.missing`, so resyncField alone (nextIntakeField-based) can't catch
+// this: it's the SAME field on both sides, not a mismatch.
+describe('serverAskedFieldFor', () => {
+  it('attributes a fresh landing on budget to the real reply that likely just asked it', () => {
+    const intake = intakeWith([]) // destination/people/dates all resolved server-side
+    const f = form({ destination: 'Đà Nẵng', guests: 2, startDate: 'a', endDate: 'b' })
+    expect(serverAskedFieldFor(intake, f, null)).toBe('budget')
+  })
+
+  it('attributes a fresh landing on preferences the same way once budget is also resolved', () => {
+    const intake = intakeWith([], { min_price: 800_000, max_price: 1_200_000 })
+    const f = form({ destination: 'Đà Nẵng', guests: 2, startDate: 'a', endDate: 'b' })
+    expect(serverAskedFieldFor(intake, f, null)).toBe('preferences')
+  })
+
+  it('defers to resyncField\'s pin for a gated-field mismatch', () => {
+    const intake = intakeWith(['people'], { min_price: 800_000, max_price: 1_200_000 })
+    const f = form({ destination: 'Đà Nẵng', guests: 2, startDate: 'a', endDate: 'b' })
+    expect(serverAskedFieldFor(intake, f, null)).toBe('people')
+  })
+
+  it('returns null for a null intake', () => {
+    expect(serverAskedFieldFor(null, form(), null)).toBeNull()
   })
 })
 

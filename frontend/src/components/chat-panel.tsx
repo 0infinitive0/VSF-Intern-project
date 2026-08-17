@@ -54,6 +54,7 @@ export default function ChatPanel({
   toggleIntakePreference,
   editingIntakeField,
   onDoneEditingIntakeField,
+  serverAskedField,
 }: {
   state: ChatState
   onSend: (text: string) => void
@@ -70,6 +71,13 @@ export default function ChatPanel({
   toggleIntakePreference: (key: PreferenceKey) => void
   editingIntakeField: IntakeField | null
   onDoneEditingIntakeField: () => void
+  /** Field the most recent real backend reply is (best-effort) about — see
+   * use-intake-form.ts. Suppresses a redundant local question for the SAME
+   * field (budget/preferences never appear in `intake.missing`, so the
+   * resyncField/nextIntakeField check alone can't catch a duplicate there:
+   * the backend's own ask_slot.py flow asks about budget in its own words
+   * right after dates/people resolve, independent of this widget rail). */
+  serverAskedField: IntakeField | null
 }) {
   const { messages, suggestions, hotelOptions, tripPlan, intake, pending, hotelsLoading, streamingText } = state
   const { t, i18n } = useTranslation()
@@ -124,8 +132,11 @@ export default function ChatPanel({
   const activeIntakeField = editingIntakeField ?? currentIntakeField(intake, intakeForm)
   // The widget's question, asked in the thread only when the backend's own
   // last reply didn't already ask it (progressive disclosure advances locally,
-  // with no chat turn — see locallyAdvancedField).
-  const questionField = showIntakeForm ? locallyAdvancedField(intake, activeIntakeField, intakeForm) : null
+  // with no chat turn — see locallyAdvancedField) AND isn't the same field a
+  // fresh real reply already asked about in its own words (budget/preferences
+  // — see serverAskedField's doc on the ChatPanel props type).
+  const rawQuestionField = showIntakeForm ? locallyAdvancedField(intake, activeIntakeField, intakeForm) : null
+  const questionField = rawQuestionField === serverAskedField ? null : rawQuestionField
   const questionKey = questionField ? INTAKE_QUESTION_KEY[questionField] : undefined
   const intakeQuestion = questionKey ? t(questionKey) : null
 

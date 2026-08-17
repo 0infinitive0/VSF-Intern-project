@@ -120,6 +120,7 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
     resetForm: resetIntakeForm,
     editingField: editingIntakeField,
     setEditingField: setEditingIntakeField,
+    serverAskedField,
   } = useIntakeForm(state.intake)
   const [chatWidth, setChatWidth] = useState(352)
   const chatResize = usePanelResize(chatWidth, setChatWidth, { min: 300, max: 560 })
@@ -290,6 +291,7 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
       editingIntakeField={editingIntakeField}
       onEditIntakeField={setEditingIntakeField}
       onDoneEditingIntakeField={() => setEditingIntakeField(null)}
+      serverAskedField={serverAskedField}
       sessions={sessions}
       activeSessionId={state.sessionId}
       onPickSession={handlePickSession}

@@ -225,3 +225,25 @@ export function resyncField(
   if (!nextField) return null
   return currentIntakeField(intake, form) !== nextField ? nextField : null
 }
+
+/**
+ * Best-effort guess at which field a FRESH real backend reply is about —
+ * meant to be recomputed once per new `intake` snapshot (never on a local
+ * -only `setForm`), same call site as `resyncField`.
+ *
+ * `resyncField`'s own pin, when set, IS that field (a gated field the reply
+ * is still missing). Otherwise it's wherever progressive disclosure has
+ * landed, `budget`/`preferences` included — those two never appear in
+ * `intake.missing` (the backend "gate"), but the backend's own conversational
+ * flow (ask_slot.py) still asks about budget by itself once dates/people
+ * resolve, in its own wording, so a fresh landing there is just as likely to
+ * already be covered by the real reply as a gated one.
+ */
+export function serverAskedFieldFor(
+  intake: IntakeStatus | null,
+  form: IntakeFormShape,
+  editingField: IntakeField | null,
+): IntakeField | null {
+  if (!intake) return null
+  return resyncField(intake, form, editingField) ?? currentIntakeField(intake, form)
+}

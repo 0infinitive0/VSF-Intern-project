@@ -8,7 +8,7 @@ import {
   type PreferenceKey,
 } from '../lib/intake-options'
 import type { IntakeFormState } from '../lib/compose-intake-message'
-import { resyncField, type IntakeField } from '../lib/next-intake-field'
+import { resyncField, serverAskedFieldFor, type IntakeField } from '../lib/next-intake-field'
 import type { IntakeStatus } from '../types'
 
 // intake.people is a formatted string like "2 người" (trip_intake.py), not a
@@ -160,6 +160,17 @@ export function useIntakeForm(intake: IntakeStatus | null) {
   // that one field's widget out of progressive-disclosure order, pre-filled
   // with the current value. Cleared once the correction is sent.
   const [editingField, setEditingField] = useState<IntakeField | null>(null)
+  // Best-effort guess at which field the most recent REAL backend reply is
+  // about — `budget`/`preferences` are never in `intake.missing` (the
+  // backend "gate", see next-intake-field.ts) so `resyncField`'s
+  // nextIntakeField-based check can never catch a duplicate there. The
+  // backend's own conversational flow (ask_slot.py) still asks about budget
+  // by itself once dates/people are answered, in its own wording — right
+  // next to the local widget's `intakeBudgetQuestion` bubble if nothing
+  // suppresses it. Set once per fresh `intake` snapshot (never on a local
+  // -only `setForm`, same as `previousIntakeRef`); ChatPanel suppresses the
+  // local question when its active field matches this.
+  const [serverAskedField, setServerAskedField] = useState<IntakeField | null>(null)
 
   useEffect(() => {
     if (!intake) return
@@ -173,13 +184,16 @@ export function useIntakeForm(intake: IntakeStatus | null) {
       mergedRef.current = mergeIntakeIntoForm(prev, intake, previousIntake, editingField)
       return mergedRef.current
     })
+    const merged = mergedRef.current
+    if (!merged) return
     // Only ever evaluated here, once per NEW real backend turn (never on a
     // local-only widget tap, which doesn't touch `intake`) — see
     // resyncField's doc for why that's what makes this safe: a mismatch
     // found here means THIS turn's real reply is a still-open question the
     // widget rail has already answered-but-not-sent and walked past.
-    const pin = mergedRef.current && resyncField(intake, mergedRef.current, editingField)
+    const pin = resyncField(intake, merged, editingField)
     if (pin) setEditingField(pin)
+    setServerAskedField(serverAskedFieldFor(intake, merged, editingField))
     // `editingField` is deliberately not a dependency: it guards how THIS
     // snapshot merges, and re-running the merge when the user opens or closes
     // an edit would re-apply an already-folded-in snapshot against a stale
@@ -206,11 +220,12 @@ export function useIntakeForm(intake: IntakeStatus | null) {
   const resetForm = () => {
     setForm(EMPTY_INTAKE_FORM)
     setEditingField(null)
+    setServerAskedField(null)
     // Drop the merge baseline too — otherwise the new session's first snapshot
     // would be diffed against the old session's, and every slot the old trip
     // had would read as "just cleared".
     previousIntakeRef.current = null
   }
 
-  return { form, setForm, togglePreference, resetForm, editingField, setEditingField }
+  return { form, setForm, togglePreference, resetForm, editingField, setEditingField, serverAskedField }
 }
