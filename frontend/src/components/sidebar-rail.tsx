@@ -28,6 +28,7 @@ export default function SidebarRail({
   onPickSession,
   onDeleteSession,
   turnPending,
+  restoringSessionId,
   onOpenAuthPanel,
 }: {
   theme: Theme
@@ -40,6 +41,7 @@ export default function SidebarRail({
   onPickSession: (sessionId: string) => void
   onDeleteSession: (sessionId: string) => void
   turnPending: boolean
+  restoringSessionId: string | null
   onOpenAuthPanel: () => void
 }) {
   const { t } = useTranslation()
@@ -127,6 +129,7 @@ export default function SidebarRail({
             onPickSession={onPickSession}
             onDeleteSession={onDeleteSession}
             turnPending={turnPending}
+            restoringSessionId={restoringSessionId}
           />
         </div>
 

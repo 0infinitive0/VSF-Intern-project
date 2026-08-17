@@ -175,6 +175,12 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
 
   const { sessions, removeLocal, refresh } = useSessionHistory(state.sessionId, state.pending)
 
+  // restoreSession() has no in-flight signal of its own (session-client.ts's
+  // fetch just resolves or doesn't) — this is purely a UI-visible "which row
+  // is loading" flag so ConversationList can show a spinner instead of
+  // looking unresponsive for however long that GET takes.
+  const [restoringSessionId, setRestoringSessionId] = useState<string | null>(null)
+
   // No confirm() (design has none — a fresh trip destroys nothing now that
   // startNew() doesn't DELETE the old session). POST /chat/session now
   // persists immediately (routes.py's create_session), so refresh() here
@@ -245,9 +251,14 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   }, [auth.user?.id])
 
   async function handlePickSession(sessionId: string) {
-    if (state.pending || sessionId === state.sessionId) return
-    const restored = await restore(sessionId)
-    if (restored) resetIntakeForm()
+    if (state.pending || restoringSessionId || sessionId === state.sessionId) return
+    setRestoringSessionId(sessionId)
+    try {
+      const restored = await restore(sessionId)
+      if (restored) resetIntakeForm()
+    } finally {
+      setRestoringSessionId(null)
+    }
   }
 
   // deleteConvo semantics (V-OTA Planner.dc.html): closing the open
@@ -297,6 +308,7 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
       onPickSession={handlePickSession}
       onDeleteSession={handleDeleteSession}
       turnPending={state.pending}
+      restoringSessionId={restoringSessionId}
       onOpenAuthPanel={onOpenAuthPanel}
     />
   )

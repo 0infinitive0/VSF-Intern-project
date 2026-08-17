@@ -29,6 +29,7 @@ export default function ConversationList({
   onPickSession,
   onDeleteSession,
   turnPending,
+  restoringSessionId,
 }: {
   collapsed: boolean
   sessions: SessionSummary[] | null
@@ -36,6 +37,7 @@ export default function ConversationList({
   onPickSession: (sessionId: string) => void
   onDeleteSession: (sessionId: string) => void
   turnPending: boolean
+  restoringSessionId: string | null
 }) {
   const { t, i18n } = useTranslation()
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
@@ -77,6 +79,12 @@ export default function ConversationList({
       >
       {sessions.map((session, i) => {
         const active = session.session_id === activeSessionId
+        const restoring = restoringSessionId === session.session_id
+        // Any in-flight restore blocks every row, not just its own — a
+        // second click while the first restore()'s GET is still pending
+        // would otherwise race switchingRef.current in use-chat-session.ts
+        // and just get silently dropped, which looks like a dead click.
+        const disabled = turnPending || restoringSessionId !== null
         const title =
           composeSessionTitle(session, { daysSuffix: t('sidebarDaysShort'), nightsSuffix: t('sidebarNightsShort') }) ??
           t('newChatBtn')
@@ -92,9 +100,10 @@ export default function ConversationList({
               title={title}
               onClick={() => onPickSession(session.session_id)}
               aria-current={active ? 'true' : undefined}
-              aria-disabled={turnPending || undefined}
+              aria-disabled={disabled || undefined}
+              aria-busy={restoring || undefined}
               className={`w-full flex items-center gap-2.5 rounded-[14px] hover:bg-glass-2 transition-colors text-left ${
-                turnPending ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
+                disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
               }`}
               style={{
                 padding: collapsed ? '4px' : '9px',
@@ -108,7 +117,18 @@ export default function ConversationList({
                 boxShadow: active ? '0 10px 24px -18px rgba(var(--sh),.7)' : 'none',
               }}
             >
-              {session.thumbnail_url ? (
+              {restoring ? (
+                <div className="w-8 h-8 rounded-[11px] shrink-0 flex items-center justify-center" aria-hidden="true">
+                  <div
+                    className="w-4 h-4 rounded-full border-2"
+                    style={{
+                      borderColor: 'var(--color-outline-variant)',
+                      borderTopColor: 'var(--color-primary)',
+                      animation: 'vSpin .8s linear infinite',
+                    }}
+                  />
+                </div>
+              ) : session.thumbnail_url ? (
                 <img src={session.thumbnail_url} alt="" className="w-8 h-8 rounded-[11px] object-cover shrink-0" />
               ) : (
                 <div

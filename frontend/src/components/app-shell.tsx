@@ -78,6 +78,7 @@ export default function AppShell({
   onPickSession,
   onDeleteSession,
   turnPending,
+  restoringSessionId,
   onOpenAuthPanel,
 }: {
   state: ChatState
@@ -107,6 +108,9 @@ export default function AppShell({
   onPickSession: (sessionId: string) => void
   onDeleteSession: (sessionId: string) => void
   turnPending: boolean
+  /** Session id currently being fetched by restore(), or null — drives the
+   * spinner ConversationList shows on that row while awaiting the response. */
+  restoringSessionId: string | null
   onOpenAuthPanel: () => void
 }) {
   const { theme, toggleTheme } = useTheme()
@@ -204,6 +208,7 @@ export default function AppShell({
         onPickSession={onPickSession}
         onDeleteSession={onDeleteSession}
         turnPending={turnPending}
+        restoringSessionId={restoringSessionId}
         onOpenAuthPanel={onOpenAuthPanel}
       />
 
