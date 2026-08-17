@@ -185,3 +185,65 @@ export function currentIntakeField(
   }
   return 'preferences'
 }
+
+/**
+ * The field to pin the widget rail back to when a FRESH real backend turn
+ * (this is meant to be called only from the effect that fires on a new
+ * `intake` snapshot, never on every local `setForm`) still has an open
+ * question the progressive-disclosure walk has already answered-but-not-sent
+ * and skipped past.
+ *
+ * Mixing answer channels is what triggers this: the user answers `people`
+ * via the stepper (local only, no chat turn — the widget silently advances,
+ * as designed, see `currentIntakeField`'s "Load-bearing" note), then answers
+ * something else entirely via free-text chat instead of continuing the
+ * widget flow. That chat turn's real reply is the backend re-asking about
+ * `people` (it genuinely never received that answer) — a real message
+ * appended permanently to the thread. Left alone, the widget rail would
+ * still show whatever field the local walk had already reached (e.g. the
+ * terminal `preferences` card) right next to that real, still-open
+ * question: two different-looking questions back to back with no answer in
+ * between.
+ *
+ * Pinning back to `nextIntakeField` re-opens ITS OWN widget, pre-filled with
+ * the local answer already collected — confirming it (IntakeParametersForm's
+ * `editingField` path, `commitEdit`) immediately resends the whole
+ * accumulated form as one message, resolving the divergence in a single
+ * real turn instead of leaving it stuck.
+ *
+ * Never fires while the user already has an explicit "Sửa" edit open on a
+ * different field — that correction takes priority and must not be
+ * silently swapped out from under them.
+ */
+export function resyncField(
+  intake: IntakeStatus | null,
+  form: IntakeFormShape,
+  editingField: IntakeField | null,
+): IntakeField | null {
+  if (editingField || !intake) return null
+  const nextField = nextIntakeField(intake)
+  if (!nextField) return null
+  return currentIntakeField(intake, form) !== nextField ? nextField : null
+}
+
+/**
+ * Best-effort guess at which field a FRESH real backend reply is about —
+ * meant to be recomputed once per new `intake` snapshot (never on a local
+ * -only `setForm`), same call site as `resyncField`.
+ *
+ * `resyncField`'s own pin, when set, IS that field (a gated field the reply
+ * is still missing). Otherwise it's wherever progressive disclosure has
+ * landed, `budget`/`preferences` included — those two never appear in
+ * `intake.missing` (the backend "gate"), but the backend's own conversational
+ * flow (ask_slot.py) still asks about budget by itself once dates/people
+ * resolve, in its own wording, so a fresh landing there is just as likely to
+ * already be covered by the real reply as a gated one.
+ */
+export function serverAskedFieldFor(
+  intake: IntakeStatus | null,
+  form: IntakeFormShape,
+  editingField: IntakeField | null,
+): IntakeField | null {
+  if (!intake) return null
+  return resyncField(intake, form, editingField) ?? currentIntakeField(intake, form)
+}

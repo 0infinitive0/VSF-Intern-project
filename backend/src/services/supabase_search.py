@@ -33,6 +33,12 @@ ATTRACTION_SEARCH_TIERS: tuple[tuple[float, float], ...] = (
     (12.0, 0.25),
 )
 
+# Shared "nearby" radius for single-shot (non-tiered) anchored searches --
+# e.g. rebuild_day's shortlist suggestion and the search_places tool. Reuses
+# the widest configured attraction tier radius rather than inventing a new
+# constant, since these callers have no per-tier fallback of their own.
+DEFAULT_NEARBY_SEARCH_RADIUS_KM: float = ATTRACTION_SEARCH_TIERS[-1][0]
+
 
 def validate_radius_filter(
     root_latitude: Any = None,
@@ -426,6 +432,15 @@ def search_attractions_tiered(
     attraction search API. This helper is intentionally planner-specific: it
     embeds once, keeps every call rooted at the selected hotel, and only
     expands the radius when a closer tier cannot supply enough unique records.
+
+    ``match_attractions``' radius predicate previously always evaluated to
+    NULL, because its coordinate-format guard regex was written with doubled
+    backslashes inside a plain string literal and so could never match a real
+    "lat,lon" value (fixed in
+    scripts/migrations/20260817_fix_match_attractions_radius_regex.sql). This
+    used to fetch one broad pool and filter distance client-side to work
+    around that. Now that the deployed function filters correctly, per-tier
+    RPC calls are cheaper than over-fetching and filtering in Python.
     """
     if required_count <= 0:
         return []

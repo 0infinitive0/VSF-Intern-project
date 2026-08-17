@@ -72,6 +72,7 @@ export default function AppShell({
   editingIntakeField,
   onEditIntakeField,
   onDoneEditingIntakeField,
+  serverAskedField,
   sessions,
   activeSessionId,
   onPickSession,
@@ -98,6 +99,9 @@ export default function AppShell({
   editingIntakeField: IntakeField | null
   onEditIntakeField: (key: IntakeChecklistRowKey) => void
   onDoneEditingIntakeField: () => void
+  /** Field the most recent real backend reply is (best-effort) about —
+   * ChatPanel uses it to suppress a redundant same-field local question. */
+  serverAskedField: IntakeField | null
   sessions: SessionSummary[] | null
   activeSessionId: string | null
   onPickSession: (sessionId: string) => void
@@ -229,6 +233,7 @@ export default function AppShell({
             toggleIntakePreference={toggleIntakePreference}
             editingIntakeField={editingIntakeField}
             onDoneEditingIntakeField={onDoneEditingIntakeField}
+            serverAskedField={serverAskedField}
           />
         </div>
 
