@@ -119,7 +119,7 @@ def test_deadlock_regression_date_change_applies_and_budget_returns_with_context
     """The reported failure, reproduced exactly: budget is the only slot
     still pending, the user sends an UNRELATED date change -- the date must
     apply, and budget must be asked again, not silently dropped or repeated
-    verbatim (it must carry a "what changed" context line)."""
+    verbatim as a "didn't catch that" re-ask."""
 
     # Within the seeded [2099-01-01, 2099-01-05) window so this exercises
     # the date CHANGE itself, not an unrelated end-before-start rejection.
@@ -151,7 +151,7 @@ def test_deadlock_regression_date_change_applies_and_budget_returns_with_context
     assert result["missing_slots"] == ["budget.target"]
 
     response = PlannerChatResponse(**result["response"])
-    assert "Đã cập nhật" in response.reply  # context, not a verbatim repeat
+    assert "Đã cập nhật" not in response.reply  # no acknowledgement text, just the next question
     assert "giá" in response.reply.lower()  # the budget question itself still follows
 
 

@@ -4,7 +4,9 @@
  * Session lifecycle:
  *   - On mount: try to rehydrate session_id from sessionStorage, then ping it.
  *     Only a 404 (the server genuinely lost it) starts a new session silently
- *     — see resolveBootstrapSession for the full decision table.
+ *     — see resolveBootstrapSession for the full decision table. Whenever
+ *     that id is kept (not freshly minted), its messages are also fetched
+ *     via restoreSession so a page reload doesn't drop the conversation.
  *   - startNew(): create a new session, no DELETE — the old one stays persisted
  *     and stays in the history rail (deleting a conversation is a separate,
  *     explicit action against session-client.ts's deleteSession()).
@@ -374,8 +376,20 @@ export function useChatSession() {
         fallbackId: () => crypto.randomUUID(),
       })
       if (cancelled) return
-      if (persist) sessionStorage.setItem(SESSION_KEY, sessionId)
-      dispatch({ type: 'SESSION_READY', sessionId })
+      if (persist) {
+        sessionStorage.setItem(SESSION_KEY, sessionId)
+        dispatch({ type: 'SESSION_READY', sessionId })
+        return
+      }
+      // persist:false means this id already existed before this boot (a
+      // reload rehydrating from sessionStorage, most commonly) rather than
+      // one just minted by create()/fallbackId() — so it may have persisted
+      // messages worth hydrating. restoreSession degrades to null on 404/
+      // network failure, same as the sidebar's restore() path.
+      const data = await restoreSession(sessionId)
+      if (cancelled) return
+      if (data) dispatch({ type: 'RESTORE', sessionId, data })
+      else dispatch({ type: 'SESSION_READY', sessionId })
     }
 
     bootstrap()

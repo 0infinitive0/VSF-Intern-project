@@ -32,34 +32,6 @@ from src.i18n import t
 from src.services.trip_intake import DestinationOption
 from src.services.trip_planner import _get_destination_names
 
-# Labels for the "Đã cập nhật: ..." context line — a light acknowledgement,
-# not user-facing prose that needs to read perfectly, but still through a
-# real per-language table rather than a mechanical path.replace() (the
-# earlier version rendered "dates start" for English, which reads as
-# broken, not translated).
-_CHANGE_LABELS: dict[str, dict[str, str]] = {
-    "vi": {
-        "destination": "điểm đến",
-        "people": "số người",
-        "dates.start": "ngày bắt đầu",
-        "dates.end": "ngày kết thúc",
-        "budget.target": "ngân sách",
-        "budget.min": "ngân sách tối thiểu",
-        "budget.max": "ngân sách tối đa",
-        "budget.trip_total": "tổng ngân sách",
-    },
-    "en": {
-        "destination": "destination",
-        "people": "number of people",
-        "dates.start": "start date",
-        "dates.end": "end date",
-        "budget.target": "budget",
-        "budget.min": "minimum budget",
-        "budget.max": "maximum budget",
-        "budget.trip_total": "total trip budget",
-    },
-}
-
 
 def _render_destination(language: str) -> str:
     destination_names = _get_destination_names()
@@ -108,40 +80,14 @@ def _render_question(spec: SlotSpec, pending: tuple[str, ...], language: str) ->
     raise AssertionError(f"ask_slot: no renderer registered for prompt_key {spec.prompt_key!r}")
 
 
-def _describe_change(path: str, language: str) -> str:
-    labels = _CHANGE_LABELS.get(language, _CHANGE_LABELS["vi"])
-    return labels.get(path, path)
-
-
-def _updated_line(applied_changes: list[dict[str, Any]], language: str) -> str | None:
-    """Non-empty exactly when this turn applied a change while a DIFFERENT
-    slot is still pending — the "interrupted and returns with context" case
-    (a date change lands, budget's question comes back, not repeated
-    verbatim). `next_question` is only ever still-UNKNOWN for a slot
-    `applied_changes` did NOT just fill, so any non-empty `applied_changes`
-    here is always this case, never the slot re-asking itself — EXCEPT an
-    `unset` on some other slot, which is also a real, worth-acknowledging
-    change (the fact was cleared), so this stays correct for that case too."""
-    if not applied_changes:
-        return None
-    labels: list[str] = []
-    seen: set[str] = set()
-    for change in applied_changes:
-        label = _describe_change(str(change.get("path") or ""), language)
-        if label and label not in seen:
-            seen.add(label)
-            labels.append(label)
-    if not labels:
-        return None
-    joined = ", ".join(labels)
-    return t("Đã cập nhật: {joined}.", language, joined=joined)
-
-
 def _context_line(state: TravelGraphState, spec: SlotSpec, language: str) -> str | None:
     """The line prefixed above the re-asked question — never a bare, silent
-    repeat. Two cases, in priority order:
-    1. Something else landed this turn (`_updated_line`) — context, not a
-       repeat.
+    repeat of a question the user actually answered. Two cases, in priority
+    order:
+    1. Something else landed this turn (`applied_changes` non-empty) — the
+       user's message was understood, just for a different slot, so this is
+       never a "didn't catch that" re-ask. No acknowledgement text is shown;
+       the next question follows on its own.
     2. `spec` was ALSO the pending slot at the end of the previous turn
        (`state["missing_slots"]`, which `load_context` deliberately does not
        reset — see its docstring) and nothing landed this turn to explain
@@ -157,9 +103,8 @@ def _context_line(state: TravelGraphState, spec: SlotSpec, language: str) -> str
     answer, so case 2 is skipped entirely and this returns `None`,
     `intake_qa`'s answer taking that context line's place in `respond`.
     """
-    updated = _updated_line(state.get("applied_changes") or [], language)
-    if updated:
-        return updated
+    if state.get("applied_changes"):
+        return None
 
     rejected = state.get("rejected_changes") or []
     for rejection in rejected:
