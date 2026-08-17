@@ -194,6 +194,11 @@ body {
   overscroll-behavior: none;
 }
 
+button:not(:disabled),
+[role="button"]:not(:disabled) {
+  cursor: pointer;
+}
+
 @keyframes vPinIn {
   0% { opacity: 0; transform: translateY(-14px) scale(.4); }
   70% { transform: translateY(0) scale(1.14); }

@@ -12,6 +12,7 @@ import GoogleButton from './google-button'
 type Screen = 'login' | 'register' | 'forgot' | 'sent'
 
 const CLOSE_TRANSITION_MS = 320
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
  * AuthPanel — the whole Login/Register/Forgot-password/Sent experience as
@@ -90,7 +91,10 @@ export default function AuthPanel({
     if (password.length < 8) return setError(t('authErrShort'))
     setLoading(true)
     setError('')
-    const { error: authError } = await auth.signInWithPassword(email.trim(), password)
+    const [ { error: authError } ] = await Promise.all([
+      auth.signInWithPassword(email.trim(), password),
+      delay(600)
+    ])
     setLoading(false)
     if (authError) return setError(translateAuthError(authError, t))
     onClose()
@@ -103,7 +107,10 @@ export default function AuthPanel({
     if (password !== confirm) return setError(t('authErrMatch'))
     setLoading(true)
     setError('')
-    const { error: authError } = await auth.registerWithPassword(name.trim(), email.trim(), password)
+    const [ { error: authError } ] = await Promise.all([
+      auth.registerWithPassword(name.trim(), email.trim(), password),
+      delay(600)
+    ])
     setLoading(false)
     if (authError) return setError(translateAuthError(authError, t))
     onClose()
@@ -113,7 +120,10 @@ export default function AuthPanel({
     if (!EMAIL_RE.test(email.trim())) return setError(t('authErrEmail'))
     setLoading(true)
     setError('')
-    const { error: authError } = await auth.sendPasswordReset(email.trim())
+    const [ { error: authError } ] = await Promise.all([
+      auth.sendPasswordReset(email.trim()),
+      delay(600)
+    ])
     setLoading(false)
     if (authError) return setError(translateAuthError(authError, t))
     setScreen('sent')
