@@ -5,8 +5,10 @@ from src.services.trip_edit_planner import parse_trip_edit_plan
 from src.services.trip_formatter import to_trip_plan_payload
 from src.services.trip_planner import (
     _apply_local_trip_change,
+    _generate_and_save_itinerary,
     _reapply_planning_constraints,
     apply_trip_edit_plan,
+    build_selected_hotel_trip,
     resolve_trip_edit_request,
 )
 from src.services.trip_scheduler import PlaceCandidate, TripChange
@@ -46,6 +48,48 @@ def _trip_data() -> dict:
             },
         ],
     }
+
+
+def test_initial_itinerary_reply_is_concise_while_the_full_plan_is_saved(monkeypatch) -> None:
+    trip_data = _trip_data()
+    trip_data["hotel"] = {"name": "Khách sạn Một"}
+    saved: dict[str, dict] = {}
+    monkeypatch.setattr(trip_builder_svc, "_build_trip_data", lambda *_args, **_kwargs: trip_data)
+
+    reply = _generate_and_save_itinerary(
+        "Đà Nẵng",
+        "2",
+        "2",
+        save=lambda data: saved.setdefault("trip", data),
+    )
+
+    assert "Ngày 1" not in reply
+    assert "Khách sạn Một" in reply
+    assert saved["trip"] is trip_data
+    assert saved["trip"]["itinerary_items"]
+
+
+def test_hotel_replacement_reply_is_concise_while_the_full_plan_is_returned(monkeypatch) -> None:
+    trip_data = _trip_data()
+    trip_data["hotel"] = {"name": "Khách sạn Mới"}
+    monkeypatch.setattr(trip_builder_svc, "_build_trip_data", lambda *_args, **_kwargs: trip_data)
+
+    result = build_selected_hotel_trip(
+        {
+            "mode": "change_hotel",
+            "destination": "Đà Nẵng",
+            "duration": "2",
+            "people": "2",
+        },
+        {"id": "hotel-2", "name": "Khách sạn Mới"},
+        current_trip_data=_trip_data(),
+        session_id="test-session",
+    )
+
+    assert "Ngày 1" not in result.reply
+    assert "Khách sạn Mới" in result.reply
+    assert result.trip_data is trip_data
+    assert result.trip_data["itinerary_items"]
 
 
 def test_self_selected_meal_removes_breakfast_without_adding_a_replacement() -> None:

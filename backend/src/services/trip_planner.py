@@ -38,7 +38,7 @@ from src.services.supabase_search import (
 )
 from src.services.trip_edit_planner import EditOperation, NewItemRequirements, TripEditPlan
 from src.services.place_search import search_attraction_candidates, search_attraction_candidates_tiered
-from src.services.trip_formatter import format_hotel_options, format_trip_response_from_json, parse_duration_to_days
+from src.services.trip_formatter import format_hotel_options, format_trip_summary_reply, parse_duration_to_days
 from src.services.trip_intake import (
     DestinationOption,
     destination_options_from_rows,
@@ -2110,7 +2110,7 @@ def _generate_and_save_itinerary(
         logger.exception("Itinerary generation failed")
         return f"SYSTEM ERROR: {exc}"
 
-    return format_trip_response_from_json(trip_data, language)
+    return format_trip_summary_reply(trip_data, language)
 
 
 @dataclass(frozen=True)
@@ -2183,7 +2183,7 @@ def build_selected_hotel_trip(
         trip_data["hotel_selection_options"] = deepcopy(dict(pending))
         return SelectedHotelTrip(
             trip_data=trip_data,
-            reply=format_trip_response_from_json(trip_data, language),
+            reply=format_trip_summary_reply(trip_data, language),
         )
 
     captured: dict[str, dict[str, Any]] = {}
@@ -2304,5 +2304,5 @@ def _legacy_modify_trip_plan(
         logger.exception("Failed to apply structured trip modification")
         return f"SYSTEM ERROR: {exc}"
 
-    return format_trip_response_from_json(updated_data, language)
+    return format_trip_summary_reply(updated_data, language)
 
