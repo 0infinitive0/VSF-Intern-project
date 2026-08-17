@@ -23,6 +23,7 @@ from langgraph.types import Command
 from src.i18n import t
 from src.services.place_search import search_attraction_candidates
 from src.services.search_center import resolve_center
+from src.services.supabase_search import DEFAULT_NEARBY_SEARCH_RADIUS_KM
 from src.services.trip_planner import _get_destination_id
 
 logger = logging.getLogger(__name__)
@@ -69,12 +70,17 @@ def search_places(
         return Command(update={"messages": [ToolMessage(reply, tool_call_id=tool_call_id)]})
 
     try:
+        # resolution.resolved (checked above) guarantees both latitude and
+        # longitude are set; validate_radius_filter requires all three of
+        # lat/lon/radius together, so max_radius_km must always follow here
+        # too -- omitting it raised ValueError on every resolved search.
         candidates = search_attraction_candidates(
             query,
             destination_id,
             match_count=limit,
             root_latitude=resolution.latitude,
             root_longitude=resolution.longitude,
+            max_radius_km=DEFAULT_NEARBY_SEARCH_RADIUS_KM,
         )
     except Exception as exc:
         logger.exception("search_places: search failed")

@@ -363,14 +363,7 @@ def test_radius_filter_validation_errors():
         supabase_search_module.validate_radius_filter(root_latitude=float("nan"), root_longitude=106.0, max_radius_km=5.0)
 
 
-def test_tiered_attraction_search_uses_a_single_rpc_call_without_radius(monkeypatch):
-    """The deployed match_attractions radius predicate always evaluates to NULL,
-    discarding every row once root_latitude/root_longitude/max_radius_km are all
-    supplied (plans/reports/debug-260817-0857-match-attractions-radius-filter.md).
-    search_attractions_tiered now fetches one broad, threshold-only pool and never
-    forwards radius to the RPC; distance-based tiering happens downstream in
-    place_search.search_attraction_candidates_tiered, the only layer with
-    hydrated coordinates."""
+def test_tiered_attraction_search_reuses_one_embedding_and_stops_after_unique_results(monkeypatch):
     class CountingEmbeddings:
         def __init__(self):
             self.queries = []
@@ -380,10 +373,15 @@ def test_tiered_attraction_search_uses_a_single_rpc_call_without_radius(monkeypa
             return [0.25]
 
     calls = []
+    responses = [
+        [{"id": "first"}, {"id": "first"}],
+        [{"id": "first"}, {"id": "second"}],
+        [{"id": "third"}],
+    ]
 
     def fake_execute_rpc(name, params):
         calls.append((name, params.copy()))
-        return [{"id": "first"}, {"id": "second"}]
+        return responses[len(calls) - 1]
 
     embeddings = CountingEmbeddings()
     monkeypatch.setattr(supabase_search_module, "get_embeddings", lambda: embeddings)
@@ -399,50 +397,36 @@ def test_tiered_attraction_search_uses_a_single_rpc_call_without_radius(monkeypa
 
     assert embeddings.queries == ["museum culture"]
     assert [result["id"] for result in results] == ["first", "second"]
-    assert len(calls) == 1
-    name, params = calls[0]
-    assert name == "match_attractions"
-    assert params["match_threshold"] == min(
-        threshold for _, threshold in supabase_search_module.ATTRACTION_SEARCH_TIERS
-    )
-    assert params["filter_destination_id"] == "destination-id"
-    assert "root_latitude" not in params
-    assert "root_longitude" not in params
-    assert "max_radius_km" not in params
+    assert [result["retrieval_tier"] for result in results] == [1, 2]
+    assert [(params["max_radius_km"], params["match_threshold"]) for _, params in calls] == [
+        (3.0, 0.4),
+        (3.0, 0.25),
+    ]
+    assert all(name == "match_attractions" for name, _ in calls)
+    assert all(params["filter_destination_id"] == "destination-id" for _, params in calls)
+    assert all(params["root_latitude"] == 16.0544 for _, params in calls)
+    assert all(params["root_longitude"] == 108.2022 for _, params in calls)
 
 
-def test_tiered_attraction_search_widens_fetch_count_with_required_count(monkeypatch):
+def test_tiered_attraction_search_does_not_expand_radius_when_first_tier_is_sufficient(monkeypatch):
     calls = []
     monkeypatch.setattr(supabase_search_module, "get_embeddings", lambda: _FakeEmbeddings())
 
     def fake_execute_rpc(_name, params):
         calls.append(params.copy())
-        return []
+        return [{"id": "first"}, {"id": "second"}]
 
     monkeypatch.setattr(supabase_search_module, "_execute_rpc", fake_execute_rpc)
 
-    supabase_search_module.search_attractions_tiered(
+    results = supabase_search_module.search_attractions_tiered(
         "local activities",
-        required_count=30,
+        required_count=2,
         filter_destination_id="destination-id",
         root_latitude=16.0544,
         root_longitude=108.2022,
     )
 
-    assert calls[0]["match_count"] == 450  # max(30 * 15, 150)
-
-
-def test_tiered_attraction_search_still_validates_coordinates(monkeypatch):
-    """root_latitude/root_longitude stay in the signature for input validation
-    even though they are no longer forwarded to the RPC."""
-    monkeypatch.setattr(supabase_search_module, "get_embeddings", lambda: _FakeEmbeddings())
-
-    with pytest.raises(ValueError, match="root_latitude_out_of_range"):
-        supabase_search_module.search_attractions_tiered(
-            "museum",
-            required_count=2,
-            filter_destination_id="destination-id",
-            root_latitude=200.0,
-            root_longitude=108.2022,
-        )
+    assert [result["id"] for result in results] == ["first", "second"]
+    assert len(calls) == 1
+    assert calls[0]["max_radius_km"] == 3.0
 

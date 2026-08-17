@@ -69,6 +69,46 @@ def test_shortlist_pauses_with_numbered_options(monkeypatch):
     assert "2. Quán Cơm Nhà" in payload["message"]
 
 
+def test_shortlist_search_supplies_max_radius_km_alongside_hotel_coordinates(monkeypatch):
+    """search_attraction_candidates requires all of root_latitude/root_longitude/
+    max_radius_km together (validate_radius_filter) or none of them. _trip_data's
+    hotel has coordinates, so max_radius_km must accompany them here -- omitting
+    it raised ValueError on every suggest_operations search, caught by
+    fetch_and_schedule_node's except Exception and surfaced as rebuild_error
+    instead of a pause, so this regresses as a missing __interrupt__ too."""
+    captured: dict = {}
+
+    def _capturing_search(_query, _destination_id, *, match_count, root_latitude, root_longitude, max_radius_km):
+        captured.update(
+            match_count=match_count, root_latitude=root_latitude,
+            root_longitude=root_longitude, max_radius_km=max_radius_km,
+        )
+        return _CANDIDATES
+
+    monkeypatch.setattr(rebuild_day_module, "search_attraction_candidates", _capturing_search)
+    monkeypatch.setattr(rebuild_day_module, "_current_trip_parameters", lambda _data: ("Đà Nẵng", "1", "2", ""))
+    monkeypatch.setattr(rebuild_day_module, "_get_destination_id", lambda _name: "dest-1")
+
+    subgraph = build_rebuild_day_subgraph(checkpointer=MemorySaver())
+    config = {"configurable": {"thread_id": "t-radius"}}
+
+    result = subgraph.invoke(
+        {
+            "trip_data": _trip_data(),
+            "day_number": 1,
+            "day_theme": {},
+            "locked_days": [],
+            "suggest_operations": [_suggest_task()],
+        },
+        config=config,
+    )
+
+    assert "__interrupt__" in result, f"expected a pause, got rebuild_error={result.get('rebuild_error')!r}"
+    assert captured["root_latitude"] == 16.05
+    assert captured["root_longitude"] == 108.2
+    assert captured["max_radius_km"] == rebuild_day_module.DEFAULT_NEARBY_SEARCH_RADIUS_KM
+
+
 def test_resume_by_rank_number_applies_the_picked_candidate_not_a_research(monkeypatch):
     monkeypatch.setattr(rebuild_day_module, "search_attraction_candidates", lambda *_a, **_kw: _CANDIDATES)
     monkeypatch.setattr(rebuild_day_module, "_current_trip_parameters", lambda _data: ("Đà Nẵng", "1", "2", ""))

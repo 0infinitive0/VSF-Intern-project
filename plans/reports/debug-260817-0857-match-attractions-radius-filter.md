@@ -1,7 +1,12 @@
 # match_attractions: filter radius hỏng → mọi lịch trình rỗng địa điểm
 
-**Ngày:** 2026-08-17 · **Branch:** `main` · **Trạng thái:** đã vá (phía Python), verify xong trên Supabase thật
-**Quyết định:** vá tạm phía Python (phương án 2) để unblock; sửa SQL là việc riêng sau.
+**Ngày:** 2026-08-17 · **Branch:** `main` · **Trạng thái:** đã vá Python + đã sửa root cause SQL trên production, verify xong cả 2
+**Quyết định:** vá tạm phía Python (phương án 2) để unblock; sửa SQL là việc riêng sau — **cả 2 nay đều đã xong**.
+
+> **Cập nhật 2026-08-17 (phiên 3):** user lấy được `pg_get_functiondef` thật từ Supabase SQL
+> Editor. Root cause **không phải** "parse coordinates ra NULL" chung chung như suy đoán ban đầu —
+> cụ thể hơn: **regex kiểm định dạng toạ độ bị double-escape backslash**, không bao giờ match bất
+> kỳ chuỗi "lat,lon" thật nào. Xem "Root cause thật + migration (phiên 3)" ở cuối file.
 
 > **Cập nhật 2026-08-17 (phiên sau):** bản vá ở mục "Bản vá đã chọn" bên dưới **chưa từng được
 > implement** trong phiên chẩn đoán — trạng thái cũ ghi nhầm là xong. Lịch trình pasted lại vẫn
@@ -251,8 +256,10 @@ HIỆN TẠI (mỗi tier 1 RPC, radius do SQL lọc — và SQL hỏng)
 
 ## Câu hỏi chưa giải quyết
 
-1. Có quyền chạy SQL trực tiếp trên Supabase không? Cần `pg_get_functiondef` để làm việc còn lại
-   mục 1; không có thì bản vá Python là đường duy nhất.
+1. ~~Có quyền chạy SQL trực tiếp trên Supabase không?~~ **Đã trả lời (phiên 3):** không có kết nối
+   Postgres trực tiếp từ môi trường agent (psql tới cả 2 pooler port bị connection refused, kể cả
+   tắt sandbox), nhưng user tự chạy `pg_get_functiondef` qua Supabase SQL Editor (dashboard) và
+   paste kết quả — đủ để viết migration chính xác. Xem "Root cause thật + migration (phiên 3)".
 2. `match_count` nới rộng bao nhiêu là đủ? Phụ thuộc mật độ attraction quanh khách sạn — Huế có
    75 điểm trong 3km, nhưng destination thưa hơn có thể cần hệ số khác. Đo trước khi chốt hằng số.
 3. Hàm deployed hỏng từ bao giờ, và do lần deploy nào? Không truy được từ repo vì không có
@@ -349,3 +356,133 @@ Không sửa trong phiên này — ngoài phạm vi báo cáo (radius filter), c
 4 mục ở "Việc còn lại (không nằm trong bản vá tạm)" phía trên vẫn nguyên trạng, chưa mục nào được
 làm trong phiên này. Mục 4 ("gỡ bản vá Python để trả bộ lọc về DB") giờ áp dụng cho code phiên này,
 không phải bản pseudocode cũ.
+
+---
+
+## Bug độc lập đã sửa (phiên 2) — thiếu `max_radius_km`, không liên quan SQL
+
+Phát hiện khi rà toàn bộ caller của `search_attraction_candidates` (không phải bản tiered) để trả
+lời câu hỏi "cần sửa Supabase không". **Không phải cùng lỗi** với `match_attractions` — đây là lỗi
+Python thuần, đứng độc lập, và đang crash 100% khi kích hoạt.
+
+**Triệu chứng:** `rebuild_day.py:137-143` (nhánh gợi ý đổi 1 địa điểm qua interrupt/shortlist) và
+`search_places.py:72-78` (tool `search_places` của qa_node) đều gọi
+`search_attraction_candidates(..., root_latitude=X, root_longitude=Y)` nhưng **không truyền
+`max_radius_km`**. `validate_radius_filter` yêu cầu đủ cả 3 tham số (lat, lon, radius) hoặc không
+cái nào — thiếu 1/3 raise `ValueError("radius_filter_requires_latitude_longitude_and_radius")`.
+Lỗi bị nuốt bởi `except Exception` ở mỗi nơi, biến thành `rebuild_error` (rebuild_day) hoặc "Tìm
+địa điểm thất bại" (search_places) — nghĩa là 2 flow này fail 100% bất cứ khi nào có toạ độ neo
+(hotel đã chọn / center đã resolve), tức là trường hợp bình thường.
+
+**Sửa:** thêm hằng số `DEFAULT_NEARBY_SEARCH_RADIUS_KM` trong `supabase_search.py` (tái dùng
+`ATTRACTION_SEARCH_TIERS[-1][0]` = 12km, tier lỏng nhất đã có sẵn — không bịa số mới), truyền vào
+cả 2 call site:
+- `rebuild_day.py`: `max_radius_km=DEFAULT_NEARBY_SEARCH_RADIUS_KM if hotel_coordinates else None`
+  (giữ cặp all-or-nothing với `root_latitude`/`root_longitude` cùng điều kiện).
+- `search_places.py`: `max_radius_km=DEFAULT_NEARBY_SEARCH_RADIUS_KM` không điều kiện — an toàn vì
+  `resolution.resolved` (đã check phía trên) đảm bảo lat/lon luôn có giá trị tại điểm gọi.
+
+**Test:** `test_place_selection.py` thêm
+`test_shortlist_search_supplies_max_radius_km_alongside_hotel_coordinates` — chạy qua compiled
+subgraph thật (không mock `interrupt()`, theo đúng pattern có sẵn của file vì gọi thẳng node sẽ
+không bắt được `interrupt()` raise), assert `"__interrupt__" in result` (tức không rơi vào
+`rebuild_error`) và đúng `max_radius_km`. `test_search_places.py`'s
+`test_resolved_center_searches_and_formats_results` cập nhật fake để nhận + assert thêm
+`max_radius_km`. Toàn bộ `test_place_selection.py + test_search_places.py + test_rebuild_day.py +
+test_supabase_search.py + test_place_search.py + test_day_loop_interrupt.py` pass (52 passed, 2
+fail tiền-tồn-tại cùng loại migration-file đã ghi ở trên).
+
+**Lưu ý `gitnexus detect_changes` báo risk=high sau bug này:** đúng vì đổi `fetch_and_schedule_node`
++ `search_places` (2 entrypoint node/tool thật) — nhưng phần liệt `validate_radius_filter` là
+**touched** chỉ vì hằng số mới chèn *trước* nó trong file làm lệch số dòng, thân hàm không đổi 1
+ký tự (đã diff xác nhận). Không phải rủi ro thật, chỉ là line-shift.
+
+---
+
+## Root cause thật + migration (phiên 3)
+
+User lấy `pg_get_functiondef('match_attractions')` thật từ Supabase SQL Editor. Hàm deployed **trông
+đúng** khi đọc lướt — công thức haversine chuẩn, cấu trúc NULL-guard "đủ 3 tham số mới lọc, thiếu 1
+thì bỏ qua filter" đúng đắn. Bug nằm ở **1 chỗ rất cụ thể**, không phải "hàm hỏng lung tung" như suy
+đoán ban đầu.
+
+### Cơ chế chính xác
+
+Cột `attraction_latitude`/`attraction_longitude` được parse từ `coordinates` (text) qua:
+
+```sql
+CASE WHEN a.coordinates ~ '^\\s*-?\\d+(\\.\\d+)?\\s*,\\s*-?\\d+(\\.\\d+)?\\s*$'
+    THEN split_part(a.coordinates, ',', 1)::double precision END
+```
+
+Regex literal này nằm trong chuỗi `'...'` **thường** (không phải `E'...'`). Từ Postgres 9.1,
+`standard_conforming_strings` mặc định bật ⇒ backslash trong chuỗi `'...'` thường **không** phải ký
+tự escape, nó là backslash literal. Vậy giá trị chuỗi thật mà regex engine nhận được chứa **2 dấu
+backslash liên tiếp** trước mỗi `s`/`d`/`.`, không phải 1. Trong cú pháp regex, `\\s` nghĩa là "1 ký
+tự backslash literal, theo sau là ký tự 's' literal" — **không phải** lớp ký tự whitespace `\s`.
+Tương tự `\\d` = backslash + 'd' literal, không phải digit class.
+
+Verify bằng Python (`re` đủ tương thích để kiểm luận điểm này — POSIX ARE và PCRE đều xử lý
+backslash-đôi giống nhau ở đây):
+
+```
+pattern hỏng (2 backslash thật):  '16.4583925,107.5815424' -> match=False  (0/3 mẫu match)
+pattern đúng (1 backslash):       '16.4583925,107.5815424' -> match=True   (3/3 mẫu match)
+```
+
+⇒ Regex **không bao giờ** match bất kỳ chuỗi `"lat,lon"` thật nào ⇒ `attraction_latitude`/
+`attraction_longitude` **luôn NULL** cho mọi dòng, vô điều kiện ⇒ nhánh
+`(attraction_latitude IS NOT NULL AND ...)` trong `WHERE` luôn `FALSE` khi cả 3 tham số radius được
+truyền đủ ⇒ khớp chính xác với mọi bằng chứng đã thu thập trước đó (radius=99999km từ chính toạ độ
+attraction vẫn 0 kết quả; thiếu 1/3 tham số thì trả bình thường).
+
+**Toàn bộ phần còn lại của hàm — công thức haversine, cấu trúc OR-chain NULL-guard, filter
+destination/category/exclusion — đều đúng, không cần đổi.** Fix chỉ là bỏ dấu backslash thừa ở 2
+chỗ (latitude + longitude).
+
+### Migration
+
+`backend/scripts/migrations/20260817_fix_match_attractions_radius_regex.sql` — `CREATE OR REPLACE`
+với **đúng y hệt chữ ký** đã lấy từ `pg_get_functiondef` (9 tham số, đúng thứ tự/default/type), chỉ
+sửa regex. Không cần `DROP FUNCTION` trước (khác với migration `20260730_...` cho
+`match_hotels_with_rooms` — case đó đổi chữ ký nên phải drop; case này chữ ký giữ nguyên, `CREATE OR
+REPLACE` thay thế tại chỗ, không tạo overload trùng).
+
+**Đã apply lên production (phiên 3, cùng lượt).** Đường psql trực tiếp bị chặn (connection refused
+cả 2 pooler port, kể cả tắt sandbox), nhưng Supabase CLI (`supabase`, đã login sẵn, project `V_OTA`
+/ `baoeafpfyhraufinosqr` đã linked) có `supabase db query --linked` — chạy qua Management API
+(HTTPS), không qua kết nối Postgres trực tiếp nên không bị chặn. OAuth cho MCP server
+`plugin:supabase:supabase` bị lỗi cấu hình phía plugin ("Unrecognized client_id") — không dùng
+được, nhưng CLI đã đủ.
+
+Trình tự đã chạy, user xác nhận `--linked` trước khi động tới production (không tự ý apply):
+
+```
+1. supabase db query "SELECT ... FROM match_attractions(embedding, 0.0, 5, NULL, NULL,
+   16.4635.., 107.6167.., 3.0)" --linked   -> 0 rows   (baseline, tái hiện bug lần cuối)
+2. supabase db query -f 20260817_fix_match_attractions_radius_regex.sql --linked
+   -> chạy CREATE OR REPLACE + ALTER, không lỗi
+3. Lặp lại query (1)   -> 5 rows thật (Vincom Plaza Huế 0.76, Phố Đi Bộ Huế, Phố tây Huế,
+   PLAYTIME HUẾ, Đa:mê Café) — cùng câu query, trước/sau apply, khác biệt rõ ràng
+4. pg_get_functiondef lại lần nữa, đếm số backslash trước 's'/'d' trong JSON response
+   (2 dấu \ trong JSON = 1 dấu \ thật trong Postgres) -> xác nhận regex lưu đúng bản 1-backslash,
+   không còn bản 2-backslash cũ
+```
+
+Fix xác nhận sống trên production, không chỉ đúng trên giấy.
+
+### Việc còn lại (chưa làm, cần hỏi trước khi làm — auto mode đã tắt)
+
+1. Gỡ bớt bản vá Python (`fetch_count = max(required_count*15, 150)` rồi lọc lại bằng Python trong
+   `place_search.py`) — mục 4 ở "Việc còn lại" phía trên. SQL giờ lọc đúng tại nguồn, bản vá Python
+   chỉ còn là chi phí băng thông thừa (fetch nhiều hơn cần rồi lọc lại), không còn là correctness
+   fix. Có thể gỡ về dùng lại RPC trực tiếp với radius (rẻ hơn), nhưng **chưa làm** — cần hỏi ý user
+   trước.
+2. Đưa định nghĩa đúng của `match_attractions` (bản 9 tham số, đã fix) vào `supabase/seed.sql` —
+   hiện seed.sql chỉ có bản 5 tham số cũ, vẫn lệch so với production dù production giờ đã đúng.
+   Chưa làm.
+3. `supabase/migrations/` (thư mục CLI chuẩn) không tồn tại — migration này nằm ở
+   `backend/scripts/migrations/` theo convention riêng của repo, không phải convention
+   `supabase db push` chuẩn. Việc chuẩn hoá về 1 chỗ (nếu cần) là quyết định riêng, chưa bàn.
+
+Không cần Supabase cho bug này — thuần phía Python, đã xong.

@@ -54,6 +54,7 @@ from src.services.trip_edit_planner import ItemTarget, NewItemRequirements
 from src.services.place_search import search_attraction_candidates
 from src.services.hotel_selection import resolve_selection
 from src.services.trip_scheduler import parse_coordinates
+from src.services.supabase_search import DEFAULT_NEARBY_SEARCH_RADIUS_KM
 
 logger = logging.getLogger(__name__)
 
@@ -132,14 +133,18 @@ def fetch_and_schedule_node(state: RebuildDayState) -> dict[str, Any]:
                     continue
 
                 # Search candidates, anchored at the hotel (Phase 8's rule:
-                # never guess a center -- fall back to the trip-wide default
-                # radius when no hotel coordinates are known yet).
+                # never guess a center -- fall back to an unfiltered search
+                # when no hotel coordinates are known yet). validate_radius_filter
+                # requires all three of lat/lon/radius or none of them, so
+                # max_radius_km must follow hotel_coordinates too -- passing
+                # only lat/lon raised ValueError on every call with a hotel.
                 candidates = search_attraction_candidates(
                     query,
                     destination_id,
                     match_count=3,
                     root_latitude=hotel_coordinates[0] if hotel_coordinates else None,
                     root_longitude=hotel_coordinates[1] if hotel_coordinates else None,
+                    max_radius_km=DEFAULT_NEARBY_SEARCH_RADIUS_KM if hotel_coordinates else None,
                 )
                 if not candidates:
                     continue

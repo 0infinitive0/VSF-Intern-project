@@ -1,12 +1,14 @@
-"""Regression coverage for the radius-filter patch described in
-plans/reports/debug-260817-0857-match-attractions-radius-filter.md.
+"""Regression coverage for search_attraction_candidates_tiered's hydration wiring.
 
-The deployed `match_attractions` RPC's distance predicate always evaluates to
-NULL once root_latitude/root_longitude/max_radius_km are all supplied, which
-discarded every row. `search_attraction_candidates_tiered` now fetches one
-broad, threshold-only pool (see test_supabase_search.py) and enforces the
-(radius, threshold) tier cascade itself, in Python, against hydrated
-coordinates -- these tests cover that cascade.
+match_attractions' radius predicate is fixed at the RPC layer now (a
+coordinate-format regex bug, see
+plans/reports/debug-260817-0857-match-attractions-radius-filter.md /
+scripts/migrations/20260817_fix_match_attractions_radius_regex.sql), so
+per-tier distance filtering happens entirely server-side again -- see
+test_supabase_search.py's test_tiered_attraction_search_* for that coverage.
+This file only covers what search_attraction_candidates_tiered itself still
+does: requiring hotel coordinates, forwarding them to the RPC, and hydrating
+the RPC's compact rows into PlaceCandidates.
 """
 
 from __future__ import annotations
@@ -17,25 +19,7 @@ import src.services.place_search as place_search_module
 from src.services.place_search import search_attraction_candidates_tiered
 from src.services.trip_scheduler import PlaceCandidate
 
-# Real coordinates from the diagnosed hotel (LOVE HOME-peaceful Nera Apart, Hue)
-# in the linked debug report -- not synthetic, so tier math matches production.
 HOTEL = PlaceCandidate(id="hotel-1", name="Test Hotel", coordinates="16.463584369906,107.616792805241")
-
-
-def _row(place_id: str, similarity: float, coordinates: str | None) -> dict:
-    return {
-        "id": place_id,
-        "name": place_id,
-        "category": "Attraction",
-        "coordinates": coordinates,
-        "similarity": similarity,
-        "description": "desc",
-    }
-
-
-def _stub_rpc_and_hydrate(monkeypatch, rows: list[dict]) -> None:
-    monkeypatch.setattr(place_search_module, "rpc_search_attractions_tiered", lambda *a, **k: rows)
-    monkeypatch.setattr(place_search_module, "hydrate_records", lambda *a, **k: rows)
 
 
 def test_tiered_search_requires_hotel_coordinates():
@@ -44,47 +28,61 @@ def test_tiered_search_requires_hotel_coordinates():
         search_attraction_candidates_tiered("museum", "destination-id", hotel_without_coords, required_count=3)
 
 
-def test_tiered_search_filters_out_of_radius_candidates_via_haversine(monkeypatch):
-    """A far-away candidate must not survive just because the RPC no longer
-    filters by distance -- this is the exact bug the patch fixes."""
-    near = _row("near", 0.5, "16.470,107.620")  # ~0.8km from the hotel
-    far = _row("far", 0.9, "21.028,105.854")  # Hanoi, ~600km away -- outside every tier
+def test_tiered_search_forwards_hotel_coordinates_and_hydrates_rpc_results(monkeypatch):
+    captured: dict = {}
 
-    _stub_rpc_and_hydrate(monkeypatch, [near, far])
+    def _fake_rpc(query, *, required_count, filter_destination_id, root_latitude, root_longitude, **kwargs):
+        captured.update(
+            query=query, required_count=required_count, filter_destination_id=filter_destination_id,
+            root_latitude=root_latitude, root_longitude=root_longitude, extra_kwargs=kwargs,
+        )
+        return [{"id": "attr-1"}]
+
+    def _fake_hydrate(table_name, search_results, _fields):
+        captured["hydrate_table"] = table_name
+        captured["hydrate_ids"] = [row["id"] for row in search_results]
+        return [{"id": "attr-1", "name": "Vincom Plaza Huế", "coordinates": "16.47,107.62"}]
+
+    monkeypatch.setattr(place_search_module, "rpc_search_attractions_tiered", _fake_rpc)
+    monkeypatch.setattr(place_search_module, "hydrate_records", _fake_hydrate)
 
     results = search_attraction_candidates_tiered("museum", "destination-id", HOTEL, required_count=5)
 
-    assert [c.id for c in results] == ["near"]
+    assert captured["query"] == "museum"
+    assert captured["required_count"] == 5
+    assert captured["filter_destination_id"] == "destination-id"
+    assert captured["root_latitude"] == 16.463584369906
+    assert captured["root_longitude"] == 107.616792805241
+    assert captured["extra_kwargs"] == {}
+    assert captured["hydrate_table"] == "attractions"
+    assert captured["hydrate_ids"] == ["attr-1"]
+    assert [c.id for c in results] == ["attr-1"]
+    assert results[0].name == "Vincom Plaza Huế"
 
 
-def test_tiered_search_assigns_the_tightest_tier_a_candidate_qualifies_for(monkeypatch):
-    tight = _row("tight", 0.5, "16.470,107.620")  # ~0.8km, sim 0.50 -> tier 1 (3km, >0.40)
-    loose = _row("loose", 0.30, "16.520,107.660")  # ~7.7km, sim 0.30 -> only tier 4 (12km, >0.25)
+def test_tiered_search_forwards_exclude_attraction_ids_only_when_given(monkeypatch):
+    captured: dict = {}
 
-    _stub_rpc_and_hydrate(monkeypatch, [tight, loose])
+    def _fake_rpc(_query, *, required_count, filter_destination_id, root_latitude, root_longitude, **kwargs):
+        captured["extra_kwargs"] = kwargs
+        return []
 
-    results = search_attraction_candidates_tiered("museum", "destination-id", HOTEL, required_count=5)
+    monkeypatch.setattr(place_search_module, "rpc_search_attractions_tiered", _fake_rpc)
+    monkeypatch.setattr(place_search_module, "hydrate_records", lambda *a, **k: [])
 
-    tiers_by_id = {c.id: c.retrieval_tier for c in results}
-    assert tiers_by_id == {"tight": 1, "loose": 4}
+    search_attraction_candidates_tiered(
+        "museum", "destination-id", HOTEL, required_count=5, exclude_attraction_ids=["a", "b"]
+    )
 
-
-def test_tiered_search_stops_once_required_count_is_met(monkeypatch):
-    rows = [_row(f"p{i}", 0.5, "16.470,107.620") for i in range(5)]  # all tier-1 eligible
-
-    _stub_rpc_and_hydrate(monkeypatch, rows)
-
-    results = search_attraction_candidates_tiered("museum", "destination-id", HOTEL, required_count=2)
-
-    assert len(results) == 2
-    assert all(c.retrieval_tier == 1 for c in results)
+    assert captured["extra_kwargs"] == {"exclude_attraction_ids": ["a", "b"]}
 
 
 def test_tiered_search_drops_candidates_with_unparseable_coordinates(monkeypatch):
-    good = _row("good", 0.5, "16.470,107.620")
-    broken = _row("broken", 0.9, None)
+    good = {"id": "good", "name": "good", "coordinates": "16.470,107.620"}
+    broken = {"id": "broken", "name": "broken", "coordinates": None}
 
-    _stub_rpc_and_hydrate(monkeypatch, [good, broken])
+    monkeypatch.setattr(place_search_module, "rpc_search_attractions_tiered", lambda *a, **k: [good, broken])
+    monkeypatch.setattr(place_search_module, "hydrate_records", lambda *a, **k: [good, broken])
 
     results = search_attraction_candidates_tiered("museum", "destination-id", HOTEL, required_count=5)
 
