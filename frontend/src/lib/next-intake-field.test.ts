@@ -5,6 +5,7 @@ import {
   isFieldMissing,
   locallyAdvancedField,
   nextIntakeField,
+  resyncField,
   type IntakeField,
 } from './next-intake-field'
 import type { IntakeStatus } from '../types'
@@ -278,6 +279,54 @@ describe('intake state table (widget vs question)', () => {
     expect(nextIntakeField(intake)).toBeNull()
     expect(currentIntakeField(intake, f)).toBe('preferences')
     expect(locallyAdvancedField(intake, currentIntakeField(intake, f), f)).toBeNull()
+  })
+})
+
+// The "asks 2 questions" regression: answering `people` via the stepper
+// (local only) and THEN a different field via free-text chat instead of
+// continuing the widget. The chat turn's real reply re-asks `people` (the
+// backend genuinely never got it) while the widget rail, left unchecked,
+// would already be showing the terminal `preferences` card — two
+// conflicting questions back to back.
+describe('resyncField', () => {
+  it('pins back to the field the fresh backend reply is still asking about', () => {
+    // people answered locally, dates+budget resolved via earlier chat turns
+    // -> currentIntakeField would jump straight to preferences.
+    const intake = intakeWith(['people'], { min_price: 800_000, max_price: 1_200_000 })
+    const f = form({ destination: 'Đà Nẵng', guests: 2, startDate: 'a', endDate: 'b' })
+    expect(resyncField(intake, f, null)).toBe('people')
+  })
+
+  it('does nothing when the widget already matches what the backend just asked', () => {
+    const intake = intakeWith(['people', 'start_date', 'duration'])
+    expect(resyncField(intake, form(), null)).toBeNull()
+  })
+
+  it('does nothing once nothing is server-required anymore', () => {
+    const intake = intakeWith([])
+    const f = form({ destination: 'Đà Nẵng', guests: 2, startDate: 'a', endDate: 'b', budgetSkipped: true })
+    expect(resyncField(intake, f, null)).toBeNull()
+  })
+
+  it('never overrides an explicit "Sửa" edit already in progress', () => {
+    const intake = intakeWith(['people'], { min_price: 800_000, max_price: 1_200_000 })
+    const f = form({ destination: 'Đà Nẵng', guests: 2, startDate: 'a', endDate: 'b' })
+    expect(resyncField(intake, f, 'dates')).toBeNull()
+  })
+
+  it('returns null for a null intake', () => {
+    expect(resyncField(null, form(), null)).toBeNull()
+  })
+
+  // The legitimate one-step-ahead case (pure widget walkthrough, no chat
+  // turn involved) must NOT be affected by this — resyncField is only ever
+  // wired into the effect that fires on a genuinely new `intake` snapshot,
+  // not on every local setForm, so this scenario never reaches it in
+  // practice. Documented here so the distinction stays explicit.
+  it('would also flag a plain one-step-ahead local walk if misapplied there', () => {
+    const intake = intakeWith(['people', 'start_date', 'duration'])
+    const f = form({ destination: 'Đà Nẵng', guests: 2 })
+    expect(resyncField(intake, f, null)).toBe('people')
   })
 })
 

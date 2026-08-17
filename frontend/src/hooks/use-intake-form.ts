@@ -8,7 +8,7 @@ import {
   type PreferenceKey,
 } from '../lib/intake-options'
 import type { IntakeFormState } from '../lib/compose-intake-message'
-import type { IntakeField } from '../lib/next-intake-field'
+import { resyncField, type IntakeField } from '../lib/next-intake-field'
 import type { IntakeStatus } from '../types'
 
 // intake.people is a formatted string like "2 người" (trip_intake.py), not a
@@ -165,7 +165,21 @@ export function useIntakeForm(intake: IntakeStatus | null) {
     if (!intake) return
     const previousIntake = previousIntakeRef.current
     previousIntakeRef.current = intake
-    setForm((prev) => mergeIntakeIntoForm(prev, intake, previousIntake, editingField))
+    // `setForm`'s updater must stay pure (StrictMode double-invokes it to
+    // check that) — the merged result is captured into this ref instead of
+    // deciding the resync pin from inside the updater itself.
+    const mergedRef: { current: IntakeFormState | null } = { current: null }
+    setForm((prev) => {
+      mergedRef.current = mergeIntakeIntoForm(prev, intake, previousIntake, editingField)
+      return mergedRef.current
+    })
+    // Only ever evaluated here, once per NEW real backend turn (never on a
+    // local-only widget tap, which doesn't touch `intake`) — see
+    // resyncField's doc for why that's what makes this safe: a mismatch
+    // found here means THIS turn's real reply is a still-open question the
+    // widget rail has already answered-but-not-sent and walked past.
+    const pin = mergedRef.current && resyncField(intake, mergedRef.current, editingField)
+    if (pin) setEditingField(pin)
     // `editingField` is deliberately not a dependency: it guards how THIS
     // snapshot merges, and re-running the merge when the user opens or closes
     // an edit would re-apply an already-folded-in snapshot against a stale
