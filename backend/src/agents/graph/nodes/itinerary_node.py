@@ -70,7 +70,7 @@ from langgraph.errors import GraphInterrupt
 
 from src.agents.graph.state import TravelGraphState
 from src.agents.graph.subgraphs.rebuild_day import build_rebuild_day_subgraph
-from src.domain.travel_state import Presence, TravelState
+from src.domain.travel_state import Presence, TravelState, trip_duration_days
 from src.i18n import t
 from src.services.trip_formatter import format_trip_summary_reply
 from src.services.trip_planner import (
@@ -179,6 +179,28 @@ def _set_locked_days(trip_data: dict[str, Any], days_to_lock: list[int]) -> None
     itinerary["planning_constraints"] = constraints
 
 
+def _sync_dates_from_travel_state(trip_data: dict[str, Any], travel_state: TravelState) -> None:
+    """Replace the itinerary's own `start_date`/`end_date`/`duration_days`
+    with `TravelState`'s `dates.start`/`dates.end` (the same class of bug
+    `_sync_locked_days_from_travel_state` already fixes for `locked_days`):
+    a "đổi ngày đi" edit validates and patches `travel_state` correctly, but
+    `trip_data`'s own copy — what `to_trip_plan_payload` actually reads for
+    the header's date range/day-count — is a separate snapshot taken when
+    the trip was first built, and nothing else re-syncs it afterward."""
+    if travel_state.get("dates.start").presence is not Presence.SET or travel_state.get("dates.end").presence is not Presence.SET:
+        return
+    itinerary_rows = trip_data.get("itineraries") or [{}]
+    itinerary = itinerary_rows[0] if isinstance(itinerary_rows, list) and itinerary_rows else {}
+    if not isinstance(itinerary, dict):
+        return
+    duration_days = trip_duration_days(travel_state)
+    if duration_days is None:
+        return
+    itinerary["start_date"] = travel_state.get("dates.start").value
+    itinerary["end_date"] = travel_state.get("dates.end").value
+    itinerary["duration_days"] = duration_days
+
+
 def _sync_locked_days_from_travel_state(trip_data: dict[str, Any], locked_days: Any) -> None:
     """Replace ``planning_constraints.locked_days`` with the patch-validated
     `TravelState` ``locked_days`` slot (review finding F4) -- an authoritative
@@ -270,6 +292,8 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
     locked_days_slot = travel_state.get("locked_days")
     if trip_data and locked_days_slot.presence is Presence.SET:
         _sync_locked_days_from_travel_state(trip_data, locked_days_slot.value)
+    if trip_data:
+        _sync_dates_from_travel_state(trip_data, travel_state)
 
     rebuild_day_queue: list[int] = list(state.get("rebuild_day_queue") or [])
     rebuilt_days: list[int] = list(state.get("rebuilt_days") or [])

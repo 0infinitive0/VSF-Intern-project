@@ -29,6 +29,7 @@ def _state(
     day_numbers: list[int] | None = None,
     rebuild_day_queue: list[int] | None = None,
     rebuilt_days: list[int] | None = None,
+    travel_state: dict[str, Any] | None = None,
 ) -> Any:
     from src.agents.graph.state import TravelGraphState
 
@@ -36,7 +37,7 @@ def _state(
         session_id="test",
         language="vi",
         messages=[],
-        travel_state={},
+        travel_state=travel_state or {},
         trip_data=trip_data,
         patch=[],
         intent="",
@@ -263,3 +264,55 @@ class TestQueueMechanics:
         assert "itinerary_node" not in pending, (
             "itinerary_node must NOT re-queue itself when all days are done"
         )
+
+
+class TestDateSyncFromTravelState:
+    """A "đổi ngày đi" edit patches `travel_state.dates.start`/`dates.end`
+    correctly, but `trip_data`'s own itinerary row — what the frontend's
+    trip header (`to_trip_plan_payload`) actually reads for the date
+    range/day-count — is a separate snapshot taken when the trip was first
+    built. Without a resync, the header stays stale even though the edit
+    was applied."""
+
+    def test_itinerary_node_resyncs_stale_dates_from_travel_state(self) -> None:
+        from src.agents.graph.nodes.itinerary_node import itinerary_node
+
+        data = _make_trip_data(duration_days=1)  # stale: 2026-09-15 → 2026-09-17
+
+        with patch(
+            "src.agents.graph.nodes.itinerary_node._invoke_rebuild_day",
+            return_value=data,
+        ):
+            state = _state(
+                data,
+                "rebuild_days",
+                [1],
+                travel_state={
+                    "dates.start": {"presence": "set", "value": "2026-07-01"},
+                    "dates.end": {"presence": "set", "value": "2026-07-03"},
+                },
+            )
+            result = itinerary_node(state)
+
+        itinerary = result["trip_data"]["itineraries"][0]
+        assert itinerary["start_date"] == "2026-07-01"
+        assert itinerary["end_date"] == "2026-07-03"
+        assert itinerary["duration_days"] == 2
+
+    def test_itinerary_node_leaves_dates_alone_when_travel_state_has_none(self) -> None:
+        """No `dates.start`/`dates.end` in `travel_state` (e.g. an
+        unrelated edit) must not blank out the itinerary's own dates."""
+        from src.agents.graph.nodes.itinerary_node import itinerary_node
+
+        data = _make_trip_data(duration_days=1)
+
+        with patch(
+            "src.agents.graph.nodes.itinerary_node._invoke_rebuild_day",
+            return_value=data,
+        ):
+            state = _state(data, "rebuild_days", [1])
+            result = itinerary_node(state)
+
+        itinerary = result["trip_data"]["itineraries"][0]
+        assert itinerary["start_date"] == "2026-09-15"
+        assert itinerary["end_date"] == "2026-09-17"
