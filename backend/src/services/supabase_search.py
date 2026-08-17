@@ -460,3 +460,11 @@ def search_attractions_tiered(
 
     return collected
 
+
+# `src.services.place_search` (Phase 13) imports these two names -- same
+# functions, no behavior change. Kept as aliases rather than renaming the
+# originals so every existing caller of `search_attractions`/
+# `search_attractions_tiered` keeps working unchanged.
+rpc_search_attractions = search_attractions
+rpc_search_attractions_tiered = search_attractions_tiered
+

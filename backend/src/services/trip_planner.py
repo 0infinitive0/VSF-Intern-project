@@ -37,6 +37,7 @@ from src.services.supabase_search import (
     search_attractions_tiered as rpc_search_attractions_tiered,
 )
 from src.services.trip_edit_planner import EditOperation, NewItemRequirements, TripEditPlan
+from src.services.place_search import search_attraction_candidates, search_attraction_candidates_tiered
 from src.services.trip_formatter import format_hotel_options, format_trip_response_from_json, parse_duration_to_days
 from src.services.trip_intake import (
     DestinationOption,
@@ -138,34 +139,6 @@ def _strip_json_fence(content: str) -> str:
     return content.strip()
 
 
-def _hydrate_records(table_name: str, search_results: list[dict[str, Any]], fields: str) -> list[dict[str, Any]]:
-    """Merge compact RPC results with canonical Supabase rows without changing RPC contracts."""
-    result_ids = [str(result.get("id")) for result in search_results if result.get("id")]
-    if not result_ids:
-        return []
-    try:
-        supabase = get_supabase_client()
-        response = supabase.table(table_name).select(fields).in_("id", result_ids).execute()
-        canonical_by_id = {str(row["id"]): row for row in response.data or [] if row.get("id")}
-    except Exception as exc:
-        logger.error("Failed to hydrate %s search results: %s", table_name, exc)
-        return []
-    hydrated = []
-    for result in search_results:
-        canonical = canonical_by_id.get(str(result.get("id")))
-        if canonical:
-            hydrated.append({**result, **canonical})
-    return hydrated
-
-
-def _to_place_candidates(rows: list[dict[str, Any]]) -> list[PlaceCandidate]:
-    candidates = []
-    for row in rows:
-        candidate = PlaceCandidate.from_mapping(row)
-        if candidate.id and candidate.name and candidate.coordinate_pair:
-            candidates.append(candidate)
-    return candidates
-
 
 def _generate_day_themes(
     destination: str,
@@ -206,68 +179,6 @@ Every day_number from 1 through {number_of_days} must appear exactly once and ti
     return normalize_day_themes(raw_themes, number_of_days, preferences)
 
 
-def _search_attraction_candidates(
-    query: str, 
-    destination_id: str, 
-    match_count: int = 20,
-    root_latitude: float | None = None,
-    root_longitude: float | None = None,
-    max_radius_km: float | None = None,
-) -> list[PlaceCandidate]:
-    compact_results = rpc_search_attractions(
-        query=query,
-        match_count=match_count,
-        filter_destination_id=destination_id,
-        use_llm_filter=False,
-        root_latitude=root_latitude,
-        root_longitude=root_longitude,
-        max_radius_km=max_radius_km,
-    ) or []
-    hydrated = _hydrate_records(
-        "attractions",
-        compact_results,
-        (
-            "id,destination_id,name,description,category,is_tour,estimated_duration_minutes,"
-            "opening_time,closing_time,rating,coordinates,images,ticket_price_adult"
-        ),
-    )
-    return _to_place_candidates(hydrated)
-
-
-def _search_attraction_candidates_tiered(
-    query: str,
-    destination_id: str,
-    hotel: PlaceCandidate,
-    *,
-    required_count: int,
-    exclude_attraction_ids: Collection[str] | None = None,
-) -> list[PlaceCandidate]:
-    """Hydrate explicitly tiered attraction results rooted at one hotel."""
-    coordinates = hotel.coordinate_pair
-    if not coordinates:
-        raise ValueError("A hotel with coordinates is required for tiered attraction search.")
-    search_kwargs: dict[str, Any] = {}
-    if exclude_attraction_ids is not None:
-        search_kwargs["exclude_attraction_ids"] = exclude_attraction_ids
-    compact_results = rpc_search_attractions_tiered(
-        query,
-        required_count=required_count,
-        filter_destination_id=destination_id,
-        root_latitude=coordinates[0],
-        root_longitude=coordinates[1],
-        **search_kwargs,
-    )
-    hydrated = _hydrate_records(
-        "attractions",
-        compact_results,
-        (
-            "id,destination_id,name,description,category,is_tour,estimated_duration_minutes,"
-            "opening_time,closing_time,rating,coordinates,images,ticket_price_adult"
-        ),
-    )
-    return _to_place_candidates(hydrated)
-
-
 def _build_tiered_candidate_pools(
     destination: str,
     destination_id: str,
@@ -292,7 +203,7 @@ def _build_tiered_candidate_pools(
     # can lower its threshold or widen its radius.
     theme_pool_size = max(6, len(themes) + 4)
     themed_candidates = {
-        theme.day_number: _search_attraction_candidates_tiered(
+        theme.day_number: search_attraction_candidates_tiered(
             f"{theme.query}. Destination: {destination}",
             destination_id,
             hotel,
@@ -305,7 +216,7 @@ def _build_tiered_candidate_pools(
     # themed candidates have already been used (or cannot fit the slot's
     # opening-hour/cluster constraints), the scheduler may use this nearby,
     # non-theme pool instead of emitting a local-exploration placeholder.
-    nearby_fallbacks = _search_attraction_candidates_tiered(
+    nearby_fallbacks = search_attraction_candidates_tiered(
         f"nearby local attractions landmarks museums parks sightseeing in {destination}",
         destination_id,
         hotel,
@@ -332,7 +243,7 @@ def _build_tiered_candidate_pools(
         )
     meal_pool_size = max(len(themes) + 2, 5)
     restaurants = (
-        _search_attraction_candidates_tiered(
+        search_attraction_candidates_tiered(
             f"local restaurant lunch Vietnamese food in {destination}",
             destination_id,
             hotel,
@@ -342,7 +253,7 @@ def _build_tiered_candidate_pools(
         if "lunch" not in hotel.covered_meals
         else []
     )
-    cafes = _search_attraction_candidates_tiered(
+    cafes = search_attraction_candidates_tiered(
         f"coffee shop cafe relaxation in {destination}",
         destination_id,
         hotel,
@@ -350,7 +261,7 @@ def _build_tiered_candidate_pools(
         **search_kwargs,
     )
     breakfasts = (
-        _search_attraction_candidates_tiered(
+        search_attraction_candidates_tiered(
             f"breakfast restaurant cafe morning food in {destination}",
             destination_id,
             hotel,
@@ -361,7 +272,7 @@ def _build_tiered_candidate_pools(
         else []
     )
     dinners = (
-        _search_attraction_candidates_tiered(
+        search_attraction_candidates_tiered(
             f"dinner restaurant evening dining in {destination}",
             destination_id,
             hotel,
@@ -607,7 +518,16 @@ def _build_trip_data(
     )
     reusable_template = _find_reusable_template(reuse_query) if themes_override is None else None
 
-    raw_themes = themes_override or (list(reusable_template.day_themes) if reusable_template else None)
+    # A reused template's day_themes are historical data from a *different*
+    # trip. Reset selection_mode so a donor trip's user-specified day doesn't
+    # block re-theming to this trip's own preferences below -- re-theming a
+    # reused template is the entire point of Tier-1 reuse, unlike
+    # themes_override (a same-trip edit, whose selection_mode is authoritative).
+    raw_themes = themes_override or (
+        [{**theme, "selection_mode": "auto"} for theme in reusable_template.day_themes]
+        if reusable_template
+        else None
+    )
     if raw_themes is not None:
         themes = normalize_day_themes(raw_themes, number_of_days, preferences)
     else:
@@ -631,7 +551,7 @@ def _build_trip_data(
         # hotel. The itinerary shown to the user is rebuilt from GPS-rooted
         # pools after this selection completes.
         themed_candidates = {
-            theme.day_number: _search_attraction_candidates(
+            theme.day_number: search_attraction_candidates(
                 f"{theme.query}. Destination: {destination}",
                 destination_id,
                 match_count=20,
@@ -640,7 +560,7 @@ def _build_trip_data(
         }
         pool_size = min(max(number_of_days * 3, 15), 50)
         restaurants = (
-            _search_attraction_candidates(
+            search_attraction_candidates(
                 f"local restaurant lunch Vietnamese food in {destination}",
                 destination_id,
                 match_count=pool_size,
@@ -648,13 +568,13 @@ def _build_trip_data(
             if any("lunch" not in hotel.covered_meals for hotel in hotel_candidates)
             else []
         )
-        cafes = _search_attraction_candidates(
+        cafes = search_attraction_candidates(
             f"coffee shop cafe relaxation in {destination}",
             destination_id,
             match_count=pool_size,
         )
         breakfasts = (
-            _search_attraction_candidates(
+            search_attraction_candidates(
                 f"breakfast restaurant cafe morning food in {destination}",
                 destination_id,
                 match_count=pool_size,
@@ -663,7 +583,7 @@ def _build_trip_data(
             else []
         )
         dinners = (
-            _search_attraction_candidates(
+            search_attraction_candidates(
                 f"dinner restaurant evening dining in {destination}",
                 destination_id,
                 match_count=pool_size,
@@ -680,6 +600,7 @@ def _build_trip_data(
             breakfasts=breakfasts,
             dinners=dinners,
             child_focused=child_focused,
+            planning_constraints=planning_constraints,
         )
 
     pool_kwargs: dict[str, Any] = {}
@@ -707,6 +628,7 @@ def _build_trip_data(
         breakfasts=breakfasts,
         dinners=dinners,
         child_focused=child_focused,
+        planning_constraints=planning_constraints,
     )
     hotel_data = next(
         data for data, candidate in hotel_options if candidate.id == hotel_candidate.id
@@ -1201,7 +1123,7 @@ def _select_edit_candidate(
     anchor = _candidate_anchor(scheduled, hotel, target, requirements)
     max_radius = 5.0 if requirements.item_kind == "breakfast" else 15.0
     
-    candidates = _search_attraction_candidates(
+    candidates = search_attraction_candidates(
         requirements.semantic_query, 
         destination_id, 
         match_count=40,
@@ -1270,7 +1192,11 @@ def _apply_replace_or_add(current_data: dict[str, Any], operation: EditOperation
     if operation.operation == "replace_item" and target is None:
         raise ValueError("Thiếu hoạt động cần thay thế.")
     start_time = operation.requirements.preferred_start_time or (target.start_time if target else "09:00:00")
-    candidate = _select_edit_candidate(
+    # Phase 13: a resolved shortlist pick (search_places -> suggest ->
+    # rebuild_day's interrupt -> resolve_selection) is applied verbatim --
+    # never re-searched, since re-searching could return a DIFFERENT venue
+    # than the one the user actually picked.
+    candidate = operation.preselected_candidate or _select_edit_candidate(
         current_data,
         scheduled,
         hotel,
@@ -1374,7 +1300,14 @@ def _apply_day_replan(current_data: dict[str, Any], operation: EditOperation) ->
         raise ValueError("Kế hoạch hiện tại không có chủ đề theo ngày.")
     for value in themes:
         if int(value.get("day_number") or 0) == operation.day_number:
-            value.update({"day_number": operation.day_number, "title": title, "query": query})
+            value.update(
+                {
+                    "day_number": operation.day_number,
+                    "title": title,
+                    "query": query,
+                    "selection_mode": "user_specified",
+                }
+            )
     rebuilt = _build_trip_data(
         destination,
         duration,
@@ -1541,7 +1474,8 @@ def resolve_trip_edit_request(
         current_data.setdefault("adjustments", []).extend(adjustments)
         _persist_itinerary_metadata(current_data)
         logger.info("Applied LLM edit plan: %s", [operation.operation for operation in plan.operations])
-        reply = "Adjustment applied." if language == "en" else "Điều chỉnh đã áp dụng."
+        fallback_reply = "Adjustment applied." if language == "en" else "Điều chỉnh đã áp dụng."
+        reply = "; ".join(adjustments) if adjustments else fallback_reply
         return reply, {"trip_data": current_data}
     except Exception as exc:
         logger.exception("Failed to apply LLM edit plan")
@@ -1649,6 +1583,163 @@ def _scheduled_attraction_ids(current_data: Mapping[str, Any]) -> list[str]:
             continue
         result.append(reference_id)
     return result
+
+
+def _scheduled_attraction_ids_for_day(current_data: Mapping[str, Any], day_number: int) -> list[str]:
+    """Return attraction IDs scheduled only on *day_number*, not the whole trip.
+
+    Phase 9 fix: ``_apply_day_replan`` previously called ``_scheduled_attraction_ids``
+    (whole-trip scope) as ``exclude_attraction_ids``, which meant a day-2 rebuild
+    excluded every attraction already used on days 1 and 3.  On a thin destination
+    that could leave day 2 empty.  A day-scoped rebuild should only exclude
+    attractions it has already placed *on that day* — the caller can reuse an
+    attraction that appears on a different day.
+    """
+    result: list[str] = []
+    for item in current_data.get("itinerary_items") or []:
+        if not isinstance(item, Mapping):
+            continue
+        if int(item.get("day_number") or 0) != day_number:
+            continue
+        if str(item.get("reference_type") or "").casefold() != "attraction":
+            continue
+        reference_id = str(item.get("reference_id") or "")
+        if not reference_id or reference_id in result:
+            continue
+        result.append(reference_id)
+    return result
+
+
+def _get_locked_days(current_data: Mapping[str, Any]) -> frozenset[int]:
+    """Read ``locked_days`` from ``planning_constraints`` (Phase 9).
+
+    ``locked_days`` lives on ``itineraries[0].planning_constraints``, the same
+    dict that already carries ``latest_outing_start_by_day`` and
+    ``meal_preferences_by_day`` — no schema change required.  Returns an empty
+    frozenset when the key is absent so callers can use ``day not in locked``.
+    """
+    rows = current_data.get("itineraries") or [{}]
+    itinerary = rows[0] if isinstance(rows, list) else rows
+    if not isinstance(itinerary, dict):
+        return frozenset()
+    constraints = itinerary.get("planning_constraints") or {}
+    raw = constraints.get("locked_days") or []
+    try:
+        return frozenset(int(d) for d in raw)
+    except (TypeError, ValueError):
+        return frozenset()
+
+
+def rebuild_day_data(
+    current_data: dict[str, Any],
+    day_number: int,
+    theme: dict[str, Any],
+    *,
+    locked_days: Collection[int] | None = None,
+) -> None:
+    """Rebuild exactly *day_number* in-place inside *current_data*.
+
+    Phase 9 extraction: this is the per-day path from ``_build_trip_data``
+    turned into a standalone primitive.  It calls the same scheduling
+    primitives (``_build_tiered_candidate_pools``, ``build_itinerary``) so
+    there is no second scheduler to keep in sync.
+
+    ``locked_days`` is honoured here as a defensive guard — the caller
+    (``itinerary_node``) is expected to have filtered the queue already, but
+    the function refuses to overwrite a locked day even if asked directly.
+
+    Side-effects:
+    - ``current_data["itinerary_items"]`` has the rebuilt day's items
+      in-place; all other days are byte-identical.
+    - ``itinerary["day_themes"]`` is updated for *day_number*.
+
+    Raises ``ValueError`` if the destination or hotel data is missing or
+    if *day_number* is in *locked_days*.
+    """
+    _locked: frozenset[int] = frozenset(int(d) for d in (locked_days or []))
+    if day_number in _locked:
+        raise ValueError(
+            f"Day {day_number} is locked and cannot be rebuilt. "
+            "Remove it from locked_days before calling rebuild_day_data."
+        )
+
+    destination, duration, people, preferences_text = _current_trip_parameters(current_data)
+    itinerary = _itinerary_record(current_data)
+    destination_id = _get_destination_id(destination)
+    if not destination_id:
+        raise ValueError(f"Không tìm thấy dữ liệu điểm đến cho {destination}.")
+    destination_id = str(destination_id)
+
+    hotel_data = current_data.get("hotel") or {}
+    hotel_candidate = PlaceCandidate.from_mapping({**hotel_data, "category": "Hotel"})
+    if not hotel_candidate.id or not hotel_candidate.coordinate_pair:
+        raise ValueError("Khách sạn hiện tại không có tọa độ hợp lệ; không thể lập lịch trình.")
+
+    number_of_days = int(itinerary.get("duration_days") or 1)
+    try:
+        number_of_people = int("".join(filter(str.isdigit, people))) if any(c.isdigit() for c in people) else 1
+    except (TypeError, ValueError):
+        number_of_people = 1
+    preferences = [p.strip() for p in preferences_text.replace(";", ",").split(",") if p.strip()]
+    child_focused_text = f"{people} {preferences_text}".casefold()
+    child_focused = any(
+        kw in child_focused_text
+        for kw in ("trẻ em", "tre em", "children", "child", "kids", "gia đình", "gia dinh")
+    )
+
+    # Rebuild themes list — caller has already patched the target day's theme.
+    planning_constraints = itinerary.get("planning_constraints") or {}
+    existing_themes = itinerary.get("day_themes") or []
+    themes_dict: dict[int, dict[str, Any]] = {}
+    for t_item in existing_themes:
+        dn = int(t_item.get("day_number") or 0)
+        if dn:
+            themes_dict[dn] = dict(t_item)
+    themes_dict[day_number] = {**theme, "day_number": day_number}
+    raw_themes = [themes_dict.get(d, {"day_number": d, "title": f"Ngày {d}", "query": destination}) for d in range(1, number_of_days + 1)]
+    themes = normalize_day_themes(raw_themes, number_of_days, preferences)
+
+    # Day-scoped exclusion: only exclude attractions already on THIS day.
+    # Attractions on other days are intentionally reusable.
+    exclude_ids = _scheduled_attraction_ids_for_day(current_data, day_number)
+
+    (
+        themed_candidates,
+        restaurants,
+        cafes,
+        breakfasts,
+        dinners,
+    ) = _build_tiered_candidate_pools(
+        destination,
+        destination_id,
+        themes,
+        hotel_candidate,
+        exclude_attraction_ids=exclude_ids if exclude_ids else None,
+    )
+
+    # We only care about day_number's schedule; build_itinerary returns all days
+    # because the scheduler needs cross-day context for meal deduplication.
+    schedule = build_itinerary(
+        hotel_candidate,
+        themes,
+        themed_candidates,
+        restaurants,
+        cafes,
+        breakfasts=breakfasts,
+        dinners=dinners,
+        child_focused=child_focused,
+        planning_constraints=planning_constraints,
+    )
+
+    # Filter to just this day's scheduled items.
+    day_items = [item for item in schedule.items if item.day_number == day_number]
+    _replace_day_in_json(current_data, day_number, day_items)
+    # Update the stored theme for this day.
+    itinerary["day_themes"] = [
+        {**themes_dict.get(d, {"day_number": d}), "day_number": d}
+        for d in range(1, number_of_days + 1)
+    ]
+    _reapply_planning_constraints(current_data, only_days=(day_number,))
 
 
 def _scheduled_day_from_json(current_data: dict[str, Any], day_number: int) -> tuple[list[ScheduledItem], PlaceCandidate]:
@@ -1838,7 +1929,7 @@ def _apply_local_trip_change(
             raise ValueError("Thiếu mã điểm đến để tìm địa điểm thay thế.")
         target = scheduled[target_index]
         anchor_coordinates = target.coordinates or hotel.coordinate_pair
-        candidates = _search_attraction_candidates(
+        candidates = search_attraction_candidates(
             change.query or modification_request,
             destination_id,
             match_count=15,

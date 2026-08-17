@@ -1,0 +1,3142 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AI20K Agent",
+    "description": "AI Agent built with LangGraph",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/hotel-amenities": {
+      "get": {
+        "summary": "Hotel Amenity Catalog",
+        "description": "Return approved hotel-scoped catalog entries for client-side filtering.",
+        "operationId": "hotel_amenity_catalog_api_v1_hotel_amenities_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AmenityCatalogPayload"
+                  },
+                  "type": "array",
+                  "title": "Response Hotel Amenity Catalog Api V1 Hotel Amenities Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/hotels/{hotel_id}": {
+      "get": {
+        "summary": "Hotel Detail",
+        "operationId": "hotel_detail_api_v1_hotels__hotel_id__get",
+        "parameters": [
+          {
+            "name": "hotel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Hotel Id"
+            }
+          },
+          {
+            "name": "check_in",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Check In"
+            }
+          },
+          {
+            "name": "check_out",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Check Out"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HotelDetailPayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/attractions/{attraction_id}": {
+      "get": {
+        "summary": "Attraction Detail",
+        "operationId": "attraction_detail_api_v1_attractions__attraction_id__get",
+        "parameters": [
+          {
+            "name": "attraction_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Attraction Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttractionDetailPayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/session": {
+      "post": {
+        "summary": "Create Session",
+        "description": "Tạo một phiên chat mới và trả về session_id do server cấp.\n\nDeliberately does NOT persist here. It used to, so the session would show\nup as its own row in the history rail right away — but an unstarted\nsession (no chat turn yet) has nothing to summarize, so every one of\nthose rows rendered as an indistinguishable, contentless \"Chuyến đi mới\"\nentry — the accumulating-empty-history bug this fixes. The in-memory\nregistry entry created below already makes every other \"+ Chuyến đi mới\"\nclick behave correctly (a fresh, empty main chat panel); the first *real*\npersisted row appears once a chat turn runs, written by `_persist_turn`\nbelow. (Until that writer existed, this docstring pointed at\n`persist_hook(session)` and \"process_chat_turn and friends\" — a cascade\nthe graph cutover deleted, which is exactly how the history rail came to\nbe permanently empty with no test failing.) list_sessions() additionally\nrequires at least one chat_messages row per session, so any\nalready-persisted empty rows from before this change stay hidden too.",
+        "operationId": "create_session_api_v1_chat_session_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Session Api V1 Chat Session Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/sessions": {
+      "get": {
+        "summary": "List Persisted Sessions",
+        "operationId": "list_persisted_sessions_api_v1_chat_sessions_get",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 10,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionListPayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/{session_id}/restore": {
+      "get": {
+        "summary": "Restore Session",
+        "description": "Rehydrate a past conversation for the frontend.\n\nEvery field is built by the same helpers `respond` uses for a live turn\n(`agents/graph/response_payload.py`) — a restored conversation and the turn\nthat produced it must not be able to disagree.\n\n`suggestions` is deliberately empty, and is not an oversight: a suggestion\nbelongs to one specific turn (\"đặt khách sạn này?\"), not to durable session\nstate. Replaying a stale one next to a conversation the user left days ago\nwould be worse than showing none.\n\nA session that exists but has never run a turn restores as a valid empty\npayload rather than 404. 404 tells the frontend the server lost the\nsession, and it responds by silently creating a new one — throwing away the\nid the user is currently sitting on.",
+        "operationId": "restore_session_api_v1_chat__session_id__restore_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRestorePayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/session/{session_id}/state": {
+      "get": {
+        "summary": "Get Session Plan",
+        "description": "Trả về kế hoạch chuyến đi hiện tại của một phiên, hoặc 404 nếu phiên không\ntồn tại/không thuộc về caller. A session that exists but hasn't run a graph\nturn yet (no checkpointed state) is a legitimate empty-plan session, not a\n404 -- ownership is already the existence check here.",
+        "operationId": "get_session_plan_api_v1_session__session_id__state_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Session Plan Api V1 Session  Session Id  State Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/{session_id}/plan": {
+      "get": {
+        "summary": "Get Session Plan",
+        "description": "Trả về kế hoạch chuyến đi hiện tại của một phiên, hoặc 404 nếu phiên không\ntồn tại/không thuộc về caller. A session that exists but hasn't run a graph\nturn yet (no checkpointed state) is a legitimate empty-plan session, not a\n404 -- ownership is already the existence check here.",
+        "operationId": "get_session_plan_api_v1_chat__session_id__plan_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Session Plan Api V1 Chat  Session Id  Plan Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/{session_id}": {
+      "delete": {
+        "summary": "Delete Session",
+        "description": "Xóa một phiên chat. Trả về 204 dù phiên có tồn tại hay không.\n\nIf the session exists but belongs to someone else, this stays a silent\nno-op — still 204, preserving the existing \"204 either way\" contract —\nbut nothing is actually deleted. No new observable status code, so this\nnever leaks \"this session_id exists, it's just not yours.\"",
+        "operationId": "delete_session_api_v1_chat__session_id__delete",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/hotels/select": {
+      "post": {
+        "summary": "Select Hotel",
+        "operationId": "select_hotel_api_v1_hotels_select_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectHotelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlannerChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/select_hotel": {
+      "post": {
+        "summary": "Select Hotel",
+        "operationId": "select_hotel_api_v1_chat_select_hotel_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectHotelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlannerChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/hotels/change": {
+      "post": {
+        "summary": "Change Hotel",
+        "operationId": "change_hotel_api_v1_hotels_change_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeHotelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlannerChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat": {
+      "post": {
+        "summary": "Planner Chat",
+        "operationId": "planner_chat_api_v1_chat_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlannerChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlannerChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/planner_chat": {
+      "post": {
+        "summary": "Planner Chat",
+        "operationId": "planner_chat_api_v1_planner_chat_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlannerChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlannerChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/planner_chat/stream": {
+      "post": {
+        "summary": "Planner Chat Stream",
+        "operationId": "planner_chat_stream_api_v1_planner_chat_stream_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlannerChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/status": {
+      "get": {
+        "summary": "Agent Status",
+        "description": "Kiểm tra trạng thái agent.",
+        "operationId": "agent_status_api_v1_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/search_attractions": {
+      "get": {
+        "summary": "Search Attractions",
+        "description": "Tìm kiếm semantic cho attractions sử dụng Supabase RPC.",
+        "operationId": "search_attractions_api_v1_search_attractions_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "k",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "title": "K"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/search_hotels": {
+      "get": {
+        "summary": "Search Hotels",
+        "description": "Tìm kiếm semantic cho hotels và rooms sử dụng Supabase RPC.",
+        "operationId": "search_hotels_api_v1_search_hotels_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "k",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "title": "K"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AmenityCatalogPayload": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label_vi": {
+            "type": "string",
+            "title": "Label Vi"
+          },
+          "label_en": {
+            "type": "string",
+            "title": "Label En"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "icon_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label_vi",
+          "label_en",
+          "category",
+          "icon_key"
+        ],
+        "title": "AmenityCatalogPayload",
+        "description": "Approved hotel amenity exposed to the browser for filters and pills."
+      },
+      "AttractionDetailPayload": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "is_tour": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Tour"
+          },
+          "estimated_duration_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Duration Minutes"
+          },
+          "opening_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opening Time"
+          },
+          "closing_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closing Time"
+          },
+          "ticket_price_adult": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Price Adult"
+          },
+          "ticket_price_child": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Price Child"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "review_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Count"
+          },
+          "coordinates": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coordinates"
+          },
+          "images": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Images"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "category",
+          "is_tour",
+          "estimated_duration_minutes",
+          "opening_time",
+          "closing_time",
+          "ticket_price_adult",
+          "ticket_price_child",
+          "rating",
+          "review_count",
+          "coordinates",
+          "images"
+        ],
+        "title": "AttractionDetailPayload"
+      },
+      "ChangeHotelRequest": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id"
+        ],
+        "title": "ChangeHotelRequest"
+      },
+      "DayPlan": {
+        "properties": {
+          "day_number": {
+            "type": "integer",
+            "title": "Day Number"
+          },
+          "theme": {
+            "type": "string",
+            "title": "Theme"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ItineraryItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "day_number",
+          "theme",
+          "items"
+        ],
+        "title": "DayPlan"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HotelDetailPayload": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "star_rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Star Rating"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "area_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area Name"
+          },
+          "location_highlight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Highlight"
+          },
+          "coordinates": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coordinates"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "images": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Images"
+          },
+          "amenities": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amenities"
+          },
+          "amenity_groups": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amenity Groups"
+          },
+          "awards": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Awards"
+          },
+          "warnings": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warnings"
+          },
+          "review_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Score"
+          },
+          "review_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Count"
+          },
+          "category_scores": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Scores"
+          },
+          "check_in_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check In Time"
+          },
+          "check_in_until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check In Until"
+          },
+          "check_out_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check Out Time"
+          },
+          "reception_open_until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reception Open Until"
+          },
+          "nearby_attractions": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/NearbyPlacePayload"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nearby Attractions"
+          },
+          "nearby_essentials": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nearby Essentials"
+          },
+          "lowest_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lowest Price"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "rooms": {
+            "items": {
+              "$ref": "#/components/schemas/RoomDetailPayload"
+            },
+            "type": "array",
+            "title": "Rooms"
+          },
+          "source_platform": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Platform"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "star_rating",
+          "description",
+          "address",
+          "city",
+          "area_name",
+          "location_highlight",
+          "coordinates",
+          "image_url",
+          "images",
+          "amenities",
+          "amenity_groups",
+          "awards",
+          "warnings",
+          "review_score",
+          "review_count",
+          "category_scores",
+          "check_in_time",
+          "check_in_until",
+          "check_out_time",
+          "reception_open_until",
+          "nearby_attractions",
+          "nearby_essentials",
+          "lowest_price",
+          "currency",
+          "rooms",
+          "source_platform",
+          "source_url"
+        ],
+        "title": "HotelDetailPayload"
+      },
+      "HotelOption": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "title": "Index",
+            "description": "Thứ tự 1-based; khớp với suggestions[i].value"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "UUID khách sạn"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Tên khách sạn"
+          },
+          "star_rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Star Rating",
+            "description": "Hạng sao"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Mô tả ngắn"
+          },
+          "matched_rooms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Matched Rooms",
+            "description": "Tên phòng phù hợp"
+          },
+          "average_nightly_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Nightly Price",
+            "description": "Giá trung bình mỗi đêm theo ngày ở"
+          },
+          "total_stay_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Stay Price",
+            "description": "Tổng giá cho toàn bộ số đêm"
+          },
+          "stay_night_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stay Night Count",
+            "description": "Số đêm đã báo giá"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency",
+            "description": "Đơn vị tiền tệ của báo giá"
+          },
+          "coordinates": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coordinates",
+            "description": "Tọa độ lat,lng của khách sạn"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "area_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area Name"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "amenities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Amenities"
+          },
+          "display_amenities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Display Amenities",
+            "description": "Tối đa bốn tiện ích nổi bật để hiển thị trên thẻ khách sạn"
+          },
+          "review_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Score"
+          },
+          "review_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Count"
+          },
+          "match_score": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match Score"
+          },
+          "match_reasons": {
+            "items": {
+              "$ref": "#/components/schemas/MatchReasonPayload"
+            },
+            "type": "array",
+            "title": "Match Reasons"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "preferences": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Preferences"
+          }
+        },
+        "type": "object",
+        "required": [
+          "index",
+          "id",
+          "name",
+          "star_rating",
+          "description",
+          "matched_rooms",
+          "average_nightly_price",
+          "total_stay_price",
+          "stay_night_count",
+          "currency",
+          "coordinates",
+          "address",
+          "area_name",
+          "image_url",
+          "amenities",
+          "display_amenities",
+          "review_score",
+          "review_count",
+          "match_score",
+          "match_reasons",
+          "city",
+          "preferences"
+        ],
+        "title": "HotelOption",
+        "description": "One hotel in the pending selection list sent to the React UI.\n\nindex is the 1-based ordinal that must equal suggestions[i].value (as int)\nfor the same turn — they are two views of one list and must not disagree."
+      },
+      "IntakeStatus": {
+        "properties": {
+          "destination": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "people": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "People"
+          },
+          "preferences": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Preferences",
+            "description": "Travel-style labels"
+          },
+          "companions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Companions"
+          },
+          "pace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pace"
+          },
+          "day_rhythm": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Day Rhythm"
+          },
+          "notes": {
+            "type": "string",
+            "title": "Notes",
+            "description": "Free-text other needs",
+            "default": ""
+          },
+          "available_destinations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Available Destinations",
+            "description": "Real destinations the intake picker may choose from"
+          },
+          "budget_options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Budget Options",
+            "description": "Real budget/accommodation tier labels from hotel_selection"
+          },
+          "min_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Price"
+          },
+          "max_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Price"
+          },
+          "budget_skipped": {
+            "type": "boolean",
+            "title": "Budget Skipped",
+            "description": "True when the user explicitly opted out of a budget preference",
+            "default": false
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing",
+            "description": "Names of fields still needed: 'destination', 'people', 'start_date', 'end_date'"
+          }
+        },
+        "type": "object",
+        "required": [
+          "destination",
+          "duration",
+          "start_date",
+          "end_date",
+          "people",
+          "preferences",
+          "companions",
+          "pace",
+          "day_rhythm",
+          "notes",
+          "available_destinations",
+          "budget_options",
+          "min_price",
+          "max_price",
+          "budget_skipped",
+          "missing"
+        ],
+        "title": "IntakeStatus",
+        "description": "Snapshot of what the intake gate has collected so far."
+      },
+      "ItineraryItem": {
+        "properties": {
+          "order_index": {
+            "type": "integer",
+            "title": "Order Index"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          },
+          "activity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activity"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "reference_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Type"
+          },
+          "reference_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Id"
+          },
+          "coordinates": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coordinates"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "route_to_next": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RouteInfoPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "route_from_hotel": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RouteInfoPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "order_index",
+          "start_time",
+          "end_time",
+          "activity",
+          "kind",
+          "reference_type",
+          "reference_id",
+          "coordinates",
+          "image_url",
+          "route_to_next",
+          "route_from_hotel"
+        ],
+        "title": "ItineraryItem"
+      },
+      "MatchReasonPayload": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "value"
+        ],
+        "title": "MatchReasonPayload",
+        "description": "One piece of ranking evidence behind \"AI đề xuất vì…\".\n\n`code` is an i18n key the frontend owns (matchReason.*); `value` is the raw\nnumber or label it describes. The backend never sends display text — the\nshape `hotel_selection._match_reasons` has always produced, now declared so\na generated client sees it instead of an open dict."
+      },
+      "NearbyPlacePayload": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "coordinates": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coordinates"
+          },
+          "distance_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Km"
+          },
+          "distance_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Text"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "name",
+          "category",
+          "coordinates",
+          "distance_km",
+          "distance_text"
+        ],
+        "title": "NearbyPlacePayload",
+        "description": "An entry of `hotels.nearby_attractions` (a jsonb column).\n\n`extra=\"allow\"` because these rows are crawled data: the four fields below\nare the ones the UI reads and were confirmed against real rows, but the\ncolumn may carry more and dropping it on serialization would be a silent\nlie of a different kind.\n\n`distance_text` is a pre-formatted Vietnamese string from the crawl — data,\nnot a UI string. Clients should rebuild the figure from `distance_km` so it\nhonours their locale."
+      },
+      "PlannerChatRequest": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 5000,
+            "minLength": 1,
+            "title": "Message"
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "vi",
+              "en"
+            ],
+            "title": "Language",
+            "description": "UI language for this turn's reply (vi | en)",
+            "default": "vi"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "message"
+        ],
+        "title": "PlannerChatRequest",
+        "description": "A chat turn. Every field here reaches the graph.\n\n`stay_dates`, `min_price` and `max_price` used to be declared alongside\n`message`, guarded by a validator demanding \"at least one of\" them — and\nthen dropped: `_run_turn_via_graph` only ever forwarded `message`. No\nclient sent them either, so the contract was dead at both ends.\n\nThey were deleted rather than connected. Feeding structured values into\n`travel_state` means a path around `extract_patch -> validate_patch ->\napply_patch`, and that pipeline is where ambiguity gets resolved (an\nunclear date pauses the turn to ask) and where every write is checked\nagainst `ALLOWED_PATHS`. A side door for three fields nobody uses is not\nworth a second, unvalidated way into the same slots. The widget's existing\nroute — compose a sentence, let the extractor parse it — is slower by one\nLLM call and correct by construction. A fast structured path is a real\ndesign problem for its own plan, not a dormant field woken up.\n\n`message` is required now, which is what the old validator was trying to\nsay the long way around."
+      },
+      "PlannerChatResponse": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "reply": {
+            "type": "string",
+            "title": "Reply"
+          },
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/SuggestionPayload"
+            },
+            "type": "array",
+            "title": "Suggestions"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "intake",
+              "hotel_options",
+              "planned",
+              "error"
+            ],
+            "title": "Stage"
+          },
+          "hotel_options": {
+            "items": {
+              "$ref": "#/components/schemas/HotelOption"
+            },
+            "type": "array",
+            "title": "Hotel Options"
+          },
+          "trip_plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TripPlanPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "intake": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IntakeStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requires_stay_dates": {
+            "type": "boolean",
+            "title": "Requires Stay Dates",
+            "default": false
+          },
+          "compound_min_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compound Min Price"
+          },
+          "compound_max_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compound Max Price"
+          },
+          "all_preferences": {
+            "items": {
+              "$ref": "#/components/schemas/PreferencePayload"
+            },
+            "type": "array",
+            "title": "All Preferences"
+          },
+          "active_preferences": {
+            "items": {
+              "$ref": "#/components/schemas/PreferencePayload"
+            },
+            "type": "array",
+            "title": "Active Preferences"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "reply",
+          "suggestions",
+          "stage",
+          "hotel_options",
+          "trip_plan",
+          "intake",
+          "requires_stay_dates",
+          "compound_min_price",
+          "compound_max_price",
+          "all_preferences",
+          "active_preferences"
+        ],
+        "title": "PlannerChatResponse"
+      },
+      "PreferencePayload": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "PreferencePayload"
+      },
+      "RestoredMessagePayload": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "intake",
+              "hotel_options",
+              "planned",
+              "error"
+            ],
+            "title": "Stage"
+          },
+          "at": {
+            "type": "string",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "text",
+          "stage",
+          "at"
+        ],
+        "title": "RestoredMessagePayload"
+      },
+      "RoomDetailPayload": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "bed_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bed Description"
+          },
+          "room_size_sqm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room Size Sqm"
+          },
+          "max_guests": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Guests"
+          },
+          "view": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "View"
+          },
+          "room_facilities": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room Facilities"
+          },
+          "images": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Images"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoomPricePayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "bed_description",
+          "room_size_sqm",
+          "max_guests",
+          "view",
+          "room_facilities",
+          "images",
+          "price"
+        ],
+        "title": "RoomDetailPayload"
+      },
+      "RoomPricePayload": {
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "check_in_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check In Date"
+          },
+          "check_out_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check Out Date"
+          },
+          "sold_out": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sold Out"
+          },
+          "package_details": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package Details"
+          }
+        },
+        "type": "object",
+        "required": [
+          "amount",
+          "currency",
+          "check_in_date",
+          "check_out_date",
+          "sold_out",
+          "package_details"
+        ],
+        "title": "RoomPricePayload"
+      },
+      "RouteInfoPayload": {
+        "properties": {
+          "distance_km": {
+            "type": "number",
+            "title": "Distance Km"
+          },
+          "duration_mins": {
+            "type": "number",
+            "title": "Duration Mins"
+          },
+          "polyline": {
+            "type": "string",
+            "title": "Polyline"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile"
+          }
+        },
+        "type": "object",
+        "required": [
+          "distance_km",
+          "duration_mins",
+          "polyline",
+          "profile"
+        ],
+        "title": "RouteInfoPayload"
+      },
+      "SelectHotelRequest": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "hotel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Hotel Id"
+          },
+          "selection_message": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 5000,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "hotel_id"
+        ],
+        "title": "SelectHotelRequest"
+      },
+      "SessionListPayload": {
+        "properties": {
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/SessionSummaryPayload"
+            },
+            "type": "array",
+            "title": "Sessions"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sessions",
+          "page",
+          "page_size",
+          "has_more"
+        ],
+        "title": "SessionListPayload"
+      },
+      "SessionRestorePayload": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/RestoredMessagePayload"
+            },
+            "type": "array",
+            "title": "Messages"
+          },
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/SuggestionPayload"
+            },
+            "type": "array",
+            "title": "Suggestions"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "hotel_options": {
+            "items": {
+              "$ref": "#/components/schemas/HotelOption"
+            },
+            "type": "array",
+            "title": "Hotel Options"
+          },
+          "trip_plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TripPlanPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "intake": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IntakeStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "messages",
+          "suggestions",
+          "stage",
+          "hotel_options",
+          "trip_plan",
+          "intake"
+        ],
+        "title": "SessionRestorePayload"
+      },
+      "SessionSummaryPayload": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "destination": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination"
+          },
+          "duration_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Days"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "completed"
+            ],
+            "title": "Status"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "thumbnail_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "title",
+          "destination",
+          "duration_days",
+          "status",
+          "created_at",
+          "updated_at",
+          "thumbnail_url"
+        ],
+        "title": "SessionSummaryPayload"
+      },
+      "SuggestionPayload": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "Chữ hiển thị trên nút gợi ý"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "Nội dung gửi đi khi bấm nút"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "value"
+        ],
+        "title": "SuggestionPayload"
+      },
+      "TripPlanHotel": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "star_rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Star Rating"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "matched_rooms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Matched Rooms"
+          },
+          "coordinates": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coordinates"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "source_platform": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Platform"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "star_rating",
+          "description",
+          "matched_rooms",
+          "coordinates",
+          "image_url",
+          "source_platform",
+          "source_url"
+        ],
+        "title": "TripPlanHotel"
+      },
+      "TripPlanPayload": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "destination": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination"
+          },
+          "duration_days": {
+            "type": "integer",
+            "title": "Duration Days"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "number_of_adults": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Number Of Adults"
+          },
+          "budget": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget"
+          },
+          "budget_currency": {
+            "type": "string",
+            "title": "Budget Currency"
+          },
+          "hotel": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TripPlanHotel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/DayPlan"
+            },
+            "type": "array",
+            "title": "Days"
+          },
+          "adjustments": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Adjustments"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "destination",
+          "duration_days",
+          "start_date",
+          "end_date",
+          "number_of_adults",
+          "budget",
+          "budget_currency",
+          "hotel",
+          "days",
+          "adjustments"
+        ],
+        "title": "TripPlanPayload",
+        "description": "Phase 3 payload for the trip plan right panel."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

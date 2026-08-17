@@ -17,6 +17,7 @@ from typing import Any, Collection, Dict, Iterable, List, Literal, Tuple
 from supabase import Client, create_client
 
 from src.config import get_settings
+from src.domain.travel_state import Presence, Slot, TravelState, apply_patch
 from src.services.guided_question import (
     GuidedOption,
     GuidedQuestion,
@@ -70,6 +71,97 @@ def _hydrate_hotel_records(search_results: List[Dict[str, Any]]) -> List[Dict[st
     return hydrated
 
 
+class NoHotelsMatchAmenities(RuntimeError):
+    """Raised by `select_hotel_candidates` when `required_amenities` (AND
+    semantics) is non-empty, candidates existed before the amenity filter
+    ran, and every one of them fails at least one required tag.
+
+    Carries `tag_drop_counts`: for each requested tag, how many candidates
+    would survive if just THAT tag were dropped (the rest still apply) —
+    e.g. `{"gym": 0, "pool": 6}` means dropping "pool" alone still leaves
+    zero, but dropping "gym" alone would leave 6 — so "gym" is the real
+    binding constraint. The caller (`hotel_node`) uses this to name it
+    instead of silently returning an unfiltered list (locked decision,
+    `phase-08-hotel-flow.md`).
+
+    Only ever raised for a caller that explicitly passes
+    `required_amenities` — the pre-existing call sites never do, so this
+    exception is unreachable for them (byte-identical behavior preserved)."""
+
+    def __init__(self, tag_drop_counts: dict[str, int]) -> None:
+        self.tag_drop_counts = tag_drop_counts
+        super().__init__(f"no hotel matches every required amenity: {tag_drop_counts}")
+
+
+class NoHotelsMatchRating(RuntimeError):
+    """Raised by `select_hotel_candidates` when an explicit `min_star_rating`
+    and/or `min_review_score` is given, candidates existed before the
+    rating filter ran, and none of them clear it — replacing the silent
+    widen-back-to-unfiltered fallback this phase removes
+    (`supabase_search.py`'s *separate*, LLM-derived rating path keeps that
+    old behavior; it only ever fires for the legacy plane's free-text
+    queries, which this phase deliberately leaves untouched — see
+    `phase-08-hotel-flow.md`'s locked decision on the frozen legacy plane).
+
+    Only ever raised for a caller that explicitly passes one of these two
+    params — the pre-existing call sites never do."""
+
+    def __init__(self, min_star_rating: float | None, min_review_score: float | None) -> None:
+        self.min_star_rating = min_star_rating
+        self.min_review_score = min_review_score
+        super().__init__(
+            f"no hotel meets min_star_rating={min_star_rating} min_review_score={min_review_score}"
+        )
+
+
+# Over-fetch multiplier applied only when a hard filter (amenity/rating) is
+# requested, so app-level post-filtering doesn't starve the result set down
+# to fewer than `match_count` just because the RPC only fetched exactly
+# `match_count` semantically-ranked rows. Capped so a pathological
+# `match_count` doesn't balloon the RPC fetch size.
+_HARD_FILTER_OVERFETCH_MULTIPLIER = 4
+_HARD_FILTER_MAX_FETCH = 40
+
+
+def _meets_rating(
+    data: Dict[str, Any], min_star_rating: float | None, min_review_score: float | None
+) -> bool:
+    """Pure hard-filter predicate. Missing data does NOT satisfy a rating
+    floor — unlike `hotel_matches_amenity_tag`'s "unknown -> False" for
+    amenities, this mirrors the same "never claim what isn't verified"
+    stance: a hotel with no recorded star rating cannot be asserted to be
+    "4 sao trở lên"."""
+    if min_star_rating is not None:
+        star = data.get("star_rating")
+        if star is None or float(star) < float(min_star_rating):
+            return False
+    if min_review_score is not None:
+        review = data.get("review_score")
+        if review is None or float(review) < float(min_review_score):
+            return False
+    return True
+
+
+def _amenity_drop_counts(
+    options: List[Tuple[Dict[str, Any], PlaceCandidate]],
+    required_amenities: Collection[str],
+    sea_view_hotel_ids: Collection[str],
+) -> dict[str, int]:
+    tags = list(required_amenities)
+    return {
+        excluded: sum(
+            1
+            for data, _ in options
+            if all(
+                hotel_matches_amenity_tag(data, tag, sea_view_hotel_ids)
+                for tag in tags
+                if tag != excluded
+            )
+        )
+        for excluded in tags
+    }
+
+
 def select_hotel_candidates(
     destination: str,
     destination_id: str,
@@ -84,6 +176,10 @@ def select_hotel_candidates(
     root_latitude: float | None = None,
     root_longitude: float | None = None,
     max_radius_km: float | None = None,
+    *,
+    required_amenities: Collection[str] = (),
+    min_star_rating: float | None = None,
+    min_review_score: float | None = None,
 ) -> List[Tuple[Dict[str, Any], PlaceCandidate]]:
     """Search and return verified hotel options along with PlaceCandidate objects.
 
@@ -95,11 +191,29 @@ def select_hotel_candidates(
     scripts/migrations/20260730_add_price_filter_to_match_hotels_with_rooms.sql) — no
     app-side price filtering is needed here; `search_hotels_with_rooms` already returns
     the best `match_count` results that are also in range.
+
+    `required_amenities`/`min_star_rating`/`min_review_score` are hard, app-level
+    filters (Phase 8, `phase-08-hotel-flow.md`): every returned hotel satisfies all
+    of them, never a soft ranking bonus. All three default to empty/`None`, so the
+    pre-existing call sites are byte-identical. When any is given, the RPC is
+    over-fetched (`_HARD_FILTER_OVERFETCH_MULTIPLIER`x, capped) before filtering.
+    Rating is checked before amenities — matching the funnel order the RPC/price/
+    radius filters already ran in — so a zero-result diagnostic
+    (`NoHotelsMatchRating`/`NoHotelsMatchAmenities`) names the real binding
+    constraint instead of the two collapsing into one ambiguous cause.
     """
     query = hotel_query or f"Hotel in {destination} for {people} people"
+    hard_filters_requested = (
+        bool(required_amenities) or min_star_rating is not None or min_review_score is not None
+    )
+    effective_match_count = (
+        min(match_count * _HARD_FILTER_OVERFETCH_MULTIPLIER, _HARD_FILTER_MAX_FETCH)
+        if hard_filters_requested
+        else match_count
+    )
     kwargs: Dict[str, Any] = {
         "query": query,
-        "match_count": match_count,
+        "match_count": effective_match_count,
         "filter_destination_id": destination_id,
         "min_price": min_price,
         "max_price": max_price,
@@ -118,25 +232,25 @@ def select_hotel_candidates(
     search_results = search_hotels_with_rooms(**kwargs) or []
 
     hydrated = _hydrate_hotel_records(search_results)
-    options: List[Tuple[Dict[str, Any], PlaceCandidate]] = []
+    candidates: List[Tuple[Dict[str, Any], PlaceCandidate]] = []
 
     for hotel in hydrated:
         if str(hotel.get("destination_id")) != destination_id:
             continue
-            
+
         covered_meals = detect_covered_hotel_meals(
             hotel.get("amenities"),
             hotel.get("amenity_groups"),
             hotel.get("matched_room_names"),
         )
-        
+
         candidate = PlaceCandidate.from_mapping(
             {**hotel, "category": "Hotel", "covered_meals": covered_meals}
         )
-        
+
         if not candidate.coordinate_pair:
             continue
-            
+
         hotel_data = {
             "id": candidate.id,
             "destination_id": destination_id,
@@ -164,9 +278,35 @@ def select_hotel_candidates(
             "source_platform": hotel.get("source_platform"),
             "source_url": hotel.get("source_url"),
         }
-        options.append((hotel_data, candidate))
+        candidates.append((hotel_data, candidate))
 
-    return options
+    filtered = candidates
+    if min_star_rating is not None or min_review_score is not None:
+        pre_rating = filtered
+        filtered = [
+            (data, cand) for data, cand in filtered if _meets_rating(data, min_star_rating, min_review_score)
+        ]
+        if pre_rating and not filtered:
+            raise NoHotelsMatchRating(min_star_rating, min_review_score)
+
+    if required_amenities:
+        pre_amenity = filtered
+        sea_view_hotel_ids = (
+            lookup_sea_view_hotel_ids([data["id"] for data, _ in filtered])
+            if "sea_view" in required_amenities
+            else frozenset()
+        )
+        filtered = [
+            (data, cand)
+            for data, cand in filtered
+            if all(hotel_matches_amenity_tag(data, tag, sea_view_hotel_ids) for tag in required_amenities)
+        ]
+        if pre_amenity and not filtered:
+            raise NoHotelsMatchAmenities(
+                _amenity_drop_counts(pre_amenity, required_amenities, sea_view_hotel_ids)
+            )
+
+    return filtered[:match_count]
 
 
 _BUDGET_MATCH_BONUS = 0.05
@@ -320,7 +460,7 @@ def rank_hotel_candidates(
 
     ranked = sorted(
         options,
-        key=lambda option: _realistic_match_score(option[0], option[1]),
+        key=lambda option: _final_score(option[0], option[1]),
         reverse=True,
     )
 
@@ -340,7 +480,7 @@ def rank_hotel_candidates(
     return ranked
 
 
-def resolve_hotel_selection(
+def resolve_selection(
     selection: str,
     options: List[Tuple[Dict[str, Any], PlaceCandidate]],
 ) -> Tuple[Dict[str, Any], PlaceCandidate] | None:
@@ -381,6 +521,13 @@ def resolve_hotel_selection(
     if len(matches) == 1:
         return matches[0]
     return None
+
+
+# Phase 13 (`phase-13-place-search.md`) generalized this resolver beyond
+# hotels and renamed it. The plan's own risk register calls for "a thin
+# alias if callers are numerous" -- `tests/test_hotel_selection.py` (and any
+# other caller not yet migrated) keeps working under the old name.
+resolve_hotel_selection = resolve_selection
 
 
 def _normalize_for_match(value: str) -> str:
@@ -747,6 +894,62 @@ class HotelPreferenceState:
             max_price=data.get("max_price"),
         )
 
+    def to_travel_state(self) -> TravelState:
+        """Read-through view over the canonical `budget.*` slots (Phase 3
+        foundation — `TripState.travel_state` doesn't consume this yet). Not
+        yet resolved (`stage == "pending_budget"`) stays UNKNOWN; the explicit
+        "bao nhiêu cũng được" no-preference answer — `stage == "done"` with all
+        three prices `None` — becomes NOT_APPLICABLE, never SET, so a real skip
+        stays distinguishable from a parse failure.
+
+        Routed through `apply_patch` rather than constructing `Slot`s
+        directly, so a value this dataclass could hold but `apply_patch`
+        would reject (e.g. a negative price) is dropped, not silently stored
+        as a Slot no patch could ever have produced."""
+        if self.stage != "done":
+            return TravelState(slots={})
+        if self.target_price is None and self.min_price is None and self.max_price is None:
+            changes = [
+                {"path": "budget.target", "operation": "set", "value": None},
+                {"path": "budget.min", "operation": "set", "value": None},
+                {"path": "budget.max", "operation": "set", "value": None},
+            ]
+            return apply_patch(TravelState(), changes).state
+        changes = []
+        if self.target_price is not None:
+            changes.append({"path": "budget.target", "operation": "set", "value": self.target_price})
+        if self.min_price is not None:
+            changes.append({"path": "budget.min", "operation": "set", "value": self.min_price})
+        if self.max_price is not None:
+            changes.append({"path": "budget.max", "operation": "set", "value": self.max_price})
+        return apply_patch(TravelState(), changes).state
+
+    @classmethod
+    def from_travel_state(cls, state: TravelState) -> HotelPreferenceState:
+        """Inverse of `to_travel_state`. Each of the three prices resolves
+        independently — SET keeps its value, everything else (UNKNOWN or
+        NOT_APPLICABLE) reads back as `None` — matching `with_message`'s own
+        `values[0]` unpacking, which can already leave one of the three
+        `None`. A single NOT_APPLICABLE slot must not blank out a SET
+        sibling: "no upper limit" and "at least 1tr/night" can coexist."""
+        target_slot = state.get("budget.target")
+        min_slot = state.get("budget.min")
+        max_slot = state.get("budget.max")
+        if target_slot.presence is Presence.UNKNOWN and min_slot.presence is Presence.UNKNOWN and (
+            max_slot.presence is Presence.UNKNOWN
+        ):
+            return cls()
+
+        def _resolved(slot: Slot) -> float | None:
+            return slot.value if slot.presence is Presence.SET else None
+
+        return cls(
+            stage="done",
+            target_price=_resolved(target_slot),
+            min_price=_resolved(min_slot),
+            max_price=_resolved(max_slot),
+        )
+
 
 _AMENITY_KEYWORD_TAGS: dict[str, tuple[str, ...]] = {
     # Must require the negation phrase — a hotel whose only relevant amenity is
@@ -758,6 +961,11 @@ _AMENITY_KEYWORD_TAGS: dict[str, tuple[str, ...]] = {
     "parking": ("bai do xe", "cho de xe", "parking", "car park", "garage"),
     "parking_lot": ("bai do xe", "cho de xe", "parking", "car park", "garage"),
     "family": ("gia dinh", "tre em", "kids club", "family room"),
+    # Named canonical in doc §19; previously absent, leaving these three
+    # entirely dependent on runtime LLM discovery (Phase 8, phase-08-hotel-flow.md).
+    "gym": ("phong gym", "phong tap gym", "gym", "fitness center", "fitness centre", "trung tam the duc"),
+    "spa": ("spa", "massage", "khu spa"),
+    "restaurant": ("nha hang", "restaurant"),
 }
 
 _CATALOG_TAG_CACHE_SECONDS = 60.0

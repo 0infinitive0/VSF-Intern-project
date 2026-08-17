@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 import unicodedata
 from collections.abc import Collection, Iterable
 from dataclasses import dataclass
@@ -93,6 +94,33 @@ def query_approved_amenities(amenity_ids: Collection[str] | None = None) -> list
     return _parse_catalog_entries(rows)
 
 
+_ALL_AMENITIES_CACHE_SECONDS = 60.0
+_all_amenities_cache: tuple[tuple[AmenityCatalogEntry, ...], float] | None = None
+
+
+def all_approved_amenities() -> tuple[AmenityCatalogEntry, ...]:
+    """TTL-cached wrapper around `query_approved_amenities()` (no ID filter)
+    for hot-path callers -- e.g. `respond`'s per-turn `all_preferences` field
+    -- that need the full approved catalog without a Supabase round-trip on
+    every turn."""
+
+    global _all_amenities_cache
+    now = time.monotonic()
+    if _all_amenities_cache is not None and now - _all_amenities_cache[1] < _ALL_AMENITIES_CACHE_SECONDS:
+        return _all_amenities_cache[0]
+    entries = tuple(query_approved_amenities())
+    _all_amenities_cache = (entries, now)
+    return entries
+
+
+def clear_all_approved_amenities_cache() -> None:
+    """Invalidate `all_approved_amenities()` after a newly approved amenity
+    is stored, and for tests that need a fresh Supabase read."""
+
+    global _all_amenities_cache
+    _all_amenities_cache = None
+
+
 def bind_amenities(
     values: Collection[object], *, scope: AmenityScope, persist: bool = True
 ) -> AmenityBindingResult:
@@ -162,6 +190,7 @@ def bind_amenity_rows(
                 }
                 for entry in scope_promotions.values()
             ], on_conflict="id").execute()
+            clear_all_approved_amenities_cache()
         except Exception as exc:
             logger.warning("Amenity catalog scope promotion failed: %s", type(exc).__name__)
 
@@ -212,6 +241,7 @@ def discover_and_store_amenities(
             db_rows = list(db_rows_by_id.values())
             if db_rows:
                 get_supabase_client().table(_CATALOG_TABLE).upsert(db_rows, on_conflict="id").execute()
+                clear_all_approved_amenities_cache()
         except Exception as exc:
             logger.warning("Amenity catalog discovery write failed: %s", type(exc).__name__)
             return []

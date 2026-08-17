@@ -24,6 +24,7 @@ from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from typing import Any
 
+from src.domain.travel_state import Presence, TravelState, apply_patch
 from src.i18n import t
 from src.services.llm import get_fast_llm as get_llm
 
@@ -423,6 +424,76 @@ class TripIntakeState:
             notes=data.get("notes") or "",
         )
 
+    def to_travel_state(self) -> TravelState:
+        """Read-through view over the canonical state (Phase 3 foundation —
+        `TripState.travel_state` doesn't consume this yet). A fact this state
+        never captured (destination unset, no preferences chosen) stays
+        UNKNOWN; `TripIntakeState` has no "user explicitly opted out" concept
+        of its own, so nothing here becomes NOT_APPLICABLE.
+
+        Routed through `apply_patch` rather than constructing `Slot`s
+        directly, so every value here passes the same validators a real patch
+        would — a value this dataclass could hold but `apply_patch` would
+        reject (e.g. `people="0 người"`) is dropped, not silently stored as a
+        Slot no patch could ever have produced. Uses `stay_end_date`, never
+        the derived `end_date` property: an end date computed from `duration`
+        is not something the user actually confirmed (see
+        `has_explicit_stay_dates`), so it must not appear as canonical SET."""
+        changes: list[dict[str, Any]] = []
+        if self.destination:
+            changes.append({"path": "destination", "operation": "set", "value": self.destination})
+        if self.start_date:
+            changes.append({"path": "dates.start", "operation": "set", "value": self.start_date})
+        if self.stay_end_date:
+            changes.append({"path": "dates.end", "operation": "set", "value": self.stay_end_date})
+        people_count = _leading_int(self.people)
+        if people_count is not None:
+            changes.append({"path": "people", "operation": "set", "value": people_count})
+        if self.preferences:
+            changes.append({"path": "preferences.themes", "operation": "set", "value": list(self.preferences)})
+        if self.companions:
+            changes.append({"path": "preferences.companions", "operation": "set", "value": self.companions})
+        if self.pace:
+            changes.append({"path": "preferences.pace", "operation": "set", "value": self.pace})
+        if self.day_rhythm:
+            changes.append({"path": "preferences.day_rhythm", "operation": "set", "value": list(self.day_rhythm)})
+        if self.notes:
+            changes.append({"path": "preferences.notes", "operation": "set", "value": self.notes})
+        return apply_patch(TravelState(), changes).state
+
+    @classmethod
+    def from_travel_state(cls, state: TravelState) -> TripIntakeState:
+        """Inverse of `to_travel_state`. `duration` has no canonical path of
+        its own — it is derived from `dates.start`/`dates.end`, the same
+        relationship `end_date` already encodes for this class."""
+
+        def _set_value(path: str) -> Any | None:
+            slot = state.get(path)
+            return slot.value if slot.presence is Presence.SET else None
+
+        destination = _set_value("destination")
+        start_date = _set_value("dates.start")
+        end_date = _set_value("dates.end")
+        people = _set_value("people")
+        themes = _set_value("preferences.themes") or ()
+        companions = _set_value("preferences.companions")
+        pace = _set_value("preferences.pace")
+        day_rhythm = _set_value("preferences.day_rhythm") or ()
+        notes = _set_value("preferences.notes")
+
+        return cls(
+            destination=str(destination) if destination is not None else None,
+            duration=_duration_from_stay_dates(start_date, end_date) if start_date and end_date else None,
+            start_date=str(start_date) if start_date is not None else None,
+            stay_end_date=str(end_date) if end_date is not None else None,
+            people=_format_people_count(people) if people is not None else None,
+            preferences=tuple(themes),
+            companions=str(companions) if companions is not None else None,
+            pace=str(pace) if pace is not None else None,
+            day_rhythm=tuple(day_rhythm),
+            notes=str(notes) if notes is not None else "",
+        )
+
 
 def _llm_extract_intake_facts(
     message: str,
@@ -604,6 +675,17 @@ def _format_people_count(value: Any) -> str | None:
     if not 0 < count <= 50:
         return None
     return f"{count} người"
+
+
+def _leading_int(value: str | None) -> int | None:
+    """Extract the leading integer from a formatted count string ("2 người"
+    -> 2), the same convention `end_date` already uses for `duration`."""
+    if not value:
+        return None
+    try:
+        return int(value.split(maxsplit=1)[0])
+    except (TypeError, ValueError):
+        return None
 
 
 def _duration_from_stay_dates(start_date: str | None, end_date: str | None) -> str | None:

@@ -85,6 +85,58 @@ def build_natural_activity_string(name: str, category: str = "") -> str:
         return f"Tham quan {s}"
 
 
+def format_trip_summary_reply(trip_data: dict[str, Any], language: str = "vi") -> str:
+    """Short confirmation that a trip was built, for the chat reply.
+
+    The itinerary itself is rendered by the UI from `trip_plan`
+    (`trip-overview-tab.tsx`, `day-timeline.tsx` — hotel card, per-day route,
+    times, activities). Repeating all of that as chat text made the user read
+    the same plan twice, once in a format built for a panel and once as a wall
+    of lines.
+
+    So this names what changed and points at where to look, and nothing more.
+    It is still a *specific* reply, not a generic acknowledgement: it carries
+    the hotel and the day count, so a silent worker (the bug `emits_reply`
+    exists to catch) still cannot masquerade as a successful build.
+
+    Deterministic, like every reply carrying data — it reads the built trip,
+    so no number in it can be invented.
+    """
+    hotel = trip_data.get("hotel") or {}
+    hotel_name = str(hotel.get("name") or "").strip()
+
+    itineraries = trip_data.get("itineraries") or []
+    if isinstance(itineraries, dict):
+        itineraries = [itineraries]
+    first = itineraries[0] if itineraries and isinstance(itineraries[0], dict) else {}
+    try:
+        days = int(first.get("duration_days") or 0)
+    except (TypeError, ValueError):
+        days = 0
+    if not days:
+        day_numbers = {
+            item.get("day_number")
+            for item in (trip_data.get("itinerary_items") or [])
+            if isinstance(item, dict) and item.get("day_number")
+        }
+        days = len(day_numbers)
+
+    if hotel_name and days:
+        return t(
+            "Đã dựng xong lịch trình {days} ngày quanh {hotel}. Chi tiết từng ngày ở bảng lịch trình bên cạnh.",
+            language,
+            days=days,
+            hotel=hotel_name,
+        )
+    if days:
+        return t(
+            "Đã dựng xong lịch trình {days} ngày. Chi tiết từng ngày ở bảng lịch trình bên cạnh.",
+            language,
+            days=days,
+        )
+    return t("Đã dựng xong lịch trình. Chi tiết ở bảng lịch trình bên cạnh.", language)
+
+
 def format_trip_response_from_json(trip_data: dict[str, Any], language: str = "vi") -> str:
     """Format structured trip JSON into concise user text response."""
     hotel = trip_data.get("hotel", {})
@@ -276,6 +328,66 @@ def format_hotel_options(options: list[tuple[dict[str, Any], PlaceCandidate]], l
         )
     )
     return "\n".join(lines)
+
+
+def format_budget_status(
+    known_total: float | None,
+    trip_total: float | None,
+    items_with_cost: int,
+    total_items: int,
+    language: str = "vi",
+) -> str:
+    """Surface trip-total budget status in user-facing text (Phase 14).
+
+    Called by `budget_check` (the graph node owning `budget.trip_total`)
+    once it knows the current trip's known cost.  Always reports coverage —
+    never claims compliance over unknown costs.
+
+    Args:
+        known_total: The sum of all items with known prices (hotel + activities).
+        trip_total: The user-stated whole-trip budget cap.
+        items_with_cost: Number of itinerary items that have a known price.
+        total_items: Total itinerary items.
+        language: Language code for translation.
+
+    Returns:
+        A one-line status string suitable for appending to the trip summary.
+    """
+    if trip_total is None:
+        return ""
+    if known_total is None:
+        return t(
+            "Ngân sách toàn chuyến: {total:,.0f} VND (chưa có đủ giá để kiểm tra).",
+            language,
+            total=trip_total,
+        )
+
+    coverage_note = ""
+    if total_items > 0 and items_with_cost < total_items:
+        coverage_note = t(
+            " ({covered}/{all} mục có giá — có thể còn chi phí chưa biết)",
+            language,
+            covered=items_with_cost,
+            all=total_items,
+        )
+
+    if known_total <= trip_total:
+        return t(
+            "Ngân sách toàn chuyến: {known:,.0f} / {total:,.0f} VND (trong ngân sách){coverage}.",
+            language,
+            known=known_total,
+            total=trip_total,
+            coverage=coverage_note,
+        )
+    shortfall = known_total - trip_total
+    return t(
+        "Ngân sách toàn chuyến: {known:,.0f} / {total:,.0f} VND (VƯỢT {shortfall:,.0f} VND){coverage}.",
+        language,
+        known=known_total,
+        total=trip_total,
+        shortfall=shortfall,
+        coverage=coverage_note,
+    )
 
 
 def to_trip_plan_payload(trip_data: dict[str, Any] | None) -> dict[str, Any] | None:

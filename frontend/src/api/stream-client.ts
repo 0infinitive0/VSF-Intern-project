@@ -91,7 +91,6 @@ function parseFrame(raw: string): { event: string; data: unknown } | null {
 export interface StreamHandlers {
   onPhase?: (key: string, at: number, extra?: Record<string, unknown>) => void
   onDelta?: (text: string) => void
-  onReset?: (reason: string) => void
 }
 
 /**
@@ -167,11 +166,6 @@ export async function sendMessageStream(
         case 'delta': {
           const d = frame.data as { text: string }
           handlers.onDelta?.(d.text)
-          break
-        }
-        case 'reset': {
-          const d = frame.data as { reason: string }
-          handlers.onReset?.(d.reason)
           break
         }
         case 'final':

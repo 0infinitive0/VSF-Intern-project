@@ -125,7 +125,7 @@ export default function ChatPanel({
   // The widget's question, asked in the thread only when the backend's own
   // last reply didn't already ask it (progressive disclosure advances locally,
   // with no chat turn — see locallyAdvancedField).
-  const questionField = showIntakeForm ? locallyAdvancedField(intake, activeIntakeField) : null
+  const questionField = showIntakeForm ? locallyAdvancedField(intake, activeIntakeField, intakeForm) : null
   const questionKey = questionField ? INTAKE_QUESTION_KEY[questionField] : undefined
   const intakeQuestion = questionKey ? t(questionKey) : null
 

@@ -71,7 +71,12 @@ export default function HotelDetailPanel({
     detail?.amenities && detail.amenities.length > 0
       ? detail.amenities
       : detail?.amenity_groups
-        ? Object.values(detail.amenity_groups).flat()
+        ? // `amenity_groups` is a crawled jsonb column typed `dict[str, Any]`:
+          // narrow at runtime rather than assuming string[] and rendering
+          // `[object Object]` the first time a row disagrees.
+          Object.values(detail.amenity_groups)
+            .flat()
+            .filter((value): value is string => typeof value === 'string')
         : []
   const policies = [
     { label: t('policyCheckIn'), value: detail?.check_in_time

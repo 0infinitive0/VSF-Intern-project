@@ -8,8 +8,9 @@ import {
   type IntakeField,
 } from './next-intake-field'
 import type { IntakeStatus } from '../types'
+import { intakeStatus } from '../test-fixtures'
 
-const BASE_INTAKE: IntakeStatus = {
+const BASE_INTAKE: IntakeStatus = intakeStatus({
   destination: null,
   duration: null,
   start_date: null,
@@ -23,7 +24,7 @@ const BASE_INTAKE: IntakeStatus = {
   available_destinations: ['Đà Nẵng'],
   budget_options: [],
   missing: [],
-}
+})
 
 function intakeWith(missing: string[], overrides: Partial<IntakeStatus> = {}): IntakeStatus {
   return { ...BASE_INTAKE, missing, budget_options: ['Khách sạn 4 sao'], ...overrides }
@@ -82,23 +83,44 @@ describe('locallyAdvancedField', () => {
   it('asks nothing when the widget matches what the backend just asked for', () => {
     // Backend replied "how many people?" and the people stepper is what's open
     // — its own message already covers it.
-    expect(locallyAdvancedField(intakeWith(['people', 'start_date']), 'people')).toBeNull()
+    expect(locallyAdvancedField(intakeWith(['people', 'start_date']), 'people', form())).toBeNull()
   })
 
   it('asks the question when the widget has walked past the backend', () => {
     // People answered locally (no chat turn), so the backend still considers
     // people missing while the dates picker is already open — nobody has asked
     // about dates yet.
-    expect(locallyAdvancedField(intakeWith(['people', 'start_date']), 'dates')).toBe('dates')
+    expect(locallyAdvancedField(intakeWith(['people', 'start_date']), 'dates', form())).toBe('dates')
   })
 
   it('asks for the ungated optional fields, which the backend never requests', () => {
-    expect(locallyAdvancedField(intakeWith([]), 'budget')).toBe('budget')
-    expect(locallyAdvancedField(intakeWith([]), 'preferences')).toBe('preferences')
+    expect(locallyAdvancedField(intakeWith([]), 'budget', form())).toBe('budget')
+    expect(locallyAdvancedField(intakeWith([]), 'preferences', form())).toBe('preferences')
   })
 
   it('returns null when no widget is open', () => {
-    expect(locallyAdvancedField(intakeWith(['people']), null)).toBeNull()
+    expect(locallyAdvancedField(intakeWith(['people']), null, form())).toBeNull()
+  })
+
+  // The persistent-duplicate-bubble bug. Once every gated field is answered,
+  // nextIntakeField is null forever while the terminal preferences card stays
+  // open — so "preferences !== null" kept re-rendering its question on every
+  // single intake-stage turn, including turns about something else entirely.
+  it('stops asking a field the user has already answered locally', () => {
+    const answered = form({
+      destination: 'Đà Nẵng',
+      guests: 2,
+      startDate: '2026-08-10',
+      endDate: '2026-08-13',
+      budgetSkipped: true,
+      preferences: ['amusement'],
+    })
+    expect(locallyAdvancedField(intakeWith([]), 'preferences', answered)).toBeNull()
+  })
+
+  it('still asks the preferences question while no chip has been picked', () => {
+    const filled = form({ destination: 'Đà Nẵng', guests: 2, startDate: 'a', endDate: 'b', budgetSkipped: true })
+    expect(locallyAdvancedField(intakeWith([]), 'preferences', filled)).toBe('preferences')
   })
 })
 
@@ -161,6 +183,18 @@ describe('currentIntakeField', () => {
     expect(currentIntakeField(intake, f)).toBe('preferences')
   })
 
+  it('skips the widget when the backend already has a budget range from plain chat', () => {
+    const intake = intakeWith([], { min_price: 800_000, max_price: 2_500_000 })
+    const f = form({ destination: 'Đà Nẵng', guests: 2, startDate: 'a', endDate: 'b' })
+    expect(currentIntakeField(intake, f)).toBe('preferences')
+  })
+
+  it('skips the widget when the backend recorded an explicit budget skip from plain chat', () => {
+    const intake = intakeWith([], { budget_skipped: true })
+    const f = form({ destination: 'Đà Nẵng', guests: 2, startDate: 'a', endDate: 'b' })
+    expect(currentIntakeField(intake, f)).toBe('preferences')
+  })
+
   it('keeps preferences active once toggled — it is terminal, not a gate', () => {
     const intake = intakeWith([])
     const f = form({
@@ -186,6 +220,64 @@ describe('currentIntakeField', () => {
       guests: 2,
     })
     expect(currentIntakeField(intake, f)).toBe('destination')
+  })
+})
+
+// The phase-06 state table: which widget is open, and whether the frontend
+// asks its question, for each way the local form and the server snapshot can
+// disagree. `question` is what the user actually sees as an extra AI bubble.
+describe('intake state table (widget vs question)', () => {
+  const filledDates = { startDate: '2026-08-10', endDate: '2026-08-13' }
+
+  it('backend asks destination → destination widget, no duplicate question', () => {
+    const intake = intakeWith(['destination', 'people', 'start_date', 'duration'])
+    const f = form()
+    expect(nextIntakeField(intake)).toBe('destination')
+    expect(currentIntakeField(intake, f)).toBe('destination')
+    expect(locallyAdvancedField(intake, currentIntakeField(intake, f), f)).toBeNull()
+  })
+
+  it('user answered people locally → dates widget, frontend asks the dates question', () => {
+    const intake = intakeWith(['people', 'start_date', 'duration'])
+    const f = form({ destination: 'Đà Nẵng', guests: 2 })
+    expect(nextIntakeField(intake)).toBe('people')
+    expect(currentIntakeField(intake, f)).toBe('dates')
+    expect(locallyAdvancedField(intake, currentIntakeField(intake, f), f)).toBe('dates')
+  })
+
+  it('backend re-opened dates → dates widget, no duplicate question', () => {
+    // The form has already been cleared for this field by mergeIntakeIntoForm
+    // (that is what makes the backend's re-opened slot win over the stale
+    // local answer) — so the widget goes back to the date picker.
+    const intake = intakeWith(['start_date', 'duration'])
+    const f = form({ destination: 'Đà Nẵng', guests: 2 })
+    expect(nextIntakeField(intake)).toBe('dates')
+    expect(currentIntakeField(intake, f)).toBe('dates')
+    expect(locallyAdvancedField(intake, currentIntakeField(intake, f), f)).toBeNull()
+  })
+
+  it('everything answered, no chip picked → preferences card and its question', () => {
+    const intake = intakeWith([])
+    const f = form({ destination: 'Đà Nẵng', guests: 2, ...filledDates, budgetSkipped: true })
+    expect(nextIntakeField(intake)).toBeNull()
+    expect(currentIntakeField(intake, f)).toBe('preferences')
+    expect(locallyAdvancedField(intake, currentIntakeField(intake, f), f)).toBe('preferences')
+  })
+
+  it('everything answered, a chip picked → preferences card STAYS, question goes', () => {
+    // The card must survive: its "Tìm khách sạn phù hợp" button is the only
+    // path to submitAll. Only the repeated question disappears.
+    const intake = intakeWith([])
+    const f = form({
+      destination: 'Đà Nẵng',
+      guests: 2,
+      ...filledDates,
+      budgetSkipped: true,
+      preferences: ['amusement'],
+    })
+    expect(nextIntakeField(intake)).toBeNull()
+    expect(currentIntakeField(intake, f)).toBe('preferences')
+    expect(locallyAdvancedField(intake, currentIntakeField(intake, f), f)).toBeNull()
   })
 })
 

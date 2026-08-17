@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { filterAndSortHotels, hotelPriceBounds, roundedPriceSliderBounds, type HotelFilterState } from './hotel-filters'
 import type { HotelOption } from '../types'
+import { hotelOption } from '../test-fixtures'
 
 const HOTELS: HotelOption[] = [
-  { index: 1, name: 'Recommended first', average_nightly_price: 2_000_000, star_rating: 5, preferences: ['breakfast'], match_score: 0.95 },
-  { index: 2, name: 'Budget stay', average_nightly_price: 900_000, star_rating: 4, preferences: ['pool'], match_score: 0.8 },
-  { index: 3, name: 'Price on request', star_rating: 3, preferences: ['breakfast', 'pool'], match_score: 0.7 },
+  hotelOption({ index: 1, name: 'Recommended first', average_nightly_price: 2_000_000, star_rating: 5, preferences: ['breakfast'], match_score: 0.95 }),
+  hotelOption({ index: 2, name: 'Budget stay', average_nightly_price: 900_000, star_rating: 4, preferences: ['pool'], match_score: 0.8 }),
+  hotelOption({ index: 3, name: 'Price on request', star_rating: 3, preferences: ['breakfast', 'pool'], match_score: 0.7 }),
 ]
 
 const DEFAULT_FILTERS: HotelFilterState = {
@@ -34,7 +35,7 @@ describe('filterAndSortHotels', () => {
 
   it('filters by canonical amenity IDs even when the API did not mark them as preferences', () => {
     const result = filterAndSortHotels(
-      [{ index: 4, name: 'Catalog-only wifi', amenities: ['wifi'], preferences: [] }],
+      [hotelOption({ index: 4, name: 'Catalog-only wifi', amenities: ['wifi'], preferences: [] })],
       { ...DEFAULT_FILTERS, preferenceIds: ['wifi'] },
     )
 

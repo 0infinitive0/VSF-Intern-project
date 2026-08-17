@@ -1,4 +1,39 @@
+---
+title: "Frontend Plan: Session Persistence and History"
+status: in-progress
+updated: 2026-08-16
+blockedBy: []
+---
+
 # Frontend Plan: Session Persistence and History
+
+## Trạng thái (cập nhật 2026-08-16)
+
+Plan này **không bị chặn nữa**. Phần lớn công việc FE ở Phase 1–2 đã được implement từ
+trước (`api/session-client.ts`, `conversation-list.tsx`, reducer `RESTORE` trong
+`use-chat-session.ts`), nhưng nó *trông như* hỏng vì backend trả về vỏ rỗng — không phải
+lỗi FE.
+
+Hai phase của [260816-2205-fe-be-contract-reconciliation](./260816-2205-fe-be-contract-reconciliation/plan.md)
+đã gỡ nguyên nhân thật:
+
+| Việc FE đang chờ | Nguyên nhân backend | Đã sửa ở |
+|---|---|---|
+| `restore` trả messages/stage/hotel/intake thật | `restore_session` hardcode `messages=[]`, `stage="intake"`, `IntakeStatus.from_state(None, None)`, và đọc `state["hotel_options"]` (key không tồn tại) | Phase 2 |
+| `GET /chat/sessions` trả về session vừa chat | Không có gì ghi `sessions`/`chat_messages` sau cutover graph plane; `list_sessions` inner-join `chat_messages` nên session không có message row không bao giờ xuất hiện | Phase 1 |
+| Session sống sót qua reload | Ping bootstrap gọi `fetch` trần, thiếu auth header → 404 → FE âm thầm tạo session mới | Phase 3 |
+
+### Còn lại
+
+- **Task 4 — phân trang chưa làm.** `listSessions()` (`session-client.ts:22`) gọi
+  `/chat/sessions` không tham số và vứt bỏ envelope: nó đọc `data.sessions` rồi bỏ qua
+  `page`/`page_size`/`has_more`. Backend đã hỗ trợ đủ (`routes.py::list_persisted_sessions`).
+  Nút "Load more" chưa tồn tại.
+- **Task 6 — chưa chạy.** Kiểm thử browser end-to-end vẫn cần người thật; các phase trên
+  chỉ chứng minh bằng unit test.
+- Hạn chế đã biết: với `CHECKPOINTER_BACKEND=memory`, restart process giữ transcript
+  nhưng mất `travel_state`/`trip_data` — degrade có chủ đích (QĐ-2), đường thoát là
+  `CHECKPOINTER_BACKEND=postgres`.
 
 ## Scope
 

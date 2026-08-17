@@ -18,6 +18,12 @@ langgraph>=1.2.0,<2.0.0
 supabase>=2.31.0,<3.0.0
 psycopg2-binary>=2.9.0,<3.0.0
 
+# LangGraph checkpointer (Postgres-backed, coexists with psycopg2 above --
+# supabase-py is HTTP-only and psycopg2 is only used by src/airflow/scripts,
+# so nothing currently imports psycopg3)
+psycopg[binary,pool]>=3.2.0,<4.0.0
+langgraph-checkpoint-postgres>=2.0.0,<4.0.0
+
 # Auth (local Supabase JWT verification — no per-request call to Supabase Auth API)
 PyJWT[crypto]>=2.9.0,<3.0.0
 

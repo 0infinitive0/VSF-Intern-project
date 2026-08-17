@@ -700,6 +700,66 @@ def test_normalize_themes_preserves_raw_semantic_queries_without_preferences() -
     assert len({theme.title.casefold() for theme in themes}) == 3
 
 
+def test_user_specified_theme_survives_preference_override_other_days_unaffected() -> None:
+    """Bug A: a day theme the user explicitly named (via replan_day) must survive
+    normalize_day_themes unchanged -- title *and* query -- even when the trip has
+    preferences that would otherwise override it. Days the user did not touch in
+    the same call must keep their preference-derived themes."""
+    themes = normalize_day_themes(
+        [
+            {
+                "day_number": 1,
+                "title": "Thiên nhiên và khám phá",
+                "query": "nature parks gardens outdoor",
+                "selection_mode": "user_specified",
+            },
+            {"day_number": 2, "title": "Biển", "query": "beach coast relaxation"},
+        ],
+        number_of_days=2,
+        preferences=["biển"],
+    )
+
+    assert themes[0].title == "Thiên nhiên và khám phá"
+    assert themes[0].query == "nature parks gardens outdoor"
+    assert themes[0].selection_mode == "user_specified"
+    assert "biển" not in themes[0].query.casefold()
+
+    assert "biển" in themes[1].title.casefold()
+    assert "biển" in themes[1].query.casefold()
+    assert themes[1].selection_mode == "auto"
+
+
+def test_user_specified_theme_survives_a_serialize_deserialize_round_trip() -> None:
+    """A second consecutive replan_day must still honor the first: the
+    selection_mode marker persists through serialize_day_themes and is read
+    back correctly by normalize_day_themes on the next edit."""
+    themes = normalize_day_themes(
+        [{"day_number": 1, "title": "Thiên nhiên", "query": "nature parks outdoor", "selection_mode": "user_specified"}],
+        number_of_days=1,
+        preferences=["biển"],
+    )
+    persisted = serialize_day_themes(themes)
+
+    reloaded = normalize_day_themes(persisted, number_of_days=1, preferences=["biển"])
+
+    assert reloaded[0].title == "Thiên nhiên"
+    assert reloaded[0].query == "nature parks outdoor"
+    assert reloaded[0].selection_mode == "user_specified"
+
+
+def test_old_persisted_themes_without_selection_mode_keep_auto_behavior() -> None:
+    """Itineraries persisted before this field existed deserialize to "auto" and
+    behave exactly as today -- preference override still applies."""
+    themes = normalize_day_themes(
+        [{"day_number": 1, "title": "Biển", "query": "beach coast relaxation"}],
+        number_of_days=1,
+        preferences=["ẩm thực"],
+    )
+
+    assert themes[0].selection_mode == "auto"
+    assert "ẩm thực" in themes[0].title.casefold()
+
+
 def test_day_themes_have_a_database_safe_json_payload() -> None:
     payload = serialize_day_themes(
         [
@@ -713,11 +773,13 @@ def test_day_themes_have_a_database_safe_json_payload() -> None:
             "day_number": 1,
             "title": "Biển và thư giãn",
             "query": "beach activities in Da Nang",
+            "selection_mode": "auto",
         },
         {
             "day_number": 2,
             "title": "Văn hóa và di sản",
             "query": "Da Nang cultural experiences",
+            "selection_mode": "auto",
         },
     ]
 

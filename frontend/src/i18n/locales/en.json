@@ -1,6 +1,5 @@
 {
   "navBrand": "V-OTA",
-
   "sidebarLabel": "Main navigation",
   "sidebarCollapseHint": "Collapse sidebar",
   "sidebarExpandHint": "Expand sidebar",
@@ -15,10 +14,8 @@
   "sidebarDeleteSessionConfirmMessage": "\"{{title}}\" will be permanently deleted. This can't be undone.",
   "sidebarDeleteSessionConfirmAction": "Delete",
   "sidebarDeleteSessionCancel": "Cancel",
-
   "themeToggleSwitchToDark": "Dark mode",
   "themeToggleSwitchToLight": "Light mode",
-
   "intakeHeroTagline": "V‑OTA AI Travel Planner",
   "intakeHeroA": "Your next trip,",
   "intakeHeroB": "planned in two minutes",
@@ -39,15 +36,12 @@
   "intakeStep3Num": "STEP 3",
   "intakeStep3Title": "Itinerary & map",
   "intakeStep3Desc": "A day-by-day timeline with the route optimised around your hotel.",
-
   "chatPanelTitle": "AI Assistant",
   "chatPanelMoreHint": "Options (not yet supported)",
   "chatPanelExpandHint": "Fullscreen (not yet supported)",
-
   "composerPlaceholder": "Message V-OTA…",
   "sendBtn": "Send",
   "newChatBtn": "New trip",
-
   "stepNavigatorLabel": "Planning steps",
   "stepDetails": "Details",
   "stepHotel": "Hotel",
@@ -65,29 +59,22 @@
   "budgetLabel": "Budget",
   "interestLabel": "Interests",
   "messageTimestampLabel": "Sent at {{time}}",
-
   "greeting": "Hi 👋 I'm V-OTA. Where would you like to go this time?",
   "quickSuggestionsHint": "Quick suggestions or type freely in chat",
   "itineraryEmptyTitle": "Your itinerary",
   "itineraryEmptyBody": "Your itinerary will appear here once you pick a hotel.",
-
   "pendingDefault": "Processing...",
   "pendingSearchingHotels": "Looking for matching hotels...",
   "pendingBuildingPlan": "Building your itinerary...",
-
   "phaseReceived": "Request received",
   "phaseRouting": "Deciding how to handle this",
-  "phaseRouteDecided": "Decided how to handle this",
   "phaseCompactingHistory": "Summarizing conversation history",
   "phaseIntakeCheck": "Checking trip details",
   "phaseHotelSearch": "Searching for matching hotels",
-  "phaseToolStart": "Running a task",
-  "phaseToolEnd": "Task finished",
   "phaseItineraryBuild": "Building the itinerary",
   "phaseRoutingLegs": "Calculating travel routes",
   "phasePersisting": "Saving the itinerary",
   "phaseGenerating": "Writing a reply",
-
   "itineraryTitle": "Planned itinerary",
   "hotelLabel": "Hotel",
   "dayLabel": "Day {{n}}",
@@ -116,7 +103,6 @@
   "itineraryExpandHint": "Fullscreen (not yet supported)",
   "itineraryEditHint": "Edit (not yet supported)",
   "itineraryShareHint": "Share (not yet supported)",
-
   "kindBreakfast": "Breakfast",
   "kindLunch": "Lunch",
   "kindDinner": "Dinner",
@@ -126,7 +112,6 @@
   "kindEvening": "Evening",
   "kindTransport": "Transport",
   "kindHotel": "Hotel",
-
   "intakeDestinationLabel": "Destination",
   "intakeDestinationPlaceholder": "Choose a destination",
   "intakeDatesLabel": "Dates & duration",
@@ -148,7 +133,6 @@
   "intakeDecreaseGuests": "Decrease guests",
   "intakeIncreaseGuests": "Increase guests",
   "intakeNoBudgetOptions": "No budget options available.",
-
   "intakeQuickHint": "Quick: pick a suggested destination",
   "intakePeopleLabel": "Number of travelers",
   "intakeConfirm": "Confirm",
@@ -163,7 +147,7 @@
   "budgetMaxLabel": "Maximum budget",
   "intakePeopleQuestion": "Great. How many people are travelling?",
   "intakeDatesQuestion": "When do you plan to depart and return?",
-  "intakeBudgetQuestion": "About how much would you like to budget for the whole trip?",
+  "intakeBudgetQuestion": "About how much would you like to spend per night on your hotel?",
   "intakePreferencesQuestion": "Last thing - what kind of experiences do you like? Pick a few.",
   "interests": "Your interests",
   "findHotels": "Find matching hotels",
@@ -171,7 +155,6 @@
   "ttPrevMonth": "Previous month",
   "ttNextMonth": "Next month",
   "ttNextYear": "Next year",
-
   "intake": {
     "preferenceOptions": {
       "beach": "Beach",
@@ -202,10 +185,8 @@
       "lateNight": "Late nights"
     }
   },
-
   "hotelPickBtn": "Choose this hotel",
   "hotelPickBtnSelected": "✓ Selected",
-
   "viewDetail": "View details",
   "perNight": "per night",
   "perNightSep": "/ night",
@@ -221,13 +202,11 @@
     "strong_similarity": "Matches your trip description",
     "near_center": "In {{value}}, near the centre"
   },
-
   "hotelHeadSub": "The itinerary is built around the hotel you pick",
   "buildFromHotel": "Build the itinerary from this hotel",
   "hotelBadgeEmpty": "Pick a hotel to see distances to the key sights",
   "hotelBadgeSelected": "{{name}} — start and end of every day",
   "hotelPickedMessage": "I'll go with {{name}}",
-
   "hotelFiltersLabel": "Refine hotels",
   "hotelFiltersClear": "Clear",
   "hotelFiltersMaxPrice": "Maximum price per night",
@@ -259,7 +238,6 @@
   "policyCheckOut": "Check-out",
   "policyReception": "Reception until",
   "distanceKm": "{{km}} km",
-
   "legDistanceKm": "{{km}} km",
   "legDurationMins": "~{{mins}} min",
   "durationHoursOne": "{{count}} hour",
@@ -272,7 +250,6 @@
   "routeProfile.driving": "Car",
   "routeProfile.walking": "Walking",
   "routeProfile.cycling": "Cycling",
-
   "placeFactCategory": "Category",
   "placeFactHours": "Hours",
   "placeFactDuration": "Duration",
@@ -290,7 +267,6 @@
   "placeImgAlt": "Photo of {{name}}",
   "placeDetailNoInfo": "No details available for this place.",
   "placeDetailCloseLabel": "Close place details",
-
   "roomPriceOnRequest": "Price on request",
   "roomAvailable": "Available",
   "roomSoldOut": "Sold out",
@@ -300,17 +276,13 @@
   "roomSqm": "{{n}} m²",
   "roomSleeps": "{{count}} guests",
   "roomViewPrefix": "view {{view}}",
-
   "hotelImgAlt": "Photo of {{name}}",
   "roomImgAlt": "Photo of room {{name}}",
   "galleryImgAlt": "Photo {{index}} of {{name}}",
-
   "errorPrefix": "Error: ",
   "errorNetwork": "Connection error: {{msg}}",
   "errorStage": "SYSTEM ERROR",
-
   "resetTitle": "Start over",
-
   "mapUnavailableTitle": "Map unavailable",
   "mapUnavailableBody": "Missing map token configuration (VITE_MAPBOX_TOKEN).",
   "mapLegendDriving": "Driving",
@@ -334,7 +306,6 @@
   "mapMyLocation": "My location",
   "mapShowSatellite": "Show satellite",
   "mapShowStreets": "Show streets",
-
   "authBootLoading": "Signing you in…",
   "authSignIn": "Sign in",
   "authSignOut": "Sign out",

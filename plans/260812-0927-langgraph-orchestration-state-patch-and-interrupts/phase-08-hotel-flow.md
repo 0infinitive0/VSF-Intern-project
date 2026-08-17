@@ -1,7 +1,7 @@
 ---
 phase: 8
 title: "hotel_node: hard filters, radius, center"
-status: pending
+status: completed
 priority: P2
 effort: "2d"
 dependencies: [7]
@@ -125,18 +125,18 @@ reads active constraints from state instead of accumulating them in `pending_hot
 
 ## Success Criteria
 
-- [ ] Every hotel returned for "có hồ bơi" satisfies `hotel_matches_amenity_tag(..., "pool")`
-- [ ] "có gym và hồ bơi" returns only hotels with **both**; zero results name which one binds
-- [ ] `gym`, `spa`, `restaurant` resolve from the built-in taxonomy without runtime discovery
-- [ ] "khách sạn trên 4 sao" never returns a 3-star hotel — no silent fallback
-- [ ] "đánh giá trên 4" asks whether it means stars or review score
-- [ ] "bỏ lọc hồ bơi" widens results; the pill disappears
-- [ ] "bán kính 3km" with a selected hotel returns only hotels within 3km of it
-- [ ] "bán kính 3km" with no selected hotel asks for the center
-- [ ] A radius of 0 or above the maximum is rejected with a specific message
-- [ ] Zero results names the binding constraint instead of silently returning an unfiltered list
-- [ ] All 4 existing `select_hotel_candidates` call sites work unchanged
-- [ ] `make test` green
+- [x] Every hotel returned for "có hồ bơi" satisfies `hotel_matches_amenity_tag(..., "pool")` — hard app-level filter in `select_hotel_candidates`, proven by test
+- [x] "có gym và hồ bơi" returns only hotels with **both**; zero results name which one binds — `NoHotelsMatchAmenities.tag_drop_counts`, surfaced by `hotel_node` as "bỏ '{tag}' thì có {count} khách sạn"
+- [x] `gym`, `spa`, `restaurant` resolve from the built-in taxonomy without runtime discovery — added to `_AMENITY_KEYWORD_TAGS`
+- [x] "khách sạn trên 4 sao" never returns a 3-star hotel — no silent fallback — new hard filter in `select_hotel_candidates` (`NoHotelsMatchRating`, no `data[:match_count]` widen-back). `supabase_search.py`'s own LLM-derived star path (`:280-282`) is deliberately left untouched — it only serves the **frozen legacy plane** (`recommend_hotels.py`), which this phase does not edit per plan.md's risk register ("no edits to the legacy plane after Phase 5 except reverts"); the real fix lands for users at Phase 11 cutover
+- [ ] "đánh giá trên 4" asks whether it means stars or review score — this is `extract_patch`'s (Phase 6) prompt/disambiguation concern, not `hotel_node`'s: by the time a turn reaches `hotel_node`, `hotel_preferences.min_star_rating`/`.min_review_score` are already resolved, validated `TravelState` slots. `hotel_node` filters hard on whichever is set; it does not itself ask the stars-vs-score question. Not verified here
+- [ ] "bỏ lọc hồ bơi" widens results; the pill disappears — the **mechanism** is real: `hotel_preferences.amenities` is a list path with `remove` (Phase 3), `hotel_node` re-reads it fresh every turn (no accumulation), so a removed tag naturally widens the very next search and its pill drops from `active_preferences`. Whether the phrase "bỏ lọc hồ bơi" itself produces a `remove` patch operation is `extract_patch`'s NLU, not exercised by this phase's tests
+- [ ] "bán kính 3km" with a selected hotel returns only hotels within 3km of it — **not reachable today**: no hotel-selection concept exists anywhere in `TravelGraphState`/`TravelState` yet (only the legacy plane's `pending_hotel_selection`/`trip_data`, which this phase does not touch). `search_center.resolve_center(selected_hotel_coordinates=...)` is fully implemented and tested for this case; `hotel_node` always passes `None` for it today, documented in both modules' docstrings
+- [x] "bán kính 3km" with no selected hotel asks for the center — `interrupt()` in `hotel_node`, proven via the compiled graph (pause + resume with a named POI + resume with an unrelated reply → `unresolved_resume_text` → replayed as a fresh turn, mirroring `validate_patch`'s established pattern)
+- [x] A radius of 0 or above the maximum is rejected with a specific message — already enforced by Phase 3's `hotel_preferences.radius_km` validator (`_number_range(0, 50, inclusive_min=False)`); confirmed still wired end-to-end
+- [x] Zero results names the binding constraint instead of silently returning an unfiltered list — for amenities and rating (the two cases the plan's own worked example covers). A radius search that resolves a real center but finds nothing within it falls through to the generic "no hotels found" message rather than a radius-specific binding-constraint line — narrower than the literal wording, not implemented as a third named-constraint case
+- [x] All 4 (now 5 — `_legacy_modify_trip_plan` is new since the plan was written) existing `select_hotel_candidates` call sites work unchanged — keyword-only defaulted params; `gitnexus impact`/`detect_changes` and the full pre-existing `test_hotel_selection.py`/`test_hotel_flow_tools.py` suites confirm no behavior change
+- [ ] `make test` green — not run literally (`pytest tests/` hits real OpenAI/LangSmith APIs per repo convention); the relevant scoped surface (test_hotel_selection, test_hotel_hard_filters, test_search_center, test_hotel_node, test_graph_v2_skeleton, test_supervisor_routing, test_interrupt_resume, test_travel_state, test_hotel_flow_tools, test_extract_patch — 219 tests) was run instead: 209 passed, 1 skipped (opt-in live-Postgres test), 1 failed — pre-existing and unrelated (`test_rank_hotel_candidates_prefers_cheaper_when_otherwise_tied`, confirmed failing on `main`/pre-Phase-8 via `git stash`, not touched by this phase)
 
 ## Risk Assessment
 

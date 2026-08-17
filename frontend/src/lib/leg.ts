@@ -25,6 +25,7 @@
  * fires when at least one leg actually used the haversine fallback.
  */
 import { parseCoordinates, haversineKm } from './geo'
+import { asRouteProfile } from '../types'
 import type { DayItem, RouteInfo, RouteProfile } from '../types'
 
 export type Leg =
@@ -63,7 +64,7 @@ export function legBetween(current: DayItem, next: DayItem | null | undefined): 
         kind: 'route',
         distanceKm: r!.distance_km ?? 0,
         durationMins: r!.duration_mins ?? 0,
-        profile: r!.profile,
+        profile: asRouteProfile(r!.profile),
       }
     case 'missing':
       break

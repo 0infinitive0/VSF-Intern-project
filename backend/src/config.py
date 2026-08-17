@@ -42,6 +42,25 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "sqlite:///./data/app.db"
 
+    # LangGraph checkpointer
+    checkpointer_backend: Literal["memory", "postgres"] = Field(
+        default="memory",
+        description="LangGraph checkpoint backend for the FastAPI server's SessionRegistry. "
+        "'postgres' persists graph state to a Postgres database and survives process restarts. "
+        "CLI/script entry points (terminal_chat.py, poc_trip_planner.py) always use an "
+        "in-process MemorySaver regardless of this flag -- they never run the FastAPI lifespan "
+        "that builds and injects the Postgres checkpointer.",
+    )
+    checkpointer_database_url: str = Field(
+        default="",
+        description="Full Postgres connection string for the LangGraph checkpointer. Required "
+        "when checkpointer_backend='postgres'. For Supabase, use the Supavisor pooler DSN from "
+        "the dashboard (Settings -> Database -> Connection string -> Session pooler), e.g. "
+        "postgresql://postgres.<project_ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres "
+        "-- NOT the direct db.<project_ref>.supabase.co host, which is IPv6-only and unreachable "
+        "from this project's Docker/EC2 deployment. Unrelated to database_url above.",
+    )
+
     # Vector Store
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str = ""
@@ -82,6 +101,33 @@ class Settings(BaseSettings):
         default="block",
         description="How to handle high-confidence user jailbreak attempts before any LLM call.",
     )
+
+    qa_context_token_budget: int = Field(
+        default=30_000,
+        gt=0,
+        description="Token ceiling on the transcript `qa_node` sends to the model, applied "
+        "per LLM call inside its ReAct loop. `qa_node` is the only node handed the whole "
+        "`messages` channel — every other prompt in the graph is built from a single "
+        "message plus structured facts, so its size does not grow with the conversation. "
+        "Sized for cost and latency, not for the context window: gpt-5-mini's window is "
+        "far larger than any realistic session, but re-sending the full transcript on every "
+        "ReAct hop bills the whole thing again each time. Older messages are dropped, never "
+        "the newest; the tools can always re-read the real data.",
+    )
+
+    contract_enforcement_mode: Literal["strict", "log"] = Field(
+        default="strict",
+        description="How a node-contract violation is handled. 'strict' raises "
+        "ContractViolation — the default so CI, which runs on defaults, refuses to merge "
+        "a new violation. Production sets 'log': the violation is logged at ERROR and the "
+        "turn continues, because a raise there costs the user the whole turn instead of "
+        "just degrading one reply.",
+    )
+
+    # No `orchestrator` switch: the graph is the only control plane. The
+    # legacy `process_chat_turn` cascade it used to select between is gone,
+    # so a setting offering "legacy" could only ever have lied. Reintroduce
+    # one when there is a second plane to actually switch to.
 
     # Auth (plan 260814-supabase-auth-and-per-user-history)
     auth_required: bool = Field(

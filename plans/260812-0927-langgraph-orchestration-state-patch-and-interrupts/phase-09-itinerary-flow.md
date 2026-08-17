@@ -1,7 +1,7 @@
 ---
 phase: 9
 title: "itinerary_node + rebuild_day subgraph"
-status: pending
+status: completed
 priority: P2
 effort: "3d"
 dependencies: [7]

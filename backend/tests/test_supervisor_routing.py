@@ -1,0 +1,419 @@
+"""Phase 5 (260812-0927-langgraph-orchestration-state-patch-and-interrupts):
+the supervisor's three delegation paths (fast path / LLM / IMPACT_MAP
+fallback), the possibility guard, and the max-iteration bound. No test here
+calls a real model — `get_fast_llm` is monkeypatched on the supervisor
+module in every case that could reach it, and asserted un-called where the
+fast path/edge predicate is supposed to skip the LLM entirely.
+"""
+
+from __future__ import annotations
+
+import src.agents.graph.nodes.supervisor as supervisor_module
+from src.agents.graph.nodes.supervisor import MAX_SUPERVISOR_ITERATIONS, SupervisorDecision, supervisor
+from src.agents.graph.routing import all_tasks_done
+from src.agents.graph.state import initial_graph_state
+
+
+def _state(**overrides):
+    state = initial_graph_state("t1")
+    state.update(overrides)
+    return state
+
+
+class _FakeStructuredLLM:
+    def __init__(self, decision: SupervisorDecision | None, exc: Exception | None):
+        self._decision = decision
+        self._exc = exc
+
+    def invoke(self, _prompt):
+        if self._exc is not None:
+            raise self._exc
+        return self._decision
+
+
+class _FakeLLM:
+    def __init__(self, decision: SupervisorDecision | None = None, exc: Exception | None = None):
+        self._decision = decision
+        self._exc = exc
+
+    def with_structured_output(self, _model):
+        return _FakeStructuredLLM(self._decision, self._exc)
+
+
+def _unreachable_llm_factory(*_args, **_kwargs):
+    raise AssertionError("fast path / completion predicate must never call get_fast_llm")
+
+
+# --- Fast path: zero LLM calls -----------------------------------------------
+
+
+def test_fast_path_delegates_without_any_llm_call(monkeypatch):
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", _unreachable_llm_factory)
+
+    state = _state(pending_tasks=["hotel_node"], task_results=[])
+    result = supervisor(state)
+
+    assert result["next_worker"] == "hotel_node"
+    assert result["routing_source"] == "impact_map"
+    assert result["supervisor_iterations"] == 1
+
+
+def test_first_intake_turn_with_no_trip_goes_to_hotel_node_not_a_coin_flip(monkeypatch):
+    """Regression: a single message that sets destination/dates/people/
+    preferences all at once impacts both `hotel` and `itinerary`
+    workflows, seeding `pending_tasks=["hotel_node", "itinerary_node"]`
+    (apply_patch.py). Before `itinerary_node` also required `trip_data` to
+    be possible, this forced the LLM path, and a wrong LLM pick of
+    `itinerary_node` bailed immediately ("chọn khách sạn trước") with
+    nothing to show -- the user had to resend the identical message.
+    `itinerary_node` being impossible with no `trip_data` restores the fast
+    path here: exactly one real candidate, zero LLM calls, `hotel_node`
+    every time."""
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", _unreachable_llm_factory)
+
+    state = _state(
+        pending_tasks=["hotel_node", "itinerary_node"],
+        task_results=[],
+        travel_state={"destination": {"presence": "set", "value": "Da Nang"}},
+        trip_data={},
+    )
+    result = supervisor(state)
+
+    assert result["next_worker"] == "hotel_node"
+    assert result["routing_source"] == "impact_map"
+
+
+def test_fast_path_does_not_apply_once_a_worker_has_already_reported(monkeypatch):
+    """After the first worker completes, task_results is non-empty -- even
+    a single remaining pending task must go through the LLM path, matching
+    the doc's "multi-task turns add more calls" trade-off."""
+    decision = SupervisorDecision(next_worker="itinerary_node", task_description="continue", reasoning="x")
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeLLM(decision=decision))
+
+    state = _state(
+        pending_tasks=["itinerary_node"],
+        task_results=[{"worker": "hotel_node", "status": "stub_pass_through"}],
+        travel_state={"destination": {"presence": "set", "value": "Da Nang"}},
+        trip_data={"destination": "Da Nang"},  # itinerary_node needs trip_data to be possible
+    )
+    result = supervisor(state)
+
+    assert result["next_worker"] == "itinerary_node"
+    assert result["routing_source"] == "supervisor"
+
+
+# --- LLM path: recovery only -------------------------------------------------
+
+
+def test_multi_workflow_first_delegation_uses_the_table_not_the_llm(monkeypatch):
+    """A multi-worker turn used to go through the LLM. It no longer does:
+    `WORKER_ORDER` already fixes the order for a causal reason (the hotel
+    anchors the itinerary), and the model is constrained to pick from that
+    same ordered list, so the only answer that differs from `workers[0]` is
+    the wrong order. Call budget is pinned in
+    `test_supervisor_llm_budget.py`."""
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", _unreachable_llm_factory)
+
+    state = _state(
+        pending_tasks=["hotel_node", "itinerary_node"],
+        task_results=[],
+        travel_state={"destination": {"presence": "set", "value": "Da Nang"}},
+        trip_data={"destination": "Da Nang"},  # itinerary_node needs trip_data to be possible
+    )
+    result = supervisor(state)
+
+    assert result["next_worker"] == "hotel_node"
+    assert result["routing_source"] == "impact_map"
+
+
+def test_recovery_turn_uses_the_llm_and_honors_its_choice(monkeypatch):
+    """Where reasoning still earns its call: a worker has already reported,
+    so the static table no longer has enough information to pick the next
+    step. The model's choice is honored as before."""
+    decision = SupervisorDecision(next_worker="itinerary_node", task_description="rebuild", reasoning="x")
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeLLM(decision=decision))
+
+    state = _state(
+        pending_tasks=["hotel_node", "itinerary_node"],
+        task_results=[{"worker": "hotel_node", "status": "error"}],
+        travel_state={"destination": {"presence": "set", "value": "Da Nang"}},
+        trip_data={"destination": "Da Nang"},  # itinerary_node needs trip_data to be possible
+    )
+    result = supervisor(state)
+
+    assert result["next_worker"] == "itinerary_node"
+    assert result["routing_source"] == "supervisor"
+    assert result["routing_reasoning"] == "x"
+
+
+# --- IMPACT_MAP fallback on LLM failure -------------------------------------
+
+
+def test_llm_failure_falls_back_to_impact_map_with_a_real_worker_node_name(monkeypatch):
+    monkeypatch.setattr(
+        supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeLLM(exc=RuntimeError("model unreachable"))
+    )
+
+    state = _state(
+        pending_tasks=["hotel_node", "itinerary_node"],
+        task_results=[{"worker": "x"}],
+        travel_state={"destination": {"presence": "set", "value": "Da Nang"}},
+    )
+    result = supervisor(state)
+
+    # Never a bare Workflow label ("hotel"/"itinerary") -- always a node name.
+    assert result["next_worker"] in ("hotel_node", "itinerary_node")
+    assert result["routing_source"] == "impact_map_fallback"
+
+
+def test_llm_failure_with_nothing_pending_falls_back_to_respond(monkeypatch):
+    monkeypatch.setattr(
+        supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeLLM(exc=RuntimeError("model unreachable"))
+    )
+
+    state = _state(pending_tasks=[], task_results=[])
+    result = supervisor(state)
+
+    assert result["next_worker"] == "respond"
+    assert result["routing_source"] == "impact_map_fallback"
+
+
+# --- Possibility guard --------------------------------------------------------
+
+
+def test_supervisor_rejects_an_impossible_proposal_and_reroutes(monkeypatch):
+    """itinerary_node is impossible with no trip data. A hallucinating LLM
+    proposing it must be rejected -- not trusted as a fact -- and the turn
+    must still land on a real, possible worker."""
+    decision = SupervisorDecision(next_worker="itinerary_node", task_description="x", reasoning="x")
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeLLM(decision=decision))
+
+    state = _state(
+        pending_tasks=["hotel_node", "itinerary_node"],
+        task_results=[{"worker": "x"}],
+        travel_state={},  # no destination -> itinerary_node is impossible
+    )
+    result = supervisor(state)
+
+    assert result["next_worker"] == "hotel_node"
+    assert result["routing_source"] == "impact_map_fallback"
+
+
+def test_supervisor_rejects_a_proposal_outside_this_turns_pending_tasks(monkeypatch):
+    """A worker that already reported (or was never impacted) pops nothing
+    off `pending_tasks` if delegated again -- `all_tasks_done` never trips
+    and the turn burns its iteration cap without ever running the
+    genuinely pending worker. The LLM proposing `hotel_node` while only
+    `itinerary_node` is still pending must be rejected exactly like an
+    impossible proposal, not accepted as a valid label."""
+    decision = SupervisorDecision(next_worker="hotel_node", task_description="x", reasoning="x")
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeLLM(decision=decision))
+
+    state = _state(
+        pending_tasks=["itinerary_node"],
+        task_results=[{"worker": "hotel_node", "status": "stub_pass_through"}],
+        travel_state={"destination": {"presence": "set", "value": "Da Nang"}},
+        trip_data={"destination": "Da Nang"},  # itinerary_node needs trip_data to be possible
+    )
+    result = supervisor(state)
+
+    assert result["next_worker"] == "itinerary_node"
+    assert result["routing_source"] == "impact_map_fallback"
+
+
+def test_supervisor_allows_any_proposal_when_nothing_is_pending(monkeypatch):
+    """With an empty `pending_tasks` (a pure question turn), there is no
+    IMPACT_MAP-derived queue to constrain against -- qa_node (or any
+    non-impossible worker) must stay reachable."""
+    decision = SupervisorDecision(next_worker="qa_node", task_description="answer a question", reasoning="x")
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeLLM(decision=decision))
+
+    state = _state(pending_tasks=[], task_results=[])
+    result = supervisor(state)
+
+    assert result["next_worker"] == "qa_node"
+    assert result["routing_source"] == "supervisor"
+
+
+def test_booking_node_is_never_eligible_via_impact_map():
+    """`_IMPOSSIBLE['booking_node']` is unconditionally True -- the
+    IMPACT_MAP-derived eligible-worker list (what both the fast path and
+    the LLM-failure fallback delegate from) never includes it, even when
+    it is sitting right there in `pending_tasks`."""
+    state = _state(pending_tasks=["booking_node", "hotel_node"])
+    eligible = supervisor_module._eligible_workers(state)
+    assert "booking_node" not in eligible
+    assert "hotel_node" in eligible
+
+
+# --- Iteration bound -----------------------------------------------------------
+
+
+def test_supervisor_loop_terminates_at_the_max_iteration_bound(monkeypatch):
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", _unreachable_llm_factory)
+
+    state = _state(supervisor_iterations=MAX_SUPERVISOR_ITERATIONS, pending_tasks=["hotel_node", "itinerary_node"])
+    result = supervisor(state)
+
+    assert result["next_worker"] == "respond"
+    assert result["routing_source"] == "max_iterations"
+
+
+def test_supervisor_never_exceeds_max_iterations_when_a_worker_never_reports_done(monkeypatch):
+    """Worst case: `pending_tasks` never shrinks (a worker that never
+    signals completion) and the LLM is permanently down, so every call
+    falls back to the same `IMPACT_MAP`-derived worker. The iteration
+    counter must still hit the cap and force `respond` -- never spin
+    forever chasing the same delegation."""
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeLLM(exc=RuntimeError("down")))
+
+    state = _state(
+        pending_tasks=["hotel_node"],
+        task_results=[{"worker": "x"}],  # non-empty -> fast path never applies
+        travel_state={"destination": {"presence": "set", "value": "Da Nang"}},
+    )
+
+    seen_sources: list[str] = []
+    for _ in range(MAX_SUPERVISOR_ITERATIONS + 3):
+        update = supervisor(state)
+        state.update(update)
+        seen_sources.append(update["routing_source"])
+        if update["routing_source"] == "max_iterations":
+            break
+
+    assert state["next_worker"] == "respond"
+    assert seen_sources[-1] == "max_iterations"
+    assert state["supervisor_iterations"] >= MAX_SUPERVISOR_ITERATIONS
+    # every call before the cap kicked in used the deterministic fallback --
+    # it never silently stopped delegating before the counter forced it to.
+    assert seen_sources[:-1] == ["impact_map_fallback"] * (len(seen_sources) - 1)
+
+
+# --- all_tasks_done: plain predicate, no LLM ---------------------------------
+
+
+def test_all_tasks_done_is_a_plain_predicate_with_no_llm_dependency():
+    """`all_tasks_done` lives in `routing.py`, which never imports
+    `get_fast_llm` or anything from `nodes/supervisor.py` at all -- monkey-
+    patching a symbol this function can't reach would prove nothing, so the
+    "no LLM call" guarantee is asserted structurally instead: its compiled
+    bytecode resolves no name other than `state`/`pending_tasks`, so there
+    is no code path inside it that could ever reach an LLM client."""
+    import src.agents.graph.routing as routing_module
+
+    assert "get_fast_llm" not in dir(routing_module)
+    referenced_names = set(all_tasks_done.__code__.co_names)
+    assert referenced_names == {"get"}  # only `state.get(...)` is called
+
+    assert all_tasks_done(_state(pending_tasks=[])) is True
+    assert all_tasks_done(_state(pending_tasks=["hotel_node"])) is False
+
+
+# --- needs_trip_first: an itinerary request before a trip exists -------------
+
+
+class TestNeedsTripFirst:
+    """`itinerary_node` cannot build a trip, only edit one — the trip is
+    created when the user picks a hotel. Asking for an itinerary before that
+    used to leave the supervisor with an empty eligible set, which fell
+    through the LLM path to `respond` and answered a real request with
+    nothing useful. The constraint is real; the turn should act on it by
+    sending the user to the step they actually need.
+    """
+
+    def _no_trip_state(self, **overrides):
+        base = dict(
+            pending_tasks=["itinerary_node"],
+            task_results=[],
+            travel_state={"destination": {"presence": "set", "value": "Da Nang"}},
+            trip_data={},
+        )
+        base.update(overrides)
+        return _state(**base)
+
+    def test_it_delegates_to_hotel_node_without_asking_the_llm(self, monkeypatch):
+        monkeypatch.setattr(supervisor_module, "get_fast_llm", _unreachable_llm_factory)
+
+        result = supervisor(self._no_trip_state())
+
+        assert result["next_worker"] == "hotel_node"
+        assert result["routing_source"] == "needs_trip_first"
+
+    def test_the_redirect_cannot_loop(self, monkeypatch):
+        """`all_tasks_done` is `not pending_tasks`, and `hotel_node` only ever
+        removes *itself* from that list. Leaving `itinerary_node` pending
+        would send the turn back to the supervisor with the trip still
+        missing — hotel searched again, redirected again, until the iteration
+        cap. The redirect has to hand off the pending slot, not add to it."""
+        monkeypatch.setattr(supervisor_module, "get_fast_llm", _unreachable_llm_factory)
+
+        result = supervisor(self._no_trip_state())
+        pending_after_supervisor = result["pending_tasks"]
+
+        assert "itinerary_node" not in pending_after_supervisor
+        assert pending_after_supervisor == ["hotel_node"]
+
+        # Now simulate hotel_node doing what it always does: pop itself.
+        pending_after_hotel = [w for w in pending_after_supervisor if w != "hotel_node"]
+        assert all_tasks_done(_state(pending_tasks=pending_after_hotel)) is True
+        assert result["supervisor_iterations"] == 1
+
+    def test_no_second_redirect_after_hotel_node_already_ran_this_turn(self, monkeypatch):
+        """The common first-intake turn seeds `pending_tasks=["hotel_node",
+        "itinerary_node"]`. `hotel_node` runs, pops itself, and — because it
+        presented options rather than creating the trip — leaves `trip_data`
+        empty with `itinerary_node` still pending. That is the exact shape
+        this redirect fires on, so it sent the turn straight back into a
+        second full hotel search (RPC + hydration + ranking) to ask the same
+        question twice. The user is being waited on; the turn is over."""
+        monkeypatch.setattr(supervisor_module, "get_fast_llm", _unreachable_llm_factory)
+
+        state = self._no_trip_state(
+            task_results=[{"worker": "hotel_node", "status": "ok", "reply": "Mình tìm được vài khách sạn..."}],
+        )
+        result = supervisor(state)
+
+        assert result["next_worker"] == "respond"
+        assert result["routing_source"] == "awaiting_hotel_choice"
+        assert "itinerary_node" not in result["pending_tasks"]
+
+    def test_first_redirect_still_happens_when_hotel_node_has_not_run(self, monkeypatch):
+        """The guard above keys on *this turn's* `task_results`, so an
+        unrelated earlier worker must not suppress the redirect."""
+        monkeypatch.setattr(supervisor_module, "get_fast_llm", _unreachable_llm_factory)
+
+        result = supervisor(self._no_trip_state(task_results=[{"worker": "booking_node", "status": "ok"}]))
+
+        assert result["next_worker"] == "hotel_node"
+        assert result["routing_source"] == "needs_trip_first"
+
+    def test_no_redirect_once_a_trip_exists(self, monkeypatch):
+        """The ordinary edit path — `itinerary_node` is eligible on its own."""
+        monkeypatch.setattr(supervisor_module, "get_fast_llm", _unreachable_llm_factory)
+
+        result = supervisor(self._no_trip_state(trip_data={"destination": "Da Nang"}))
+
+        assert result["next_worker"] == "itinerary_node"
+        assert result["routing_source"] == "impact_map"
+
+    def test_no_redirect_when_the_destination_is_what_is_missing(self, monkeypatch):
+        """A missing destination is `ask_slot`'s job. Sending that turn to
+        `hotel_node` would only produce its "no destination" defensive
+        message."""
+        decision = SupervisorDecision(next_worker="qa_node", task_description="x", reasoning="x")
+        monkeypatch.setattr(supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeLLM(decision=decision))
+
+        result = supervisor(self._no_trip_state(travel_state={}))
+
+        assert result["routing_source"] != "needs_trip_first"
+
+    def test_no_redirect_when_itinerary_was_not_what_was_asked_for(self, monkeypatch):
+        """Nothing pending for `itinerary_node` — a pure question turn must
+        stay reachable by `qa_node`."""
+        decision = SupervisorDecision(next_worker="qa_node", task_description="x", reasoning="x")
+        monkeypatch.setattr(supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeLLM(decision=decision))
+
+        result = supervisor(self._no_trip_state(pending_tasks=[]))
+
+        assert result["next_worker"] == "qa_node"
+        assert result["routing_source"] != "needs_trip_first"

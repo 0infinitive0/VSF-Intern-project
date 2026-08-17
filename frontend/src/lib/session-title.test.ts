@@ -5,19 +5,19 @@ const labels = { daysSuffix: 'N', nightsSuffix: 'Đ' }
 
 describe('composeSessionTitle', () => {
   it('composes destination + days/nights suffix when both fields are present', () => {
-    expect(composeSessionTitle({ destination: 'Đà Nẵng', duration_days: 4, title: undefined }, labels)).toBe(
+    expect(composeSessionTitle({ destination: 'Đà Nẵng', duration_days: 4, title: null }, labels)).toBe(
       'Đà Nẵng 4N3Đ',
     )
   })
 
   it('floors nights at 1 for a 1-day trip instead of "1N0Đ"', () => {
-    expect(composeSessionTitle({ destination: 'Đà Nẵng', duration_days: 1, title: undefined }, labels)).toBe(
+    expect(composeSessionTitle({ destination: 'Đà Nẵng', duration_days: 1, title: null }, labels)).toBe(
       'Đà Nẵng 1N1Đ',
     )
   })
 
   it('falls back to destination alone when duration_days is missing', () => {
-    expect(composeSessionTitle({ destination: 'Đà Nẵng', duration_days: null, title: undefined }, labels)).toBe(
+    expect(composeSessionTitle({ destination: 'Đà Nẵng', duration_days: null, title: null }, labels)).toBe(
       'Đà Nẵng',
     )
   })
@@ -32,7 +32,7 @@ describe('composeSessionTitle', () => {
   })
 
   it('returns null when nothing is available', () => {
-    expect(composeSessionTitle({ destination: null, duration_days: null, title: undefined }, labels)).toBeNull()
+    expect(composeSessionTitle({ destination: null, duration_days: null, title: null }, labels)).toBeNull()
   })
 
   it('does not further truncate an already-long title (backend already truncates)', () => {
