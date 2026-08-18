@@ -174,16 +174,21 @@ export default function StageWorkspace({
 
   const markers: MapMarkerSpec[] = useMemo(() => {
     const list: MapMarkerSpec[] = []
+    const daysToShow = resolvedTab === 'overview' ? days : activeDay ? [activeDay] : []
+    const hotelItemNumbers = daysToShow.flatMap((day) =>
+      day.items.flatMap((item, index) => item.kind === 'hotel' ? [String(index + 1)] : []),
+    )
     if (tripPlan?.hotel?.coordinates) {
       list.push({
         syncId: TRIP_HOTEL_SYNC_KEY,
         coordinates: tripPlan.hotel.coordinates,
         kind: 'hotel',
+        hoverLabel: hotelItemNumbers.join(' · ') || undefined,
       })
     }
-    const daysToShow = resolvedTab === 'overview' ? days : activeDay ? [activeDay] : []
     for (const day of daysToShow) {
       day.items.forEach((item, index) => {
+        if (item.kind === 'hotel') return
         list.push({
           syncId: itemSyncId(day.day_number, item, index),
           coordinates: item.coordinates,
@@ -297,6 +302,7 @@ export default function StageWorkspace({
             ) : activeDay ? (
               <DayTimeline
                 day={activeDay}
+                hotel={tripPlan.hotel}
                 focusedId={focusedId}
                 onOpen={openFocus}
                 hoveredId={mapSync.hoveredId}

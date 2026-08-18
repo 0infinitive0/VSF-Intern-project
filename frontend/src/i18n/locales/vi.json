@@ -90,6 +90,8 @@
   "statKm": "quãng đường",
   "statTravelTime": "di chuyển",
   "stayLabel": "Nơi lưu trú",
+  "dayStartAtHotel": "Bắt đầu từ {{hotel}}",
+  "dayEndAtHotel": "Kết thúc tại {{hotel}}",
   "routeByDay": "Lộ trình theo ngày",
   "adjustmentsApplied": "Điều chỉnh đã áp dụng",
   "adjustmentsLabel": "Điều chỉnh",

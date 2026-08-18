@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import TimelineItem from './timeline-item'
 import { dayRouteMetrics } from '../lib/leg'
 import { capitalizeFirst } from '../lib/capitalize'
+import { dayStayPoints } from '../lib/day-stay-points'
 import type { Day, DayItem } from '../types'
 
 const NUM_LOCALE = (lang: string) => (lang === 'vi' ? 'vi-VN' : 'en-US')
@@ -19,12 +20,14 @@ const NUM_LOCALE = (lang: string) => (lang === 'vi' ? 'vi-VN' : 'en-US')
  */
 export default function DayTimeline({
   day,
+  hotel,
   focusedId,
   onOpen,
   hoveredId,
   onHoverChange,
 }: {
   day: Day
+  hotel: { name?: string | null } | null | undefined
   focusedId: string | null
   onOpen: (item: DayItem) => void
   /** Phase 10 map hover sync — optional so this component still works standalone. */
@@ -42,6 +45,9 @@ export default function DayTimeline({
   const daySub = [day.theme ? capitalizeFirst(day.theme) : null, hasRoute ? routePart : null]
     .filter((x): x is string => Boolean(x))
     .join(' · ')
+  const stayPoints = dayStayPoints(hotel)
+  const startPoint = stayPoints.find((stayPoint) => stayPoint.position === 'start')
+  const endPoint = stayPoints.find((stayPoint) => stayPoint.position === 'end')
 
   return (
     <div style={{ animation: 'vRise .45s cubic-bezier(.22,1,.36,1) both' }}>
@@ -52,6 +58,14 @@ export default function DayTimeline({
         {daySub && <div className="text-[12px] text-on-surface-muted font-normal">{daySub}</div>}
       </div>
       <div className="flex flex-col">
+        {startPoint && (
+          <div
+            className="flex items-center gap-3 py-2 px-[13px] rounded-[16px] bg-glass-2 border border-edge text-[12px] text-on-surface-muted"
+          >
+            <span className="material-symbols-outlined text-[18px] text-primary" aria-hidden="true">hotel</span>
+            <span>{t('dayStartAtHotel', { hotel: startPoint.hotelName })}</span>
+          </div>
+        )}
         {day.items.map((item, i) => (
           <TimelineItem
             key={item.order_index ?? i}
@@ -65,6 +79,14 @@ export default function DayTimeline({
             onHoverChange={onHoverChange}
           />
         ))}
+        {endPoint && (
+          <div
+            className="flex items-center gap-3 py-2 px-[13px] rounded-[16px] bg-glass-2 border border-edge text-[12px] text-on-surface-muted"
+          >
+            <span className="material-symbols-outlined text-[18px] text-primary" aria-hidden="true">hotel</span>
+            <span>{t('dayEndAtHotel', { hotel: endPoint.hotelName })}</span>
+          </div>
+        )}
       </div>
     </div>
   )
