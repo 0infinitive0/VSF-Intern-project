@@ -17,6 +17,7 @@ import type { HotelOption } from './types'
 import AppShell from './components/app-shell'
 import AuthPanel from './auth/auth-panel'
 import BookingModal from './components/booking-modal'
+import ConfirmDialog from './components/confirm-dialog'
 import SessionExpiredModal from './components/session-expired-modal'
 import BootSplash from './components/boot-splash'
 
@@ -116,6 +117,7 @@ export default function App() {
  */
 function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   const auth = useAuth()
+  const { t } = useTranslation()
   const { state, send, selectHotel: selectHotelDirect, startNew, restore, changeHotel } = useChatSession()
   const {
     form: intakeForm,
@@ -243,6 +245,23 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
     selectHotelDirect(hotel.id, `Chọn khách sạn ${hotel.name}`)
   }
 
+  // "Đổi khách sạn" (step-navigator.tsx, only enabled post-itinerary) used to
+  // call changeHotel() directly with zero regard for roomHold — a live HELD
+  // hold just kept counting down in the background while the guest browsed a
+  // brand new hotel list, fully blocked from acting on any of it by
+  // hotel-detail-panel.tsx's heldElsewhere check (plan
+  // 260818-vnpay-payment-and-email-confirmation's addendum). Intercepted
+  // here, the one place that already owns both changeHotel and roomHold,
+  // rather than threading a new prop down through AppShell/step-navigator.tsx.
+  const [confirmChangeHotelOpen, setConfirmChangeHotelOpen] = useState(false)
+  function handleChangeHotelClick() {
+    if (roomHold.status === 'HELD') {
+      setConfirmChangeHotelOpen(true)
+      return
+    }
+    changeHotel()
+  }
+
   const { sessions, removeLocal, refresh } = useSessionHistory(state.sessionId, state.pending)
 
   // restoreSession() has no in-flight signal of its own (session-client.ts's
@@ -357,7 +376,7 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
       <AppShell
         state={state}
         onSend={handleSend}
-        onChangeHotel={changeHotel}
+        onChangeHotel={handleChangeHotelClick}
         onNewTrip={handleNewTrip}
         stage={displayStage}
         onViewStage={setViewOverride}
@@ -393,6 +412,21 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
         checkInDate={state.intake?.start_date ?? null}
         checkOutDate={state.intake?.end_date ?? null}
         guestsLabel={state.intake?.people ?? null}
+      />
+      <ConfirmDialog
+        open={confirmChangeHotelOpen}
+        title={t('holdChangeHotelConfirmTitle')}
+        message={t('holdChangeHotelConfirmMessage', {
+          minutes: Math.max(1, Math.ceil(roomHold.holdLeftMs / 60_000)),
+        })}
+        confirmLabel={t('holdChangeHotelConfirmAction')}
+        cancelLabel={t('holdChangeHotelConfirmCancel')}
+        destructive
+        onConfirm={() => {
+          setConfirmChangeHotelOpen(false)
+          void roomHold.releaseHold().then(changeHotel)
+        }}
+        onCancel={() => setConfirmChangeHotelOpen(false)}
       />
     </>
   )

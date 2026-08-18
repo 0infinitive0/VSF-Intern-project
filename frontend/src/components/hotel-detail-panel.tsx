@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import ConfirmDialog from './confirm-dialog'
 import MatchReasons from './match-reasons'
 import MatchScoreRing from './match-score-ring'
 import RemoteImage from './remote-image'
@@ -11,6 +12,7 @@ import { formatCurrency } from '../lib/format-currency'
 import { displayAmenityLabels } from '../lib/hotel-filters'
 import { formatHotelStars } from '../lib/format-stars'
 import { formatSourcePlatform } from '../lib/format-source-platform'
+import { cartMatchesHeldBookings } from '../lib/room-cart-diff'
 import type { AmenityCatalogOption, HotelOption, RoomDetail } from '../types'
 
 /** Nights from the trip's real intake dates — same rule as stage-hotels.tsx's
@@ -59,6 +61,7 @@ export default function HotelDetailPanel({
   checkInDate,
   checkOutDate,
   onConfirmHotel,
+  heldElsewhereHotelName,
 }: {
   /** null while no hotel has ever been focused yet this session (the caller
    * keeps mounting this component always — see stage-hotels.tsx's
@@ -81,6 +84,15 @@ export default function HotelDetailPanel({
   /** Fires the EXISTING itinerary-build call once a hold succeeds — see
    * use-room-hold.ts's module doc comment on why room selection now gates it. */
   onConfirmHotel: (hotel: HotelOption) => void
+  /** Name of the hotel `roomHold.heldHotelId` currently points at, when
+   * that's a DIFFERENT hotel than the one being viewed here — resolved by
+   * the caller (stage-hotels.tsx) from the current session's hotel list,
+   * since this component only has data for the hotel being viewed. null
+   * when there's nothing held elsewhere, or the held hotel isn't in the
+   * current session's list (roomHold is global, not session-scoped — see
+   * use-room-hold.ts's module doc comment); the switch-hotel confirm
+   * dialog falls back to generic copy in that case. */
+  heldElsewhereHotelName?: string | null
 }) {
   const { t, i18n } = useTranslation()
   const { detail, status } = useHotelDetail(hotelId)
@@ -407,6 +419,7 @@ export default function HotelDetailPanel({
                   checkOutDate={checkOutDate}
                   onConfirmHotel={onConfirmHotel}
                   option={option}
+                  heldElsewhereHotelName={heldElsewhereHotelName ?? null}
                 />
               )}
             </div>
@@ -428,6 +441,7 @@ function HoldFooter({
   checkOutDate,
   onConfirmHotel,
   option,
+  heldElsewhereHotelName,
 }: {
   hotelId: string
   rooms: RoomDetail[]
@@ -436,8 +450,23 @@ function HoldFooter({
   checkOutDate: string | null
   onConfirmHotel: (hotel: HotelOption) => void
   option?: HotelOption
+  heldElsewhereHotelName?: string | null
 }) {
   const { t, i18n } = useTranslation()
+  const [confirmSwitchOpen, setConfirmSwitchOpen] = useState(false)
+  const [updatedNotice, setUpdatedNotice] = useState(false)
+  // HoldFooter isn't remounted when the guest browses to a different hotel
+  // (no `key` on it) — reset any transient UI left over from the PREVIOUS
+  // hotel's footer so a stale dialog/notice can't reappear here.
+  useEffect(() => {
+    setConfirmSwitchOpen(false)
+    setUpdatedNotice(false)
+  }, [hotelId])
+  useEffect(() => {
+    if (!updatedNotice) return
+    const id = setTimeout(() => setUpdatedNotice(false), 4000)
+    return () => clearTimeout(id)
+  }, [updatedNotice])
   const cart = roomHold.cartFor(hotelId)
   const nights = nightsForHold(checkInDate, checkOutDate)
   const rows = Object.entries(cart)
@@ -477,27 +506,64 @@ function HoldFooter({
     !!checkInDate &&
     !!checkOutDate &&
     (roomHold.status === 'IDLE' || roomHold.status === 'ERROR' || roomHold.status === 'BOOKED')
+  // heldHere with an edited cart -> the guest is proposing a DIFFERENT room
+  // selection for the hotel they're already holding (add/remove/change qty).
+  // heldElsewhere with a fillable cart -> the guest wants to hold rooms at
+  // THIS hotel instead, abandoning the other one. Both replace the whole
+  // hold via roomHold.switchHold (plan 260818-vnpay-payment-and-email-
+  // confirmation's addendum) rather than being permanently locked out.
+  const cartChanged = heldHere && cartCount > 0 && !cartMatchesHeldBookings(cart, roomHold.bookings)
+  const canSwitchHere = heldElsewhere && cartCount > 0 && !!checkInDate && !!checkOutDate
 
   const label = heldHere
-    ? t('holdCtaHeld')
+    ? cartChanged
+      ? t('holdCtaUpdate')
+      : t('holdCtaHeld')
     : heldElsewhere
-      ? t('holdCtaBlocked')
+      ? canSwitchHere
+        ? t('holdCtaSwitchHere')
+        : t('holdCtaBlocked')
       : busy
         ? t('holdCtaBusy')
         : t('holdCta')
-  const disabled = heldHere || heldElsewhere || busy || !canStart
+  const disabled =
+    busy ||
+    (heldHere && !cartChanged) ||
+    (heldElsewhere && !canSwitchHere) ||
+    (!heldHere && !heldElsewhere && !canStart)
 
-  function handleStart() {
-    if (!canStart || !option) return
-    void roomHold.startHold(
-      hotelId,
-      rooms,
-      { checkInDate: checkInDate!, checkOutDate: checkOutDate! },
-      () => onConfirmHotel(option),
-    )
+  const stay = { checkInDate: checkInDate!, checkOutDate: checkOutDate! }
+
+  function handleClick() {
+    if (busy || !option) return
+    if (heldHere) {
+      if (!cartChanged) return
+      // Editing your own not-yet-paid cart doesn't warrant a confirm dialog
+      // (nothing's been lost yet) — just a brief notice once the fresh hold
+      // lands, since the timer silently resetting could otherwise look like
+      // nothing happened. Deliberately does NOT call onConfirmHotel: that
+      // fires a real "Chọn khách sạn X" chat turn, appropriate the first
+      // time a hotel is confirmed, not on every room-count tweak.
+      void roomHold.switchHold(hotelId, rooms, stay, () => setUpdatedNotice(true))
+      return
+    }
+    if (heldElsewhere) {
+      if (!canSwitchHere) return
+      setConfirmSwitchOpen(true)
+      return
+    }
+    if (!canStart) return
+    void roomHold.startHold(hotelId, rooms, stay, () => onConfirmHotel(option))
+  }
+
+  function confirmSwitch() {
+    setConfirmSwitchOpen(false)
+    if (!option) return
+    void roomHold.switchHold(hotelId, rooms, stay, () => onConfirmHotel(option))
   }
 
   return (
+    <>
     <div
       className="sticky -bottom-[22px] -mx-5 mt-1 px-5 pt-3.5 pb-[30px] flex flex-col gap-2.5"
       style={{
@@ -544,10 +610,15 @@ function HoldFooter({
           {t(bookingErrorKey(roomHold.error))}
         </div>
       )}
+      {updatedNotice && (
+        <div role="status" className="text-[11.5px] font-medium" style={{ color: 'var(--ok-ink)' }}>
+          {t('holdUpdateSuccessNotice')}
+        </div>
+      )}
       <button
         type="button"
         disabled={disabled}
-        onClick={handleStart}
+        onClick={handleClick}
         className="w-full py-3 rounded-2xl border-none text-[13.5px] font-[590] tracking-[-0.12px] text-center transition-all duration-200 active:not-disabled:scale-[0.99] disabled:cursor-not-allowed"
         style={{
           background: disabled ? 'var(--fill2)' : 'linear-gradient(135deg,#3A73DE,#2C5FC9)',
@@ -558,5 +629,25 @@ function HoldFooter({
         {label}
       </button>
     </div>
+    <ConfirmDialog
+      open={confirmSwitchOpen}
+      title={t('holdSwitchConfirmTitle')}
+      message={
+        heldElsewhereHotelName
+          ? t('holdSwitchConfirmMessageNamed', {
+              hotel: heldElsewhereHotelName,
+              minutes: Math.max(1, Math.ceil(roomHold.holdLeftMs / 60_000)),
+            })
+          : t('holdSwitchConfirmMessageGeneric', {
+              minutes: Math.max(1, Math.ceil(roomHold.holdLeftMs / 60_000)),
+            })
+      }
+      confirmLabel={t('holdSwitchConfirmAction')}
+      cancelLabel={t('holdSwitchConfirmCancel')}
+      destructive
+      onConfirm={confirmSwitch}
+      onCancel={() => setConfirmSwitchOpen(false)}
+    />
+    </>
   )
 }

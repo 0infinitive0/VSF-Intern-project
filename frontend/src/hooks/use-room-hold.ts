@@ -193,11 +193,19 @@ export function useRoomHold() {
     }
   }, [status, expiresAtMs, now])
 
-  const startHold = useCallback(
+  /** The actual reserve-everything-in-the-cart mechanics, shared by
+   * `startHold` and `switchHold` below. Deliberately has NO `status` check
+   * of its own (only the empty-cart guard) — see `switchHold`'s doc comment
+   * for why: calling through `startHold`'s own `status === 'HOLDING'` guard
+   * from inside `switchHold` (i.e. right after `await releaseHold()`, in
+   * the same tick) would read a STALE `status` closed over before
+   * `releaseHold` ran, still 'HELD' at that point, and block itself. Every
+   * caller of this helper is responsible for its own front-door guard. */
+  const runReservation = useCallback(
     async (hotelId: string, rooms: RoomDetail[], stay: RoomStay, onHeld?: () => void) => {
       const cart = cartByHotel[hotelId] ?? {}
       const entries = Object.entries(cart).filter(([, qty]) => qty > 0)
-      if (entries.length === 0 || status === 'HOLDING') return
+      if (entries.length === 0) return
       setStatus('HOLDING')
       setError(null)
       const nights = nightsBetween(stay.checkInDate, stay.checkOutDate)
@@ -241,7 +249,15 @@ export function useRoomHold() {
         setError(err instanceof Error ? err.message : String(err))
       }
     },
-    [cartByHotel, status],
+    [cartByHotel],
+  )
+
+  const startHold = useCallback(
+    async (hotelId: string, rooms: RoomDetail[], stay: RoomStay, onHeld?: () => void) => {
+      if (status === 'HOLDING') return
+      await runReservation(hotelId, rooms, stay, onHeld)
+    },
+    [status, runReservation],
   )
 
   const releaseHold = useCallback(async () => {
@@ -262,6 +278,28 @@ export function useRoomHold() {
   const recheckRooms = useCallback(async () => {
     await releaseHold()
   }, [releaseHold])
+
+  /** Replaces whatever is currently held (same hotel with a different room
+   * mix, OR an entirely different hotel) with a brand-new hold for
+   * `hotelId`/`rooms`/`stay` — always a full release-then-reserve, so the
+   * WHOLE new group gets a fresh 15-minute TTL (the backend has no
+   * extend/partial-preserve capability; every reservation is a plain
+   * INSERT — see backend/scripts/migrations/20260818_add_booking_reservation_rpcs.sql).
+   * Calls `runReservation` directly rather than `releaseHold()` followed by
+   * `startHold()` — see `runReservation`'s doc comment for the stale-closure
+   * hazard that would otherwise cause this to block itself. Used by
+   * hotel-detail-panel.tsx for both "update my room selection at the hotel
+   * I'm already holding" and "switch my hold to a different hotel"
+   * (the latter behind a confirm dialog — see plan
+   * 260818-vnpay-payment-and-email-confirmation's addendum). */
+  const switchHold = useCallback(
+    async (hotelId: string, rooms: RoomDetail[], stay: RoomStay, onHeld?: () => void) => {
+      if (status === 'HOLDING') return
+      await releaseHold()
+      await runReservation(hotelId, rooms, stay, onHeld)
+    },
+    [status, releaseHold, runReservation],
+  )
 
   /** Called by booking-modal.tsx right before `window.location.href =
    * pay_url` — records WHICH payment this hold is now mid-checkout for, so
@@ -294,6 +332,7 @@ export function useRoomHold() {
     holdLeftMs,
     paymentId,
     startHold,
+    switchHold,
     releaseHold,
     recheckRooms,
     setPendingPayment,

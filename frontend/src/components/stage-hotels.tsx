@@ -297,6 +297,7 @@ export default function StageHotels({
             checkInDate={state.intake?.start_date ?? null}
             checkOutDate={state.intake?.end_date ?? null}
             onConfirmHotel={onConfirmHotel}
+            heldElsewhereHotelName={hotels.find((h) => h.id === roomHold.heldHotelId)?.name ?? null}
           />
         </div>
       </div>
