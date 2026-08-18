@@ -90,6 +90,8 @@
   "statKm": "distance",
   "statTravelTime": "travel",
   "stayLabel": "Stay",
+  "dayStartAtHotel": "Start at {{hotel}}",
+  "dayEndAtHotel": "Return to {{hotel}}",
   "routeByDay": "Route by day",
   "adjustmentsApplied": "Applied adjustments",
   "adjustmentsLabel": "Adjustments",

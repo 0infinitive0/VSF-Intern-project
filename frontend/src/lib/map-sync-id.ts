@@ -26,7 +26,7 @@ export function hotelOptionSyncId(hotel: HotelOption): string {
   return String(hotel.id ?? hotel.index)
 }
 
-/** The single per-day hotel pin in the workspace stage — no card, no hover target on the list side. */
+/** The hotel pin shown for the workspace overview — no card, no hover target on the list side. */
 export const TRIP_HOTEL_SYNC_KEY = 'hotel'
 
 /** Sync id for a chatbot-suggested place pin — prefixed so it can never

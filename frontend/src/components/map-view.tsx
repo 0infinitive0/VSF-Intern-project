@@ -231,6 +231,8 @@ export interface MapMarkerSpec {
   dayNumber?: number
   openId?: string
   endpoint?: 'start' | 'end'
+  /** Hotel itinerary position number(s), revealed only while hovering the pin. */
+  hoverLabel?: string
   priceLabel?: string
   matchLabel?: string
   /** 'suggested' only — shown as a native title tooltip; these pins have no
@@ -442,8 +444,23 @@ function createMarkerElement(marker: MapMarkerSpec): { root: HTMLDivElement; con
     content.style.background = 'var(--acc)'
     content.style.font = "500 11.5px/1.2 'Be Vietnam Pro', sans-serif"
     content.style.setProperty('--base-marker', 'var(--acc)')
+    content.style.position = 'relative'
+    if (!marker.priceLabel && !marker.matchLabel) {
+      const icon = document.createElement('span')
+      icon.className = 'material-symbols-outlined'
+      icon.style.fontSize = '15px'
+      icon.textContent = 'hotel'
+      content.appendChild(icon)
+    }
     if (marker.priceLabel) { const price = document.createElement('b'); price.textContent = marker.priceLabel; price.style.fontWeight = '590'; content.appendChild(price) }
     if (marker.matchLabel) { const match = document.createElement('span'); match.textContent = marker.matchLabel; match.style.opacity = '.75'; content.appendChild(match) }
+    if (marker.hoverLabel) {
+      const label = document.createElement('div')
+      label.dataset.hotelMarkerNumber = 'true'
+      label.textContent = marker.hoverLabel
+      label.style.cssText = "position:absolute;left:50%;bottom:30px;transform:translate(-50%,4px);white-space:nowrap;padding:2px 8px;border-radius:99px;background:var(--btn);color:var(--btn-fg);font:600 9.5px/1.4 'Be Vietnam Pro',sans-serif;letter-spacing:.04em;box-shadow:0 6px 14px -6px rgba(0,0,0,.6);opacity:0;pointer-events:none;transition:opacity .16s ease,transform .16s ease"
+      content.appendChild(label)
+    }
   } else if (marker.kind === 'suggested') {
     // Neutral (never day-colored) circular pin with a place icon instead of
     // a number — these are suggestions, not itinerary stops, so they must
@@ -492,6 +509,11 @@ function applyMarkerState(content: HTMLElement, marker: MapMarkerSpec, hovered: 
   if (marker.kind === 'hotel') {
     content.style.background = selected ? 'var(--btn)' : 'var(--base-marker)'
     content.style.color = selected ? 'var(--btn-fg)' : 'var(--on-acc)'
+    const number = content.querySelector<HTMLElement>('[data-hotel-marker-number]')
+    if (number) {
+      number.style.opacity = hovered ? '1' : '0'
+      number.style.transform = hovered ? 'translate(-50%,0)' : 'translate(-50%,4px)'
+    }
   }
 }
 
