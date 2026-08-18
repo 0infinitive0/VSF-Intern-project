@@ -38,6 +38,7 @@ export type RoomPrice = Schemas['RoomPricePayload']
 export type RoomDetail = Schemas['RoomDetailPayload']
 export type HotelDetail = Schemas['HotelDetailPayload']
 export type AttractionDetail = Schemas['AttractionDetailPayload']
+export type SuggestedPlace = Schemas['SuggestedPlacePayload']
 export type SessionSummary = Schemas['SessionSummaryPayload']
 export type RestoredMessage = Schemas['RestoredMessagePayload']
 export type SessionRestore = Schemas['SessionRestorePayload']
@@ -159,6 +160,13 @@ export interface ChatState {
   suggestions: Suggestion[]
   hotelOptions: HotelOption[]
   hotelFilterData: HotelFilterData
+  // Set only on a turn whose worker wrote one — e.g. itinerary_node's
+  // "list_nearby" search today, any future worker's own place suggestion
+  // tomorrow (see applyPlannerResponse). Cleared like hotelOptions on every
+  // other turn so a stale result never leaks onto the map. Map-visibility
+  // toggle for these lives as transient component state in StageWorkspace,
+  // not here.
+  suggestedPlaces: SuggestedPlace[]
   tripPlan: TripPlan | null
   intake: IntakeStatus | null
   pending: boolean

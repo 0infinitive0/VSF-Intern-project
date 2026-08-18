@@ -101,6 +101,7 @@ from src.agents.graph.response_payload import (
     derive_stage,
     hotel_options_from_task_results,
     intake_status_from_travel_state,
+    suggested_places_from_task_results,
 )
 from src.agents.graph.state import TravelGraphState
 from src.domain.travel_state import Presence, TravelState
@@ -376,6 +377,7 @@ def respond(state: TravelGraphState) -> dict[str, Any]:
         "compound_max_price": max_price,
         "all_preferences": all_preferences,
         "active_preferences": active_preferences,
+        "suggested_places": suggested_places_from_task_results(state),
     }
     # The reply goes back into `messages` so the transcript holds both sides
     # of the conversation, not just the user's half — until now nothing wrote

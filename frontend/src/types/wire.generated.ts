@@ -968,6 +968,8 @@ export interface components {
             all_preferences: components["schemas"]["PreferencePayload"][];
             /** Active Preferences */
             active_preferences: components["schemas"]["PreferencePayload"][];
+            /** Suggested Places */
+            suggested_places: components["schemas"]["SuggestedPlacePayload"][];
         };
         /** PreferencePayload */
         PreferencePayload: {
@@ -1106,6 +1108,33 @@ export interface components {
             /** Thumbnail Url */
             thumbnail_url: string | null;
         };
+        /**
+         * SuggestedPlacePayload
+         * @description One place a worker is pointing the map at this turn — an `attractions`
+         *     table row, not a `NearbyPlacePayload` (that one is crawled
+         *     `hotels.nearby_attractions` jsonb data, no stable `id`). `id` lets the
+         *     frontend key map markers and tell two same-named places apart.
+         *
+         *     Shared wire shape, not a `list_nearby`-only one: any worker that wants
+         *     the map to show candidate places writes into `PlannerChatResponse.
+         *     suggested_places` using this shape — `itinerary_node`'s `list_nearby`
+         *     search is the first writer, an `edit_item` "suggest" reply is a plausible
+         *     second one. One field, one frontend rendering/toggle path for both.
+         */
+        SuggestedPlacePayload: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Category */
+            category: string | null;
+            /** Coordinates */
+            coordinates: string | null;
+            /** Description */
+            description: string | null;
+            /** Rating */
+            rating: number | null;
+        };
         /** SuggestionPayload */
         SuggestionPayload: {
             /**
@@ -1175,10 +1204,6 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: Record<string, never>;
         };
     };
     responses: never;

@@ -8,7 +8,7 @@ import { placeNameFromActivity } from '../lib/activity-name'
 import { useMapSync } from '../hooks/use-map-sync'
 import { legBetween, type Leg } from '../lib/leg'
 import { formatTripDateRange } from '../lib/format-trip-dates'
-import { itemSyncId, TRIP_HOTEL_SYNC_KEY } from '../lib/map-sync-id'
+import { itemSyncId, suggestedPlaceSyncId, TRIP_HOTEL_SYNC_KEY } from '../lib/map-sync-id'
 import { buildDaySegments, buildTripSegments } from '../lib/route-segments'
 import type { useFocusMode } from '../hooks/use-focus-mode'
 import type { Theme } from '../hooks/use-theme'
@@ -73,6 +73,11 @@ export default function StageWorkspace({
   const mapSync = useMapSync()
 
   const [activeTab, setActiveTab] = useState<TabKey>('overview')
+  // Transient, per-component (not persisted) — resets to visible whenever
+  // this component remounts. A fresh batch of suggestedPlaces from a new
+  // turn does NOT reset it back to true: the user's ẩn/hiện choice should
+  // survive follow-up chat turns, not just the one reply that produced it.
+  const [showSuggested, setShowSuggested] = useState(true)
 
   // `trip_plan` gets a fresh object identity on every chat turn (each reply
   // re-serializes it), so an effect keyed on the object would jump the user
@@ -194,8 +199,18 @@ export default function StageWorkspace({
         })
       })
     }
+    if (showSuggested) {
+      for (const place of state.suggestedPlaces) {
+        list.push({
+          syncId: suggestedPlaceSyncId(place),
+          coordinates: place.coordinates,
+          kind: 'suggested',
+          name: place.name,
+        })
+      }
+    }
     return list
-  }, [resolvedTab, days, activeDay, tripPlan?.hotel])
+  }, [resolvedTab, days, activeDay, tripPlan?.hotel, showSuggested, state.suggestedPlaces])
 
   function handleMarkerClick(marker: MapMarkerSpec) {
     mapSync.focusOn(marker.syncId)
@@ -332,6 +347,8 @@ export default function StageWorkspace({
             onMarkerClick={handleMarkerClick}
             selectedId={focusedId}
             colorByDay={resolvedTab === 'overview'}
+            showSuggested={showSuggested}
+            onToggleSuggested={state.suggestedPlaces.length > 0 ? () => setShowSuggested((v) => !v) : undefined}
           />
         </div>
 

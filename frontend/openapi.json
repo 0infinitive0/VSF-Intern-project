@@ -2687,6 +2687,13 @@
             },
             "type": "array",
             "title": "Active Preferences"
+          },
+          "suggested_places": {
+            "items": {
+              "$ref": "#/components/schemas/SuggestedPlacePayload"
+            },
+            "type": "array",
+            "title": "Suggested Places"
           }
         },
         "type": "object",
@@ -2703,7 +2710,8 @@
           "compound_min_price",
           "compound_max_price",
           "all_preferences",
-          "active_preferences"
+          "active_preferences",
+          "suggested_places"
         ],
         "title": "PlannerChatResponse"
       },
@@ -3237,6 +3245,73 @@
         ],
         "title": "SessionSummaryPayload"
       },
+      "SuggestedPlacePayload": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "coordinates": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coordinates"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "category",
+          "coordinates",
+          "description",
+          "rating"
+        ],
+        "title": "SuggestedPlacePayload",
+        "description": "One place a worker is pointing the map at this turn — an `attractions`\ntable row, not a `NearbyPlacePayload` (that one is crawled\n`hotels.nearby_attractions` jsonb data, no stable `id`). `id` lets the\nfrontend key map markers and tell two same-named places apart.\n\nShared wire shape, not a `list_nearby`-only one: any worker that wants\nthe map to show candidate places writes into `PlannerChatResponse.\nsuggested_places` using this shape — `itinerary_node`'s `list_nearby`\nsearch is the first writer, an `edit_item` \"suggest\" reply is a plausible\nsecond one. One field, one frontend rendering/toggle path for both."
+      },
       "SuggestionPayload": {
         "properties": {
           "label": {
@@ -3503,13 +3578,6 @@
           "type": {
             "type": "string",
             "title": "Error Type"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "ctx": {
-            "type": "object",
-            "title": "Context"
           }
         },
         "type": "object",

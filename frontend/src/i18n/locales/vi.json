@@ -308,6 +308,8 @@
   "mapMyLocation": "Vị trí của tôi",
   "mapShowSatellite": "Xem vệ tinh",
   "mapShowStreets": "Xem đường phố",
+  "mapShowSuggested": "Hiện gợi ý",
+  "mapHideSuggested": "Ẩn gợi ý",
   "authBootLoading": "Đang đăng nhập…",
   "authSignIn": "Đăng nhập",
   "authSignOut": "Đăng xuất",

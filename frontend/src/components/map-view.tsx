@@ -226,13 +226,16 @@ function travelGradient(count: number, halfWidth: number, phase: number, hexColo
 export interface MapMarkerSpec {
   syncId: string
   coordinates?: string | null
-  kind: 'hotel' | 'item'
+  kind: 'hotel' | 'item' | 'suggested'
   label?: number
   dayNumber?: number
   openId?: string
   endpoint?: 'start' | 'end'
   priceLabel?: string
   matchLabel?: string
+  /** 'suggested' only — shown as a native title tooltip; these pins have no
+   * itinerary row to display the name next to. */
+  name?: string
 }
 
 export interface MapViewProps {
@@ -251,6 +254,12 @@ export interface MapViewProps {
    * which is what a single day's own tab uses, to tell that day's individual
    * legs apart. Defaults to false (leg-colored) for callers that don't pass it. */
   colorByDay?: boolean
+  /** Show/hide toggle for 'suggested' marker pins — state lives in the
+   * caller (transient, per-component), MapView only renders the control and
+   * forwards clicks. Both absent (not just no-ops) when the caller has
+   * nothing to toggle this turn — same convention as `onLocate`. */
+  showSuggested?: boolean
+  onToggleSuggested?: () => void
 }
 
 type FeatureCollection = { type: 'FeatureCollection'; features: Array<Record<string, unknown>> }
@@ -435,6 +444,25 @@ function createMarkerElement(marker: MapMarkerSpec): { root: HTMLDivElement; con
     content.style.setProperty('--base-marker', 'var(--acc)')
     if (marker.priceLabel) { const price = document.createElement('b'); price.textContent = marker.priceLabel; price.style.fontWeight = '590'; content.appendChild(price) }
     if (marker.matchLabel) { const match = document.createElement('span'); match.textContent = marker.matchLabel; match.style.opacity = '.75'; content.appendChild(match) }
+  } else if (marker.kind === 'suggested') {
+    // Neutral (never day-colored) circular pin with a place icon instead of
+    // a number — these are suggestions, not itinerary stops, so they must
+    // never be mistaken for one of the numbered day pins below.
+    content.style.width = '24px'
+    content.style.height = '24px'
+    content.style.borderRadius = '50%'
+    content.style.display = 'flex'
+    content.style.alignItems = 'center'
+    content.style.justifyContent = 'center'
+    content.style.background = 'var(--g3)'
+    content.style.animation = 'vPinIn .6s cubic-bezier(.34,1.4,.64,1) backwards'
+    const icon = document.createElement('span')
+    icon.className = 'material-symbols-outlined'
+    icon.style.fontSize = '14px'
+    icon.style.color = 'var(--t1)'
+    icon.textContent = 'place'
+    content.appendChild(icon)
+    if (marker.name) root.title = marker.name
   } else {
     content.style.width = '26px'
     content.style.height = '26px'
@@ -472,7 +500,7 @@ function fitWorkspace(map: mapboxgl.Map, points: { lat: number; lng: number }[])
   else if (points.length > 1) { const bounds = boundsOf(points)!; map.fitBounds([[bounds.sw.lng, bounds.sw.lat], [bounds.ne.lng, bounds.ne.lat]], { padding: 56, maxZoom: 15, duration: 900 }) }
 }
 
-export default function MapView({ variant, theme, markers, segments, hoveredId, onHoverChange, onMarkerClick, selectedId = null, hotelRays = [], colorByDay = false }: MapViewProps) {
+export default function MapView({ variant, theme, markers, segments, hoveredId, onHoverChange, onMarkerClick, selectedId = null, hotelRays = [], colorByDay = false, showSuggested, onToggleSuggested }: MapViewProps) {
   const { t } = useTranslation()
   const [styleKind, setStyleKind] = useState<MapStyleKind>('map')
   const { containerRef, mapRef, status, styleVersion, tokenMissing, retry } = useMapboxMap(theme, styleKind)
@@ -667,7 +695,7 @@ export default function MapView({ variant, theme, markers, segments, hoveredId, 
       {status === 'loading' && <div className="absolute inset-0 shimmer-block" aria-hidden="true" />}
       {status === 'ready' && !validMarker && <MapStateOverlay icon="location_off" title={t('mapEmptyTitle')} body={t('mapEmptyBody')} />}
       {status === 'ready' && validMarker && <>
-        <MapControls styleKind={styleKind} onZoomIn={() => mapRef.current?.zoomIn()} onZoomOut={() => mapRef.current?.zoomOut()} onFitRoute={() => { const points = markers.map((marker) => parseCoordinates(marker.coordinates)).filter((point): point is NonNullable<typeof point> => point != null); fitWorkspace(mapRef.current!, points) }} onLocate={hasGeolocation ? () => navigator.geolocation.getCurrentPosition((position) => mapRef.current?.flyTo({ center: [position.coords.longitude, position.coords.latitude], zoom: 14, duration: 600 })) : undefined} onToggleStyle={() => setStyleKind((kind) => kind === 'satellite' ? 'map' : 'satellite')} className="absolute right-4 top-4 z-10" />
+        <MapControls styleKind={styleKind} onZoomIn={() => mapRef.current?.zoomIn()} onZoomOut={() => mapRef.current?.zoomOut()} onFitRoute={() => { const points = markers.map((marker) => parseCoordinates(marker.coordinates)).filter((point): point is NonNullable<typeof point> => point != null); fitWorkspace(mapRef.current!, points) }} onLocate={hasGeolocation ? () => navigator.geolocation.getCurrentPosition((position) => mapRef.current?.flyTo({ center: [position.coords.longitude, position.coords.latitude], zoom: 14, duration: 600 })) : undefined} onToggleStyle={() => setStyleKind((kind) => kind === 'satellite' ? 'map' : 'satellite')} showSuggested={showSuggested} onToggleSuggested={onToggleSuggested} className="absolute right-4 top-4 z-10" />
       </>}
     </>}
   </div>

@@ -273,6 +273,26 @@ def _format_nearby_reply(candidates: list[Any], radius_km: float, language: str)
     return "\n".join(lines)
 
 
+def _suggested_places_payload(candidates: list[Any]) -> list[dict[str, Any]]:
+    """`SuggestedPlacePayload`-shaped dicts for the response — plain dicts,
+    not model instances, since `_ok`'s `extra` lands straight in `task_results`
+    (a graph scratch field, never validated against the response schema until
+    `respond` reads it back through `suggested_places_from_task_results`)."""
+    return [
+        {
+            "id": candidate.id,
+            "name": candidate.name,
+            "category": candidate.category,
+            "coordinates": candidate.coordinates
+            if isinstance(candidate.coordinates, str)
+            else None,
+            "description": candidate.description,
+            "rating": candidate.rating,
+        }
+        for candidate in candidates
+    ]
+
+
 def _set_locked_days(trip_data: dict[str, Any], days_to_lock: list[int]) -> None:
     """Write ``locked_days`` into ``planning_constraints`` in-place. Union
     merge — additive, matching the ``lock_days`` action's "lock these too"
@@ -475,7 +495,10 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
             root_longitude=coordinates[1],
             max_radius_km=radius_km,
         )
-        return _ok(_format_nearby_reply(candidates, radius_km, language))
+        return _ok(
+            _format_nearby_reply(candidates, radius_km, language),
+            extra={"suggested_places": _suggested_places_payload(candidates)},
+        )
 
     # ── edit_item ────────────────────────────────────────────────────────────
     if action == "edit_item":

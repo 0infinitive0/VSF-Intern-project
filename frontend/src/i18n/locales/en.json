@@ -308,6 +308,8 @@
   "mapMyLocation": "My location",
   "mapShowSatellite": "Show satellite",
   "mapShowStreets": "Show streets",
+  "mapShowSuggested": "Show suggestions",
+  "mapHideSuggested": "Hide suggestions",
   "authBootLoading": "Signing you in…",
   "authSignIn": "Sign in",
   "authSignOut": "Sign out",

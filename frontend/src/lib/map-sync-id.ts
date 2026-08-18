@@ -6,7 +6,7 @@
  * own key shape — otherwise hover/click sync between the map and the list
  * silently drifts apart the first time someone changes one side.
  */
-import type { DayItem, HotelOption } from '../types'
+import type { DayItem, HotelOption, SuggestedPlace } from '../types'
 
 /**
  * Sync id for one itinerary item. Real attractions (openable, has a
@@ -28,3 +28,9 @@ export function hotelOptionSyncId(hotel: HotelOption): string {
 
 /** The single per-day hotel pin in the workspace stage — no card, no hover target on the list side. */
 export const TRIP_HOTEL_SYNC_KEY = 'hotel'
+
+/** Sync id for a chatbot-suggested place pin — prefixed so it can never
+ * collide with a real itinerary item's `reference_id` (itemSyncId above). */
+export function suggestedPlaceSyncId(place: SuggestedPlace): string {
+  return `suggested-${place.id}`
+}

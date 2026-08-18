@@ -88,6 +88,22 @@ def hotel_options_from_task_results(state: TravelGraphState) -> list[dict[str, A
     return [option.model_dump() for option in to_hotel_options_payload(hotel_search_result)]
 
 
+def suggested_places_from_task_results(state: TravelGraphState) -> list[dict[str, Any]]:
+    """The places the last worker turn wants the map to point at.
+
+    Any worker may write this onto its `task_results` entry as plain,
+    already `SuggestedPlacePayload`-shaped dicts (`itinerary_node`'s
+    `list_nearby` search is the first writer) — no intermediate payload
+    object to build here, mirroring `hotel_options_from_task_results`'s
+    "absent on any other action" behavior.
+    """
+    task_results = state.get("task_results") or []
+    if not task_results:
+        return []
+    suggested_places = task_results[-1].get("suggested_places")
+    return suggested_places if isinstance(suggested_places, list) else []
+
+
 #: The prefix `sanitize_system_error` (models/schemas.py) puts on every
 #: user-facing failure. Not a loose convention: that function is the single
 #: choke point every backend error passes through, and the prefix set it

@@ -2,8 +2,9 @@
  * use-chat-session.ts — single useReducer managing the entire chat state.
  *
  * Session lifecycle:
- *   - On mount: always create a brand new session — a reload is a fresh
- *     visit, never a resume of whatever was open before.
+ *   - On mount: try to rehydrate session_id from sessionStorage, then ping it.
+ *     Only a 404 (the server genuinely lost it) starts a new session silently
+ *     — see resolveBootstrapSession for the full decision table.
  *   - startNew(): create a new session, no DELETE — the old one stays persisted
  *     and stays in the history rail (deleting a conversation is a separate,
  *     explicit action against session-client.ts's deleteSession()).
@@ -16,13 +17,17 @@ import { useReducer, useEffect, useRef, useCallback } from 'react'
 import {
   changeHotel as changeHotelRequest,
   createSession,
+  pingSession,
   selectHotel as selectHotelRequest,
   sendMessage,
 } from '../api/chat-client'
+import type { CreateSessionResponse, SessionPing } from '../api/chat-client'
 import { restoreSession } from '../api/session-client'
 import { sendMessageStream, StreamUnsupported } from '../api/stream-client'
 import i18n from '../i18n'
 import type { ChatMessage, ChatState, PlannerChatResponse, PhaseKey, SessionRestore } from '../types'
+
+const SESSION_KEY = 'vsf_trip_planner_session_id'
 
 // Exported for use-chat-session.test.ts — the RESTORE/turnSessionId-guard
 // behavior is pure state-transition logic, tested directly without rendering
@@ -35,6 +40,7 @@ export const INITIAL_STATE: ChatState = {
   suggestions: [],
   hotelOptions: [],
   hotelFilterData: { minPrice: null, maxPrice: null, hotelAmenities: [], allPreferences: [], activePreferences: [] },
+  suggestedPlaces: [],
   tripPlan: null,
   intake: null,
   pending: false,
@@ -85,6 +91,7 @@ function applyPlannerResponse(state: ChatState, data: PlannerChatResponse, messa
     messages: message ? [...state.messages, message] : state.messages,
     suggestions: data.suggestions || [],
     hotelOptions: data.hotel_options || [],
+    suggestedPlaces: data.suggested_places || [],
     hotelFilterData: {
       minPrice: data.compound_min_price ?? null,
       maxPrice: data.compound_max_price ?? null,
@@ -126,6 +133,7 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
         // Freeze chips so they aren't clickable while in-flight
         suggestions: [],
         hotelOptions: [],
+        suggestedPlaces: [],
         hotelFilterData: INITIAL_STATE.hotelFilterData,
         streamingText: '',
         phases: [],
@@ -144,6 +152,7 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
         ],
         suggestions: [],
         hotelOptions: [],
+        suggestedPlaces: [],
         hotelFilterData: INITIAL_STATE.hotelFilterData,
         streamingText: '',
         phases: [],
@@ -291,6 +300,57 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
   }
 }
 
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
+
+export interface BootstrapDeps {
+  stored: string | null
+  ping: (sessionId: string) => Promise<SessionPing>
+  create: () => Promise<CreateSessionResponse>
+  fallbackId: () => string
+}
+
+/**
+ * Decides which session id the app starts on. Pure apart from its injected
+ * dependencies, so all four ping outcomes are unit-testable without rendering
+ * the hook (no React Testing Library in this project — see INITIAL_STATE).
+ *
+ * Only ONE outcome may abandon the stored conversation: `gone`, the server
+ * saying it has no such session. `unauthorized` is a token problem
+ * AuthProvider refreshes on its own (pingSession has already alerted the
+ * session-expired bus by then), and `unknown` is no evidence at all — both
+ * keep the stored id rather than discarding a live conversation.
+ *
+ * `persist: true` means the returned id is new and the caller must write it to
+ * sessionStorage; storage stays with the caller so this function has no
+ * side effects of its own.
+ */
+export async function resolveBootstrapSession({
+  stored,
+  ping,
+  create,
+  fallbackId,
+}: BootstrapDeps): Promise<{ sessionId: string; persist: boolean }> {
+  if (stored) {
+    if ((await ping(stored)) !== 'gone') return { sessionId: stored, persist: false }
+    try {
+      return { sessionId: (await create()).session_id, persist: true }
+    } catch {
+      // The replacement could not be created — keep the stored id rather than
+      // leaving the app with none; the next turn will 404 loudly if it really
+      // is gone.
+      return { sessionId: stored, persist: false }
+    }
+  }
+
+  try {
+    return { sessionId: (await create()).session_id, persist: true }
+  } catch {
+    // Backend unreachable on a first visit: a client-side id still lets the UI
+    // mount, and the server adopts it on the first successful turn.
+    return { sessionId: fallbackId(), persist: true }
+  }
+}
+
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useChatSession() {
@@ -330,23 +390,41 @@ export function useChatSession() {
   }, [state.pending])
 
   // ── Bootstrap session on mount ───────────────────────────────────────────
-  // Always a fresh session — a reload/new visit never resumes whatever was
-  // open before; past conversations stay reachable through the history rail
-  // (restore()) instead.
+  // Rehydrates from sessionStorage when possible — see resolveBootstrapSession
+  // for the full decision table on when a stored id is trusted vs. discarded.
+  // `persist: false` means we're resuming a session that already has
+  // conversation history server-side — SESSION_READY alone only sets
+  // state.sessionId, it never re-populates messages/tripPlan/intake (those
+  // live only in React state, wiped by the reload itself), so without this
+  // RESTORE call every reload looked like a brand new draft even though the
+  // backend kept the same session_id. A genuinely new session (persist: true)
+  // has nothing to restore, so it stays on plain SESSION_READY.
   useEffect(() => {
     let cancelled = false
 
     async function bootstrap() {
-      let sessionId: string
-      try {
-        sessionId = (await createSession()).session_id
-      } catch {
-        // Backend unreachable on a first visit: a client-side id still lets
-        // the UI mount, and the server adopts it on the first successful turn.
-        sessionId = crypto.randomUUID()
-      }
+      const { sessionId, persist } = await resolveBootstrapSession({
+        stored: sessionStorage.getItem(SESSION_KEY),
+        ping: pingSession,
+        create: createSession,
+        fallbackId: () => crypto.randomUUID(),
+      })
       if (cancelled) return
-      dispatch({ type: 'SESSION_READY', sessionId })
+      if (persist) {
+        sessionStorage.setItem(SESSION_KEY, sessionId)
+        dispatch({ type: 'SESSION_READY', sessionId })
+      } else {
+        const data = await restoreSession(sessionId)
+        if (cancelled) return
+        if (data) {
+          dispatch({ type: 'RESTORE', sessionId, data })
+        } else {
+          // Restore failed (network blip, or the session died between the
+          // ping and this call) — still surface the id so the app can work,
+          // just without prior history.
+          dispatch({ type: 'SESSION_READY', sessionId })
+        }
+      }
       resolveSessionReadyRef.current?.(sessionId)
     }
 
@@ -476,12 +554,15 @@ export function useChatSession() {
     if (switchingRef.current) return
     switchingRef.current = true
     abortRef.current?.abort()
+    sessionStorage.removeItem(SESSION_KEY)
 
     try {
       const data = await createSession()
+      sessionStorage.setItem(SESSION_KEY, data.session_id)
       dispatch({ type: 'RESET', sessionId: data.session_id })
     } catch {
       const fallback = crypto.randomUUID()
+      sessionStorage.setItem(SESSION_KEY, fallback)
       dispatch({ type: 'RESET', sessionId: fallback })
     } finally {
       switchingRef.current = false
@@ -500,6 +581,7 @@ export function useChatSession() {
     try {
       const data = await restoreSession(sessionId)
       if (!data) return false
+      sessionStorage.setItem(SESSION_KEY, sessionId)
       dispatch({ type: 'RESTORE', sessionId, data })
       return true
     } finally {

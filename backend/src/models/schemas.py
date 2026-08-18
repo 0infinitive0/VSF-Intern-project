@@ -125,6 +125,27 @@ class NearbyPlacePayload(ResponsePayload):
     distance_text: str | None = None
 
 
+class SuggestedPlacePayload(ResponsePayload):
+    """One place a worker is pointing the map at this turn — an `attractions`
+    table row, not a `NearbyPlacePayload` (that one is crawled
+    `hotels.nearby_attractions` jsonb data, no stable `id`). `id` lets the
+    frontend key map markers and tell two same-named places apart.
+
+    Shared wire shape, not a `list_nearby`-only one: any worker that wants
+    the map to show candidate places writes into `PlannerChatResponse.
+    suggested_places` using this shape — `itinerary_node`'s `list_nearby`
+    search is the first writer, an `edit_item` "suggest" reply is a plausible
+    second one. One field, one frontend rendering/toggle path for both.
+    """
+
+    id: str
+    name: str
+    category: str | None = None
+    coordinates: str | None = None
+    description: str | None = None
+    rating: float | None = None
+
+
 class RoomPricePayload(ResponsePayload):
     amount: float | None = None
     currency: str | None = None
@@ -465,6 +486,10 @@ class PlannerChatResponse(ResponsePayload):
     compound_max_price: float | None = None
     all_preferences: list[PreferencePayload] = Field(default_factory=list)
     active_preferences: list[PreferencePayload] = Field(default_factory=list)
+    # Set only on a turn whose worker wrote one (see
+    # `response_payload.suggested_places_from_task_results`); empty on every
+    # other turn so a stale result never leaks onto a later, unrelated reply.
+    suggested_places: list[SuggestedPlacePayload] = Field(default_factory=list)
 
 
 class SessionSummaryPayload(ResponsePayload):

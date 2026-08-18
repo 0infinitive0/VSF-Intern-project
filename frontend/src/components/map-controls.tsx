@@ -38,6 +38,8 @@ export default function MapControls({
   onLocate,
   styleKind,
   onToggleStyle,
+  showSuggested,
+  onToggleSuggested,
   className,
 }: {
   onZoomIn: () => void
@@ -47,6 +49,11 @@ export default function MapControls({
   onLocate?: () => void
   styleKind: MapStyleKind
   onToggleStyle: () => void
+  /** Current visibility of the chatbot-suggested place pins. Absent (not
+   * just a no-op) when there is nothing to toggle this turn — same
+   * conditional-render convention as `onLocate`. */
+  showSuggested?: boolean
+  onToggleSuggested?: () => void
   className?: string
 }) {
   const { t } = useTranslation()
@@ -63,6 +70,13 @@ export default function MapControls({
         label={styleKind === 'satellite' ? t('mapShowStreets') : t('mapShowSatellite')}
         onClick={onToggleStyle}
       />
+      {onToggleSuggested && (
+        <ControlButton
+          icon={showSuggested ? 'visibility_off' : 'visibility'}
+          label={showSuggested ? t('mapHideSuggested') : t('mapShowSuggested')}
+          onClick={onToggleSuggested}
+        />
+      )}
     </div>
   )
 }
