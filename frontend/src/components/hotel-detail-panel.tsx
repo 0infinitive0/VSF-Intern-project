@@ -458,19 +458,25 @@ function HoldFooter({
   const hasAnyPriced = rows.some((r) => r.subtotal != null)
 
   const heldHere = roomHold.status === 'HELD' && roomHold.heldHotelId === hotelId
-  const heldElsewhere =
-    (roomHold.status === 'HELD' || roomHold.status === 'BOOKED') && roomHold.heldHotelId !== hotelId
+  const heldElsewhere = roomHold.status === 'HELD' && roomHold.heldHotelId !== hotelId
   const busy = roomHold.status === 'HOLDING'
   // ERROR is retryable from right here (startHold already cleans up any
   // partial reservations before setting it — see use-room-hold.ts), so it
-  // counts as startable same as IDLE; every other non-idle status means a
-  // hold already exists somewhere and must be resolved from its own state
-  // first (heldHere/heldElsewhere/busy above).
+  // counts as startable same as IDLE. BOOKED counts as startable too: it
+  // means a PREVIOUS hold's payment already completed, so there is nothing
+  // left to protect — without this, a guest who finished one booking and
+  // opens a brand new chat to plan a second trip gets told they're
+  // "holding a room at another hotel" for a hold that's long since been
+  // paid for (roomHold is a single global hold, not scoped to a chat
+  // session — see use-room-hold.ts's module doc comment). Every other
+  // non-idle status means a hold is still actually live somewhere and must
+  // be resolved from its own state first (heldHere/heldElsewhere/busy
+  // above).
   const canStart =
     cartCount > 0 &&
     !!checkInDate &&
     !!checkOutDate &&
-    (roomHold.status === 'IDLE' || roomHold.status === 'ERROR')
+    (roomHold.status === 'IDLE' || roomHold.status === 'ERROR' || roomHold.status === 'BOOKED')
 
   const label = heldHere
     ? t('holdCtaHeld')
