@@ -10,6 +10,7 @@ import { hotelMapFields, hotelMapRays } from '../lib/map-presentation'
 import { useHotelDetail } from '../hooks/use-hotel-detail'
 import { activeAmenityPills, filterAndSortHotels, type HotelSortOrder } from '../lib/hotel-filters'
 import type { useFocusMode } from '../hooks/use-focus-mode'
+import type { RoomHoldApi } from '../hooks/use-room-hold'
 import type { Theme } from '../hooks/use-theme'
 import type { ChatState, HotelOption } from '../types'
 
@@ -34,17 +35,19 @@ function nightsFrom(startIso?: string | null, endIso?: string | null): number | 
  * glass header (V logo, step title, status badge, confirm button) over three
  * flex columns: card list (with the filter bar) | map | detail panel.
  *
- * Two-step hotel pick (user decision 06/08/2026): a card's "Chọn" only sets
- * local selectedIndex; the header's "Tạo lịch trình từ khách sạn này" is the
- * ONLY sender, posting String(hotel.index) through onSend — byte-identical
- * to the pre-Phase-8 wire, no new verb, no new endpoint. The bubble shown to
- * the user swaps that raw index for `displayText` (e.g. "Mình chọn Sóng Xanh
- * Boutique") so the thread reads naturally; the backend still only ever sees
- * the index. The button is disabled until something is selected so no empty
- * message can ever be sent. selectedIndex resets when hotel_options rotates
- * (backend clears them on the next turn, as before). selectedIndex itself is
- * owned by App.tsx (per-session, so switching conversations never leaks a
- * pick into the wrong one) — this component only reads/reports it.
+ * Two-step hotel pick, now gated by a room hold (V-OTA Planner design
+ * update — room selection moved BEFORE itinerary creation): a card's "Chọn"
+ * only sets local selectedIndex; the header button no longer calls
+ * onConfirmHotel directly — it opens the selected hotel's detail panel so
+ * the user can pick room(s) and press "Giữ phòng" there. onConfirmHotel
+ * itself (still byte-identical to the pre-design-update wire: posts
+ * String(hotel.index) through onSend, no new verb, no new endpoint) is now
+ * invoked by HotelDetailPanel's hold footer, as the ONHELD callback passed
+ * to roomHold.startHold — see use-room-hold.ts's module doc comment.
+ * selectedIndex resets when hotel_options rotates (backend clears them on
+ * the next turn, as before). selectedIndex itself is owned by App.tsx
+ * (per-session, so switching conversations never leaks a pick into the
+ * wrong one) — this component only reads/reports it.
  *
  * Focus mode (chat collapses in app-shell): the list widens 520→470px per the
  * design's hListW, the map column collapses to 0, and the detail panel joins
@@ -60,6 +63,7 @@ export default function StageHotels({
   onConfirmHotel,
   focusMode,
   theme,
+  roomHold,
 }: {
   state: ChatState
   hotelOptions: HotelOption[]
@@ -68,6 +72,8 @@ export default function StageHotels({
   onConfirmHotel: (hotel: HotelOption) => void
   focusMode: FocusModeApi
   theme: Theme
+  /** Owns the room cart + real hold — threaded into HotelDetailPanel below. */
+  roomHold: RoomHoldApi
 }) {
   const { t, i18n } = useTranslation()
   const hotels = hotelOptions
@@ -156,9 +162,12 @@ export default function StageHotels({
     }
   }, [focused])
 
-  function confirmSelection() {
+  // No longer builds the itinerary directly — it opens the selected hotel's
+  // detail panel so the user picks room(s) and holds them there. See the
+  // module doc comment.
+  function openSelectedHotelRooms() {
     if (!selectedHotel) return
-    onConfirmHotel(selectedHotel)
+    openFocus(selectedHotel)
   }
 
   return (
@@ -187,7 +196,7 @@ export default function StageHotels({
         <button
           type="button"
           disabled={!selectedHotel}
-          onClick={confirmSelection}
+          onClick={openSelectedHotelRooms}
           className="px-[18px] py-2.5 rounded-[13px] border-none text-[13px] font-[590] tracking-[-0.12px] transition-all duration-200 text-nowrap"
           style={{
             background: selectedHotel ? 'var(--btn)' : 'var(--fill2)',
@@ -195,7 +204,7 @@ export default function StageHotels({
             cursor: selectedHotel ? 'pointer' : 'default',
           }}
         >
-          {t('buildFromHotel')}
+          {t('hotelHeaderPickRooms')}
         </button>
       </div>
 
@@ -311,6 +320,10 @@ export default function StageHotels({
             hotelAmenities={amenityCatalog}
             selectedAmenityIds={preferenceIds}
             onClose={focusMode.closeFocus}
+            roomHold={roomHold}
+            checkInDate={state.intake?.start_date ?? null}
+            checkOutDate={state.intake?.end_date ?? null}
+            onConfirmHotel={onConfirmHotel}
           />
         </div>
       </div>

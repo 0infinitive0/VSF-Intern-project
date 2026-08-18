@@ -311,6 +311,39 @@ ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE bookings FROM anon, authenticated, PUBLIC;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE bookings TO service_role;
 
+-- create_booking_reservation / confirm_booking_reservation / cancel_booking:
+-- see scripts/migrations/20260818_add_booking_reservation_rpcs.sql for the
+-- full bodies + design notes (advisory lock, dynamic availability). Not
+-- duplicated here to avoid two sources of truth drifting apart; that
+-- migration is the canonical copy.
+
+-- Payment records for the VNPay integration (plan
+-- 260818-vnpay-payment-and-email-confirmation) — see
+-- scripts/migrations/20260818_add_payments_table.sql for full comments.
+CREATE TABLE payments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    temporary_user_ref TEXT NOT NULL,
+    booking_ids UUID[] NOT NULL CHECK (array_length(booking_ids, 1) > 0),
+    amount NUMERIC(12, 2) NOT NULL CHECK (amount >= 0),
+    currency VARCHAR(10) NOT NULL DEFAULT 'VND',
+    status TEXT NOT NULL DEFAULT 'PENDING'
+        CHECK (status IN ('PENDING', 'PAID', 'FAILED', 'CANCELLED')),
+    guest_name TEXT,
+    guest_email TEXT,
+    guest_phone TEXT,
+    vnp_transaction_no TEXT,
+    vnp_response_code TEXT,
+    paid_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX payments_temporary_user_ref_idx ON payments (temporary_user_ref);
+
+ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE payments FROM anon, authenticated, PUBLIC;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE payments TO service_role;
+
 -- The result is the minimum remaining count across every requested night.
 CREATE FUNCTION public.get_room_availability(
     p_room_id UUID,

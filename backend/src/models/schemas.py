@@ -25,7 +25,7 @@ from decimal import Decimal
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from src.i18n import DEFAULT_LANGUAGE, t
 from src.observability import log_sanitized_system_error
@@ -452,6 +452,40 @@ class BookingPayload(BaseModel):
     expires_at: datetime | None = None
     total_amount: Decimal | None = None
     currency: str | None = None
+
+
+# ---- VNPay payment (plan 260818-vnpay-payment-and-email-confirmation) -----
+
+
+class CreateVnpayPaymentRequest(BaseModel):
+    """One payment covers every booking in a hold group — a guest can hold
+    several distinct room types at once (frontend's use-room-hold.ts), but
+    VNPay has exactly one vnp_TxnRef per transaction."""
+
+    booking_ids: list[UUID] = Field(min_length=1, max_length=20)
+    temporary_user_ref: str = Field(min_length=1, max_length=128)
+    guest_name: str = Field(min_length=1, max_length=200)
+    guest_email: EmailStr
+    guest_phone: str | None = Field(default=None, max_length=32)
+
+
+class CreateVnpayPaymentResponse(BaseModel):
+    payment_id: UUID
+    pay_url: str
+
+
+class PaymentPayload(BaseModel):
+    id: UUID
+    booking_ids: list[UUID]
+    amount: Decimal
+    currency: str
+    status: Literal["PENDING", "PAID", "FAILED", "CANCELLED"]
+    guest_name: str | None = None
+    guest_email: str | None = None
+    guest_phone: str | None = None
+    vnp_transaction_no: str | None = None
+    paid_at: datetime | None = None
+    created_at: datetime
 
 
 class PreferencePayload(BaseModel):

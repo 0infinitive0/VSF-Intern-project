@@ -31,10 +31,11 @@ Plan 260814-supabase-auth-and-per-user-history changes:
 import asyncio
 import logging
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 from langgraph.types import Command
@@ -69,8 +70,11 @@ from src.models.schemas import (
     BookingPayload,
     BookingReservationRequest,
     ChangeHotelRequest,
+    CreateVnpayPaymentRequest,
+    CreateVnpayPaymentResponse,
     HotelDetailPayload,
     hotel_amenities_from_hotel_options,
+    PaymentPayload,
     PlannerChatRequest,
     PlannerChatResponse,
     SelectHotelRequest,
@@ -83,7 +87,10 @@ from src.models.schemas import (
 from src.services import session_store
 from src.services.amenity_catalog import query_approved_amenities
 from src.services.place_details import get_attraction_detail, get_hotel_detail
-from src.services.booking_service import BookingError, cancel_booking, confirm_booking, reserve_booking
+from src.services.booking_service import BookingError, cancel_booking, confirm_booking, get_booking, reserve_booking
+from src.services.email_service import EmailError, send_booking_confirmation_email
+from src.services import payment_service
+from src.services import vnpay_service
 
 logger = logging.getLogger(__name__)
 
@@ -188,6 +195,8 @@ def attraction_detail(attraction_id: UUID) -> AttractionDetailPayload:
 def _booking_http_error(exc: BookingError) -> HTTPException:
     if str(exc) == "booking_not_found":
         return HTTPException(status_code=404, detail="Booking not found.")
+    if str(exc) == "invalid_booking_request":
+        return HTTPException(status_code=422, detail=str(exc))
     if str(exc) in {"insufficient_room_availability", "booking_reservation_expired", "booking_not_confirmable"}:
         return HTTPException(status_code=409, detail=str(exc))
     logger.exception("Booking operation failed", exc_info=exc)
@@ -221,6 +230,160 @@ def cancel_booking_endpoint(booking_id: UUID, request: BookingOwnershipRequest) 
         )
     except BookingError as exc:
         raise _booking_http_error(exc) from exc
+
+
+# ---------------------------------------------------------------------------
+# VNPay payment (plan 260818-vnpay-payment-and-email-confirmation)
+#
+# Not verified against a real VNPay sandbox yet -- no merchant credentials
+# configured (see the plan's "Việc cần chuẩn bị" section). Written to
+# VNPay's documented "Payment via Payment Platform" spec and covered by
+# self-consistency signature tests; re-check against VNPay's own sample
+# project once vnp_TmnCode/vnp_HashSecret exist.
+# ---------------------------------------------------------------------------
+
+
+def _send_confirmation_email_best_effort(payment: dict[str, Any]) -> None:
+    """Never lets an email failure affect the payment/booking outcome — by
+    the time this is called the booking is already CONFIRMED and the
+    payment already PAID; losing the email is real but strictly smaller
+    than losing/duplicating that."""
+    guest_email = payment.get("guest_email")
+    if not guest_email:
+        return
+    booking_ids = payment.get("booking_ids") or []
+    if not booking_ids:
+        return
+    summary = payment_service.booking_summary_for_email(UUID(str(booking_ids[0])))
+    try:
+        send_booking_confirmation_email(
+            to_email=guest_email,
+            guest_name=payment.get("guest_name") or "",
+            hotel_name=(summary or {}).get("hotel_name") or "",
+            booking_code=str(payment["id"])[:8].upper(),
+            check_in_date=str((summary or {}).get("check_in_date") or ""),
+            check_out_date=str((summary or {}).get("check_out_date") or ""),
+            total_amount=Decimal(str(payment["amount"])) if payment.get("amount") is not None else None,
+            currency=payment.get("currency"),
+        )
+    except EmailError:
+        logger.exception("Failed to send booking confirmation email for payment %s", payment["id"])
+
+
+@router.post("/payments/vnpay", response_model=CreateVnpayPaymentResponse, status_code=201)
+def create_vnpay_payment(payload: CreateVnpayPaymentRequest, http_request: Request) -> CreateVnpayPaymentResponse:
+    settings = get_settings()
+    if not settings.vnpay_tmn_code or not settings.vnpay_hash_secret:
+        raise HTTPException(status_code=503, detail="Payment gateway is not configured.")
+
+    total = Decimal("0")
+    currency = "VND"
+    for booking_id in payload.booking_ids:
+        booking = get_booking(booking_id)
+        if booking is None or booking.get("temporary_user_ref") != payload.temporary_user_ref:
+            raise HTTPException(status_code=404, detail="Booking not found.")
+        if booking.get("status") != "RESERVED":
+            raise HTTPException(status_code=409, detail="booking_not_confirmable")
+        expires_at = booking.get("expires_at")
+        if expires_at:
+            expires_dt = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+            if expires_dt <= datetime.now(UTC):
+                raise HTTPException(status_code=409, detail="booking_reservation_expired")
+        if booking.get("total_amount") is not None:
+            total += Decimal(str(booking["total_amount"]))
+        if booking.get("currency"):
+            currency = booking["currency"]
+
+    payment = payment_service.create_payment(
+        booking_ids=payload.booking_ids,
+        temporary_user_ref=payload.temporary_user_ref,
+        amount=total,
+        currency=currency,
+        guest_name=payload.guest_name,
+        guest_email=payload.guest_email,
+        guest_phone=payload.guest_phone,
+    )
+
+    client_ip = http_request.client.host if http_request.client else "127.0.0.1"
+    pay_url = vnpay_service.build_payment_url(
+        pay_url=settings.vnpay_pay_url,
+        tmn_code=settings.vnpay_tmn_code,
+        hash_secret=settings.vnpay_hash_secret,
+        amount=total,
+        txn_ref=str(payment["id"]).replace("-", ""),
+        order_info=f"Thanh toan dat phong {str(payment['id'])[:8]}",
+        return_url=settings.vnpay_return_url,
+        ip_addr=client_ip,
+    )
+    return CreateVnpayPaymentResponse(payment_id=payment["id"], pay_url=pay_url)
+
+
+@router.get("/payments/vnpay/ipn")
+def vnpay_ipn(request: Request) -> dict[str, str]:
+    """The ONLY trusted payment confirmation source — see the module doc
+    comment above. VNPay reads RspCode/Message from this response to decide
+    whether to retry; "00" means "I received and processed this
+    notification", independent of whether the underlying transaction itself
+    succeeded (that's read from vnp_ResponseCode/vnp_TransactionStatus)."""
+    settings = get_settings()
+    params = dict(request.query_params)
+
+    if not vnpay_service.verify_signature(params, settings.vnpay_hash_secret):
+        return {"RspCode": "97", "Message": "Invalid signature"}
+
+    txn_ref = params.get("vnp_TxnRef", "")
+    try:
+        payment = payment_service.get_payment(UUID(txn_ref))
+    except ValueError:
+        payment = None
+    if payment is None:
+        return {"RspCode": "01", "Message": "Order not found"}
+
+    try:
+        received_amount = vnpay_service.vnpay_amount_to_decimal(params.get("vnp_Amount", ""))
+    except Exception:
+        return {"RspCode": "04", "Message": "Invalid amount"}
+    if received_amount != Decimal(str(payment["amount"])):
+        return {"RspCode": "04", "Message": "Invalid amount"}
+
+    if payment["status"] != "PENDING":
+        # Already processed -- either a real retry (idempotent, correct) or
+        # a forged replay of an old notification (harmless: no state change
+        # happens either way).
+        return {"RspCode": "02", "Message": "Order already confirmed"}
+
+    response_code = params.get("vnp_ResponseCode", "")
+    transaction_status = params.get("vnp_TransactionStatus", "")
+    transaction_no = params.get("vnp_TransactionNo", "")
+
+    if response_code == "00" and transaction_status == "00":
+        updated = payment_service.mark_payment_paid(
+            payment_id=payment["id"], vnp_transaction_no=transaction_no, vnp_response_code=response_code,
+        )
+        if updated is None:
+            # Lost the race to a concurrent IPN retry that already flipped
+            # this payment to PAID/FAILED -- still fine, not our job to redo.
+            return {"RspCode": "02", "Message": "Order already confirmed"}
+        for booking_id in payment["booking_ids"]:
+            try:
+                confirm_booking(booking_id=UUID(str(booking_id)), temporary_user_ref=payment["temporary_user_ref"])
+            except BookingError:
+                logger.exception(
+                    "Failed to confirm booking %s after VNPay payment %s", booking_id, payment["id"]
+                )
+        _send_confirmation_email_best_effort(updated)
+        return {"RspCode": "00", "Message": "Confirm Success"}
+
+    payment_service.mark_payment_failed(payment_id=payment["id"], vnp_response_code=response_code)
+    return {"RspCode": "00", "Message": "Confirm Success"}
+
+
+@router.get("/payments/{payment_id}", response_model=PaymentPayload)
+def get_payment_endpoint(payment_id: UUID, temporary_user_ref: str = Query(...)) -> PaymentPayload:
+    payment = payment_service.get_payment_for_owner(payment_id, temporary_user_ref)
+    if payment is None:
+        raise HTTPException(status_code=404, detail="Payment not found.")
+    return PaymentPayload.model_validate(payment)
 
 
 # ---------------------------------------------------------------------------

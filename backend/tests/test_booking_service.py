@@ -59,3 +59,28 @@ def test_booking_service_translates_availability_conflict(monkeypatch):
 
     with pytest.raises(booking_service.BookingError, match="insufficient_room_availability"):
         booking_service.confirm_booking(booking_id=uuid4(), temporary_user_ref="guest-1")
+
+
+def test_booking_service_translates_invalid_request(monkeypatch):
+    """create_booking_reservation's own validation (bad date range,
+    room_count <= 0, hold_minutes out of range) must map to its own code —
+    previously fell through to the generic booking_operation_failed and
+    surfaced as a bare 500 (see routes.py's _booking_http_error)."""
+
+    class _FailingRPC:
+        def execute(self):
+            raise RuntimeError("invalid_booking_request")
+
+    class _FailingClient:
+        def rpc(self, *_args):
+            return _FailingRPC()
+
+    monkeypatch.setattr(booking_service, "get_supabase_client", _FailingClient)
+
+    with pytest.raises(booking_service.BookingError, match="invalid_booking_request"):
+        booking_service.reserve_booking(
+            room_id=uuid4(), temporary_user_ref="guest-1",
+            check_in_date=date(2026, 8, 1), check_in_time=time(14),
+            check_out_date=date(2026, 8, 3), check_out_time=time(12),
+            room_count=2, total_amount=Decimal("2500000"), currency="VND",
+        )

@@ -152,6 +152,40 @@ class Settings(BaseSettings):
     # Mapbox
     mapbox_access_token: str = ""
 
+    # VNPay (plan 260818-vnpay-payment-and-email-confirmation)
+    vnpay_tmn_code: str = ""
+    vnpay_hash_secret: str = ""
+    vnpay_pay_url: str = Field(
+        default="https://sandbox.vnpayment.vn/paymentv2/vpcpay.html",
+        description="VNPay's hosted payment page. Sandbox by default -- production is "
+        "https://vnpayment.vn/paymentv2/vpcpay.html, set only once real merchant "
+        "credentials (not sandbox ones) are issued.",
+    )
+    vnpay_return_url: str = Field(
+        default="",
+        description="Frontend URL VNPay redirects the browser back to after payment -- "
+        "e.g. https://<frontend-domain>/?payment_return=1 (see App.tsx's "
+        "consumeVnpayReturn, mirroring oauth-redirect-error.ts). This redirect is "
+        "UX-only and never trusted for confirmation -- see vnpay_ipn_url below.",
+    )
+    vnpay_ipn_url: str = Field(
+        default="",
+        description="Documentation only -- VNPay does not accept this as a request "
+        "parameter for the payment-gateway API. The IPN URL is registered once in the "
+        "VNPay merchant portal (sandbox or production) and must point at this backend's "
+        "public /api/v1/payments/vnpay/ipn. Kept here so it is not just tribal knowledge.",
+    )
+
+    # Email (Resend -- plan 260818-vnpay-payment-and-email-confirmation)
+    resend_api_key: str = ""
+    resend_from_email: str = Field(
+        default="onboarding@resend.dev",
+        description="Resend's shared sandbox sender, usable with no domain verification "
+        "for testing. Replace with a verified sender on your own domain before sending "
+        "to real guests -- Resend rejects onboarding@resend.dev to recipients outside "
+        "the account owner's own verified email in some configurations.",
+    )
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings()

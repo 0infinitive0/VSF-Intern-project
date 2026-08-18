@@ -27,6 +27,9 @@ langgraph-checkpoint-postgres>=2.0.0,<4.0.0
 # Auth (local Supabase JWT verification — no per-request call to Supabase Auth API)
 PyJWT[crypto]>=2.9.0,<3.0.0
 
+# Email (booking confirmation — plan 260818-vnpay-payment-and-email-confirmation)
+resend>=2.0.0,<3.0.0
+
 # Dev tools
 ruff>=0.8.0
 pytest>=8.0.0

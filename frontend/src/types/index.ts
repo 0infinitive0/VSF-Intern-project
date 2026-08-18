@@ -42,6 +42,19 @@ export type SuggestedPlace = Schemas['SuggestedPlacePayload']
 export type SessionSummary = Schemas['SessionSummaryPayload']
 export type RestoredMessage = Schemas['RestoredMessagePayload']
 export type SessionRestore = Schemas['SessionRestorePayload']
+// Room-hold / checkout — real /api/v1/bookings* calls (use-room-hold.ts,
+// api/booking-client.ts).
+export type Booking = Schemas['BookingPayload']
+export type BookingReservationRequest = Schemas['BookingReservationRequest']
+export type BookingOwnershipRequest = Schemas['BookingOwnershipRequest']
+export type BookingStatus = Booking['status']
+
+// VNPay payment (plan 260818-vnpay-payment-and-email-confirmation) — real
+// /api/v1/payments/vnpay* calls (api/payment-client.ts).
+export type CreateVnpayPaymentRequest = Schemas['CreateVnpayPaymentRequest']
+export type CreateVnpayPaymentResponse = Schemas['CreateVnpayPaymentResponse']
+export type Payment = Schemas['PaymentPayload']
+export type PaymentStatus = Payment['status']
 
 /** The backend's `ChatStage`, derived from the response rather than restated,
  * so a stage that loses its producer breaks the build here too. `null` is the
