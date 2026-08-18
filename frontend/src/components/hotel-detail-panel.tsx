@@ -502,10 +502,6 @@ function HoldFooter({
         boxShadow: '0 -24px 48px -30px rgb(var(--shadow-rgb) / 0.55)',
       }}
     >
-      <div className="flex items-center gap-2.5">
-        <div className={SECTION_EYEBROW + ' mb-0'}>{t('holdSectionSelected')}</div>
-        <div className="flex-1" />
-      </div>
       {cartCount > 0 ? (
         <div className="flex flex-col gap-1.5">
           {rows.map((row) => (

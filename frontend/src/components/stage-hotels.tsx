@@ -162,19 +162,9 @@ export default function StageHotels({
     }
   }, [focused])
 
-  // No longer builds the itinerary directly — it opens the selected hotel's
-  // detail panel so the user picks room(s) and holds them there. See the
-  // module doc comment.
-  function openSelectedHotelRooms() {
-    if (!selectedHotel) return
-    openFocus(selectedHotel)
-  }
-
   return (
     <div className="flex-1 min-w-0 min-h-0 flex flex-col animate-[vRise_0.7s_cubic-bezier(0.22,1,0.36,1)_both]">
-      {/* Header — badge describes the real state in both branches; the confirm
-          button switches token with selection and is disabled when empty so no
-          vacuous message is ever sent. */}
+      {/* Header */}
       <div className="glass-panel flex-none flex items-center gap-3.5 mx-3.5 mt-3.5 px-[18px] py-[13px] rounded-[26px]">
         <div
           className="w-[30px] h-[30px] rounded-[10px] bg-gradient-to-br from-[#5C93EE] to-[#2C5FC9] flex items-center justify-center text-on-primary font-[590] text-[14px]"
@@ -189,23 +179,6 @@ export default function StageHotels({
           </div>
           <div className="text-[11.5px] text-on-surface-muted font-normal">{t('hotelHeadSub')}</div>
         </div>
-        <div className="flex-1" />
-        <div className="text-[11.5px] text-on-surface-muted font-normal max-w-[300px] truncate">
-          {selectedHotel ? t('hotelBadgeSelected', { name: selectedHotel.name }) : t('hotelBadgeEmpty')}
-        </div>
-        <button
-          type="button"
-          disabled={!selectedHotel}
-          onClick={openSelectedHotelRooms}
-          className="px-[18px] py-2.5 rounded-[13px] border-none text-[13px] font-[590] tracking-[-0.12px] transition-all duration-200 text-nowrap"
-          style={{
-            background: selectedHotel ? 'var(--btn)' : 'var(--fill2)',
-            color: selectedHotel ? 'var(--btn-fg)' : 'var(--t4)',
-            cursor: selectedHotel ? 'pointer' : 'default',
-          }}
-        >
-          {t('hotelHeaderPickRooms')}
-        </button>
       </div>
 
       {/* Three flex siblings: list | map | detail. The list never unmounts and
