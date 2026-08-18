@@ -13,7 +13,7 @@ import { useSessionHistory } from './hooks/use-session-history'
 import { deriveStageView, type StageView } from './lib/derive-stage'
 import { isFieldFilled } from './lib/next-intake-field'
 import { consumeVnpayReturn } from './lib/vnpay-return'
-import type { HotelOption } from './types'
+import type { HotelFilterData, HotelOption } from './types'
 import AppShell from './components/app-shell'
 import AuthPanel from './auth/auth-panel'
 import BookingModal from './components/booking-modal'
@@ -151,8 +151,18 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   }, [stage])
   const displayStage = viewOverride ?? stage
   const [hotelOptionsBySession, setHotelOptionsBySession] = useState<Record<string, HotelOption[]>>({})
+  // Retained alongside hotelOptions, same lifetime, same trigger (bug fix):
+  // a turn that doesn't re-run the hotel search (selecting a hotel, building
+  // the itinerary, a qa_node answer) comes back with an empty
+  // hotel_amenities catalog even though the retained hotel cards above are
+  // still showing the PREVIOUS search's hotels — without this, those cards'
+  // amenity tags fall back to raw canonical ids (e.g. "swimming_pool")
+  // because displayAmenityLabels has nothing to resolve them against.
+  const [hotelFilterDataBySession, setHotelFilterDataBySession] = useState<Record<string, HotelFilterData>>({})
   const [selectedHotelIndexBySession, setSelectedHotelIndexBySession] = useState<Record<string, number | null>>({})
   const retainedHotelOptions = state.sessionId ? (hotelOptionsBySession[state.sessionId] ?? []) : []
+  const retainedHotelFilterData =
+    (state.sessionId ? hotelFilterDataBySession[state.sessionId] : undefined) ?? state.hotelFilterData
 
   // Real room hold (use-room-hold.ts) — owned here (not lower in the tree)
   // because it must survive across the hotels/workspace stage swap AND be
@@ -245,8 +255,9 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   useEffect(() => {
     if (!state.sessionId || state.hotelOptions.length === 0) return
     setHotelOptionsBySession((current) => ({ ...current, [state.sessionId!]: state.hotelOptions }))
+    setHotelFilterDataBySession((current) => ({ ...current, [state.sessionId!]: state.hotelFilterData }))
     setSelectedHotelIndexBySession((current) => ({ ...current, [state.sessionId!]: null }))
-  }, [state.sessionId, state.hotelOptions])
+  }, [state.sessionId, state.hotelOptions, state.hotelFilterData])
 
   function selectHotel(index: number) {
     if (!state.sessionId) return
@@ -402,6 +413,7 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
         stage={displayStage}
         onViewStage={setViewOverride}
         hotelOptions={retainedHotelOptions}
+        hotelFilterData={retainedHotelFilterData}
         selectedHotelIndex={selectedHotelIndex}
         onSelectHotel={selectHotel}
         onConfirmHotel={handleHotelSelection}
