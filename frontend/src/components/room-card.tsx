@@ -14,12 +14,18 @@ import type { AmenityCatalogOption, RoomDetail } from '../types'
  * phòng" buttons below them; closing smooth-scrolls the card back into view
  * — see the `open` effect below.
  *
- * "Chọn phòng" (`selected`/`onPick`) is display-only by design (plan.md "Phần
- * chưa làm" #4): the backend has no select-room verb, so picking a room here
- * never reaches it, never changes the hotel's total price or AI summary —
- * it's a local highlight the caller (hotel-detail-panel.tsx) tracks per
- * hotel, same as the design's `state.rooms[hid]`. No cancellation/payment
- * policy cells either (plan.md #21) — the tables have no such columns.
+ * "Chọn phòng" (`selected`/`onPick`) is room-level display-only by design
+ * (plan.md "Phần chưa làm" #4): the backend has no select-room verb, so
+ * picking a room here never reaches it, never changes the hotel's total
+ * price or AI summary — it's a local highlight the caller
+ * (hotel-detail-panel.tsx) tracks per hotel, same as the design's
+ * `state.rooms[hid]`. It DOES also select the hotel itself, though (bug
+ * fix): the backend has no hotel-vs-room selection distinction either, and
+ * a room pick that left the (real, backend-reaching) hotel-selection state
+ * untouched left first-time users stuck on a disabled "Tạo lịch trình"
+ * button with zero feedback — see hotel-detail-panel.tsx's `onSelectHotel`.
+ * No cancellation/payment policy cells either (plan.md #21) — the tables
+ * have no such columns.
  *
  * The availability badge is honest: it maps from price.sold_out (real data),
  * shows only when a price row exists at all (price: null means "we don't

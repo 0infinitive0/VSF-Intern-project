@@ -748,6 +748,66 @@ def test_included_breakfast_is_added_as_a_canonical_hotel_amenity(monkeypatch):
     ]
 
 
+def test_sea_view_is_added_as_a_canonical_hotel_amenity(monkeypatch):
+    """Bug fix: a compound request ("view biển ... và có bao bữa sáng") used
+    to be able to lose the sea-view half if the extractor only emitted the
+    other amenity -- breakfast already had this rescue, sea view didn't."""
+    _patch(
+        monkeypatch,
+        _FakeLLM(
+            [_payload("hotel_search", [{"path": "hotel_preferences.amenities", "operation": "append", "value": "breakfast"}])]
+        ),
+    )
+
+    result = extract_patch(_state("Tôi muốn phòng có view biển lãng mạn và có bao bữa sáng"))
+
+    assert result["patch"] == [
+        {"path": "hotel_preferences.amenities", "operation": "append", "value": "breakfast"},
+        {"path": "hotel_preferences.amenities", "operation": "append", "value": "sea_view"},
+    ]
+
+
+def test_negated_sea_view_is_not_added(monkeypatch):
+    _patch(monkeypatch, _FakeLLM([_payload("hotel_search", [])]))
+
+    result = extract_patch(_state("Không cần view biển cũng được"))
+
+    assert result["patch"] == []
+
+
+def test_explicit_date_range_overrides_whatever_the_llm_extracted(monkeypatch):
+    """Bug fix: compose-intake-message.ts always sends this exact "từ ngày
+    D/M/Y đến ngày D/M/Y" template for the date-range picker. A picked
+    10-13/09/2026 range (3 nights) used to be able to come back echoed as
+    10-12 (2 nights) if the model mis-copied the checkout date out of the
+    sentence -- this makes the parse deterministic instead of trusting the
+    model, using the LLM's (here deliberately wrong) end date to prove the
+    override actually wins."""
+    _patch(
+        monkeypatch,
+        _FakeLLM(
+            [
+                _payload(
+                    "update_trip",
+                    [
+                        {"path": "dates.start", "operation": "set", "value": "10/9/2026"},
+                        {"path": "dates.end", "operation": "set", "value": "12/9/2026"},  # wrong on purpose
+                    ],
+                )
+            ]
+        ),
+    )
+
+    result = extract_patch(
+        _state("Tôi muốn đi Đà Nẵng từ ngày 10/09/2026 đến ngày 13/09/2026 cho 4 người.")
+    )
+
+    assert result["patch"] == [
+        {"path": "dates.start", "operation": "set", "value": "10/09/2026"},
+        {"path": "dates.end", "operation": "set", "value": "13/09/2026"},
+    ]
+
+
 def test_ambiguous_date_without_a_year_is_left_for_the_model_to_omit(monkeypatch):
     """"01/07" alone has no year -- the prompt instructs the model to omit
     it rather than guess (Phase 7 owns the interrupt-based disambiguation

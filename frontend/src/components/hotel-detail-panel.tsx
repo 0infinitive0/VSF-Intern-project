@@ -39,6 +39,7 @@ export default function HotelDetailPanel({
   hotelAmenities,
   selectedAmenityIds,
   onClose,
+  onSelectHotel,
 }: {
   /** null while no hotel has ever been focused yet this session (the caller
    * keeps mounting this component always — see stage-hotels.tsx's
@@ -50,6 +51,13 @@ export default function HotelDetailPanel({
   /** Canonical amenity filters currently active in the hotel list. */
   selectedAmenityIds: string[]
   onClose: () => void
+  /** Selects THIS panel's currently-open hotel (bound to its index by the
+   * caller). Fired from a room pick too — see roomPicks' onPick below: the
+   * "Chọn phòng này" button visually reads as a commit action, but there is
+   * no backend room-selection verb at all, so picking a room silently doing
+   * nothing to the actual (hotel-level) selection state left first-time
+   * users stuck on a disabled "Tạo lịch trình" button with no explanation. */
+  onSelectHotel: () => void
 }) {
   const { t, i18n } = useTranslation()
   const { detail, status } = useHotelDetail(hotelId)
@@ -272,7 +280,10 @@ export default function HotelDetailPanel({
                           room={room}
                           delay={`${i * 90}ms`}
                           selected={roomPicks[hotelId] === roomKey}
-                          onPick={() => setRoomPicks((prev) => ({ ...prev, [hotelId]: roomKey }))}
+                          onPick={() => {
+                            setRoomPicks((prev) => ({ ...prev, [hotelId]: roomKey }))
+                            onSelectHotel()
+                          }}
                           amenityDetails={detail.room_amenities ?? []}
                         />
                       )

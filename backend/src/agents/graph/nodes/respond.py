@@ -341,8 +341,15 @@ def respond(state: TravelGraphState) -> dict[str, Any]:
     stage = derive_stage(state, hotel_options, reply)
     min_price, max_price, _skipped = budget_from_travel_state(travel_state)
     amenity_slot = travel_state.get("hotel_preferences.amenities")
-    hotel_amenities = hotel_amenities_from_hotel_options(hotel_options) if stage == "hotel_options" else []
-    if stage == "hotel_options":
+    # Gated on `hotel_options` itself, not `stage` (bug fix): `hotel_options`
+    # already reflects whatever this turn's response carries, so pairing it
+    # with an empty amenity catalog/preference list here is what produced
+    # the reported bugs — raw amenity IDs on the cards (no catalog to
+    # resolve them against) and the preferences panel appearing to reset,
+    # on any turn whose `stage` isn't literally "hotel_options" even though
+    # hotel cards are still present in the same response.
+    hotel_amenities = hotel_amenities_from_hotel_options(hotel_options) if hotel_options else []
+    if hotel_options:
         active_ids = _active_hotel_preference_ids(state)
         if not active_ids and amenity_slot.presence is Presence.SET:
             # A re-search/change-hotel turn can retain its cards while the

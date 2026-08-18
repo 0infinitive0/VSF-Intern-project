@@ -311,6 +311,10 @@ export default function StageHotels({
             hotelAmenities={amenityCatalog}
             selectedAmenityIds={preferenceIds}
             onClose={focusMode.closeFocus}
+            onSelectHotel={() => {
+              const found = hotels.find((h) => h.id === lastFocusedId)
+              if (found) onSelectHotel(found.index)
+            }}
           />
         </div>
       </div>

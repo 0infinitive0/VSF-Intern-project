@@ -18,7 +18,7 @@ import src.agents.graph.nodes.supervisor as supervisor_module
 import src.services.search_center as search_center_module
 from src.agents.graph.nodes.hotel_node import hotel_node
 from src.domain.travel_state import TravelState, apply_patch
-from src.services.amenity_catalog import AmenityBindingResult
+from src.services.amenity_catalog import AmenityBindingResult, AmenityCatalogEntry
 from src.services.hotel_selection import NoHotelsMatchAmenities, NoHotelsMatchRating
 from src.services.trip_scheduler import PlaceCandidate
 
@@ -197,15 +197,24 @@ def test_hotel_search_uses_catalog_ids_for_chat_amenity_aliases(monkeypatch):
         "resolve_hotel_amenity_ids",
         lambda _values: AmenityBindingResult(ids=("swimming_pool",), unresolved=("unknown amenity",)),
     )
+    monkeypatch.setattr(
+        hotel_node_module,
+        "all_approved_amenities",
+        lambda: (AmenityCatalogEntry(id="swimming_pool", label="Hồ bơi", match_keywords=()),),
+    )
     monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _select)
     monkeypatch.setattr(hotel_node_module, "rank_hotel_candidates", lambda options, **_k: options)
 
     result = hotel_node(_graph_state(_seeded_travel_state(hotel_preferences__amenities=["pool", "unknown amenity"])))
 
     assert captured["required_amenities"] == ["swimming_pool"]
+    # Catalog-resolved Vietnamese label, not the raw internal ID (bug fix:
+    # active_preferences used to leak "swimming_pool" straight to the user).
     assert result["task_results"][-1]["hotel_search_result"]["active_preferences"] == [
-        {"id": "swimming_pool", "label": "swimming_pool"}
+        {"id": "swimming_pool", "label": "Hồ bơi"}
     ]
+    # The unresolved term is surfaced to the user, not silently dropped.
+    assert "unknown amenity" in result["task_results"][-1]["reply"]
 
 
 def test_zero_results_is_a_generic_no_results_status(monkeypatch):
@@ -217,19 +226,51 @@ def test_zero_results_is_a_generic_no_results_status(monkeypatch):
     assert result["task_results"][-1]["status"] == "no_results"
 
 
+def test_dates_causing_zero_results_gets_a_date_specific_reply(monkeypatch):
+    """Bug fix: a destination with real inventory but no availability for the
+    requested dates used to get the same generic "no hotel found" message as
+    a destination with zero hotels at all. The dateless fallback isolates
+    the cause and reports it specifically."""
+
+    def _select(*_args, **kwargs):
+        if kwargs.get("start_date") or kwargs.get("end_date"):
+            return []
+        return [_option("h1")]
+
+    monkeypatch.setattr(hotel_node_module, "_get_destination_id", lambda _d: "dest-1")
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _select)
+
+    result = hotel_node(_graph_state(_seeded_travel_state()))
+
+    entry = result["task_results"][-1]
+    assert entry["status"] == "no_results_dates"
+    assert "Đà Nẵng" in entry["reply"]
+
+
 def test_amenity_binding_constraint_names_the_tag_in_the_reply(monkeypatch):
     def _raise(*_a, **_k):
         raise NoHotelsMatchAmenities({"gym": 3, "pool": 0})
 
     monkeypatch.setattr(hotel_node_module, "_get_destination_id", lambda _d: "dest-1")
     monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _raise)
+    monkeypatch.setattr(
+        hotel_node_module,
+        "all_approved_amenities",
+        lambda: (AmenityCatalogEntry(id="gym", label="Phòng tập", match_keywords=()),),
+    )
 
     travel_state = _seeded_travel_state(hotel_preferences__amenities=["gym", "pool"])
     result = hotel_node(_graph_state(travel_state))
 
     entry = result["task_results"][-1]
     assert entry["status"] == "no_results_amenities"
-    assert "gym" in entry["reply"]
+    # Catalog-resolved Vietnamese label, not the raw internal ID (bug fix:
+    # the reply used to leak "gym"/"breakfast"-style raw tags verbatim).
+    # "pool" has no catalog entry in this fixture, so it falls back to the
+    # raw tag -- exactly the documented behavior for an unresolvable ID.
+    assert "Phòng tập" in entry["reply"]
+    assert "pool" in entry["reply"]
+    assert "gym" not in entry["reply"]
 
 
 def test_rating_zero_results_reports_the_threshold_not_a_widened_list(monkeypatch):
