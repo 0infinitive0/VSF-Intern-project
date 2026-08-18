@@ -7,6 +7,7 @@ from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
 from src.agents.graph.state import TravelGraphState
+from src.agents.tools.shown_hotels import labelled_amenities, shown_hotel_options
 from src.i18n import t
 
 logger = logging.getLogger(__name__)
@@ -48,16 +49,20 @@ def query_hotel(
                     ) if language == "vi" else "Error: You just called this tool with the same args but the info wasn't there. DO NOT CALL IT AGAIN. Tell the user you don't have the info."
                     return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
 
-    hotel_options = runtime.state.get("hotel_options")
-    
-    if not hotel_options or not hotel_options.get("options"):
-        reply = t(
-            "SYSTEM ERROR: Không có danh sách khách sạn nào hiện đang được chọn. Hãy dùng công cụ recommend_hotels trước.",
-            language,
-        ) if language == "vi" else "SYSTEM ERROR: No hotel list is currently active. Use recommend_hotels first."
-        return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
+    options = shown_hotel_options(runtime.state)
 
-    options = hotel_options["options"]
+    if not options:
+        # Not a SYSTEM ERROR: `respond`'s derive_stage turns that prefix into
+        # a failed turn (`stage == "error"`), and this is an ordinary "you
+        # haven't searched yet" state. The old text also told the model to
+        # call `recommend_hotels`, a tool this node stopped having when
+        # recommending became a worker action -- so the one instruction it
+        # gave was impossible to follow.
+        reply = t(
+            "Chưa có danh sách khách sạn nào. Hãy nói với người dùng rằng bạn cần tìm khách sạn trước.",
+            language,
+        ) if language == "vi" else "No hotel list exists yet. Tell the user a hotel search is needed first."
+        return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
     matched_hotel = None
     
     hotel_identifier = str(hotel_identifier).strip().lower()
@@ -94,7 +99,10 @@ def query_hotel(
         "rank": matched_hotel.get("rank"),
         "star_rating": matched_hotel.get("star_rating"),
         "description": str(matched_hotel.get("description", ""))[:500] + "...", # Truncate description
-        "amenities": matched_hotel.get("amenities", []),
+        # Labels, not canonical ids: whatever this dict holds is what the
+        # model repeats to the user, and it will happily read
+        # "bể bơi (swimming_pool)" out loud if handed the id.
+        "amenities": labelled_amenities(matched_hotel.get("amenities", []), language=language),
         "covered_meals": matched_hotel.get("covered_meals", []),
         "lowest_price": matched_hotel.get("lowest_price"),
         "currency": matched_hotel.get("currency", "VND"),

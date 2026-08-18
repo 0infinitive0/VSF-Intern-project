@@ -51,6 +51,7 @@ from langchain_core.messages.utils import count_tokens_approximately, trim_messa
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import create_react_agent
+from langgraph.prebuilt.chat_agent_executor import AgentState
 
 from src.agents.tools.query_hotel import query_hotel
 from src.agents.tools.query_hotel_rooms import query_hotel_rooms
@@ -64,11 +65,46 @@ QA_TOOLS: Sequence[Any] = (
     search_places,
 )
 
+
+class QAState(AgentState):
+    """The react agent's state, widened by exactly two READ-ONLY parent keys.
+
+    `create_react_agent`'s default `AgentState` declares only `messages` (plus
+    its own `remaining_steps`), and a subgraph node is handed only the parent
+    keys its schema declares. That boundary is what this node's write contract
+    rests on -- but it also meant `query_hotel`/`query_hotel_rooms` could not
+    see the hotel cards they exist to answer questions about. They read
+    `state["hotel_options"]`, a key `TravelGraphState` never had, so the
+    lookup returned `None` on every call and every hotel question came back
+    as "no hotel list is currently active" while the cards sat on screen.
+
+    Adding these two does not widen what the node can WRITE: the agent emits
+    `messages` only (its tools all return `Command(update={"messages": ...})`),
+    and `CONTRACTS["qa_node"].writes` stays empty. `travel_state`,
+    `pending_tasks` and `task_results` remain structurally unreachable.
+    """
+
+    language: str
+    previous_hotel_options: list[dict[str, Any]]
+
+
 QA_SYSTEM_PROMPT = (
     "You answer questions about hotels and rooms already shown to the user, "
     "and you can search for nearby places like restaurants or attractions. "
     "You never modify the trip, never recommend or select a hotel, and never "
-    "build or edit an itinerary — use only the provided tools."
+    "build or edit an itinerary — use only the provided tools.\n"
+    # Without this the agent treats every lookup as expensive and asks first
+    # ("bạn có muốn mình kiểm tra tất cả 5 khách sạn không?"), so a question
+    # costs the user two turns and an extra confirmation to get one fact.
+    "Answer the question in the same turn. The user asking IS the permission "
+    "— call the tools you need and give the answer, never reply by asking "
+    "whether you should look something up.\n"
+    "Hotels are referred to the way they appear on screen: by position "
+    '("khách sạn số 1", "cái đầu tiên", "cái thứ hai") or by name. Pass that '
+    "position number or name straight through as `hotel_identifier` — the "
+    "tools resolve both. Do not ask the user which list they mean.\n"
+    "Ground every claim in what the tools return. If a tool has no data for "
+    "something, say plainly that you don't have it rather than guessing."
 )
 
 
@@ -118,4 +154,5 @@ def build_qa_subgraph(checkpointer: BaseCheckpointSaver, *, temperature: float =
         checkpointer=checkpointer,
         prompt=QA_SYSTEM_PROMPT,
         pre_model_hook=fit_context_window,
+        state_schema=QAState,
     )
