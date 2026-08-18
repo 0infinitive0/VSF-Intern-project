@@ -1854,6 +1854,7 @@ class AirflowDiscoveryTests(unittest.TestCase):
                 "hotel_pipeline.py",
                 "hotel_nearby_pipeline.py",
                 "pipeline_stages.py",
+                "tour_pipeline.py",
             },
         )
 
