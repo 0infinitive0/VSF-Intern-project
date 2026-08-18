@@ -299,7 +299,9 @@ export default function BookingModal({
             className="hidden sm:flex flex-none items-center gap-2 px-3.5 py-[7px] rounded-xl border border-stroke whitespace-nowrap"
             style={{ background: 'var(--fill)' }}
           >
-            <span className="text-[11px] text-on-surface-variant">⏱</span>
+            <span className="material-symbols-outlined text-[16px] text-on-surface-variant leading-none" aria-hidden="true">
+              schedule
+            </span>
             <span className="text-[9.5px] font-[590] tracking-[0.09em] uppercase text-on-surface-muted">
               {t('holdBannerHeldLabel')}
             </span>

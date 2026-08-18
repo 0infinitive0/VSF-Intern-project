@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getPaymentStatus } from './api/payment-client'
 import { deleteSession } from './api/session-client'
@@ -153,7 +153,6 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   const [hotelOptionsBySession, setHotelOptionsBySession] = useState<Record<string, HotelOption[]>>({})
   const [selectedHotelIndexBySession, setSelectedHotelIndexBySession] = useState<Record<string, number | null>>({})
   const retainedHotelOptions = state.sessionId ? (hotelOptionsBySession[state.sessionId] ?? []) : []
-  const selectedHotelIndex = state.sessionId ? (selectedHotelIndexBySession[state.sessionId] ?? null) : null
 
   // Real room hold (use-room-hold.ts) — owned here (not lower in the tree)
   // because it must survive across the hotels/workspace stage swap AND be
@@ -161,6 +160,28 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   // for the same "escape any backdrop-filter ancestor" reason
   // profile-password-modal.tsx documents for its own portal.
   const roomHold = useRoomHold()
+  const explicitSelectedHotelIndex = state.sessionId ? (selectedHotelIndexBySession[state.sessionId] ?? null) : null
+  const selectedHotelIndex = useMemo(() => {
+    if (explicitSelectedHotelIndex != null) return explicitSelectedHotelIndex
+
+    if (state.tripPlan?.hotel) {
+      const planHotel = state.tripPlan.hotel
+      const match = retainedHotelOptions.find(
+        (h) =>
+          (planHotel.id && h.id === planHotel.id) ||
+          (planHotel.name && h.name && h.name.toLowerCase().trim() === planHotel.name.toLowerCase().trim()),
+      )
+      if (match != null && match.index != null) return match.index
+    }
+
+    if (roomHold.heldHotelId) {
+      const match = retainedHotelOptions.find((h) => h.id === roomHold.heldHotelId)
+      if (match != null && match.index != null) return match.index
+    }
+
+    return null
+  }, [explicitSelectedHotelIndex, state.tripPlan?.hotel, roomHold.heldHotelId, retainedHotelOptions])
+
   const [bookingModalOpen, setBookingModalOpen] = useState(false)
   const heldHotel =
     retainedHotelOptions.find((h) => h.id === roomHold.heldHotelId) ?? null

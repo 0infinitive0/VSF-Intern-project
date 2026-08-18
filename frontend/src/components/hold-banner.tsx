@@ -53,8 +53,12 @@ export default function HoldBanner({
             animation: danger ? 'vPulse 1.6s ease-in-out infinite' : 'none',
           }}
         >
-          <span className="text-[12px]" style={{ color: danger ? 'var(--err)' : warn ? 'var(--warn)' : 'var(--t2)' }}>
-            ⏱
+          <span
+            className="material-symbols-outlined text-[16px] leading-none"
+            style={{ color: danger ? 'var(--err)' : warn ? 'var(--warn)' : 'var(--t2)' }}
+            aria-hidden="true"
+          >
+            schedule
           </span>
           <span className="text-[9.5px] font-[590] tracking-[0.09em] uppercase text-on-surface-muted">
             {t('holdBannerHeldLabel')}

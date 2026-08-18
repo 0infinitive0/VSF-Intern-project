@@ -103,7 +103,27 @@ export default function StageHotels({
   useEffect(() => {
     if (focusedId != null) setLastFocusedId(focusedId)
   }, [focusedId])
-  const selectedHotel = hotels.find((h) => h.index === selectedIndex) ?? null
+  const selectedHotel = useMemo(() => {
+    if (selectedIndex != null) {
+      const found = hotels.find((h) => h.index === selectedIndex)
+      if (found) return found
+    }
+    if (state.tripPlan?.hotel) {
+      const planHotel = state.tripPlan.hotel
+      const found = hotels.find(
+        (h) =>
+          (planHotel.id && h.id === planHotel.id) ||
+          (planHotel.name && h.name && h.name.toLowerCase().trim() === planHotel.name.toLowerCase().trim()),
+      )
+      if (found) return found
+    }
+    if (roomHold.heldHotelId) {
+      const found = hotels.find((h) => h.id === roomHold.heldHotelId)
+      if (found) return found
+    }
+    return null
+  }, [hotels, selectedIndex, state.tripPlan?.hotel, roomHold.heldHotelId])
+  const resolvedSelectedIndex = selectedHotel?.index ?? selectedIndex
   const nights = nightsFrom(state.intake?.start_date, state.intake?.end_date)
   const selectedId = selectedHotel ? hotelOptionSyncId(selectedHotel) : null
   const { detail: selectedHotelDetail } = useHotelDetail(selectedHotel?.id ?? null)
@@ -156,10 +176,50 @@ export default function StageHotels({
     mapSync.focusOn(marker.syncId)
   }
 
+  // Auto-scroll smoothly to the selected hotel card on mount or when selection/filters change
+  const autoScrolledId = useRef<string | null>(null)
+  useEffect(() => {
+    if (focused) return
+    const container = listRef.current
+    if (!container) return
+
+    const targetId = selectedId
+    let timerId: ReturnType<typeof setTimeout> | null = null
+
+    const rafId = requestAnimationFrame(() => {
+      timerId = setTimeout(() => {
+        const el =
+          (targetId ? container.querySelector<HTMLElement>(`[data-card="${CSS.escape(targetId)}"]`) : null) ??
+          container.querySelector<HTMLElement>('[data-selected="true"]')
+
+        if (!el || !listRef.current) return
+        autoScrolledId.current = targetId
+
+        const elTop = el.offsetTop
+        const elHeight = el.offsetHeight
+        const containerHeight = listRef.current.clientHeight
+        const targetScroll = Math.max(0, elTop - containerHeight / 2 + elHeight / 2)
+
+        listRef.current.scrollTo({
+          top: targetScroll,
+          behavior: 'smooth',
+        })
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      }, 150)
+    })
+
+    return () => {
+      cancelAnimationFrame(rafId)
+      if (timerId != null) clearTimeout(timerId)
+    }
+  }, [selectedId, resolvedSelectedIndex, filteredHotels, focused])
+
+  const prevFocused = useRef(focused)
   useLayoutEffect(() => {
-    if (!focused && listRef.current) {
+    if (prevFocused.current && !focused && listRef.current) {
       listRef.current.scrollTop = savedScroll.current
     }
+    prevFocused.current = focused
   }, [focused])
 
   return (
@@ -219,7 +279,7 @@ export default function StageHotels({
           />
           <HotelOptionCards
             hotels={filteredHotels}
-            selectedIndex={selectedIndex}
+            selectedIndex={resolvedSelectedIndex}
             focusedId={focusedId}
             nights={nights}
             hotelAmenities={amenityCatalog}

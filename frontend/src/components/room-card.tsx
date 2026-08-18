@@ -169,7 +169,11 @@ export default function RoomCard({
                     : { background: 'var(--color-success-soft)', color: 'var(--ok)' }
                 }
               >
-                {price.sold_out ? t('roomSoldOut') : t('roomAvailable')}
+                {price.sold_out
+                  ? t('roomSoldOut')
+                  : room.available_room_count != null && room.available_room_count > 0
+                    ? t('roomAvailableCount', { count: room.available_room_count })
+                    : t('roomAvailable')}
               </span>
             </div>
           )}

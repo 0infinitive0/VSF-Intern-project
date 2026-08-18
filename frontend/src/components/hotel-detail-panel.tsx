@@ -151,7 +151,7 @@ export default function HotelDetailPanel({
 
   return (
     <div className="min-w-0 h-full">
-      <div className="glass-panel relative h-full overflow-y-auto custom-scrollbar rounded-[26px]">
+      <div className="glass-panel relative h-full flex flex-col rounded-[26px] overflow-hidden">
         {status === 'error' ? (
           <div className="h-full flex flex-col items-center justify-center gap-3 p-8 text-center">
             <span className="material-symbols-outlined text-4xl text-on-surface-faint" aria-hidden="true">
@@ -166,10 +166,94 @@ export default function HotelDetailPanel({
               {t('detailCloseLabel')}
             </button>
           </div>
-        ) : (
-          <>
+        ) : status === 'loading' ? (
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
             {/* Hero — 240px, vHero reveal, bottom fade, close ✕ */}
             <div className="relative h-[240px] overflow-hidden animate-[vHero_0.9s_cubic-bezier(0.22,1,0.36,1)_both]">
+              <RemoteImage
+                src={heroSrc}
+                alt={t('hotelImgAlt', { name })}
+                className="absolute inset-0"
+              />
+              <div
+                className="absolute inset-x-0 bottom-0 h-[120px] pointer-events-none"
+                style={{ background: 'linear-gradient(to top, var(--g3), transparent)' }}
+                aria-hidden="true"
+              />
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label={t('detailCloseLabel')}
+                className="absolute top-4 right-4 w-[34px] h-[34px] rounded-full border border-edge text-on-surface text-[14px] cursor-pointer transition-transform duration-200 hover:scale-[1.08] active:scale-[0.92]"
+                style={{
+                  background: 'var(--g3)',
+                  backdropFilter: 'blur(18px)',
+                  WebkitBackdropFilter: 'blur(18px)',
+                  boxShadow: '0 10px 24px -10px rgb(var(--shadow-rgb) / 0.5)',
+                }}
+              >
+                ✕
+              </button>
+              <div className="absolute left-5 bottom-4 right-[70px]">
+                {starRating != null && (
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="text-[11px] font-[530] text-on-surface-variant px-[9px] py-[3px] rounded-full bg-glass-3">
+                      {formatHotelStars(starRating)}
+                    </span>
+                  </div>
+                )}
+                <div className="text-[26px] font-[590] tracking-[-0.9px] leading-[1.1] text-on-surface">
+                  {name}
+                </div>
+                {areaName && (
+                  <div className="text-[12.5px] font-[450] text-on-surface-variant mt-[3px]">
+                    {areaName}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="px-5 pt-[18px] pb-5 flex flex-col gap-4">
+              {/* Gallery skeleton */}
+              <div className="grid grid-cols-4 gap-[9px]">
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="shimmer-block h-[80px] rounded-[16px]" />
+                ))}
+              </div>
+
+              {/* Rooms skeleton */}
+              <div className="flex flex-col gap-2.5">
+                <div className="shimmer-block h-[14px] w-[110px] rounded-[10px]" />
+                {[0, 1].map((i) => (
+                  <div
+                    key={i}
+                    className="rounded-[22px] p-3.5 border border-edge bg-glass-2 flex flex-col gap-3"
+                  >
+                    <div className="flex gap-[13px]">
+                      <div className="shimmer-block w-[92px] h-[76px] rounded-[16px] flex-none" />
+                      <div className="flex-1 flex flex-col justify-center gap-2">
+                        <div className="shimmer-block h-[15px] w-[65%] rounded-[10px]" />
+                        <div className="shimmer-block h-[11px] w-[45%] rounded-[8px]" />
+                        <div className="shimmer-block h-[16px] w-[35%] rounded-[10px] mt-1" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Policies/Distances skeleton */}
+              <div className="p-4 rounded-[22px] bg-glass-2 border border-edge flex flex-col gap-2.5">
+                <div className="shimmer-block h-[13px] w-[90px] rounded-[8px]" />
+                <div className="shimmer-block h-[11px] w-[80%] rounded-[8px]" />
+                <div className="shimmer-block h-[11px] w-[60%] rounded-[8px]" />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+              {/* Hero — 240px, vHero reveal, bottom fade, close ✕ */}
+              <div className="relative h-[240px] overflow-hidden animate-[vHero_0.9s_cubic-bezier(0.22,1,0.36,1)_both]">
               <RemoteImage
                 src={heroSrc}
                 alt={t('hotelImgAlt', { name })}
@@ -407,22 +491,23 @@ export default function HotelDetailPanel({
                 </div>
               )}
 
-              {/* Sticky cart summary + "Giữ phòng" — real hold, not a local
-                  pick (use-room-hold.ts). Only rendered once rooms exist, so
-                  a hotel with no room data never shows an empty cart bar. */}
-              {detail?.rooms && detail.rooms.length > 0 && (
-                <HoldFooter
-                  hotelId={hotelId}
-                  rooms={detail.rooms}
-                  roomHold={roomHold}
-                  checkInDate={checkInDate}
-                  checkOutDate={checkOutDate}
-                  onConfirmHotel={onConfirmHotel}
-                  option={option}
-                  heldElsewhereHotelName={heldElsewhereHotelName ?? null}
-                />
-              )}
+              </div>
             </div>
+
+            {/* Cart summary + "Giữ phòng" — real hold, not a local
+                pick (use-room-hold.ts). Docked at the bottom of the panel. */}
+            {detail?.rooms && detail.rooms.length > 0 && (
+              <HoldFooter
+                hotelId={hotelId}
+                rooms={detail.rooms}
+                roomHold={roomHold}
+                checkInDate={checkInDate}
+                checkOutDate={checkOutDate}
+                onConfirmHotel={onConfirmHotel}
+                option={option}
+                heldElsewhereHotelName={heldElsewhereHotelName ?? null}
+              />
+            )}
           </>
         )}
       </div>
@@ -565,13 +650,13 @@ function HoldFooter({
   return (
     <>
     <div
-      className="sticky -bottom-[22px] -mx-5 mt-1 px-5 pt-3.5 pb-[30px] flex flex-col gap-2.5"
+      className="flex-none px-5 pt-3.5 pb-4 flex flex-col gap-2.5"
       style={{
         background: 'var(--pop-bg, var(--g3))',
         backdropFilter: 'blur(26px) saturate(1.7)',
         WebkitBackdropFilter: 'blur(26px) saturate(1.7)',
         borderTop: '1px solid var(--edge)',
-        boxShadow: '0 -24px 48px -30px rgb(var(--shadow-rgb) / 0.55)',
+        boxShadow: '0 -16px 36px -18px rgb(var(--shadow-rgb) / 0.55)',
       }}
     >
       {cartCount > 0 ? (
