@@ -19,6 +19,7 @@ Three paths, in order:
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Literal
 
@@ -45,6 +46,28 @@ class SupervisorDecision(BaseModel):
     next_worker: Literal["hotel_node", "itinerary_node", "booking_node", "qa_node"]
     task_description: str
     reasoning: str  # audit only — never shown to the user
+    # Only meaningful when next_worker == "itinerary_node" — selects which of
+    # itinerary_node's three actions to run (see its module docstring's
+    # `task_description` JSON contract). Ignored for every other worker.
+    action: Literal["rebuild_days", "edit_item", "lock_days"] | None = None
+
+
+def _task_description_for(worker: str, decision: SupervisorDecision | None, source: str) -> str:
+    """Free-text audit description for every worker, except `itinerary_node`
+    on the LLM path: that node's `_parse_task` only recognizes `edit_item`/
+    `lock_days` from a JSON `{"action": ..., "user_request": ...}` string
+    (its module docstring's contract) — a plain sentence silently falls back
+    to `rebuild_days` every time, which is what made `edit_item`'s
+    suggest-then-pick flow unreachable in production before this. The fast
+    path (`impact_map`, no `decision`) still gets the old fixed string:
+    it only ever fires for a first-ever build or a trip-wide patch, where
+    `rebuild_days` (itinerary_node's own default with no action given) is
+    already the right action."""
+    if not decision:
+        return f"auto-routed to {worker} via {source}"
+    if worker == "itinerary_node" and decision.action:
+        return json.dumps({"action": decision.action, "user_request": decision.task_description})
+    return decision.task_description
 
 
 def _delegate(
@@ -52,7 +75,7 @@ def _delegate(
 ) -> dict[str, Any]:
     return {
         "next_worker": worker,
-        "task_description": decision.task_description if decision else f"auto-routed to {worker} via {source}",
+        "task_description": _task_description_for(worker, decision, source),
         "routing_source": source,
         "routing_reasoning": decision.reasoning if decision else "",
         "supervisor_iterations": state.get("supervisor_iterations", 0) + 1,

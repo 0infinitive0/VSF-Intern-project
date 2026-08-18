@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import TimelineItem from './timeline-item'
 import { dayRouteMetrics } from '../lib/leg'
+import { capitalizeFirst } from '../lib/capitalize'
 import type { Day, DayItem } from '../types'
 
 const NUM_LOCALE = (lang: string) => (lang === 'vi' ? 'vi-VN' : 'en-US')
@@ -38,7 +39,9 @@ export default function DayTimeline({
   const kmPart = `${m.approximate ? '≈ ' : ''}${t('legDistanceKm', { km: numFmt.format(m.distanceKm) })}`
   const routePart =
     m.durationMins > 0 ? `${kmPart} · ${t('legDurationMins', { mins: numFmt.format(m.durationMins) })}` : kmPart
-  const daySub = [day.theme, hasRoute ? routePart : null].filter((x): x is string => Boolean(x)).join(' · ')
+  const daySub = [day.theme ? capitalizeFirst(day.theme) : null, hasRoute ? routePart : null]
+    .filter((x): x is string => Boolean(x))
+    .join(' · ')
 
   return (
     <div style={{ animation: 'vRise .45s cubic-bezier(.22,1,.36,1) both' }}>

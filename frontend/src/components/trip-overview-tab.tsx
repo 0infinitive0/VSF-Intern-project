@@ -3,6 +3,7 @@ import { formatHotelStars } from '../lib/format-stars'
 import { formatSourcePlatform } from '../lib/format-source-platform'
 import { dayRouteMetrics, tripRouteMetrics } from '../lib/leg'
 import { dayColor } from '../lib/map-colors'
+import { capitalizeFirst } from '../lib/capitalize'
 import RemoteImage from './remote-image'
 import type { Day, TripPlan } from '../types'
 
@@ -206,7 +207,7 @@ function DayCard({ day, index, onPick }: { day: Day; index: number; onPick: () =
       <span className="flex-1 min-w-0">
         <span className="block text-[13.5px] font-[590] tracking-[-0.16px] text-on-surface truncate">
           {t('dayWord')} {day.day_number}
-          {day.theme ? ` · ${day.theme}` : ''}
+          {day.theme ? ` · ${capitalizeFirst(day.theme)}` : ''}
         </span>
         {sub && <span className="block text-[11.5px] text-on-surface-muted font-normal mt-[1px] truncate">{sub}</span>}
       </span>

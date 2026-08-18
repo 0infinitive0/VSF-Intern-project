@@ -8,6 +8,8 @@ fast path/edge predicate is supposed to skip the LLM entirely.
 
 from __future__ import annotations
 
+import json
+
 import src.agents.graph.nodes.supervisor as supervisor_module
 from src.agents.graph.nodes.supervisor import MAX_SUPERVISOR_ITERATIONS, SupervisorDecision, supervisor
 from src.agents.graph.routing import all_tasks_done
@@ -233,6 +235,74 @@ def test_supervisor_allows_any_proposal_when_nothing_is_pending(monkeypatch):
 
     assert result["next_worker"] == "qa_node"
     assert result["routing_source"] == "supervisor"
+
+
+# --- itinerary_node's `action` -> `task_description` JSON contract -----------
+
+
+def test_edit_item_action_is_encoded_as_json_task_description(monkeypatch):
+    """`itinerary_node._parse_task` only recognizes `edit_item`/`lock_days`
+    from a JSON `{"action": ..., "user_request": ...}` string -- a plain
+    sentence silently falls back to `rebuild_days` every time. Regression
+    for that: when the LLM sets `action="edit_item"`, `_delegate` must
+    encode it into that exact JSON shape, not pass the sentence through."""
+    decision = SupervisorDecision(
+        next_worker="itinerary_node",
+        task_description="Swap day 1's breakfast for Timeline Coffee & Restaurant.",
+        reasoning="user asked to change one meal on one day",
+        action="edit_item",
+    )
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeLLM(decision=decision))
+
+    state = _state(
+        pending_tasks=[],
+        task_results=[],
+        trip_data={"itineraries": [{}]},
+        travel_state={"destination": {"presence": "set", "value": "Da Nang"}},
+    )
+    result = supervisor(state)
+
+    assert result["next_worker"] == "itinerary_node"
+    assert json.loads(result["task_description"]) == {
+        "action": "edit_item",
+        "user_request": "Swap day 1's breakfast for Timeline Coffee & Restaurant.",
+    }
+
+
+def test_itinerary_action_is_ignored_for_a_non_itinerary_worker(monkeypatch):
+    """`action` only means something for `itinerary_node` -- a value set on
+    any other worker (a model slip, or just unset) must not leak into that
+    worker's plain-text `task_description`."""
+    decision = SupervisorDecision(
+        next_worker="qa_node", task_description="answer a question", reasoning="x", action="edit_item"
+    )
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeLLM(decision=decision))
+
+    state = _state(pending_tasks=[], task_results=[])
+    result = supervisor(state)
+
+    assert result["next_worker"] == "qa_node"
+    assert result["task_description"] == "answer a question"
+
+
+def test_itinerary_node_without_an_action_keeps_the_plain_sentence(monkeypatch):
+    """No `action` set (e.g. a whole-day rebuild) -- `task_description`
+    stays the model's own sentence, matching `itinerary_node`'s documented
+    plain-string fallback to `rebuild_days`."""
+    decision = SupervisorDecision(
+        next_worker="itinerary_node", task_description="Rebuild day 2 from scratch.", reasoning="x"
+    )
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeLLM(decision=decision))
+
+    state = _state(
+        pending_tasks=[],
+        task_results=[],
+        trip_data={"itineraries": [{}]},
+        travel_state={"destination": {"presence": "set", "value": "Da Nang"}},
+    )
+    result = supervisor(state)
+
+    assert result["task_description"] == "Rebuild day 2 from scratch."
 
 
 def test_booking_node_is_never_eligible_via_impact_map():
