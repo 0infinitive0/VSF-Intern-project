@@ -330,3 +330,101 @@ def test_a_stating_turn_still_reaches_the_normal_router(monkeypatch):
     supervisor_module.supervisor(_supervisor_state(intent="update_itinerary"))
 
     assert called["llm"] is True
+
+
+# ---------------------------------------------------------------------------
+# Database vocabulary never reaches the traveller.
+#
+# The tools serialized raw table rows, and the model reports the shape it is
+# handed: asked whether a family of four fits, it answered "không có loại
+# phòng nào có trường max_guests = 4" and "nhiều phòng có max_guests = null"
+# -- a column name and a JSON literal, to a parent choosing a room.
+# ---------------------------------------------------------------------------
+
+
+def test_unknown_values_are_omitted_rather_than_sent_as_null():
+    from src.agents.tools.shown_hotels import without_unknowns
+
+    cleaned = without_unknowns({"room": "Suite", "sleeps": None, "view": "", "facilities": []})
+
+    assert cleaned == {"room": "Suite"}
+
+
+def test_real_zeroes_and_falses_survive():
+    """Absent means unknown; 0 is an answer, not a gap."""
+    from src.agents.tools.shown_hotels import without_unknowns
+
+    assert without_unknowns({"sleeps": 0, "refundable": False}) == {"sleeps": 0, "refundable": False}
+
+
+def test_the_hotel_tool_emits_no_column_names(monkeypatch):
+    from src.agents.tools.query_hotel import query_hotel
+
+    _stub_catalog(monkeypatch)
+    state = {
+        "language": "vi",
+        "previous_hotel_options": [
+            {"rank": 1, "name": "Liberty", "lowest_price": 2_097_309, "star_rating": 4.5,
+             "amenities": ["swimming_pool"], "description": None, "covered_meals": []},
+        ],
+    }
+
+    text = _tool_text(query_hotel.invoke({"hotel_identifier": "1", "runtime": _Runtime(state)}))
+
+    for leaked in ("lowest_price", "star_rating", "covered_meals", "matched_room_names", "null"):
+        assert leaked not in text, f"{leaked!r} reached the model"
+    # Keys are Vietnamese here, so a quoted key still reads as prose.
+    assert "giá mỗi đêm từ" in text
+    assert "Liberty" in text and "2097309" in text.replace(",", "").replace(".", "")
+
+
+def test_a_room_with_no_recorded_capacity_carries_no_null(monkeypatch):
+    """The exact shape behind "nhiều phòng có max_guests = null"."""
+    from src.agents.tools import query_hotel_rooms as rooms_module
+
+    _stub_catalog(monkeypatch)
+
+    class _Q:
+        def select(self, *_a, **_k): return self
+        def eq(self, *_a, **_k): return self
+        def ilike(self, *_a, **_k): return self
+        def execute(self):
+            return type("R", (), {"data": [
+                {"name": "Executive Twin", "max_guests": None, "room_size_sqm": 27,
+                 "bed_description": "2 giường đơn", "view": None, "room_facilities": ["swimming_pool"]},
+            ]})()
+
+    monkeypatch.setattr(rooms_module, "get_supabase_client", lambda: type("C", (), {"table": lambda *_a: _Q()})())
+    state = {"language": "vi", "previous_hotel_options": [{"rank": 1, "name": "Liberty", "id": "h1"}]}
+
+    text = _tool_text(rooms_module.query_hotel_rooms.invoke({"hotel_identifier": "1", "runtime": _Runtime(state)}))
+
+    for leaked in ("max_guests", "room_size_sqm", "bed_description", "room_facilities",
+                   "null", "sleeps", "facilities"):
+        assert leaked not in text, f"{leaked!r} reached the model"
+    assert "Executive Twin" in text
+    assert "Hồ bơi" in text
+    # The unknown capacity is absent entirely, not rendered as an empty key.
+    assert "số khách" not in text
+    assert "giường" in text
+
+
+def test_english_sessions_get_english_keys(monkeypatch):
+    from src.agents.tools import query_hotel_rooms as rooms_module
+
+    _stub_catalog(monkeypatch)
+
+    class _Q:
+        def select(self, *_a, **_k): return self
+        def eq(self, *_a, **_k): return self
+        def ilike(self, *_a, **_k): return self
+        def execute(self):
+            return type("R", (), {"data": [{"name": "Suite", "max_guests": 2}]})()
+
+    monkeypatch.setattr(rooms_module, "get_supabase_client", lambda: type("C", (), {"table": lambda *_a: _Q()})())
+    state = {"language": "en", "previous_hotel_options": [{"rank": 1, "name": "Liberty", "id": "h1"}]}
+
+    text = _tool_text(rooms_module.query_hotel_rooms.invoke({"hotel_identifier": "1", "runtime": _Runtime(state)}))
+
+    assert '"sleeps": 2' in text
+    assert "max_guests" not in text
