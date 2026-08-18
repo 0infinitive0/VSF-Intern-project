@@ -1,6 +1,9 @@
 # Attraction crawler DAGs
 
 This folder exposes four Airflow DAGs that share the same seven-stage pipeline.
+It also exposes `tour_pipeline`, a separate six-stage OTA-listing ETL (not a
+public-attraction crawl) — see [Tour/Activity pipeline](#touractivity-pipeline)
+below.
 
 | DAG | Sources | Schedule |
 | --- | --- | --- |
@@ -90,6 +93,32 @@ The scraper:
 Booking pages are parsed from their public HTML. Agoda activity pages are rendered
 with Playwright Chromium because their product content is client-rendered. The
 custom Airflow image installs that browser runtime.
+
+## Tour/Activity pipeline
+
+`tour_pipeline` is a separate, manually triggered DAG — Extract -> Validate ->
+Normalize -> Deduplicate -> Load -> QualityCheck for Booking.com tour/activity
+data (see `tour_pipeline.py`). It does not share task IDs or the seven-stage
+shape above: it loads a flat `tours` table (one row per
+`(source_platform, source_id)`), the way `hotel_pipeline.py` loads
+`hotels`/`rooms`/`room_prices`, rather than crawling public attraction
+candidates.
+
+Data comes from a live Apify actor run (Booking.com tours), not a local file
+upload. Before triggering the DAG, set:
+
+- Airflow **Variable** `tour_booking_actor_id` — the Apify actor ID to run.
+- Airflow **Variable** `tour_booking_actor_input` *(optional)* — baseline JSON
+  `run_input` for the actor; defaults to `{}`.
+- Airflow **Connection** `apify_default` — password field = Apify API token.
+
+A "Trigger DAG w/ config" run can override either per run without touching the
+Variables: `{"booking_actor_id": "...", "booking_actor_input": {...}}`. The
+`booking_actor_input` conf value is merged on top of the Variable's baseline,
+not a full replacement.
+
+Tours change price/availability constantly, same reasoning as the hotel OTA
+pipeline: every run re-crawls live rather than reusing a previous dataset.
 
 ## Runtime configuration
 

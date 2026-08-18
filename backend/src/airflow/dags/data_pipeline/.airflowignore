@@ -8,6 +8,7 @@ hotel_nearby_pipeline.py
 osm_pipeline.py
 ota_pipeline.py
 pipeline_stages.py
+tour_pipeline.py
 
 # Removed DAGs
 ota_dag.py
