@@ -11,7 +11,7 @@ import type { IntakeChecklistRowKey } from '../lib/intake-checklist-rows'
 import type { PreferenceKey } from '../lib/intake-options'
 import type { IntakeField } from '../lib/next-intake-field'
 import type { StageView } from '../lib/derive-stage'
-import type { ChatState, HotelOption, SessionSummary } from '../types'
+import type { ChatState, HotelFilterData, HotelOption, SessionSummary } from '../types'
 
 const DESKTOP_BREAKPOINT_PX = 768 // Tailwind `md`
 const SIDEBAR_PUSH_BREAKPOINT_PX = 1024 // Tailwind `lg`
@@ -62,6 +62,7 @@ export default function AppShell({
   stage,
   onViewStage,
   hotelOptions,
+  hotelFilterData,
   selectedHotelIndex,
   onSelectHotel,
   onConfirmHotel,
@@ -92,6 +93,9 @@ export default function AppShell({
   stage: StageView
   onViewStage: (stage: StageView) => void
   hotelOptions: HotelOption[]
+  /** Retained alongside hotelOptions (App.tsx) — see stage-hotels.tsx's doc
+   * comment for why this can't just be read off `state` directly. */
+  hotelFilterData: HotelFilterData
   selectedHotelIndex: number | null
   onSelectHotel: (index: number) => void
   onConfirmHotel: (hotel: HotelOption) => void
@@ -283,6 +287,7 @@ export default function AppShell({
             stage={stage}
             state={state}
             hotelOptions={hotelOptions}
+            hotelFilterData={hotelFilterData}
             selectedHotelIndex={selectedHotelIndex}
             onSelectHotel={onSelectHotel}
             onConfirmHotel={onConfirmHotel}

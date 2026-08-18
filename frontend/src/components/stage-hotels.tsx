@@ -12,7 +12,7 @@ import { activeAmenityPills, filterAndSortHotels, type HotelSortOrder } from '..
 import type { useFocusMode } from '../hooks/use-focus-mode'
 import type { RoomHoldApi } from '../hooks/use-room-hold'
 import type { Theme } from '../hooks/use-theme'
-import type { ChatState, HotelOption } from '../types'
+import type { ChatState, HotelFilterData, HotelOption } from '../types'
 
 type FocusModeApi = ReturnType<typeof useFocusMode>
 
@@ -54,10 +54,19 @@ function nightsFrom(startIso?: string | null, endIso?: string | null): number | 
  * as a third flex sibling. The list NEVER unmounts and switching the focused
  * hotel keeps focus open (use-focus-mode replaces in place). List scroll
  * position is captured on open and restored on close.
+ *
+ * `hotelFilterData` (the amenity catalog + preference lists) is a separate
+ * prop, not read off `state` directly, for the same reason `hotelOptions`
+ * already is one (bug fix): App.tsx retains both together per session, so a
+ * later turn that doesn't re-run the hotel search (selecting a hotel,
+ * building the itinerary, a qa_node answer) doesn't leave these still-shown
+ * cards resolving their amenity tags against an empty catalog and falling
+ * back to raw canonical ids like "swimming_pool".
  */
 export default function StageHotels({
   state,
   hotelOptions,
+  hotelFilterData,
   selectedIndex,
   onSelectHotel,
   onConfirmHotel,
@@ -67,6 +76,7 @@ export default function StageHotels({
 }: {
   state: ChatState
   hotelOptions: HotelOption[]
+  hotelFilterData: HotelFilterData
   selectedIndex: number | null
   onSelectHotel: (index: number) => void
   onConfirmHotel: (hotel: HotelOption) => void
@@ -77,7 +87,7 @@ export default function StageHotels({
 }) {
   const { t, i18n } = useTranslation()
   const hotels = hotelOptions
-  const amenityCatalog = state.hotelFilterData.hotelAmenities
+  const amenityCatalog = hotelFilterData.hotelAmenities
   const [minPrice, setMinPrice] = useState<number | null>(null)
   const [maxPrice, setMaxPrice] = useState<number | null>(null)
   const [minStars, setMinStars] = useState<number | null>(null)
@@ -130,12 +140,12 @@ export default function StageHotels({
   const selectedHotelRays = useMemo(() => hotelMapRays(selectedHotelDetail), [selectedHotelDetail])
 
   useEffect(() => {
-    setPreferenceIds(state.hotelFilterData.activePreferences.map(({ id }) => id))
-  }, [hotels, state.hotelFilterData.activePreferences])
+    setPreferenceIds(hotelFilterData.activePreferences.map(({ id }) => id))
+  }, [hotels, hotelFilterData.activePreferences])
 
   const filterPreferences = useMemo(
-    () => activeAmenityPills(state.hotelFilterData.allPreferences, amenityCatalog, i18n.language),
-    [amenityCatalog, i18n.language, state.hotelFilterData.allPreferences],
+    () => activeAmenityPills(hotelFilterData.allPreferences, amenityCatalog, i18n.language),
+    [amenityCatalog, i18n.language, hotelFilterData.allPreferences],
   )
 
   const listRef = useRef<HTMLDivElement>(null)
@@ -256,8 +266,8 @@ export default function StageHotels({
         >
           <HotelFilterBar
             hotels={hotels}
-            apiPriceMin={state.hotelFilterData.minPrice}
-            apiPriceMax={state.hotelFilterData.maxPrice}
+            apiPriceMin={hotelFilterData.minPrice}
+            apiPriceMax={hotelFilterData.maxPrice}
             amenityOptions={filterPreferences}
             minPrice={minPrice}
             maxPrice={maxPrice}

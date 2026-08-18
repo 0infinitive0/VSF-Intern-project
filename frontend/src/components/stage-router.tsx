@@ -9,7 +9,7 @@ import type { Theme } from '../hooks/use-theme'
 import type { IntakeFormState } from '../lib/compose-intake-message'
 import type { IntakeChecklistRowKey } from '../lib/intake-checklist-rows'
 import type { StageView } from '../lib/derive-stage'
-import type { ChatState, HotelOption } from '../types'
+import type { ChatState, HotelFilterData, HotelOption } from '../types'
 
 type FocusModeApi = ReturnType<typeof useFocusMode>
 
@@ -37,6 +37,7 @@ export default function StageRouter({
   stage,
   state,
   hotelOptions,
+  hotelFilterData,
   selectedHotelIndex,
   onSelectHotel,
   onConfirmHotel,
@@ -50,6 +51,7 @@ export default function StageRouter({
   stage: StageView
   state: ChatState
   hotelOptions: HotelOption[]
+  hotelFilterData: HotelFilterData
   selectedHotelIndex: number | null
   onSelectHotel: (index: number) => void
   onConfirmHotel: (hotel: HotelOption) => void
@@ -76,6 +78,7 @@ export default function StageRouter({
       <StageHotels
         state={state}
         hotelOptions={hotelOptions}
+        hotelFilterData={hotelFilterData}
         selectedIndex={selectedHotelIndex}
         onSelectHotel={onSelectHotel}
         onConfirmHotel={onConfirmHotel}
