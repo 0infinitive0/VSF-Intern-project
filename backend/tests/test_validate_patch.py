@@ -85,3 +85,100 @@ def test_a_prior_turns_explicit_range_is_never_overridden() -> None:
     proposed = result["proposed_travel_state"]
     assert proposed["budget.min"]["value"] == 1_500_000
     assert proposed["budget.max"]["value"] == 2_500_000
+
+
+# ---------------------------------------------------------------------------
+# budget.trip_total -> budget.min/budget.max derivation
+#
+# A whole-trip figure ("tổng 3 triệu cho cả chuyến") is saved as
+# budget.trip_total, a different quantity from the per-night budget.target
+# (see travel_state.py). hotel_node's search only filters on budget.min/max,
+# so without a derived per-night band a trip_total-only turn leaves the
+# first hotel search unconstrained.
+# ---------------------------------------------------------------------------
+
+
+def test_trip_total_with_dates_in_the_same_turn_derives_a_per_night_band() -> None:
+    """3,000,000 VND over 3 nights (20/7 -> 23/7) -> 1,000,000/night,
+    banded exactly like a bare budget.target of the same per-night value."""
+    result = validate_patch(
+        _state(
+            [
+                {"path": "budget.trip_total", "operation": "set", "value": 3_000_000},
+                {"path": "dates.start", "operation": "set", "value": "2026-07-20"},
+                {"path": "dates.end", "operation": "set", "value": "2026-07-23"},
+            ]
+        )
+    )
+
+    proposed = result["proposed_travel_state"]
+    assert proposed["budget.trip_total"]["value"] == 3_000_000
+    assert proposed["budget.min"]["value"] == 800_000
+    assert proposed["budget.max"]["value"] == 1_200_000
+
+
+def test_trip_total_with_no_dates_yet_derives_nothing() -> None:
+    """Nothing to divide the total by yet -- trip_total is saved, but no
+    per-night band is derived until a stay length is known."""
+    result = validate_patch(_state([{"path": "budget.trip_total", "operation": "set", "value": 3_000_000}]))
+
+    proposed = result["proposed_travel_state"]
+    assert proposed["budget.trip_total"]["value"] == 3_000_000
+    assert "budget.min" not in proposed
+    assert "budget.max" not in proposed
+
+
+def test_trip_total_from_a_prior_turn_derives_once_dates_arrive() -> None:
+    """The total was stated before the dates were -- a later turn that only
+    supplies dates.start/dates.end must still trigger the conversion off
+    the already-SET trip_total, without the user repeating the figure."""
+    existing_travel_state = {"budget.trip_total": {"presence": "set", "value": 3_000_000}}
+    result = validate_patch(
+        _state(
+            [
+                {"path": "dates.start", "operation": "set", "value": "2026-07-20"},
+                {"path": "dates.end", "operation": "set", "value": "2026-07-23"},
+            ],
+            travel_state=existing_travel_state,
+        )
+    )
+
+    proposed = result["proposed_travel_state"]
+    assert proposed["budget.min"]["value"] == 800_000
+    assert proposed["budget.max"]["value"] == 1_200_000
+
+
+def test_trip_total_never_overrides_an_explicit_range_in_the_same_turn() -> None:
+    result = validate_patch(
+        _state(
+            [
+                {"path": "budget.trip_total", "operation": "set", "value": 3_000_000},
+                {"path": "dates.start", "operation": "set", "value": "2026-07-20"},
+                {"path": "dates.end", "operation": "set", "value": "2026-07-23"},
+                {"path": "budget.min", "operation": "set", "value": 2_000_000},
+                {"path": "budget.max", "operation": "set", "value": 2_500_000},
+            ]
+        )
+    )
+
+    proposed = result["proposed_travel_state"]
+    assert proposed["budget.min"]["value"] == 2_000_000
+    assert proposed["budget.max"]["value"] == 2_500_000
+
+
+def test_trip_total_never_overrides_a_prior_turns_explicit_target() -> None:
+    existing_travel_state = {"budget.target": {"presence": "set", "value": 1_800_000}}
+    result = validate_patch(
+        _state(
+            [
+                {"path": "budget.trip_total", "operation": "set", "value": 3_000_000},
+                {"path": "dates.start", "operation": "set", "value": "2026-07-20"},
+                {"path": "dates.end", "operation": "set", "value": "2026-07-23"},
+            ],
+            travel_state=existing_travel_state,
+        )
+    )
+
+    proposed = result["proposed_travel_state"]
+    assert "budget.min" not in proposed
+    assert "budget.max" not in proposed
