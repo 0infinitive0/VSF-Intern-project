@@ -28,6 +28,11 @@ This node:
    - Applies the resulting ``TripEditPlan`` via ``apply_trip_edit_plan``.
 4. For ``lock_days``:
    - Writes the requested days into ``planning_constraints.locked_days``.
+5. For ``list_nearby`` (read-only):
+   - Searches for notable places around the hotel via
+     ``search_attraction_candidates`` and replies with the list.
+   - Never touches ``trip_data`` — unlike the other three actions, this is a
+     lookup, not an edit.
 
 ### Interrupt isolation
 
@@ -44,10 +49,11 @@ our own would break that chain; ``_invoke_rebuild_day`` says why.
 The supervisor sets ``task_description`` to a JSON string:
 ```json
 {
-  "action": "rebuild_days" | "edit_item" | "lock_days",
+  "action": "rebuild_days" | "edit_item" | "lock_days" | "list_nearby",
   "day_numbers": [1, 2],        // for rebuild_days; absent → all days
-  "user_request": "...",        // for edit_item
-  "days_to_lock": [1]           // for lock_days
+  "user_request": "...",        // for edit_item / list_nearby
+  "days_to_lock": [1],          // for lock_days
+  "radius_km": 3                // optional, for list_nearby — see _resolve_radius_km
 }
 ```
 ``build_itinerary`` is accepted as a **historical alias** for ``rebuild_days``,
@@ -63,6 +69,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from copy import deepcopy
 from typing import Any
 
@@ -72,6 +79,8 @@ from src.agents.graph.state import TravelGraphState
 from src.agents.graph.subgraphs.rebuild_day import build_rebuild_day_subgraph
 from src.domain.travel_state import Presence, TravelState, trip_duration_days
 from src.i18n import t
+from src.services.place_search import search_attraction_candidates
+from src.services.supabase_search import DEFAULT_NEARBY_SEARCH_RADIUS_KM
 from src.services.trip_formatter import format_trip_summary_reply
 from src.services.trip_planner import (
     _get_locked_days,
@@ -79,10 +88,20 @@ from src.services.trip_planner import (
     apply_trip_edit_plan,
 )
 from src.services.trip_edit_planner import TripEditPlanError, plan_trip_edit
+from src.services.trip_scheduler import parse_coordinates
 
 logger = logging.getLogger(__name__)
 
 _WORKER_NAME = "itinerary_node"
+
+# "trong bán kính 3km", "within 3 km", "3.5km" -- the first bare "<number>
+# km" in the request. Deterministic, not LLM-parsed: same reasoning as
+# `extract_patch`'s day-scope rewrite -- a number the model copies into a
+# structured field is trusted less than one a regex pulls from the user's
+# own text.
+_RADIUS_PATTERN = re.compile(r"(\d+(?:[.,]\d+)?)\s*km", re.IGNORECASE)
+
+_NEARBY_MATCH_COUNT = 8
 
 # One compiled subgraph instance shared across turns. It carries no state of
 # its own: every invocation runs nested inside the calling turn, so the
@@ -190,6 +209,68 @@ def _describe_day_change(day_number: int, before: list[str], after: list[str], l
     if not after:
         return t("Ngày {day}: đã xoá toàn bộ hoạt động.", language, day=day_number)
     return t("Ngày {day}: {activities}.", language, day=day_number, activities=", ".join(after))
+
+
+_RADIUS_KM_RANGE = (0, 50)  # exclusive-min, matches `hotel_preferences.radius_km` (travel_state.py)
+
+
+def _extract_radius_km(user_request: str) -> float:
+    """First bare "<number> km" in *user_request*, or the shared nearby-search
+    default (`DEFAULT_NEARBY_SEARCH_RADIUS_KM`) when none is stated."""
+    match = _RADIUS_PATTERN.search(user_request)
+    if not match:
+        return DEFAULT_NEARBY_SEARCH_RADIUS_KM
+    try:
+        return float(match.group(1).replace(",", "."))
+    except ValueError:
+        return DEFAULT_NEARBY_SEARCH_RADIUS_KM
+
+
+def _resolve_radius_km(task: dict[str, Any], user_request: str) -> float:
+    """The radius to search within, in priority order:
+
+    1. `task["radius_km"]` — the supervisor LLM's read of the user's own
+       words, when it is an actual number inside the sane range.
+    2. `_extract_radius_km(user_request)` — a deterministic regex re-read of
+       the same text, used when the LLM left it unset or (same "don't trust
+       the model on a number" stance as every other LLM-parsed numeric field
+       in this codebase) returned something out of range.
+    3. `DEFAULT_NEARBY_SEARCH_RADIUS_KM` — no distance stated anywhere.
+    """
+    llm_radius = task.get("radius_km")
+    if isinstance(llm_radius, (int, float)) and not isinstance(llm_radius, bool):
+        low, high = _RADIUS_KM_RANGE
+        if low < llm_radius <= high:
+            return float(llm_radius)
+    return _extract_radius_km(user_request)
+
+
+def _format_radius(radius_km: float) -> str:
+    return str(int(radius_km)) if radius_km == int(radius_km) else str(radius_km)
+
+
+def _format_nearby_reply(candidates: list[Any], radius_km: float, language: str) -> str:
+    if not candidates:
+        return t(
+            "Mình chưa tìm thấy địa điểm nổi bật nào trong bán kính {radius} km quanh khách sạn.",
+            language,
+            radius=_format_radius(radius_km),
+        )
+    lines = [
+        t(
+            "Trong bán kính {radius} km quanh khách sạn, có những địa điểm nổi bật sau:",
+            language,
+            radius=_format_radius(radius_km),
+        )
+    ]
+    for idx, candidate in enumerate(candidates, 1):
+        line = f"{idx}. {candidate.name}"
+        if candidate.category:
+            line += f" ({candidate.category})"
+        if candidate.description:
+            line += f" — {candidate.description}"
+        lines.append(line)
+    return "\n".join(lines)
 
 
 def _set_locked_days(trip_data: dict[str, Any], days_to_lock: list[int]) -> None:
@@ -369,6 +450,32 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
             return _err(t("Chưa có lịch trình nào để khoá ngày.", language))
         _set_locked_days(trip_data, days_to_lock)
         return _ok(f"Đã khoá ngày: {days_to_lock}.")
+
+    # ── list_nearby (read-only) ─────────────────────────────────────────────
+    if action == "list_nearby":
+        if not trip_data:
+            return _err(
+                t(
+                    "Mình cần bạn chọn khách sạn trước — mình sẽ tìm địa điểm quanh vị trí đó.",
+                    language,
+                )
+            )
+        hotel = trip_data.get("hotel") or {}
+        coordinates = parse_coordinates(hotel.get("coordinates"))
+        destination_id = hotel.get("destination_id")
+        if not coordinates or not destination_id:
+            return _err(t("Mình chưa có vị trí khách sạn để tìm địa điểm gần đó.", language))
+        user_request = str(task.get("user_request") or "địa điểm nổi bật")
+        radius_km = _resolve_radius_km(task, user_request)
+        candidates = search_attraction_candidates(
+            user_request,
+            destination_id,
+            match_count=_NEARBY_MATCH_COUNT,
+            root_latitude=coordinates[0],
+            root_longitude=coordinates[1],
+            max_radius_km=radius_km,
+        )
+        return _ok(_format_nearby_reply(candidates, radius_km, language))
 
     # ── edit_item ────────────────────────────────────────────────────────────
     if action == "edit_item":

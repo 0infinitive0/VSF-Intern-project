@@ -47,15 +47,22 @@ class SupervisorDecision(BaseModel):
     task_description: str
     reasoning: str  # audit only — never shown to the user
     # Only meaningful when next_worker == "itinerary_node" — selects which of
-    # itinerary_node's three actions to run (see its module docstring's
+    # itinerary_node's four actions to run (see its module docstring's
     # `task_description` JSON contract). Ignored for every other worker.
-    action: Literal["rebuild_days", "edit_item", "lock_days"] | None = None
+    action: Literal["rebuild_days", "edit_item", "lock_days", "list_nearby"] | None = None
+    # Only meaningful when action == "list_nearby" — the search radius (km)
+    # the user explicitly stated. `itinerary_node` still validates and
+    # re-derives it deterministically if this is missing or out of range
+    # (same "don't trust the model on a number" stance as every other
+    # LLM-parsed numeric field in this codebase, e.g.
+    # `hotel_preferences.radius_km`'s own range check in travel_state.py).
+    radius_km: float | None = None
 
 
 def _task_description_for(worker: str, decision: SupervisorDecision | None, source: str) -> str:
     """Free-text audit description for every worker, except `itinerary_node`
     on the LLM path: that node's `_parse_task` only recognizes `edit_item`/
-    `lock_days` from a JSON `{"action": ..., "user_request": ...}` string
+    `lock_days`/`list_nearby` from a JSON `{"action": ..., "user_request": ...}` string
     (its module docstring's contract) — a plain sentence silently falls back
     to `rebuild_days` every time, which is what made `edit_item`'s
     suggest-then-pick flow unreachable in production before this. The fast
@@ -66,7 +73,10 @@ def _task_description_for(worker: str, decision: SupervisorDecision | None, sour
     if not decision:
         return f"auto-routed to {worker} via {source}"
     if worker == "itinerary_node" and decision.action:
-        return json.dumps({"action": decision.action, "user_request": decision.task_description})
+        task: dict[str, Any] = {"action": decision.action, "user_request": decision.task_description}
+        if decision.action == "list_nearby" and decision.radius_km is not None:
+            task["radius_km"] = decision.radius_km
+        return json.dumps(task)
     return decision.task_description
 
 

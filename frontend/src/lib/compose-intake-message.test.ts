@@ -53,14 +53,14 @@ describe('budgetRangePhrase', () => {
 describe('composeIntakeMessage', () => {
   it('emits the exact required-facts sentence', () => {
     expect(composeIntakeMessage(MINIMAL)).toBe(
-      'Tôi muốn đi Đà Nẵng trong 3 ngày từ 2026-08-10 cho 2 người.',
+      'Tôi muốn đi Đà Nẵng từ ngày 10/08/2026 đến ngày 13/08/2026 cho 2 người.',
     )
   })
 
   it('adds the budget sentence when a range is chosen', () => {
     const message = composeIntakeMessage(fill({ budgetMinVnd: 800_000, budgetMaxVnd: 2_500_000 }))
     expect(message).toBe(
-      'Tôi muốn đi Đà Nẵng trong 3 ngày từ 2026-08-10 cho 2 người. Ngân sách khách sạn: từ 0.8 đến 2.5 triệu.',
+      'Tôi muốn đi Đà Nẵng từ ngày 10/08/2026 đến ngày 13/08/2026 cho 2 người. Ngân sách khách sạn: từ 0.8 đến 2.5 triệu.',
     )
   })
 

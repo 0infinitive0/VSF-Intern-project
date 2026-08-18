@@ -28,6 +28,7 @@ import {
   PACE_WIRE_VALUE_VI,
   PREFERENCE_WIRE_VALUE_VI,
 } from './intake-options'
+import { formatFullDate } from './format-trip-dates'
 
 export interface IntakeFormState {
   destination: string
@@ -75,10 +76,26 @@ export function budgetRangePhrase(minVnd: number, maxVnd: number): string {
 export function composeIntakeMessage(form: IntakeFormState): string {
   const sentences: string[] = []
 
+  // States both dates explicitly ("từ ngày X đến ngày Y") rather than a day
+  // count ("trong N ngày từ X"): the backend's extract_patch LLM, faced with
+  // only a duration, sometimes invents `dates.end` itself (reading "1 ngày"
+  // as "leaves same day") instead of leaving it for the deterministic
+  // start+N-days derivation — that self-supplied date can collide with the
+  // start date and fail `end date must be after start`. Two literal dates
+  // leave the model nothing to invent.
+  //
+  // Rendered `dd/mm/yyyy` (`formatFullDate(..., 'vi')`, same formatter the
+  // date-range picker's chips use) rather than the form's raw ISO value:
+  // `_parse_date_value` (travel_state.py) reads a bare `D/M/Y` fragment as
+  // the Vietnamese DD-MM reading, and this sentence is always Vietnamese
+  // regardless of UI language, so the date inside it should read the same
+  // way a person would type it here.
   const durationDays = durationDaysBetween(form.startDate, form.endDate)
   if (form.destination && form.startDate && durationDays > 0 && form.guests > 0) {
+    const startLabel = formatFullDate(form.startDate, 'vi') ?? form.startDate
+    const endLabel = formatFullDate(form.endDate, 'vi') ?? form.endDate
     sentences.push(
-      `Tôi muốn đi ${form.destination} trong ${durationDays} ngày từ ${form.startDate} cho ${form.guests} người.`,
+      `Tôi muốn đi ${form.destination} từ ngày ${startLabel} đến ngày ${endLabel} cho ${form.guests} người.`,
     )
   }
 
