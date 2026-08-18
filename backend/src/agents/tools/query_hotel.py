@@ -7,7 +7,7 @@ from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
 from src.agents.graph.state import TravelGraphState
-from src.agents.tools.shown_hotels import labelled_amenities, shown_hotel_options
+from src.agents.tools.shown_hotels import labelled_amenities, shown_hotel_options, without_unknowns
 from src.i18n import t
 
 logger = logging.getLogger(__name__)
@@ -93,23 +93,45 @@ def query_hotel(
         return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
         
     # Format the hotel details cleanly to save tokens, discarding giant unused fields
-    cleaned_details = {
-        "id": matched_hotel.get("id"),
-        "name": matched_hotel.get("name"),
-        "rank": matched_hotel.get("rank"),
-        "star_rating": matched_hotel.get("star_rating"),
-        "description": str(matched_hotel.get("description", ""))[:500] + "...", # Truncate description
-        # Labels, not canonical ids: whatever this dict holds is what the
-        # model repeats to the user, and it will happily read
-        # "bể bơi (swimming_pool)" out loud if handed the id.
-        "amenities": labelled_amenities(matched_hotel.get("amenities", []), language=language),
-        "covered_meals": matched_hotel.get("covered_meals", []),
-        "lowest_price": matched_hotel.get("lowest_price"),
-        "currency": matched_hotel.get("currency", "VND"),
-        "matched_room_names": matched_hotel.get("matched_room_names", []),
-    }
-    
+    # Plain-language keys, and anything unknown is OMITTED rather than sent as
+    # null. The model repeats the shape it is given: handed `lowest_price` and
+    # `max_guests = null` it wrote "không có phòng nào có trường max_guests =
+    # 4" and "lowest_price là 2.097.309 VND" straight to a customer, who has
+    # no idea what either means. A key that isn't there can't be quoted, and a
+    # value that isn't null can't be read out as "null".
+    description = str(matched_hotel.get("description") or "").strip()
+    # Keys in the session's own language — see query_hotel_rooms.py for why a
+    # quoted key has to already read as ordinary prose.
+    vi = not language.startswith("en")
+    cleaned_details = without_unknowns(
+        {
+            ("khách sạn số" if vi else "hotel number"): matched_hotel.get("rank"),
+            ("tên" if vi else "name"): matched_hotel.get("name"),
+            ("hạng sao" if vi else "stars"): matched_hotel.get("star_rating"),
+            ("mô tả" if vi else "description"): (
+                (description[:500] + "…") if len(description) > 500 else description
+            ),
+            # Labels, not canonical ids: whatever this dict holds is what the
+            # model repeats to the user, and it will happily read
+            # "bể bơi (swimming_pool)" out loud if handed the id.
+            ("tiện nghi" if vi else "amenities"): labelled_amenities(
+                matched_hotel.get("amenities", []), language=language
+            ),
+            ("bữa ăn bao gồm" if vi else "meals included"): matched_hotel.get("covered_meals", []),
+            ("giá mỗi đêm từ" if vi else "price per night from"): matched_hotel.get("lowest_price"),
+            ("đơn vị tiền" if vi else "currency"): matched_hotel.get("currency") or "VND",
+            ("phòng khớp tìm kiếm" if vi else "rooms matching the search"): matched_hotel.get(
+                "matched_room_names", []
+            ),
+        }
+    )
+
     hotel_json = json.dumps(cleaned_details, ensure_ascii=False, indent=2)
-    reply = f"Here is the detailed information for the requested hotel:\n{hotel_json}"
+    reply = (
+        "Here is the detailed information for the requested hotel. Anything not "
+        "listed below is simply unknown — say so in plain words rather than "
+        "naming a field:\n"
+        f"{hotel_json}"
+    )
     
     return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})

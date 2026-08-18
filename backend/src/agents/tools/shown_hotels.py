@@ -93,3 +93,25 @@ def labelled_amenities(tags: Any, *, language: str = "vi") -> list[str]:
         for entry in entries
     }
     return [catalog.get(tag) or tag for tag in raw]
+
+
+def without_unknowns(payload: dict[str, Any]) -> dict[str, Any]:
+    """Drop keys whose value is unknown, so the model has no `null` to quote.
+
+    The Q&A tools serialize their result straight into the prompt, and the
+    model reports the shape it is handed. Given `max_guests: null` it wrote
+    "nhiều phòng có trường max_guests = null" to a customer -- a database
+    column name and a JSON literal, in a sentence meant for someone choosing
+    a family room. Omitting the key removes the vocabulary entirely; the
+    tool's preamble tells the model that absent means unknown.
+
+    Empty lists go too: "meals included: []" reads as a fact about the hotel
+    when it only means nobody recorded one. Zero and False are kept -- those
+    are real answers, not missing ones.
+    """
+    cleaned: dict[str, Any] = {}
+    for key, value in payload.items():
+        if value is None or value == "" or (isinstance(value, (list, tuple, dict)) and not value):
+            continue
+        cleaned[key] = value
+    return cleaned

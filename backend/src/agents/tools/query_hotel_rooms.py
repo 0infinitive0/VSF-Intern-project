@@ -7,7 +7,7 @@ from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
 from src.agents.graph.state import TravelGraphState
-from src.agents.tools.shown_hotels import labelled_amenities, shown_hotel_options
+from src.agents.tools.shown_hotels import labelled_amenities, shown_hotel_options, without_unknowns
 from src.i18n import t
 from src.services.supabase_search import get_supabase_client
 
@@ -112,19 +112,49 @@ def query_hotel_rooms(
             ) if language == "vi" else "No room data found for this hotel or keyword. Please inform the user that the information is unavailable."
             return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
             
-        # `room_facilities` are canonical ids straight out of the table; the
-        # model repeats whatever it is given, so resolve them to the same
-        # labels the room cards show rather than letting "outdoor_bathtub"
-        # reach the user.
+        # Raw table rows went to the model verbatim, so it answered a parent
+        # asking about a family room with "không có loại phòng nào có trường
+        # max_guests = 4" and "nhiều phòng có max_guests = null" -- column
+        # names and a JSON literal, to someone who just wants to know if the
+        # four of them fit. Renamed to plain keys, canonical facility ids
+        # resolved to labels, and unknown values dropped rather than sent as
+        # null so there is no `null` in the prompt to read back out.
+        # Keys are written in the session's own language. The model quotes the
+        # key when a value surprises it -- it wrote `(mục này ghi "sleeps 2")`
+        # mid-Vietnamese-sentence even after the column names were gone -- so
+        # the only reliable way to keep developer vocabulary out of the reply
+        # is for there to be none in the payload at all.
+        vi = not language.startswith("en")
+        key = {
+            "room": "phòng" if vi else "room",
+            "sleeps": "số khách" if vi else "sleeps",
+            "size": "diện tích m2" if vi else "size sqm",
+            "bed": "giường" if vi else "bed",
+            "view": "hướng nhìn" if vi else "view",
+            "facilities": "tiện nghi" if vi else "facilities",
+        }
         rooms_data = [
-            {**room, "room_facilities": labelled_amenities(room.get("room_facilities"), language=language)}
-            if isinstance(room, dict)
-            else room
+            without_unknowns(
+                {
+                    key["room"]: room.get("name"),
+                    key["sleeps"]: room.get("max_guests"),
+                    key["size"]: room.get("room_size_sqm"),
+                    key["bed"]: room.get("bed_description"),
+                    key["view"]: room.get("view"),
+                    key["facilities"]: labelled_amenities(room.get("room_facilities"), language=language),
+                }
+            )
             for room in rooms_data
+            if isinstance(room, dict)
         ]
 
         rooms_json = json.dumps(rooms_data, ensure_ascii=False, indent=2)
-        reply = f"Here is the detailed room information for the requested hotel:\n{rooms_json}"
+        reply = (
+            "Here are the room types for this hotel. A room with no capacity "
+            "shown simply has none recorded — tell the user it isn't listed, "
+            "in ordinary words, and never name a field:\n"
+            f"{rooms_json}"
+        )
         
         return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
         

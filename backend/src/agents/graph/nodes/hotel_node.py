@@ -356,12 +356,38 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
         }
         if previous_ids:
             selection_kwargs["exclude_hotel_ids"] = previous_ids
-        options = select_hotel_candidates(
-            destination,
-            destination_id,
-            people,
-            **selection_kwargs,
-        )
+        try:
+            options = select_hotel_candidates(
+                destination,
+                destination_id,
+                people,
+                **selection_kwargs,
+            )
+        except (NoHotelsMatchAmenities, NoHotelsMatchRating):
+            # `exclude_hotel_ids` is an APPEND optimization -- it exists so a
+            # follow-up search adds unseen hotels instead of re-listing the
+            # ones already on screen. It must never be able to decide that a
+            # constraint is unsatisfiable, because the hotels it hid are
+            # exactly the ones that satisfied it.
+            #
+            # Reported as an unstable search: Nha Trang 1-4/7 with a
+            # breakfast filter returned one hotel, and the same search minutes
+            # later returned "không có khách sạn nào ... Bao gồm bữa sáng".
+            # Liberty Central was the destination's only breakfast hotel, so
+            # once it had been shown, excluding it emptied the candidate set
+            # and the binding-constraint diagnostic -- computed over that
+            # emptied set -- stated something false about the whole city.
+            # Deterministic, not flaky: it happens whenever the hotels
+            # matching a hard filter are all already on screen.
+            if not previous_ids:
+                raise
+            selection_kwargs.pop("exclude_hotel_ids", None)
+            options = select_hotel_candidates(
+                destination,
+                destination_id,
+                people,
+                **selection_kwargs,
+            )
     except NoHotelsMatchAmenities as exc:
         return _result("no_results_amenities", _binding_constraint_reply(exc, language))
     except NoHotelsMatchRating as exc:

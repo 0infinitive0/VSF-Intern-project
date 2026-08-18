@@ -122,6 +122,13 @@ QA_SYSTEM_PROMPT = (
     "anything about the schedule.\n"
     "Ground every claim in what the tools return. If a tool has no data for "
     "something, say plainly that you don't have it rather than guessing.\n"
+    # Handed a room row verbatim, the model told a parent asking whether four
+    # of them fit that "không có loại phòng nào có trường max_guests = 4".
+    # The tools no longer emit column names or nulls; this is the backstop
+    # for the ones that remain in tool preambles and error strings.
+    "Write for a traveller, never for a developer. Never quote a field or "
+    "column name, a JSON key, or the word null — if something isn't in the "
+    "data, say it isn't listed, in ordinary words.\n"
     # Asked "ngày 2 tôi đi đâu và mấy giờ?", the model reported only the two
     # evening items out of the eight the tool returned. The schedule is the
     # answer, not background for one — a plan the user cannot read in full is

@@ -424,3 +424,67 @@ def test_radius_resumed_with_an_unrelated_reply_is_replayed_as_a_fresh_turn(monk
     )
 
     assert final["travel_state"]["budget.max"]["value"] == 2_000_000
+
+
+# ---------------------------------------------------------------------------
+# `exclude_hotel_ids` must never decide a constraint is unsatisfiable.
+#
+# It exists so a follow-up search APPENDS unseen hotels instead of re-listing
+# what is already on screen. But the hotels it hides are exactly the ones that
+# satisfied the filter, so when they were the only matches the search came
+# back empty and the binding-constraint diagnostic -- computed over that
+# emptied set -- told the user no hotel in the city had the amenity.
+#
+# Reported as an "unstable search": Nha Trang 1-4/7 with a breakfast filter
+# returned one hotel, then minutes later "không có khách sạn nào ... Bao gồm
+# bữa sáng". Deterministic, not flaky.
+# ---------------------------------------------------------------------------
+
+
+def test_a_filter_satisfied_only_by_already_shown_hotels_is_not_reported_impossible(monkeypatch):
+    calls: list[dict] = []
+
+    def _select(*_args, **kwargs):
+        calls.append(kwargs)
+        if kwargs.get("exclude_hotel_ids"):
+            raise NoHotelsMatchAmenities(tag_drop_counts={"breakfast": 0})
+        return [_option("h1")]
+
+    monkeypatch.setattr(hotel_node_module, "_get_destination_id", lambda _d: "dest-1")
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _select)
+
+    state = _graph_state(_seeded_travel_state(hotel_preferences__amenities=["breakfast"]))
+    state["previous_hotel_options"] = [{"id": "h1", "name": "Hotel h1", "rank": 1}]
+    # Must match hotel_node's own current_search_context exactly, or the
+    # cards are treated as belonging to a different search and dropped.
+    state["previous_hotel_search_context"] = {
+        "destination_id": "dest-1",
+        "start_date": "2099-01-01",
+        "end_date": "2099-01-05",
+        "people": "2",
+    }
+
+    result = hotel_node(state)
+
+    entry = result["task_results"][-1]
+    assert entry["status"] == "ok", f"still reported a binding constraint: {entry}"
+    # Retried once, and the retry dropped the exclusion rather than the filter.
+    assert len(calls) == 2
+    assert "exclude_hotel_ids" in calls[0]
+    assert "exclude_hotel_ids" not in calls[1]
+    assert calls[1]["required_amenities"] == ["breakfast"]
+
+
+def test_a_genuinely_unsatisfiable_filter_still_reports_the_constraint(monkeypatch):
+    """The retry must not paper over a real zero-result: with nothing shown
+    yet there is no exclusion to blame, so the diagnostic stands."""
+
+    def _select(*_args, **_kwargs):
+        raise NoHotelsMatchAmenities(tag_drop_counts={"breakfast": 0})
+
+    monkeypatch.setattr(hotel_node_module, "_get_destination_id", lambda _d: "dest-1")
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _select)
+
+    result = hotel_node(_graph_state(_seeded_travel_state(hotel_preferences__amenities=["breakfast"])))
+
+    assert result["task_results"][-1]["status"] == "no_results_amenities"
