@@ -4,6 +4,13 @@ uvicorn[standard]>=0.34.0
 pydantic>=2.10.0
 pydantic-settings>=2.7.0
 python-dotenv>=1.0.0
+# pydantic.EmailStr (CreateVnpayPaymentRequest.guest_email in
+# src/models/schemas.py) needs this at import time -- pydantic only checks
+# for it lazily, so a machine without it installed crashes on first request
+# instead of at startup. Worked in local dev because some other dependency
+# happened to pull it in transitively; a clean container build (staging/
+# prod) does not have that guarantee.
+email-validator>=2.0.0
 
 # AI / LangChain
 langchain>=1.3.0,<2.0.0
