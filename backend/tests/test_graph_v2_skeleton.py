@@ -125,7 +125,20 @@ def test_qa_node_exposes_exactly_the_read_only_tools():
     # Phase 13 (`phase-13-place-search.md`) adds `search_places` -- still
     # read-only, no `select_place` (that pick is resolved via rebuild_day's
     # pause/resume, not a qa_node tool call; see qa_node.py's docstring).
-    assert names == {"query_hotel", "query_hotel_rooms", "search_places"}
+    #
+    # `get_hotel_options`/`get_trip_plan` are the two context readers: the
+    # node could fetch ONE named hotel and could not see the itinerary at
+    # all, so "which of these is cheapest?" and "what's on day 2?" had no
+    # source to answer from. Both only read state the user is already
+    # looking at, which is why the set grew without the contract below
+    # changing.
+    assert names == {
+        "get_hotel_options",
+        "get_trip_plan",
+        "query_hotel",
+        "query_hotel_rooms",
+        "search_places",
+    }
     assert not names & {"recommend_hotels", "select_hotel", "select_place", "modify_trip_plan"}
 
 

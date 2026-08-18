@@ -53,13 +53,19 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import create_react_agent
 from langgraph.prebuilt.chat_agent_executor import AgentState
 
+from src.agents.tools.get_hotel_options import get_hotel_options
+from src.agents.tools.get_trip_plan import get_trip_plan
 from src.agents.tools.query_hotel import query_hotel
 from src.agents.tools.query_hotel_rooms import query_hotel_rooms
 from src.agents.tools.search_places import search_places
 from src.config import get_settings
 from src.services.llm import get_fast_llm
 
+# Ordered widest-context-first, which is also the order the model should
+# reach for them: see what the user is looking at, then drill in.
 QA_TOOLS: Sequence[Any] = (
+    get_hotel_options,
+    get_trip_plan,
     query_hotel,
     query_hotel_rooms,
     search_places,
@@ -86,6 +92,9 @@ class QAState(AgentState):
 
     language: str
     previous_hotel_options: list[dict[str, Any]]
+    # Read so `get_trip_plan` can answer about the itinerary on screen.
+    # Reading a plan is not editing one — this node still writes nothing.
+    trip_data: dict[str, Any]
 
 
 QA_SYSTEM_PROMPT = (
@@ -103,8 +112,23 @@ QA_SYSTEM_PROMPT = (
     '("khách sạn số 1", "cái đầu tiên", "cái thứ hai") or by name. Pass that '
     "position number or name straight through as `hotel_identifier` — the "
     "tools resolve both. Do not ask the user which list they mean.\n"
+    # The model cannot see either panel, so left to itself it assumes the
+    # transcript is all there is and answers from memory of it.
+    "You cannot see the user's screen. `get_hotel_options` is what the "
+    "hotel list on it contains and `get_trip_plan` is what the itinerary on "
+    "it contains — call them rather than reconstructing either from the "
+    "conversation. Use `get_hotel_options` for anything spanning the list "
+    "(cheapest, best rated, compare, list them) and `get_trip_plan` for "
+    "anything about the schedule.\n"
     "Ground every claim in what the tools return. If a tool has no data for "
-    "something, say plainly that you don't have it rather than guessing."
+    "something, say plainly that you don't have it rather than guessing.\n"
+    # Asked "ngày 2 tôi đi đâu và mấy giờ?", the model reported only the two
+    # evening items out of the eight the tool returned. The schedule is the
+    # answer, not background for one — a plan the user cannot read in full is
+    # worse than no answer, because it looks complete.
+    "When asked what is scheduled — for a day, or the whole trip — list EVERY "
+    "item in that scope with its time, in order. Never trim to highlights or "
+    "to one part of the day; the user is asking to see the plan itself."
 )
 
 
