@@ -5,11 +5,27 @@ import MatchScoreRing from './match-score-ring'
 import RemoteImage from './remote-image'
 import RoomCard from './room-card'
 import { useHotelDetail } from '../hooks/use-hotel-detail'
+import type { RoomHoldApi } from '../hooks/use-room-hold'
+import { bookingErrorKey } from '../lib/booking-error'
 import { formatCurrency } from '../lib/format-currency'
 import { displayAmenityLabels } from '../lib/hotel-filters'
 import { formatHotelStars } from '../lib/format-stars'
 import { formatSourcePlatform } from '../lib/format-source-platform'
-import type { AmenityCatalogOption, HotelOption } from '../types'
+import type { AmenityCatalogOption, HotelOption, RoomDetail } from '../types'
+
+/** Nights from the trip's real intake dates — same rule as stage-hotels.tsx's
+ * own nightsFrom: never invented, null when either date is missing/invalid
+ * or the diff isn't positive. Kept as a 1-night floor for the hold's price
+ * math (a reservation always covers at least one night), unlike the display
+ * copy elsewhere which shows nothing rather than guess. */
+function nightsForHold(checkIn: string | null, checkOut: string | null): number {
+  if (!checkIn || !checkOut) return 1
+  const start = new Date(checkIn).getTime()
+  const end = new Date(checkOut).getTime()
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 1
+  const nights = Math.round((end - start) / 86_400_000)
+  return nights > 0 ? nights : 1
+}
 
 const NUM_LOCALE = (lang: string) => (lang === 'vi' ? 'vi-VN' : 'en-US')
 
@@ -39,7 +55,10 @@ export default function HotelDetailPanel({
   hotelAmenities,
   selectedAmenityIds,
   onClose,
-  onSelectHotel,
+  roomHold,
+  checkInDate,
+  checkOutDate,
+  onConfirmHotel,
 }: {
   /** null while no hotel has ever been focused yet this session (the caller
    * keeps mounting this component always — see stage-hotels.tsx's
@@ -51,21 +70,20 @@ export default function HotelDetailPanel({
   /** Canonical amenity filters currently active in the hotel list. */
   selectedAmenityIds: string[]
   onClose: () => void
-  /** Selects THIS panel's currently-open hotel (bound to its index by the
-   * caller). Fired from a room pick too — see roomPicks' onPick below: the
-   * "Chọn phòng này" button visually reads as a commit action, but there is
-   * no backend room-selection verb at all, so picking a room silently doing
-   * nothing to the actual (hotel-level) selection state left first-time
-   * users stuck on a disabled "Tạo lịch trình" button with no explanation. */
-  onSelectHotel: () => void
+  /** Owns the room cart + the real hold (reserve/confirm/cancel) — lifted to
+   * App.tsx (see its doc comment) so the resulting hold survives this panel
+   * closing and is visible from the workspace's hold banner too. */
+  roomHold: RoomHoldApi
+  /** ChatState.intake's real trip dates — null until intake is complete,
+   * which gates the "Giữ phòng" button (never reserves with invented dates). */
+  checkInDate: string | null
+  checkOutDate: string | null
+  /** Fires the EXISTING itinerary-build call once a hold succeeds — see
+   * use-room-hold.ts's module doc comment on why room selection now gates it. */
+  onConfirmHotel: (hotel: HotelOption) => void
 }) {
   const { t, i18n } = useTranslation()
   const { detail, status } = useHotelDetail(hotelId)
-  // "Chọn phòng" is display-only (see room-card.tsx's doc comment) — one pick
-  // per hotel, keyed by hotelId so it survives closing/reopening the SAME
-  // hotel (matches the design's `state.rooms[hid]`, which never resets it
-  // either) while a different hotel naturally shows nothing picked.
-  const [roomPicks, setRoomPicks] = useState<Record<string, string>>({})
   const [expandedAmenitiesHotelId, setExpandedAmenitiesHotelId] = useState<string | null>(null)
 
   if (hotelId == null) return <div className="flex-1 min-w-0" />
@@ -265,25 +283,27 @@ export default function HotelDetailPanel({
                 </div>
               )}
 
-              {/* Rooms — accordion cards with a display-only "Chọn phòng"
-                  pick (see room-card.tsx's doc comment for why it never
-                  reaches the backend). */}
+              {/* Rooms — accordion cards with a real quantity cart feeding
+                  roomHold (use-room-hold.ts). Several distinct room types can
+                  be in the cart at once; each becomes its own /bookings hold
+                  when "Giữ phòng" fires below. */}
               {detail?.rooms && detail.rooms.length > 0 && (
                 <div>
                   <div className={SECTION_EYEBROW}>{t('detailRooms')}</div>
                   <div className="flex flex-col gap-2.5">
                     {detail.rooms.map((room, i) => {
                       const roomKey = room.id ?? room.name ?? String(i)
+                      const maxQty = room.price?.sold_out
+                        ? 0
+                        : Math.min(4, room.available_room_count ?? 4)
                       return (
                         <RoomCard
                           key={roomKey}
                           room={room}
                           delay={`${i * 90}ms`}
-                          selected={roomPicks[hotelId] === roomKey}
-                          onPick={() => {
-                            setRoomPicks((prev) => ({ ...prev, [hotelId]: roomKey }))
-                            onSelectHotel()
-                          }}
+                          qty={room.id ? (roomHold.cartFor(hotelId)[room.id] ?? 0) : 0}
+                          maxQty={maxQty}
+                          onQtyChange={(next) => room.id && roomHold.setQty(hotelId, room.id, next)}
                           amenityDetails={detail.room_amenities ?? []}
                         />
                       )
@@ -374,10 +394,167 @@ export default function HotelDetailPanel({
                   )}
                 </div>
               )}
+
+              {/* Sticky cart summary + "Giữ phòng" — real hold, not a local
+                  pick (use-room-hold.ts). Only rendered once rooms exist, so
+                  a hotel with no room data never shows an empty cart bar. */}
+              {detail?.rooms && detail.rooms.length > 0 && (
+                <HoldFooter
+                  hotelId={hotelId}
+                  rooms={detail.rooms}
+                  roomHold={roomHold}
+                  checkInDate={checkInDate}
+                  checkOutDate={checkOutDate}
+                  onConfirmHotel={onConfirmHotel}
+                  option={option}
+                />
+              )}
             </div>
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+/** Extracted so the (fairly involved) cart-total/hold-button logic doesn't
+ * crowd HotelDetailPanel's already-long render — same reasoning as splitting
+ * RoomCard out in the first place. */
+function HoldFooter({
+  hotelId,
+  rooms,
+  roomHold,
+  checkInDate,
+  checkOutDate,
+  onConfirmHotel,
+  option,
+}: {
+  hotelId: string
+  rooms: RoomDetail[]
+  roomHold: RoomHoldApi
+  checkInDate: string | null
+  checkOutDate: string | null
+  onConfirmHotel: (hotel: HotelOption) => void
+  option?: HotelOption
+}) {
+  const { t, i18n } = useTranslation()
+  const cart = roomHold.cartFor(hotelId)
+  const nights = nightsForHold(checkInDate, checkOutDate)
+  const rows = Object.entries(cart)
+    .filter(([, qty]) => qty > 0)
+    .map(([roomId, qty]) => {
+      const room = rooms.find((r) => r.id === roomId)
+      const amount = room?.price?.amount
+      const hasAmount = amount != null && Number.isFinite(amount) && amount > 0
+      return {
+        roomId,
+        name: room?.name ?? roomId,
+        qty,
+        subtotal: hasAmount ? amount! * qty * nights : null,
+      }
+    })
+  const cartCount = rows.reduce((n, r) => n + r.qty, 0)
+  const total = rows.reduce((sum, r) => sum + (r.subtotal ?? 0), 0)
+  const hasAnyPriced = rows.some((r) => r.subtotal != null)
+
+  const heldHere = roomHold.status === 'HELD' && roomHold.heldHotelId === hotelId
+  const heldElsewhere =
+    (roomHold.status === 'HELD' || roomHold.status === 'BOOKED') && roomHold.heldHotelId !== hotelId
+  const busy = roomHold.status === 'HOLDING'
+  // ERROR is retryable from right here (startHold already cleans up any
+  // partial reservations before setting it — see use-room-hold.ts), so it
+  // counts as startable same as IDLE; every other non-idle status means a
+  // hold already exists somewhere and must be resolved from its own state
+  // first (heldHere/heldElsewhere/busy above).
+  const canStart =
+    cartCount > 0 &&
+    !!checkInDate &&
+    !!checkOutDate &&
+    (roomHold.status === 'IDLE' || roomHold.status === 'ERROR')
+
+  const label = heldHere
+    ? t('holdCtaHeld')
+    : heldElsewhere
+      ? t('holdCtaBlocked')
+      : busy
+        ? t('holdCtaBusy')
+        : t('holdCta')
+  const disabled = heldHere || heldElsewhere || busy || !canStart
+
+  function handleStart() {
+    if (!canStart || !option) return
+    void roomHold.startHold(
+      hotelId,
+      rooms,
+      { checkInDate: checkInDate!, checkOutDate: checkOutDate! },
+      () => onConfirmHotel(option),
+    )
+  }
+
+  return (
+    <div
+      className="sticky -bottom-[22px] -mx-5 mt-1 px-5 pt-3.5 pb-[30px] flex flex-col gap-2.5"
+      style={{
+        background: 'var(--pop-bg, var(--g3))',
+        backdropFilter: 'blur(26px) saturate(1.7)',
+        WebkitBackdropFilter: 'blur(26px) saturate(1.7)',
+        borderTop: '1px solid var(--edge)',
+        boxShadow: '0 -24px 48px -30px rgb(var(--shadow-rgb) / 0.55)',
+      }}
+    >
+      <div className="flex items-center gap-2.5">
+        <div className={SECTION_EYEBROW + ' mb-0'}>{t('holdSectionSelected')}</div>
+        <div className="flex-1" />
+      </div>
+      {cartCount > 0 ? (
+        <div className="flex flex-col gap-1.5">
+          {rows.map((row) => (
+            <div key={row.roomId} className="flex items-center gap-2.5">
+              <span className="w-[5px] h-[5px] rounded-full bg-primary flex-none" aria-hidden="true" />
+              <span className="flex-1 min-w-0 text-[12.5px] font-[530] text-on-surface truncate">
+                {row.name}
+              </span>
+              <span className="flex-none text-[11.5px] text-on-surface-muted">
+                {t('roomQtyLabel', { count: row.qty })}
+              </span>
+              <span className="flex-none text-[12px] font-[530] tabular-nums text-on-surface">
+                {row.subtotal != null ? formatCurrency(row.subtotal, i18n.language) : t('roomPriceOnRequest')}
+              </span>
+            </div>
+          ))}
+          {hasAnyPriced && (
+            <div className="flex items-baseline gap-2 pt-2 mt-0.5 border-t border-line">
+              <span className="text-[11.5px] text-on-surface-muted">{t('holdTotal')}</span>
+              <span className="flex-1" />
+              <span className="text-[18px] font-[590] tracking-[-0.45px] tabular-nums text-on-surface">
+                {formatCurrency(total, i18n.language)}
+              </span>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="text-[12px] font-[450] leading-[1.45]" style={{ color: 'var(--warn)' }}>
+          {t('holdCartEmptyHint')}
+        </div>
+      )}
+      {roomHold.status === 'ERROR' && roomHold.error && (
+        <div role="alert" className="text-[11.5px] font-medium" style={{ color: 'var(--err)' }}>
+          {t(bookingErrorKey(roomHold.error))}
+        </div>
+      )}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={handleStart}
+        className="w-full py-3 rounded-2xl border-none text-[13.5px] font-[590] tracking-[-0.12px] text-center transition-all duration-200 active:not-disabled:scale-[0.99] disabled:cursor-not-allowed"
+        style={{
+          background: disabled ? 'var(--fill2)' : 'linear-gradient(135deg,#3A73DE,#2C5FC9)',
+          color: disabled ? 'var(--t4)' : 'var(--on-acc)',
+          boxShadow: disabled ? 'none' : '0 14px 30px -14px rgba(44,95,201,.7)',
+        }}
+      >
+        {label}
+      </button>
     </div>
   )
 }

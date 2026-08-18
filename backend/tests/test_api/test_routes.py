@@ -302,3 +302,503 @@ async def test_delete_session_is_a_silent_noop_for_a_different_owner(client, aut
     response = await client.delete(f"/api/v1/chat/{session_id}")
     assert response.status_code == 204
     assert _routes.registry.get(session_id) is None
+
+
+# ---------------------------------------------------------------------------
+# Bookings — HTTP status mapping (plan 260818-booking-backend-robustness)
+#
+# booking_service.reserve_booking/confirm_booking/cancel_booking are imported
+# by NAME at the top of routes.py (`from src.services.booking_service import
+# ...`), unlike search_hotels_with_rooms's lazy in-function import above — so
+# they must be monkeypatched on src.api.routes itself, not on the
+# booking_service module, or the patch never takes effect.
+# ---------------------------------------------------------------------------
+
+_BOOKING_ROOM_ID = "11111111-1111-1111-1111-111111111111"
+_BOOKING_ID = "22222222-2222-2222-2222-222222222222"
+
+
+def _fake_booking(**overrides):
+    booking = {
+        "id": _BOOKING_ID,
+        "room_id": _BOOKING_ROOM_ID,
+        "check_in_date": "2026-09-01",
+        "check_in_time": "14:00:00",
+        "check_out_date": "2026-09-03",
+        "check_out_time": "12:00:00",
+        "room_count": 1,
+        "status": "RESERVED",
+        "expires_at": "2026-09-01T00:15:00+00:00",
+        "total_amount": "1500000.00",
+        "currency": "VND",
+    }
+    booking.update(overrides)
+    return booking
+
+
+@pytest.mark.asyncio
+async def test_create_booking_returns_201_on_success(client, monkeypatch):
+    import src.api.routes as _routes
+
+    monkeypatch.setattr(_routes, "reserve_booking", lambda **_kwargs: _fake_booking())
+
+    response = await client.post(
+        "/api/v1/bookings",
+        json={
+            "room_id": _BOOKING_ROOM_ID,
+            "temporary_user_ref": "guest-1",
+            "check_in_date": "2026-09-01",
+            "check_out_date": "2026-09-03",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["status"] == "RESERVED"
+
+
+@pytest.mark.asyncio
+async def test_create_booking_sold_out_returns_409(client, monkeypatch):
+    """The room a second, losing racer just missed — see
+    create_booking_reservation's pg_advisory_xact_lock in the migration:
+    this is the clean, expected outcome of a real concurrent hold, not a
+    server error."""
+    import src.api.routes as _routes
+    from src.services.booking_service import BookingError
+
+    def _raise(**_kwargs):
+        raise BookingError("insufficient_room_availability")
+
+    monkeypatch.setattr(_routes, "reserve_booking", _raise)
+
+    response = await client.post(
+        "/api/v1/bookings",
+        json={
+            "room_id": _BOOKING_ROOM_ID,
+            "temporary_user_ref": "guest-2",
+            "check_in_date": "2026-09-01",
+            "check_out_date": "2026-09-03",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "insufficient_room_availability"
+
+
+@pytest.mark.asyncio
+async def test_create_booking_invalid_request_returns_422(client, monkeypatch):
+    import src.api.routes as _routes
+    from src.services.booking_service import BookingError
+
+    def _raise(**_kwargs):
+        raise BookingError("invalid_booking_request")
+
+    monkeypatch.setattr(_routes, "reserve_booking", _raise)
+
+    response = await client.post(
+        "/api/v1/bookings",
+        json={
+            "room_id": _BOOKING_ROOM_ID,
+            "temporary_user_ref": "guest-3",
+            "check_in_date": "2026-09-01",
+            "check_out_date": "2026-09-03",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "invalid_booking_request"
+
+
+@pytest.mark.asyncio
+async def test_create_booking_unexpected_failure_returns_500_without_leaking_internals(client, monkeypatch):
+    import src.api.routes as _routes
+    from src.services.booking_service import BookingError
+
+    def _raise(**_kwargs):
+        raise BookingError("booking_operation_failed")
+
+    monkeypatch.setattr(_routes, "reserve_booking", _raise)
+
+    response = await client.post(
+        "/api/v1/bookings",
+        json={
+            "room_id": _BOOKING_ROOM_ID,
+            "temporary_user_ref": "guest-4",
+            "check_in_date": "2026-09-01",
+            "check_out_date": "2026-09-03",
+        },
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Unable to process booking."
+
+
+@pytest.mark.asyncio
+async def test_confirm_booking_not_found_returns_404(client, monkeypatch):
+    """Covers both a genuinely missing booking id AND a temporary_user_ref
+    that doesn't match — confirm_booking_reservation raises the identical
+    error for both, so neither case leaks which one it was."""
+    import src.api.routes as _routes
+    from src.services.booking_service import BookingError
+
+    def _raise(*, booking_id, temporary_user_ref):
+        raise BookingError("booking_not_found")
+
+    monkeypatch.setattr(_routes, "confirm_booking", _raise)
+
+    response = await client.post(
+        f"/api/v1/bookings/{_BOOKING_ID}/confirm",
+        json={"temporary_user_ref": "wrong-guest"},
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_confirm_booking_after_hold_expired_returns_409(client, monkeypatch):
+    import src.api.routes as _routes
+    from src.services.booking_service import BookingError
+
+    def _raise(*, booking_id, temporary_user_ref):
+        raise BookingError("booking_reservation_expired")
+
+    monkeypatch.setattr(_routes, "confirm_booking", _raise)
+
+    response = await client.post(
+        f"/api/v1/bookings/{_BOOKING_ID}/confirm",
+        json={"temporary_user_ref": "guest-1"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "booking_reservation_expired"
+
+
+@pytest.mark.asyncio
+async def test_confirm_already_confirmed_booking_returns_409(client, monkeypatch):
+    """A double-submit (two tabs, retried request) on the same booking must
+    not silently succeed twice or 500 — confirm_booking_reservation's row
+    lock means only the first ever sees status='RESERVED'."""
+    import src.api.routes as _routes
+    from src.services.booking_service import BookingError
+
+    def _raise(*, booking_id, temporary_user_ref):
+        raise BookingError("booking_not_confirmable")
+
+    monkeypatch.setattr(_routes, "confirm_booking", _raise)
+
+    response = await client.post(
+        f"/api/v1/bookings/{_BOOKING_ID}/confirm",
+        json={"temporary_user_ref": "guest-1"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "booking_not_confirmable"
+
+
+@pytest.mark.asyncio
+async def test_cancel_booking_returns_200_on_success(client, monkeypatch):
+    import src.api.routes as _routes
+
+    monkeypatch.setattr(
+        _routes, "cancel_booking", lambda *, booking_id, temporary_user_ref: _fake_booking(status="CANCELLED")
+    )
+
+    response = await client.post(
+        f"/api/v1/bookings/{_BOOKING_ID}/cancel",
+        json={"temporary_user_ref": "guest-1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "CANCELLED"
+
+
+# ---------------------------------------------------------------------------
+# VNPay payment (plan 260818-vnpay-payment-and-email-confirmation)
+#
+# create_vnpay_payment/vnpay_ipn/get_payment_endpoint reach payment_service
+# and vnpay_service via a MODULE reference (`from src.services import
+# payment_service` / `vnpay_service` in routes.py, not `from ... import
+# create_payment`), so those are monkeypatched on the source module itself —
+# same reasoning as search_hotels_with_rooms's lazy import elsewhere in this
+# file, opposite of the booking_service functions above (which ARE
+# monkeypatched on _routes, being direct-name imports there).
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _vnpay_configured(monkeypatch):
+    """Pins real-looking (but fake) VNPay credentials so create_vnpay_payment
+    doesn't 503 by default; individual tests override/clear as needed."""
+    monkeypatch.setenv("VNPAY_TMN_CODE", "TESTCODE")
+    monkeypatch.setenv("VNPAY_HASH_SECRET", "test-secret")
+    monkeypatch.setenv("VNPAY_RETURN_URL", "https://example.com/")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+def _fake_reserved_booking(**overrides):
+    booking = {
+        "id": _BOOKING_ID,
+        "room_id": _BOOKING_ROOM_ID,
+        "status": "RESERVED",
+        "temporary_user_ref": "guest-1",
+        "expires_at": "2099-01-01T00:00:00+00:00",
+        "total_amount": "1500000.00",
+        "currency": "VND",
+    }
+    booking.update(overrides)
+    return booking
+
+
+_PAYMENT_ID = "33333333-3333-3333-3333-333333333333"
+
+
+def _fake_payment(**overrides):
+    payment = {
+        "id": _PAYMENT_ID,
+        "booking_ids": [_BOOKING_ID],
+        "temporary_user_ref": "guest-1",
+        "amount": "1500000.00",
+        "currency": "VND",
+        "status": "PENDING",
+        "guest_name": "Nguyen Van A",
+        "guest_email": "guest@example.com",
+        "guest_phone": None,
+        "vnp_transaction_no": None,
+        "paid_at": None,
+        "created_at": "2026-08-18T00:00:00+00:00",
+    }
+    payment.update(overrides)
+    return payment
+
+
+@pytest.mark.asyncio
+async def test_create_vnpay_payment_returns_pay_url_on_success(client, monkeypatch):
+    import src.api.routes as _routes
+    from src.services import payment_service as _payment_service
+
+    monkeypatch.setattr(_routes, "get_booking", lambda _id: _fake_reserved_booking())
+    monkeypatch.setattr(_payment_service, "create_payment", lambda **_kwargs: _fake_payment())
+
+    response = await client.post(
+        "/api/v1/payments/vnpay",
+        json={
+            "booking_ids": [_BOOKING_ROOM_ID],
+            "temporary_user_ref": "guest-1",
+            "guest_name": "Nguyen Van A",
+            "guest_email": "guest@example.com",
+        },
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["payment_id"] == _PAYMENT_ID
+    assert data["pay_url"].startswith("https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?")
+    assert "vnp_SecureHash=" in data["pay_url"]
+
+
+@pytest.mark.asyncio
+async def test_create_vnpay_payment_returns_503_when_not_configured(client, monkeypatch):
+    # setenv("", "") rather than delenv: pydantic-settings' source priority is
+    # env vars > .env file, so an explicit empty env var reliably blocks the
+    # dotenv fallback. delenv would instead let a real VNPAY_TMN_CODE/
+    # VNPAY_HASH_SECRET in the developer's own backend/.env (e.g. for manual
+    # sandbox testing) leak through and silently "configure" this test.
+    monkeypatch.setenv("VNPAY_TMN_CODE", "")
+    monkeypatch.setenv("VNPAY_HASH_SECRET", "")
+    get_settings.cache_clear()
+
+    response = await client.post(
+        "/api/v1/payments/vnpay",
+        json={
+            "booking_ids": [_BOOKING_ROOM_ID],
+            "temporary_user_ref": "guest-1",
+            "guest_name": "Nguyen Van A",
+            "guest_email": "guest@example.com",
+        },
+    )
+
+    assert response.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_create_vnpay_payment_rejects_a_booking_owned_by_someone_else(client, monkeypatch):
+    import src.api.routes as _routes
+
+    monkeypatch.setattr(
+        _routes, "get_booking", lambda _id: _fake_reserved_booking(temporary_user_ref="someone-else")
+    )
+
+    response = await client.post(
+        "/api/v1/payments/vnpay",
+        json={
+            "booking_ids": [_BOOKING_ROOM_ID],
+            "temporary_user_ref": "guest-1",
+            "guest_name": "Nguyen Van A",
+            "guest_email": "guest@example.com",
+        },
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_vnpay_payment_rejects_a_non_reserved_booking(client, monkeypatch):
+    import src.api.routes as _routes
+
+    monkeypatch.setattr(_routes, "get_booking", lambda _id: _fake_reserved_booking(status="CONFIRMED"))
+
+    response = await client.post(
+        "/api/v1/payments/vnpay",
+        json={
+            "booking_ids": [_BOOKING_ROOM_ID],
+            "temporary_user_ref": "guest-1",
+            "guest_name": "Nguyen Van A",
+            "guest_email": "guest@example.com",
+        },
+    )
+
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_create_vnpay_payment_rejects_an_expired_hold(client, monkeypatch):
+    import src.api.routes as _routes
+
+    monkeypatch.setattr(
+        _routes, "get_booking", lambda _id: _fake_reserved_booking(expires_at="2000-01-01T00:00:00+00:00")
+    )
+
+    response = await client.post(
+        "/api/v1/payments/vnpay",
+        json={
+            "booking_ids": [_BOOKING_ROOM_ID],
+            "temporary_user_ref": "guest-1",
+            "guest_name": "Nguyen Van A",
+            "guest_email": "guest@example.com",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "booking_reservation_expired"
+
+
+@pytest.mark.asyncio
+async def test_vnpay_ipn_rejects_an_invalid_signature(client, monkeypatch):
+    from src.services import vnpay_service as _vnpay_service
+
+    monkeypatch.setattr(_vnpay_service, "verify_signature", lambda *_a, **_k: False)
+
+    response = await client.get("/api/v1/payments/vnpay/ipn", params={"vnp_TxnRef": _PAYMENT_ID})
+
+    assert response.status_code == 200
+    assert response.json()["RspCode"] == "97"
+
+
+@pytest.mark.asyncio
+async def test_vnpay_ipn_returns_order_not_found_for_unknown_txn_ref(client, monkeypatch):
+    from src.services import payment_service as _payment_service
+    from src.services import vnpay_service as _vnpay_service
+
+    monkeypatch.setattr(_vnpay_service, "verify_signature", lambda *_a, **_k: True)
+    monkeypatch.setattr(_payment_service, "get_payment", lambda _id: None)
+
+    response = await client.get("/api/v1/payments/vnpay/ipn", params={"vnp_TxnRef": _PAYMENT_ID})
+
+    assert response.json()["RspCode"] == "01"
+
+
+@pytest.mark.asyncio
+async def test_vnpay_ipn_rejects_a_mismatched_amount(client, monkeypatch):
+    from src.services import payment_service as _payment_service
+    from src.services import vnpay_service as _vnpay_service
+
+    monkeypatch.setattr(_vnpay_service, "verify_signature", lambda *_a, **_k: True)
+    monkeypatch.setattr(_payment_service, "get_payment", lambda _id: _fake_payment(amount="1500000.00"))
+
+    response = await client.get(
+        "/api/v1/payments/vnpay/ipn",
+        params={"vnp_TxnRef": _PAYMENT_ID, "vnp_Amount": "100"},  # far too low
+    )
+
+    assert response.json()["RspCode"] == "04"
+
+
+@pytest.mark.asyncio
+async def test_vnpay_ipn_is_idempotent_on_a_retried_notification(client, monkeypatch):
+    from src.services import payment_service as _payment_service
+    from src.services import vnpay_service as _vnpay_service
+
+    monkeypatch.setattr(_vnpay_service, "verify_signature", lambda *_a, **_k: True)
+    monkeypatch.setattr(_payment_service, "get_payment", lambda _id: _fake_payment(status="PAID"))
+
+    response = await client.get(
+        "/api/v1/payments/vnpay/ipn",
+        params={"vnp_TxnRef": _PAYMENT_ID, "vnp_Amount": "150000000"},
+    )
+
+    assert response.json()["RspCode"] == "02"
+
+
+@pytest.mark.asyncio
+async def test_vnpay_ipn_confirms_bookings_on_a_successful_payment(client, monkeypatch):
+    """The end-to-end happy path this whole feature exists for: a genuine,
+    signature-verified "00" IPN must flip the payment to PAID AND confirm
+    every booking in its group — not just record the payment."""
+    import src.api.routes as _routes
+    from src.services import payment_service as _payment_service
+    from src.services import vnpay_service as _vnpay_service
+
+    monkeypatch.setattr(_vnpay_service, "verify_signature", lambda *_a, **_k: True)
+    monkeypatch.setattr(_payment_service, "get_payment", lambda _id: _fake_payment())
+    monkeypatch.setattr(
+        _payment_service, "mark_payment_paid", lambda **_kwargs: _fake_payment(status="PAID")
+    )
+    monkeypatch.setattr(_payment_service, "booking_summary_for_email", lambda _id: None)
+    confirmed_booking_ids: list[str] = []
+    monkeypatch.setattr(
+        _routes,
+        "confirm_booking",
+        lambda *, booking_id, temporary_user_ref: confirmed_booking_ids.append(str(booking_id)),
+    )
+
+    response = await client.get(
+        "/api/v1/payments/vnpay/ipn",
+        params={
+            "vnp_TxnRef": _PAYMENT_ID,
+            "vnp_Amount": "150000000",
+            "vnp_ResponseCode": "00",
+            "vnp_TransactionStatus": "00",
+            "vnp_TransactionNo": "VNP123",
+        },
+    )
+
+    assert response.json()["RspCode"] == "00"
+    assert confirmed_booking_ids == [_BOOKING_ID]
+
+
+@pytest.mark.asyncio
+async def test_get_payment_endpoint_returns_404_for_wrong_owner(client, monkeypatch):
+    from src.services import payment_service as _payment_service
+
+    monkeypatch.setattr(_payment_service, "get_payment_for_owner", lambda _id, _ref: None)
+
+    response = await client.get(
+        f"/api/v1/payments/{_PAYMENT_ID}", params={"temporary_user_ref": "someone-else"}
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_payment_endpoint_returns_payment_for_the_owner(client, monkeypatch):
+    from src.services import payment_service as _payment_service
+
+    monkeypatch.setattr(_payment_service, "get_payment_for_owner", lambda _id, _ref: _fake_payment())
+
+    response = await client.get(
+        f"/api/v1/payments/{_PAYMENT_ID}", params={"temporary_user_ref": "guest-1"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "PENDING"

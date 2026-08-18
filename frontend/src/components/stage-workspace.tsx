@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import DayTimeline from './day-timeline'
+import HoldBanner from './hold-banner'
 import MapView, { type MapMarkerSpec } from './map-view'
 import PlaceDetailPanel from './place-detail-panel'
 import TripOverviewTab from './trip-overview-tab'
@@ -11,17 +12,12 @@ import { formatTripDateRange } from '../lib/format-trip-dates'
 import { itemSyncId, suggestedPlaceSyncId, TRIP_HOTEL_SYNC_KEY } from '../lib/map-sync-id'
 import { buildDaySegments, buildTripSegments } from '../lib/route-segments'
 import type { useFocusMode } from '../hooks/use-focus-mode'
+import type { RoomHoldApi } from '../hooks/use-room-hold'
 import type { Theme } from '../hooks/use-theme'
 import type { ChatState, Day, DayItem } from '../types'
 
 type FocusModeApi = ReturnType<typeof useFocusMode>
 type TabKey = 'overview' | number
-
-// The design's "Tạo lại" (V-OTA Planner.dc.html:206 regenerate) posts a plain
-// natural-language message through onSend — no new verb, no new endpoint. The
-// string is translated exactly as the two-step hotel confirm pattern.
-const REGENERATE_VI = 'Tạo lại lịch trình giúp mình'
-const REGENERATE_EN = 'Please regenerate the itinerary'
 
 // Nights from the real trip dates — duration_days - 1 is only a fallback for
 // when the dates are missing/unusable (never invented).
@@ -39,9 +35,10 @@ function nightsFrom(start?: string | null, end?: string | null, fallbackDays?: n
 
 /**
  * StageWorkspace — the Phase 9 workspace (V-OTA Planner.dc.html:192-295): a
- * glass trip header (logo, destination, date-range/days/nights/people meta,
- * one "Tạo lại" button — no "Chia sẻ", user decision 06/08/2026) over a
- * segmented tab bar (Tổng quan + one tab per day) and the itinerary scroll
+ * glass trip header (logo, destination, date-range/days/nights/people meta —
+ * no "Tạo lại"/"Chia sẻ" buttons, per user decisions 06/08/2026 and
+ * 260818-booking-flow) over a segmented tab bar (Tổng quan + one tab per day)
+ * and the itinerary scroll
  * column, alongside the map. All figures come from the existing `trip_plan`
  * contract — nothing new is invented.
  *
@@ -55,13 +52,16 @@ function nightsFrom(start?: string | null, end?: string | null, fallbackDays?: n
 export default function StageWorkspace({
   state,
   focusMode,
-  onSend,
   theme,
+  roomHold,
+  onOpenBooking,
 }: {
   state: ChatState
   focusMode: FocusModeApi
-  onSend: (text: string) => void
   theme: Theme
+  /** Real room hold (use-room-hold.ts) — drives the header's hold banner. */
+  roomHold: RoomHoldApi
+  onOpenBooking: () => void
 }) {
   const { t, i18n } = useTranslation()
   const tripPlan = state.tripPlan
@@ -157,10 +157,6 @@ export default function StageWorkspace({
     }
   }, [focused])
 
-  function regenerate() {
-    onSend(i18n.language === 'vi' ? REGENERATE_VI : REGENERATE_EN)
-  }
-
   const activeDay = typeof resolvedTab === 'number' ? days.find((d) => d.day_number === resolvedTab) : null
 
   // Phase 10 map data. Deliberately NOT keyed on mapSync.hoveredId — hover
@@ -235,7 +231,7 @@ export default function StageWorkspace({
 
   return (
     <div className="flex-1 min-w-0 min-h-0 flex flex-col animate-[vRise_0.75s_cubic-bezier(0.22,1,0.36,1)_both]">
-      {/* Trip header — glass panel, ONE button ("Tạo lại"). No share button. */}
+      {/* Trip header — glass panel. No "Tạo lại"/"Chia sẻ" buttons. */}
       <div className="glass-panel flex-none flex items-center gap-3.5 mx-3.5 mt-3.5 px-[18px] py-[13px] rounded-[26px]">
         <div
           className="w-[30px] h-[30px] rounded-[10px] bg-gradient-to-br from-[#5C93EE] to-[#2C5FC9] flex items-center justify-center text-on-primary font-[590] text-[14px]"
@@ -251,13 +247,7 @@ export default function StageWorkspace({
           {meta && <div className="text-[11.5px] text-on-surface-muted font-normal truncate">{meta}</div>}
         </div>
         <div className="flex-1" />
-        <button
-          type="button"
-          onClick={regenerate}
-          className="px-4 py-[9px] rounded-[12px] border border-stroke bg-glass-2 text-[13px] font-normal text-on-surface cursor-pointer transition-all duration-200 hover:bg-glass-3 hover:-translate-y-px"
-        >
-          {t('regenerate')}
-        </button>
+        <HoldBanner roomHold={roomHold} onOpenBooking={onOpenBooking} />
       </div>
 
       {/* Content row — itinerary column | map | detail panel (focus). */}

@@ -6,53 +6,55 @@ import { displayAmenityLabels } from '../lib/hotel-filters'
 import type { AmenityCatalogOption, RoomDetail } from '../types'
 
 /**
- * RoomCard — the read-only room accordion (RoomCard.dc.html minus the removed
- * parts). Click anywhere on the card (or the toggle button) expands IN PLACE
- * to show the gallery / facilities / package details — no new screen, no
- * popup (Hotel Detail Focus.md §Room Detail). Opening smooth-scrolls down far
- * enough to reveal the newly-expanded details AND the "Chọn phòng"/"Chi tiết
- * phòng" buttons below them; closing smooth-scrolls the card back into view
- * — see the `open` effect below.
+ * RoomCard — the room accordion, now with a real quantity stepper (V-OTA
+ * Planner design update: room selection now feeds an actual hold, not a
+ * local highlight — see use-room-hold.ts). Click anywhere on the card (or
+ * the toggle button) expands IN PLACE to show the gallery / facilities /
+ * package details — no new screen, no popup (Hotel Detail Focus.md §Room
+ * Detail). Opening smooth-scrolls down far enough to reveal the
+ * newly-expanded details AND the quantity/detail buttons below them;
+ * closing smooth-scrolls the card back into view — see the `open` effect
+ * below.
  *
- * "Chọn phòng" (`selected`/`onPick`) is room-level display-only by design
- * (plan.md "Phần chưa làm" #4): the backend has no select-room verb, so
- * picking a room here never reaches it, never changes the hotel's total
- * price or AI summary — it's a local highlight the caller
- * (hotel-detail-panel.tsx) tracks per hotel, same as the design's
- * `state.rooms[hid]`. It DOES also select the hotel itself, though (bug
- * fix): the backend has no hotel-vs-room selection distinction either, and
- * a room pick that left the (real, backend-reaching) hotel-selection state
- * untouched left first-time users stuck on a disabled "Tạo lịch trình"
- * button with zero feedback — see hotel-detail-panel.tsx's `onSelectHotel`.
- * No cancellation/payment policy cells either (plan.md #21) — the tables
- * have no such columns.
+ * `qty`/`onQtyChange` replace the old display-only `selected`/`onPick`: a
+ * hotel can now hold several different room TYPES at once (the design's
+ * cart), each with its own count up to `maxQty` (available_room_count when
+ * known, else a flat cap — see use-room-hold.ts's MAX_QTY_PER_ROOM). Still
+ * no cancellation/payment policy cells — the tables have no such columns,
+ * and this app never invents policy text for real data it doesn't have.
  *
  * The availability badge is honest: it maps from price.sold_out (real data),
  * shows only when a price row exists at all (price: null means "we don't
  * know", so no badge), and a null price renders the translated "giá theo yêu
- * cầu" label — never 0, never the hotel-level price.
+ * cầu" label — never 0, never the hotel-level price. A sold-out room forces
+ * maxQty to 0 (caller's job — see hotel-detail-panel.tsx) so the add button
+ * is disabled rather than silently capped at a phantom count.
  */
 export default function RoomCard({
   room,
   delay,
-  selected,
-  onPick,
+  qty,
+  maxQty,
+  onQtyChange,
   amenityDetails,
 }: {
   room: RoomDetail
   delay: string
-  selected: boolean
-  onPick: () => void
+  /** Units of this room type currently in the cart (0 = not selected). */
+  qty: number
+  /** Upper bound for `qty` — 0 disables the add button entirely. */
+  maxQty: number
+  onQtyChange: (nextQty: number) => void
   /** Shared room/both catalog data from the surrounding hotel-detail response. */
   amenityDetails: AmenityCatalogOption[]
 }) {
   const { t, i18n } = useTranslation()
   const [open, setOpen] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
-  // Wraps the expandable details block AND the "Chọn phòng"/"Chi tiết
-  // phòng" button row below it (see the JSX — this ref sits on their common
-  // parent, not just the details block), so opening scrolls far enough to
-  // reveal the buttons too, not just the top of the newly-expanded content.
+  // Wraps the expandable details block AND the quantity/detail button row
+  // below it (see the JSX — this ref sits on their common parent, not just
+  // the details block), so opening scrolls far enough to reveal the buttons
+  // too, not just the top of the newly-expanded content.
   const bodyRef = useRef<HTMLDivElement>(null)
   // Skips the scroll on mount — this effect exists purely to react to the
   // user actually toggling `open`, not to move anything on first render.
@@ -103,6 +105,8 @@ export default function RoomCard({
     amenityDetails,
     i18n.language,
   )
+  const selected = qty > 0
+  const canAdd = maxQty > 0 && qty < maxQty
 
   return (
     <div
@@ -210,21 +214,50 @@ export default function RoomCard({
           </div>
         )}
 
-        <div className="flex gap-2 mt-3">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              onPick()
-            }}
-            className="flex-1 p-2.5 rounded-[14px] border-none text-[12.5px] font-[590] tracking-[-0.1px] cursor-pointer transition-all duration-200 active:scale-[0.985]"
-            style={{
-              background: selected ? 'var(--btn)' : 'var(--fill)',
-              color: selected ? 'var(--btn-fg)' : 'var(--t2)',
-            }}
-          >
-            {selected ? t('roomPickBtnSelected') : t('roomPickBtn')}
-          </button>
+        <div className="flex gap-2 mt-3 items-center">
+          {selected ? (
+            <div
+              className="flex-1 flex items-center gap-1 h-11 p-1 rounded-[14px]"
+              style={{ background: 'var(--acc-soft)', border: '1px solid var(--acc)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                aria-label={t('roomQtyDecrease')}
+                onClick={() => onQtyChange(qty - 1)}
+                className="w-[34px] h-[34px] flex-none rounded-[11px] border-none text-on-surface text-[15px] cursor-pointer flex items-center justify-center transition-colors duration-200 hover:bg-white/60"
+                style={{ background: 'var(--g3)' }}
+              >
+                −
+              </button>
+              <div className="flex-1 text-center text-[12.5px] font-[590] tracking-[-0.1px] text-on-surface tabular-nums">
+                ✓ {t('roomQtyLabel', { count: qty })}
+              </div>
+              <button
+                type="button"
+                aria-label={t('roomQtyIncrease')}
+                disabled={!canAdd}
+                onClick={() => onQtyChange(qty + 1)}
+                className="w-[34px] h-[34px] flex-none rounded-[11px] border-none text-[15px] cursor-pointer flex items-center justify-center transition-transform duration-200 active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
+                style={{ background: 'var(--acc)', color: 'var(--on-acc)' }}
+              >
+                +
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={!canAdd}
+              onClick={(e) => {
+                e.stopPropagation()
+                onQtyChange(1)
+              }}
+              className="flex-1 p-2.5 rounded-[14px] border-none text-[12.5px] font-[590] tracking-[-0.1px] cursor-pointer transition-all duration-200 active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-50"
+              style={{ background: 'var(--fill)', color: 'var(--t2)' }}
+            >
+              {maxQty > 0 ? t('roomAddBtn') : t('roomSoldOut')}
+            </button>
+          )}
           <button
             type="button"
             onClick={(e) => {

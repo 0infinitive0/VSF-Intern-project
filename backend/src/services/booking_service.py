@@ -38,6 +38,12 @@ def _call(rpc_name: str, params: dict[str, Any]) -> dict[str, Any]:
             raise BookingError("booking_not_found") from exc
         if "booking_not_confirmable" in message:
             raise BookingError("booking_not_confirmable") from exc
+        # create_booking_reservation's own validation (bad date range,
+        # room_count <= 0, hold_minutes out of [1, 60]) — the caller's
+        # fault, not a server error. Was previously indistinguishable from
+        # booking_operation_failed and surfaced as a bare 500.
+        if "invalid_booking_request" in message:
+            raise BookingError("invalid_booking_request") from exc
         raise BookingError("booking_operation_failed") from exc
 
 
@@ -69,3 +75,15 @@ def cancel_booking(*, booking_id: UUID, temporary_user_ref: str) -> dict[str, An
     return _call("cancel_booking", {
         "p_booking_id": str(booking_id), "p_temporary_user_ref": temporary_user_ref,
     })
+
+
+def get_booking(booking_id: UUID) -> dict[str, Any] | None:
+    """Plain read, no RPC needed — a SELECT has no race to guard against.
+    Used by the VNPay payment-creation route (plan
+    260818-vnpay-payment-and-email-confirmation) to verify each booking in a
+    checkout attempt is still RESERVED and unexpired, and to total their
+    `total_amount` before charging."""
+    response = (
+        get_supabase_client().table("bookings").select("*").eq("id", str(booking_id)).limit(1).execute()
+    )
+    return dict(response.data[0]) if response.data else None

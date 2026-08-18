@@ -4,6 +4,7 @@ import PanelResizer from './panel-resizer'
 import SidebarRail from './sidebar-rail'
 import StageRouter from './stage-router'
 import { useFocusMode } from '../hooks/use-focus-mode'
+import type { RoomHoldApi } from '../hooks/use-room-hold'
 import { useTheme } from '../hooks/use-theme'
 import type { IntakeFormState } from '../lib/compose-intake-message'
 import type { IntakeChecklistRowKey } from '../lib/intake-checklist-rows'
@@ -80,6 +81,8 @@ export default function AppShell({
   turnPending,
   restoringSessionId,
   onOpenAuthPanel,
+  roomHold,
+  onOpenBooking,
 }: {
   state: ChatState
   onSend: (text: string) => void
@@ -112,6 +115,10 @@ export default function AppShell({
    * spinner ConversationList shows on that row while awaiting the response. */
   restoringSessionId: string | null
   onOpenAuthPanel: () => void
+  /** Real room hold (use-room-hold.ts), owned by App.tsx and threaded through
+   * to StageRouter — see its own doc comment for why. */
+  roomHold: RoomHoldApi
+  onOpenBooking: () => void
 }) {
   const { theme, toggleTheme } = useTheme()
   const focusMode = useFocusMode()
@@ -280,10 +287,11 @@ export default function AppShell({
             onSelectHotel={onSelectHotel}
             onConfirmHotel={onConfirmHotel}
             focusMode={focusMode}
-            onSend={onSend}
             intakeForm={intakeForm}
             onEditIntakeField={onEditIntakeField}
             theme={theme}
+            roomHold={roomHold}
+            onOpenBooking={onOpenBooking}
           />
         </div>
       </div>

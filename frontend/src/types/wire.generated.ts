@@ -109,6 +109,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/payments/vnpay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Vnpay Payment */
+        post: operations["create_vnpay_payment_api_v1_payments_vnpay_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payments/vnpay/ipn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Vnpay Ipn
+         * @description The ONLY trusted payment confirmation source — see the module doc
+         *     comment above. VNPay reads RspCode/Message from this response to decide
+         *     whether to retry; "00" means "I received and processed this
+         *     notification", independent of whether the underlying transaction itself
+         *     succeeded (that's read from vnp_ResponseCode/vnp_TransactionStatus).
+         */
+        get: operations["vnpay_ipn_api_v1_payments_vnpay_ipn_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payments/{payment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Payment Endpoint */
+        get: operations["get_payment_endpoint_api_v1_payments__payment_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chat/session": {
         parameters: {
             query?: never;
@@ -596,6 +654,37 @@ export interface components {
              */
             session_id: string;
         };
+        /**
+         * CreateVnpayPaymentRequest
+         * @description One payment covers every booking in a hold group — a guest can hold
+         *     several distinct room types at once (frontend's use-room-hold.ts), but
+         *     VNPay has exactly one vnp_TxnRef per transaction.
+         */
+        CreateVnpayPaymentRequest: {
+            /** Booking Ids */
+            booking_ids: string[];
+            /** Temporary User Ref */
+            temporary_user_ref: string;
+            /** Guest Name */
+            guest_name: string;
+            /**
+             * Guest Email
+             * Format: email
+             */
+            guest_email: string;
+            /** Guest Phone */
+            guest_phone?: string | null;
+        };
+        /** CreateVnpayPaymentResponse */
+        CreateVnpayPaymentResponse: {
+            /**
+             * Payment Id
+             * Format: uuid
+             */
+            payment_id: string;
+            /** Pay Url */
+            pay_url: string;
+        };
         /** DayPlan */
         DayPlan: {
             /** Day Number */
@@ -894,6 +983,40 @@ export interface components {
             distance_text: string | null;
         } & {
             [key: string]: unknown;
+        };
+        /** PaymentPayload */
+        PaymentPayload: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Booking Ids */
+            booking_ids: string[];
+            /** Amount */
+            amount: string;
+            /** Currency */
+            currency: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "PENDING" | "PAID" | "FAILED" | "CANCELLED";
+            /** Guest Name */
+            guest_name?: string | null;
+            /** Guest Email */
+            guest_email?: string | null;
+            /** Guest Phone */
+            guest_phone?: string | null;
+            /** Vnp Transaction No */
+            vnp_transaction_no?: string | null;
+            /** Paid At */
+            paid_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /**
          * PlannerChatRequest
@@ -1389,6 +1512,94 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BookingPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_vnpay_payment_api_v1_payments_vnpay_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateVnpayPaymentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateVnpayPaymentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    vnpay_ipn_api_v1_payments_vnpay_ipn_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+        };
+    };
+    get_payment_endpoint_api_v1_payments__payment_id__get: {
+        parameters: {
+            query: {
+                temporary_user_ref: string;
+            };
+            header?: never;
+            path: {
+                payment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentPayload"];
                 };
             };
             /** @description Validation Error */

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { getPaymentStatus } from './api/payment-client'
 import { deleteSession } from './api/session-client'
 import { useAuth } from './auth/auth-context'
 import { consumeOAuthRedirectError, isIdentityAlreadyLinkedError } from './auth/oauth-redirect-error'
@@ -7,12 +8,15 @@ import { translateAuthError } from './auth/translate-auth-error'
 import { useChatSession } from './hooks/use-chat-session'
 import { useIntakeForm } from './hooks/use-intake-form'
 import { usePanelResize } from './hooks/use-panel-resize'
+import { useRoomHold } from './hooks/use-room-hold'
 import { useSessionHistory } from './hooks/use-session-history'
 import { deriveStageView, type StageView } from './lib/derive-stage'
 import { isFieldFilled } from './lib/next-intake-field'
+import { consumeVnpayReturn } from './lib/vnpay-return'
 import type { HotelOption } from './types'
 import AppShell from './components/app-shell'
 import AuthPanel from './auth/auth-panel'
+import BookingModal from './components/booking-modal'
 import SessionExpiredModal from './components/session-expired-modal'
 import BootSplash from './components/boot-splash'
 
@@ -149,6 +153,72 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   const retainedHotelOptions = state.sessionId ? (hotelOptionsBySession[state.sessionId] ?? []) : []
   const selectedHotelIndex = state.sessionId ? (selectedHotelIndexBySession[state.sessionId] ?? null) : null
 
+  // Real room hold (use-room-hold.ts) — owned here (not lower in the tree)
+  // because it must survive across the hotels/workspace stage swap AND be
+  // reachable from BookingModal, which is mounted as a sibling of AppShell
+  // for the same "escape any backdrop-filter ancestor" reason
+  // profile-password-modal.tsx documents for its own portal.
+  const roomHold = useRoomHold()
+  const [bookingModalOpen, setBookingModalOpen] = useState(false)
+  const heldHotel =
+    retainedHotelOptions.find((h) => h.id === roomHold.heldHotelId) ?? null
+  const bookingHotelName = heldHotel?.name ?? state.tripPlan?.hotel?.name ?? ''
+  const bookingHotelArea = heldHotel?.area_name ?? null
+
+  // Runs once on boot: the guest may have just been bounced back from
+  // VNPay's hosted payment page (plan 260818-vnpay-payment-and-email-
+  // confirmation). consumeVnpayReturn() only tells us THAT — never the
+  // outcome, which VNPay's redirect query params can't be trusted for (see
+  // vnpay-return.ts). The real verdict is GET /payments/{id}, backed by the
+  // IPN webhook the backend already processed (or is about to — it can
+  // land a beat after the browser's own redirect, hence the short poll
+  // rather than a single check). roomHold.paymentId is read from
+  // sessionStorage, not the URL — it was stashed there by booking-modal.tsx
+  // right before the redirect away (use-room-hold.ts's setPendingPayment).
+  useEffect(() => {
+    if (!consumeVnpayReturn()) return
+    const paymentId = roomHold.paymentId
+    if (!paymentId) return
+    let cancelled = false
+    const guestRef = roomHold.guestRef
+
+    async function pollUntilSettled() {
+      const maxAttempts = 10
+      const delayMs = 2000
+      for (let attempt = 0; attempt < maxAttempts && !cancelled; attempt++) {
+        try {
+          const payment = await getPaymentStatus(paymentId!, guestRef)
+          if (payment.status === 'PAID') {
+            roomHold.markBooked()
+            setBookingModalOpen(true)
+            return
+          }
+          if (payment.status === 'FAILED' || payment.status === 'CANCELLED') {
+            // Hold is untouched by a failed payment (see use-room-hold.ts) —
+            // reopening the modal just lands back on the Payment step so
+            // the guest can try again.
+            setBookingModalOpen(true)
+            return
+          }
+        } catch {
+          // Transient network hiccup — worth another attempt rather than
+          // giving up on the guest's very first request back into the app.
+        }
+        await new Promise((resolve) => setTimeout(resolve, delayMs))
+      }
+      // IPN still hasn't landed after ~20s — open the modal anyway rather
+      // than leave the guest on a blank page; GET /payments/{id} is cheap
+      // to check again from there once they notice nothing happened.
+      if (!cancelled) setBookingModalOpen(true)
+    }
+
+    void pollUntilSettled()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
     if (!state.sessionId || state.hotelOptions.length === 0) return
     setHotelOptionsBySession((current) => ({ ...current, [state.sessionId!]: state.hotelOptions }))
@@ -283,33 +353,47 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   }
 
   return (
-    <AppShell
-      state={state}
-      onSend={handleSend}
-      onChangeHotel={changeHotel}
-      onNewTrip={handleNewTrip}
-      stage={displayStage}
-      onViewStage={setViewOverride}
-      hotelOptions={retainedHotelOptions}
-      selectedHotelIndex={selectedHotelIndex}
-      onSelectHotel={selectHotel}
-      onConfirmHotel={handleHotelSelection}
-      chatWidth={chatWidth}
-      onChatResizeStart={chatResize}
-      intakeForm={intakeForm}
-      setIntakeForm={setIntakeForm}
-      toggleIntakePreference={toggleIntakePreference}
-      editingIntakeField={editingIntakeField}
-      onEditIntakeField={setEditingIntakeField}
-      onDoneEditingIntakeField={() => setEditingIntakeField(null)}
-      serverAskedField={serverAskedField}
-      sessions={sessions}
-      activeSessionId={state.sessionId}
-      onPickSession={handlePickSession}
-      onDeleteSession={handleDeleteSession}
-      turnPending={state.pending}
-      restoringSessionId={restoringSessionId}
-      onOpenAuthPanel={onOpenAuthPanel}
-    />
+    <>
+      <AppShell
+        state={state}
+        onSend={handleSend}
+        onChangeHotel={changeHotel}
+        onNewTrip={handleNewTrip}
+        stage={displayStage}
+        onViewStage={setViewOverride}
+        hotelOptions={retainedHotelOptions}
+        selectedHotelIndex={selectedHotelIndex}
+        onSelectHotel={selectHotel}
+        onConfirmHotel={handleHotelSelection}
+        chatWidth={chatWidth}
+        onChatResizeStart={chatResize}
+        intakeForm={intakeForm}
+        setIntakeForm={setIntakeForm}
+        toggleIntakePreference={toggleIntakePreference}
+        editingIntakeField={editingIntakeField}
+        onEditIntakeField={setEditingIntakeField}
+        onDoneEditingIntakeField={() => setEditingIntakeField(null)}
+        serverAskedField={serverAskedField}
+        sessions={sessions}
+        activeSessionId={state.sessionId}
+        onPickSession={handlePickSession}
+        onDeleteSession={handleDeleteSession}
+        turnPending={state.pending}
+        restoringSessionId={restoringSessionId}
+        onOpenAuthPanel={onOpenAuthPanel}
+        roomHold={roomHold}
+        onOpenBooking={() => setBookingModalOpen(true)}
+      />
+      <BookingModal
+        open={bookingModalOpen}
+        onClose={() => setBookingModalOpen(false)}
+        roomHold={roomHold}
+        hotelName={bookingHotelName}
+        hotelArea={bookingHotelArea}
+        checkInDate={state.intake?.start_date ?? null}
+        checkOutDate={state.intake?.end_date ?? null}
+        guestsLabel={state.intake?.people ?? null}
+      />
+    </>
   )
 }
