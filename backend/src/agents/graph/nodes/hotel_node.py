@@ -41,7 +41,7 @@ from langgraph.types import interrupt
 from src.agents.graph.state import TravelGraphState
 from src.domain.travel_state import Presence, TravelState, apply_patch
 from src.i18n import t
-from src.services.amenity_catalog import resolve_hotel_amenity_ids
+from src.services.amenity_catalog import all_approved_amenities, resolve_hotel_amenity_ids
 from src.services.hotel_selection import (
     NoHotelsMatchAmenities,
     NoHotelsMatchRating,
@@ -108,15 +108,24 @@ def _resolve_center(
     return None, resume_text
 
 
-def _amenity_labels(tags: list[str]) -> str:
-    return ", ".join(tags)
+def _amenity_catalog_labels() -> dict[str, str]:
+    return {entry.id: entry.label for entry in all_approved_amenities()}
+
+
+def _amenity_label(tag: str, catalog: dict[str, str]) -> str:
+    return catalog.get(tag, tag)
+
+
+def _amenity_labels(tags: list[str], catalog: dict[str, str]) -> str:
+    return ", ".join(_amenity_label(tag, catalog) for tag in tags)
 
 
 def _binding_constraint_reply(exc: NoHotelsMatchAmenities, language: str) -> str:
     if not exc.tag_drop_counts:
         return t("Không có khách sạn nào đáp ứng đủ các tiện ích bạn yêu cầu.", language)
+    catalog = _amenity_catalog_labels()
     best_tag, best_count = max(exc.tag_drop_counts.items(), key=lambda item: item[1])
-    tags_text = _amenity_labels(list(exc.tag_drop_counts.keys()))
+    tags_text = _amenity_labels(list(exc.tag_drop_counts.keys()), catalog)
     if best_count <= 0:
         return t(
             "Không có khách sạn nào có đủ các tiện ích: {tags} — kể cả khi bỏ bớt từng tiện ích một.",
@@ -127,7 +136,7 @@ def _binding_constraint_reply(exc: NoHotelsMatchAmenities, language: str) -> str
         "Không có khách sạn nào vừa có đủ các tiện ích: {tags}. Nếu bỏ '{tag}' thì có {count} khách sạn phù hợp.",
         language,
         tags=tags_text,
-        tag=best_tag,
+        tag=_amenity_label(best_tag, catalog),
         count=best_count,
     )
 
@@ -251,7 +260,14 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
     requested_amenities = (
         [str(tag) for tag in amenities_slot.value] if amenities_slot.presence is Presence.SET else []
     )
-    required_amenities = list(resolve_hotel_amenity_ids(requested_amenities).ids)
+    amenity_binding = resolve_hotel_amenity_ids(requested_amenities)
+    required_amenities = list(amenity_binding.ids)
+    # Surfaced rather than silently dropped (review finding): a term that
+    # didn't resolve to a known amenity is a request the search never even
+    # tried to honor -- the user deserves to know, not just get an
+    # unexplained partial (or empty) result. `.unresolved` already carries
+    # exactly the user's own words, never an internal ID.
+    unresolved_amenities = list(amenity_binding.unresolved)
     star_slot = travel_state.get("hotel_preferences.min_star_rating")
     min_star_rating = float(star_slot.value) if star_slot.presence is Presence.SET else None
     review_slot = travel_state.get("hotel_preferences.min_review_score")
@@ -294,6 +310,12 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
             updated_travel_state_dict = travel_state.to_dict()
 
     def _result(status: str, reply: str, hotel_search_result: dict[str, Any] | None = None) -> dict[str, Any]:
+        if unresolved_amenities:
+            reply = reply + " " + t(
+                "Mình chưa hỗ trợ lọc theo: {items}.",
+                language,
+                items=", ".join(unresolved_amenities),
+            )
         entry: dict[str, Any] = {"worker": _WORKER_NAME, "status": status, "reply": reply}
         if hotel_search_result is not None:
             entry["hotel_search_result"] = hotel_search_result
@@ -349,10 +371,35 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
         return _result("error", t("Tìm khách sạn thất bại: {error}", language, error=str(exc)))
 
     if not options and not previous_options:
+        # A generic "no hotel found" reads as "there are no hotels here at
+        # all" -- when the real cause is the date range, that's misleading
+        # and unactionable. Re-run the exact same filters minus the dates to
+        # isolate the cause: if hotels exist without the date constraint,
+        # the dates are the reason, not the destination.
+        if start_date or end_date:
+            dateless_kwargs = {**selection_kwargs, "start_date": None, "end_date": None}
+            dateless_kwargs.pop("exclude_hotel_ids", None)
+            try:
+                dateless_options = select_hotel_candidates(destination, destination_id, people, **dateless_kwargs)
+            except Exception:
+                dateless_options = []
+            if dateless_options:
+                return _result(
+                    "no_results_dates",
+                    t(
+                        "Có khách sạn tại {dest}, nhưng không còn phòng trống cho khoảng ngày bạn chọn. "
+                        "Hãy thử một khoảng ngày khác.",
+                        language,
+                        dest=destination,
+                    ),
+                )
         return _result("no_results", t("Không tìm thấy khách sạn phù hợp tại {dest}.", language, dest=destination))
 
     ranked = rank_hotel_candidates(options, target_price=target_price)
-    active_preferences = [{"id": tag, "label": tag} for tag in required_amenities]
+    amenity_catalog = _amenity_catalog_labels()
+    active_preferences = [
+        {"id": tag, "label": _amenity_label(tag, amenity_catalog)} for tag in required_amenities
+    ]
     hotel_options = [*previous_options]
     known_ids = set(previous_ids)
     for data, _candidate in ranked[:_HOTEL_DISPLAY_LIMIT]:

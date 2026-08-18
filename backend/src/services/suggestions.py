@@ -29,9 +29,19 @@ def generate_next_chat_suggestions(
     action_lower = last_action.lower()
 
     if "recommend_hotel" in action_lower or "pending_hotel" in action_lower:
+        # Bug fixes: the first suggestion used to promise a combined
+        # select-hotel-and-build-itinerary action sent as a plain chat
+        # message -- no chat intent reaches that (only the dedicated
+        # POST /hotels/select endpoint does), so clicking it always got a
+        # scope-guard refusal from qa_node. Replaced with a question
+        # qa_node can genuinely answer from the hotels already shown. The
+        # second suggestion assumed a coastal destination unconditionally
+        # (this list has no destination/travel_state input at all) and
+        # showed up even for inland cities like Hà Nội -- replaced with a
+        # destination-neutral filter.
         return [
-            "Chọn khách sạn số 1 và lập lịch trình",
-            "Tìm thêm khách sạn gần biển hơn",
+            "Khách sạn nào có đánh giá cao nhất?",
+            "Lọc theo đánh giá cao hơn",
             "Lọc khách sạn có bể bơi và bao gồm ăn sáng",
         ][:limit]
 

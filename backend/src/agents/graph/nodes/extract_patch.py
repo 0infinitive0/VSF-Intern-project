@@ -117,6 +117,19 @@ _LAST_DAY_RE = re.compile(r"\b(?:ngay|hom)\s+cuoi(?:\s+cung)?\b")
 _DURATION_DAYS_RE = re.compile(r"\b(?P<days>[1-9]\d?)\s*(?:ngay|day)\b")
 _BREAKFAST_INCLUDED_RE = re.compile(r"\b(?:bao\s+gom|included)\s+(?:(?:an|bua)\s+sang|breakfast)\b")
 _BREAKFAST_NEGATED_RE = re.compile(r"\b(?:khong|without|no)\s+(?:bao\s+gom\s+)?(?:(?:an|bua)\s+sang|breakfast)\b")
+# Same phrasing set as schemas.py's _AMENITY_INTENT_ALIASES["sea_view"], plus
+# "huong bien" (another common Vietnamese phrasing not in that keyword list).
+_SEA_VIEW_RE = re.compile(r"\b(?:view\s*bien|nhin\s+ra\s+bien|huong\s+bien|sea\s*view|ocean\s*view)\b")
+_SEA_VIEW_NEGATED_RE = re.compile(
+    r"\b(?:khong|without|no)\s+(?:can\s+)?(?:view\s*bien|nhin\s+ra\s+bien|huong\s+bien|sea\s*view|ocean\s*view)\b"
+)
+# The exact template compose-intake-message.ts always sends for the
+# date-range picker: "từ ngày D/M/Y đến ngày D/M/Y" (normalized: no
+# diacritics). Day is NOT zero-padded, month IS (Intl.DateTimeFormat's
+# {day: 'numeric', month: '2-digit'}), so both are matched loosely.
+_EXPLICIT_DATE_RANGE_RE = re.compile(
+    r"tu\s+ngay\s+(\d{1,2})/(\d{1,2})/(\d{4})\s+den\s+ngay\s+(\d{1,2})/(\d{1,2})/(\d{4})"
+)
 
 _CLOSED_LIST_PATHS: dict[str, tuple[str, ...]] = {
     "preferences.themes": _PREFERENCE_LABELS,
@@ -250,6 +263,54 @@ def _ground_included_breakfast(changes: list[dict[str, Any]], message: str) -> l
     if has_breakfast:
         return changes
     return [*changes, {"path": "hotel_preferences.amenities", "operation": "append", "value": "breakfast"}]
+
+
+def _ground_sea_view(changes: list[dict[str, Any]], message: str) -> list[dict[str, Any]]:
+    """Bind a sea-view hotel request to the canonical amenity ID -- the same
+    rescue `_ground_included_breakfast` applies for breakfast, and for the
+    same reason: a compound request ("view biển và có bao bữa sáng") can
+    have the extractor return only one of the two amenities, and sea view
+    had no deterministic backstop, so it could vanish with nothing to catch
+    it (reported: the assistant never acknowledged the sea-view half of a
+    two-amenity request, only the breakfast half).
+    """
+    normalized = _normalize(message)
+    if not _SEA_VIEW_RE.search(normalized) or _SEA_VIEW_NEGATED_RE.search(normalized):
+        return changes
+    has_sea_view = any(
+        change.get("path") == "hotel_preferences.amenities" and str(change.get("value") or "").strip().lower() == "sea_view"
+        for change in changes
+    )
+    if has_sea_view:
+        return changes
+    return [*changes, {"path": "hotel_preferences.amenities", "operation": "append", "value": "sea_view"}]
+
+
+def _derive_dates_from_explicit_range(changes: list[dict[str, Any]], message: str) -> list[dict[str, Any]]:
+    """Force dates.start/dates.end from an explicit "từ ngày D/M/Y đến ngày
+    D/M/Y" range stated verbatim, overriding whatever the LLM extracted for
+    those two paths.
+
+    This is the exact, fully-regular template `compose-intake-message.ts`
+    always sends for the date-range picker -- unambiguous enough that a
+    deterministic parse is strictly safer than trusting the model to copy
+    two dates correctly out of one sentence (reported: a picked 3-night
+    range was confirmed back as 2 nights -- the checkout date the user
+    picked and the one the turn echoed back didn't match). Values are kept
+    as raw `D/M/Y` text, same convention as every other numeric date this
+    node hands off -- the deterministic resolver in `travel_state.py`
+    parses that safely, never guessing a day/month order itself.
+    """
+    match = _EXPLICIT_DATE_RANGE_RE.search(_normalize(message))
+    if not match:
+        return changes
+    start_day, start_month, start_year, end_day, end_month, end_year = match.groups()
+    filtered = [change for change in changes if change.get("path") not in ("dates.start", "dates.end")]
+    return [
+        *filtered,
+        {"path": "dates.start", "operation": "set", "value": f"{start_day}/{start_month}/{start_year}"},
+        {"path": "dates.end", "operation": "set", "value": f"{end_day}/{end_month}/{end_year}"},
+    ]
 
 
 def _derive_end_date_from_duration(
@@ -480,6 +541,8 @@ def extract_patch(state: TravelGraphState) -> dict[str, Any]:
     changes = _rewrite_day_scope(raw_changes, day_scope)
     changes = _ground_changes(changes, destination_names)
     changes = _ground_included_breakfast(changes, message)
+    changes = _ground_sea_view(changes, message)
+    changes = _derive_dates_from_explicit_range(changes, message)
     changes = _derive_end_date_from_duration(changes, message, travel_state)
 
     # Persist the day THIS message itself named -- never the carried-over

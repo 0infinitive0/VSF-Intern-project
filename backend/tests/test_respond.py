@@ -156,8 +156,8 @@ def _counting_llm(calls: list[int]):
 # distinguishes the short-circuit from the LLM-fallback list, which is
 # different text.
 _HOTEL_OPTIONS_HARDCODED_SUGGESTIONS = [
-    "Chọn khách sạn số 1 và lập lịch trình",
-    "Tìm thêm khách sạn gần biển hơn",
+    "Khách sạn nào có đánh giá cao nhất?",
+    "Lọc theo đánh giá cao hơn",
     "Lọc khách sạn có bể bơi và bao gồm ăn sáng",
 ]
 
@@ -345,6 +345,61 @@ class TestRespondAllPreferences:
 
         response = respond(_state(task_results=task_results, travel_state=travel_state.to_dict()))["response"]
 
+        assert response["all_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi"}]
+        assert response["active_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi"}]
+
+    def test_fresh_hotel_options_still_get_labels_when_stage_is_planned(self, monkeypatch):
+        """Bug fix: a re-search after a trip already exists (e.g. "đổi khách
+        sạn") makes `derive_stage` return "planned" (trip_data outranks a
+        pending hotel pick), even though this turn's hotel_search_result is
+        genuinely fresh. The old stage-gated code forced hotel_amenities/
+        all_preferences to empty here, which is what produced raw amenity
+        IDs on the cards and an apparently-reset preferences panel."""
+        catalog = (
+            AmenityCatalogEntry("swimming_pool", "Hồ bơi", ("pool",), "Swimming pool", "both", "wellness", "pool"),
+        )
+        monkeypatch.setattr(respond_module, "all_approved_amenities", lambda: catalog)
+        monkeypatch.setattr(
+            respond_module,
+            "resolve_hotel_amenity_ids",
+            lambda _values: AmenityBindingResult(ids=("swimming_pool",), unresolved=()),
+        )
+        monkeypatch.setattr(
+            respond_module,
+            "hotel_amenities_from_hotel_options",
+            lambda _hotels: [
+                schemas.AmenityCatalogPayload(
+                    id="swimming_pool", label_vi="Hồ bơi", label_en="Swimming pool",
+                    category="wellness", icon_key="pool",
+                )
+            ],
+        )
+        travel_state = _seeded(
+            [{"path": "hotel_preferences.amenities", "operation": "set", "value": ["pool"]}]
+        )
+        task_results = [
+            {
+                "worker": "hotel_node",
+                "status": "ok",
+                "reply": "Mình tìm được 1 khách sạn phù hợp.",
+                "hotel_search_result": {
+                    "options": [{"id": "h1", "name": "Hotel A", "amenities": ["swimming_pool"]}],
+                    "active_preferences": [{"id": "swimming_pool", "label": "swimming_pool"}],
+                },
+            }
+        ]
+
+        response = respond(
+            _state(
+                task_results=task_results,
+                travel_state=travel_state.to_dict(),
+                trip_data={"itineraries": [{"id": "trip-1"}]},
+            )
+        )["response"]
+
+        assert response["stage"] == "planned"
+        assert response["hotel_options"] != []
+        assert [amenity.id for amenity in response["hotel_amenities"]] == ["swimming_pool"]
         assert response["all_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi"}]
         assert response["active_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi"}]
 
