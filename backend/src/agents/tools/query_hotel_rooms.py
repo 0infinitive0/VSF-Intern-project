@@ -7,6 +7,7 @@ from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
 from src.agents.graph.state import TravelGraphState
+from src.agents.tools.shown_hotels import labelled_amenities, shown_hotel_options
 from src.i18n import t
 from src.services.supabase_search import get_supabase_client
 
@@ -50,16 +51,16 @@ def query_hotel_rooms(
                     ) if language == "vi" else "Error: You just called this tool with the same args but the info wasn't there. DO NOT CALL IT AGAIN. Tell the user you don't have the info."
                     return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
 
-    hotel_options = runtime.state.get("hotel_options")
-    
-    if not hotel_options or not hotel_options.get("options"):
-        reply = t(
-            "SYSTEM ERROR: Không có danh sách khách sạn nào hiện đang được chọn. Hãy dùng công cụ recommend_hotels trước.",
-            language,
-        ) if language == "vi" else "SYSTEM ERROR: No hotel list is currently active. Use recommend_hotels first."
-        return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
+    options = shown_hotel_options(runtime.state)
 
-    options = hotel_options["options"]
+    if not options:
+        # See query_hotel.py for why this is not a SYSTEM ERROR and no longer
+        # points the model at the removed `recommend_hotels` tool.
+        reply = t(
+            "Chưa có danh sách khách sạn nào. Hãy nói với người dùng rằng bạn cần tìm khách sạn trước.",
+            language,
+        ) if language == "vi" else "No hotel list exists yet. Tell the user a hotel search is needed first."
+        return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
     matched_hotel = None
     
     hotel_identifier_str = str(hotel_identifier).strip().lower()
@@ -111,6 +112,17 @@ def query_hotel_rooms(
             ) if language == "vi" else "No room data found for this hotel or keyword. Please inform the user that the information is unavailable."
             return Command(update={"messages": [ToolMessage(reply, tool_call_id=runtime.tool_call_id)]})
             
+        # `room_facilities` are canonical ids straight out of the table; the
+        # model repeats whatever it is given, so resolve them to the same
+        # labels the room cards show rather than letting "outdoor_bathtub"
+        # reach the user.
+        rooms_data = [
+            {**room, "room_facilities": labelled_amenities(room.get("room_facilities"), language=language)}
+            if isinstance(room, dict)
+            else room
+            for room in rooms_data
+        ]
+
         rooms_json = json.dumps(rooms_data, ensure_ascii=False, indent=2)
         reply = f"Here is the detailed room information for the requested hotel:\n{rooms_json}"
         
