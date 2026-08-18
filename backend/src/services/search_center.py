@@ -11,10 +11,11 @@ locked decision:
      function is already correct for that day; `hotel_node` just always
      passes `None` for it right now.
   2. An explicitly named POI/landmark, geocoded against the `attractions`
-     table -- never guessed by the model. Doc §20: "Do not let GPT
-     calculate geographic distance." `extract_named_place` only pulls the
-     candidate NAME out of the message via a plain regex; the coordinates
-     always come from a real row in `attractions`, or resolution fails.
+     table, falling back to the `hotels` table when no attraction matches --
+     never guessed by the model. Doc §20: "Do not let GPT calculate
+     geographic distance." `extract_named_place` only pulls the candidate
+     NAME out of the message via a plain regex; the coordinates always come
+     from a real row in `attractions` or `hotels`, or resolution fails.
   3. Neither: unresolved. `hotel_node` is the one that calls `interrupt()`
      on this outcome -- this module stays a plain, DB-touching services
      function so it stays trivially testable without a graph runtime.
@@ -36,7 +37,7 @@ logger = logging.getLogger(__name__)
 class CenterResolution:
     latitude: float | None
     longitude: float | None
-    source: str  # "selected_hotel" | "poi" | "unresolved"
+    source: str  # "selected_hotel" | "poi" | "hotel" | "unresolved"
     poi_name: str | None = None
 
     @property
@@ -99,6 +100,33 @@ def find_attraction_by_name(name: str, destination_id: str) -> tuple[float, floa
     return parse_coordinates(rows[0].get("coordinates"))
 
 
+def find_hotel_by_name(name: str, destination_id: str) -> tuple[float, float] | None:
+    """Same case-insensitive substring match as `find_attraction_by_name`,
+    against `hotels.name` instead. Lets a named hotel (e.g. "gần Khách sạn
+    X") serve as a search center even though hotels aren't attractions --
+    never guesses; no match or a failed lookup returns None."""
+    stripped = name.strip()
+    if not stripped or not destination_id:
+        return None
+    try:
+        supabase = get_supabase_client()
+        response = (
+            supabase.table("hotels")
+            .select("id,name,coordinates")
+            .eq("destination_id", destination_id)
+            .ilike("name", f"%{stripped}%")
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:
+        logger.error("Failed to look up hotel %r for center resolution: %s", name, exc)
+        return None
+    rows = response.data or []
+    if not rows:
+        return None
+    return parse_coordinates(rows[0].get("coordinates"))
+
+
 def resolve_center(
     *,
     destination_id: str,
@@ -118,5 +146,10 @@ def resolve_center(
         if coordinates is not None:
             latitude, longitude = coordinates
             return CenterResolution(latitude=latitude, longitude=longitude, source="poi", poi_name=named_place)
+
+        coordinates = find_hotel_by_name(named_place, destination_id)
+        if coordinates is not None:
+            latitude, longitude = coordinates
+            return CenterResolution(latitude=latitude, longitude=longitude, source="hotel", poi_name=named_place)
 
     return CenterResolution(latitude=None, longitude=None, source="unresolved", poi_name=named_place)

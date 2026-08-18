@@ -316,3 +316,87 @@ class TestDateSyncFromTravelState:
         itinerary = result["trip_data"]["itineraries"][0]
         assert itinerary["start_date"] == "2026-09-15"
         assert itinerary["end_date"] == "2026-09-17"
+
+
+class TestChangeSummaryReply:
+    """A finished `rebuild_days` op must say what changed per day, not just
+    that a build finished — the day-rebuild counterpart to `edit_item`'s
+    `adjustments` messages."""
+
+    def test_single_day_rebuild_names_the_new_activities(self) -> None:
+        from src.agents.graph.nodes.itinerary_node import itinerary_node
+
+        data = _make_trip_data(duration_days=1)
+
+        def rebuild_with_new_activities(td, ts, dn, ld, suggest_ops=None):
+            new_data = copy.deepcopy(td)
+            for item in new_data["itinerary_items"]:
+                if item["day_number"] == dn:
+                    item["activity"] = f"New activity {item['order_index']}"
+            return new_data
+
+        with patch(
+            "src.agents.graph.nodes.itinerary_node._invoke_rebuild_day",
+            side_effect=rebuild_with_new_activities,
+        ):
+            state = _state(data, "rebuild_days", [1])
+            result = itinerary_node(state)
+
+        reply = result["task_results"][-1]["reply"]
+        assert "Ngày 1:" in reply
+        assert "New activity 1" in reply
+        # Accumulator resets once the final reply is built.
+        assert result.get("rebuild_day_summaries") == []
+
+    def test_unchanged_day_reports_no_change(self) -> None:
+        from src.agents.graph.nodes.itinerary_node import itinerary_node
+
+        data = _make_trip_data(duration_days=1)
+
+        with patch(
+            "src.agents.graph.nodes.itinerary_node._invoke_rebuild_day",
+            return_value=data,
+        ):
+            state = _state(data, "rebuild_days", [1])
+            result = itinerary_node(state)
+
+        reply = result["task_results"][-1]["reply"]
+        assert "giữ nguyên" in reply
+
+    def test_multi_day_rebuild_across_turns_reports_every_day(self) -> None:
+        """The summary for day 1 (built on turn 1) must survive into the
+        final reply built on turn 2, the same way `rebuild_day_queue`/
+        `rebuilt_days` survive the re-queue hop."""
+        from src.agents.graph.nodes.itinerary_node import itinerary_node
+
+        data = _make_trip_data(duration_days=2)
+
+        def rebuild_with_new_activities(td, ts, dn, ld, suggest_ops=None):
+            new_data = copy.deepcopy(td)
+            for item in new_data["itinerary_items"]:
+                if item["day_number"] == dn:
+                    item["activity"] = f"Day {dn} new activity {item['order_index']}"
+            return new_data
+
+        with patch(
+            "src.agents.graph.nodes.itinerary_node._invoke_rebuild_day",
+            side_effect=rebuild_with_new_activities,
+        ):
+            state1 = _state(data, "rebuild_days", [1, 2])
+            r1 = itinerary_node(state1)
+
+            state2 = _state(
+                r1["trip_data"],
+                "rebuild_days",
+                [1, 2],
+                rebuild_day_queue=r1["rebuild_day_queue"],
+                rebuilt_days=r1["rebuilt_days"],
+            )
+            state2["rebuild_day_summaries"] = r1.get("rebuild_day_summaries") or []
+            r2 = itinerary_node(state2)
+
+        reply = r2["task_results"][-1]["reply"]
+        assert "Ngày 1:" in reply
+        assert "Ngày 2:" in reply
+        assert "Day 1 new activity 1" in reply
+        assert "Day 2 new activity 1" in reply

@@ -164,6 +164,34 @@ def _theme_for_day(trip_data: dict[str, Any], travel_state: TravelState, day_num
     return {"day_number": day_number, "title": f"Ngày {day_number}", "query": ""}
 
 
+def _day_activities(trip_data: dict[str, Any], day_number: int) -> list[str]:
+    """Ordered activity names scheduled for one day, read from `itinerary_items`."""
+    items = [
+        item
+        for item in (trip_data.get("itinerary_items") or [])
+        if isinstance(item, dict) and int(item.get("day_number") or 0) == day_number
+    ]
+    items.sort(key=lambda item: (str(item.get("start_time") or ""), int(item.get("order_index") or 0)))
+    return [str(item.get("activity") or "").strip() for item in items if item.get("activity")]
+
+
+def _describe_day_change(day_number: int, before: list[str], after: list[str], language: str) -> str:
+    """One-line "what changed" summary for a rebuilt day.
+
+    `rebuild_days` regenerates the whole day rather than editing individual
+    items, so there is no per-operation adjustment list the way `edit_item`
+    has (`apply_trip_edit_plan`'s ``adjustments``). This is that feature's
+    day-rebuild counterpart: a before/after activity-name comparison, cheap
+    to compute because both snapshots are in hand within the same node
+    invocation that calls ``_invoke_rebuild_day``.
+    """
+    if before == after:
+        return t("Ngày {day}: giữ nguyên lịch trình cũ.", language, day=day_number)
+    if not after:
+        return t("Ngày {day}: đã xoá toàn bộ hoạt động.", language, day=day_number)
+    return t("Ngày {day}: {activities}.", language, day=day_number, activities=", ".join(after))
+
+
 def _set_locked_days(trip_data: dict[str, Any], days_to_lock: list[int]) -> None:
     """Write ``locked_days`` into ``planning_constraints`` in-place. Union
     merge — additive, matching the ``lock_days`` action's "lock these too"
@@ -297,6 +325,7 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
 
     rebuild_day_queue: list[int] = list(state.get("rebuild_day_queue") or [])
     rebuilt_days: list[int] = list(state.get("rebuilt_days") or [])
+    rebuild_day_summaries: list[str] = list(state.get("rebuild_day_summaries") or [])
     pending_tasks: list[str] = [w for w in (state.get("pending_tasks") or []) if w != _WORKER_NAME]
     task_results: list[dict[str, Any]] = list(state.get("task_results") or [])
 
@@ -421,11 +450,16 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
             return _ok(
                 f"Tất cả các ngày yêu cầu đều bị khoá {locked_list}; không có ngày nào cần xây dựng lại.",
             )
+        # A fresh rebuild op starting -- discard any summary left over from a
+        # prior, unrelated rebuild (already `[]` on the normal completion
+        # path; this also covers a queue that was abandoned mid-loop).
+        rebuild_day_summaries = []
 
     # Pop the first day from the queue and invoke the subgraph for it.
     day_number = rebuild_day_queue[0]
     remaining_queue = rebuild_day_queue[1:]
     locked_days_list = sorted(_get_locked_days(trip_data))
+    before_activities = _day_activities(trip_data, day_number)
 
     pending_suggest_ops = list(state.get("pending_suggest_operations") or [])
     current_day_suggest_ops = [op for op in pending_suggest_ops if str(op.get("target", {}).get("day_number")) == str(day_number) or (not op.get("target", {}).get("day_number") and day_number == 1)]
@@ -455,10 +489,16 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
             ],
             "rebuild_day_queue": rebuild_day_queue,
             "rebuilt_days": rebuilt_days,
+            "rebuild_day_summaries": rebuild_day_summaries,
         }
 
     rebuilt_days = [*rebuilt_days, day_number]
     rebuild_day_queue = remaining_queue
+    after_activities = _day_activities(trip_data, day_number)
+    rebuild_day_summaries = [
+        *rebuild_day_summaries,
+        _describe_day_change(day_number, before_activities, after_activities, language),
+    ]
 
     # If more days remain, return with a non-empty queue — the `all_tasks_done`
     # conditional edge will route back to supervisor which routes back here.
@@ -468,6 +508,7 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
             "task_results": task_results,
             "rebuild_day_queue": rebuild_day_queue,
             "rebuilt_days": rebuilt_days,
+            "rebuild_day_summaries": rebuild_day_summaries,
             "pending_suggest_operations": remaining_suggest_ops,
             "trip_data": trip_data,
         }
@@ -484,6 +525,14 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
     # thing twice. It still names the hotel and the day count, so it stays a
     # specific reply — a silent worker cannot hide behind it. Deterministic,
     # read from the trip actually built, so no number can be invented.
+    #
+    # Prefixed with one "Ngày N: ..." line per day this op actually rebuilt
+    # (`rebuild_day_summaries`) so the user sees what changed, not just that
+    # something did — the day-rebuild counterpart to `edit_item`'s
+    # `adjustments` messages.
+    change_lines = "\n".join(rebuild_day_summaries)
+    completion = format_trip_summary_reply(trip_data, language)
+    reply = f"{change_lines}\n{completion}" if change_lines else completion
     return {
         "pending_tasks": pending_tasks,
         "task_results": [
@@ -491,11 +540,12 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
             {
                 "worker": _WORKER_NAME,
                 "status": "ok",
-                "reply": format_trip_summary_reply(trip_data, language),
+                "reply": reply,
             },
         ],
         "rebuild_day_queue": [],
         "rebuilt_days": rebuilt_days,
+        "rebuild_day_summaries": [],
         "pending_suggest_operations": remaining_suggest_ops,
         "trip_data": trip_data,
     }

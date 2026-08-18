@@ -127,6 +127,13 @@ class TravelGraphState(TypedDict, total=False):
     rebuilt_days: list[int]
     # Operations from the edit planner that require suggesting choices to the user
     pending_suggest_operations: list[dict[str, Any]]
+    # One "Ngày N: ..." line per day rebuilt so far this rebuild op, built
+    # from a before/after activity-name diff (`_describe_day_change`) since
+    # `rebuild_days` regenerates a day wholesale rather than emitting
+    # `edit_item`-style per-operation adjustments. Accumulates across the
+    # day-loop's re-queue hops the same way `rebuilt_days` does; `itinerary_node`
+    # resets it to `[]` once the final day's reply is built.
+    rebuild_day_summaries: list[str]
 
     # --- built trip bundle (Phase 9) --------------------------------------
     # Lives OUTSIDE `travel_state` deliberately (review finding F1):
@@ -237,6 +244,7 @@ def initial_graph_state(session_id: str, *, language: str = "vi") -> TravelGraph
         rebuild_day_queue=[],
         rebuilt_days=[],
         pending_suggest_operations=[],
+        rebuild_day_summaries=[],
         trip_data={},
         selected_hotel_id=None,
         response={},

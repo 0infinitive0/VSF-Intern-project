@@ -13,6 +13,7 @@ from __future__ import annotations
 import src.agents.tools.search_places as search_places_module
 from src.agents.tools.search_places import search_places
 from src.services.search_center import CenterResolution
+from src.services.supabase_search import DEFAULT_NEARBY_SEARCH_RADIUS_KM
 from src.services.trip_scheduler import PlaceCandidate
 
 
@@ -70,10 +71,10 @@ def test_resolved_center_searches_and_formats_results(monkeypatch):
 
     captured: dict = {}
 
-    def _fake_search(query, destination_id, *, match_count, root_latitude, root_longitude):
+    def _fake_search(query, destination_id, *, match_count, root_latitude, root_longitude, max_radius_km):
         captured.update(
             query=query, destination_id=destination_id, match_count=match_count,
-            root_latitude=root_latitude, root_longitude=root_longitude,
+            root_latitude=root_latitude, root_longitude=root_longitude, max_radius_km=max_radius_km,
         )
         return [
             PlaceCandidate(id="a1", name="Nhà hàng Sông Hàn", description="Hải sản"),
@@ -90,6 +91,7 @@ def test_resolved_center_searches_and_formats_results(monkeypatch):
     assert captured == {
         "query": "hải sản", "destination_id": "dest-1", "match_count": 5,
         "root_latitude": 16.05, "root_longitude": 108.2,
+        "max_radius_km": DEFAULT_NEARBY_SEARCH_RADIUS_KM,
     }
     assert "Nhà hàng Sông Hàn" in reply
     assert "Quán Ốc Đêm" in reply

@@ -8,7 +8,7 @@ calculate geographic distance") -- coordinates only ever come from a real
 from __future__ import annotations
 
 import src.services.search_center as search_center_module
-from src.services.search_center import extract_named_place, find_attraction_by_name, resolve_center
+from src.services.search_center import extract_named_place, find_attraction_by_name, find_hotel_by_name, resolve_center
 
 
 class _FakeQuery:
@@ -43,16 +43,24 @@ class _FakeTable:
 
 
 class _FakeSupabaseClient:
-    def __init__(self, rows: list[dict]) -> None:
-        self._rows = rows
+    def __init__(self, rows_by_table: dict[str, list[dict]]) -> None:
+        self._rows_by_table = rows_by_table
 
-    def table(self, _name: str) -> _FakeTable:
-        return _FakeTable(self._rows)
+    def table(self, name: str) -> _FakeTable:
+        return _FakeTable(self._rows_by_table.get(name, []))
+
+
+def _client(attractions: list[dict] | None = None, hotels: list[dict] | None = None) -> _FakeSupabaseClient:
+    return _FakeSupabaseClient({"attractions": attractions or [], "hotels": hotels or []})
 
 
 _ATTRACTIONS = [
     {"id": "attr-1", "destination_id": "dest-1", "name": "Bà Nà Hills", "coordinates": "15.9977,107.9857"},
     {"id": "attr-2", "destination_id": "dest-2", "name": "Chợ Bến Thành", "coordinates": "10.7725,106.698"},
+]
+
+_HOTELS = [
+    {"id": "hotel-1", "destination_id": "dest-1", "name": "Yoko Airport Saigon Hotel", "coordinates": "10.8188,106.6595"},
 ]
 
 
@@ -75,7 +83,7 @@ def test_extract_named_place_returns_none_without_a_preposition():
 
 
 def test_find_attraction_by_name_matches_case_insensitively(monkeypatch):
-    monkeypatch.setattr(search_center_module, "get_supabase_client", lambda: _FakeSupabaseClient(_ATTRACTIONS))
+    monkeypatch.setattr(search_center_module, "get_supabase_client", lambda: _client(attractions=_ATTRACTIONS))
 
     coordinates = find_attraction_by_name("bà nà hills", "dest-1")
 
@@ -83,16 +91,33 @@ def test_find_attraction_by_name_matches_case_insensitively(monkeypatch):
 
 
 def test_find_attraction_by_name_scoped_to_destination(monkeypatch):
-    monkeypatch.setattr(search_center_module, "get_supabase_client", lambda: _FakeSupabaseClient(_ATTRACTIONS))
+    monkeypatch.setattr(search_center_module, "get_supabase_client", lambda: _client(attractions=_ATTRACTIONS))
 
     # "Bà Nà Hills" only exists under dest-1 -- searching dest-2 must not match.
     assert find_attraction_by_name("Bà Nà Hills", "dest-2") is None
 
 
 def test_find_attraction_by_name_no_match_returns_none(monkeypatch):
-    monkeypatch.setattr(search_center_module, "get_supabase_client", lambda: _FakeSupabaseClient(_ATTRACTIONS))
+    monkeypatch.setattr(search_center_module, "get_supabase_client", lambda: _client(attractions=_ATTRACTIONS))
 
     assert find_attraction_by_name("Núi Bà Đen", "dest-1") is None
+
+
+# --- find_hotel_by_name --------------------------------------------------------
+
+
+def test_find_hotel_by_name_matches_case_insensitively(monkeypatch):
+    monkeypatch.setattr(search_center_module, "get_supabase_client", lambda: _client(hotels=_HOTELS))
+
+    coordinates = find_hotel_by_name("yoko airport saigon hotel", "dest-1")
+
+    assert coordinates == (10.8188, 106.6595)
+
+
+def test_find_hotel_by_name_no_match_returns_none(monkeypatch):
+    monkeypatch.setattr(search_center_module, "get_supabase_client", lambda: _client(hotels=_HOTELS))
+
+    assert find_hotel_by_name("Không tồn tại", "dest-1") is None
 
 
 # --- resolve_center: the three-way priority order -----------------------------
@@ -109,7 +134,7 @@ def test_resolve_center_prefers_selected_hotel_over_everything():
 
 
 def test_resolve_center_falls_back_to_named_poi(monkeypatch):
-    monkeypatch.setattr(search_center_module, "get_supabase_client", lambda: _FakeSupabaseClient(_ATTRACTIONS))
+    monkeypatch.setattr(search_center_module, "get_supabase_client", lambda: _client(attractions=_ATTRACTIONS))
 
     resolution = resolve_center(destination_id="dest-1", named_place="Bà Nà Hills", selected_hotel_coordinates=None)
 
@@ -118,8 +143,22 @@ def test_resolve_center_falls_back_to_named_poi(monkeypatch):
     assert (resolution.latitude, resolution.longitude) == (15.9977, 107.9857)
 
 
+def test_resolve_center_falls_back_to_named_hotel_when_no_attraction_matches(monkeypatch):
+    monkeypatch.setattr(
+        search_center_module, "get_supabase_client", lambda: _client(attractions=_ATTRACTIONS, hotels=_HOTELS)
+    )
+
+    resolution = resolve_center(
+        destination_id="dest-1", named_place="Yoko Airport Saigon Hotel", selected_hotel_coordinates=None
+    )
+
+    assert resolution.source == "hotel"
+    assert resolution.resolved
+    assert (resolution.latitude, resolution.longitude) == (10.8188, 106.6595)
+
+
 def test_resolve_center_unresolved_when_neither_is_known(monkeypatch):
-    monkeypatch.setattr(search_center_module, "get_supabase_client", lambda: _FakeSupabaseClient(_ATTRACTIONS))
+    monkeypatch.setattr(search_center_module, "get_supabase_client", lambda: _client(attractions=_ATTRACTIONS))
 
     resolution = resolve_center(destination_id="dest-1", named_place=None, selected_hotel_coordinates=None)
 
@@ -128,7 +167,7 @@ def test_resolve_center_unresolved_when_neither_is_known(monkeypatch):
 
 
 def test_resolve_center_unresolved_when_named_place_has_no_db_match(monkeypatch):
-    monkeypatch.setattr(search_center_module, "get_supabase_client", lambda: _FakeSupabaseClient(_ATTRACTIONS))
+    monkeypatch.setattr(search_center_module, "get_supabase_client", lambda: _client(attractions=_ATTRACTIONS))
 
     resolution = resolve_center(
         destination_id="dest-1", named_place="một nơi không tồn tại", selected_hotel_coordinates=None

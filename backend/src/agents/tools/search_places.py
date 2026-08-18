@@ -23,6 +23,7 @@ from langgraph.types import Command
 from src.i18n import t
 from src.services.place_search import search_attraction_candidates
 from src.services.search_center import resolve_center
+from src.services.supabase_search import DEFAULT_NEARBY_SEARCH_RADIUS_KM
 from src.services.trip_planner import _get_destination_id
 
 logger = logging.getLogger(__name__)
@@ -42,10 +43,11 @@ def search_places(
 
     `destination` is the trip's destination -- infer it from the
     conversation (e.g. "Đà Nẵng"). If `near` is given, searches near that
-    named landmark; otherwise this asks the user for a center rather than
-    guessing one (Phase 8's rule: never let the model calculate geographic
-    distance). `category` is currently unused -- reserved for a future
-    category filter, not yet supported by the underlying search.
+    named landmark (an attraction or a hotel); otherwise this asks the user
+    for a center rather than guessing one (Phase 8's rule: never let the
+    model calculate geographic distance). `category` is currently unused --
+    reserved for a future category filter, not yet supported by the
+    underlying search.
     """
     language = "vi"
     tool_call_id = runtime.tool_call_id
@@ -75,6 +77,7 @@ def search_places(
             match_count=limit,
             root_latitude=resolution.latitude,
             root_longitude=resolution.longitude,
+            max_radius_km=DEFAULT_NEARBY_SEARCH_RADIUS_KM,
         )
     except Exception as exc:
         logger.exception("search_places: search failed")
