@@ -30,6 +30,11 @@ from src.agents.graph.prompts import build_supervisor_prompt
 from src.agents.graph.state import TravelGraphState, build_manifest
 from src.services.llm import get_fast_llm
 
+#: `extract_patch`'s label for a message that states nothing. Kept in sync
+#: with `nodes/extract_patch.py`'s constant of the same name by the shared
+#: intent vocabulary in `prompts.py`.
+_READ_ONLY_INTENT = "general_question"
+
 logger = logging.getLogger(__name__)
 
 MAX_SUPERVISOR_ITERATIONS = 5
@@ -192,6 +197,26 @@ def supervisor(state: TravelGraphState) -> dict[str, Any]:
         if _has_reported(state, "hotel_node"):
             return _awaiting_hotel_choice(state)
         return _redirect_to_hotel_node(state)
+
+    # A read-only turn goes to the read-only worker, deterministically.
+    #
+    # With `workers` empty the turn falls through to the LLM branch below,
+    # which is unconstrained precisely BECAUSE the queue is empty -- and an
+    # unconstrained choice includes `itinerary_node`. Asking "ngày 3 tôi làm
+    # gì?" therefore rebuilt the whole plan behind the user's back: the day-1
+    # attraction silently changed from Bãi biển Mỹ Khê to Đức Maria Mẹ Sao
+    # Biển, and nothing in the reply said the trip had been regenerated. The
+    # extractor was blameless -- it returned `general_question` with an empty
+    # patch, correctly -- so no amount of prompt work upstream could have
+    # prevented it.
+    #
+    # `intent` is the extractor's own classification of the message, and
+    # `general_question` is defined as changing nothing (`prompts.py`), so a
+    # worker that writes can never be the right answer for one. Routing it by
+    # LLM was asking a model to re-derive a decision already made, with data
+    # loss as the failure mode.
+    if not workers and state.get("intent") == _READ_ONLY_INTENT:
+        return _delegate("qa_node", "read_only_intent", state)
 
     # Fast path: a first delegation, whatever its size -> no LLM needed.
     #

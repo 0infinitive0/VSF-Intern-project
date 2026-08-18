@@ -146,3 +146,168 @@ def test_non_list_input_is_tolerated(monkeypatch):
 
     assert labelled_amenities(None) == []
     assert labelled_amenities("swimming_pool") == []
+
+
+# ---------------------------------------------------------------------------
+# The two context tools: the shortlist, and the itinerary.
+#
+# qa_node could fetch ONE named hotel and had no access to trip_data at all,
+# so "which of these is cheapest?" and "what's on day 2?" had no source to
+# answer from. The model's usual escape was to ask the user to narrow down
+# first, which costs a turn to learn something already on their screen.
+# ---------------------------------------------------------------------------
+
+
+def _tool_text(command):
+    """The ToolMessage content a tool hands back to the model."""
+    return command.update["messages"][0].content
+
+
+def _Runtime(state):
+    """A real ToolRuntime — `@tool` validates the type, so a stub is rejected."""
+    from langchain.tools import ToolRuntime
+
+    return ToolRuntime(
+        state=state,
+        context=None,
+        config={},
+        stream_writer=lambda _chunk: None,
+        tool_call_id="call_1",
+        store=None,
+        tools=[],
+    )
+
+
+def test_the_shortlist_tool_returns_every_card_with_comparable_fields(monkeypatch):
+    from src.agents.tools.get_hotel_options import get_hotel_options
+
+    _stub_catalog(monkeypatch)
+    state = {
+        "language": "vi",
+        "previous_hotel_options": [
+            {"rank": 1, "name": "Alpha", "average_nightly_price": 1_500_000,
+             "review_score": 8.8, "amenities": ["swimming_pool"], "area_name": "Hải Châu"},
+            {"rank": 2, "name": "Beta", "average_nightly_price": 900_000, "review_score": 9.1},
+        ],
+    }
+
+    text = _tool_text(get_hotel_options.invoke({"runtime": _Runtime(state)}))
+
+    assert "Alpha" in text and "Beta" in text
+    assert "1500000" in text.replace(",", "") or "1_500_000" in text
+    # Labels, never canonical ids — same leak already fixed on the other tools.
+    assert "Hồ bơi" in text
+    assert "swimming_pool" not in text
+
+
+def test_the_shortlist_tool_is_honest_before_any_search(monkeypatch):
+    from src.agents.tools.get_hotel_options import get_hotel_options
+
+    _stub_catalog(monkeypatch)
+
+    text = _tool_text(get_hotel_options.invoke({"runtime": _Runtime({"language": "vi"})}))
+
+    assert "Chưa có danh sách khách sạn" in text
+
+
+def test_a_card_missing_its_rank_is_still_referable_by_position(monkeypatch):
+    from src.agents.tools.get_hotel_options import get_hotel_options
+
+    _stub_catalog(monkeypatch)
+    state = {"previous_hotel_options": [{"name": "NoRank"}]}
+
+    assert '"rank": 1' in _tool_text(get_hotel_options.invoke({"runtime": _Runtime(state)}))
+
+
+def test_the_plan_tool_returns_the_schedule():
+    from src.agents.tools.get_trip_plan import get_trip_plan
+
+    state = {
+        "language": "vi",
+        "trip_data": {
+            "hotel": {"name": "DLG Hotel Danang", "star_rating": 5, "currency": "VND"},
+            "itineraries": [{"status": "Draft", "duration_days": 1, "start_date": "2026-07-03"}],
+            "itinerary_items": [
+                {"day_number": 1, "order_index": 1, "activity": "Bãi biển Mỹ Khê",
+                 "start_time": "08:15", "route_to_next": {"distance_km": 1.2, "duration_mins": 9,
+                                                          "polyline": "SHOULD_NOT_LEAK"}},
+            ],
+        },
+    }
+
+    text = _tool_text(get_trip_plan.invoke({"runtime": _Runtime(state)}))
+
+    assert "Bãi biển Mỹ Khê" in text
+    assert "DLG Hotel Danang" in text
+    assert "08:15" in text
+    # "how far is it" needs the leg; the map polyline is pure token weight.
+    assert "1.2" in text
+    assert "SHOULD_NOT_LEAK" not in text
+
+
+def test_the_plan_tool_is_honest_before_an_itinerary_exists():
+    from src.agents.tools.get_trip_plan import get_trip_plan
+
+    text = _tool_text(get_trip_plan.invoke({"runtime": _Runtime({"language": "vi", "trip_data": {}})}))
+
+    assert "Chưa có lịch trình" in text
+
+
+def test_both_context_tools_are_wired_into_the_node():
+    from src.agents.graph.nodes.qa_node import QA_TOOLS, QAState
+
+    assert {tool.name for tool in QA_TOOLS} >= {"get_hotel_options", "get_trip_plan"}
+    # get_trip_plan can only work if the schema lets trip_data cross.
+    assert "trip_data" in QAState.__annotations__
+
+
+# ---------------------------------------------------------------------------
+# A read-only turn never reaches a worker that writes.
+#
+# With no pending tasks the supervisor fell through to its LLM branch, which
+# is unconstrained exactly BECAUSE the queue is empty -- and an unconstrained
+# choice includes itinerary_node. Asking "ngày 3 tôi làm gì?" rebuilt the
+# whole trip: day 1's attraction silently changed and the reply never said
+# so. The extractor was correct throughout (general_question, empty patch),
+# so this could only be fixed at the routing layer.
+# ---------------------------------------------------------------------------
+
+
+def _supervisor_state(**extra):
+    from src.agents.graph.state import initial_graph_state
+
+    state = initial_graph_state("t1")
+    state.update({"pending_tasks": [], "task_results": [], "trip_data": {"itineraries": [{}]}})
+    state.update(extra)
+    return state
+
+
+def test_a_question_is_routed_to_qa_node_without_asking_an_llm(monkeypatch):
+    from src.agents.graph.nodes import supervisor as supervisor_module
+
+    def _unreachable(*_a, **_k):
+        raise AssertionError("a read-only turn must not reach the LLM router")
+
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", _unreachable)
+
+    decision = supervisor_module.supervisor(_supervisor_state(intent="general_question"))
+
+    assert decision["next_worker"] == "qa_node"
+    assert decision["routing_source"] == "read_only_intent"
+
+
+def test_a_stating_turn_still_reaches_the_normal_router(monkeypatch):
+    """The gate keys on intent alone, so an edit is untouched by it."""
+    from src.agents.graph.nodes import supervisor as supervisor_module
+
+    called = {"llm": False}
+
+    def _fake_llm(*_a, **_k):
+        called["llm"] = True
+        raise RuntimeError("stop here -- reaching the LLM is the assertion")
+
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", _fake_llm)
+
+    supervisor_module.supervisor(_supervisor_state(intent="update_itinerary"))
+
+    assert called["llm"] is True
