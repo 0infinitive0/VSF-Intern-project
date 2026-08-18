@@ -827,3 +827,81 @@ def test_full_date_with_year_passes_through(monkeypatch):
     result = extract_patch(_state("01/07/2027"))
 
     assert result["patch"] == [{"path": "dates.start", "operation": "set", "value": "2027-07-01"}]
+
+
+# ---------------------------------------------------------------------------
+# The grounding rescues only run on a turn that STATES a requirement.
+#
+# They used to run on every message, so a read-only question that merely
+# named an amenity got a hotel_preferences.amenities change appended anyway.
+# A non-empty patch makes pending_tasks non-empty, which sends the
+# supervisor's zero-LLM fast path straight to hotel_node -- the question was
+# answered with a brand-new hotel search instead of an answer, every single
+# time (reported: "mình tìm được 9 khách sạn" in reply to a question about
+# one already-shown hotel). prompts.py states this contract to the model;
+# these pin the deterministic half that used to override it.
+# ---------------------------------------------------------------------------
+
+
+def test_a_question_naming_sea_view_does_not_become_a_search(monkeypatch):
+    _patch(monkeypatch, _FakeLLM([_payload("general_question", [])]))
+
+    result = extract_patch(_state("Trong số những khách sạn đó cái nào có view biển?"))
+
+    assert result["patch"] == []
+    assert result["intent"] == "general_question"
+
+
+def test_a_question_naming_breakfast_does_not_become_a_search(monkeypatch):
+    _patch(monkeypatch, _FakeLLM([_payload("general_question", [])]))
+
+    result = extract_patch(_state("Khách sạn này có bao gồm bữa sáng không?"))
+
+    assert result["patch"] == []
+
+
+def test_the_rescue_still_fires_on_a_stating_turn(monkeypatch):
+    """The gate is on intent, not on the phrase: a real request is unchanged."""
+    _patch(monkeypatch, _FakeLLM([_payload("hotel_search", [])]))
+
+    result = extract_patch(_state("Tìm khách sạn có view biển"))
+
+    assert result["patch"] == [
+        {"path": "hotel_preferences.amenities", "operation": "append", "value": "sea_view"},
+    ]
+
+
+def test_the_users_own_spelling_is_replaced_by_the_canonical_id(monkeypatch):
+    """The extractor also echoes the user's wording ("view biển"). That
+    spelling used to sit in the slot beside the canonical ID, never
+    resolving, so hotel_node reported it unsupported in the same reply that
+    applied the canonical filter -- "không có khách sạn nào vừa có đủ:
+    Nhìn ra biển ... mình chưa hỗ trợ lọc theo: view biển"."""
+    _patch(
+        monkeypatch,
+        _FakeLLM(
+            [_payload("hotel_search", [{"path": "hotel_preferences.amenities", "operation": "append", "value": "view biển"}])]
+        ),
+    )
+
+    result = extract_patch(_state("Tôi muốn phòng view biển"))
+
+    assert result["patch"] == [
+        {"path": "hotel_preferences.amenities", "operation": "append", "value": "sea_view"},
+    ]
+
+
+def test_an_unrelated_amenity_is_never_dropped_by_the_rescue(monkeypatch):
+    _patch(
+        monkeypatch,
+        _FakeLLM(
+            [_payload("hotel_search", [{"path": "hotel_preferences.amenities", "operation": "append", "value": "gym"}])]
+        ),
+    )
+
+    result = extract_patch(_state("Tôi muốn phòng view biển và có gym"))
+
+    assert result["patch"] == [
+        {"path": "hotel_preferences.amenities", "operation": "append", "value": "gym"},
+        {"path": "hotel_preferences.amenities", "operation": "append", "value": "sea_view"},
+    ]

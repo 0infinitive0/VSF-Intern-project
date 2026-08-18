@@ -101,6 +101,9 @@ logger = logging.getLogger(__name__)
 _INTENTS = frozenset(
     {"hotel_search", "update_itinerary", "update_trip", "select_hotel", "finalize", "general_question"}
 )
+# The one intent that states nothing about the trip. Deterministic grounding
+# rescues stay out of it entirely -- see `_ground_amenity`.
+_READ_ONLY_INTENT = "general_question"
 _OPERATIONS = frozenset({"set", "unset", "append", "remove"})
 # Parsed non-strictly (see module docstring) -- anything else, including a
 # non-string value that `in` can't even hash, falls open to "".
@@ -246,26 +249,95 @@ def _rewrite_day_scope(changes: list[dict[str, Any]], day_scope: tuple[int, ...]
     return rewritten
 
 
-def _ground_included_breakfast(changes: list[dict[str, Any]], message: str) -> list[dict[str, Any]]:
+def _ground_amenity(
+    changes: list[dict[str, Any]],
+    message: str,
+    *,
+    intent: str,
+    phrase_re: re.Pattern[str],
+    negated_re: re.Pattern[str],
+    canonical_id: str,
+) -> list[dict[str, Any]]:
+    """Bind one hotel-amenity phrase to its canonical catalog ID.
+
+    A deterministic rescue for the case the extractor drops one half of a
+    compound request ("view biển và có bao bữa sáng" coming back with only
+    the breakfast amenity). It does two things the extractor alone can't be
+    relied on for, and deliberately does neither outside a stating turn.
+
+    `intent` gate: this only ever runs for a message that STATES a
+    requirement. A read-only question that merely names the amenity
+    ("trong số những khách sạn đó cái nào có view biển?") is
+    `general_question`, and prompts.py's extract-patch contract says so in
+    as many words -- but this rescue used to run regardless of intent, so
+    it appended a `hotel_preferences.amenities` change the model had
+    correctly declined to make. A non-empty patch makes `pending_tasks`
+    non-empty, which sends the supervisor's zero-LLM fast path straight to
+    `hotel_node`: the question was answered with a whole new hotel search
+    (reported: a question about one already-shown hotel returned "mình tìm
+    được 9 khách sạn" instead of an answer). Because the injection was
+    deterministic, so was the bug -- it reproduced on every such message.
+
+    Raw-alias replacement: the extractor usually ALSO emits the user's own
+    wording for the same amenity ("view biển"). That spelling is not a
+    catalog keyword, so `resolve_hotel_amenity_ids` leaves it unresolved
+    forever in an append-only slot, and `hotel_node` reports it as
+    unsupported in the very same reply that applies the canonical filter --
+    "Không có khách sạn nào vừa có đủ các tiện ích: Nhìn ra biển ... Mình
+    chưa hỗ trợ lọc theo: view biển". Any amenity value that is itself a
+    spelling of this phrase is therefore dropped in favour of the canonical
+    ID rather than kept beside it.
+    """
+    if intent == _READ_ONLY_INTENT:
+        return changes
+    normalized = _normalize(message)
+    if not phrase_re.search(normalized) or negated_re.search(normalized):
+        return changes
+
+    kept: list[dict[str, Any]] = []
+    has_canonical = False
+    for change in changes:
+        if change.get("path") != "hotel_preferences.amenities":
+            kept.append(change)
+            continue
+        value = str(change.get("value") or "").strip()
+        if value.lower() == canonical_id:
+            has_canonical = True
+            kept.append(change)
+            continue
+        # A raw spelling of the amenity the canonical ID already covers.
+        # The canonical ID itself never matches here: every alternative in
+        # these patterns is whitespace-separated, and the IDs are
+        # underscore-joined ("sea_view").
+        if phrase_re.search(_normalize(value)):
+            continue
+        kept.append(change)
+
+    if has_canonical:
+        return kept
+    return [*kept, {"path": "hotel_preferences.amenities", "operation": "append", "value": canonical_id}]
+
+
+def _ground_included_breakfast(
+    changes: list[dict[str, Any]], message: str, intent: str
+) -> list[dict[str, Any]]:
     """Bind an included-breakfast hotel request to the canonical amenity ID.
 
     The phrase is a hotel-search constraint, not an itinerary breakfast item.
     It must therefore reach ``hotel_preferences.amenities`` even when the
     extractor only returns the other amenity in a compound request.
     """
-    normalized = _normalize(message)
-    if not _BREAKFAST_INCLUDED_RE.search(normalized) or _BREAKFAST_NEGATED_RE.search(normalized):
-        return changes
-    has_breakfast = any(
-        change.get("path") == "hotel_preferences.amenities" and str(change.get("value") or "").strip().lower() == "breakfast"
-        for change in changes
+    return _ground_amenity(
+        changes,
+        message,
+        intent=intent,
+        phrase_re=_BREAKFAST_INCLUDED_RE,
+        negated_re=_BREAKFAST_NEGATED_RE,
+        canonical_id="breakfast",
     )
-    if has_breakfast:
-        return changes
-    return [*changes, {"path": "hotel_preferences.amenities", "operation": "append", "value": "breakfast"}]
 
 
-def _ground_sea_view(changes: list[dict[str, Any]], message: str) -> list[dict[str, Any]]:
+def _ground_sea_view(changes: list[dict[str, Any]], message: str, intent: str) -> list[dict[str, Any]]:
     """Bind a sea-view hotel request to the canonical amenity ID -- the same
     rescue `_ground_included_breakfast` applies for breakfast, and for the
     same reason: a compound request ("view biển và có bao bữa sáng") can
@@ -274,16 +346,14 @@ def _ground_sea_view(changes: list[dict[str, Any]], message: str) -> list[dict[s
     it (reported: the assistant never acknowledged the sea-view half of a
     two-amenity request, only the breakfast half).
     """
-    normalized = _normalize(message)
-    if not _SEA_VIEW_RE.search(normalized) or _SEA_VIEW_NEGATED_RE.search(normalized):
-        return changes
-    has_sea_view = any(
-        change.get("path") == "hotel_preferences.amenities" and str(change.get("value") or "").strip().lower() == "sea_view"
-        for change in changes
+    return _ground_amenity(
+        changes,
+        message,
+        intent=intent,
+        phrase_re=_SEA_VIEW_RE,
+        negated_re=_SEA_VIEW_NEGATED_RE,
+        canonical_id="sea_view",
     )
-    if has_sea_view:
-        return changes
-    return [*changes, {"path": "hotel_preferences.amenities", "operation": "append", "value": "sea_view"}]
 
 
 def _derive_dates_from_explicit_range(changes: list[dict[str, Any]], message: str) -> list[dict[str, Any]]:
@@ -540,8 +610,8 @@ def extract_patch(state: TravelGraphState) -> dict[str, Any]:
 
     changes = _rewrite_day_scope(raw_changes, day_scope)
     changes = _ground_changes(changes, destination_names)
-    changes = _ground_included_breakfast(changes, message)
-    changes = _ground_sea_view(changes, message)
+    changes = _ground_included_breakfast(changes, message, intent)
+    changes = _ground_sea_view(changes, message, intent)
     changes = _derive_dates_from_explicit_range(changes, message)
     changes = _derive_end_date_from_duration(changes, message, travel_state)
 

@@ -137,19 +137,6 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
     isFieldFilled(intakeForm, 'destination') &&
     isFieldFilled(intakeForm, 'people') &&
     isFieldFilled(intakeForm, 'dates')
-  const stage = deriveStageView(state, intakeReady)
-
-  // StepNavigator can jump to a step whose data is already sitting in `state`
-  // (e.g. hopping back to "Thông tin" while hotel options are still loaded)
-  // as a pure client-side view swap — no chat turn. `viewOverride` holds that
-  // choice; it's cleared whenever the real derived stage moves (a genuine
-  // backend turn happened), so the view always snaps back to following the
-  // live conversation once one does.
-  const [viewOverride, setViewOverride] = useState<StageView | null>(null)
-  useEffect(() => {
-    setViewOverride(null)
-  }, [stage])
-  const displayStage = viewOverride ?? stage
   const [hotelOptionsBySession, setHotelOptionsBySession] = useState<Record<string, HotelOption[]>>({})
   // Retained alongside hotelOptions, same lifetime, same trigger (bug fix):
   // a turn that doesn't re-run the hotel search (selecting a hotel, building
@@ -163,6 +150,23 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   const retainedHotelOptions = state.sessionId ? (hotelOptionsBySession[state.sessionId] ?? []) : []
   const retainedHotelFilterData =
     (state.sessionId ? hotelFilterDataBySession[state.sessionId] : undefined) ?? state.hotelFilterData
+
+  // Declared above `stage` on purpose: the retained list is an INPUT to stage
+  // derivation, not just a render prop — a turn that returns no hotel_options
+  // (a qa_node answer, a hotel selection) must not read as "back to intake".
+  const stage = deriveStageView(state, intakeReady, retainedHotelOptions.length > 0)
+
+  // StepNavigator can jump to a step whose data is already sitting in `state`
+  // (e.g. hopping back to "Thông tin" while hotel options are still loaded)
+  // as a pure client-side view swap — no chat turn. `viewOverride` holds that
+  // choice; it's cleared whenever the real derived stage moves (a genuine
+  // backend turn happened), so the view always snaps back to following the
+  // live conversation once one does.
+  const [viewOverride, setViewOverride] = useState<StageView | null>(null)
+  useEffect(() => {
+    setViewOverride(null)
+  }, [stage])
+  const displayStage = viewOverride ?? stage
 
   // Real room hold (use-room-hold.ts) — owned here (not lower in the tree)
   // because it must survive across the hotels/workspace stage swap AND be

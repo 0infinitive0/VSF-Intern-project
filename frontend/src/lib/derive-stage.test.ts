@@ -88,4 +88,23 @@ describe('deriveStageView', () => {
   it('is workspace once a trip plan exists and there are no hotel options in flight', () => {
     expect(deriveStageView({ ...BASE, tripPlan: SOME_TRIP_PLAN })).toBe('workspace')
   })
+
+  // A turn that didn't re-run the hotel search (a qa_node answer, a hotel
+  // selection) legitimately comes back with no hotel_options at all. Without
+  // the retained flag every branch fell through to 'intake', so asking a
+  // question about the hotels on screen threw the user back to step 1 and
+  // took the hotel list with it.
+  it('stays on hotels when this turn carried no options but the session already found some', () => {
+    expect(deriveStageView(BASE, true, true)).toBe('hotels')
+  })
+
+  it('still reaches intake when no hotels have ever been found', () => {
+    expect(deriveStageView(BASE, true, false)).toBe('intake')
+  })
+
+  it('prefers workspace over retained hotels once a trip plan exists', () => {
+    // The step navigator's client-side override is how the user revisits
+    // hotel picking from here — the derived stage must not pin them to it.
+    expect(deriveStageView({ ...BASE, tripPlan: SOME_TRIP_PLAN }, true, true)).toBe('workspace')
+  })
 })

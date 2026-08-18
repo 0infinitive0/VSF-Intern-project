@@ -760,3 +760,72 @@ def test_bind_amenities_keeps_unresolved_values_when_model_returns_incompatible_
     assert amenity_catalog.bind_amenities(["Hồ bơi riêng"], scope="room") == (
         amenity_catalog.AmenityBindingResult(ids=(), unresolved=("Hồ bơi riêng",), created=0)
     )
+
+
+# ---------------------------------------------------------------------------
+# Two-character token retention in `_match_terms`.
+#
+# Vietnamese labels are syllable-pairs, and stripping diacritics leaves many
+# syllables exactly two letters ("lê" -> "le", "vị" -> "vi", "rẻ" -> "re").
+# Dropping those collapsed a whole label to one token, and the "every phrase
+# token is present" rule in `_phrase_match_score` then matched on that single
+# token appearing anywhere in the request -- turning an unrelated phrase into
+# a hard, wrong search filter (reported: "view đẹp" filtered on Dép lê).
+# ---------------------------------------------------------------------------
+
+
+def _entry(amenity_id: str, label: str, *keywords: str) -> amenity_catalog.AmenityCatalogEntry:
+    return amenity_catalog.AmenityCatalogEntry(
+        id=amenity_id, label=label, match_keywords=tuple(keywords), scope="hotel"
+    )
+
+
+_MATCH_CATALOG = (
+    _entry("slippers", "Dép lê", "slippers", "dép lê"),
+    _entry("essential_spices", "Gia vị thiết yếu", "gia vị", "essential spices"),
+    _entry("swimming_pool", "Hồ bơi", "swimming pool", "hồ bơi"),
+    _entry("sea_view", "Nhìn ra biển", "sea view", "nhìn ra biển", "view biển"),
+)
+
+
+def _resolve_one(monkeypatch, raw: str):
+    monkeypatch.setattr(amenity_catalog, "all_approved_amenities", lambda: _MATCH_CATALOG)
+    return amenity_catalog.resolve_hotel_amenity_ids([raw])
+
+
+def test_two_letter_syllables_survive_tokenization():
+    assert amenity_catalog._match_terms("dép lê") == {"dep", "le"}
+    assert amenity_catalog._match_terms("gia vị") == {"gia", "vi"}
+    # Single characters carry no meaning and stay dropped.
+    assert amenity_catalog._match_terms("y tế a") == {"te"}
+
+
+def test_unrelated_phrase_sharing_one_syllable_does_not_bind(monkeypatch):
+    """"view đẹp" shares only "dep" with "Dép lê" -- it must not become a
+    slippers filter, and an honest unresolved beats a confident wrong bind."""
+    result = _resolve_one(monkeypatch, "view đẹp")
+    assert result.ids == ()
+    assert result.unresolved == ("view đẹp",)
+
+
+def test_price_phrase_does_not_bind_to_a_spice_amenity(monkeypatch):
+    """Same defect, second reported instance: "giá rẻ" vs "Gia vị"."""
+    result = _resolve_one(monkeypatch, "giá rẻ")
+    assert result.ids == ()
+    assert result.unresolved == ("giá rẻ",)
+
+
+def test_a_modified_amenity_phrase_still_binds_to_its_base(monkeypatch):
+    """The rule this fix must NOT break: every token of "hồ bơi" is present
+    in "hồ bơi ngoài trời", which is real evidence, not a coincidence."""
+    assert _resolve_one(monkeypatch, "hồ bơi ngoài trời").ids == ("swimming_pool",)
+
+
+def test_exact_label_still_binds(monkeypatch):
+    assert _resolve_one(monkeypatch, "dép lê").ids == ("slippers",)
+
+
+def test_colloquial_sea_view_spelling_binds_through_its_keyword(monkeypatch):
+    """"view biển" is the phrasing users actually type; it resolves through
+    the catalog keyword rather than lingering as an unsupported term."""
+    assert _resolve_one(monkeypatch, "view biển").ids == ("sea_view",)

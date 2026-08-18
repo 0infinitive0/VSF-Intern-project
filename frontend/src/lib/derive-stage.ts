@@ -27,13 +27,28 @@ const HEAVY_WORK_PHASES = new Set(['hotel_search', 'itinerary_build'])
  * the backend reports (via real `phases`, never a guess) that it has moved on
  * to searching hotels / building the itinerary — the latter covers the user who
  * types every detail in one free-text message and so never fills the form.
+ *
+ * @param hotelsEverFound Whether a hotel search has produced options at any
+ *   point this session (App.tsx's retained per-session list). `state.hotelOptions`
+ *   only carries the CURRENT turn's options, and the backend legitimately
+ *   returns none on any turn that didn't re-run the search — a qa_node answer,
+ *   a hotel selection. Without this, such a turn fell through every branch
+ *   below to `'intake'` and threw the user back to step 1 with the hotel list
+ *   gone. Checked AFTER `tripPlan` so a built itinerary still opens the
+ *   workspace; the user reaches hotels again through the step navigator's
+ *   client-side view override.
  */
-export function deriveStageView(state: ChatState, intakeReady = true): StageView {
+export function deriveStageView(
+  state: ChatState,
+  intakeReady = true,
+  hotelsEverFound = false,
+): StageView {
   if (state.pending && state.tripPlan == null && state.hotelOptions.length === 0) {
     const heavyWorkStarted = state.phases.some((phase) => HEAVY_WORK_PHASES.has(phase.key))
     return intakeReady || heavyWorkStarted ? 'generating' : 'intake'
   }
   if (state.hotelOptions.length > 0) return 'hotels'
   if (state.tripPlan != null) return 'workspace'
+  if (hotelsEverFound) return 'hotels'
   return 'intake'
 }

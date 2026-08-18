@@ -503,7 +503,19 @@ def _relevant_existing_entries(
 
 
 def _match_terms(value: str) -> set[str]:
-    return {term for term in re.findall(r"[a-z0-9]+", _normalize_for_match(value)) if len(term) > 2}
+    # Two-character tokens are KEPT (bug fix). Vietnamese is syllable-timed
+    # and a great many of its meaningful syllables are exactly two letters
+    # once diacritics are stripped -- "lê", "vị", "rẻ", "hồ", "bể". Dropping
+    # them collapsed whole labels to a single token ("dép lê" -> {"dep"},
+    # "gia vị" -> {"gia"}), and `_phrase_match_score`'s "every phrase token
+    # is present" rule then fired on nothing more than that one token
+    # appearing anywhere in the request: "view đẹp" resolved to slippers
+    # (Dép lê) and "giá rẻ" to essential spices (Gia vị), each becoming a
+    # hard, wrong search filter. Keeping the syllable restores the second
+    # token that tells those pairs apart, and multi-syllable labels now go
+    # through the strong subset rule instead of the weak single-token one.
+    # One-character tokens stay dropped: they carry no such meaning.
+    return {term for term in re.findall(r"[a-z0-9]+", _normalize_for_match(value)) if len(term) > 1}
 
 
 def _keyword_duplicate(
