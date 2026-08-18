@@ -86,7 +86,15 @@ export default function ChatPanel({
   const lastStage = lastAiStage(messages)
   // Real backend truth — independent of what's currently being viewed —
   // gates which steps are reachable at all.
-  const intakeComplete = hotelOptions.length > 0 || tripPlan != null
+  // `hotelOptionsAvailable` (App.tsx's RETAINED per-session list), never the
+  // live `hotelOptions` off `state` (bug fix): the backend legitimately
+  // returns no hotel_options on any turn that didn't re-run the hotel search
+  // -- a question answered by qa_node, a hotel selection, an itinerary build
+  // -- so the live list empties mid-conversation while the trip is plainly
+  // past intake. Reading it here made `intakeComplete` flip back to false on
+  // those turns, which resurfaced the terminal preferences card and dragged
+  // the whole panel back to "Bước 1 · Thu thập thông tin".
+  const intakeComplete = hotelOptionsAvailable || tripPlan != null
   const hotelPicked = Boolean(tripPlan)
 
   // Header step label — design dc.html:2506 (stepEditing not tracked client-side;
@@ -132,8 +140,8 @@ export default function ChatPanel({
   // after a reload, even for a fully-planned trip. Without this guard the
   // terminal preferences card (or whatever currentIntakeField resolves to)
   // would resurrect itself over an already-completed trip on every reload.
-  // `intakeComplete` (hotelOptions/tripPlan, real backend truth untouched by
-  // the restored-stage bug) is the honest signal instead.
+  // `intakeComplete` (retained hotel options / tripPlan, real backend truth
+  // untouched by the restored-stage bug) is the honest signal instead.
   // Before the first turn, offer the real, currently-covered destinations
   // (data/UX-improvements-doc #1) so the user isn't stuck facing a blank
   // composer — same tap-or-type-freely chip pattern as server suggestions.
