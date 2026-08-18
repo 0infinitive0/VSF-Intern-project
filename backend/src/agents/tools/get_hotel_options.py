@@ -29,9 +29,6 @@ from src.i18n import t
 
 logger = logging.getLogger(__name__)
 
-#: Enough to compare on without pulling whole descriptions into the loop.
-_AMENITY_PREVIEW_LIMIT = 8
-
 
 @tool
 def get_hotel_options(
@@ -75,8 +72,16 @@ def get_hotel_options(
                 "review_score": option.get("review_score"),
                 "review_count": option.get("review_count"),
                 "star_rating": option.get("star_rating"),
-                "amenities": amenities[:_AMENITY_PREVIEW_LIMIT],
-                "amenities_truncated": len(amenities) > _AMENITY_PREVIEW_LIMIT,
+                # NEVER truncated. This list was capped at the first 8 to save
+                # tokens, but `amenities` is stored in no meaningful order --
+                # so "hồ bơi" routinely sat past the cut, and asked which
+                # hotels had a pool the model answered, from the list it was
+                # given, that four hotels did not. All four had "Hồ bơi"
+                # printed on the card the user was looking at while they read
+                # it. A truncated list is indistinguishable from a complete
+                # one to the model, so the only safe cap is none: a wrong
+                # answer costs far more than the tokens ever saved.
+                "amenities": amenities,
             }
         )
 

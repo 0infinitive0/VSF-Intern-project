@@ -200,6 +200,25 @@ def test_the_shortlist_tool_returns_every_card_with_comparable_fields(monkeypatc
     assert "swimming_pool" not in text
 
 
+def test_the_shortlist_never_truncates_amenities(monkeypatch):
+    """`amenities` is stored in no meaningful order, so any cap drops
+    arbitrary facts. Capped at 8, "hồ bơi" fell past the cut and the model
+    reported four hotels as having no pool while "Hồ bơi" was printed on
+    every one of their cards."""
+    from src.agents.tools.get_hotel_options import get_hotel_options
+
+    monkeypatch.setattr(
+        "src.agents.tools.get_hotel_options.labelled_amenities",
+        lambda tags, language="vi": [f"tien-nghi-{i}" for i in range(20)] + ["Hồ bơi"],
+    )
+    state = {"previous_hotel_options": [{"rank": 1, "name": "Alpha", "amenities": ["x"]}]}
+
+    text = _tool_text(get_hotel_options.invoke({"runtime": _Runtime(state)}))
+
+    assert "Hồ bơi" in text
+    assert "tien-nghi-19" in text
+
+
 def test_the_shortlist_tool_is_honest_before_any_search(monkeypatch):
     from src.agents.tools.get_hotel_options import get_hotel_options
 
