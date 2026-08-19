@@ -39,6 +39,7 @@ from typing import Any
 from langgraph.types import interrupt
 
 from src.agents.graph.state import TravelGraphState
+from src.api.streaming import emit_phase
 from src.domain.travel_state import Presence, TravelState, apply_patch
 from src.i18n import t
 from src.services.amenity_catalog import all_approved_amenities, resolve_hotel_amenity_ids
@@ -319,6 +320,32 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
         entry: dict[str, Any] = {"worker": _WORKER_NAME, "status": status, "reply": reply}
         if hotel_search_result is not None:
             entry["hotel_search_result"] = hotel_search_result
+        # The one place every exit path passes through, which is why the phase
+        # frame is emitted here rather than at each `return`.
+        #
+        # `hotel_node` is deliberately absent from `PHASE_KEY_BY_NODE` so this is
+        # the only `hotel_search` frame for the turn. That module explains the
+        # rule: the frontend keys progress rows by `${key}-${at}`, so a node
+        # mapped there AND emitting from inside shows the user the same step
+        # twice. `itinerary_node` is absent for exactly this reason.
+        #
+        # `found` (candidates before the display trim) is not reachable from
+        # here, so it is not reported rather than being recomputed for a
+        # progress line. `destination` and the amenities are the user's own
+        # inputs; no internal id is published.
+        facts: dict[str, Any] = {"status": status}
+        if destination:
+            facts["destination"] = destination
+        if max_radius_km is not None:
+            facts["radius_km"] = max_radius_km
+        if required_amenities:
+            facts["amenities"] = list(required_amenities)
+        if hotel_search_result is not None:
+            options_shown = hotel_search_result.get("options")
+            if isinstance(options_shown, list):
+                facts["kept"] = len(options_shown)
+        emit_phase("hotel_search", **facts)
+
         task_results = [*(state.get("task_results") or []), entry]
         update: dict[str, Any] = {"pending_tasks": pending, "task_results": task_results}
         if updated_travel_state_dict is not None:

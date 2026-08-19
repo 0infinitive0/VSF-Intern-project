@@ -148,7 +148,13 @@ def emit_phase(key: str, **data: Any) -> None:
 
     NEVER raises — a bug in the instrumentation path must not kill a chat
     turn. `key` is an opaque progress key (contract §Streaming — the frontend
-    owns i18n labels); `data` carries optional extras like tool= / route=.
+    owns i18n labels).
+
+    `data` carries the step's facts: counts, ids, and field paths, never display
+    text. Two producers supply them — `phase_facts` reads the dict a node just
+    returned, and a service that knows more than its state delta shows emits its
+    own (`hotel_node._result`, `routing.py`). The contract's phase-key table
+    lists every field; anything not listed there must not be added here.
     """
     try:
         em = _current_emitter.get()

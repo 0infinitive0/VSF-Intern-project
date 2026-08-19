@@ -171,7 +171,7 @@ ASCII-escaped):
 : open
 
 event: phase
-data: {"key":"hotel_search","tool":"recommend_hotels","at":1754...}
+data: {"key":"hotel_search","at":1754...,"status":"ok","destination":"Đà Nẵng","kept":5}
 
 event: delta
 data: {"text":"Khách sạn này "}
@@ -243,11 +243,41 @@ exist for that turn, and UIs must tolerate missing steps):
 | `routing` | after the `supervisor` node runs | LLM supervisor |
 | `compacting_history` | after the `load_context` node runs | deterministic |
 | `intake_check` | after the `extract_patch` node runs | LLM |
-| `hotel_search` | after the `hotel_node` node runs | DB + vector |
+| `hotel_search` | inside `hotel_node`'s `_result`, the closure every exit path returns through | DB + vector |
 | `itinerary_build` | entry of `_generate_and_save_itinerary` (`services/trip_planner.py`) | LLM + scheduler |
 | `routing_legs` | inside `recalculate_itinerary_routes` (`services/routing.py`), once before the day loop, carries `days` | HTTP routing |
 | `persisting` | right before the first external DB write — inside BOTH `_persist_itinerary_metadata` (`services/trip_planner.py`) and `ItineraryStore.finalize_trip_data` (`services/itinerary_store.py`) | DB write |
 | `generating` | after `qa_node` / `intake_qa` runs — the two nodes that also stream `delta` | LLM |
+
+**Facts on a `phase` frame.** Beyond `key` and `at`, a frame may carry named values
+about the step that just happened. Every one of them is optional — a client must render
+the step whether or not any arrive, and must ignore names it does not know.
+
+| `key` | field | type | meaning |
+|---|---|---|---|
+| `intake_check` | `intent` | string | the classification, an opaque key the client labels |
+| | `fields` | string[] | travel-state field paths the message touched (`people`, `budget.target`), at most 12. Paths only — never the values |
+| `routing` | `worker` | string | node the supervisor chose (`hotel_node`, `qa_node`, …) |
+| `hotel_search` | `status` | string | `ok`, `no_results`, `no_results_dates`, `no_results_amenities`, `no_results_rating`, `error` |
+| | `destination` | string | what the user asked for |
+| | `radius_km` | number | present only when the user set a radius |
+| | `amenities` | string[] | amenity ids the user required |
+| | `kept` | number | options shown; present only on a search that produced some |
+| `routing_legs` | `days` | number | days the route recalculation covers |
+
+Two rules hold across the whole table, and both are enforced in
+`agents/graph/phase_facts.py` rather than left to reviewers:
+
+- **No display text.** Values are keys, ids, paths and counts. The frontend owns every
+  word the user reads. `supervisor` returns `task_description` and `routing_reasoning`
+  next to the field that IS published — both are prose the LLM wrote, and neither
+  crosses the wire.
+- **Default deny.** A node with no entry in `phase_facts` publishes nothing, which
+  matters because `load_context` returns the entire graph state — the finished reply
+  included — and does have a phase key.
+
+Absent facts are absent, not `null`: a step with nothing to report sends `key` and `at`
+alone, exactly as every frame did before facts existed.
 
 Node-derived keys come from `PHASE_KEY_BY_NODE` (`agents/graph/phase_keys.py`),
 emitted while draining LangGraph's `updates` stream. `itinerary_build`,

@@ -41,6 +41,7 @@ from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 
 from src.agents.graph.nodes.load_context import load_context
+from src.agents.graph.phase_facts import phase_facts
 from src.agents.graph.phase_keys import PHASE_KEY_BY_NODE, STREAMING_NODES
 from src.agents.graph.response_payload import (
     derive_stage,
@@ -705,7 +706,7 @@ def _drive_turn(app, config: dict, turn_input, *, stream: bool) -> dict:
                     continue
                 phase_key = PHASE_KEY_BY_NODE.get(node_name)
                 if phase_key:
-                    emit_phase(phase_key)
+                    emit_phase(phase_key, **phase_facts(node_name, update))
         elif mode == "messages":
             message_chunk, metadata = chunk
             if metadata.get("langgraph_node") in STREAMING_NODES:

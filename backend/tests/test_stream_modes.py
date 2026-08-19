@@ -53,6 +53,13 @@ class _RecordingEmitter:
     def delta_text(self) -> str:
         return "".join(str(frame.get("text", "")) for frame in self.of("delta"))
 
+    def facts_for(self, key: str) -> list[dict[str, Any]]:
+        return [
+            {k: v for k, v in data.items() if k not in {"key", "at"}}
+            for name, data in self.frames
+            if name == "phase" and data.get("key") == key
+        ]
+
     @property
     def phase_keys(self) -> list[str]:
         return [str(frame.get("key")) for frame in self.of("phase")]
@@ -391,6 +398,71 @@ class TestPhaseFrames:
 
         assert "intake_check" in emitter.phase_keys  # extract_patch
         assert "generating" in emitter.phase_keys  # intake_qa
+
+
+class TestPhaseFacts:
+    """Progress frames carry the turn's real numbers, and only those."""
+
+    def test_intake_check_reports_the_intent_and_the_fields_touched(self, streaming_turn):
+        emitter = streaming_turn(
+            message="đổi thành 3 người",
+            thread="stream-facts-intake",
+            travel_state=_travel_state(with_budget=True),
+            patch=[{"path": "people", "operation": "set", "value": 3}],
+            intent="update_trip",
+        )
+
+        assert emitter.facts_for("intake_check") == [
+            {"intent": "update_trip", "fields": ["people"]}
+        ]
+
+    def test_a_field_value_never_rides_along_with_its_path(self, streaming_turn):
+        emitter = streaming_turn(
+            message="ngân sách 8 triệu",
+            thread="stream-facts-no-values",
+            travel_state=_travel_state(with_budget=True),
+            patch=[{"path": "budget.target", "operation": "set", "value": 8_000_000}],
+            intent="update_trip",
+        )
+
+        assert "8000000" not in str(emitter.facts_for("intake_check"))
+
+    def test_routing_reports_the_worker_but_not_the_prose_beside_it(self, streaming_turn):
+        emitter = streaming_turn(
+            message="tìm khách sạn",
+            thread="stream-facts-routing",
+            travel_state=_travel_state(with_budget=True),
+            force_worker="hotel_node",
+        )
+
+        facts = emitter.facts_for("routing")
+        assert {"worker": "hotel_node"} in facts
+        # `task_description` sits in the same update dict and is written by the LLM.
+        assert "probe" not in str(facts)
+
+    def test_hotel_search_is_emitted_exactly_once(self, streaming_turn):
+        """`hotel_node` emits its own richer frame from inside `_result`, so it is
+        absent from `PHASE_KEY_BY_NODE`. Mapping it as well would list the same
+        step twice for the user — the frontend keys rows by `${key}-${at}`."""
+        emitter = streaming_turn(
+            message="tìm khách sạn",
+            thread="stream-facts-hotel-once",
+            travel_state=_travel_state(with_budget=True),
+            force_worker="hotel_node",
+        )
+
+        assert emitter.phase_keys.count("hotel_search") == 1
+
+    def test_a_phase_with_no_facts_still_sends_its_key(self, streaming_turn):
+        """`compacting_history` has no facts to report; the step still happened."""
+        emitter = streaming_turn(
+            message="xin chào",
+            thread="stream-facts-bare",
+            travel_state=_travel_state(with_budget=True),
+        )
+
+        assert "compacting_history" in emitter.phase_keys
+        assert emitter.facts_for("compacting_history") == [{}]
 
 
 class TestMappingIntegrity:

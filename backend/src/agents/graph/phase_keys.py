@@ -8,12 +8,14 @@ Only nodes worth a line of UI appear in `PHASE_KEY_BY_NODE`. `scope_guard`,
 are deliberately absent: they finish faster than a user can read, and a
 progress list that scrolls is worse than one that doesn't move.
 
-`itinerary_node` is absent for a different, more specific reason. The services
-it calls already emit finer-grained phases from inside the work —
+`hotel_node` and `itinerary_node` are absent for a different, more specific
+reason. The work itself already emits a finer-grained phase from inside —
+`hotel_search` (`hotel_node`'s own `_result`, which every exit path returns
+through, carrying the destination, radius, amenities and result count), plus
 `itinerary_build` (`trip_planner.py`), `routing_legs` (`routing.py`) and
-`persisting` (`itinerary_store.py`). Mapping the node as well would emit
-`itinerary_build` twice for one turn, and the frontend keys its progress rows
-by `${key}-${at}`, so the user would see the same step listed twice. The
+`persisting` (`itinerary_store.py`). Mapping the node as well would emit the
+same key twice for one turn, and the frontend keys its progress rows by
+`${key}-${at}`, so the user would see the same step listed twice. The
 in-service emits win because they say more; the node mapping covers only nodes
 that report nothing about themselves.
 """
@@ -28,7 +30,6 @@ PHASE_KEY_BY_NODE: dict[str, str] = {
     "supervisor": "routing",
     "intake_qa": "generating",
     "qa_node": "generating",
-    "hotel_node": "hotel_search",
 }
 
 #: Nodes whose LLM tokens may be forwarded to the client as `delta` frames.
