@@ -7,6 +7,7 @@ import logging
 from typing import Any, List
 
 from src.services.llm import get_fast_llm as get_llm
+from src.services.llm import response_text
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,7 @@ Yêu cầu:
         from langchain_core.messages import HumanMessage
 
         response = llm.invoke([HumanMessage(content=prompt)])
-        content = response.content.strip()
+        content = response_text(response).strip()
         if content.startswith("```"):
             content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
         data = json.loads(content)

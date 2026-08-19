@@ -37,6 +37,16 @@ class Settings(BaseSettings):
         "Non-reasoning models never receive this kwarg (see "
         "`_openai_model_supports_temperature` in `services/llm.py`).",
     )
+    llm_use_responses_api: bool = Field(
+        default=False,
+        description="Route OpenAI calls through the Responses API instead of Chat "
+        "Completions. Off by default: Chat Completions is what every node runs on "
+        "today, and flipping transports changes the streamed chunk shape for the "
+        "whole app. Applies ONLY to the `openai` provider and ONLY to the reasoning "
+        "family (gpt-5/o1/o3/o4) -- `gpt-4o-mini` answers the reasoning parameters "
+        "this route implies with a 400, and it is the model the eval judge hardcodes. "
+        "Rollback is an env change, not a deploy.",
+    )
     llm_provider: str = "ollama"
     llm_model: str = "llama3.1"
     llm_fast_model: str = "llama3.1"

@@ -31,7 +31,7 @@ from src.services.itinerary_reuse import (
     validate_template_bundle,
 )
 from src.services.itinerary_store import ItineraryStore, ItineraryStoreError
-from src.services.llm import get_reasoning_llm as get_llm
+from src.services.llm import get_reasoning_llm as get_llm, response_text
 from src.services.supabase_search import (
     search_attractions as rpc_search_attractions,
     search_attractions_tiered as rpc_search_attractions_tiered,
@@ -171,7 +171,7 @@ Every day_number from 1 through {number_of_days} must appear exactly once and ti
                 HumanMessage(content=prompt),
             ]
         )
-        parsed = json.loads(_strip_json_fence(response.content))
+        parsed = json.loads(_strip_json_fence(response_text(response)))
         if isinstance(parsed, dict) and isinstance(parsed.get("themes"), list):
             raw_themes = parsed["themes"]
     except Exception as exc:
@@ -722,7 +722,7 @@ Use null for fields that do not apply. Never return itinerary JSON."""
                 HumanMessage(content=prompt),
             ]
         )
-        raw = json.loads(_strip_json_fence(response.content))
+        raw = json.loads(_strip_json_fence(response_text(response)))
         action = raw.get("action")
         if action in {
             "change_hotel",

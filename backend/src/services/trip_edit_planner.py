@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from src.services.llm import get_reasoning_llm as get_llm
+from src.services.llm import response_text
 from src.services.trip_intake import TripPreferenceUpdate, TripPreferenceUpdateError
 from src.services.trip_scheduler import PlaceCandidate, parse_day_scope
 
@@ -473,7 +474,7 @@ def plan_trip_edit(
     for attempt in range(2):
         try:
             response = model.invoke(_planner_prompt(modification_request, trip_data, str(last_error) if attempt else None))
-            payload = json.loads(_strip_json_fence(getattr(response, "content", response)))
+            payload = json.loads(_strip_json_fence(response_text(response)))
             return parse_trip_edit_plan(payload, trip_data, raw_request=modification_request)
         except (json.JSONDecodeError, TripEditPlanError, TypeError, ValueError) as exc:
             last_error = exc

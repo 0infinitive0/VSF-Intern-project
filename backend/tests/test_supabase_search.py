@@ -489,3 +489,22 @@ def test_tiered_attraction_search_does_not_expand_radius_when_first_tier_is_suff
     assert len(calls) == 1
     assert calls[0]["max_radius_km"] == 3.0
 
+
+class TestBlockShapedFilterExtraction:
+    """`extract_search_filters` built its JSON string with `str(response.content)`.
+    On a list that renders the Python repr — `[{'type': 'text', ...}]` — which
+    fails `json.loads` inside a broad `except`, so every search silently lost its
+    filters and fell back to plain vector ranking."""
+
+    def test_filters_survive_a_block_shaped_response(self, monkeypatch):
+        class _Response:
+            content = [{"type": "text", "text": '{"city": "Đà Nẵng", "min_stars": 4}'}]
+
+        class _FakeLLM:
+            def invoke(self, _messages): return _Response()
+
+        monkeypatch.setattr(supabase_search_module, "get_llm", lambda **_k: _FakeLLM())
+
+        filters = supabase_search_module.extract_search_filters("khách sạn 4 sao Đà Nẵng")
+
+        assert filters == {"city": "Đà Nẵng", "min_stars": 4}

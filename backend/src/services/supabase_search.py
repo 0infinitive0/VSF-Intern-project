@@ -110,7 +110,11 @@ def _execute_rpc(rpc_name: str, params: dict) -> list:
     return res.data or []
 
 
-from src.services.llm import get_embeddings as factory_get_embeddings, get_fast_llm as get_llm
+from src.services.llm import (
+    get_embeddings as factory_get_embeddings,
+    get_fast_llm as get_llm,
+    response_text,
+)
 
 
 @lru_cache
@@ -160,7 +164,7 @@ User query: "{query}"
             SystemMessage(content="You analyze travel search queries and return valid JSON only."),
             HumanMessage(content=prompt),
         ])
-        content = str(response.content).strip()
+        content = response_text(response).strip()
         if content.startswith("```json"):
             content = content[7:]
         if content.startswith("```"):

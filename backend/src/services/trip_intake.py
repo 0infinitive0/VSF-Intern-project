@@ -27,6 +27,7 @@ from typing import Any
 from src.domain.travel_state import Presence, TravelState, apply_patch
 from src.i18n import t
 from src.services.llm import get_fast_llm as get_llm
+from src.services.llm import response_text
 
 logger = logging.getLogger(__name__)
 
@@ -554,7 +555,7 @@ Message: "{message}"
                 HumanMessage(content=prompt),
             ]
         )
-        content = str(response.content).strip()
+        content = response_text(response).strip()
         if content.startswith("```json"):
             content = content[7:]
         if content.startswith("```"):

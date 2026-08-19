@@ -22,8 +22,10 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
+from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 
 import src.agents.graph.graph as graph_module
 import src.agents.graph.nodes.intake_qa as intake_qa_module
@@ -67,6 +69,42 @@ def _fake_llm(text: str) -> _ToolCapableFake:
     return _ToolCapableFake(messages=iter([AIMessage(content=text)] * 50))
 
 
+class _BlockStreamingFake(BaseChatModel):
+    """A model that streams block-shaped `content`, one chunk per block.
+
+    That is what the Responses API returns, and what any model langchain routes
+    there returns — including ones nobody opted in: `_model_prefers_responses_api`
+    switches on the model NAME (`gpt-5-pro`, anything containing `codex`), so a
+    single env change is enough to reach this shape with no code change at all.
+
+    `GenericFakeChatModel` cannot stand in here: its `_stream` raises
+    `ValueError("Expected content to be a string")` on a list, which is the
+    exact shape under test.
+    """
+
+    blocks: list[dict[str, Any]]
+
+    @property
+    def _llm_type(self) -> str:
+        return "block-streaming-fake"
+
+    def bind_tools(self, *_args, **_kwargs):
+        return self
+
+    def _stream(self, messages, stop=None, run_manager=None, **kwargs):
+        for block in self.blocks:
+            yield ChatGenerationChunk(message=AIMessageChunk(content=[block]))
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        return ChatResult(
+            generations=[ChatGeneration(message=AIMessage(content=list(self.blocks)))]
+        )
+
+
+def _fake_block_llm(blocks: list[dict[str, Any]]) -> _BlockStreamingFake:
+    return _BlockStreamingFake(blocks=blocks)
+
+
 def _travel_state(*, with_budget: bool) -> dict:
     changes: list[dict[str, Any]] = [
         {"path": "destination", "operation": "set", "value": "Đà Nẵng"},
@@ -92,10 +130,14 @@ def streaming_turn(monkeypatch: pytest.MonkeyPatch):
         patch: list[dict[str, Any]] | None = None,
         force_worker: str | None = None,
         extractor=None,
+        intake_llm=None,
     ) -> _RecordingEmitter:
-        monkeypatch.setattr(
-            intake_qa_module, "get_fast_llm", lambda **_k: _fake_llm("Tháng 7 hay mưa rải rác.")
-        )
+        # `intake_llm` is a parameter rather than something a test monkeypatches
+        # itself: this fixture patches inside `_run`, which executes AFTER the
+        # test body, so a patch set in the body would be silently overwritten
+        # here and the test would pass against the default model instead.
+        intake_model = intake_llm or _fake_llm("Tháng 7 hay mưa rải rác.")
+        monkeypatch.setattr(intake_qa_module, "get_fast_llm", lambda **_k: intake_model)
         monkeypatch.setattr(
             qa_node_module, "get_fast_llm", lambda **_k: _fake_llm("Có hồ bơi ngoài trời.")
         )
@@ -152,6 +194,60 @@ class TestDeltaFrames:
 
         assert emitter.of("delta")
         assert "hồ bơi" in emitter.delta_text
+
+
+class TestBlockShapedContent:
+    """Deltas must survive a model that answers in content blocks.
+
+    The guard this replaces asked `isinstance(content, str)` and emitted
+    nothing when the answer was False. Nothing raised, nothing logged, and the
+    user watched an empty screen for the whole turn — the worst shape a bug can
+    take, because no test and no alert could see it.
+
+    `intake_qa` itself already handles this shape (`_response_text`), so the
+    turn still produced a correct reply — only the streamed copy vanished.
+    That asymmetry is why the plain POST endpoint would have looked healthy.
+    """
+
+    def test_a_block_shaped_answer_still_reaches_the_client(self, streaming_turn):
+        emitter = streaming_turn(
+            message="Đà Nẵng tháng 7 thời tiết thế nào?",
+            thread="stream-block-content",
+            travel_state=_travel_state(with_budget=False),
+            intake_llm=_fake_block_llm([{"type": "text", "text": "Tháng 7 hay mưa rải rác."}]),
+        )
+
+        assert emitter.of("delta"), "block-shaped content was swallowed silently"
+        assert "mưa" in emitter.delta_text
+
+    def test_whitespace_survives_the_join(self, streaming_turn):
+        """Text arrives split across blocks; joining them must not eat the
+        spaces that separate words."""
+        emitter = streaming_turn(
+            message="Đà Nẵng tháng 7 thời tiết thế nào?",
+            thread="stream-block-whitespace",
+            travel_state=_travel_state(with_budget=False),
+            intake_llm=_fake_block_llm(
+                [{"type": "text", "text": "Tháng 7 "}, {"type": "text", "text": "hay mưa."}]
+            ),
+        )
+
+        assert "Tháng 7 hay mưa." in emitter.delta_text
+
+    def test_a_non_text_block_emits_no_delta(self, streaming_turn):
+        """A reasoning block is not the answer, and must not be streamed as
+        one. Phase 4 of plan 260819-0931 gives it its own frame; until then it
+        is dropped rather than shown as the reply."""
+        emitter = streaming_turn(
+            message="Đà Nẵng tháng 7 thời tiết thế nào?",
+            thread="stream-block-reasoning-only",
+            travel_state=_travel_state(with_budget=False),
+            intake_llm=_fake_block_llm(
+                [{"type": "reasoning", "reasoning": "Đang cân nhắc thời tiết…"}]
+            ),
+        )
+
+        assert "cân nhắc" not in emitter.delta_text
 
 
 class TestWhatMustNeverStream:

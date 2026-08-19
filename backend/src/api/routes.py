@@ -86,6 +86,7 @@ from src.models.schemas import (
 )
 from src.services import session_store
 from src.services.amenity_catalog import query_approved_amenities
+from src.services.llm import response_text
 from src.services.place_details import get_attraction_detail, get_hotel_detail
 from src.services.booking_service import BookingError, cancel_booking, confirm_booking, get_booking, reserve_booking
 from src.services.email_service import EmailError, send_booking_confirmation_email
@@ -707,9 +708,7 @@ def _drive_turn(app, config: dict, turn_input, *, stream: bool) -> dict:
         elif mode == "messages":
             message_chunk, metadata = chunk
             if metadata.get("langgraph_node") in STREAMING_NODES:
-                content = getattr(message_chunk, "content", "")
-                if isinstance(content, str):
-                    emit_delta(content)
+                emit_delta(response_text(message_chunk))
 
     result = dict(app.get_state(config).values or {})
     if interrupts:
