@@ -139,7 +139,7 @@ export default function BookingReceiptModal({
 
         {loadState === 'found' && receipt && (
           <>
-            <div className="relative w-full h-[150px] flex-none">
+            <div className="relative w-full h-[150px] flex-none overflow-hidden">
               <RemoteImage
                 src={receipt.hotel_image_url}
                 alt={receipt.hotel_name ?? ''}
