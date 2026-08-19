@@ -366,13 +366,13 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   function handleSend(text: string) {
     // Confirmation starts a real backend turn, so it must release the local
     // phase override and resume the server-derived flow from that point.
-    setViewOverride(null)
+    handleSetViewOverride(null)
     send(text)
   }
 
   function handleHotelSelection(hotel: HotelOption) {
     if (!hotel.id) return
-    setViewOverride(null)
+    handleSetViewOverride(null)
     selectHotelDirect(hotel.id, `Chọn khách sạn ${hotel.name}`)
   }
 
