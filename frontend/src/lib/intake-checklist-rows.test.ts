@@ -71,11 +71,19 @@ describe('buildIntakeChecklistRows', () => {
     expect(dates?.value).toBeNull()
   })
 
-  it('passes preference wire keys through untranslated for the chips row', () => {
-    const rows = buildIntakeChecklistRows(FULL_INTAKE, 'vi')
+  it('maps the server preference labels to canonical keys for the chips row', () => {
+    const rows = buildIntakeChecklistRows(
+      { ...FULL_INTAKE, preferences: ['biển', 'ẩm thực'] },
+      'vi',
+    )
     const prefs = rows.find((row) => row.key === 'preferences')
     expect(prefs?.preferenceKeys).toEqual(['beach', 'food'])
     expect(prefs?.value).toBeNull()
+  })
+
+  it('passes a preference label the closed set does not know through untouched', () => {
+    const rows = buildIntakeChecklistRows({ ...FULL_INTAKE, preferences: ['lặn biển'] }, 'vi')
+    expect(rows.find((row) => row.key === 'preferences')?.preferenceKeys).toEqual(['lặn biển'])
   })
 
   it('treats unknown-but-present gated keys the same as missing', () => {
@@ -183,5 +191,37 @@ describe('buildIntakeChecklistRows', () => {
     )
     const budget = rows.find((row) => row.key === 'budget')
     expect(budget?.value).toBe('800.000 ₫ – 2.500.000 ₫')
+  })
+
+  it('shows the chips a user just toggled, before any server round-trip', () => {
+    const rows = buildIntakeChecklistRows(null, 'vi', { preferences: ['beach', 'nature'] }, LABELS)
+    const prefs = rows.find((row) => row.key === 'preferences')
+    expect(prefs?.collected).toBe(true)
+    expect(prefs?.preferenceKeys).toEqual(['beach', 'nature'])
+  })
+
+  it('local chips win over the server snapshot they were merged from', () => {
+    const rows = buildIntakeChecklistRows(
+      { ...FULL_INTAKE, preferences: ['biển'] },
+      'vi',
+      { preferences: ['beach', 'nature'] },
+      LABELS,
+    )
+    expect(rows.find((row) => row.key === 'preferences')?.preferenceKeys).toEqual([
+      'beach',
+      'nature',
+    ])
+  })
+
+  it('never marks preferences collected with no chip to show', () => {
+    const rows = buildIntakeChecklistRows(
+      { ...FULL_INTAKE, preferences: [] },
+      'vi',
+      { preferences: [] },
+      LABELS,
+    )
+    const prefs = rows.find((row) => row.key === 'preferences')
+    expect(prefs?.collected).toBe(false)
+    expect(prefs?.preferenceKeys).toEqual([])
   })
 })

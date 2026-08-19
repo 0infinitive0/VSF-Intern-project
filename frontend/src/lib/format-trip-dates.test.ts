@@ -26,6 +26,10 @@ describe('formatFullDate', () => {
     expect(formatFullDate('2026-08-15T00:00:00Z', 'vi')).toBe('15/08/2026')
   })
 
+  it('formats vi with zero-padded single-digit day and month', () => {
+    expect(formatFullDate('2026-07-01T00:00:00Z', 'vi')).toBe('01/07/2026')
+  })
+
   it('formats en as "Aug 15, 2026"', () => {
     expect(formatFullDate('2026-08-15T00:00:00Z', 'en-US')).toBe('Aug 15, 2026')
   })

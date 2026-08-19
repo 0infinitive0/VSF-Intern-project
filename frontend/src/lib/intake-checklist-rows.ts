@@ -11,19 +11,20 @@
  * backend does not gate them, see next-intake-field.ts) and are handled
  * explicitly below.
  *
- * destination/people/dates/budget also light up from `form` the moment the
- * user answers the widget locally — IntakeParametersForm only round-trips ONE
- * combined message at the very last step, so waiting for server confirmation
- * left these rows stuck on "—" the entire time the user was stepping through
- * them.
+ * Every row also reads the widget form's local answers: IntakeParametersForm
+ * only round-trips ONE combined message at the very last step, so waiting for
+ * server confirmation left these rows stuck on "—" the entire time the user was
+ * stepping through them.
  * `isFieldFilled` (next-intake-field.ts) is reused as the single source of
  * truth for "is this field answered locally" — no separate logic invented
  * here. Once the server confirms a row, its formatted value wins (it's the
  * more authoritative string); the local value is just a placeholder for the
- * gap between "user answered" and "backend round-tripped it".
+ * gap between "user answered" and "backend round-tripped it". Preferences are
+ * the one row where the local list leads instead — see the chips block below.
  */
 import { formatCurrency } from './format-currency'
 import { formatTripDateRange } from './format-trip-dates'
+import { preferenceKeyFromWireValueVi } from './intake-options'
 import { isFieldFilled, type IntakeFormShape } from './next-intake-field'
 import type { IntakeStatus } from '../types'
 
@@ -69,7 +70,30 @@ export function buildIntakeChecklistRows(
   const missingAny = (keys: readonly string[]) => keys.some((key) => missing.includes(key))
 
   const serverDateRange = formatTripDateRange(intake?.start_date, intake?.end_date, locale)
-  const preferenceKeys = intake?.preferences ?? []
+
+  // Chips for the preferences row, as canonical keys the component can look up
+  // under `intake.preferenceOptions.<key>`.
+  //
+  // The local form leads here, unlike every other row: it is not a placeholder
+  // waiting for the server but the current view of the answer — every snapshot
+  // is merged into it (use-intake-form's mergeIntakeIntoForm, which already
+  // maps the server's Vietnamese wire strings back to canonical keys), so it is
+  // never behind the server, and reading it makes a chip toggle show up in the
+  // checklist right away instead of only after the next round-trip. Leaving it
+  // out was why the row could tick as collected and still render nothing.
+  //
+  // Server values are the fallback (callers with no form, and keys the closed
+  // set doesn't know), mapped out of their wire strings so the lookup resolves
+  // in either UI language; an unmapped value passes through and the component's
+  // `defaultValue` renders it verbatim.
+  const localPreferenceKeys = (form?.preferences ?? []).filter(
+    (key): key is string => typeof key === 'string',
+  )
+  const serverPreferenceKeys = (intake?.preferences ?? []).map(
+    (value) => preferenceKeyFromWireValueVi(value) ?? value,
+  )
+  const preferenceKeys =
+    localPreferenceKeys.length > 0 ? localPreferenceKeys : serverPreferenceKeys
 
   const destinationServerCollected =
     Boolean(intake?.destination) && !missingAny(MISSING_KEYS.destination)
@@ -149,16 +173,12 @@ export function buildIntakeChecklistRows(
       preferenceKeys: [],
     },
     {
-      // Not gated by `missing`; collected the moment the backend echoes real
-      // preference keys (they arrive together with an intake response), or as
-      // soon as the user toggles a chip locally — same server-∪-local rule as
-      // the rows above. Only `collected` reads the local form: `preferenceKeys`
-      // stays server-only because the two sides speak different vocabularies
-      // (server sends Vietnamese wire strings like "biển", the form holds
-      // canonical keys like "beach" — intake-options.ts), and mixing them would
-      // break the chips' translation lookup.
+      // Not gated by `missing`; collected the moment there is a chip to show —
+      // from the user's own toggle or the backend's echo (see preferenceKeys
+      // above). Derived from the same list that renders, so the row can never
+      // tick with nothing beside it.
       key: 'preferences',
-      collected: preferenceKeys.length > 0 || isFieldFilled(form ?? {}, 'preferences'),
+      collected: preferenceKeys.length > 0,
       value: null,
       preferenceKeys,
     },

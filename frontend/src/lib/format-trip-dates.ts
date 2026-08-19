@@ -42,7 +42,7 @@ export function formatFullDate(
   const date = parseDate(value)
   if (!date) return null
   return new Intl.DateTimeFormat(locale, {
-    day: 'numeric',
+    day: locale === 'vi' ? '2-digit' : 'numeric',
     month: locale === 'vi' ? '2-digit' : 'short',
     year: 'numeric',
   }).format(date)

@@ -18,8 +18,8 @@ const ROW_LABEL_KEY = {
  * prefilled value (phase-07 acceptance criteria). Row derivation lives in the
  * pure lib/intake-checklist-rows.ts; this component only owns markup + i18n.
  *
- * Per-row edit affordance (design's `r.onPick`/`r.editLabel`): a collected row
- * shows a real "Sửa" button that calls `onEditField(row.key)`. That is a real
+ * Per-row edit affordance (design's `r.onPick`/`r.editLabel`): every row shows
+ * a real "Sửa" button that calls `onEditField(row.key)`. That is a real
  * send path now — the caller (App.tsx, via useIntakeForm's editingField) forces
  * IntakeParametersForm to reopen that one widget pre-filled with the current
  * value; picking a new answer resends the full intake sentence through the
@@ -81,7 +81,7 @@ export default function IntakeChecklist({
                 row.collected ? 'text-on-surface' : 'text-on-surface-muted'
               }`}
             >
-              {row.key === 'preferences' && row.collected ? (
+              {row.key === 'preferences' && row.preferenceKeys.length > 0 ? (
                 <span className="flex flex-wrap gap-1.5">
                   {row.preferenceKeys.map((key) => (
                     <span
@@ -96,10 +96,19 @@ export default function IntakeChecklist({
                 (row.value ?? '—')
               )}
             </div>
-            {row.collected && onEditField && (
+            {/* Shown on every row, answered or not: the button opens that one
+                widget, which is as useful for filling a blank row out of order
+                as it is for correcting a wrong answer. Hiding it until a row
+                was collected also made the rows jump sideways one by one as
+                the answers landed. */}
+            {onEditField && (
               <button
                 type="button"
                 onClick={() => onEditField(row.key)}
+                // Five buttons reading only "Sửa" are indistinguishable to a
+                // screen reader's control list; the row's own label is what
+                // tells them apart.
+                aria-label={`${t('intakeRowEdit')} — ${t(ROW_LABEL_KEY[row.key])}`}
                 className="flex-none text-[12px] font-[590] text-primary hover:underline"
               >
                 {t('intakeRowEdit')}
