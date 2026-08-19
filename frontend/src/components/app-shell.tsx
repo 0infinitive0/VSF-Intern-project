@@ -88,6 +88,10 @@ export default function AppShell({
   sessionBookedFromBackend,
   onOpenBooking,
   onOpenReceipt,
+  finalizing,
+  finalizeError,
+  onRequestFinalize,
+  onDuplicateTrip,
   activeWorkspaceTab,
   onSelectWorkspaceTab,
 }: {
@@ -150,6 +154,14 @@ export default function AppShell({
    * (sessionBookedFromBackend above) but no longer owns roomHold, so there's
    * no live hold data left to drive booking-modal.tsx's "done" screen with. */
   onOpenReceipt: () => void
+  /** Finalize-itinerary control (plan 260819-finalize-itinerary), threaded
+   * through to StageWorkspace → FinalizeAction — see App.tsx's doc comment
+   * for the actual mutation/confirm-dialog logic, which lives there so the
+   * dialog's backdrop can escape this component's glass-panel ancestors. */
+  finalizing: boolean
+  finalizeError: string | null
+  onRequestFinalize: () => void
+  onDuplicateTrip: () => void
   activeWorkspaceTab?: TabKey
   onSelectWorkspaceTab?: (tab: TabKey) => void
 }) {
@@ -327,6 +339,10 @@ export default function AppShell({
             sessionBookedFromBackend={sessionBookedFromBackend}
             onOpenBooking={onOpenBooking}
             onOpenReceipt={onOpenReceipt}
+            finalizing={finalizing}
+            finalizeError={finalizeError}
+            onRequestFinalize={onRequestFinalize}
+            onDuplicateTrip={onDuplicateTrip}
             activeWorkspaceTab={activeWorkspaceTab}
             onSelectWorkspaceTab={onSelectWorkspaceTab}
           />

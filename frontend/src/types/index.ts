@@ -62,6 +62,10 @@ export type PaymentStatus = Payment['status']
 export type BookingReceipt = Schemas['BookingReceiptPayload']
 export type BookingReceiptRoom = Schemas['BookingReceiptRoomPayload']
 
+// Finalize an itinerary (plan 260819-finalize-itinerary) — POST
+// /chat/{session_id}/finalize (api/trip-client.ts's finalizeTrip).
+export type FinalizeTripResult = Schemas['FinalizeTripPayload']
+
 /** The backend's `ChatStage`, derived from the response rather than restated,
  * so a stage that loses its producer breaks the build here too. `null` is the
  * frontend's own addition: a locally-authored bubble (the greeting, the intake

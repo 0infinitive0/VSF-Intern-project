@@ -51,8 +51,18 @@ def test_v3_branch_booking_state_holding_overrides_a_draft_itinerary():
     assert summarize(_v3_row("draft"), "holding")["status"] == "holding"
 
 
-def test_v3_branch_booking_state_paid_overrides_a_finalized_itinerary():
-    assert summarize(_v3_row("finalized"), "paid")["status"] == "paid"
+def test_v3_branch_a_finalized_itinerary_outranks_paid():
+    """"completed" already exclusively means "the itinerary is Finalized"
+    (`_ui_summary`'s own definition) -- the finalize feature requires
+    payment FIRST, so a finalized session is now always also paid. Before
+    this precedence flip, "paid" permanently masked "completed" and the
+    badge could never show the later, more advanced state (plan
+    260819-finalize-itinerary's addendum 12)."""
+    assert summarize(_v3_row("finalized"), "paid")["status"] == "completed"
+
+
+def test_v3_branch_a_finalized_itinerary_outranks_holding_too():
+    assert summarize(_v3_row("finalized"), "holding")["status"] == "completed"
 
 
 def test_v2_branch_also_respects_booking_state_override():

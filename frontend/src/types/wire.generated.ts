@@ -199,6 +199,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/chat/{session_id}/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finalize Trip
+         * @description Lock a session's itinerary and save it as a reusable, embedded
+         *     template — the user-facing entry point for the previously-orphaned
+         *     `finalize_trip_data` (see `services/trip_finalize.py`'s module
+         *     docstring: nothing called it before this route existed).
+         *
+         *     Payment-gated by product decision: 409 unless the session already has a
+         *     CONFIRMED booking, checked the same way `get_booking_receipt` above
+         *     does — `get_booking_receipt_for_session` returning non-None IS "this
+         *     session is paid," so no second query/table is needed to express that.
+         *     Also 409 for no trip plan yet, or an itinerary already `Finalized`
+         *     (`finalize_session_trip` raises `FinalizeTripError` for both — a
+         *     genuine double-submit is a no-op success at the store layer, but this
+         *     route surfaces it as 409 so the frontend never shows a misleading
+         *     "saving" state for a click that changes nothing).
+         *
+         *     Writes the mutated `trip_data` back into checkpointed graph state via
+         *     `update_state` rather than running a graph turn — finalizing carries no
+         *     user chat text and touches no other turn-scoped field, so invoking the
+         *     full `load_context -> ... -> respond` pipeline for it would be pure
+         *     overhead. `_persist_turn` (this module, below) is reused verbatim for
+         *     the checkpoint write so `ui_summary.status` recomputes exactly the way
+         *     every other mutating route already achieves it.
+         */
+        post: operations["finalize_trip_api_v1_chat__session_id__finalize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chat/session": {
         parameters: {
             query?: never;
@@ -780,6 +821,21 @@ export interface components {
             theme: string;
             /** Items */
             items: components["schemas"]["ItineraryItem"][];
+        };
+        /**
+         * FinalizeTripPayload
+         * @description Result of `POST /chat/{session_id}/finalize` — locks the itinerary and
+         *     saves it as a reusable, embedded template (`services/trip_finalize.py`).
+         *     `embedding_saved=False` still means the lock itself succeeded; only the
+         *     reuse-template's vector is missing and stays retryable.
+         */
+        FinalizeTripPayload: {
+            /** Status */
+            status: string;
+            /** Summary */
+            summary?: string | null;
+            /** Embedding Saved */
+            embedding_saved: boolean;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1742,6 +1798,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BookingReceiptPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finalize_trip_api_v1_chat__session_id__finalize_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinalizeTripPayload"];
                 };
             };
             /** @description Validation Error */

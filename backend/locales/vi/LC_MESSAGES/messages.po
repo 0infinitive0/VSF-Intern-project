@@ -328,3 +328,9 @@ msgstr ""
 
 msgid "Bạn dự định đi và về ngày nào?"
 msgstr ""
+
+msgid ""
+"Lịch trình này đã được hoàn tất và khoá lại nên mình không thể chỉnh sửa "
+"được nữa. Bạn vẫn có thể hỏi mình về chuyến đi, hoặc nhân bản thành một "
+"chuyến đi mới nếu muốn thay đổi."
+msgstr ""

@@ -2,14 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getPaymentStatus } from './api/payment-client'
 import { deleteSession } from './api/session-client'
+import { finalizeTrip } from './api/trip-client'
 import { useAuth } from './auth/auth-context'
 import { consumeOAuthRedirectError, isIdentityAlreadyLinkedError } from './auth/oauth-redirect-error'
 import { translateAuthError } from './auth/translate-auth-error'
 import { useChatSession } from './hooks/use-chat-session'
-import { useIntakeForm } from './hooks/use-intake-form'
+import { EMPTY_INTAKE_FORM, mergeIntakeIntoForm, useIntakeForm } from './hooks/use-intake-form'
 import { usePanelResize } from './hooks/use-panel-resize'
 import { shouldReleaseHoldForDeletedSession, useRoomHold } from './hooks/use-room-hold'
 import { useSessionHistory } from './hooks/use-session-history'
+import { composeIntakeMessage } from './lib/compose-intake-message'
 import { deriveStageView, type StageView } from './lib/derive-stage'
 import { isFieldFilled } from './lib/next-intake-field'
 import { consumeVnpayReturn, isVnpayReturnPending } from './lib/vnpay-return'
@@ -429,6 +431,59 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   const sessionBookedFromBackend = sessions?.find((s) => s.session_id === state.sessionId)?.status === 'paid'
   refreshRef.current = refresh
 
+  // ── Finalize itinerary (plan 260819-finalize-itinerary) ─────────────────
+  // Confirm dialog + the actual mutation live here (not in finalize-
+  // action.tsx) so the dialog can mount as a sibling of <AppShell>, escaping
+  // this tree's glass-panel `backdrop-filter` ancestors — same reason
+  // BookingModal/the change-hotel ConfirmDialog live here.
+  const [finalizeConfirmOpen, setFinalizeConfirmOpen] = useState(false)
+  const [finalizing, setFinalizing] = useState(false)
+  const [finalizeError, setFinalizeError] = useState<string | null>(null)
+
+  async function handleConfirmFinalize() {
+    if (!state.sessionId) return
+    setFinalizeConfirmOpen(false)
+    setFinalizing(true)
+    setFinalizeError(null)
+    try {
+      await finalizeTrip(state.sessionId)
+      // Pulls the fresh `status: "Finalized"` trip plan + the updated
+      // sidebar badge from the backend, rather than optimistically patching
+      // local state — the same "re-fetch, don't guess" convention the
+      // VNPay-return flow already uses (roomHold.markBooked() -> refresh()).
+      await restore(state.sessionId)
+      refresh()
+    } catch (err) {
+      setFinalizeError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setFinalizing(false)
+    }
+  }
+
+  // The composed duplicate-trip message, staged here until the brand-new
+  // session from startNew() is actually ready — send() resolves its target
+  // session id from THIS render's closure (use-chat-session.ts), so calling
+  // it synchronously right after `await startNew()` would still address the
+  // OLD session. The effect below fires once state.sessionId has genuinely
+  // moved to the new one, by which point `send` closes over it correctly.
+  const duplicateIntentRef = useRef<string | null>(null)
+
+  async function handleDuplicateTrip() {
+    if (!state.intake) return
+    const form = mergeIntakeIntoForm(EMPTY_INTAKE_FORM, state.intake, null, null)
+    duplicateIntentRef.current = composeIntakeMessage(form)
+    await startNew()
+    resetIntakeForm()
+    refresh()
+  }
+
+  useEffect(() => {
+    if (!duplicateIntentRef.current || !state.sessionId) return
+    const message = duplicateIntentRef.current
+    duplicateIntentRef.current = null
+    void send(message)
+  }, [state.sessionId, send])
+
   // restoreSession() has no in-flight signal of its own (session-client.ts's
   // fetch just resolves or doesn't) — this is purely a UI-visible "which row
   // is loading" flag so ConversationList can show a spinner instead of
@@ -592,6 +647,10 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
         sessionBookedFromBackend={sessionBookedFromBackend}
         onOpenBooking={() => setBookingModalOpen(true)}
         onOpenReceipt={() => setReceiptModalOpen(true)}
+        finalizing={finalizing}
+        finalizeError={finalizeError}
+        onRequestFinalize={() => setFinalizeConfirmOpen(true)}
+        onDuplicateTrip={handleDuplicateTrip}
         activeWorkspaceTab={activeWorkspaceTab}
         onSelectWorkspaceTab={handleSelectWorkspaceTab}
       />
@@ -626,6 +685,15 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
           void roomHold.releaseHold().then(changeHotel)
         }}
         onCancel={() => setConfirmChangeHotelOpen(false)}
+      />
+      <ConfirmDialog
+        open={finalizeConfirmOpen}
+        title={t('finalizeConfirmTitle')}
+        message={t('finalizeConfirmBody')}
+        confirmLabel={t('finalizeConfirmAction')}
+        cancelLabel={t('finalizeConfirmCancel')}
+        onConfirm={() => void handleConfirmFinalize()}
+        onCancel={() => setFinalizeConfirmOpen(false)}
       />
     </>
   )

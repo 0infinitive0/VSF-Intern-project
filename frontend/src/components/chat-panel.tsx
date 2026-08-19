@@ -11,6 +11,7 @@ import type { PreferenceKey } from '../lib/intake-options'
 import { buildIntakeChecklistRows } from '../lib/intake-checklist-rows'
 import { currentIntakeField, locallyAdvancedField, type IntakeField } from '../lib/next-intake-field'
 import type { StageView } from '../lib/derive-stage'
+import { isTripFinalized } from '../lib/trip-finalize-state'
 import type { ChatState } from '../types'
 
 function lastAiStage(messages: ChatState['messages']): string | null {
@@ -203,7 +204,11 @@ export default function ChatPanel({
         hotelPicked={hotelPicked}
         hotelOptionsAvailable={hotelOptionsAvailable}
         hotelsLoading={hotelsLoading}
-        onChangeHotel={onChangeHotel}
+        // Backend's own /hotels/change route now 409s once finalized
+        // (routes.py::change_hotel) — no-op here too, so the click doesn't
+        // even round-trip to discover that (plan 260819-finalize-itinerary,
+        // "never offer an action the graph guard will refuse").
+        onChangeHotel={isTripFinalized(tripPlan) ? () => {} : onChangeHotel}
         onViewStage={onViewStage}
       />
 
@@ -257,6 +262,13 @@ export default function ChatPanel({
       )}
 
       <div className="flex-none px-4 pb-4 pt-2">
+        {/* Composer stays enabled once finalized (plan 260819-finalize-
+         * itinerary decision: "chat still answers questions, refuses
+         * edits") — this hint is what keeps the backend's refusal
+         * (nodes/supervisor.py's lock guard) from reading as a bug. */}
+        {isTripFinalized(tripPlan) && (
+          <div className="mb-2 text-[11px] text-on-surface-muted">{t('finalizeLockedChatHint')}</div>
+        )}
         <Composer onSend={onSend} disabled={pending} />
       </div>
     </section>

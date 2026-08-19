@@ -52,6 +52,10 @@ export default function StageRouter({
   sessionBookedFromBackend,
   onOpenBooking,
   onOpenReceipt,
+  finalizing,
+  finalizeError,
+  onRequestFinalize,
+  onDuplicateTrip,
   activeWorkspaceTab,
   onSelectWorkspaceTab,
 }: {
@@ -85,6 +89,11 @@ export default function StageRouter({
   onOpenBooking: () => void
   /** See app-shell.tsx's doc comment on the same prop. */
   onOpenReceipt: () => void
+  /** See app-shell.tsx's doc comment on the same prop group (finalize). */
+  finalizing: boolean
+  finalizeError: string | null
+  onRequestFinalize: () => void
+  onDuplicateTrip: () => void
   activeWorkspaceTab?: TabKey
   onSelectWorkspaceTab?: (tab: TabKey) => void
 }): ReactNode {
@@ -123,6 +132,10 @@ export default function StageRouter({
       sessionBookedFromBackend={sessionBookedFromBackend}
       onOpenBooking={onOpenBooking}
       onOpenReceipt={onOpenReceipt}
+      finalizing={finalizing}
+      finalizeError={finalizeError}
+      onRequestFinalize={onRequestFinalize}
+      onDuplicateTrip={onDuplicateTrip}
       activeTab={activeWorkspaceTab}
       onSelectTab={onSelectWorkspaceTab}
     />

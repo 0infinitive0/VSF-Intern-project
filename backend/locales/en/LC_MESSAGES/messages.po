@@ -354,5 +354,14 @@ msgstr "Whole-trip budget: {known:,.0f} / {total:,.0f} VND (OVER by {shortfall:,
 msgid "Bạn dự định đi và về ngày nào?"
 msgstr "When do you plan to depart and return?"
 
+msgid ""
+"Lịch trình này đã được hoàn tất và khoá lại nên mình không thể chỉnh sửa "
+"được nữa. Bạn vẫn có thể hỏi mình về chuyến đi, hoặc nhân bản thành một "
+"chuyến đi mới nếu muốn thay đổi."
+msgstr ""
+"This itinerary has been finalized and locked, so I can't edit it anymore. "
+"You can still ask me about your trip, or duplicate it into a new trip if "
+"you'd like to make changes."
+
 msgid "Đoạn chat này đã thanh toán xong nên mình không thể đổi hoặc tìm khách sạn khác nữa — việc đó sẽ làm mất lịch trình đã đặt. Nếu muốn lên kế hoạch cho chuyến đi khác, bạn hãy mở một đoạn chat mới nhé."
 msgstr "This chat has already been paid for, so I can't change or search for a different hotel anymore — that would erase the itinerary you already booked. If you'd like to plan a different trip, please start a new chat."

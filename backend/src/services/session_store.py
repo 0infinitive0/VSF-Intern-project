@@ -607,7 +607,15 @@ def summarize(row: dict[str, Any], booking_state: str | None = None) -> dict[str
         # SessionSummaryPayload's Literal validation never rejects a row.
         raw_status = str(summary.get("status") or "").casefold()
         status = "completed" if raw_status in ("completed", "finalized") else "draft"
-        if booking_state in ("paid", "holding"):
+        # "completed" already means "the itinerary is Finalized" (see
+        # `_ui_summary`'s own definition, above) -- outrank booking_state
+        # rather than being overridden by it. Before the finalize feature
+        # this branch never fired (nothing ever produced "completed" for a
+        # paid session in practice), but the finalize flow requires payment
+        # FIRST, so a finalized session is now always also paid -- without
+        # this, "paid" would permanently mask "completed" and the badge
+        # would never show the more advanced, later state.
+        if status != "completed" and booking_state in ("paid", "holding"):
             status = booking_state
         return {
             "session_id": str(row["session_id"]),

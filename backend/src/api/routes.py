@@ -82,6 +82,7 @@ from src.models.schemas import (
     ChangeHotelRequest,
     CreateVnpayPaymentRequest,
     CreateVnpayPaymentResponse,
+    FinalizeTripPayload,
     HotelDetailPayload,
     hotel_amenities_from_hotel_options,
     PaymentPayload,
@@ -94,10 +95,9 @@ from src.models.schemas import (
     sanitize_system_error,
     to_trip_plan_payload,
 )
-from src.services import session_store
+from src.services import payment_service, session_store, vnpay_service
 from src.services.amenity_catalog import query_approved_amenities
 from src.services.llm import reasoning_text, response_text
-from src.services.place_details import get_attraction_detail, get_hotel_detail
 from src.services.booking_service import (
     BookingError,
     cancel_booking,
@@ -107,8 +107,8 @@ from src.services.booking_service import (
     reserve_booking,
 )
 from src.services.email_service import EmailError, send_booking_confirmation_email
-from src.services import payment_service
-from src.services import vnpay_service
+from src.services.place_details import get_attraction_detail, get_hotel_detail
+from src.services.trip_finalize import FinalizeTripError, finalize_session_trip, is_trip_finalized
 
 logger = logging.getLogger(__name__)
 
@@ -435,6 +435,55 @@ def get_booking_receipt(
     return BookingReceiptPayload.model_validate(receipt)
 
 
+@router.post("/chat/{session_id}/finalize", response_model=FinalizeTripPayload)
+def finalize_trip(
+    session_id: str, current_user: AuthenticatedUser | None = Depends(get_current_user)
+) -> FinalizeTripPayload:
+    """Lock a session's itinerary and save it as a reusable, embedded
+    template — the user-facing entry point for the previously-orphaned
+    `finalize_trip_data` (see `services/trip_finalize.py`'s module
+    docstring: nothing called it before this route existed).
+
+    Payment-gated by product decision: 409 unless the session already has a
+    CONFIRMED booking, checked the same way `get_booking_receipt` above
+    does — `get_booking_receipt_for_session` returning non-None IS "this
+    session is paid," so no second query/table is needed to express that.
+    Also 409 for no trip plan yet, or an itinerary already `Finalized`
+    (`finalize_session_trip` raises `FinalizeTripError` for both — a
+    genuine double-submit is a no-op success at the store layer, but this
+    route surfaces it as 409 so the frontend never shows a misleading
+    "saving" state for a click that changes nothing).
+
+    Writes the mutated `trip_data` back into checkpointed graph state via
+    `update_state` rather than running a graph turn — finalizing carries no
+    user chat text and touches no other turn-scoped field, so invoking the
+    full `load_context -> ... -> respond` pipeline for it would be pure
+    overhead. `_persist_turn` (this module, below) is reused verbatim for
+    the checkpoint write so `ui_summary.status` recomputes exactly the way
+    every other mutating route already achieves it.
+    """
+    _owned_session_or_404(session_id, current_user)
+    if payment_service.get_booking_receipt_for_session(session_id) is None:
+        raise HTTPException(status_code=409, detail="Cần đặt phòng và thanh toán trước khi hoàn tất lịch trình.")
+
+    app = _get_graph_v2()
+    config = {"configurable": {"thread_id": session_id}}
+    trip_data = (app.get_state(config).values or {}).get("trip_data")
+    if not trip_data:
+        raise HTTPException(status_code=409, detail="Chưa có kế hoạch để hoàn tất.")
+
+    try:
+        result = finalize_session_trip(trip_data)
+    except FinalizeTripError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    app.update_state(config, {"trip_data": result["trip_data"]})
+    _persist_turn(session_id, app, config)
+    return FinalizeTripPayload(
+        status=result["status"], summary=result["summary"], embedding_saved=result["embedding_saved"]
+    )
+
+
 # ---------------------------------------------------------------------------
 # Session lifecycle endpoints (Phase 3)
 # ---------------------------------------------------------------------------
@@ -652,6 +701,15 @@ def change_hotel(
     session = _owned_session_or_404(session_id, current_user)
 
     with session.lock:
+        # The only writer entry point that reaches `hotel_node` without
+        # passing through `supervisor` (`Command(goto=...)`, below) — so it
+        # is the one place the finalized-trip lock guard in
+        # `nodes/supervisor.py` cannot see this request at all. The frontend
+        # also hides this control once finalized, but hiding a button is
+        # not an access guard, hence the explicit check here too.
+        state = _get_graph_v2().get_state({"configurable": {"thread_id": session_id}}).values or {}
+        if is_trip_finalized(state.get("trip_data")):
+            raise HTTPException(status_code=409, detail="Lịch trình đã hoàn tất và không thể chỉnh sửa.")
         try:
             return _rerun_hotel_search(session_id)
         except Exception as exc:
