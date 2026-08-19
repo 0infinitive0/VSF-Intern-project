@@ -50,7 +50,7 @@ class Settings(BaseSettings):
         "still the rollback, and it is an env change rather than a deploy.",
     )
     llm_reasoning_summary: Literal["off", "auto"] = Field(
-        default="off",
+        default="auto",
         description="Ask OpenAI reasoning models to emit a summary of their own "
         "reasoning, streamed to the client as `reasoning` SSE frames. Requires "
         "`llm_use_responses_api` -- Chat Completions has no channel for it. Off by "
