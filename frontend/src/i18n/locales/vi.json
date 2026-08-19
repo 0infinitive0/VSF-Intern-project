@@ -435,7 +435,6 @@
   "bookingReceiptLoading": "Đang tải thông tin đặt phòng…",
   "bookingReceiptNotFound": "Không tìm thấy thông tin đặt phòng cho đoạn chat này.",
   "bookingReceiptClose": "Đóng",
-
   "checkoutTitle": "Thanh toán an toàn",
   "checkoutCloseAria": "Về lịch trình",
   "checkoutStepGuest": "Thông tin khách",
@@ -501,5 +500,6 @@
   "thinkingGroupHotels": "Tìm khách sạn",
   "thinkingGroupItinerary": "Dựng lịch trình",
   "thinkingGroupSave": "Lưu kết quả",
-  "thinkingGroupReply": "Soạn câu trả lời"
+  "thinkingGroupReply": "Soạn câu trả lời",
+  "thinkingStepsRegion": "Các bước đang xử lý"
 }

@@ -64,7 +64,7 @@ export default function ThinkingBlock({ groups }: { groups: ThinkingGroup[] }) {
     : t('thinkingHeaderRunning', { done, total: groups.length })
 
   return (
-    <div className="flex gap-2.5 items-start" aria-live="polite" aria-busy={!allDone}>
+    <div className="flex gap-2.5 items-start">
       <div className="w-6 h-6 flex-none rounded-[9px] bg-[linear-gradient(145deg,#5C93EE,#2C5FC9)] flex items-center justify-center">
         <span className="text-on-primary text-[11px] font-[590]">V</span>
       </div>
@@ -74,7 +74,7 @@ export default function ThinkingBlock({ groups }: { groups: ThinkingGroup[] }) {
           type="button"
           onClick={() => setManualOpen(!open)}
           aria-expanded={open}
-          className="w-full flex items-center gap-2 px-[15px] py-[11px] text-left text-[13.5px] text-on-surface"
+          className="w-full min-h-[44px] flex items-center gap-2 px-[15px] py-2.5 text-left text-[13.5px] text-on-surface cursor-pointer hover:bg-on-surface/5 active:bg-on-surface/10 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary transition-colors motion-reduce:transition-none"
         >
           {allDone ? (
             <span
@@ -91,7 +91,7 @@ export default function ThinkingBlock({ groups }: { groups: ThinkingGroup[] }) {
           )}
           <span className="min-w-0 truncate">{headerLabel}</span>
           <span
-            className={`ml-auto flex-none text-on-surface/50 transition-transform motion-reduce:transition-none ${
+            className={`ml-auto flex-none text-on-surface-muted transition-transform motion-reduce:transition-none ${
               open ? 'rotate-90' : ''
             }`}
             aria-hidden="true"
@@ -105,7 +105,14 @@ export default function ThinkingBlock({ groups }: { groups: ThinkingGroup[] }) {
             <div
               ref={scrollRef}
               onScroll={onScroll}
-              className="max-h-[10.5rem] overflow-y-auto px-[15px] pb-[13px] flex flex-col gap-2.5"
+              // Focusable on purpose: an overflow container with no tabindex
+              // cannot be scrolled by keyboard at all.
+              tabIndex={0}
+              role="region"
+              aria-label={t('thinkingStepsRegion')}
+              aria-live="polite"
+              aria-busy={!allDone}
+              className="max-h-[10.5rem] overflow-y-auto px-[15px] pb-[13px] flex flex-col gap-2.5 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
             >
               {groups.map((group) => (
                 <Step key={group.key} group={group} t={t} />
@@ -155,7 +162,7 @@ function Step({
       {group.lines.map((line) => (
         <p
           key={line}
-          className="pl-[26px] text-[12.5px] leading-relaxed text-on-surface/70 motion-safe:animate-[vRise_.26s_ease-out]"
+          className="pl-[26px] text-[12.5px] leading-relaxed text-on-surface-variant motion-safe:animate-[vRise_.26s_ease-out]"
         >
           {line}
         </p>
@@ -166,10 +173,10 @@ function Step({
           translated, and it only appears when the model produced any. */}
       {group.reasoning && (
         <div className="pl-[26px] flex flex-col gap-0.5">
-          <span className="text-[11px] uppercase tracking-wide text-on-surface/40">
+          <span className="text-[11px] uppercase tracking-wide text-on-surface-muted">
             {t('thinkingModelReasoning')}
           </span>
-          <p className="text-[12.5px] leading-relaxed text-on-surface/50 italic whitespace-pre-wrap">
+          <p className="text-[12.5px] leading-relaxed text-on-surface-muted italic whitespace-pre-wrap">
             {group.reasoning}
           </p>
         </div>

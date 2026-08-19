@@ -437,7 +437,6 @@
   "bookingReceiptLoading": "Loading booking details…",
   "bookingReceiptNotFound": "No booking found for this conversation.",
   "bookingReceiptClose": "Close",
-
   "checkoutTitle": "Secure checkout",
   "checkoutCloseAria": "Back to itinerary",
   "checkoutStepGuest": "Guest details",
@@ -503,5 +502,6 @@
   "thinkingGroupHotels": "Searching hotels",
   "thinkingGroupItinerary": "Building the itinerary",
   "thinkingGroupSave": "Saving the result",
-  "thinkingGroupReply": "Composing the reply"
+  "thinkingGroupReply": "Composing the reply",
+  "thinkingStepsRegion": "Steps in progress"
 }
