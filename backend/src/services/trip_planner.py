@@ -2165,6 +2165,14 @@ def build_selected_hotel_trip(
             language=language,
             **stay_kwargs,
         )
+        # Keep this branch consistent with the new-trip branch's own
+        # capture_trip_data below (same comment there): both must receive
+        # real route calculations before the bundle is returned, or the map
+        # falls back to drawing straight lines between stops the instant a
+        # guest changes hotel/destination and the itinerary gets rebuilt.
+        from src.services.routing import recalculate_itinerary_routes
+
+        recalculate_itinerary_routes(trip_data)
         adjustment = t(
             "Đã đổi khách sạn và lập lại toàn bộ các cụm địa điểm theo vị trí mới.",
             language,

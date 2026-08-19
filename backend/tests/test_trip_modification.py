@@ -92,6 +92,42 @@ def test_hotel_replacement_reply_is_concise_while_the_full_plan_is_returned(monk
     assert result.trip_data["itinerary_items"]
 
 
+def test_change_hotel_recalculates_routes_for_the_new_hotel(monkeypatch) -> None:
+    """Regression: the change_hotel/replace_trip_preferences branch used to
+    return straight from _build_trip_data without ever calling
+    recalculate_itinerary_routes, so the map fell back to drawing straight
+    lines between stops every time a guest changed hotel/destination (the
+    new-trip branch's capture_trip_data always did this correctly)."""
+    trip_data = _trip_data()
+    trip_data["hotel"] = {"name": "Khách sạn Mới"}
+    monkeypatch.setattr(trip_builder_svc, "_build_trip_data", lambda *_args, **_kwargs: trip_data)
+
+    calls: list[dict] = []
+    # Patched on the real module, not trip_builder_svc: the call site does a
+    # LOCAL `from src.services.routing import recalculate_itinerary_routes`
+    # inside the branch, which re-resolves the attribute off routing.py
+    # itself on every call rather than a module-level binding.
+    monkeypatch.setattr(
+        "src.services.routing.recalculate_itinerary_routes",
+        lambda data: calls.append(data),
+    )
+
+    result = build_selected_hotel_trip(
+        {
+            "mode": "change_hotel",
+            "destination": "Đà Nẵng",
+            "duration": "2",
+            "people": "2",
+        },
+        {"id": "hotel-2", "name": "Khách sạn Mới"},
+        current_trip_data=_trip_data(),
+        session_id="test-session",
+    )
+
+    assert calls == [trip_data]
+    assert result.trip_data is trip_data
+
+
 def test_self_selected_meal_removes_breakfast_without_adding_a_replacement() -> None:
     trip_data = _trip_data()
     change = TripChange(action="set_meal_self_selected", meal_kind="breakfast")
