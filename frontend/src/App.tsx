@@ -8,7 +8,7 @@ import { translateAuthError } from './auth/translate-auth-error'
 import { useChatSession } from './hooks/use-chat-session'
 import { useIntakeForm } from './hooks/use-intake-form'
 import { usePanelResize } from './hooks/use-panel-resize'
-import { useRoomHold } from './hooks/use-room-hold'
+import { shouldReleaseHoldForDeletedSession, useRoomHold } from './hooks/use-room-hold'
 import { useSessionHistory } from './hooks/use-session-history'
 import { deriveStageView, type StageView } from './lib/derive-stage'
 import { isFieldFilled } from './lib/next-intake-field'
@@ -393,6 +393,18 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   // restore() itself fails (that session is gone too), startNew() always
   // lands on a real session instead of leaving state pointed at nothing.
   async function handleDeleteSession(sessionId: string) {
+    // Deleting the chat that created the CURRENT live hold must release it
+    // too — otherwise the room stays reserved with no UI left anywhere to
+    // show or release it (roomHold is a single global hold per tab; only
+    // one session can ever be the one holding it — see use-room-hold.ts's
+    // heldSessionId). Only HELD, never BOOKED: a paid/confirmed booking is
+    // a real transaction that must survive its chat session being deleted
+    // (bookings.session_id is ON DELETE SET NULL, not CASCADE, for exactly
+    // this reason) — deletion is already behind conversation-list.tsx's own
+    // confirm dialog, so no separate hold-specific prompt here.
+    if (shouldReleaseHoldForDeletedSession(roomHold.status, roomHold.heldSessionId, sessionId)) {
+      await roomHold.releaseHold()
+    }
     const wasActive = sessionId === state.sessionId
     const remaining = (sessions ?? []).filter((s) => s.session_id !== sessionId)
     removeLocal(sessionId)

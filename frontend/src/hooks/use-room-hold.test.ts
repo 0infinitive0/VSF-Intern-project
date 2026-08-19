@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyCartQty } from './use-room-hold'
+import { applyCartQty, shouldReleaseHoldForDeletedSession } from './use-room-hold'
 
 describe('applyCartQty', () => {
   it('sets a fresh hotel entry when the cart was empty', () => {
@@ -53,5 +53,30 @@ describe('applyCartQty', () => {
     const prev = { 'hotel-a': { 'room-1': 2 } }
     const next = applyCartQty(prev, 'hotel-a', 'room-2', 1, 'hotel-a')
     expect(next).toEqual({ 'hotel-a': { 'room-1': 2, 'room-2': 1 } })
+  })
+})
+
+describe('shouldReleaseHoldForDeletedSession', () => {
+  it('is true when HELD and the deleted session is the one holding', () => {
+    expect(shouldReleaseHoldForDeletedSession('HELD', 'session-a', 'session-a')).toBe(true)
+  })
+
+  it('is false when the deleted session is a DIFFERENT session', () => {
+    expect(shouldReleaseHoldForDeletedSession('HELD', 'session-a', 'session-b')).toBe(false)
+  })
+
+  it('is false for BOOKED even if the session matches — a paid booking must survive session deletion', () => {
+    expect(shouldReleaseHoldForDeletedSession('BOOKED', 'session-a', 'session-a')).toBe(false)
+  })
+
+  it('is false for every other status (IDLE/HOLDING/EXPIRED/ERROR) even if the session matches', () => {
+    expect(shouldReleaseHoldForDeletedSession('IDLE', 'session-a', 'session-a')).toBe(false)
+    expect(shouldReleaseHoldForDeletedSession('HOLDING', 'session-a', 'session-a')).toBe(false)
+    expect(shouldReleaseHoldForDeletedSession('EXPIRED', 'session-a', 'session-a')).toBe(false)
+    expect(shouldReleaseHoldForDeletedSession('ERROR', 'session-a', 'session-a')).toBe(false)
+  })
+
+  it('is false when heldSessionId is null (hold created outside any session)', () => {
+    expect(shouldReleaseHoldForDeletedSession('HELD', null, 'session-a')).toBe(false)
   })
 })
