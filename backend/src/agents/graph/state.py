@@ -66,6 +66,17 @@ class TravelGraphState(TypedDict, total=False):
     # alongside an empty `patch`; "" whenever the model omitted it or named
     # something unrecognized. Turn-scoped; reset by `load_context`.
     patch_reason: str
+    # `extract_patch`'s read-only-listing hint: the user wants to SEE places
+    # near the hotel, not change anything. Deliberately NOT an `intent`
+    # value -- `intent` never selects a worker (see this file's `intent`
+    # comment and extract_patch.py's docstring), and widening `_INTENTS`
+    # would drag `_INCOMPLETE_EDIT_INTENTS` and the read-only rescue gate
+    # in with it. `supervisor` reads this to send the turn to
+    # `itinerary_node`'s read-only `list_nearby` action instead of
+    # `qa_node`, whose tools cannot write the map's `suggested_places` at
+    # all (structurally -- see `qa_node.py`'s QAState docstring).
+    # Turn-scoped; reset by `load_context`.
+    asks_nearby_places: bool
     # The day `extract_patch` is, this turn, asking `intake_qa` to clarify
     # a theme for (Phase 16) -- `None` otherwise. Deliberately NOT
     # turn-scoped and NOT reset by `load_context`, same convention as
@@ -230,6 +241,7 @@ def initial_graph_state(session_id: str, *, language: str = "vi") -> TravelGraph
         next_question=None,
         extraction_failed=False,
         patch_reason="",
+        asks_nearby_places=False,
         pending_clarify_day=None,
         intake_answer=None,
         jailbreak_blocked=False,

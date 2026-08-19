@@ -73,6 +73,7 @@ export default function StageHotels({
   focusMode,
   theme,
   roomHold,
+  sessionBookedFromBackend,
 }: {
   state: ChatState
   hotelOptions: HotelOption[]
@@ -84,6 +85,10 @@ export default function StageHotels({
   theme: Theme
   /** Owns the room cart + real hold — threaded into HotelDetailPanel below. */
   roomHold: RoomHoldApi
+  /** See stage-router.tsx's doc comment on the same prop — threaded into
+   * HotelDetailPanel's HoldFooter so a paid session's "Giữ phòng" stays
+   * locked no matter which hotel in the retained list is being viewed. */
+  sessionBookedFromBackend: boolean
 }) {
   const { t, i18n } = useTranslation()
   const hotels = hotelOptions
@@ -373,6 +378,7 @@ export default function StageHotels({
             onConfirmHotel={onConfirmHotel}
             onSelectHotel={onSelectHotel}
             heldElsewhereHotelName={hotels.find((h) => h.id === roomHold.heldHotelId)?.name ?? null}
+            sessionBookedFromBackend={sessionBookedFromBackend}
           />
         </div>
       </div>

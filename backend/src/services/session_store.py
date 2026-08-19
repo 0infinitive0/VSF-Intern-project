@@ -508,6 +508,17 @@ def booking_states_for_sessions(session_ids: list[str]) -> dict[str, str]:
     return states
 
 
+def session_has_paid_booking(session_id: str) -> bool:
+    """Whether `session_id` has a CONFIRMED (paid) booking — used to block
+    hotel re-selection/re-search on an already-paid session (plan
+    260819-lock-hotel-after-payment): changing hotel there would rebuild
+    the itinerary around a different hotel, destroying the one the guest
+    already paid for. Thin wrapper over `booking_states_for_sessions` so
+    the single-session call site doesn't re-derive the paid-beats-holding
+    precedence logic."""
+    return booking_states_for_sessions([session_id]).get(session_id) == "paid"
+
+
 def list_sessions(user_id: str, page: int = 1, page_size: int = 10) -> SessionPage:
     """List sessions owned by `user_id` only.
 

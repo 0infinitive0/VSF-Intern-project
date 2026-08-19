@@ -59,6 +59,7 @@ def load_context(state: TravelGraphState) -> dict[str, Any]:
         "next_question": None,
         "extraction_failed": False,
         "patch_reason": "",
+        "asks_nearby_places": False,
         "intake_answer": None,
         "jailbreak_blocked": False,
         "supervisor_iterations": 0,

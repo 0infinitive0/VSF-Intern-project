@@ -490,7 +490,7 @@ def _strip_json_fence(value: object) -> str:
     return text.strip()
 
 
-def _parse_extraction_payload(payload: object) -> tuple[str, list[dict[str, Any]], str]:
+def _parse_extraction_payload(payload: object) -> tuple[str, list[dict[str, Any]], str, bool]:
     if not isinstance(payload, dict):
         raise PatchExtractionError("response must be a JSON object")
     intent = str(payload.get("intent") or "")
@@ -520,7 +520,14 @@ def _parse_extraction_payload(payload: object) -> tuple[str, list[dict[str, Any]
     # which would raise for anything unhashable instead of falling open.
     raw_reason = payload.get("reason")
     reason = raw_reason if isinstance(raw_reason, str) and raw_reason in _PATCH_REASONS else ""
-    return intent, changes, reason
+
+    # Non-strict, same contract as `reason` above (module docstring): this is
+    # a routing HINT layered on top of a turn that already completes without
+    # it, so a missing key, a null, or a non-bool must fall open to False
+    # rather than spend the retry. `is` on the literal, not truthiness --
+    # "false" the string and 0 both mean the model did not answer this.
+    asks_nearby_places = payload.get("asks_nearby_places") is True
+    return intent, changes, reason, asks_nearby_places
 
 
 def _extract_with_llm(
@@ -530,7 +537,7 @@ def _extract_with_llm(
     *,
     pending_slots: tuple[str, ...] = (),
     llm: Any | None = None,
-) -> tuple[str, list[dict[str, Any]], str, bool]:
+) -> tuple[str, list[dict[str, Any]], str, bool, bool]:
     """Ask the configured model once, retrying exactly once for invalid
     output (`plan_trip_edit`'s proven shape) — never more than that, and
     never raises: a fallback here must still let the turn complete.
@@ -567,15 +574,15 @@ def _extract_with_llm(
             )
             response = model.invoke(prompt)
             payload = json.loads(_strip_json_fence(response_text(response)))
-            intent, changes, reason = _parse_extraction_payload(payload)
-            return intent, changes, reason, False
+            intent, changes, reason, asks_nearby_places = _parse_extraction_payload(payload)
+            return intent, changes, reason, False, asks_nearby_places
         except (json.JSONDecodeError, PatchExtractionError, TypeError, ValueError) as exc:
             last_error = exc
         except Exception as exc:  # provider failures must never crash the turn
             last_error = exc
 
     logger.warning("Patch extraction failed for message %r: %s", message, last_error)
-    return "general_question", [], "", True
+    return "general_question", [], "", True, False   # +asks_nearby_places
 
 
 def extract_patch(state: TravelGraphState) -> dict[str, Any]:
@@ -587,12 +594,13 @@ def extract_patch(state: TravelGraphState) -> dict[str, Any]:
             "extraction_failed": True,
             "patch_reason": "",
             "pending_clarify_day": None,
+            "asks_nearby_places": False,
         }
 
     travel_state = TravelState.from_dict(state.get("travel_state"))
     destination_names = _get_destination_names()
 
-    intent, raw_changes, reason, extraction_failed = _extract_with_llm(
+    intent, raw_changes, reason, extraction_failed, asks_nearby_places = _extract_with_llm(
         message, travel_state, destination_names, pending_slots=_pending_slots(travel_state)
     )
 
@@ -646,4 +654,5 @@ def extract_patch(state: TravelGraphState) -> dict[str, Any]:
         "extraction_failed": extraction_failed,
         "patch_reason": reason,
         "pending_clarify_day": pending_clarify_day,
+        "asks_nearby_places": asks_nearby_places,
     }

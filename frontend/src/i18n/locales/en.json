@@ -418,6 +418,7 @@
   "holdCtaBusy": "Holding your rooms…",
   "holdCtaHeld": "✓ Rooms held — building your itinerary…",
   "holdCtaBlocked": "You already have a hold at another hotel",
+  "holdCtaSessionPaid": "Already paid — hotel can't be changed",
   "holdCtaUpdate": "Update room selection",
   "holdCtaSwitchHere": "Hold rooms at this hotel",
   "holdUpdateSuccessNotice": "Updated — the hold timer has been refreshed.",

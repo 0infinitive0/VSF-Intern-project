@@ -399,6 +399,15 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   // rather than threading a new prop down through AppShell/step-navigator.tsx.
   const [confirmChangeHotelOpen, setConfirmChangeHotelOpen] = useState(false)
   function handleChangeHotelClick() {
+    // Defensive — not the primary guard (step-navigator.tsx's own
+    // canChangeHotel already makes this effectively unreachable once a
+    // session has ever had a hotel list, since its pill prefers
+    // onViewStage('hotels') over calling this at all), but this is the
+    // one remaining call site that reaches changeHotel() directly, and
+    // the hotel_node backend guard (plan 260819-lock-hotel-after-payment)
+    // means calling it on a paid session would just come back with a
+    // decline reply anyway — no reason to ever start that turn.
+    if (sessionBookedFromBackend) return
     if (roomHold.status === 'HELD') {
       setConfirmChangeHotelOpen(true)
       return

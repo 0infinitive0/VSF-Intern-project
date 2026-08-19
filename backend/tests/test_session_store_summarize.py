@@ -11,6 +11,7 @@ from src.services.session_store import (
     _CONTEXT_SCHEMA_VERSION,
     _CONTEXT_SCHEMA_VERSION_V3,
     booking_states_for_sessions,
+    session_has_paid_booking,
     summarize,
 )
 
@@ -166,3 +167,30 @@ def test_different_sessions_get_independent_states(monkeypatch):
     monkeypatch.setattr(session_store, "_get_supabase_client", lambda: _FakeClient(rows))
 
     assert booking_states_for_sessions(["s1", "s2"]) == {"s1": "paid", "s2": "holding"}
+
+
+# ---------------------------------------------------------------------------
+# session_has_paid_booking() — thin wrapper, used by hotel_node's lock-after-
+# payment guard (plan 260819-lock-hotel-after-payment)
+# ---------------------------------------------------------------------------
+
+
+def test_session_has_paid_booking_true_for_a_confirmed_booking(monkeypatch):
+    rows = [{"session_id": "s1", "status": "CONFIRMED", "expires_at": None}]
+    monkeypatch.setattr(session_store, "_get_supabase_client", lambda: _FakeClient(rows))
+
+    assert session_has_paid_booking("s1") is True
+
+
+def test_session_has_paid_booking_false_for_only_a_reserved_hold(monkeypatch):
+    future = (datetime.now(UTC) + timedelta(minutes=10)).isoformat()
+    rows = [{"session_id": "s1", "status": "RESERVED", "expires_at": future}]
+    monkeypatch.setattr(session_store, "_get_supabase_client", lambda: _FakeClient(rows))
+
+    assert session_has_paid_booking("s1") is False
+
+
+def test_session_has_paid_booking_false_for_no_bookings_at_all(monkeypatch):
+    monkeypatch.setattr(session_store, "_get_supabase_client", lambda: _FakeClient([]))
+
+    assert session_has_paid_booking("s1") is False

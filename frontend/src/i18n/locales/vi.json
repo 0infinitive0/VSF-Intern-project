@@ -416,6 +416,7 @@
   "holdCtaBusy": "Đang giữ phòng…",
   "holdCtaHeld": "✓ Đã giữ phòng — đang tạo lịch trình…",
   "holdCtaBlocked": "Bạn đang giữ phòng ở một khách sạn khác",
+  "holdCtaSessionPaid": "Đã thanh toán — không thể đổi khách sạn",
   "holdCtaUpdate": "Cập nhật lựa chọn phòng",
   "holdCtaSwitchHere": "Giữ phòng ở khách sạn này",
   "holdUpdateSuccessNotice": "Đã cập nhật — thời gian giữ phòng đã được làm mới.",

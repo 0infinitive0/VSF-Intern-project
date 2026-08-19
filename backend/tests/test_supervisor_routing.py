@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import json
 
+from langchain_core.messages import HumanMessage
+
 import src.agents.graph.nodes.supervisor as supervisor_module
 from src.agents.graph.nodes.supervisor import MAX_SUPERVISOR_ITERATIONS, SupervisorDecision, supervisor
-from src.agents.graph.routing import all_tasks_done
+from src.agents.graph.routing import all_tasks_done, route_after_itinerary_node
 from src.agents.graph.state import initial_graph_state
 
 
@@ -316,6 +318,119 @@ def test_booking_node_is_never_eligible_via_impact_map():
     assert "hotel_node" in eligible
 
 
+# --- Read-only routing: nearby-places vs qa_node -----------------------------
+#
+# Regression coverage for the trace bug: "liệt kê các địa điểm nổi bật trong
+# vòng bán kính 3km" auto-routed to `qa_node` via `read_only_intent`, whose
+# tools cannot write `suggested_places` -- the map showed zero pins. This
+# section locks the `asks_nearby_places` gate added to close that gap, in
+# both directions, and proves neither direction spends an LLM call (the
+# regression guard for the earlier "ngày 3 tôi làm gì?" incident: that bug
+# came from the unconstrained LLM branch, which this gate never reaches).
+
+
+def test_asks_nearby_places_true_routes_to_itinerary_node_list_nearby():
+    # Original bug-report text, misspelling ("nối bật") kept verbatim so this
+    # test stays anchored to the trace it regresses against.
+    message = "liệt kê các địa điểm nối bật trong vòng bán kính 3km"
+    state = _state(
+        messages=[HumanMessage(content=message)],
+        intent="general_question",
+        asks_nearby_places=True,
+        pending_tasks=[],
+        task_results=[],
+        trip_data={"itineraries": [{}]},
+        travel_state={"destination": {"presence": "set", "value": "Da Nang"}},
+    )
+    result = supervisor(state)
+
+    assert result["next_worker"] == "itinerary_node"
+    assert result["routing_source"] == "read_only_intent_nearby"
+    task = json.loads(result["task_description"])
+    assert task == {"action": "list_nearby", "user_request": message}
+
+
+def test_asks_nearby_places_true_with_no_trip_yet_still_routes_to_qa_node():
+    """A nearby-places question asked before any hotel is picked: routing
+    to `itinerary_node` would only hit its own hard "chọn khách sạn trước"
+    stop (`is_impossible`'s `requires_existing_trip`), where `qa_node`
+    could at least attempt an answer. Matches what happened before this
+    field existed -- `is_impossible` is the same guard every other
+    delegation path already goes through."""
+    state = _state(
+        messages=[HumanMessage(content="gợi ý vài chỗ tham quan gần đây")],
+        intent="general_question",
+        asks_nearby_places=True,
+        pending_tasks=[],
+        task_results=[],
+        trip_data={},
+    )
+    result = supervisor(state)
+
+    assert result["next_worker"] == "qa_node"
+    assert result["routing_source"] == "read_only_intent"
+
+
+def test_asks_nearby_places_false_routes_to_qa_node_unchanged():
+    state = _state(
+        messages=[HumanMessage(content="phòng nào rẻ hơn?")],
+        intent="general_question",
+        asks_nearby_places=False,
+        pending_tasks=[],
+        task_results=[],
+    )
+    result = supervisor(state)
+
+    assert result["next_worker"] == "qa_node"
+    assert result["routing_source"] == "read_only_intent"
+
+
+def test_asks_nearby_places_absent_from_state_still_routes_to_qa_node():
+    """A session started before this field existed has no
+    `asks_nearby_places` key at all -- `state.get(...)` must fall open to
+    `qa_node`, not raise `KeyError`."""
+    state = _state(
+        messages=[HumanMessage(content="ngày 3 tôi làm gì?")],
+        intent="general_question",
+        pending_tasks=[],
+        task_results=[],
+    )
+    del state["asks_nearby_places"]
+
+    result = supervisor(state)
+
+    assert result["next_worker"] == "qa_node"
+    assert result["routing_source"] == "read_only_intent"
+
+
+def test_read_only_branch_never_calls_llm_when_nearby_true(monkeypatch):
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", _unreachable_llm_factory)
+    state = _state(
+        messages=[HumanMessage(content="gần khách sạn có gì hay ho")],
+        intent="general_question",
+        asks_nearby_places=True,
+        pending_tasks=[],
+        task_results=[],
+        trip_data={"itineraries": [{}]},
+        travel_state={"destination": {"presence": "set", "value": "Da Nang"}},
+    )
+    result = supervisor(state)
+    assert result["next_worker"] == "itinerary_node"
+
+
+def test_read_only_branch_never_calls_llm_when_nearby_false(monkeypatch):
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", _unreachable_llm_factory)
+    state = _state(
+        messages=[HumanMessage(content="ngày 3 tôi làm gì?")],
+        intent="general_question",
+        asks_nearby_places=False,
+        pending_tasks=[],
+        task_results=[],
+    )
+    result = supervisor(state)
+    assert result["next_worker"] == "qa_node"
+
+
 # --- Iteration bound -----------------------------------------------------------
 
 
@@ -377,6 +492,38 @@ def test_all_tasks_done_is_a_plain_predicate_with_no_llm_dependency():
 
     assert all_tasks_done(_state(pending_tasks=[])) is True
     assert all_tasks_done(_state(pending_tasks=["hotel_node"])) is False
+
+
+# --- route_after_itinerary_node: the nearby-places turn skips budget_check ---
+#
+# `budget_check` re-plans (live hotel search + unlocked-day rebuild)
+# whenever `budget.trip_total` is set, regardless of whether the turn that
+# reached it actually changed anything -- and `response_payload.py` reads
+# `suggested_places` off `task_results[-1]`, which `budget_check` overwrites.
+# For every OTHER itinerary_node arrival (a real edit) that is the existing,
+# correct behavior; for the read-only `list_nearby` turn it would both erase
+# the map pins this fix exists to produce and let a read-only question
+# silently rebuild the plan -- reopening the exact incident class the
+# hardcoded `action` constant in `supervisor.py` was meant to close.
+
+
+def test_route_after_itinerary_node_sends_read_only_nearby_turn_to_respond():
+    state = _state(pending_tasks=[], routing_source="read_only_intent_nearby")
+    assert route_after_itinerary_node(state) == "respond"
+
+
+def test_route_after_itinerary_node_sends_every_other_source_to_budget_check():
+    for source in ("impact_map", "supervisor", "day_loop_continuation", ""):
+        state = _state(pending_tasks=[], routing_source=source)
+        assert route_after_itinerary_node(state) == "budget_check"
+
+
+def test_route_after_itinerary_node_defers_to_supervisor_when_not_done():
+    """A multi-day rebuild still mid-queue must return to `supervisor`
+    regardless of `routing_source` -- `all_tasks_done` stays the first
+    check, same order as every other worker's completion edge."""
+    state = _state(pending_tasks=["itinerary_node"], routing_source="read_only_intent_nearby")
+    assert route_after_itinerary_node(state) == "supervisor"
 
 
 # --- needs_trip_first: an itinerary request before a trip exists -------------
