@@ -28,14 +28,26 @@ function mmss(ms: number): string {
  * still showing the countdown and an enabled "Đặt phòng" button for a hold
  * it no longer owns — a real guest-facing bug (checking out for the wrong
  * hotel) this early-return exists specifically to prevent.
+ *
+ * `sessionBookedFromBackend` is the fallback for the one case that early
+ * return would otherwise wrongly hide: a session that genuinely completed
+ * payment, then later lost `holdBelongsToSession` because roomHold moved
+ * on to a different session. Backend-sourced (the same per-session status
+ * the sidebar badge reads — see App.tsx), so it survives roomHold being
+ * overwritten, unlike `roomHold.status === 'BOOKED'` itself. Rendered
+ * WITHOUT the "Xem đặt phòng" button: roomHold no longer has this
+ * session's booking data to show, so there is nothing safe to open —
+ * see booking-modal.tsx, which only ever reads off roomHold.
  */
 export default function HoldBanner({
   roomHold,
   holdBelongsToSession,
+  sessionBookedFromBackend,
   onOpenBooking,
 }: {
   roomHold: RoomHoldApi
   holdBelongsToSession: boolean
+  sessionBookedFromBackend: boolean
   /** Opens booking-modal.tsx — it derives its own step from roomHold.status
    * (BOOKED always lands on the done screen), so this takes no arguments. */
   onOpenBooking: () => void
@@ -51,7 +63,19 @@ export default function HoldBanner({
     return () => clearInterval(id)
   }, [roomHold.status])
 
-  if (!holdBelongsToSession) return null
+  if (!holdBelongsToSession) {
+    if (!sessionBookedFromBackend) return null
+    return (
+      <div
+        className="flex items-center gap-3 pl-3.5 pr-2.5 py-2 rounded-[14px] border"
+        style={{ background: 'var(--ok-soft)', borderColor: 'rgba(42,145,135,.35)' }}
+      >
+        <div className="text-[12.5px] font-[590] tracking-[-0.1px]" style={{ color: 'var(--ok-ink)' }}>
+          {t('holdBannerBookedTitle')}
+        </div>
+      </div>
+    )
+  }
 
   if (roomHold.status === 'HELD') {
     const warn = roomHold.holdLeftMs <= 5 * 60 * 1000

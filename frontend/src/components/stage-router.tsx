@@ -47,6 +47,7 @@ export default function StageRouter({
   theme,
   roomHold,
   holdBelongsToSession,
+  sessionBookedFromBackend,
   onOpenBooking,
 }: {
   stage: StageView
@@ -69,6 +70,8 @@ export default function StageRouter({
    * doc comment on the same prop); the hotels stage's own heldHere/
    * heldElsewhere logic already scopes correctly by hotel, not session. */
   holdBelongsToSession: boolean
+  /** See app-shell.tsx's doc comment on the same prop. */
+  sessionBookedFromBackend: boolean
   onOpenBooking: () => void
 }): ReactNode {
   if (stage === 'intake') {
@@ -102,6 +105,7 @@ export default function StageRouter({
       theme={theme}
       roomHold={roomHold}
       holdBelongsToSession={holdBelongsToSession}
+      sessionBookedFromBackend={sessionBookedFromBackend}
       onOpenBooking={onOpenBooking}
     />
   )

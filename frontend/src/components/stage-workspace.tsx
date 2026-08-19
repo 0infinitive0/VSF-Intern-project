@@ -55,6 +55,7 @@ export default function StageWorkspace({
   theme,
   roomHold,
   holdBelongsToSession,
+  sessionBookedFromBackend,
   onOpenBooking,
 }: {
   state: ChatState
@@ -67,6 +68,8 @@ export default function StageWorkspace({
    * straight through to HoldBanner, which is the one place that decides
    * whether to render anything hold-related at all. */
   holdBelongsToSession: boolean
+  /** See app-shell.tsx's doc comment on the same prop. */
+  sessionBookedFromBackend: boolean
   onOpenBooking: () => void
 }) {
   const { t, i18n } = useTranslation()
@@ -258,7 +261,12 @@ export default function StageWorkspace({
           {meta && <div className="text-[11.5px] text-on-surface-muted font-normal truncate">{meta}</div>}
         </div>
         <div className="flex-1" />
-        <HoldBanner roomHold={roomHold} holdBelongsToSession={holdBelongsToSession} onOpenBooking={onOpenBooking} />
+        <HoldBanner
+          roomHold={roomHold}
+          holdBelongsToSession={holdBelongsToSession}
+          sessionBookedFromBackend={sessionBookedFromBackend}
+          onOpenBooking={onOpenBooking}
+        />
       </div>
 
       {/* Content row — itinerary column | map | detail panel (focus). */}

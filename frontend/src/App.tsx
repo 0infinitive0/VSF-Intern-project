@@ -213,6 +213,14 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   const bookingHotelName = heldHotel?.name ?? state.tripPlan?.hotel?.name ?? ''
   const bookingHotelArea = heldHotel?.area_name ?? null
 
+  // Ref-to-latest-refresh, same "cache without an Effect" pattern as
+  // handleNewTripRef below: the consumeVnpayReturn effect right after this
+  // (deliberately [] deps, fires once on boot) is declared BEFORE
+  // useSessionHistory() below provides the real `refresh`, so it can't
+  // close over that value directly. Assigned right after useSessionHistory
+  // is called.
+  const refreshRef = useRef<() => void>(() => {})
+
   // Runs once on boot: the guest may have just been bounced back from
   // VNPay's hosted payment page (plan 260818-vnpay-payment-and-email-
   // confirmation). consumeVnpayReturn() only tells us THAT — never the
@@ -239,6 +247,13 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
           if (payment.status === 'PAID') {
             roomHold.markBooked()
             setBookingModalOpen(true)
+            // sessionBookedFromBackend's source (the sessions list) only
+            // ever refetches on mount or when a chat turn finishes — a
+            // payment completing is neither, so without this the session
+            // being paid right now wouldn't read back as "paid" from a
+            // DIFFERENT session's workspace until some unrelated refetch
+            // happened to occur later.
+            refreshRef.current()
             return
           }
           if (payment.status === 'FAILED' || payment.status === 'CANCELLED') {
@@ -310,6 +325,20 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   }
 
   const { sessions, removeLocal, refresh } = useSessionHistory(state.sessionId, state.pending)
+  // Backend-sourced twin of holdBelongsToSession: once a booking is paid,
+  // it must keep reading as "đã đặt phòng" from THIS session's own
+  // workspace forever after — even once roomHold (the single global hold)
+  // has moved on to a different session and holdBelongsToSession goes
+  // false (known limitation from the previous fix). Sourced from the same
+  // per-session status the sidebar badge already shows
+  // (session-status-badge.ts/session_store.py's booking_states_for_
+  // sessions), not from roomHold, so it survives roomHold being
+  // overwritten. roomHold.status === 'BOOKED' (while holdBelongsToSession)
+  // stays the PRIMARY signal for the session that just paid — instant, no
+  // fetch lag — this is only consulted as the fallback for every other
+  // session (see hold-banner.tsx).
+  const sessionBookedFromBackend = sessions?.find((s) => s.session_id === state.sessionId)?.status === 'paid'
+  refreshRef.current = refresh
 
   // restoreSession() has no in-flight signal of its own (session-client.ts's
   // fetch just resolves or doesn't) — this is purely a UI-visible "which row
@@ -462,6 +491,7 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
         onOpenAuthPanel={onOpenAuthPanel}
         roomHold={roomHold}
         holdBelongsToSession={holdBelongsToSession}
+        sessionBookedFromBackend={sessionBookedFromBackend}
         onOpenBooking={() => setBookingModalOpen(true)}
       />
       <BookingModal

@@ -84,6 +84,7 @@ export default function AppShell({
   onOpenAuthPanel,
   roomHold,
   holdBelongsToSession,
+  sessionBookedFromBackend,
   onOpenBooking,
 }: {
   state: ChatState
@@ -131,6 +132,14 @@ export default function AppShell({
    * switchHold-to-another-hotel flow). Threaded through to
    * hold-banner.tsx, the only place that actually renders hold-status UI. */
   holdBelongsToSession: boolean
+  /** True iff the ACTIVE session's own persisted status (session-status-
+   * badge.ts's same backend-driven signal the sidebar badge uses) is
+   * "paid" — the fallback source of truth for the workspace's booking
+   * confirmation once `holdBelongsToSession` goes false (roomHold moved to
+   * a different session): unlike `roomHold`, this survives that, so a
+   * session that's genuinely been paid for keeps showing so indefinitely
+   * instead of the banner just disappearing. See hold-banner.tsx. */
+  sessionBookedFromBackend: boolean
   onOpenBooking: () => void
 }) {
   const { theme, toggleTheme } = useTheme()
@@ -304,6 +313,7 @@ export default function AppShell({
             theme={theme}
             roomHold={roomHold}
             holdBelongsToSession={holdBelongsToSession}
+            sessionBookedFromBackend={sessionBookedFromBackend}
             onOpenBooking={onOpenBooking}
           />
         </div>
