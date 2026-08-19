@@ -162,6 +162,13 @@ export interface ChatMessage {
    * an old message on reload would be theatre, not feedback.
    */
   typewriter?: boolean
+  /**
+   * The steps behind this reply, as facts rather than sentences — the wording
+   * is rebuilt here so it follows the reader's current language rather than the
+   * one the turn ran in. Absent for every message written before the column
+   * existed, which is most of history and the ordinary case.
+   */
+  thinkingTrace?: PhaseTraceEntry[]
   // Client-side ISO timestamp, stamped in the reducer at SEND_START/SEND_SUCCESS.
   // Only ever present for messages sent this session — restored history carries
   // the server's real `at` and must not be invented here.
@@ -285,9 +292,19 @@ export interface PhaseFacts {
   days?: number
 }
 
+/**
+ * One completed step, as stored with the reply it helped produce.
+ *
+ * The wire type types `facts` as an open dict — OpenAPI cannot express the
+ * whitelist `agents/graph/phase_facts.py` enforces — so `PhaseFacts` is layered
+ * on here, where the fields are actually read.
+ */
+export type PhaseTraceEntry = Omit<Schemas['ThinkingTraceEntry'], 'facts'> & {
+  facts: PhaseFacts
+}
+
 /** The user-facing steps the nine phase keys fold into. */
 export type ThinkingGroupKey =
-  | 'history'
   | 'analyze'
   | 'route'
   | 'hotels'

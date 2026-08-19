@@ -3,6 +3,7 @@ import {
   GROUP_ORDER,
   appendReasoning,
   applyPhaseToGroups,
+  groupsFromTrace,
   completeGroups,
   groupForPhase,
 } from './thinking-groups'
@@ -14,13 +15,21 @@ const apply = (keys: string[], lines: string[] = []): ThinkingGroup[] =>
   keys.reduce((groups, key) => applyPhaseToGroups(groups, key, lines), [] as ThinkingGroup[])
 
 describe('groupForPhase', () => {
-  it('folds every phase key the backend can send into a group', () => {
-    const allKeys = [
-      'received', 'routing', 'compacting_history', 'intake_check', 'hotel_search',
+  it('folds every phase key worth showing into a step', () => {
+    const shown = [
+      'routing', 'intake_check', 'hotel_search',
       'itinerary_build', 'routing_legs', 'persisting', 'generating',
     ]
 
-    for (const key of allKeys) expect(groupForPhase(key)).not.toBeNull()
+    for (const key of shown) expect(groupForPhase(key)).not.toBeNull()
+  })
+
+  it('drops the housekeeping keys rather than listing them as steps', () => {
+    // Opening the turn and trimming the transcript are things the system does
+    // to itself, not work done for the person waiting.
+    for (const key of ['received', 'compacting_history']) {
+      expect(groupForPhase(key), key).toBeNull()
+    }
   })
 
   it('returns null for a key it does not know', () => {
@@ -50,7 +59,7 @@ describe('applyPhaseToGroups', () => {
     // describe work that will not happen.
     const groups = apply(['received', 'intake_check', 'generating'])
 
-    expect(groups.map((g) => g.key)).toEqual(['history', 'analyze', 'reply'])
+    expect(groups.map((g) => g.key)).toEqual(['analyze', 'reply'])
   })
 
   it('orders by GROUP_ORDER even when frames arrive out of order', () => {
@@ -112,7 +121,7 @@ describe('applyPhaseToGroups', () => {
   })
 
   it('creates a group with no lines when the step reported no facts', () => {
-    const groups = applyPhaseToGroups([], 'compacting_history', [])
+    const groups = applyPhaseToGroups([], 'persisting', [])
 
     expect(groups[0].lines).toEqual([])
     expect(groups[0].reasoning).toBe('')
@@ -162,14 +171,49 @@ describe('completeGroups', () => {
 describe('group labels', () => {
   it('has a translation in both locales for every step', () => {
     const labels = apply([
-      'received', 'intake_check', 'routing', 'hotel_search',
+      'intake_check', 'routing', 'hotel_search',
       'itinerary_build', 'persisting', 'generating',
     ]).map((g) => g.labelKey)
 
-    expect(labels).toHaveLength(7)
+    expect(labels).toHaveLength(6)
     for (const key of labels) {
       expect(vi, `vi is missing ${key}`).toHaveProperty(key)
       expect(en, `en is missing ${key}`).toHaveProperty(key)
     }
+  })
+})
+
+describe('groupsFromTrace', () => {
+  const lines = (key: string) => (key === 'hotel_search' ? ['tìm ở Đà Nẵng'] : [])
+
+  it('rebuilds the steps of a finished turn, all closed', () => {
+    const groups = groupsFromTrace(
+      [
+        { phase_key: 'intake_check', facts: { intent: 'update_trip' } },
+        { phase_key: 'hotel_search', facts: { destination: 'Đà Nẵng' } },
+      ],
+      lines,
+    )
+
+    expect(groups.map((g) => g.key)).toEqual(['analyze', 'hotels'])
+    expect(groups.every((g) => g.done)).toBe(true)
+  })
+
+  it('rebuilds the sentences rather than reading them back', () => {
+    // Stored facts, composed now — so a conversation held in one language reads
+    // in whichever language the user is in today.
+    const groups = groupsFromTrace([{ phase_key: 'hotel_search', facts: {} }], lines)
+
+    expect(groups[0].lines).toEqual(['tìm ở Đà Nẵng'])
+  })
+
+  it('renders nothing for a message that has no trace', () => {
+    // Every message written before the column existed, which is most of them.
+    expect(groupsFromTrace(undefined, lines)).toEqual([])
+    expect(groupsFromTrace([], lines)).toEqual([])
+  })
+
+  it('ignores a stored key this build no longer shows', () => {
+    expect(groupsFromTrace([{ phase_key: 'compacting_history', facts: {} }], lines)).toEqual([])
   })
 })

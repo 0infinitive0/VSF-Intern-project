@@ -25,7 +25,7 @@ import type { CreateSessionResponse, SessionPing } from '../api/chat-client'
 import { restoreSession } from '../api/session-client'
 import { sendMessageStream, StreamUnsupported } from '../api/stream-client'
 import i18n from '../i18n'
-import { appendReasoning, applyPhaseToGroups } from '../lib/thinking-groups'
+import { appendReasoning, applyPhaseToGroups, completeGroups } from '../lib/thinking-groups'
 import { thinkingLines, type Translate } from '../lib/thinking-lines'
 import type {
   ChatMessage,
@@ -106,6 +106,9 @@ function applyPlannerResponse(state: ChatState, data: PlannerChatResponse, messa
     ...state,
     pending: false,
     elapsedMs: 0,
+    // The turn is over, so nothing can still be running. Without this the last
+    // step kept its spinner forever, under a header reading "finished".
+    thinking: completeGroups(state.thinking),
     messages: message ? [...state.messages, message] : state.messages,
     suggestions: data.suggestions || [],
     hotelOptions: data.hotel_options || [],
@@ -121,7 +124,10 @@ function applyPlannerResponse(state: ChatState, data: PlannerChatResponse, messa
     intake: data.intake || state.intake,
     error: null,
     streamingText: '',
-    phases: [], thinking: [],
+    // `phases` clears — the right-hand panel is a live progress strip and has
+    // nothing to show between turns. `thinking` does NOT: it stays with the
+    // answer it produced, and is cleared when the next turn starts instead.
+    phases: [],
   }
 }
 
@@ -264,6 +270,9 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
           role: m.role === 'assistant' ? ('ai' as const) : ('user' as const),
           text: m.text,
           stage: m.stage,
+          // Carried through as facts; the sentences are rebuilt at render time
+          // in whatever language the reader is in now.
+          thinkingTrace: (m.thinking_trace ?? undefined) as ChatMessage['thinkingTrace'],
           // Known limitation, not an oversight: a restored bubble can never be
           // marked as an error today, because `chat_messages` has no `stage`
           // column (backend/scripts/database_schema.sql) and
@@ -291,9 +300,14 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
       // it and is not part of this change. `thinking` is a parallel view of the
       // same frames, grouped for the chat column.
       const lines = thinkingLines(translate, action.key, action.facts)
+      // A step now reports twice — it started, then it finished. The
+      // right-hand panel lists one row per entry and treats the last as the one
+      // in progress, so appending both listed every step twice. The opening
+      // edge is the one that matches what that panel means by a row.
+      const opensAStep = action.facts.status !== 'completed'
       return {
         ...state,
-        phases: [...state.phases, { key: action.key, at: action.at }],
+        phases: opensAStep ? [...state.phases, { key: action.key, at: action.at }] : state.phases,
         thinking: applyPhaseToGroups(state.thinking, action.key, lines, action.facts.status),
       }
     }

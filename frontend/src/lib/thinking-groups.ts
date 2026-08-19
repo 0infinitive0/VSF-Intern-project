@@ -2,9 +2,9 @@
  * thinking-groups.ts — folds the backend's fine-grained `phase` keys into the
  * four steps a person actually wants to see.
  *
- * The backend reports where the code is (`compacting_history`, `intake_check`,
- * `routing`); a user wants to know what is being done for them. Nine keys become
- * seven steps — mostly one-to-one, since folding four of them into a single
+ * The backend reports where the code is (`intake_check`, `routing`,
+ * `persisting`); a user wants to know what is being done for them. Nine keys
+ * become six steps — mostly one-to-one, since folding four of them into a single
  * "understanding" step made the whole block read as one trivial stage for most
  * of a turn.
  *
@@ -16,11 +16,13 @@
  * search, so listing it greyed out would describe work that will not happen.
  */
 
-import type { PhaseKey, ThinkingGroup, ThinkingGroupKey } from '../types'
+import type { PhaseFacts, PhaseKey, PhaseTraceEntry, ThinkingGroup, ThinkingGroupKey } from '../types'
 
-const GROUP_BY_PHASE: Record<PhaseKey, ThinkingGroupKey> = {
-  received: 'history',
-  compacting_history: 'history',
+//: `received` and `compacting_history` are absent on purpose. They report the
+//: turn opening and the transcript being trimmed to fit — real work, but the
+//: system's own housekeeping rather than anything done for the person waiting.
+//: An unmapped key is dropped silently, the same as one shipped after this build.
+const GROUP_BY_PHASE: Partial<Record<PhaseKey, ThinkingGroupKey>> = {
   intake_check: 'analyze',
   routing: 'route',
   hotel_search: 'hotels',
@@ -32,7 +34,6 @@ const GROUP_BY_PHASE: Record<PhaseKey, ThinkingGroupKey> = {
 
 /** Render order. Not the arrival order — see the module docstring. */
 export const GROUP_ORDER: ThinkingGroupKey[] = [
-  'history',
   'analyze',
   'route',
   'hotels',
@@ -42,7 +43,6 @@ export const GROUP_ORDER: ThinkingGroupKey[] = [
 ]
 
 const GROUP_LABEL_I18N_KEY: Record<ThinkingGroupKey, string> = {
-  history: 'thinkingGroupHistory',
   analyze: 'thinkingGroupAnalyze',
   route: 'thinkingGroupRoute',
   hotels: 'thinkingGroupHotels',
@@ -143,4 +143,27 @@ export function appendReasoning(
 /** Marks every group finished — the turn is over. */
 export function completeGroups(groups: ThinkingGroup[]): ThinkingGroup[] {
   return groups.map((g) => (g.done ? g : { ...g, done: true }))
+}
+
+/**
+ * Rebuilds a finished block from the trace stored with a reply.
+ *
+ * Sentences are composed now, not read back, so a conversation held in
+ * Vietnamese reads in English if that is the language the user is in today —
+ * and a change to the wording updates history rather than leaving it frozen.
+ *
+ * Every step is closed: this is a record of work already done, so nothing in it
+ * may spin.
+ */
+export function groupsFromTrace(
+  trace: PhaseTraceEntry[] | undefined,
+  buildLines: (phaseKey: string, facts: PhaseFacts) => string[],
+): ThinkingGroup[] {
+  if (!trace?.length) return []
+  const groups = trace.reduce(
+    (acc, entry) =>
+      applyPhaseToGroups(acc, entry.phase_key, buildLines(entry.phase_key, entry.facts), 'completed'),
+    [] as ThinkingGroup[],
+  )
+  return completeGroups(groups)
 }

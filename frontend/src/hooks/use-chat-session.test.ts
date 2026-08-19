@@ -145,8 +145,10 @@ function restoreDataFor(sessionId: string): SessionRestore {
   return {
     session_id: sessionId,
     messages: [
-      { role: 'user', text: 'đi đà nẵng', stage: null, at: '2026-08-01T00:00:00Z' },
-      { role: 'assistant', text: 'ok, khi nào đi?', stage: 'intake', at: '2026-08-01T00:00:05Z' },
+      { role: 'user', text: 'đi đà nẵng', stage: null, at: '2026-08-01T00:00:00Z', thinking_trace: null },
+      // `null` is the ordinary case: every message written before the column
+      // existed carries it, and restore must render those unchanged.
+      { role: 'assistant', text: 'ok, khi nào đi?', stage: 'intake', at: '2026-08-01T00:00:05Z', thinking_trace: null },
     ],
     suggestions: [],
     stage: 'intake',
@@ -253,7 +255,7 @@ describe('chatSessionReducer — thinking groups', () => {
 
   it('creates the group even when the frame carried no facts', () => {
     const next = chatSessionReducer(INITIAL_STATE, {
-      type: 'STREAM_PHASE', key: 'compacting_history', at: 1, facts: {}, turnId: 0,
+      type: 'STREAM_PHASE', key: 'persisting', at: 1, facts: {}, turnId: 0,
     })
 
     expect(next.thinking).toHaveLength(1)
@@ -338,5 +340,85 @@ describe('chatSessionReducer — typewriter flag', () => {
     })
 
     expect(next.messages.every((m) => !m.typewriter)).toBe(true)
+  })
+})
+
+describe('chatSessionReducer — thinking survives the turn', () => {
+  const reply = {
+    session_id: 'A', reply: 'Xong rồi.', suggestions: [],
+    stage: 'planned', hotel_options: [], trip_plan: null,
+  }
+
+  const midTurn = (): ChatState =>
+    chatSessionReducer(
+      { ...INITIAL_STATE, pending: true },
+      { type: 'STREAM_PHASE', key: 'intake_check', at: 1, facts: { status: 'started' }, turnId: 0 },
+    )
+
+  it('closes every step when the turn ends', () => {
+    const running = midTurn()
+    expect(running.thinking.some((g) => !g.done)).toBe(true)
+
+    const next = chatSessionReducer(running, {
+      type: 'SEND_SUCCESS', id: 'm1', data: reply as never, turnId: 0,
+    })
+
+    expect(next.thinking.every((g) => g.done)).toBe(true)
+  })
+
+  it('keeps the trace after the answer arrives, rather than clearing it', () => {
+    const next = chatSessionReducer(midTurn(), {
+      type: 'SEND_SUCCESS', id: 'm1', data: reply as never, turnId: 0,
+    })
+
+    expect(next.thinking).toHaveLength(1)
+  })
+
+  it('clears it only when the next turn starts', () => {
+    const afterAnswer = chatSessionReducer(midTurn(), {
+      type: 'SEND_SUCCESS', id: 'm1', data: reply as never, turnId: 0,
+    })
+
+    const nextTurn = chatSessionReducer(afterAnswer, {
+      type: 'SEND_START', id: 'm2', text: 'câu tiếp theo',
+    } as never)
+
+    expect(nextTurn.thinking).toEqual([])
+  })
+})
+
+describe('chatSessionReducer — one row per step', () => {
+  const phase = (key: string, status: 'started' | 'completed') =>
+    ({ type: 'STREAM_PHASE', key, at: 1, facts: { status }, turnId: 0 }) as never
+
+  it('does not list a step twice now that it reports both edges', () => {
+    // The right-hand panel renders one row per entry and treats the last as the
+    // step in progress; appending both edges listed everything twice.
+    let state = chatSessionReducer(INITIAL_STATE, phase('intake_check', 'started'))
+    state = chatSessionReducer(state, phase('intake_check', 'completed'))
+
+    expect(state.phases.map((p) => p.key)).toEqual(['intake_check'])
+  })
+
+  it('still lists a phase a service emits without an edge', () => {
+    // `itinerary_build`, `routing_legs` and `persisting` are announced from
+    // inside the work and never report a completion.
+    const state = chatSessionReducer(INITIAL_STATE, {
+      type: 'STREAM_PHASE', key: 'routing_legs', at: 1, facts: { days: 4 }, turnId: 0,
+    })
+
+    expect(state.phases.map((p) => p.key)).toEqual(['routing_legs'])
+  })
+
+  it('keeps the completed edge for the thinking block, which needs its facts', () => {
+    let state = chatSessionReducer(INITIAL_STATE, phase('intake_check', 'started'))
+    state = chatSessionReducer(state, {
+      type: 'STREAM_PHASE', key: 'intake_check', at: 1,
+      facts: { status: 'completed', intent: 'general_question' }, turnId: 0,
+    })
+
+    expect(state.thinking).toHaveLength(1)
+    expect(state.thinking[0].lines.length).toBeGreaterThan(0)
+    expect(state.thinking[0].done).toBe(true)
   })
 })
