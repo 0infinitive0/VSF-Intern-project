@@ -140,6 +140,67 @@ def test_get_booking_receipt_for_session_assembles_hotel_rooms_and_payment(monke
     assert {(r["name"], r["room_count"]) for r in receipt["rooms"]} == {("Superior", 2), ("Deluxe", 1)}
 
 
+def test_booking_summary_for_email_short_circuits_on_empty_list(monkeypatch):
+    def _unreachable():
+        raise AssertionError("get_supabase_client should not be called for an empty list")
+
+    monkeypatch.setattr(payment_service, "get_supabase_client", _unreachable)
+
+    assert payment_service.booking_summary_for_email([]) is None
+
+
+def test_booking_summary_for_email_returns_none_when_bookings_not_found(monkeypatch):
+    client = _FakeClient({"bookings": []})
+    monkeypatch.setattr(payment_service, "get_supabase_client", lambda: client)
+
+    assert payment_service.booking_summary_for_email([_BOOKING_1]) is None
+
+
+def test_booking_summary_for_email_assembles_hotel_image_and_every_room(monkeypatch):
+    tables = {
+        "bookings": [
+            {
+                "id": _BOOKING_1,
+                "room_id": _ROOM_A,
+                "check_in_date": "2026-09-01",
+                "check_out_date": "2026-09-03",
+                "room_count": 2,
+                "total_amount": "1000000",
+            },
+            {
+                "id": _BOOKING_2,
+                "room_id": _ROOM_B,
+                "check_in_date": "2026-09-01",
+                "check_out_date": "2026-09-03",
+                "room_count": 1,
+                "total_amount": "600000",
+            },
+        ],
+        "rooms": [
+            {"id": _ROOM_A, "name": "Superior", "hotel_id": _HOTEL_ID, "images": ["https://img/superior.jpg"]},
+            {"id": _ROOM_B, "name": "Deluxe", "hotel_id": _HOTEL_ID, "images": []},
+        ],
+        "hotels": [
+            {"name": "Khách sạn Biển Xanh", "address": "123 Trần Phú", "image_url": "https://img/hotel.jpg"}
+        ],
+    }
+    client = _FakeClient(tables)
+    monkeypatch.setattr(payment_service, "get_supabase_client", lambda: client)
+
+    summary = payment_service.booking_summary_for_email([_BOOKING_1, _BOOKING_2])
+
+    assert summary is not None
+    assert summary["hotel_name"] == "Khách sạn Biển Xanh"
+    assert summary["hotel_image_url"] == "https://img/hotel.jpg"
+    assert summary["check_in_date"] == "2026-09-01"
+    assert summary["check_out_date"] == "2026-09-03"
+    rooms_by_name = {r["name"]: r for r in summary["rooms"]}
+    assert rooms_by_name["Superior"]["image_url"] == "https://img/superior.jpg"
+    assert rooms_by_name["Superior"]["room_count"] == 2
+    assert rooms_by_name["Deluxe"]["image_url"] is None
+    assert rooms_by_name["Deluxe"]["room_count"] == 1
+
+
 def test_get_booking_receipt_for_session_falls_back_to_summed_totals_without_a_payment(monkeypatch):
     """Shouldn't normally happen (CONFIRMED only ever follows a PAID
     payment), but must degrade gracefully rather than crash if it does."""

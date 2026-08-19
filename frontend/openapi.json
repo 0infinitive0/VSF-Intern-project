@@ -1605,6 +1605,17 @@
             ],
             "title": "Hotel Address"
           },
+          "hotel_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hotel Image Url"
+          },
           "check_in_date": {
             "type": "string",
             "format": "date",
@@ -1665,6 +1676,17 @@
           "name": {
             "type": "string",
             "title": "Name"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
           },
           "room_count": {
             "type": "integer",

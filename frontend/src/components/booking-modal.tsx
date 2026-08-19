@@ -557,7 +557,7 @@ export default function BookingModal({
 
             {effectiveStep === 'done' && (
               <section
-                className="p-8 rounded-[28px] flex flex-col items-center gap-4 text-center"
+                className="rounded-[28px] flex flex-col items-center gap-4 text-center overflow-hidden"
                 style={{
                   background: 'var(--g1)',
                   border: '1px solid var(--edge)',
@@ -567,55 +567,73 @@ export default function BookingModal({
                   animation: 'vRise .55s cubic-bezier(.22,1,.36,1) both',
                 }}
               >
-                <div
-                  className="w-[66px] h-[66px] rounded-full flex items-center justify-center text-[28px]"
-                  style={{
-                    background: 'linear-gradient(145deg,#4FB3A5,#2A9187)',
-                    color: '#FCFDFE',
-                    boxShadow: '0 18px 38px -16px rgba(42,145,135,.7)',
-                    animation: 'vPop .6s .1s cubic-bezier(.34,1.5,.64,1) both',
-                  }}
-                >
-                  ✓
-                </div>
-                <div>
-                  <div className="text-[24px] font-[590] tracking-[-0.6px] text-on-surface">{t('checkoutDoneTitle')}</div>
-                  <div className="text-[13px] text-on-surface-muted mt-1">{t('checkoutDoneSub')}</div>
-                </div>
-                <div className="px-6 py-3.5 rounded-2xl bg-glass-2 border border-edge">
-                  <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
-                    {t('checkoutDoneCode')}
+                <RemoteImage
+                  src={hotelDetail?.image_url ?? hotelDetail?.images?.[0]}
+                  alt={t('hotelImgAlt', { name: hotelName })}
+                  className="w-full h-[150px] flex-none"
+                />
+                <div className="px-8 pb-8 flex flex-col items-center gap-4 w-full">
+                  <div
+                    className="w-[66px] h-[66px] -mt-[33px] rounded-full flex items-center justify-center text-[28px] flex-none"
+                    style={{
+                      background: 'linear-gradient(145deg,#4FB3A5,#2A9187)',
+                      color: '#FCFDFE',
+                      boxShadow: '0 18px 38px -16px rgba(42,145,135,.7)',
+                      border: '3px solid var(--g1)',
+                      animation: 'vPop .6s .1s cubic-bezier(.34,1.5,.64,1) both',
+                    }}
+                  >
+                    ✓
                   </div>
-                  <div className="text-[20px] font-[590] tracking-[0.5px] tabular-nums mt-0.5 text-on-surface">{bookedCode}</div>
-                </div>
-                <div className="text-[14px] font-[590] tracking-[-0.25px] text-on-surface">{hotelName}</div>
-                <div className="grid grid-cols-2 gap-2.5 w-full max-w-[380px]">
-                  {[
-                    { label: t('policyCheckIn'), value: ci ? `${ci.day} ${ci.month}` : '—' },
-                    { label: t('policyCheckOut'), value: co ? `${co.day} ${co.month}` : '—' },
-                    ...(guestsLabel ? [{ label: t('checkoutGuestsLabel'), value: guestsLabel }] : []),
-                    { label: t('holdTotal'), value: hasAnyTotal ? formatCurrency(grandTotal, i18n.language) : '—' },
-                  ].map((tile) => (
-                    <div key={tile.label} className="p-3 rounded-2xl bg-glass-2 border border-edge text-left">
-                      <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
-                        {tile.label}
-                      </div>
-                      <div className="text-[13.5px] font-[590] tracking-[-0.2px] mt-0.5 text-on-surface">{tile.value}</div>
+                  <div>
+                    <div className="text-[24px] font-[590] tracking-[-0.6px] text-on-surface">{t('checkoutDoneTitle')}</div>
+                    <div className="text-[13px] text-on-surface-muted mt-1">{t('checkoutDoneSub')}</div>
+                  </div>
+                  <div className="px-6 py-3.5 rounded-2xl bg-glass-2 border border-edge">
+                    <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
+                      {t('checkoutDoneCode')}
                     </div>
-                  ))}
+                    <div className="text-[20px] font-[590] tracking-[0.5px] tabular-nums mt-0.5 text-on-surface">{bookedCode}</div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2.5 w-full max-w-[380px]">
+                    {[
+                      { label: t('policyCheckIn'), value: ci ? `${ci.day} ${ci.month}` : '—' },
+                      { label: t('policyCheckOut'), value: co ? `${co.day} ${co.month}` : '—' },
+                      ...(guestsLabel ? [{ label: t('checkoutGuestsLabel'), value: guestsLabel }] : []),
+                      { label: t('holdTotal'), value: hasAnyTotal ? formatCurrency(grandTotal, i18n.language) : '—' },
+                    ].map((tile) => (
+                      <div key={tile.label} className="p-3 rounded-2xl bg-glass-2 border border-edge text-left">
+                        <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
+                          {tile.label}
+                        </div>
+                        <div className="text-[13.5px] font-[590] tracking-[-0.2px] mt-0.5 text-on-surface">{tile.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {rows.length > 0 && (
+                    <div className="w-full max-w-[380px] flex flex-col gap-2">
+                      {rows.map((row) => (
+                        <div
+                          key={row.id}
+                          className="flex items-center gap-3 p-2.5 rounded-2xl bg-glass-2 border border-edge text-left"
+                        >
+                          <RemoteImage
+                            src={row.image}
+                            alt={row.name}
+                            className="w-[52px] h-[52px] rounded-xl flex-none"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[12.5px] font-[590] text-on-surface truncate">{row.name}</div>
+                            <div className="text-[11px] text-on-surface-muted">{t('roomQtyLabel', { count: row.qty })}</div>
+                          </div>
+                          <div className="flex-none text-[12.5px] font-[590] tabular-nums text-on-surface">
+                            {row.total != null ? formatCurrency(row.total, i18n.language) : t('roomPriceOnRequest')}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="mt-1 px-5.5 py-3 rounded-2xl border-none text-[13px] font-[590] cursor-pointer transition-transform duration-200 active:scale-[0.98]"
-                  style={{
-                    background: 'linear-gradient(135deg,#3A73DE,#2C5FC9)',
-                    color: 'var(--on-acc)',
-                    boxShadow: '0 10px 24px -10px rgba(44,95,201,.6)',
-                  }}
-                >
-                  {t('checkoutDoneBackTrip')}
-                </button>
               </section>
             )}
           </main>

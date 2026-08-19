@@ -471,6 +471,5 @@
 
   "checkoutDoneTitle": "Booking confirmed",
   "checkoutDoneSub": "Your booking is confirmed with the hotel.",
-  "checkoutDoneCode": "Booking code",
-  "checkoutDoneBackTrip": "Back to itinerary"
+  "checkoutDoneCode": "Booking code"
 }

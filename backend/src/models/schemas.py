@@ -496,6 +496,7 @@ class PaymentPayload(BaseModel):
 class BookingReceiptRoomPayload(BaseModel):
     room_id: UUID
     name: str
+    image_url: str | None = None
     room_count: int
     total_amount: Decimal | None = None
 
@@ -511,6 +512,7 @@ class BookingReceiptPayload(BaseModel):
     payment_id: UUID | None = None
     hotel_name: str | None = None
     hotel_address: str | None = None
+    hotel_image_url: str | None = None
     check_in_date: date
     check_out_date: date
     currency: str

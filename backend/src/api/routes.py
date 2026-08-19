@@ -267,15 +267,17 @@ def _send_confirmation_email_best_effort(payment: dict[str, Any]) -> None:
     booking_ids = payment.get("booking_ids") or []
     if not booking_ids:
         return
-    summary = payment_service.booking_summary_for_email(UUID(str(booking_ids[0])))
+    summary = payment_service.booking_summary_for_email([UUID(str(b)) for b in booking_ids])
     try:
         send_booking_confirmation_email(
             to_email=guest_email,
             guest_name=payment.get("guest_name") or "",
             hotel_name=(summary or {}).get("hotel_name") or "",
+            hotel_image_url=(summary or {}).get("hotel_image_url"),
             booking_code=str(payment["id"])[:8].upper(),
             check_in_date=str((summary or {}).get("check_in_date") or ""),
             check_out_date=str((summary or {}).get("check_out_date") or ""),
+            rooms=(summary or {}).get("rooms") or [],
             total_amount=Decimal(str(payment["amount"])) if payment.get("amount") is not None else None,
             currency=payment.get("currency"),
         )

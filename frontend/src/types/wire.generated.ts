@@ -653,6 +653,8 @@ export interface components {
             hotel_name?: string | null;
             /** Hotel Address */
             hotel_address?: string | null;
+            /** Hotel Image Url */
+            hotel_image_url?: string | null;
             /**
              * Check In Date
              * Format: date
@@ -681,6 +683,8 @@ export interface components {
             room_id: string;
             /** Name */
             name: string;
+            /** Image Url */
+            image_url?: string | null;
             /** Room Count */
             room_count: number;
             /** Total Amount */

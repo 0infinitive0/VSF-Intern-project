@@ -95,37 +95,76 @@ def mark_payment_paid(
     return dict(response.data[0]) if response.data else None
 
 
-def booking_summary_for_email(booking_id: UUID) -> dict[str, Any] | None:
-    """hotel name + stay dates for ONE booking in a payment's group, for the
-    confirmation email (email_service.py) — `payments` doesn't store the
-    hotel name itself, and `bookings` only has `room_id`, so this joins
-    bookings -> rooms -> hotels the same way place_details.py's other
-    hotel/room lookups already do. Only the first booking in a payment
-    group's needed (they all share one hotel, since a hold is always for a
-    single hotel — see use-room-hold.ts)."""
-    client = get_supabase_client()
-    booking_rows = (
-        client.table("bookings")
-        .select("room_id, check_in_date, check_out_date")
-        .eq("id", str(booking_id))
-        .limit(1)
-        .execute()
-        .data
-    )
+def _hotel_and_rooms_for_booking_rows(client: Any, booking_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Shared join logic behind both booking_summary_for_email and
+    get_booking_receipt_for_session — bookings -> rooms -> hotels, the same
+    way place_details.py's other hotel/room lookups already do — so "what a
+    confirmed booking looks like" (hotel name/address/cover image, and each
+    room's own name/photo/qty/price) has exactly one source of truth shared
+    by the confirmation email and the receipt modal, instead of two
+    hand-rolled copies drifting apart. `booking_rows` must each carry at
+    least room_id/room_count/total_amount."""
     if not booking_rows:
-        return None
-    room_id = booking_rows[0]["room_id"]
+        return {"hotel_name": None, "hotel_address": None, "hotel_image_url": None, "rooms": []}
 
-    room_rows = client.table("rooms").select("hotel_id").eq("id", room_id).limit(1).execute().data
-    if not room_rows:
-        return None
-    hotel_id = room_rows[0]["hotel_id"]
+    room_ids = list({row["room_id"] for row in booking_rows})
+    room_rows = (
+        client.table("rooms").select("id, name, hotel_id, images").in_("id", room_ids).execute().data or []
+    )
+    room_by_id = {row["id"]: row for row in room_rows}
 
-    hotel_rows = client.table("hotels").select("name").eq("id", hotel_id).limit(1).execute().data
-    hotel_name = hotel_rows[0]["name"] if hotel_rows else None
+    hotel_id = next((row["hotel_id"] for row in room_rows if row.get("hotel_id")), None)
+    hotel_name = hotel_address = hotel_image_url = None
+    if hotel_id:
+        hotel_rows = (
+            client.table("hotels").select("name, address, image_url").eq("id", hotel_id).limit(1).execute().data
+        )
+        if hotel_rows:
+            hotel_name = hotel_rows[0].get("name")
+            hotel_address = hotel_rows[0].get("address")
+            hotel_image_url = hotel_rows[0].get("image_url")
+
+    rooms = [
+        {
+            "room_id": row["room_id"],
+            "name": room_by_id.get(row["room_id"], {}).get("name") or row["room_id"],
+            "image_url": next(iter(room_by_id.get(row["room_id"], {}).get("images") or []), None),
+            "room_count": row["room_count"],
+            "total_amount": row.get("total_amount"),
+        }
+        for row in booking_rows
+    ]
 
     return {
         "hotel_name": hotel_name,
+        "hotel_address": hotel_address,
+        "hotel_image_url": hotel_image_url,
+        "rooms": rooms,
+    }
+
+
+def booking_summary_for_email(booking_ids: list[UUID]) -> dict[str, Any] | None:
+    """Hotel (name/cover image) + stay dates + every room in a payment's
+    group, for the confirmation email (email_service.py) — covers the WHOLE
+    hold group (a cart can hold several distinct room types at once, see
+    use-room-hold.ts), not just the first booking. None when none of the
+    ids resolve to a real booking row."""
+    if not booking_ids:
+        return None
+    client = get_supabase_client()
+    booking_rows = (
+        client.table("bookings")
+        .select("room_id, check_in_date, check_out_date, room_count, total_amount")
+        .in_("id", [str(b) for b in booking_ids])
+        .execute()
+        .data
+        or []
+    )
+    if not booking_rows:
+        return None
+    joined = _hotel_and_rooms_for_booking_rows(client, booking_rows)
+    return {
+        **joined,
         "check_in_date": booking_rows[0]["check_in_date"],
         "check_out_date": booking_rows[0]["check_out_date"],
     }
@@ -183,20 +222,7 @@ def get_booking_receipt_for_session(session_id: str) -> dict[str, Any] | None:
     if not booking_rows:
         return None
 
-    room_ids = list({row["room_id"] for row in booking_rows})
-    room_rows = (
-        client.table("rooms").select("id, name, hotel_id").in_("id", room_ids).execute().data or []
-    )
-    room_by_id = {row["id"]: row for row in room_rows}
-
-    hotel_id = next((row["hotel_id"] for row in room_rows if row.get("hotel_id")), None)
-    hotel_name = None
-    hotel_address = None
-    if hotel_id:
-        hotel_rows = client.table("hotels").select("name, address").eq("id", hotel_id).limit(1).execute().data
-        if hotel_rows:
-            hotel_name = hotel_rows[0].get("name")
-            hotel_address = hotel_rows[0].get("address")
+    joined = _hotel_and_rooms_for_booking_rows(client, booking_rows)
 
     booking_ids = [UUID(str(row["id"])) for row in booking_rows]
     payment = get_payment_for_booking_ids(booking_ids)
@@ -215,26 +241,17 @@ def get_booking_receipt_for_session(session_id: str) -> dict[str, Any] | None:
         )
     )
 
-    rooms = [
-        {
-            "room_id": row["room_id"],
-            "name": room_by_id.get(row["room_id"], {}).get("name") or row["room_id"],
-            "room_count": row["room_count"],
-            "total_amount": row.get("total_amount"),
-        }
-        for row in booking_rows
-    ]
-
     return {
         "payment_id": payment["id"] if payment else None,
-        "hotel_name": hotel_name,
-        "hotel_address": hotel_address,
+        "hotel_name": joined["hotel_name"],
+        "hotel_address": joined["hotel_address"],
+        "hotel_image_url": joined["hotel_image_url"],
         "check_in_date": booking_rows[0]["check_in_date"],
         "check_out_date": booking_rows[0]["check_out_date"],
         "currency": currency,
         "total_amount": str(total_amount),
         "paid_at": payment.get("paid_at") if payment else None,
-        "rooms": rooms,
+        "rooms": joined["rooms"],
     }
 
 
