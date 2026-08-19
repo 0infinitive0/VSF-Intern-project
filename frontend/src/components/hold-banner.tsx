@@ -72,19 +72,45 @@ export default function HoldBanner({
     if (!sessionBookedFromBackend) return null
     return (
       <div
-        className="flex items-center gap-3 pl-3.5 pr-2.5 py-2 rounded-[14px] border"
-        style={{ background: 'var(--ok-soft)', borderColor: 'rgba(42,145,135,.35)' }}
+        className="flex items-center gap-2 pl-3 pr-1.5 py-1 rounded-full border border-edge transition-all duration-200"
+        style={{
+          background: 'var(--g1)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          boxShadow: '0 8px 24px -12px rgb(var(--shadow-rgb) / 0.35)',
+        }}
       >
-        <div className="text-[12.5px] font-[590] tracking-[-0.1px]" style={{ color: 'var(--ok-ink)' }}>
-          {t('holdBannerBookedTitle')}
+        <div className="flex items-center gap-2 pr-0.5">
+          <span
+            className="w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold flex-none text-white"
+            style={{
+              background: 'linear-gradient(145deg, #4FB3A5, #2A9187)',
+              boxShadow: '0 4px 10px -3px rgba(42, 145, 135, 0.6)',
+            }}
+            aria-hidden="true"
+          >
+            ✓
+          </span>
+          <span className="text-[12.5px] font-[590] tracking-[-0.2px] text-on-surface whitespace-nowrap">
+            {t('checkoutDoneTitle')}
+          </span>
         </div>
+
+        <div className="w-px h-3.5" style={{ background: 'var(--stroke)' }} />
+
         <button
           type="button"
           onClick={onOpenReceipt}
-          className="px-[15px] py-2.5 rounded-xl border text-[12.5px] font-[530] cursor-pointer transition-colors duration-200 hover:bg-white"
-          style={{ borderColor: 'var(--stroke)', background: 'var(--g3)', color: 'var(--t1)' }}
+          className="group flex items-center gap-1 pl-2.5 pr-2 py-1 rounded-full border border-transparent hover:border-edge bg-glass-2 hover:bg-glass-3 text-[12px] font-[590] text-on-surface tracking-[-0.1px] cursor-pointer transition-all duration-200 active:scale-[0.97]"
+          style={{ boxShadow: '0 2px 8px -4px rgb(var(--shadow-rgb) / 0.2)' }}
         >
-          {t('holdBannerViewBooking')}
+          <span>{t('holdBannerViewBooking')}</span>
+          <span
+            className="material-symbols-outlined text-[15px] text-on-surface-muted group-hover:text-on-surface group-hover:translate-x-0.5 transition-transform duration-200 leading-none"
+            aria-hidden="true"
+          >
+            arrow_forward
+          </span>
         </button>
       </div>
     )
@@ -163,19 +189,45 @@ export default function HoldBanner({
   if (roomHold.status === 'BOOKED') {
     return (
       <div
-        className="flex items-center gap-3 pl-3.5 pr-2.5 py-2 rounded-[14px] border"
-        style={{ background: 'var(--ok-soft)', borderColor: 'rgba(42,145,135,.35)' }}
+        className="flex items-center gap-2 pl-3 pr-1.5 py-1 rounded-full border border-edge transition-all duration-200"
+        style={{
+          background: 'var(--g1)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          boxShadow: '0 8px 24px -12px rgb(var(--shadow-rgb) / 0.35)',
+        }}
       >
-        <div className="text-[12.5px] font-[590] tracking-[-0.1px]" style={{ color: 'var(--ok-ink)' }}>
-          {t('holdBannerBookedTitle')}
+        <div className="flex items-center gap-2 pr-0.5">
+          <span
+            className="w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold flex-none text-white"
+            style={{
+              background: 'linear-gradient(145deg, #4FB3A5, #2A9187)',
+              boxShadow: '0 4px 10px -3px rgba(42, 145, 135, 0.6)',
+            }}
+            aria-hidden="true"
+          >
+            ✓
+          </span>
+          <span className="text-[12.5px] font-[590] tracking-[-0.2px] text-on-surface whitespace-nowrap">
+            {t('checkoutDoneTitle')}
+          </span>
         </div>
+
+        <div className="w-px h-3.5" style={{ background: 'var(--stroke)' }} />
+
         <button
           type="button"
           onClick={onOpenBooking}
-          className="px-[15px] py-2.5 rounded-xl border text-[12.5px] font-[530] cursor-pointer transition-colors duration-200 hover:bg-white"
-          style={{ borderColor: 'var(--stroke)', background: 'var(--g3)', color: 'var(--t1)' }}
+          className="group flex items-center gap-1 pl-2.5 pr-2 py-1 rounded-full border border-transparent hover:border-edge bg-glass-2 hover:bg-glass-3 text-[12px] font-[590] text-on-surface tracking-[-0.1px] cursor-pointer transition-all duration-200 active:scale-[0.97]"
+          style={{ boxShadow: '0 2px 8px -4px rgb(var(--shadow-rgb) / 0.2)' }}
         >
-          {t('holdBannerViewBooking')}
+          <span>{t('holdBannerViewBooking')}</span>
+          <span
+            className="material-symbols-outlined text-[15px] text-on-surface-muted group-hover:text-on-surface group-hover:translate-x-0.5 transition-transform duration-200 leading-none"
+            aria-hidden="true"
+          >
+            arrow_forward
+          </span>
         </button>
       </div>
     )
