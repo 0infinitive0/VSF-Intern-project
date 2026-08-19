@@ -1,7 +1,7 @@
 ---
 phase: 4
 title: "ThinkingBlock UI trong chat"
-status: pending
+status: completed
 priority: P1
 effort: "1.5d"
 dependencies: [3]
@@ -173,3 +173,57 @@ tất, người dùng mở ra để đọc từ đầu, không có gì mới s�
 | Screen reader đọc chồng khi thêm dòng | `aria-live` ở vùng bao, không ở từng dòng |
 | Gộp nhầm với `TurnPhases` để "DRY" | Lý do không gộp đã ghi trong Architecture |
 | Tự đóng đè lên ý muốn người dùng | Ca test "đóng tay rồi nhóm mới về" |
+
+## Kết quả
+
+`frontend/src/components/thinking-block.tsx` (mới), nối qua `message-list.tsx` →
+`chat-panel.tsx` (chỉ thêm vào destructure `state`, không phải plumbing prop mới).
+
+Hành vi đã cài đúng yêu cầu:
+
+- **Thu gọn tự động, nhưng lựa chọn thủ công thắng vĩnh viễn.** `manualOpen ?? !allDone`
+  — `null` cho tới khi người dùng chạm nút, sau đó ý họ thắng đến hết lượt. Tự thu gọn
+  không được cãi nhau với người đang đọc.
+- **Bám đáy có điều kiện.** Chỉ cuộn theo khi người dùng đang ở đáy (ngưỡng 8px); họ cuộn
+  lên thì ngừng bám, về đáy thì bám lại. Giật màn hình về trong khi ai đó đang đọc bước
+  trước còn tệ hơn là để dòng mới nằm ngoài tầm nhìn.
+- **Gradient chỉ vẽ khi thật sự còn nội dung bên dưới** (`scrollHeight - scrollTop -
+  clientHeight > 4`) — không bao giờ gợi ý có thể cuộn khi không cuộn được.
+- **Nhóm không dữ kiện**: chỉ tiêu đề + ✓/spinner. Không vùng text rỗng, không câu chống chế.
+- `aria-live="polite"` + `aria-busy` ở **vùng bao**, không đặt từng dòng.
+- Nút thật `<button type="button">` với `aria-expanded`, dùng bàn phím được.
+- `motion-reduce:animate-none` cho spinner và chevron; dòng mới dùng
+  `motion-safe:animate-[vRise_...]` — keyframe **có sẵn** trong `design-animation.css`,
+  không tự thêm.
+- Token tái dùng nguyên từ `elapsed-spinner.tsx` / `turn-phases.tsx`: `bg-glass-3`,
+  `border-line`, `text-on-surface`, `text-primary`, `text-success`. Không màu cứng mới.
+  Đã xác minh `--color-glass-3` là **màu theme** trong `styles.css`, nên `from-glass-3`
+  của gradient hợp lệ (Tailwind v4 sinh `from-*` từ `--color-*`).
+
+## Làn reasoning
+
+Dưới các dòng dữ kiện, thụt `pl-[26px]`, nhãn i18n `thinkingModelReasoning`, chữ
+`text-on-surface/50 italic`. Chỉ mount khi có nội dung — rỗng là trường hợp thường.
+
+## Không có test tự động cho component, và vì sao
+
+Dự án **không có jsdom** (`use-chat-session.test.ts` ghi rõ: *"this test file runs in
+vitest's plain Node environment (no jsdom in this project)"*). Không render được component
+trong test mà không thêm hạ tầng test mới — nằm ngoài phạm vi phase này.
+
+Phần logic thuần đã có test đầy đủ ở Phase 3 (`thinking-groups` 17 ca, `thinking-lines`
+18 ca, reducer 25 ca). Phần chưa có test tự động là **render + cuộn + thu gọn**.
+
+Success criteria của phase này vốn là tiêu chí quan sát bằng mắt, và `CLAUDE.md` cấm mở
+trình duyệt trừ khi người dùng yêu cầu — nên bốn mục dưới **cần người kiểm**:
+
+- [ ] Câu hỏi thường: khối hiện, ≥1 nhóm có dữ kiện thật, xong thì thu gọn
+- [ ] Yêu cầu dựng lịch trình: ≥3 nhóm nối tiếp, nhóm trước ✓ khi nhóm sau mở
+- [ ] Số trên UI đối chiếu được với log/DB
+- [ ] Nhóm không dữ kiện: tiêu đề + spinner, không vùng text rỗng
+
+## Gates đã chạy
+
+- Suite FE: **280/281** (1 fail `merge-active-session`, đã chứng minh có sẵn ở Phase 3)
+- `tsc --noEmit`: **0 lỗi** ở `thinking-block.tsx`, `message-list.tsx`, `chat-panel.tsx`
+- Chạy trong container linux/arm64 — toolchain không chạy được trên macOS host

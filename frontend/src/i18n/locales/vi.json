@@ -488,5 +488,6 @@
   "thinkingHotelNoResultsRating": "Không có khách sạn đạt mức đánh giá đã chọn",
   "thinkingHotelError": "Tìm khách sạn không thành công",
   "thinkingRoutingLegs": "Tính quãng đường cho {{days}} ngày",
-  "thinkingModelReasoning": "Suy luận của mô hình (tiếng Anh)"
+  "thinkingModelReasoning": "Suy luận của mô hình (tiếng Anh)",
+  "thinkingHeaderDone": "Đã xong các bước"
 }

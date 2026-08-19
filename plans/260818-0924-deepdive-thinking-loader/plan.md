@@ -134,8 +134,8 @@ Thứ tự theo thứ tự nhóm cố định, không theo thứ tự phase tớ
 |---|-------|--------|---------|-----------|
 | 1 | [Spike: đo reasoning summary](./phase-01-start.md) | **Complete** | P1 | — |
 | 2 | [Phát dữ kiện thật từ state graph](./phase-02-emit-real-facts-from-graph-state.md) | **Done** | P1 | 1 |
-| 3 | [FE thinking state + render dữ kiện](./phase-03-frontend-thinking-state-and-fact-rendering.md) | Pending | P1 | 2 |
-| 4 | [ThinkingBlock UI trong chat](./phase-04-thinkingblock-ui-in-chat.md) | Pending | P1 | 3 |
+| 3 | [FE thinking state + render dữ kiện](./phase-03-frontend-thinking-state-and-fact-rendering.md) | **Done** | P1 | 2 |
+| 4 | [ThinkingBlock UI trong chat](./phase-04-thinkingblock-ui-in-chat.md) | **Done** | P1 | 3 |
 | 5 | [Persist + restore thinking trace](./phase-05-persist-and-restore-thinking-trace.md) | Pending | P2 | 4 |
 
 Phase 1 đã xong; kết quả của nó là lý do plan có hình dạng hiện tại.

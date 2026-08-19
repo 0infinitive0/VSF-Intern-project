@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import MessageBubble from './message-bubble'
 import ElapsedSpinner from './elapsed-spinner'
-import type { ChatMessage } from '../types'
+import ThinkingBlock from './thinking-block'
+import type { ChatMessage, ThinkingGroup } from '../types'
 
 // Auto-scroll throttle ceiling — token-by-token streaming can dispatch many
 // times a second; scrollIntoView on every one of them looks like jitter, not
@@ -35,11 +36,15 @@ export default function MessageList({
   messages,
   pending,
   streamingText,
+  thinking = [],
   intakeQuestion = null,
 }: {
   messages: ChatMessage[]
   pending: boolean
   streamingText: string
+  /** Grouped narration of the running turn. Empty until the first `phase`
+   * frame lands, which is the window `ElapsedSpinner` still covers. */
+  thinking?: ThinkingGroup[]
   /** Question for the currently-open intake widget, when the backend's own last
    * reply didn't already ask it (see lib/next-intake-field.ts's
    * locallyAdvancedField). Null renders nothing. */
@@ -92,9 +97,12 @@ export default function MessageList({
         </div>
       )}
 
+      {/* One indicator at a time. Once reply text starts flowing the bubble
+          below takes over and the thinking block steps aside, so the two never
+          compete for the same spot. */}
       {pending && !streamingText && (
         <div className="flex justify-start">
-          <ElapsedSpinner/>
+          {thinking.length > 0 ? <ThinkingBlock groups={thinking} /> : <ElapsedSpinner />}
         </div>
       )}
 

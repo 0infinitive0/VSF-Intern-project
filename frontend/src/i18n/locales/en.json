@@ -490,5 +490,6 @@
   "thinkingHotelNoResultsRating": "No hotel meets the rating you chose",
   "thinkingHotelError": "Hotel search failed",
   "thinkingRoutingLegs": "Calculating travel legs for {{days}} days",
-  "thinkingModelReasoning": "Model's reasoning (English)"
+  "thinkingModelReasoning": "Model's reasoning (English)",
+  "thinkingHeaderDone": "Steps completed"
 }
