@@ -87,7 +87,14 @@ from src.models.schemas import (
 from src.services import session_store
 from src.services.amenity_catalog import query_approved_amenities
 from src.services.place_details import get_attraction_detail, get_hotel_detail
-from src.services.booking_service import BookingError, cancel_booking, confirm_booking, get_booking, reserve_booking
+from src.services.booking_service import (
+    BookingError,
+    cancel_booking,
+    cancel_reserved_bookings_for_session,
+    confirm_booking,
+    get_booking,
+    reserve_booking,
+)
 from src.services.email_service import EmailError, send_booking_confirmation_email
 from src.services import payment_service
 from src.services import vnpay_service
@@ -552,6 +559,15 @@ def delete_session(
     if session is not None and session.owner_user_id is not None:
         if current_user is None or session.owner_user_id != current_user.id:
             return
+    # Must run BEFORE registry.drop() actually deletes the session row --
+    # bookings.session_id is ON DELETE SET NULL, so the link this looks up
+    # by is gone the instant the row is. Best-effort: a failure here must
+    # never block the deletion itself (see cancel_reserved_bookings_for_
+    # session's own doc comment for why this can't rely on frontend state).
+    try:
+        cancel_reserved_bookings_for_session(session_id)
+    except Exception:
+        logger.exception("Unable to release bookings for deleted session %s", session_id)
     registry.drop(session_id)
 
 

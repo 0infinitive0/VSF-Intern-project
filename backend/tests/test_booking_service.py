@@ -115,6 +115,97 @@ def test_booking_service_translates_guest_already_holding_elsewhere(monkeypatch)
         )
 
 
+class _FakeSelectQuery:
+    def __init__(self, rows):
+        self._rows = rows
+        self.filters: list[tuple[str, object]] = []
+
+    def select(self, *_args, **_kwargs):
+        return self
+
+    def eq(self, field, value):
+        self.filters.append((field, value))
+        return self
+
+    def execute(self):
+        return self
+
+    @property
+    def data(self):
+        return self._rows
+
+
+class _FakeTableClient:
+    """Supports .table("bookings").select(...).eq(...).eq(...).execute()
+    (cancel_reserved_bookings_for_session's lookup) plus .rpc(...) (every
+    other booking_service call, incl. the cancel_booking this function
+    calls per row)."""
+
+    def __init__(self, select_rows, rpc_data=None):
+        self._select_rows = select_rows
+        self._rpc_data = rpc_data if rpc_data is not None else {"status": "CANCELLED"}
+        self.rpc_calls: list[tuple[str, dict]] = []
+
+    def table(self, _name):
+        return _FakeSelectQuery(self._select_rows)
+
+    def rpc(self, name, params):
+        self.rpc_calls.append((name, params))
+        return _RPC(self._rpc_data)
+
+
+def test_cancel_reserved_bookings_for_session_cancels_every_row(monkeypatch):
+    client = _FakeTableClient(
+        [
+            {"id": "11111111-1111-1111-1111-111111111111", "temporary_user_ref": "guest-1"},
+            {"id": "22222222-2222-2222-2222-222222222222", "temporary_user_ref": "guest-1"},
+        ]
+    )
+    monkeypatch.setattr(booking_service, "get_supabase_client", lambda: client)
+
+    count = booking_service.cancel_reserved_bookings_for_session("session-a")
+
+    assert count == 2
+    assert [call[0] for call in client.rpc_calls] == ["cancel_booking", "cancel_booking"]
+    assert client.rpc_calls[0][1]["p_temporary_user_ref"] == "guest-1"
+
+
+def test_cancel_reserved_bookings_for_session_returns_zero_for_no_rows(monkeypatch):
+    client = _FakeTableClient([])
+    monkeypatch.setattr(booking_service, "get_supabase_client", lambda: client)
+
+    assert booking_service.cancel_reserved_bookings_for_session("session-empty") == 0
+
+
+def test_cancel_reserved_bookings_for_session_continues_past_one_failure(monkeypatch):
+    """One row's cancel_booking RPC raising must not stop the rest of the
+    batch from being processed, or bubble up and abort the session delete
+    that called this."""
+
+    class _FailFirstThenOkClient(_FakeTableClient):
+        def rpc(self, name, params):
+            self.rpc_calls.append((name, params))
+            if len(self.rpc_calls) == 1:
+                class _Failing:
+                    def execute(self):
+                        raise RuntimeError("boom")
+                return _Failing()
+            return _RPC(self._rpc_data)
+
+    client = _FailFirstThenOkClient(
+        [
+            {"id": "11111111-1111-1111-1111-111111111111", "temporary_user_ref": "guest-1"},
+            {"id": "22222222-2222-2222-2222-222222222222", "temporary_user_ref": "guest-1"},
+        ]
+    )
+    monkeypatch.setattr(booking_service, "get_supabase_client", lambda: client)
+
+    count = booking_service.cancel_reserved_bookings_for_session("session-a")
+
+    assert count == 1
+    assert len(client.rpc_calls) == 2
+
+
 def test_booking_service_translates_invalid_request(monkeypatch):
     """create_booking_reservation's own validation (bad date range,
     room_count <= 0, hold_minutes out of range) must map to its own code —

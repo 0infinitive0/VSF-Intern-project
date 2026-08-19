@@ -304,6 +304,49 @@ async def test_delete_session_is_a_silent_noop_for_a_different_owner(client, aut
     assert _routes.registry.get(session_id) is None
 
 
+@pytest.mark.asyncio
+async def test_delete_session_cancels_reserved_bookings_for_that_session(client, auth_override, monkeypatch):
+    """Deleting a session must release whatever room it was still holding —
+    server-side and deterministic, independent of any particular browser
+    tab's frontend state (see booking_service.cancel_reserved_bookings_
+    for_session's own doc comment for why relying on the frontend alone
+    isn't enough)."""
+    import src.api.routes as _routes
+
+    auth_override("user-a")
+    session_id = (await client.post("/api/v1/chat/session")).json()["session_id"]
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        _routes, "cancel_reserved_bookings_for_session", lambda sid: calls.append(sid) or 1
+    )
+
+    response = await client.delete(f"/api/v1/chat/{session_id}")
+
+    assert response.status_code == 204
+    assert calls == [session_id]
+
+
+@pytest.mark.asyncio
+async def test_delete_session_still_succeeds_if_booking_cleanup_fails(client, auth_override, monkeypatch):
+    """A failure releasing bookings must never block the session deletion
+    itself — best-effort side effect, per the route's own comment."""
+    import src.api.routes as _routes
+
+    auth_override("user-a")
+    session_id = (await client.post("/api/v1/chat/session")).json()["session_id"]
+
+    def _raise(_sid):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(_routes, "cancel_reserved_bookings_for_session", _raise)
+
+    response = await client.delete(f"/api/v1/chat/{session_id}")
+
+    assert response.status_code == 204
+    assert _routes.registry.get(session_id) is None
+
+
 # ---------------------------------------------------------------------------
 # Bookings — HTTP status mapping (plan 260818-booking-backend-robustness)
 #
