@@ -262,8 +262,15 @@ export interface PhaseFacts {
   days?: number
 }
 
-/** The four user-facing steps the nine phase keys fold into. */
-export type ThinkingGroupKey = 'understand' | 'gather' | 'build' | 'finalize'
+/** The user-facing steps the nine phase keys fold into. */
+export type ThinkingGroupKey =
+  | 'history'
+  | 'analyze'
+  | 'route'
+  | 'hotels'
+  | 'itinerary'
+  | 'save'
+  | 'reply'
 
 /** One step of the thinking block, with the sentences built for it. */
 export interface ThinkingGroup {

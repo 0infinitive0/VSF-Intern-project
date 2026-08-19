@@ -459,10 +459,6 @@
   "checkoutDoneSub": "Your booking is confirmed with the hotel.",
   "checkoutDoneCode": "Booking code",
   "checkoutDoneBackTrip": "Back to itinerary",
-  "thinkingGroupUnderstand": "Understanding the request",
-  "thinkingGroupGather": "Gathering information",
-  "thinkingGroupBuild": "Building the itinerary",
-  "thinkingGroupFinalize": "Finishing up",
   "thinkingIntentUpdateTrip": "trip update",
   "thinkingIntentGeneralQuestion": "general question",
   "thinkingIntentRebuildDays": "rebuild days",
@@ -491,5 +487,13 @@
   "thinkingHotelError": "Hotel search failed",
   "thinkingRoutingLegs": "Calculating travel legs for {{days}} days",
   "thinkingModelReasoning": "Model's reasoning (English)",
-  "thinkingHeaderDone": "Steps completed"
+  "thinkingHeaderDone": "Steps completed",
+  "thinkingHeaderRunning": "Working — step {{done}}/{{total}}",
+  "thinkingGroupHistory": "Reading the conversation",
+  "thinkingGroupAnalyze": "Analysing the request",
+  "thinkingGroupRoute": "Choosing how to handle it",
+  "thinkingGroupHotels": "Searching hotels",
+  "thinkingGroupItinerary": "Building the itinerary",
+  "thinkingGroupSave": "Saving the result",
+  "thinkingGroupReply": "Composing the reply"
 }

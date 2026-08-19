@@ -29,7 +29,7 @@ describe('groupForPhase', () => {
 })
 
 describe('applyPhaseToGroups', () => {
-  it('builds the four groups in render order for a full turn', () => {
+  it('builds every step in render order for a full turn', () => {
     const groups = apply([
       'received', 'intake_check', 'routing', 'hotel_search',
       'itinerary_build', 'routing_legs', 'persisting', 'generating',
@@ -38,37 +38,39 @@ describe('applyPhaseToGroups', () => {
     expect(groups.map((g) => g.key)).toEqual(GROUP_ORDER)
   })
 
-  it('keeps one group when the supervisor routes three times', () => {
+  it('keeps one step when the supervisor routes three times', () => {
     const groups = apply(['routing', 'routing', 'routing'])
 
     expect(groups).toHaveLength(1)
-    expect(groups[0].key).toBe('understand')
+    expect(groups[0].key).toBe('route')
   })
 
-  it('omits the build group on an intake-only turn', () => {
+  it('never lists a step the turn did not reach', () => {
+    // An intake-only turn does no hotel search; drawing it greyed out would
+    // describe work that will not happen.
     const groups = apply(['received', 'intake_check', 'generating'])
 
-    expect(groups.map((g) => g.key)).toEqual(['understand', 'finalize'])
+    expect(groups.map((g) => g.key)).toEqual(['history', 'analyze', 'reply'])
   })
 
   it('orders by GROUP_ORDER even when frames arrive out of order', () => {
-    // `persisting` (finalize) really can land before `routing_legs` (build).
+    // `persisting` (save) really can land before `routing_legs` (itinerary).
     const groups = apply(['persisting', 'routing_legs'])
 
-    expect(groups.map((g) => g.key)).toEqual(['build', 'finalize'])
+    expect(groups.map((g) => g.key)).toEqual(['itinerary', 'save'])
   })
 
-  it('ignores an unknown key instead of creating a group for it', () => {
+  it('ignores an unknown key instead of creating a step for it', () => {
     const groups = apply(['intake_check', 'some_future_key'])
 
-    expect(groups.map((g) => g.key)).toEqual(['understand'])
+    expect(groups.map((g) => g.key)).toEqual(['analyze'])
   })
 
-  it('closes earlier groups when a later one starts', () => {
+  it('closes earlier steps when a later one starts', () => {
     const groups = apply(['intake_check', 'hotel_search'])
 
-    expect(groups.find((g) => g.key === 'understand')?.done).toBe(true)
-    expect(groups.find((g) => g.key === 'gather')?.done).toBe(false)
+    expect(groups.find((g) => g.key === 'analyze')?.done).toBe(true)
+    expect(groups.find((g) => g.key === 'hotels')?.done).toBe(false)
   })
 
   it('appends new lines to a group that already exists', () => {
@@ -101,13 +103,13 @@ describe('applyPhaseToGroups', () => {
 })
 
 describe('appendReasoning', () => {
-  it('accumulates text on the group still running', () => {
+  it('accumulates text on the step still running', () => {
     let groups = apply(['intake_check', 'hotel_search'])
     groups = appendReasoning(groups, 'Checking ')
     groups = appendReasoning(groups, 'amenities')
 
-    expect(groups.find((g) => g.key === 'gather')?.reasoning).toBe('Checking amenities')
-    expect(groups.find((g) => g.key === 'understand')?.reasoning).toBe('')
+    expect(groups.find((g) => g.key === 'hotels')?.reasoning).toBe('Checking amenities')
+    expect(groups.find((g) => g.key === 'analyze')?.reasoning).toBe('')
   })
 
   it('ignores empty text — the common case, not an error', () => {
@@ -130,12 +132,13 @@ describe('completeGroups', () => {
 })
 
 describe('group labels', () => {
-  it('has a translation in both locales for every group', () => {
+  it('has a translation in both locales for every step', () => {
     const labels = apply([
-      'intake_check', 'hotel_search', 'itinerary_build', 'persisting',
+      'received', 'intake_check', 'routing', 'hotel_search',
+      'itinerary_build', 'persisting', 'generating',
     ]).map((g) => g.labelKey)
 
-    expect(labels).toHaveLength(4)
+    expect(labels).toHaveLength(7)
     for (const key of labels) {
       expect(vi, `vi is missing ${key}`).toHaveProperty(key)
       expect(en, `en is missing ${key}`).toHaveProperty(key)

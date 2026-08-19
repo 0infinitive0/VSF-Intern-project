@@ -26,7 +26,6 @@ export default function ThinkingBlock({ groups }: { groups: ThinkingGroup[] }) {
 
   const allDone = groups.length > 0 && groups.every((g) => g.done)
   const open = manualOpen ?? !allDone
-  const running = groups.find((g) => !g.done)
 
   const syncOverflow = () => {
     const el = scrollRef.current
@@ -57,7 +56,12 @@ export default function ThinkingBlock({ groups }: { groups: ThinkingGroup[] }) {
     syncOverflow()
   }
 
-  const headerLabel = running ? t(running.labelKey) : t('thinkingHeaderDone')
+  // Deliberately NOT the running group's label: that row is rendered right
+  // below, and repeating it read as the block having exactly one step.
+  const done = groups.filter((g) => g.done).length
+  const headerLabel = allDone
+    ? t('thinkingHeaderDone')
+    : t('thinkingHeaderRunning', { done, total: groups.length })
 
   return (
     <div className="flex gap-2.5 items-start" aria-live="polite" aria-busy={!allDone}>

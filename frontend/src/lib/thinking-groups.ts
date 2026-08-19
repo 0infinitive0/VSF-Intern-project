@@ -4,33 +4,51 @@
  *
  * The backend reports where the code is (`compacting_history`, `intake_check`,
  * `routing`); a user wants to know what is being done for them. Nine keys become
- * four groups, and the order they render in is fixed rather than taken from the
- * order frames arrive: `persisting` can land before `routing_legs` on some
- * branches, and "Finishing up" must never appear above "Building the itinerary".
+ * seven steps — mostly one-to-one, since folding four of them into a single
+ * "understanding" step made the whole block read as one trivial stage for most
+ * of a turn.
+ *
+ * The order they render in is fixed rather than taken from the order frames
+ * arrive: `persisting` can land before `routing_legs` on some branches, and
+ * "Saving" must never appear above "Building the itinerary".
+ *
+ * Steps are NOT pre-drawn. A turn that answers a question never touches hotel
+ * search, so listing it greyed out would describe work that will not happen.
  */
 
 import type { PhaseKey, ThinkingGroup, ThinkingGroupKey } from '../types'
 
 const GROUP_BY_PHASE: Record<PhaseKey, ThinkingGroupKey> = {
-  received: 'understand',
-  compacting_history: 'understand',
-  routing: 'understand',
-  intake_check: 'understand',
-  hotel_search: 'gather',
-  itinerary_build: 'build',
-  routing_legs: 'build',
-  persisting: 'finalize',
-  generating: 'finalize',
+  received: 'history',
+  compacting_history: 'history',
+  intake_check: 'analyze',
+  routing: 'route',
+  hotel_search: 'hotels',
+  itinerary_build: 'itinerary',
+  routing_legs: 'itinerary',
+  persisting: 'save',
+  generating: 'reply',
 }
 
 /** Render order. Not the arrival order — see the module docstring. */
-export const GROUP_ORDER: ThinkingGroupKey[] = ['understand', 'gather', 'build', 'finalize']
+export const GROUP_ORDER: ThinkingGroupKey[] = [
+  'history',
+  'analyze',
+  'route',
+  'hotels',
+  'itinerary',
+  'save',
+  'reply',
+]
 
 const GROUP_LABEL_I18N_KEY: Record<ThinkingGroupKey, string> = {
-  understand: 'thinkingGroupUnderstand',
-  gather: 'thinkingGroupGather',
-  build: 'thinkingGroupBuild',
-  finalize: 'thinkingGroupFinalize',
+  history: 'thinkingGroupHistory',
+  analyze: 'thinkingGroupAnalyze',
+  route: 'thinkingGroupRoute',
+  hotels: 'thinkingGroupHotels',
+  itinerary: 'thinkingGroupItinerary',
+  save: 'thinkingGroupSave',
+  reply: 'thinkingGroupReply',
 }
 
 /** The group a phase key belongs to, or null if the key is unknown to us. */

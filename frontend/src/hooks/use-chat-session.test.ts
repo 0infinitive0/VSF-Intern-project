@@ -247,7 +247,7 @@ describe('chatSessionReducer — thinking groups', () => {
     const next = withThinking()
 
     expect(next.thinking).toHaveLength(1)
-    expect(next.thinking[0].key).toBe('understand')
+    expect(next.thinking[0].key).toBe('analyze')
     expect(next.thinking[0].lines).toHaveLength(1)
   })
 

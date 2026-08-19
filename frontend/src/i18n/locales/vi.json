@@ -457,10 +457,6 @@
   "checkoutDoneSub": "Đặt phòng của bạn đã được xác nhận với khách sạn.",
   "checkoutDoneCode": "Mã đặt phòng",
   "checkoutDoneBackTrip": "Quay về lịch trình",
-  "thinkingGroupUnderstand": "Hiểu yêu cầu",
-  "thinkingGroupGather": "Tìm thông tin",
-  "thinkingGroupBuild": "Dựng lịch trình",
-  "thinkingGroupFinalize": "Hoàn tất",
   "thinkingIntentUpdateTrip": "cập nhật chuyến đi",
   "thinkingIntentGeneralQuestion": "câu hỏi chung",
   "thinkingIntentRebuildDays": "dựng lại ngày",
@@ -489,5 +485,13 @@
   "thinkingHotelError": "Tìm khách sạn không thành công",
   "thinkingRoutingLegs": "Tính quãng đường cho {{days}} ngày",
   "thinkingModelReasoning": "Suy luận của mô hình (tiếng Anh)",
-  "thinkingHeaderDone": "Đã xong các bước"
+  "thinkingHeaderDone": "Đã xong các bước",
+  "thinkingHeaderRunning": "Đang xử lý — bước {{done}}/{{total}}",
+  "thinkingGroupHistory": "Đọc lại cuộc hội thoại",
+  "thinkingGroupAnalyze": "Phân tích yêu cầu",
+  "thinkingGroupRoute": "Chọn hướng xử lý",
+  "thinkingGroupHotels": "Tìm khách sạn",
+  "thinkingGroupItinerary": "Dựng lịch trình",
+  "thinkingGroupSave": "Lưu kết quả",
+  "thinkingGroupReply": "Soạn câu trả lời"
 }
