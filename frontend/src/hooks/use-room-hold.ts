@@ -38,6 +38,16 @@ const STORAGE_KEY = 'vota_room_hold_v1'
 interface PersistedHold {
   heldHotelId: string
   bookings: Booking[]
+  /** The chat session that created this hold (backend's bookings.session_id
+   * — see routes.py's list_persisted_sessions/session_store.py's
+   * booking_states_for_sessions, plan 260818-vnpay-payment-and-email-
+   * confirmation's addendum 2). Persisted so App.tsx's handleDeleteSession
+   * can tell "is the session being deleted the one holding these rooms?"
+   * even across a page reload, and release the hold if so — deleting a
+   * chat should never leave an orphaned hold with no UI left to show or
+   * release it. null when the hold was created outside any session
+   * (shouldn't normally happen, but never blocks deletion either way). */
+  heldSessionId: string | null
   /** Set right before the VNPay redirect (booking-modal.tsx) — the payment
    * this hold is mid-checkout for, if any. Persisted so App.tsx's
    * consumeVnpayReturn knows WHICH payment to poll after the guest comes
@@ -69,6 +79,7 @@ function loadPersistedHold(): PersistedHold | null {
       bookings: parsed.bookings,
       paymentId: parsed.paymentId ?? null,
       booked: parsed.booked ?? false,
+      heldSessionId: parsed.heldSessionId ?? null,
     }
   } catch {
     return null
@@ -87,6 +98,22 @@ function persistHold(data: PersistedHold | null) {
 }
 
 export type HoldStatus = 'IDLE' | 'HOLDING' | 'HELD' | 'EXPIRED' | 'BOOKED' | 'ERROR'
+
+/** True iff deleting `deletedSessionId` should also release the current
+ * hold — App.tsx's handleDeleteSession. Deliberately checks `status ===
+ * 'HELD'` only, never 'BOOKED': a confirmed/paid booking is a real
+ * transaction that must survive its chat session being deleted (bookings.
+ * session_id is ON DELETE SET NULL, not CASCADE, for exactly this reason —
+ * see the guest_single_hotel_hold_guard migration). A HELD hold with no
+ * heldSessionId (created outside any session) never matches, so it's left
+ * untouched by any deletion. */
+export function shouldReleaseHoldForDeletedSession(
+  status: HoldStatus,
+  heldSessionId: string | null,
+  deletedSessionId: string,
+): boolean {
+  return status === 'HELD' && heldSessionId != null && heldSessionId === deletedSessionId
+}
 
 export interface RoomStay {
   /** ISO date (YYYY-MM-DD), straight from ChatState.intake.start_date/end_date. */
@@ -113,9 +140,43 @@ function nightsBetween(checkIn: string, checkOut: string): number {
   return nights > 0 ? nights : 1
 }
 
-export function useRoomHold() {
+/** Pure reducer behind `setQty`. `cartByHotel` holds at most one DRAFT
+ * hotel's entries at a time: editing `hotelId`'s qty drops every OTHER
+ * hotel's draft entries in the same step — previously nothing ever cleared
+ * a stale hotel's cart, so a guest could accumulate non-zero quantities at
+ * arbitrarily many hotels simultaneously with no way to notice (only one
+ * can ever actually be held/reserved server-side, but the cart itself
+ * never reflected that).
+ *
+ * The currently-HELD hotel (`heldHotelId`) is the one exception: its entry
+ * mirrors a REAL, already-reserved booking (`roomHold.bookings`), not
+ * draft state, so it survives being edited elsewhere — otherwise merely
+ * browsing a different hotel while holding would zero out the held
+ * hotel's cart, and hotel-detail-panel.tsx's RoomCard/`cartChanged` would
+ * then silently show 0 rooms / "nothing changed" for a hotel that is
+ * still actually held. */
+export function applyCartQty(
+  prev: Record<string, RoomCart>,
+  hotelId: string,
+  roomId: string,
+  qty: number,
+  heldHotelId: string | null,
+): Record<string, RoomCart> {
+  const current = { ...(prev[hotelId] ?? {}) }
+  const clamped = Math.max(0, Math.min(MAX_QTY_PER_ROOM, qty))
+  if (clamped === 0) delete current[roomId]
+  else current[roomId] = clamped
+  const next: Record<string, RoomCart> = { [hotelId]: current }
+  if (heldHotelId && heldHotelId !== hotelId && prev[heldHotelId]) {
+    next[heldHotelId] = prev[heldHotelId]
+  }
+  return next
+}
+
+export function useRoomHold(sessionId: string | null) {
   const [cartByHotel, setCartByHotel] = useState<Record<string, RoomCart>>({})
   const [heldHotelId, setHeldHotelId] = useState<string | null>(() => loadPersistedHold()?.heldHotelId ?? null)
+  const [heldSessionId, setHeldSessionId] = useState<string | null>(() => loadPersistedHold()?.heldSessionId ?? null)
   const [bookings, setBookings] = useState<Booking[]>(() => loadPersistedHold()?.bookings ?? [])
   // A hold restored from sessionStorage resumes as 'BOOKED' if it was
   // persisted that way (see PersistedHold.booked), else 'HELD' — HOLDING is
@@ -136,6 +197,15 @@ export function useRoomHold() {
   const [now, setNow] = useState(() => Date.now())
   const guestRefRef = useRef<string>('')
   if (!guestRefRef.current) guestRefRef.current = getGuestRef()
+  // Read fresh (not lazy-init-once like guestRefRef) since the ACTIVE chat
+  // session can change over this hook's lifetime — App.tsx instantiates
+  // useRoomHold() once, globally (see the module doc comment), so this ref
+  // just needs to reflect whichever session is current at the moment a
+  // reservation actually fires, for booking_service.reserve_booking's new
+  // session_id passthrough (sidebar "Đang giữ phòng"/"Đã thanh toán" badge —
+  // plan 260818-vnpay-payment-and-email-confirmation's addendum 2).
+  const sessionIdRef = useRef<string | null>(sessionId)
+  sessionIdRef.current = sessionId
 
   // Keeps sessionStorage in sync with the live hold — cleared once there's
   // nothing worth restoring (IDLE: released/never started; ERROR: the
@@ -143,11 +213,11 @@ export function useRoomHold() {
   // back).
   useEffect(() => {
     if (heldHotelId && bookings.length > 0 && status !== 'IDLE' && status !== 'ERROR') {
-      persistHold({ heldHotelId, bookings, paymentId, booked: status === 'BOOKED' })
+      persistHold({ heldHotelId, heldSessionId, bookings, paymentId, booked: status === 'BOOKED' })
     } else if (status === 'IDLE') {
       persistHold(null)
     }
-  }, [heldHotelId, bookings, status, paymentId])
+  }, [heldHotelId, heldSessionId, bookings, status, paymentId])
 
   // Ticks the countdown once a second, only while a hold is actually
   // counting down — no timer running in IDLE/HOLDING/BOOKED/EXPIRED.
@@ -160,14 +230,8 @@ export function useRoomHold() {
   const cartFor = useCallback((hotelId: string): RoomCart => cartByHotel[hotelId] ?? {}, [cartByHotel])
 
   const setQty = useCallback((hotelId: string, roomId: string, qty: number) => {
-    setCartByHotel((prev) => {
-      const current = { ...(prev[hotelId] ?? {}) }
-      const clamped = Math.max(0, Math.min(MAX_QTY_PER_ROOM, qty))
-      if (clamped === 0) delete current[roomId]
-      else current[roomId] = clamped
-      return { ...prev, [hotelId]: current }
-    })
-  }, [])
+    setCartByHotel((prev) => applyCartQty(prev, hotelId, roomId, qty, heldHotelId))
+  }, [heldHotelId])
 
   const cartCount = useCallback(
     (hotelId: string) => Object.values(cartByHotel[hotelId] ?? {}).reduce((n, q) => n + q, 0),
@@ -218,6 +282,7 @@ export function useRoomHold() {
           const booking = await reserveBooking({
             room_id: roomId,
             temporary_user_ref: guestRefRef.current,
+            session_id: sessionIdRef.current ?? undefined,
             check_in_date: stay.checkInDate,
             check_in_time: DEFAULT_CHECK_IN_TIME,
             check_out_date: stay.checkOutDate,
@@ -234,6 +299,7 @@ export function useRoomHold() {
         }
         setBookings(created)
         setHeldHotelId(hotelId)
+        setHeldSessionId(sessionIdRef.current)
         setStatus('HELD')
         setNow(Date.now())
         onHeld?.()
@@ -245,6 +311,7 @@ export function useRoomHold() {
         )
         setBookings([])
         setHeldHotelId(null)
+        setHeldSessionId(null)
         setStatus('ERROR')
         setError(err instanceof Error ? err.message : String(err))
       }
@@ -264,6 +331,7 @@ export function useRoomHold() {
     const toRelease = bookings
     setBookings([])
     setHeldHotelId(null)
+    setHeldSessionId(null)
     setStatus('IDLE')
     setError(null)
     setPaymentId(null)
@@ -326,6 +394,7 @@ export function useRoomHold() {
     setQty,
     cartCount,
     heldHotelId,
+    heldSessionId,
     bookings,
     status,
     error,

@@ -22,3 +22,15 @@ export function consumeVnpayReturn(): boolean {
   window.history.replaceState({}, '', window.location.pathname + (rest ? `?${rest}` : ''))
   return true
 }
+
+/** Read-only twin of consumeVnpayReturn() — same URL check, but never
+ * strips the marker. Exists purely so App.tsx can know "are we returning
+ * from VNPay" synchronously on the very FIRST render (a lazy useState
+ * initializer, before any effect has run) to gate the processing-screen
+ * splash that hides the session-bootstrap flash — the real, marker-
+ * consuming call still happens exactly once, inside that effect, as
+ * before. Safe to call any number of times before that: reading
+ * URLSearchParams has no side effect of its own. */
+export function isVnpayReturnPending(): boolean {
+  return new URLSearchParams(window.location.search).get('payment_return') === '1'
+}

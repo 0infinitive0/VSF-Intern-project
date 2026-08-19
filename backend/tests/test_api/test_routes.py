@@ -304,6 +304,49 @@ async def test_delete_session_is_a_silent_noop_for_a_different_owner(client, aut
     assert _routes.registry.get(session_id) is None
 
 
+@pytest.mark.asyncio
+async def test_delete_session_cancels_reserved_bookings_for_that_session(client, auth_override, monkeypatch):
+    """Deleting a session must release whatever room it was still holding —
+    server-side and deterministic, independent of any particular browser
+    tab's frontend state (see booking_service.cancel_reserved_bookings_
+    for_session's own doc comment for why relying on the frontend alone
+    isn't enough)."""
+    import src.api.routes as _routes
+
+    auth_override("user-a")
+    session_id = (await client.post("/api/v1/chat/session")).json()["session_id"]
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        _routes, "cancel_reserved_bookings_for_session", lambda sid: calls.append(sid) or 1
+    )
+
+    response = await client.delete(f"/api/v1/chat/{session_id}")
+
+    assert response.status_code == 204
+    assert calls == [session_id]
+
+
+@pytest.mark.asyncio
+async def test_delete_session_still_succeeds_if_booking_cleanup_fails(client, auth_override, monkeypatch):
+    """A failure releasing bookings must never block the session deletion
+    itself — best-effort side effect, per the route's own comment."""
+    import src.api.routes as _routes
+
+    auth_override("user-a")
+    session_id = (await client.post("/api/v1/chat/session")).json()["session_id"]
+
+    def _raise(_sid):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(_routes, "cancel_reserved_bookings_for_session", _raise)
+
+    response = await client.delete(f"/api/v1/chat/{session_id}")
+
+    assert response.status_code == 204
+    assert _routes.registry.get(session_id) is None
+
+
 # ---------------------------------------------------------------------------
 # Bookings — HTTP status mapping (plan 260818-booking-backend-robustness)
 #
@@ -382,6 +425,35 @@ async def test_create_booking_sold_out_returns_409(client, monkeypatch):
 
     assert response.status_code == 409
     assert response.json()["detail"] == "insufficient_room_availability"
+
+
+@pytest.mark.asyncio
+async def test_create_booking_guest_already_holding_elsewhere_returns_409(client, monkeypatch):
+    """The same guest ref (shared cross-tab via localStorage — see
+    frontend/src/lib/guest-ref.ts) already holds a live RESERVED booking at
+    a different hotel — create_booking_reservation's cross-hotel guard
+    (migration 20260819_add_guest_single_hotel_hold_guard.sql). Rejected
+    with a clear domain code, not a bare 500."""
+    import src.api.routes as _routes
+    from src.services.booking_service import BookingError
+
+    def _raise(**_kwargs):
+        raise BookingError("guest_already_holding_elsewhere")
+
+    monkeypatch.setattr(_routes, "reserve_booking", _raise)
+
+    response = await client.post(
+        "/api/v1/bookings",
+        json={
+            "room_id": _BOOKING_ROOM_ID,
+            "temporary_user_ref": "guest-2",
+            "check_in_date": "2026-09-01",
+            "check_out_date": "2026-09-03",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "guest_already_holding_elsewhere"
 
 
 @pytest.mark.asyncio
@@ -802,3 +874,75 @@ async def test_get_payment_endpoint_returns_payment_for_the_owner(client, monkey
 
     assert response.status_code == 200
     assert response.json()["status"] == "PENDING"
+
+
+# ---------------------------------------------------------------------------
+# GET /chat/{session_id}/booking-receipt (plan
+# 260818-vnpay-payment-and-email-confirmation's addendum 4) — "reopen a
+# past session's booking". Ownership is the SESSION's (_owned_session_or_404,
+# same as every other /chat/{session_id}/... route), not a payment/
+# temporary_user_ref check, so these mirror test_delete_session_is_a_
+# silent_noop_for_a_different_owner's setup rather than the payment-owner
+# tests just above.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_booking_receipt_returns_404_for_a_different_owner(client, auth_override):
+    auth_override("user-a")
+    session_id = (await client.post("/api/v1/chat/session")).json()["session_id"]
+
+    auth_override("user-b")
+    response = await client.get(f"/api/v1/chat/{session_id}/booking-receipt")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_booking_receipt_returns_404_when_no_confirmed_booking(client, auth_override, monkeypatch):
+    from src.services import payment_service as _payment_service
+
+    auth_override("user-a")
+    session_id = (await client.post("/api/v1/chat/session")).json()["session_id"]
+
+    monkeypatch.setattr(_payment_service, "get_booking_receipt_for_session", lambda _sid: None)
+
+    response = await client.get(f"/api/v1/chat/{session_id}/booking-receipt")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_booking_receipt_returns_the_receipt_for_the_owner(client, auth_override, monkeypatch):
+    from src.services import payment_service as _payment_service
+
+    auth_override("user-a")
+    session_id = (await client.post("/api/v1/chat/session")).json()["session_id"]
+
+    fake_receipt = {
+        "payment_id": _PAYMENT_ID,
+        "hotel_name": "Khách sạn Biển Xanh",
+        "hotel_address": "123 Trần Phú",
+        "check_in_date": "2026-09-01",
+        "check_out_date": "2026-09-03",
+        "currency": "VND",
+        "total_amount": "1600000",
+        "paid_at": "2026-09-01T10:00:00+00:00",
+        "rooms": [
+            {"room_id": _BOOKING_ROOM_ID, "name": "Superior", "room_count": 2, "total_amount": "1000000"},
+        ],
+    }
+    monkeypatch.setattr(
+        _payment_service,
+        "get_booking_receipt_for_session",
+        lambda sid: fake_receipt if sid == session_id else None,
+    )
+
+    response = await client.get(f"/api/v1/chat/{session_id}/booking-receipt")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["hotel_name"] == "Khách sạn Biển Xanh"
+    assert data["total_amount"] == "1600000"
+    assert len(data["rooms"]) == 1
+    assert data["rooms"][0]["name"] == "Superior"

@@ -391,6 +391,62 @@
         }
       }
     },
+    "/api/v1/chat/{session_id}/booking-receipt": {
+      "get": {
+        "summary": "Get Booking Receipt",
+        "description": "\"Reopen a past session's booking\" (plan 260818-vnpay-payment-and-\nemail-confirmation's addendum 4) — roomHold, the frontend's only other\nsource for booking details, is a single global hold that only ever\nreflects whichever session most recently held/paid (use-room-hold.ts's\nmodule doc comment), so a guest revisiting an OLDER paid session needs\nthis real, independent lookup instead. Ownership is the session's own\n(same `_owned_session_or_404` every other /chat/{session_id}/... route\nuses) — not `temporary_user_ref`, which a guest checkout session has no\nreliable way to supply for a session that isn't the currently active\none. 404 both when the session itself doesn't exist/isn't the caller's,\nand when it exists but has no CONFIRMED booking (never held anything,\nhold expired unpaid, or payment failed) — same \"don't distinguish who\nis asking\" posture booking_service's own 404s already use.",
+        "operationId": "get_booking_receipt_api_v1_chat__session_id__booking_receipt_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingReceiptPayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/chat/session": {
       "post": {
         "summary": "Create Session",
@@ -1513,6 +1569,128 @@
         ],
         "title": "BookingPayload"
       },
+      "BookingReceiptPayload": {
+        "properties": {
+          "payment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Id"
+          },
+          "hotel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hotel Name"
+          },
+          "hotel_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hotel Address"
+          },
+          "check_in_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Check In Date"
+          },
+          "check_out_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Check Out Date"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "total_amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total Amount"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          },
+          "rooms": {
+            "items": {
+              "$ref": "#/components/schemas/BookingReceiptRoomPayload"
+            },
+            "type": "array",
+            "title": "Rooms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "check_in_date",
+          "check_out_date",
+          "currency",
+          "total_amount",
+          "rooms"
+        ],
+        "title": "BookingReceiptPayload",
+        "description": "Read-only \"reopen a past session's booking\" receipt (plan\n260818-vnpay-payment-and-email-confirmation's addendum 4) — assembled\nfresh from bookings/rooms/hotels/payments by session_id, deliberately\nindependent of the frontend's roomHold (which only ever reflects\nwhichever session most recently held/paid — see use-room-hold.ts's\nmodule doc comment)."
+      },
+      "BookingReceiptRoomPayload": {
+        "properties": {
+          "room_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Room Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "room_count": {
+            "type": "integer",
+            "title": "Room Count"
+          },
+          "total_amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "room_id",
+          "name",
+          "room_count"
+        ],
+        "title": "BookingReceiptRoomPayload"
+      },
       "BookingReservationRequest": {
         "properties": {
           "room_id": {
@@ -1583,6 +1761,18 @@
               }
             ],
             "title": "Currency"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
           }
         },
         "type": "object",
@@ -3482,7 +3672,9 @@
             "type": "string",
             "enum": [
               "draft",
-              "completed"
+              "completed",
+              "holding",
+              "paid"
             ],
             "title": "Status"
           },
@@ -3866,6 +4058,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",

@@ -49,7 +49,7 @@ from src.agents.graph.phase_keys import (
 )
 from src.agents.graph.response_payload import (
     derive_stage,
-    hotel_options_from_task_results,
+    durable_hotel_options,
     intake_status_from_travel_state,
 )
 from src.agents.session import (
@@ -74,6 +74,7 @@ from src.models.schemas import (
     AttractionDetailPayload,
     BookingOwnershipRequest,
     BookingPayload,
+    BookingReceiptPayload,
     BookingReservationRequest,
     ChangeHotelRequest,
     CreateVnpayPaymentRequest,
@@ -94,7 +95,14 @@ from src.services import session_store
 from src.services.amenity_catalog import query_approved_amenities
 from src.services.llm import reasoning_text, response_text
 from src.services.place_details import get_attraction_detail, get_hotel_detail
-from src.services.booking_service import BookingError, cancel_booking, confirm_booking, get_booking, reserve_booking
+from src.services.booking_service import (
+    BookingError,
+    cancel_booking,
+    cancel_reserved_bookings_for_session,
+    confirm_booking,
+    get_booking,
+    reserve_booking,
+)
 from src.services.email_service import EmailError, send_booking_confirmation_email
 from src.services import payment_service
 from src.services import vnpay_service
@@ -204,7 +212,12 @@ def _booking_http_error(exc: BookingError) -> HTTPException:
         return HTTPException(status_code=404, detail="Booking not found.")
     if str(exc) == "invalid_booking_request":
         return HTTPException(status_code=422, detail=str(exc))
-    if str(exc) in {"insufficient_room_availability", "booking_reservation_expired", "booking_not_confirmable"}:
+    if str(exc) in {
+        "insufficient_room_availability",
+        "booking_reservation_expired",
+        "booking_not_confirmable",
+        "guest_already_holding_elsewhere",
+    }:
         return HTTPException(status_code=409, detail=str(exc))
     logger.exception("Booking operation failed", exc_info=exc)
     return HTTPException(status_code=500, detail="Unable to process booking.")
@@ -393,6 +406,30 @@ def get_payment_endpoint(payment_id: UUID, temporary_user_ref: str = Query(...))
     return PaymentPayload.model_validate(payment)
 
 
+@router.get("/chat/{session_id}/booking-receipt", response_model=BookingReceiptPayload)
+def get_booking_receipt(
+    session_id: str, current_user: AuthenticatedUser | None = Depends(get_current_user)
+) -> BookingReceiptPayload:
+    """"Reopen a past session's booking" (plan 260818-vnpay-payment-and-
+    email-confirmation's addendum 4) — roomHold, the frontend's only other
+    source for booking details, is a single global hold that only ever
+    reflects whichever session most recently held/paid (use-room-hold.ts's
+    module doc comment), so a guest revisiting an OLDER paid session needs
+    this real, independent lookup instead. Ownership is the session's own
+    (same `_owned_session_or_404` every other /chat/{session_id}/... route
+    uses) — not `temporary_user_ref`, which a guest checkout session has no
+    reliable way to supply for a session that isn't the currently active
+    one. 404 both when the session itself doesn't exist/isn't the caller's,
+    and when it exists but has no CONFIRMED booking (never held anything,
+    hold expired unpaid, or payment failed) — same "don't distinguish who
+    is asking" posture booking_service's own 404s already use."""
+    _owned_session_or_404(session_id, current_user)
+    receipt = payment_service.get_booking_receipt_for_session(session_id)
+    if receipt is None:
+        raise HTTPException(status_code=404, detail="No confirmed booking for this session.")
+    return BookingReceiptPayload.model_validate(receipt)
+
+
 # ---------------------------------------------------------------------------
 # Session lifecycle endpoints (Phase 3)
 # ---------------------------------------------------------------------------
@@ -440,8 +477,19 @@ def list_persisted_sessions(
         return SessionListPayload(sessions=[], page=page, page_size=page_size, has_more=False)
     try:
         persisted = session_store.list_sessions(user_id=current_user.id, page=page, page_size=page_size)
+        # One extra batched query for the whole page, not N+1 — see its
+        # own doc comment for why "holding"/"paid" can't be baked into the
+        # persisted checkpoint summarize() otherwise reads from.
+        booking_states = session_store.booking_states_for_sessions(
+            [row["session_id"] for row in persisted.rows]
+        )
         return SessionListPayload(
-            sessions=[SessionSummaryPayload.model_validate(session_store.summarize(row)) for row in persisted.rows],
+            sessions=[
+                SessionSummaryPayload.model_validate(
+                    session_store.summarize(row, booking_states.get(row["session_id"]))
+                )
+                for row in persisted.rows
+            ],
             page=persisted.page,
             page_size=persisted.page_size,
             has_more=persisted.has_more,
@@ -494,7 +542,7 @@ def restore_session(
     app = _get_graph_v2()
     state = app.get_state({"configurable": {"thread_id": session_id}}).values or {}
     travel_state = TravelState.from_dict(state.get("travel_state"))
-    hotel_options = hotel_options_from_task_results(state)
+    hotel_options = durable_hotel_options(state)
 
     return SessionRestorePayload(
         session_id=session_id,
@@ -543,6 +591,15 @@ def delete_session(
     if session is not None and session.owner_user_id is not None:
         if current_user is None or session.owner_user_id != current_user.id:
             return
+    # Must run BEFORE registry.drop() actually deletes the session row --
+    # bookings.session_id is ON DELETE SET NULL, so the link this looks up
+    # by is gone the instant the row is. Best-effort: a failure here must
+    # never block the deletion itself (see cancel_reserved_bookings_for_
+    # session's own doc comment for why this can't rely on frontend state).
+    try:
+        cancel_reserved_bookings_for_session(session_id)
+    except Exception:
+        logger.exception("Unable to release bookings for deleted session %s", session_id)
     registry.drop(session_id)
 
 

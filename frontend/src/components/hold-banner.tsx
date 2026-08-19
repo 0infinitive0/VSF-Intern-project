@@ -19,15 +19,43 @@ function mmss(ms: number): string {
  * The countdown is a plain 1s re-render off `roomHold.holdLeftMs`, which
  * itself ticks off the group's real server `expires_at` (use-room-hold.ts) —
  * never a client-invented duration.
+ *
+ * `roomHold` is a single GLOBAL hold, not scoped per chat session (see
+ * use-room-hold.ts's module doc comment) — `holdBelongsToSession` is what
+ * keeps this banner honest about that: without it, switching the live hold
+ * to a different hotel from a DIFFERENT session (hotel-detail-panel.tsx's
+ * heldElsewhere -> switchHold flow) would leave THIS session's workspace
+ * still showing the countdown and an enabled "Đặt phòng" button for a hold
+ * it no longer owns — a real guest-facing bug (checking out for the wrong
+ * hotel) this early-return exists specifically to prevent.
+ *
+ * `sessionBookedFromBackend` is the fallback for the one case that early
+ * return would otherwise wrongly hide: a session that genuinely completed
+ * payment, then later lost `holdBelongsToSession` because roomHold moved
+ * on to a different session. Backend-sourced (the same per-session status
+ * the sidebar badge reads — see App.tsx), so it survives roomHold being
+ * overwritten, unlike `roomHold.status === 'BOOKED'` itself. Its "Xem đặt
+ * phòng" button opens `onOpenReceipt`, not `onOpenBooking`: roomHold no
+ * longer has this session's booking data (booking-modal.tsx only ever
+ * reads off roomHold), so booking-receipt-modal.tsx fetches it fresh from
+ * the backend by session_id instead (GET /chat/{id}/booking-receipt).
  */
 export default function HoldBanner({
   roomHold,
+  holdBelongsToSession,
+  sessionBookedFromBackend,
   onOpenBooking,
+  onOpenReceipt,
 }: {
   roomHold: RoomHoldApi
+  holdBelongsToSession: boolean
+  sessionBookedFromBackend: boolean
   /** Opens booking-modal.tsx — it derives its own step from roomHold.status
    * (BOOKED always lands on the done screen), so this takes no arguments. */
   onOpenBooking: () => void
+  /** Opens booking-receipt-modal.tsx for the ACTIVE session specifically —
+   * only ever reachable from the sessionBookedFromBackend branch below. */
+  onOpenReceipt: () => void
 }) {
   const { t } = useTranslation()
   // Local re-render tick so the mm:ss label visibly counts down even though
@@ -39,6 +67,28 @@ export default function HoldBanner({
     const id = setInterval(() => forceTick((n) => n + 1), 1000)
     return () => clearInterval(id)
   }, [roomHold.status])
+
+  if (!holdBelongsToSession) {
+    if (!sessionBookedFromBackend) return null
+    return (
+      <div
+        className="flex items-center gap-3 pl-3.5 pr-2.5 py-2 rounded-[14px] border"
+        style={{ background: 'var(--ok-soft)', borderColor: 'rgba(42,145,135,.35)' }}
+      >
+        <div className="text-[12.5px] font-[590] tracking-[-0.1px]" style={{ color: 'var(--ok-ink)' }}>
+          {t('holdBannerBookedTitle')}
+        </div>
+        <button
+          type="button"
+          onClick={onOpenReceipt}
+          className="px-[15px] py-2.5 rounded-xl border text-[12.5px] font-[530] cursor-pointer transition-colors duration-200 hover:bg-white"
+          style={{ borderColor: 'var(--stroke)', background: 'var(--g3)', color: 'var(--t1)' }}
+        >
+          {t('holdBannerViewBooking')}
+        </button>
+      </div>
+    )
+  }
 
   if (roomHold.status === 'HELD') {
     const warn = roomHold.holdLeftMs <= 5 * 60 * 1000

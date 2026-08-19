@@ -193,3 +193,93 @@ class TestSharedWithRespond:
         assert [o.name for o in payload.hotel_options] == [o["name"] for o in live["hotel_options"]]
         assert payload.intake is not None and payload.intake.destination == live["intake"].destination
         assert payload.intake.missing == live["intake"].missing
+
+
+class TestHotelListSurvivesAReload:
+    """The actual bug: `task_results[-1]` is whatever the session's LAST
+    action happened to be, and for anyone past the search step that is an
+    itinerary build, a Q&A answer, or a hotel pick -- almost never a search.
+    A reload restored against it and silently dropped the hotel list,
+    throwing the step navigator back to "Bước 1" even mid-trip.
+    `previous_hotel_options` (`hotel_node`'s durable record, deliberately
+    outliving `load_context`'s reset) is the fix.
+    """
+
+    def test_the_hotel_list_survives_a_later_itinerary_build(self, restored):
+        """The exact reported sequence: search, then build the itinerary
+        (which becomes the new task_results[-1] with no hotel_search_result
+        of its own), then reload."""
+        payload = restored(
+            state={
+                "travel_state": _travel_state(),
+                "trip_data": {"destination": "Đà Nẵng"},
+                "previous_hotel_options": _HOTEL_SEARCH_RESULT["options"],
+                "task_results": [
+                    {"worker": "hotel_node", "hotel_search_result": _HOTEL_SEARCH_RESULT},
+                    {"worker": "itinerary_node", "status": "ok"},  # no hotel_search_result
+                ],
+            }
+        )
+
+        assert [option.name for option in payload.hotel_options] == ["Mường Thanh", "Vinpearl"]
+        # trip_data outranks hotel_options in derive_stage -- the itinerary
+        # view wins, but the hotel list must still be there for the user to
+        # go back to via the step navigator.
+        assert payload.stage == "planned"
+
+    def test_the_hotel_list_survives_a_later_question(self, restored):
+        """A qa_node turn writes no hotel_search_result at all."""
+        payload = restored(
+            state={
+                "travel_state": _travel_state(),
+                "previous_hotel_options": _HOTEL_SEARCH_RESULT["options"],
+                "task_results": [
+                    {"worker": "hotel_node", "hotel_search_result": _HOTEL_SEARCH_RESULT},
+                    {"worker": "qa_node", "reply": "Khách sạn này có hồ bơi."},
+                ],
+            }
+        )
+
+        assert [option.name for option in payload.hotel_options] == ["Mường Thanh", "Vinpearl"]
+        assert payload.stage == "hotel_options"
+
+    def test_amenities_are_computed_from_the_restored_list_not_left_empty(self, restored):
+        """Same class of bug as the earlier `respond.py` fix: retained cards
+        with no catalog to resolve their tags against fall back to raw ids."""
+        payload = restored(
+            state={
+                "travel_state": _travel_state(),
+                "previous_hotel_options": [
+                    {"id": "h-1", "name": "Mường Thanh", "amenities": ["swimming_pool"]},
+                ],
+                "task_results": [{"worker": "itinerary_node", "status": "ok"}],
+            }
+        )
+
+        assert len(payload.hotel_options) == 1
+
+    def test_an_old_session_predating_this_field_still_falls_back_cleanly(self, restored):
+        """No `previous_hotel_options` at all (a session checkpointed before
+        this fix existed) must not crash -- it degrades to the old behavior."""
+        payload = restored(
+            state={
+                "travel_state": _travel_state(),
+                "task_results": [{"worker": "itinerary_node", "status": "ok"}],
+            }
+        )
+
+        assert payload.hotel_options == []
+
+    def test_a_failed_later_search_does_not_erase_the_last_good_list(self, restored):
+        """previous_hotel_options is only ever overwritten by hotel_node's
+        SUCCESS branch, so a later search that finds nothing must not wipe
+        out the last hotels the user actually saw."""
+        payload = restored(
+            state={
+                "travel_state": _travel_state(),
+                "previous_hotel_options": _HOTEL_SEARCH_RESULT["options"],
+                "task_results": [{"worker": "hotel_node", "status": "no_results", "reply": "..."}],
+            }
+        )
+
+        assert [option.name for option in payload.hotel_options] == ["Mường Thanh", "Vinpearl"]

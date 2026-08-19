@@ -8,15 +8,16 @@ import { translateAuthError } from './auth/translate-auth-error'
 import { useChatSession } from './hooks/use-chat-session'
 import { useIntakeForm } from './hooks/use-intake-form'
 import { usePanelResize } from './hooks/use-panel-resize'
-import { useRoomHold } from './hooks/use-room-hold'
+import { shouldReleaseHoldForDeletedSession, useRoomHold } from './hooks/use-room-hold'
 import { useSessionHistory } from './hooks/use-session-history'
 import { deriveStageView, type StageView } from './lib/derive-stage'
 import { isFieldFilled } from './lib/next-intake-field'
-import { consumeVnpayReturn } from './lib/vnpay-return'
+import { consumeVnpayReturn, isVnpayReturnPending } from './lib/vnpay-return'
 import type { HotelFilterData, HotelOption } from './types'
 import AppShell from './components/app-shell'
 import AuthPanel from './auth/auth-panel'
 import BookingModal from './components/booking-modal'
+import BookingReceiptModal from './components/booking-receipt-modal'
 import ConfirmDialog from './components/confirm-dialog'
 import SessionExpiredModal from './components/session-expired-modal'
 import BootSplash from './components/boot-splash'
@@ -173,7 +174,7 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   // reachable from BookingModal, which is mounted as a sibling of AppShell
   // for the same "escape any backdrop-filter ancestor" reason
   // profile-password-modal.tsx documents for its own portal.
-  const roomHold = useRoomHold()
+  const roomHold = useRoomHold(state.sessionId)
   const explicitSelectedHotelIndex = state.sessionId ? (selectedHotelIndexBySession[state.sessionId] ?? null) : null
   const selectedHotelIndex = useMemo(() => {
     if (explicitSelectedHotelIndex != null) return explicitSelectedHotelIndex
@@ -197,10 +198,52 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   }, [explicitSelectedHotelIndex, state.tripPlan?.hotel, roomHold.heldHotelId, retainedHotelOptions])
 
   const [bookingModalOpen, setBookingModalOpen] = useState(false)
+  // Separate from bookingModalOpen: opened via hold-banner.tsx's fallback
+  // "Xem đặt phòng" (the sessionBookedFromBackend branch, below) for a
+  // session whose booking is confirmed but no longer owns roomHold —
+  // booking-receipt-modal.tsx fetches its own data by session_id rather
+  // than reading roomHold, so it needs no data threaded in here.
+  const [receiptModalOpen, setReceiptModalOpen] = useState(false)
+  // roomHold is a single GLOBAL hold, not scoped per chat session (see
+  // use-room-hold.ts's module doc comment) — this is what keeps every
+  // hold-facing UI honest about whether the CURRENTLY ACTIVE session is
+  // actually the one that owns it. Without this check, switching the live
+  // hold to a different hotel from a different session (hotel-detail-
+  // panel.tsx's heldElsewhere -> switchHold flow) would leave the
+  // now-unrelated session's workspace still showing a countdown and an
+  // enabled "Đặt phòng" button for a hold it no longer owns. Same
+  // heldSessionId comparison handleDeleteSession already makes below (via
+  // shouldReleaseHoldForDeletedSession) — this is the display-side twin.
+  const holdBelongsToSession = roomHold.heldSessionId === state.sessionId
   const heldHotel =
     retainedHotelOptions.find((h) => h.id === roomHold.heldHotelId) ?? null
   const bookingHotelName = heldHotel?.name ?? state.tripPlan?.hotel?.name ?? ''
   const bookingHotelArea = heldHotel?.area_name ?? null
+
+  // Ref-to-latest-refresh, same "cache without an Effect" pattern as
+  // handleNewTripRef below: the consumeVnpayReturn effect right after this
+  // (deliberately [] deps, fires once on boot) is declared BEFORE
+  // useSessionHistory() below provides the real `refresh`, so it can't
+  // close over that value directly. Assigned right after useSessionHistory
+  // is called.
+  const refreshRef = useRef<() => void>(() => {})
+
+  // True only when the URL says the guest just landed back from VNPay
+  // (lazy init: a plain, non-consuming read of the same marker
+  // consumeVnpayReturn() below strips — see isVnpayReturnPending's own doc
+  // comment). Gates the render below: while true, PlannerApp shows a
+  // processing splash instead of the real UI, so the guest never sees the
+  // brief "back to intake" flash a full page reload causes here (state.
+  // sessionId/tripPlan both start out empty on every mount until
+  // use-chat-session.ts's async bootstrap resolves — see sessionResolved's
+  // own doc comment on BookingModal for the same underlying gap).
+  const [paymentReturnPending, setPaymentReturnPending] = useState(isVnpayReturnPending)
+  // Flips true once the payment-status poll below reaches ANY terminal
+  // outcome (paid, failed/cancelled, or its own ~20s timeout — see
+  // pollUntilSettled). Session bootstrap resolving alone isn't enough to
+  // reveal the app: the guest came back specifically to see the payment
+  // outcome, so the splash should outlast whichever of the two is slower.
+  const [paymentPollDone, setPaymentPollDone] = useState(false)
 
   // Runs once on boot: the guest may have just been bounced back from
   // VNPay's hosted payment page (plan 260818-vnpay-payment-and-email-
@@ -215,7 +258,10 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   useEffect(() => {
     if (!consumeVnpayReturn()) return
     const paymentId = roomHold.paymentId
-    if (!paymentId) return
+    if (!paymentId) {
+      setPaymentPollDone(true)
+      return
+    }
     let cancelled = false
     const guestRef = roomHold.guestRef
 
@@ -228,6 +274,14 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
           if (payment.status === 'PAID') {
             roomHold.markBooked()
             setBookingModalOpen(true)
+            // sessionBookedFromBackend's source (the sessions list) only
+            // ever refetches on mount or when a chat turn finishes — a
+            // payment completing is neither, so without this the session
+            // being paid right now wouldn't read back as "paid" from a
+            // DIFFERENT session's workspace until some unrelated refetch
+            // happened to occur later.
+            refreshRef.current()
+            setPaymentPollDone(true)
             return
           }
           if (payment.status === 'FAILED' || payment.status === 'CANCELLED') {
@@ -235,6 +289,7 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
             // reopening the modal just lands back on the Payment step so
             // the guest can try again.
             setBookingModalOpen(true)
+            setPaymentPollDone(true)
             return
           }
         } catch {
@@ -246,7 +301,10 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
       // IPN still hasn't landed after ~20s — open the modal anyway rather
       // than leave the guest on a blank page; GET /payments/{id} is cheap
       // to check again from there once they notice nothing happened.
-      if (!cancelled) setBookingModalOpen(true)
+      if (!cancelled) {
+        setBookingModalOpen(true)
+        setPaymentPollDone(true)
+      }
     }
 
     void pollUntilSettled()
@@ -255,6 +313,26 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Reveals the app once BOTH the session has actually resolved
+  // (state.sessionId past its initial null — see sessionResolved's own doc
+  // comment on BookingModal for why every mount starts there) AND the
+  // payment poll above reached a terminal outcome — whichever is slower
+  // gates the other.
+  useEffect(() => {
+    if (!paymentReturnPending) return
+    if (paymentPollDone && state.sessionId != null) setPaymentReturnPending(false)
+  }, [paymentReturnPending, paymentPollDone, state.sessionId])
+
+  // Safety ceiling: the payment poll above always resolves paymentPollDone
+  // within ~20s no matter what, but session bootstrap has no such ceiling
+  // of its own — this is the "never leave the guest stuck" backstop if
+  // that somehow hangs, matching this same file's own posture on the poll.
+  useEffect(() => {
+    if (!paymentReturnPending) return
+    const timeout = setTimeout(() => setPaymentReturnPending(false), 15_000)
+    return () => clearTimeout(timeout)
+  }, [paymentReturnPending])
 
   useEffect(() => {
     if (!state.sessionId || state.hotelOptions.length === 0) return
@@ -299,6 +377,20 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   }
 
   const { sessions, removeLocal, refresh } = useSessionHistory(state.sessionId, state.pending)
+  // Backend-sourced twin of holdBelongsToSession: once a booking is paid,
+  // it must keep reading as "đã đặt phòng" from THIS session's own
+  // workspace forever after — even once roomHold (the single global hold)
+  // has moved on to a different session and holdBelongsToSession goes
+  // false (known limitation from the previous fix). Sourced from the same
+  // per-session status the sidebar badge already shows
+  // (session-status-badge.ts/session_store.py's booking_states_for_
+  // sessions), not from roomHold, so it survives roomHold being
+  // overwritten. roomHold.status === 'BOOKED' (while holdBelongsToSession)
+  // stays the PRIMARY signal for the session that just paid — instant, no
+  // fetch lag — this is only consulted as the fallback for every other
+  // session (see hold-banner.tsx).
+  const sessionBookedFromBackend = sessions?.find((s) => s.session_id === state.sessionId)?.status === 'paid'
+  refreshRef.current = refresh
 
   // restoreSession() has no in-flight signal of its own (session-client.ts's
   // fetch just resolves or doesn't) — this is purely a UI-visible "which row
@@ -393,6 +485,18 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   // restore() itself fails (that session is gone too), startNew() always
   // lands on a real session instead of leaving state pointed at nothing.
   async function handleDeleteSession(sessionId: string) {
+    // Deleting the chat that created the CURRENT live hold must release it
+    // too — otherwise the room stays reserved with no UI left anywhere to
+    // show or release it (roomHold is a single global hold per tab; only
+    // one session can ever be the one holding it — see use-room-hold.ts's
+    // heldSessionId). Only HELD, never BOOKED: a paid/confirmed booking is
+    // a real transaction that must survive its chat session being deleted
+    // (bookings.session_id is ON DELETE SET NULL, not CASCADE, for exactly
+    // this reason) — deletion is already behind conversation-list.tsx's own
+    // confirm dialog, so no separate hold-specific prompt here.
+    if (shouldReleaseHoldForDeletedSession(roomHold.status, roomHold.heldSessionId, sessionId)) {
+      await roomHold.releaseHold()
+    }
     const wasActive = sessionId === state.sessionId
     const remaining = (sessions ?? []).filter((s) => s.session_id !== sessionId)
     removeLocal(sessionId)
@@ -405,6 +509,15 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
     if (!restored) await startNew()
     resetIntakeForm()
     refresh()
+  }
+
+  // Hides the session-bootstrap flash specifically for the VNPay-return
+  // case (paymentReturnPending's own doc comment above) — every hook above
+  // this point still runs normally either way (roomHold's markBooked()/
+  // setPendingPayment side effects must fire regardless of what's on
+  // screen), only the JSX below is swapped.
+  if (paymentReturnPending) {
+    return <BootSplash messageKey="paymentReturnProcessing" />
   }
 
   return (
@@ -438,17 +551,27 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
         restoringSessionId={restoringSessionId}
         onOpenAuthPanel={onOpenAuthPanel}
         roomHold={roomHold}
+        holdBelongsToSession={holdBelongsToSession}
+        sessionBookedFromBackend={sessionBookedFromBackend}
         onOpenBooking={() => setBookingModalOpen(true)}
+        onOpenReceipt={() => setReceiptModalOpen(true)}
       />
       <BookingModal
         open={bookingModalOpen}
         onClose={() => setBookingModalOpen(false)}
         roomHold={roomHold}
+        holdBelongsToSession={holdBelongsToSession}
+        sessionResolved={state.sessionId != null}
         hotelName={bookingHotelName}
         hotelArea={bookingHotelArea}
         checkInDate={state.intake?.start_date ?? null}
         checkOutDate={state.intake?.end_date ?? null}
         guestsLabel={state.intake?.people ?? null}
+      />
+      <BookingReceiptModal
+        open={receiptModalOpen}
+        onClose={() => setReceiptModalOpen(false)}
+        sessionId={state.sessionId}
       />
       <ConfirmDialog
         open={confirmChangeHotelOpen}

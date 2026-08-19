@@ -167,6 +167,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/chat/{session_id}/booking-receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Booking Receipt
+         * @description "Reopen a past session's booking" (plan 260818-vnpay-payment-and-
+         *     email-confirmation's addendum 4) — roomHold, the frontend's only other
+         *     source for booking details, is a single global hold that only ever
+         *     reflects whichever session most recently held/paid (use-room-hold.ts's
+         *     module doc comment), so a guest revisiting an OLDER paid session needs
+         *     this real, independent lookup instead. Ownership is the session's own
+         *     (same `_owned_session_or_404` every other /chat/{session_id}/... route
+         *     uses) — not `temporary_user_ref`, which a guest checkout session has no
+         *     reliable way to supply for a session that isn't the currently active
+         *     one. 404 both when the session itself doesn't exist/isn't the caller's,
+         *     and when it exists but has no CONFIRMED booking (never held anything,
+         *     hold expired unpaid, or payment failed) — same "don't distinguish who
+         *     is asking" posture booking_service's own 404s already use.
+         */
+        get: operations["get_booking_receipt_api_v1_chat__session_id__booking_receipt_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chat/session": {
         parameters: {
             query?: never;
@@ -605,6 +637,55 @@ export interface components {
             /** Currency */
             currency?: string | null;
         };
+        /**
+         * BookingReceiptPayload
+         * @description Read-only "reopen a past session's booking" receipt (plan
+         *     260818-vnpay-payment-and-email-confirmation's addendum 4) — assembled
+         *     fresh from bookings/rooms/hotels/payments by session_id, deliberately
+         *     independent of the frontend's roomHold (which only ever reflects
+         *     whichever session most recently held/paid — see use-room-hold.ts's
+         *     module doc comment).
+         */
+        BookingReceiptPayload: {
+            /** Payment Id */
+            payment_id?: string | null;
+            /** Hotel Name */
+            hotel_name?: string | null;
+            /** Hotel Address */
+            hotel_address?: string | null;
+            /**
+             * Check In Date
+             * Format: date
+             */
+            check_in_date: string;
+            /**
+             * Check Out Date
+             * Format: date
+             */
+            check_out_date: string;
+            /** Currency */
+            currency: string;
+            /** Total Amount */
+            total_amount: string;
+            /** Paid At */
+            paid_at?: string | null;
+            /** Rooms */
+            rooms: components["schemas"]["BookingReceiptRoomPayload"][];
+        };
+        /** BookingReceiptRoomPayload */
+        BookingReceiptRoomPayload: {
+            /**
+             * Room Id
+             * Format: uuid
+             */
+            room_id: string;
+            /** Name */
+            name: string;
+            /** Room Count */
+            room_count: number;
+            /** Total Amount */
+            total_amount?: string | null;
+        };
         /** BookingReservationRequest */
         BookingReservationRequest: {
             /**
@@ -645,6 +726,8 @@ export interface components {
             total_amount?: number | string | null;
             /** Currency */
             currency?: string | null;
+            /** Session Id */
+            session_id?: string | null;
         };
         /** ChangeHotelRequest */
         ChangeHotelRequest: {
@@ -1223,7 +1306,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "draft" | "completed";
+            status: "draft" | "completed" | "holding" | "paid";
             /** Created At */
             created_at: string | null;
             /** Updated At */
@@ -1327,6 +1410,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
     };
     responses: never;
@@ -1600,6 +1687,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PaymentPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_booking_receipt_api_v1_chat__session_id__booking_receipt_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingReceiptPayload"];
                 };
             };
             /** @description Validation Error */

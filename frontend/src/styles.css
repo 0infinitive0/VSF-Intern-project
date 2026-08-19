@@ -106,6 +106,13 @@
   --color-error-ink: var(--error-ink);
   --color-error-container: var(--error-container);
   --color-on-error-container: var(--on-error-container);
+  /* Sidebar status badge's "holding"/"paid" states (session-status-badge.ts,
+     conversation-list.tsx) — 2 new hues alongside the existing
+     success/warning/error trio, none of which fit "in progress" or "paid". */
+  --color-holding-soft: var(--holding-soft);
+  --color-holding-ink: var(--holding-ink);
+  --color-paid-soft: var(--paid-soft);
+  --color-paid-ink: var(--paid-ink);
 }
 
 @theme {
@@ -154,6 +161,14 @@
   --error-ink: #8c3f4d;
   --error-container: rgba(192, 94, 112, 0.14);
   --on-error-container: #8c3f4d;
+
+  /* Holding: reuses the app's existing accent-blue hue ("Giữ phòng" CTA
+     gradient, hold-banner.tsx) for "in progress". Paid: a 4th hue (violet),
+     distinct from success/warning/error/holding. */
+  --holding-soft: rgba(58, 115, 222, 0.14);
+  --holding-ink: #2c5fc9;
+  --paid-soft: rgba(124, 58, 237, 0.14);
+  --paid-ink: #6d28d9;
 }
 
 body[data-theme="dark"] {
@@ -174,6 +189,11 @@ body[data-theme="dark"] {
   --error-ink: #f2b8c2;
   --error-container: rgba(220, 130, 145, 0.2);
   --on-error-container: #f2b8c2;
+
+  --holding-soft: rgba(108, 155, 240, 0.2);
+  --holding-ink: #a9c6fa;
+  --paid-soft: rgba(167, 139, 250, 0.22);
+  --paid-ink: #d8ccfb;
 }
 
 body {

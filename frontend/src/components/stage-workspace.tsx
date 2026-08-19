@@ -54,14 +54,26 @@ export default function StageWorkspace({
   focusMode,
   theme,
   roomHold,
+  holdBelongsToSession,
+  sessionBookedFromBackend,
   onOpenBooking,
+  onOpenReceipt,
 }: {
   state: ChatState
   focusMode: FocusModeApi
   theme: Theme
   /** Real room hold (use-room-hold.ts) — drives the header's hold banner. */
   roomHold: RoomHoldApi
+  /** Whether roomHold's current hold actually belongs to THIS workspace's
+   * session — see app-shell.tsx's doc comment on the same prop. Passed
+   * straight through to HoldBanner, which is the one place that decides
+   * whether to render anything hold-related at all. */
+  holdBelongsToSession: boolean
+  /** See app-shell.tsx's doc comment on the same prop. */
+  sessionBookedFromBackend: boolean
   onOpenBooking: () => void
+  /** See app-shell.tsx's doc comment on the same prop. */
+  onOpenReceipt: () => void
 }) {
   const { t, i18n } = useTranslation()
   const tripPlan = state.tripPlan
@@ -252,7 +264,13 @@ export default function StageWorkspace({
           {meta && <div className="text-[11.5px] text-on-surface-muted font-normal truncate">{meta}</div>}
         </div>
         <div className="flex-1" />
-        <HoldBanner roomHold={roomHold} onOpenBooking={onOpenBooking} />
+        <HoldBanner
+          roomHold={roomHold}
+          holdBelongsToSession={holdBelongsToSession}
+          sessionBookedFromBackend={sessionBookedFromBackend}
+          onOpenBooking={onOpenBooking}
+          onOpenReceipt={onOpenReceipt}
+        />
       </div>
 
       {/* Content row — itinerary column | map | detail panel (focus). */}

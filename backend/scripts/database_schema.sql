@@ -290,6 +290,7 @@ CREATE TABLE tours (
 CREATE TABLE bookings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     temporary_user_ref TEXT,
+    session_id VARCHAR(255) REFERENCES sessions(session_id) ON DELETE SET NULL, -- Phiên chat đã tạo hold này, thêm ở migration 20260819 (badge sidebar)
     room_id UUID NOT NULL REFERENCES rooms(id) ON DELETE RESTRICT,
     check_in_date DATE NOT NULL,
     check_in_time TIME,
@@ -317,9 +318,14 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE bookings TO service_role;
 
 -- create_booking_reservation / confirm_booking_reservation / cancel_booking:
 -- see scripts/migrations/20260818_add_booking_reservation_rpcs.sql for the
--- full bodies + design notes (advisory lock, dynamic availability). Not
--- duplicated here to avoid two sources of truth drifting apart; that
--- migration is the canonical copy.
+-- full bodies + design notes (advisory lock, dynamic availability).
+-- create_booking_reservation was superseded by
+-- scripts/migrations/20260819_add_guest_single_hotel_hold_guard.sql (adds a
+-- second guest-scoped advisory lock, a cross-hotel hold conflict guard, and
+-- p_session_id/bookings.session_id) — that file is now the canonical copy
+-- for THIS function specifically; confirm_booking_reservation/cancel_booking
+-- are still exactly as defined in the 20260818 migration, unchanged. Not
+-- duplicated here to avoid two sources of truth drifting apart.
 
 -- Payment records for the VNPay integration (plan
 -- 260818-vnpay-payment-and-email-confirmation) — see

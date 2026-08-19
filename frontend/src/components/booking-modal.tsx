@@ -76,6 +76,8 @@ export default function BookingModal({
   open,
   onClose,
   roomHold,
+  holdBelongsToSession,
+  sessionResolved,
   hotelName,
   hotelArea,
   checkInDate,
@@ -85,6 +87,30 @@ export default function BookingModal({
   open: boolean
   onClose: () => void
   roomHold: RoomHoldApi
+  /** Whether `roomHold`'s current hold/booking was created by the CURRENTLY
+   * ACTIVE chat session (App.tsx: `roomHold.heldSessionId === state.
+   * sessionId`) — roomHold is a single global hold, not scoped per session
+   * (see use-room-hold.ts's module doc comment), so this is the only thing
+   * standing between this modal and paying for/viewing the wrong hotel's
+   * booking. hold-banner.tsx's own copy of this check already keeps its
+   * "Đặt phòng" button from ever opening this modal for a hold that isn't
+   * the active session's — the effect below is the narrower safety net for
+   * the rarer case where the modal was ALREADY open when the hold moved to
+   * a different session out from under it. */
+  holdBelongsToSession: boolean
+  /** True once `state.sessionId` (App.tsx) has resolved past its initial
+   * `null` — use-chat-session.ts's bootstrap is async (a real network
+   * round trip), so `state.sessionId` is briefly null on EVERY mount,
+   * including right after the guest returns from VNPay's redirect (a full
+   * page reload — everything here remounts, see App.tsx's
+   * consumeVnpayReturn). Without gating the auto-close effect below on
+   * this, `holdBelongsToSession` reads as false during that transient
+   * window (heldSessionId, a real id, can never equal null) and the
+   * "thanh toán thành công" modal consumeVnpayReturn just opened would
+   * close itself before the bootstrap even finishes — the guest lands back
+   * on the app with no success modal at all, even though the payment (and
+   * the session it belongs to) were both actually fine. */
+  sessionResolved: boolean
   hotelName: string
   hotelArea?: string | null
   checkInDate: string | null
@@ -114,6 +140,10 @@ export default function BookingModal({
     const timer = setTimeout(() => setRender(false), CLOSE_TRANSITION_MS)
     return () => clearTimeout(timer)
   }, [open])
+
+  useEffect(() => {
+    if (open && sessionResolved && !holdBelongsToSession) onClose()
+  }, [open, sessionResolved, holdBelongsToSession, onClose])
 
   const [step, setStep] = useState<'guest' | 'pay'>('guest')
   const [guestTouched, setGuestTouched] = useState(false)
@@ -216,10 +246,10 @@ export default function BookingModal({
       label,
       n: completed ? '✓' : String(idx),
       bg: completed ? 'var(--ok)' : active ? 'var(--btn)' : 'var(--fill2)',
-      fg: completed ? 'var(--on-acc)' : active ? 'var(--btn-fg)' : 'var(--t4)',
+      fg: completed ? 'var(--on-acc)' : active ? 'var(--btn-fg)' : 'var(--t2)',
       ring: active ? '0 8px 20px -8px rgb(var(--shadow-rgb) / 0.55)' : 'none',
-      labelColor: active ? 'var(--t1)' : 'var(--t3)',
-      weight: active ? 590 : 450,
+      labelColor: active ? 'var(--t1)' : 'var(--t2)',
+      weight: active ? 590 : 500,
       lineBg: completed ? 'var(--ok)' : 'var(--stroke)',
     }
   })
@@ -258,7 +288,7 @@ export default function BookingModal({
     <div
       className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-4 py-6"
       style={{
-        background: 'rgba(12,18,30,.4)',
+        background: 'rgba(12,18,30,.5)',
         backdropFilter: 'blur(10px)',
         WebkitBackdropFilter: 'blur(10px)',
         opacity: visible ? 1 : 0,
@@ -272,7 +302,7 @@ export default function BookingModal({
       role="dialog"
       aria-modal="true"
       aria-label={t('checkoutTitle')}
-      className="glass-panel relative z-10 w-full max-w-[1040px] rounded-[28px] overflow-hidden"
+      className="glass-panel relative z-10 w-full max-w-[1040px] rounded-[28px] overflow-hidden text-on-surface"
       style={{
         opacity: visible ? 1 : 0,
         transform: visible ? 'none' : 'translateY(18px) scale(.98)',
@@ -291,7 +321,7 @@ export default function BookingModal({
           <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted whitespace-nowrap">
             V‑OTA · {t('checkoutTitle')}
           </div>
-          <div className="text-[14px] font-[590] tracking-[-0.25px] truncate">{hotelName}</div>
+          <div className="text-[14px] font-[590] tracking-[-0.25px] text-on-surface truncate">{hotelName}</div>
         </div>
         <div className="flex-1" />
         {effectiveStep !== 'done' && roomHold.status === 'HELD' && (
@@ -305,7 +335,7 @@ export default function BookingModal({
             <span className="text-[9.5px] font-[590] tracking-[0.09em] uppercase text-on-surface-muted">
               {t('holdBannerHeldLabel')}
             </span>
-            <span className="text-[14px] font-[590] tabular-nums">{mmss(roomHold.holdLeftMs)}</span>
+            <span className="text-[14px] font-[590] tabular-nums text-on-surface">{mmss(roomHold.holdLeftMs)}</span>
           </div>
         )}
         <button
@@ -320,12 +350,7 @@ export default function BookingModal({
       </header>
 
       <div className="relative px-5" style={{ paddingTop: 20, paddingBottom: 24 }}>
-        {/* Step indicator — circles + eyebrow/label, connecting lines stretch
-            (flex-1) to fill the row edge-to-edge instead of a fixed width,
-            so 3 short steps don't leave dead space on both sides. A
-            completed step is a real button — clicking "Thông tin khách"
-            while on "Thanh toán" goes back to it, replacing the header's old
-            separate "← Quay lại" button (user decision 260818). */}
+        {/* Step indicator — circles + eyebrow/label */}
         <div
           className="flex items-center mb-[18px] px-5 py-3.5 rounded-[22px]"
           style={{
@@ -354,7 +379,7 @@ export default function BookingModal({
                     {st.n}
                   </div>
                   <div className="min-w-0">
-                    <div className="text-[9px] font-[590] tracking-[0.1em] uppercase" style={{ color: 'var(--t4)' }}>
+                    <div className="text-[9px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
                       {t('checkoutStepEyebrow', { n: i + 1 })}
                     </div>
                     <div
@@ -391,7 +416,7 @@ export default function BookingModal({
                 }}
               >
                 <div>
-                  <div className="text-[17px] font-[590] tracking-[-0.4px]">{t('guestTitle')}</div>
+                  <div className="text-[17px] font-[590] tracking-[-0.4px] text-on-surface">{t('guestTitle')}</div>
                   <div className="text-[12.5px] text-on-surface-muted mt-1">{t('guestSub')}</div>
                 </div>
                 <div className="grid sm:grid-cols-2 gap-4">
@@ -432,7 +457,7 @@ export default function BookingModal({
                       value={guestNote}
                       onChange={(e) => setGuestNote(e.target.value)}
                       rows={2}
-                      className="rounded-[14px] border bg-glass-2 px-3.5 py-2.5 text-[14px] text-on-surface outline-none transition-[box-shadow,background-color,border-color] duration-200 focus:border-primary focus:bg-glass-3 resize-y"
+                      className="rounded-[14px] border bg-glass-2 px-3.5 py-2.5 text-[14px] text-on-surface outline-none transition-[box-shadow,background-color,border-color] duration-200 focus:border-primary focus:bg-glass-3 placeholder:text-on-surface-muted resize-y"
                       style={{ borderColor: 'var(--stroke)' }}
                     />
                   </div>
@@ -446,8 +471,12 @@ export default function BookingModal({
                   <button
                     type="button"
                     onClick={goPay}
-                    className="w-full h-[50px] rounded-2xl border-none text-[14px] font-[590] tracking-[-0.12px] cursor-pointer transition-transform duration-200 active:scale-[0.99]"
-                    style={{ background: 'var(--btn)', color: 'var(--btn-fg)' }}
+                    className="w-full h-[50px] rounded-2xl border-none text-[14px] font-[590] tracking-[-0.12px] cursor-pointer transition-all duration-200 hover:opacity-95 active:scale-[0.99]"
+                    style={{
+                      background: 'linear-gradient(135deg,#3A73DE,#2C5FC9)',
+                      color: 'var(--on-acc)',
+                      boxShadow: '0 14px 30px -14px rgba(44,95,201,.7)',
+                    }}
                   >
                     {t('guestNext')}
                   </button>
@@ -468,7 +497,7 @@ export default function BookingModal({
                 }}
               >
                 <div>
-                  <div className="text-[17px] font-[590] tracking-[-0.4px]">{t('paymentTitle')}</div>
+                  <div className="text-[17px] font-[590] tracking-[-0.4px] text-on-surface">{t('paymentTitle')}</div>
                   <div className="text-[12.5px] text-on-surface-muted mt-1">{t('paymentSub')}</div>
                 </div>
 
@@ -500,7 +529,7 @@ export default function BookingModal({
                   type="button"
                   disabled={creatingPayment}
                   onClick={() => void handlePayWithVnpay()}
-                  className="w-full p-[14px] rounded-2xl border-none text-[13.5px] font-[590] tracking-[-0.12px] cursor-pointer transition-transform duration-200 active:not-disabled:scale-[0.99] disabled:cursor-progress"
+                  className="w-full p-[14px] rounded-2xl border-none text-[13.5px] font-[590] tracking-[-0.12px] cursor-pointer transition-all duration-200 hover:opacity-95 active:not-disabled:scale-[0.99] disabled:cursor-progress"
                   style={{
                     background: 'linear-gradient(135deg,#3A73DE,#2C5FC9)',
                     color: 'var(--on-acc)',
@@ -519,7 +548,7 @@ export default function BookingModal({
                       >
                         ✓
                       </span>
-                      <span className="text-[11px] text-on-surface-muted">{label}</span>
+                      <span className="text-[11px] text-on-surface-variant">{label}</span>
                     </div>
                   ))}
                 </div>
@@ -550,16 +579,16 @@ export default function BookingModal({
                   ✓
                 </div>
                 <div>
-                  <div className="text-[24px] font-[590] tracking-[-0.6px]">{t('checkoutDoneTitle')}</div>
+                  <div className="text-[24px] font-[590] tracking-[-0.6px] text-on-surface">{t('checkoutDoneTitle')}</div>
                   <div className="text-[13px] text-on-surface-muted mt-1">{t('checkoutDoneSub')}</div>
                 </div>
                 <div className="px-6 py-3.5 rounded-2xl bg-glass-2 border border-edge">
                   <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
                     {t('checkoutDoneCode')}
                   </div>
-                  <div className="text-[20px] font-[590] tracking-[0.5px] tabular-nums mt-0.5">{bookedCode}</div>
+                  <div className="text-[20px] font-[590] tracking-[0.5px] tabular-nums mt-0.5 text-on-surface">{bookedCode}</div>
                 </div>
-                <div className="text-[14px] font-[590] tracking-[-0.25px]">{hotelName}</div>
+                <div className="text-[14px] font-[590] tracking-[-0.25px] text-on-surface">{hotelName}</div>
                 <div className="grid grid-cols-2 gap-2.5 w-full max-w-[380px]">
                   {[
                     { label: t('policyCheckIn'), value: ci ? `${ci.day} ${ci.month}` : '—' },
@@ -571,7 +600,7 @@ export default function BookingModal({
                       <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
                         {tile.label}
                       </div>
-                      <div className="text-[13.5px] font-[590] tracking-[-0.2px] mt-0.5">{tile.value}</div>
+                      <div className="text-[13.5px] font-[590] tracking-[-0.2px] mt-0.5 text-on-surface">{tile.value}</div>
                     </div>
                   ))}
                 </div>
@@ -579,7 +608,11 @@ export default function BookingModal({
                   type="button"
                   onClick={onClose}
                   className="mt-1 px-5.5 py-3 rounded-2xl border-none text-[13px] font-[590] cursor-pointer transition-transform duration-200 active:scale-[0.98]"
-                  style={{ background: 'var(--btn)', color: 'var(--btn-fg)' }}
+                  style={{
+                    background: 'linear-gradient(135deg,#3A73DE,#2C5FC9)',
+                    color: 'var(--on-acc)',
+                    boxShadow: '0 10px 24px -10px rgba(44,95,201,.6)',
+                  }}
                 >
                   {t('checkoutDoneBackTrip')}
                 </button>
@@ -611,7 +644,7 @@ export default function BookingModal({
                     aria-hidden="true"
                   />
                   <div className="absolute left-[18px] right-[18px] bottom-3">
-                    <div className="text-[16px] font-[590] tracking-[-0.35px] truncate">{hotelName}</div>
+                    <div className="text-[16px] font-[590] tracking-[-0.35px] truncate text-on-surface">{hotelName}</div>
                     {hotelAddress && (
                       <div className="text-[11.5px] font-[450] text-on-surface-variant mt-px truncate">
                         {hotelAddress}
@@ -624,7 +657,7 @@ export default function BookingModal({
                   {(ci || co) && (
                     <div className="flex items-center gap-3">
                       <div className="text-center">
-                        <div className="text-[20px] font-[590] tracking-[-0.5px] leading-none">{ci?.day ?? '—'}</div>
+                        <div className="text-[20px] font-[590] tracking-[-0.5px] leading-none text-on-surface">{ci?.day ?? '—'}</div>
                         <div className="text-[9px] font-[590] tracking-[0.09em] text-on-surface-muted mt-[3px]">
                           {ci?.month ?? ''}
                         </div>
@@ -636,7 +669,7 @@ export default function BookingModal({
                         <div className="w-full h-px" style={{ background: 'var(--stroke)' }} />
                       </div>
                       <div className="text-center">
-                        <div className="text-[20px] font-[590] tracking-[-0.5px] leading-none">{co?.day ?? '—'}</div>
+                        <div className="text-[20px] font-[590] tracking-[-0.5px] leading-none text-on-surface">{co?.day ?? '—'}</div>
                         <div className="text-[9px] font-[590] tracking-[0.09em] text-on-surface-muted mt-[3px]">
                           {co?.month ?? ''}
                         </div>
@@ -678,17 +711,17 @@ export default function BookingModal({
                     <div className="flex flex-col gap-1.5 pt-3 border-t border-line">
                       <div className="flex justify-between text-[12.5px]">
                         <span className="text-on-surface-variant">{t('checkoutSubtotalLabel')}</span>
-                        <span className="font-[450] tabular-nums">{formatCurrency(subtotal, i18n.language)}</span>
+                        <span className="font-[450] tabular-nums text-on-surface">{formatCurrency(subtotal, i18n.language)}</span>
                       </div>
                       <div className="flex justify-between text-[12.5px]">
                         <span className="text-on-surface-variant">{t('checkoutTaxesLabel')}</span>
-                        <span className="font-[450] tabular-nums">{formatCurrency(tax, i18n.language)}</span>
+                        <span className="font-[450] tabular-nums text-on-surface">{formatCurrency(tax, i18n.language)}</span>
                       </div>
                       <div className="flex items-baseline justify-between pt-[11px] border-t border-line">
                         <span className="text-[12px] font-[590] tracking-[0.06em] uppercase text-on-surface-muted">
                           {t('holdTotal')}
                         </span>
-                        <span className="text-[19px] font-[590] tracking-[-0.5px] tabular-nums">
+                        <span className="text-[19px] font-[590] tracking-[-0.5px] tabular-nums text-on-surface">
                           {formatCurrency(grandTotal, i18n.language)}
                         </span>
                       </div>
