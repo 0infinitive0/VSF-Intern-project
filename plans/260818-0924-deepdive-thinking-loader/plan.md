@@ -8,7 +8,7 @@ tags: [streaming, sse, ux, frontend, i18n, supabase]
 created: 2026-08-18
 updated: 2026-08-18
 blockedBy: []
-blocks: []
+blocks: [260819-0931-responses-api-migration-opt-in-with-reasoning-summary]
 ---
 
 # DeepDive thinking loader
