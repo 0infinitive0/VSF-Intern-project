@@ -25,10 +25,13 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from src.agents.graph.routing import WORKER_ORDER, is_impossible, needs_trip_first
+from src.agents.graph.contracts import CONTRACTS
 from src.agents.graph.prompts import build_supervisor_prompt
+from src.agents.graph.routing import WORKER_ORDER, is_impossible, needs_trip_first
 from src.agents.graph.state import TravelGraphState, build_manifest
+from src.i18n import t
 from src.services.llm import get_fast_llm
+from src.services.trip_finalize import is_trip_finalized
 
 #: `extract_patch`'s label for a message that states nothing. Kept in sync
 #: with `nodes/extract_patch.py`'s constant of the same name by the shared
@@ -146,6 +149,38 @@ def _redirect_to_hotel_node(state: TravelGraphState) -> dict[str, Any]:
     return {**_delegate("hotel_node", "needs_trip_first", state), "pending_tasks": pending}
 
 
+def _locked_turn_reply(state: TravelGraphState, blocked: list[str]) -> dict[str, Any]:
+    """The turn wanted a worker that writes to a finalized trip. Refuse in
+    words, the same way `scope_guard` refuses a jailbreak attempt, rather
+    than silently dropping the work and falling through to `respond`'s
+    generic acknowledgement (which would tell the user something changed
+    when nothing did).
+
+    Only the writing workers named in `blocked` are dropped from
+    `pending_tasks` — `qa_node` never reaches this function with anything
+    pending (its turns carry no `pending_tasks` entry at all, see
+    `WORKFLOW_TO_WORKER`), so a read-only question in the same turn a write
+    was attempted still gets answered, not silently absorbed here.
+    """
+    language = state.get("language") or "vi"
+    reply = t(
+        "Lịch trình này đã được hoàn tất và khoá lại nên mình không thể chỉnh sửa được nữa. "
+        "Bạn vẫn có thể hỏi mình về chuyến đi, hoặc nhân bản thành một chuyến đi mới nếu muốn thay đổi.",
+        language,
+    )
+    task_results = [
+        *(state.get("task_results") or []),
+        {"worker": "supervisor", "status": "locked", "reply": reply},
+    ]
+    return {
+        "next_worker": "respond",
+        "routing_source": "trip_finalized",
+        "routing_reasoning": "",
+        "task_results": task_results,
+        "pending_tasks": [worker for worker in (state.get("pending_tasks") or []) if worker not in blocked],
+    }
+
+
 def supervisor(state: TravelGraphState) -> dict[str, Any]:
     """Delegation only. Completion is decided by `all_tasks_done` on the edge."""
     # A non-empty `rebuild_day_queue` means `itinerary_node` already started
@@ -187,6 +222,19 @@ def supervisor(state: TravelGraphState) -> dict[str, Any]:
 
     if state.get("supervisor_iterations", 0) >= MAX_SUPERVISOR_ITERATIONS:
         return {"next_worker": "respond", "routing_source": "max_iterations", "routing_reasoning": ""}
+
+    # A finalized trip is locked: refuse whichever writer this turn wanted,
+    # in words, before the fast/LLM paths below get a chance to run one.
+    # Checked ahead of `_eligible_workers` (not via `_IMPOSSIBLE`) because
+    # marking a worker impossible only removes it from the eligible set --
+    # nothing then fills `task_results` with a reply, and `respond` would
+    # fall through to its generic "Đã cập nhật thông tin chuyến đi" ack for a
+    # turn that changed nothing (see that node's ERROR-logged safety net).
+    pending_writers = [
+        worker for worker in (state.get("pending_tasks") or []) if CONTRACTS.get(worker, CONTRACTS["qa_node"]).writes
+    ]
+    if pending_writers and is_trip_finalized(state.get("trip_data")):
+        return _locked_turn_reply(state, pending_writers)
 
     workers = _eligible_workers(state)
 

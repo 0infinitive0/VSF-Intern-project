@@ -447,6 +447,62 @@
         }
       }
     },
+    "/api/v1/chat/{session_id}/finalize": {
+      "post": {
+        "summary": "Finalize Trip",
+        "description": "Lock a session's itinerary and save it as a reusable, embedded\ntemplate — the user-facing entry point for the previously-orphaned\n`finalize_trip_data` (see `services/trip_finalize.py`'s module\ndocstring: nothing called it before this route existed).\n\nPayment-gated by product decision: 409 unless the session already has a\nCONFIRMED booking, checked the same way `get_booking_receipt` above\ndoes — `get_booking_receipt_for_session` returning non-None IS \"this\nsession is paid,\" so no second query/table is needed to express that.\nAlso 409 for no trip plan yet, or an itinerary already `Finalized`\n(`finalize_session_trip` raises `FinalizeTripError` for both — a\ngenuine double-submit is a no-op success at the store layer, but this\nroute surfaces it as 409 so the frontend never shows a misleading\n\"saving\" state for a click that changes nothing).\n\nWrites the mutated `trip_data` back into checkpointed graph state via\n`update_state` rather than running a graph turn — finalizing carries no\nuser chat text and touches no other turn-scoped field, so invoking the\nfull `load_context -> ... -> respond` pipeline for it would be pure\noverhead. `_persist_turn` (this module, below) is reused verbatim for\nthe checkpoint write so `ui_summary.status` recomputes exactly the way\nevery other mutating route already achieves it.",
+        "operationId": "finalize_trip_api_v1_chat__session_id__finalize_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinalizeTripPayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/chat/session": {
       "post": {
         "summary": "Create Session",
@@ -1916,6 +1972,36 @@
           "items"
         ],
         "title": "DayPlan"
+      },
+      "FinalizeTripPayload": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "embedding_saved": {
+            "type": "boolean",
+            "title": "Embedding Saved"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "embedding_saved"
+        ],
+        "title": "FinalizeTripPayload",
+        "description": "Result of `POST /chat/{session_id}/finalize` — locks the itinerary and\nsaves it as a reusable, embedded template (`services/trip_finalize.py`).\n`embedding_saved=False` still means the lock itself succeeded; only the\nreuse-template's vector is missing and stays retryable."
       },
       "HTTPValidationError": {
         "properties": {

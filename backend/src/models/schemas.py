@@ -521,6 +521,17 @@ class BookingReceiptPayload(BaseModel):
     rooms: list[BookingReceiptRoomPayload]
 
 
+class FinalizeTripPayload(BaseModel):
+    """Result of `POST /chat/{session_id}/finalize` — locks the itinerary and
+    saves it as a reusable, embedded template (`services/trip_finalize.py`).
+    `embedding_saved=False` still means the lock itself succeeded; only the
+    reuse-template's vector is missing and stays retryable."""
+
+    status: str
+    summary: str | None = None
+    embedding_saved: bool
+
+
 class PreferencePayload(BaseModel):
     id: str
     label: str
