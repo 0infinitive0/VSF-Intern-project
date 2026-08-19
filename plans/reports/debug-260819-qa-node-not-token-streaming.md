@@ -62,10 +62,40 @@ Chạy lại đúng truy vấn đó với `subgraphs=True`:
 3. **`respond` vẫn phát lại y nguyên câu trả lời** (frame cuối, 57 ký tự trùng khít).
    Bất biến "không gửi câu trả lời hai lần" phải giữ nguyên sau khi đổi trục lọc.
 
+## ĐÃ ĐO 2026-08-19 — rủi ro rò rỉ có thật, nhưng không ở chỗ đã đoán
+
+Chạy `qa_node` với fake LLM gọi tool thật, `subgraphs=True`, in mọi chunk:
+
+```
+ns        node       type             content
+--------------------------------------------------------------
+qa_node   'agent'    AIMessageChunk   ""            ← tool_call_chunks, content rỗng
+qa_node   'agent'    AIMessageChunk   ""
+qa_node   'agent'    AIMessageChunk   ""
+qa_node   'tools'    ToolMessage      "Error invoking tool 'query_hotel' with…"   ← RÒ
+qa_node   'agent'    AIMessageChunk   "Có "
+qa_node   'agent'    AIMessageChunk   "hồ "
+...
+```
+
+**Tin tốt:** tham số tool đi trong `tool_call_chunks`, `content` **rỗng**, nên
+`emit_delta` tự no-op. Giả định trong mục dưới là đúng.
+
+**Tin xấu, và nó đổi hình dạng bản sửa:** node `tools` bên trong subgraph phát
+`ToolMessage` với `content` là **chữ thật** — ở đây là chuỗi lỗi
+`"Error invoking tool 'query_hotel' with…"`. Lọc theo **gốc namespace** (`qa_node`) như
+mục "Hình dạng của bản sửa" đề xuất sẽ đẩy nguyên chuỗi đó vào `delta` cho người dùng đọc.
+
+→ Bộ lọc phải là **namespace gốc `qa_node` VÀ node bên trong là `agent`**, không phải
+namespace gốc một mình. Nói cách khác `STREAMING_NODES` cần một trục thứ hai, không chỉ
+đổi trục.
+
+Đây đúng là bất biến `TestWhatMustNeverStream` đang giữ, và nó suýt bị phá bởi chính bản
+sửa nhằm cải thiện streaming.
+
 ## Rủi ro chưa đo
 
-**Tool-call có rò vào `delta` không?** Đây là câu hỏi quan trọng nhất và phép đo này
-**không trả lời được** — fake LLM không gọi tool. Vòng ReAct của `qa_node` có tool
+~~**Tool-call có rò vào `delta` không?**~~ Đã đo — xem mục trên. Vòng ReAct của `qa_node` có tool
 (`QA_TOOLS`); khi `subgraphs=True`, mọi chunk của node `agent` sẽ tới, gồm cả các hop
 sinh tool call. Về lý thuyết tham số tool đi trong `tool_call_chunks` chứ không trong
 `content`, nên `content` rỗng và `emit_delta` tự no-op — nhưng đó là suy luận, chưa đo.
