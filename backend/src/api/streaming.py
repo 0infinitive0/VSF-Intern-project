@@ -203,6 +203,40 @@ def emit_delta(text: str) -> None:
         logger.debug("emit_delta failed", exc_info=True)
 
 
+#: The steps this turn completed, in order, with the facts each reported.
+#: Collected alongside the `phase` frames so the block a user watched can be
+#: stored with the reply and shown again after a reload.
+#:
+#: A ContextVar for the same reason the emitter is one: two concurrent turns
+#: must never see each other's steps, and a plain POST turn collects nothing.
+_current_trace: ContextVar[list[dict[str, Any]] | None] = ContextVar("turn_trace", default=None)
+
+
+@contextmanager
+def collecting_trace() -> Iterator[list[dict[str, Any]]]:
+    """Collect this turn's completed steps for the block's stored copy."""
+    trace: list[dict[str, Any]] = []
+    token = _current_trace.set(trace)
+    try:
+        yield trace
+    finally:
+        _current_trace.reset(token)
+
+
+def record_step(phase_key: str, facts: dict[str, Any]) -> None:
+    """Add one completed step to the turn's trace, if one is being collected.
+
+    Never raises, for the same reason `emit_phase` does not: a record of the
+    work must not be able to cost the user the work itself.
+    """
+    try:
+        trace = _current_trace.get()
+        if trace is not None:
+            trace.append({"phase_key": phase_key, "facts": facts})
+    except Exception:
+        logger.debug("record_step failed for %s", phase_key, exc_info=True)
+
+
 def emit_reasoning(text: str, phase_key: str) -> None:
     """Emit one `reasoning` SSE event carrying the model's summary of its own
     reasoning.

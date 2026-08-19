@@ -42,6 +42,7 @@ from langgraph.types import Command
 
 from src.agents.graph.nodes.load_context import load_context
 from src.agents.graph.phase_facts import phase_facts
+from src.agents.graph.prompts import INTAKE_QA_NO_ANSWER_SENTINEL
 from src.agents.graph.phase_keys import (
     PHASE_KEY_BY_NODE,
     STREAMING_NODES,
@@ -60,9 +61,11 @@ from src.agents.session import (
 from src.api.streaming import (
     STREAM_HEADERS,
     TurnEmitter,
+    collecting_trace,
     emit_delta,
     emit_phase,
     emit_reasoning,
+    record_step,
     emitting_to,
     sse_stream,
 )
@@ -499,7 +502,7 @@ def list_persisted_sessions(
         raise HTTPException(status_code=500, detail="Unable to retrieve session history.")
 
 
-def _restored_transcript(session_id: str) -> list[dict[str, str]]:
+def _restored_transcript(session_id: str) -> list[dict[str, Any]]:
     """The persisted conversation, or nothing.
 
     Graph state lives in the checkpointer, the transcript in Supabase — two
@@ -752,6 +755,58 @@ def _task_result_update(chunk: dict) -> Any:
     return {}
 
 
+class _DeclineGate:
+    """Holds `intake_qa`'s opening tokens until they cannot be a decline.
+
+    `intake_qa` streams as it writes, but whether the text is an answer at all
+    is only settled once it is finished: the node replies with exactly
+    `NO_ANSWER` when the message did not actually ask anything, and drops it.
+    By then the tokens had already reached the user, so the sentinel appeared on
+    screen and the turn then went quiet.
+
+    Nothing is retracted here — an SSE stream has no way to unsay something, and
+    the `reset` frame that once existed for exactly this was removed for exactly
+    that reason (see `api/streaming.py`). Instead the opening tokens are held
+    while they are still a prefix of the sentinel, and released the instant they
+    diverge. A real answer is delayed by at most a few characters; a decline is
+    never shown at all.
+
+    Scoped to `intake_qa` because it is the only node with a sentinel. `qa_node`
+    always answers, so gating it would delay every reply for nothing.
+    """
+
+    def __init__(self) -> None:
+        self._held = ""
+        self._open = False
+
+    def feed(self, text: str) -> str:
+        """What may be sent now — everything, once the gate has opened."""
+        if self._open:
+            return text
+        if not text:
+            return ""
+        self._held += text
+        probe = self._held.strip().upper()
+        if probe and not INTAKE_QA_NO_ANSWER_SENTINEL.startswith(probe):
+            self._open = True
+            held, self._held = self._held, ""
+            return held
+        return ""
+
+    def flush(self) -> str:
+        """Whatever is still held when the stream ends.
+
+        A buffer that never diverged is either the sentinel — dropped — or a
+        short answer that happens to be a prefix of it, which must still be
+        shown rather than swallowed along with the declines.
+        """
+        held, self._held = self._held, ""
+        self._open = True
+        if held.strip().upper() == INTAKE_QA_NO_ANSWER_SENTINEL:
+            return ""
+        return held
+
+
 def _may_stream(namespace: tuple[str, ...] | None, node_name: str | None) -> bool:
     """Whether a `messages` chunk from this position may reach the user as `delta`.
 
@@ -797,6 +852,7 @@ def _drive_turn(app, config: dict, turn_input, *, stream: bool) -> dict:
         return app.invoke(turn_input, config=config)
 
     interrupts: Any = None
+    decline_gate = _DeclineGate()
     # `subgraphs=True` is what makes `qa_node` stream at all: it is a compiled
     # subgraph, and without this its tokens never surface — the drain saw one
     # finished message at the node boundary and the typewriter effect never ran
@@ -820,11 +876,11 @@ def _drive_turn(app, config: dict, turn_input, *, stream: bool) -> dict:
             if not phase_key:
                 continue
             if "result" in chunk or "error" in chunk:
-                emit_phase(
-                    phase_key,
-                    status="completed",
-                    **phase_facts(str(node_name), _task_result_update(chunk)),
-                )
+                facts = phase_facts(str(node_name), _task_result_update(chunk))
+                emit_phase(phase_key, status="completed", **facts)
+                # Only the completed edge is kept: the stored trace is what the
+                # turn DID, and a step that opened carries nothing to describe.
+                record_step(phase_key, facts)
             else:
                 # No facts on the opening edge: the node has not returned yet,
                 # and `input` is the state going in, not what this step found.
@@ -839,7 +895,10 @@ def _drive_turn(app, config: dict, turn_input, *, stream: bool) -> dict:
             message_chunk, metadata = chunk
             node = metadata.get("langgraph_node")
             if _may_stream(namespace, node):
-                emit_delta(response_text(message_chunk))
+                text = response_text(message_chunk)
+                if node == "intake_qa":
+                    text = decline_gate.feed(text)
+                emit_delta(text)
                 # The reasoning frame names its own step: it is sent while the
                 # node runs, whereas the node's `phase` frame lands only once it
                 # finishes, so position in the stream cannot identify it.
@@ -849,13 +908,19 @@ def _drive_turn(app, config: dict, turn_input, *, stream: bool) -> dict:
                 if reasoning_key:
                     emit_reasoning(reasoning_text(message_chunk), reasoning_key)
 
+    # A held-back opening that turned out to be a real answer still has to be
+    # sent; one that was the sentinel is dropped here and never seen.
+    emit_delta(decline_gate.flush())
+
     result = dict(app.get_state(config).values or {})
     if interrupts:
         result["__interrupt__"] = interrupts
     return result
 
 
-def _persist_turn(session_id: str, app, config: dict) -> None:
+def _persist_turn(
+    session_id: str, app, config: dict, thinking_trace: list[dict[str, Any]] | None = None
+) -> None:
     """Write the turn's session row and transcript — best effort.
 
     The reply is already computed by the time this runs, so a database outage
@@ -878,7 +943,9 @@ def _persist_turn(session_id: str, app, config: dict) -> None:
         session = registry.get(session_id)
         if session is None:
             return
-        session_store.persist_graph_session(session, app.get_state(config).values or {})
+        session_store.persist_graph_session(
+            session, app.get_state(config).values or {}, thinking_trace
+        )
     except Exception:
         logger.exception("Unable to persist graph session %s; continuing in memory", session_id)
 
@@ -931,23 +998,24 @@ def _run_turn_via_graph(
     app = _get_graph_v2()
     config = {"configurable": {"thread_id": session_id}}
 
-    snapshot = app.get_state(config)
-    if snapshot.interrupts:
-        result = _drive_turn(app, config, Command(resume=message), stream=stream)
-        unresolved = result.get("unresolved_resume_text")
-        if unresolved and "__interrupt__" not in result:
+    with collecting_trace() as trace:
+        snapshot = app.get_state(config)
+        if snapshot.interrupts:
+            result = _drive_turn(app, config, Command(resume=message), stream=stream)
+            unresolved = result.get("unresolved_resume_text")
+            if unresolved and "__interrupt__" not in result:
+                result = _drive_turn(
+                    app, config, _fresh_turn_input(session_id, unresolved, language, extra_state), stream=stream
+                )
+        else:
             result = _drive_turn(
-                app, config, _fresh_turn_input(session_id, unresolved, language, extra_state), stream=stream
+                app, config, _fresh_turn_input(session_id, message, language, extra_state), stream=stream
             )
-    else:
-        result = _drive_turn(
-            app, config, _fresh_turn_input(session_id, message, language, extra_state), stream=stream
-        )
 
     # Before the interrupt branch below, so a turn that pauses waiting on a
     # clarification is persisted too — that exchange happened and must survive
     # a reload like any other.
-    _persist_turn(session_id, app, config)
+    _persist_turn(session_id, app, config, trace)
 
     return _response_from_result(session_id, result)
 

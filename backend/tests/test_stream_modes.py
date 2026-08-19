@@ -520,6 +520,49 @@ class TestStepEdges:
         assert completed["intent"] == "update_trip"
 
 
+class TestTheDeclineSentinelNeverReachesTheUser:
+    """`intake_qa` answers with exactly `NO_ANSWER` when the message did not ask
+    anything, and the node then drops it — but it streams as it writes, so the
+    sentinel had already appeared on screen before the node decided.
+
+    Reported from a real session. The stream cannot unsay it, so the opening
+    tokens are held until they cannot be the sentinel.
+    """
+
+    def test_a_declined_turn_streams_nothing(self, streaming_turn):
+        emitter = streaming_turn(
+            message="ok",
+            thread="stream-decline-hidden",
+            travel_state=_travel_state(with_budget=False),
+            intake_llm=_fake_llm("NO_ANSWER"),
+        )
+
+        assert emitter.delta_text == ""
+        assert "NO_ANSWER" not in str(emitter.frames)
+
+    def test_a_real_answer_is_delayed_but_never_lost(self, streaming_turn):
+        emitter = streaming_turn(
+            message="Đà Nẵng tháng 7 thời tiết thế nào?",
+            thread="stream-decline-real-answer",
+            travel_state=_travel_state(with_budget=False),
+            intake_llm=_fake_llm("Tháng 7 hay mưa rải rác."),
+        )
+
+        assert emitter.delta_text == "Tháng 7 hay mưa rải rác."
+
+    def test_an_answer_that_merely_starts_like_the_sentinel_still_arrives(self, streaming_turn):
+        """"No" is a prefix of NO_ANSWER, so it is held — and must be released
+        when the stream ends rather than swallowed with the declines."""
+        emitter = streaming_turn(
+            message="có mưa không?",
+            thread="stream-decline-prefix",
+            travel_state=_travel_state(with_budget=False),
+            intake_llm=_fake_llm("No"),
+        )
+
+        assert emitter.delta_text == "No"
+
+
 class TestMappingIntegrity:
     def test_every_streaming_node_is_a_real_graph_node(self):
         assert STREAMING_NODES <= set(graph_module.build_graph().nodes)
