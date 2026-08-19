@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { getBookingReceipt } from '../api/session-client'
 import RemoteImage from './remote-image'
 import { formatCurrency } from '../lib/format-currency'
-import { formatFullDate } from '../lib/format-trip-dates'
+import { formatDateTile, nightsBetween } from '../lib/format-trip-dates'
 import type { BookingReceipt } from '../types'
 
 const CLOSE_TRANSITION_MS = 200
@@ -91,8 +91,9 @@ export default function BookingReceiptModal({
   if (!render) return null
 
   const code = receipt?.payment_id ? receipt.payment_id.slice(0, 8).toUpperCase() : null
-  const ci = receipt ? formatFullDate(receipt.check_in_date, i18n.language) : null
-  const co = receipt ? formatFullDate(receipt.check_out_date, i18n.language) : null
+  const ci = receipt ? formatDateTile(receipt.check_in_date, i18n.language) : null
+  const co = receipt ? formatDateTile(receipt.check_out_date, i18n.language) : null
+  const nights = receipt ? nightsBetween(receipt.check_in_date, receipt.check_out_date) : 1
 
   return (
     <div
@@ -138,25 +139,32 @@ export default function BookingReceiptModal({
 
         {loadState === 'found' && receipt && (
           <>
-            <RemoteImage
-              src={receipt.hotel_image_url}
-              alt={receipt.hotel_name ?? ''}
-              className="w-full h-[130px] flex-none"
-            />
-            <div className="px-6 pb-6 flex flex-col items-center gap-4 w-full">
+            <div className="relative w-full h-[150px] flex-none">
+              <RemoteImage
+                src={receipt.hotel_image_url}
+                alt={receipt.hotel_name ?? ''}
+                className="absolute inset-0"
+              />
               <div
-                className="w-[58px] h-[58px] -mt-[29px] rounded-full flex items-center justify-center text-[24px] flex-none"
+                className="absolute inset-x-0 bottom-0 h-[64px] pointer-events-none"
+                style={{ background: 'linear-gradient(to top, var(--g1), transparent)' }}
+                aria-hidden="true"
+              />
+            </div>
+            <div className="px-6 pb-6 -mt-[29px] flex flex-col items-center gap-4 w-full">
+              <div
+                className="w-[58px] h-[58px] rounded-full flex items-center justify-center text-[24px] flex-none"
                 style={{
                   background: 'linear-gradient(145deg,#4FB3A5,#2A9187)',
                   color: '#FCFDFE',
                   boxShadow: '0 16px 34px -14px rgba(42,145,135,.7)',
-                  border: '3px solid var(--g1)',
+                  border: '4px solid var(--g1)',
                 }}
                 aria-hidden="true"
               >
                 ✓
               </div>
-              <div>
+              <div className="-mt-1">
                 <div className="text-[14.5px] font-[590] tracking-[-0.1px] text-on-surface">
                   {t('holdBannerBookedTitle')}
                 </div>
@@ -168,38 +176,68 @@ export default function BookingReceiptModal({
                 )}
               </div>
 
-              {code && (
-                <div className="px-5 py-3 rounded-2xl bg-glass-2 border border-edge">
+              <div
+                className="flex w-full rounded-2xl overflow-hidden border border-edge"
+                style={{ background: 'var(--g2)' }}
+              >
+                <div className="flex-1 px-5 py-3.5 text-left border-r border-line">
                   <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
                     {t('checkoutDoneCode')}
                   </div>
-                  <div className="text-[18px] font-[590] tracking-[0.5px] tabular-nums mt-0.5 text-on-surface">
-                    {code}
+                  <div className="text-[16px] font-[590] tracking-[0.4px] tabular-nums mt-0.5 text-on-surface">
+                    {code ?? '—'}
                   </div>
                 </div>
-              )}
+                <div className="flex-1 px-5 py-3.5 text-left">
+                  <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
+                    {t('holdTotal')}
+                  </div>
+                  <div
+                    className="text-[16px] font-[590] tracking-[-0.2px] tabular-nums mt-0.5"
+                    style={{ color: 'var(--acc)' }}
+                  >
+                    {formatCurrency(Number(receipt.total_amount), i18n.language)}
+                  </div>
+                </div>
+              </div>
 
-              <div className="grid grid-cols-2 gap-2.5 w-full">
-                <div className="p-3 rounded-2xl bg-glass-2 border border-edge text-left">
-                  <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
-                    {t('policyCheckIn')}
+              <div className="w-full rounded-2xl border border-edge px-5 py-4" style={{ background: 'var(--g2)' }}>
+                <div className="flex items-center gap-3">
+                  <div className="text-center">
+                    <div className="text-[20px] font-[590] tracking-[-0.5px] leading-none text-on-surface">
+                      {ci?.day ?? '—'}
+                    </div>
+                    <div className="text-[9px] font-[590] tracking-[0.09em] text-on-surface-muted mt-[3px]">
+                      {ci?.month ?? ''}
+                    </div>
                   </div>
-                  <div className="text-[13px] font-[590] tracking-[-0.15px] mt-0.5 text-on-surface">{ci ?? '—'}</div>
-                </div>
-                <div className="p-3 rounded-2xl bg-glass-2 border border-edge text-left">
-                  <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
-                    {t('policyCheckOut')}
+                  <div className="flex-1 flex flex-col items-center gap-1">
+                    <div className="text-[10px] font-[450] text-on-surface-muted whitespace-nowrap">
+                      {nights} {t('nightsWord')}
+                    </div>
+                    <div className="w-full h-px" style={{ background: 'var(--stroke)' }} />
                   </div>
-                  <div className="text-[13px] font-[590] tracking-[-0.15px] mt-0.5 text-on-surface">{co ?? '—'}</div>
+                  <div className="text-center">
+                    <div className="text-[20px] font-[590] tracking-[-0.5px] leading-none text-on-surface">
+                      {co?.day ?? '—'}
+                    </div>
+                    <div className="text-[9px] font-[590] tracking-[0.09em] text-on-surface-muted mt-[3px]">
+                      {co?.month ?? ''}
+                    </div>
+                  </div>
                 </div>
               </div>
 
               {receipt.rooms.length > 0 && (
-                <div className="w-full flex flex-col gap-2">
+                <div className="w-full flex flex-col gap-2 text-left">
+                  <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted px-1">
+                    {t('checkoutDoneRoomsLabel')}
+                  </div>
                   {receipt.rooms.map((room) => (
                     <div
                       key={room.room_id}
-                      className="flex items-center gap-3 p-2.5 rounded-2xl bg-glass-2 border border-edge text-left"
+                      className="flex items-center gap-3 p-2.5 rounded-2xl bg-glass-2 border border-edge"
+                      style={{ boxShadow: '0 10px 24px -18px rgb(var(--shadow-rgb) / 0.5)' }}
                     >
                       <RemoteImage src={room.image_url} alt={room.name} className="w-[52px] h-[52px] rounded-xl flex-none" />
                       <div className="flex-1 min-w-0">
@@ -217,14 +255,6 @@ export default function BookingReceiptModal({
                   ))}
                 </div>
               )}
-
-              <div className="flex items-baseline gap-2 pt-2 mt-0.5 w-full border-t border-line">
-                <span className="text-[11.5px] text-on-surface-muted">{t('holdTotal')}</span>
-                <span className="flex-1" />
-                <span className="text-[17px] font-[590] tracking-[-0.4px] tabular-nums text-on-surface">
-                  {formatCurrency(Number(receipt.total_amount), i18n.language)}
-                </span>
-              </div>
 
               <button
                 type="button"

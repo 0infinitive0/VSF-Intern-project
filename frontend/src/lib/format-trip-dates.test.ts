@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatFullDate, formatTripDateRange } from './format-trip-dates'
+import { formatDateTile, formatFullDate, formatTripDateRange, nightsBetween } from './format-trip-dates'
 
 describe('formatTripDateRange', () => {
   it('formats an ISO datetime pair into a short range', () => {
@@ -33,5 +33,30 @@ describe('formatFullDate', () => {
   it('returns null for missing or invalid values', () => {
     expect(formatFullDate(null, 'en-US')).toBeNull()
     expect(formatFullDate('garbage', 'en-US')).toBeNull()
+  })
+})
+
+describe('formatDateTile', () => {
+  it('returns a day/month tile for a valid date', () => {
+    expect(formatDateTile('2026-08-18', 'en')).toEqual({ day: '18', month: 'AUG' })
+  })
+
+  it('returns null for a missing or unparseable date', () => {
+    expect(formatDateTile(null, 'en')).toBeNull()
+    expect(formatDateTile(undefined, 'en')).toBeNull()
+    expect(formatDateTile('not-a-date', 'en')).toBeNull()
+  })
+})
+
+describe('nightsBetween', () => {
+  it('counts whole nights between two dates', () => {
+    expect(nightsBetween('2026-08-18', '2026-08-21')).toBe(3)
+  })
+
+  it('floors at 1 night when dates are equal, reversed, or missing', () => {
+    expect(nightsBetween('2026-08-18', '2026-08-18')).toBe(1)
+    expect(nightsBetween('2026-08-21', '2026-08-18')).toBe(1)
+    expect(nightsBetween(null, '2026-08-18')).toBe(1)
+    expect(nightsBetween('2026-08-18', null)).toBe(1)
   })
 })
