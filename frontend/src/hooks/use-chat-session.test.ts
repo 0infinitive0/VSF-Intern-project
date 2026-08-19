@@ -235,3 +235,75 @@ describe('chatSessionReducer — stale-turn guard', () => {
     expect(staleReply).toBe(backOnA)
   })
 })
+
+describe('chatSessionReducer — thinking groups', () => {
+  const withThinking = (): ChatState =>
+    chatSessionReducer(
+      { ...INITIAL_STATE, pending: true },
+      { type: 'STREAM_PHASE', key: 'intake_check', at: 1, facts: { intent: 'update_trip' }, turnId: 0 },
+    )
+
+  it('builds a group from a phase frame and its facts', () => {
+    const next = withThinking()
+
+    expect(next.thinking).toHaveLength(1)
+    expect(next.thinking[0].key).toBe('understand')
+    expect(next.thinking[0].lines).toHaveLength(1)
+  })
+
+  it('creates the group even when the frame carried no facts', () => {
+    const next = chatSessionReducer(INITIAL_STATE, {
+      type: 'STREAM_PHASE', key: 'compacting_history', at: 1, facts: {}, turnId: 0,
+    })
+
+    expect(next.thinking).toHaveLength(1)
+    expect(next.thinking[0].lines).toEqual([])
+  })
+
+  it('leaves `phases` behaving exactly as before', () => {
+    const next = withThinking()
+
+    expect(next.phases).toEqual([{ key: 'intake_check', at: 1 }])
+  })
+
+  it('accumulates reasoning onto the running group', () => {
+    const next = chatSessionReducer(withThinking(), {
+      type: 'STREAM_REASONING', text: 'Checking dates', turnId: 0,
+    })
+
+    expect(next.thinking[0].reasoning).toBe('Checking dates')
+  })
+
+  it('ignores frames from a turn that is no longer current', () => {
+    const state = withThinking()
+    const stale = chatSessionReducer(state, {
+      type: 'STREAM_PHASE', key: 'hotel_search', at: 2, facts: {}, turnId: 99,
+    })
+
+    expect(stale).toBe(state)
+  })
+
+  it.each([
+    ['SEND_START', { type: 'SEND_START', id: 'm1', text: 'hi' }],
+    ['HOTEL_SELECTION_START', { type: 'HOTEL_SELECTION_START', id: 'h1', text: 'Tôi chọn khách sạn 1', turnId: 0 }],
+    ['RESET', { type: 'RESET' }],
+    ['SEND_ERROR', { type: 'SEND_ERROR', error: 'boom', turnId: 0 }],
+  ])('clears thinking on %s, so it cannot bleed into the next turn', (_label, action) => {
+    const dirty = withThinking()
+    expect(dirty.thinking).not.toHaveLength(0)
+
+    const next = chatSessionReducer(dirty, action as never)
+
+    expect(next.thinking).toEqual([])
+  })
+
+  it('clears thinking when restoring another session', () => {
+    const dirty = withThinking()
+
+    const next = chatSessionReducer(dirty, {
+      type: 'RESTORE', sessionId: 's2', data: restoreDataFor('s2'),
+    })
+
+    expect(next.thinking).toEqual([])
+  })
+})

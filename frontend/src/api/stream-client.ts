@@ -91,6 +91,11 @@ function parseFrame(raw: string): { event: string; data: unknown } | null {
 export interface StreamHandlers {
   onPhase?: (key: string, at: number, extra?: Record<string, unknown>) => void
   onDelta?: (text: string) => void
+  /**
+   * The model's summary of its own reasoning. Always English, and a valid turn
+   * may never call this — see docs/chat_api_contract.md §Streaming.
+   */
+  onReasoning?: (text: string) => void
 }
 
 /**
@@ -166,6 +171,11 @@ export async function sendMessageStream(
         case 'delta': {
           const d = frame.data as { text: string }
           handlers.onDelta?.(d.text)
+          break
+        }
+        case 'reasoning': {
+          const d = frame.data as { text: string }
+          handlers.onReasoning?.(d.text)
           break
         }
         case 'final':

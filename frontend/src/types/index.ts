@@ -198,6 +198,12 @@ export interface ChatState {
   // pre-populated with placeholder steps — a branch that doesn't emit a key
   // simply never adds that row (contract §Streaming).
   phases: TurnPhase[]
+  /**
+   * The same turn's progress, folded into user-facing steps with sentences
+   * built from each step's facts. Parallel to `phases`, not a replacement:
+   * `phases` feeds the right-hand panel and keeps its own shape.
+   */
+  thinking: ThinkingGroup[]
 }
 
 // ── SSE streaming contract (POST /planner_chat/stream) ──────────────────────
@@ -226,12 +232,62 @@ export interface TurnPhase {
   at: number // epoch seconds from the backend
 }
 
+/**
+ * Facts a `phase` frame may carry about the step that just ran.
+ *
+ * EVERY field is optional, and that is the contract rather than caution: a step
+ * with nothing to report sends `key` and `at` alone. Field names come from
+ * docs/chat_api_contract.md §Streaming; the backend whitelists them in
+ * `agents/graph/phase_facts.py`, so no display text and no internal id appears
+ * here — only keys, counts, and schema field paths.
+ */
+export interface PhaseFacts {
+  /** intake_check: how the message was classified. */
+  intent?: string
+  /** intake_check: travel-state field paths touched (`people`, `budget.target`). */
+  fields?: string[]
+  /** routing: node the supervisor picked. */
+  worker?: string
+  /** hotel_search: `ok`, `no_results`, `error`, … */
+  status?: string
+  /** hotel_search: what the user asked for. */
+  destination?: string
+  /** hotel_search: present only when the user set one. */
+  radius_km?: number
+  /** hotel_search: amenity ids the user required. */
+  amenities?: string[]
+  /** hotel_search: options shown. */
+  kept?: number
+  /** routing_legs: days the route recalculation covers. */
+  days?: number
+}
+
+/** The four user-facing steps the nine phase keys fold into. */
+export type ThinkingGroupKey = 'understand' | 'gather' | 'build' | 'finalize'
+
+/** One step of the thinking block, with the sentences built for it. */
+export interface ThinkingGroup {
+  key: ThinkingGroupKey
+  labelKey: string
+  /** Sentences built from graph facts. Empty when the step reported none. */
+  lines: string[]
+  /**
+   * The model's summary of its own reasoning, when it produced one.
+   * Always English, often empty — see docs/chat_api_contract.md. It supplements
+   * `lines` and must never be used to fill in for missing facts.
+   */
+  reasoning: string
+  done: boolean
+}
+
 export type StreamEvent =
-  // `days` present on routing_legs; the backend may attach other extras.
-  | { event: 'phase'; data: { key: PhaseKey; at: number; days?: number } }
+  | { event: 'phase'; data: { key: PhaseKey; at: number } & PhaseFacts }
   // Reply text, token by token — emitted only for the graph nodes that write
   // prose for the user (backend `STREAMING_NODES`).
   | { event: 'delta'; data: { text: string } }
+  // The model's own reasoning summary. Never a prefix of `final.reply`, and a
+  // valid turn may carry none of these frames at all.
+  | { event: 'reasoning'; data: { text: string } }
   | { event: 'final'; data: PlannerChatResponse } // same dict as POST /planner_chat
   | { event: 'error'; data: { detail: string } }
 

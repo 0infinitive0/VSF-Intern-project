@@ -25,7 +25,24 @@ import type { CreateSessionResponse, SessionPing } from '../api/chat-client'
 import { restoreSession } from '../api/session-client'
 import { sendMessageStream, StreamUnsupported } from '../api/stream-client'
 import i18n from '../i18n'
-import type { ChatMessage, ChatState, PlannerChatResponse, PhaseKey, SessionRestore } from '../types'
+import { appendReasoning, applyPhaseToGroups } from '../lib/thinking-groups'
+import { thinkingLines, type Translate } from '../lib/thinking-lines'
+import type {
+  ChatMessage,
+  ChatState,
+  PlannerChatResponse,
+  PhaseFacts,
+  PhaseKey,
+  SessionRestore,
+} from '../types'
+
+/**
+ * `thinkingLines` takes the narrow `Translate` shape so it stays a pure function
+ * in tests; i18next's own `t` carries far richer overloads than that. Adapting
+ * here keeps the cast in one place instead of at every call.
+ */
+const translate: Translate = (key, params) =>
+  i18n.t(key, params as Record<string, unknown>) as string
 
 const SESSION_KEY = 'vsf_trip_planner_session_id'
 
@@ -48,7 +65,7 @@ export const INITIAL_STATE: ChatState = {
   elapsedMs: 0,
   error: null,
   streamingText: '',
-  phases: [],
+  phases: [], thinking: [],
 }
 
 // ── Action types ─────────────────────────────────────────────────────────────
@@ -73,8 +90,9 @@ export type Action =
   | { type: 'TICK' }
   | { type: 'RESET'; sessionId: string }
   | { type: 'RESTORE'; sessionId: string; data: SessionRestore }
-  | { type: 'STREAM_PHASE'; key: PhaseKey; at: number; turnId: number }
+  | { type: 'STREAM_PHASE'; key: PhaseKey; at: number; facts: PhaseFacts; turnId: number }
   | { type: 'STREAM_DELTA'; text: string; turnId: number }
+  | { type: 'STREAM_REASONING'; text: string; turnId: number }
   // Dedicated hotels/change round-trip (step-navigator.tsx's "đổi khách sạn"
   // action) — never part of the chat turn machinery: no message, no LLM call,
   // just a hotel-list refresh. Own pending flag (`hotelsLoading`) so Composer/
@@ -103,7 +121,7 @@ function applyPlannerResponse(state: ChatState, data: PlannerChatResponse, messa
     intake: data.intake || state.intake,
     error: null,
     streamingText: '',
-    phases: [],
+    phases: [], thinking: [],
   }
 }
 
@@ -136,7 +154,7 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
         suggestedPlaces: [],
         hotelFilterData: INITIAL_STATE.hotelFilterData,
         streamingText: '',
-        phases: [],
+        phases: [], thinking: [],
       }
 
     case 'HOTEL_SELECTION_START':
@@ -155,7 +173,7 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
         suggestedPlaces: [],
         hotelFilterData: INITIAL_STATE.hotelFilterData,
         streamingText: '',
-        phases: [],
+        phases: [], thinking: [],
       }
 
     // Unchanged shape on purpose: `final` (stream) and the plain POST body
@@ -213,12 +231,12 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
         ],
         suggestions: [],
         streamingText: '',
-        phases: [],
+        phases: [], thinking: [],
       }
 
     case 'HOTEL_SELECTION_ERROR':
       if (action.turnId !== state.turnId) return state
-      return { ...state, pending: false, elapsedMs: 0, error: action.error, streamingText: '', phases: [] }
+      return { ...state, pending: false, elapsedMs: 0, error: action.error, streamingText: '', phases: [], thinking: [] }
 
     case 'TICK':
       return { ...state, elapsedMs: state.elapsedMs + 1000 }
@@ -263,13 +281,26 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
       }
     }
 
-    case 'STREAM_PHASE':
+    case 'STREAM_PHASE': {
       if (action.turnId !== state.turnId) return state
-      return { ...state, phases: [...state.phases, { key: action.key, at: action.at }] }
+      // `phases` stays exactly as it was — the right-hand progress panel reads
+      // it and is not part of this change. `thinking` is a parallel view of the
+      // same frames, grouped for the chat column.
+      const lines = thinkingLines(translate, action.key, action.facts)
+      return {
+        ...state,
+        phases: [...state.phases, { key: action.key, at: action.at }],
+        thinking: applyPhaseToGroups(state.thinking, action.key, lines),
+      }
+    }
 
     case 'STREAM_DELTA':
       if (action.turnId !== state.turnId) return state
       return { ...state, streamingText: state.streamingText + action.text }
+
+    case 'STREAM_REASONING':
+      if (action.turnId !== state.turnId) return state
+      return { ...state, thinking: appendReasoning(state.thinking, action.text) }
 
     case 'HOTELS_CHANGE_START':
       return { ...state, hotelsLoading: true, error: null }
@@ -470,8 +501,10 @@ export function useChatSession() {
           trimmed,
           i18n.language,
           {
-            onPhase: (key, at) => dispatch({ type: 'STREAM_PHASE', key: key as PhaseKey, at, turnId }),
+            onPhase: (key, at, facts) =>
+              dispatch({ type: 'STREAM_PHASE', key: key as PhaseKey, at, facts: (facts ?? {}) as PhaseFacts, turnId }),
             onDelta: (deltaText) => dispatch({ type: 'STREAM_DELTA', text: deltaText, turnId }),
+            onReasoning: (text) => dispatch({ type: 'STREAM_REASONING', text, turnId }),
           },
           controller.signal,
         )
