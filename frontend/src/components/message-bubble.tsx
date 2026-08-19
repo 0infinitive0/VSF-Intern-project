@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { useTypewriter } from '../lib/use-typewriter'
 import type { ChatMessage } from '../types'
 
 /** `message.at` (ISO) → localized "HH:mm" caption, or null when absent
@@ -33,6 +34,10 @@ export default function MessageBubble({
   const { i18n } = useTranslation()
   const { role, text, isError, at } = message
   const isUser = role === 'user'
+  // A streamed reply already arrives a piece at a time; only a complete one
+  // needs pacing here, and never a user's own message.
+  const shownText = useTypewriter(text, Boolean(message.typewriter) && !isUser)
+  const typing = Boolean(message.typewriter) && shownText.length < text.length
   const timeLabel = formatMessageTime(at, i18n.language)
 
   const radiusClass = isUser ? 'rounded-[18px] rounded-br-[6px]' : 'rounded-[18px] rounded-bl-[6px]'
@@ -56,8 +61,8 @@ export default function MessageBubble({
         <div
           className={`max-w-[44ch] px-3.5 py-2.5 text-[14px] leading-[1.58] tracking-[-0.08px] whitespace-pre-wrap ${radiusClass} ${bubbleClass}`}
         >
-          {text}
-          {streaming && (
+          {shownText}
+          {(streaming || typing) && (
             <span className="inline-block w-[2px] h-[1em] ml-0.5 -mb-0.5 bg-current animate-[vBlink_1s_step-end_infinite]" aria-hidden="true" />
           )}
         </div>

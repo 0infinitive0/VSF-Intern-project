@@ -192,6 +192,10 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
         text: data.reply,
         stage: data.stage,
         isError,
+        // Nothing streamed for this turn, so the reply arrived whole. Reveal it
+        // progressively rather than letting it snap in, which made deterministic
+        // answers feel like a different assistant from the streamed ones.
+        typewriter: !state.streamingText,
         at: new Date().toISOString(),
       }
       return applyPlannerResponse(state, data, newMsg)

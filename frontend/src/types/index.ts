@@ -147,6 +147,15 @@ export interface ChatMessage {
   text: string
   stage: Stage
   isError?: boolean
+  /**
+   * Reveal this reply character by character.
+   *
+   * Set only for a reply that arrived complete, with no `delta` frames behind
+   * it — a deterministic answer such as a hotel-search result, which has no
+   * model producing tokens to stream. Never set on restored history: replaying
+   * an old message on reload would be theatre, not feedback.
+   */
+  typewriter?: boolean
   // Client-side ISO timestamp, stamped in the reducer at SEND_START/SEND_SUCCESS.
   // Only ever present for messages sent this session — restored history carries
   // the server's real `at` and must not be invented here.

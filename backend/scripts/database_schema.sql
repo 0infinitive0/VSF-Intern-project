@@ -197,7 +197,11 @@ CREATE TABLE chat_messages (
     session_id VARCHAR(255) REFERENCES sessions(session_id) ON DELETE CASCADE,
     sender_type VARCHAR(20) NOT NULL, -- 'user' hoặc 'ai'
     message_content TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    -- Dữ kiện của khối thinking cho lượt sinh ra tin nhắn này (dữ kiện, KHÔNG
+    -- phải câu chữ — câu chữ do FE dựng theo ngôn ngữ đang chọn).
+    -- NULL với mọi tin nhắn có trước cột này, và đó là đường chính.
+    thinking_trace JSONB
 );
 
 -- Bảng 9: Lịch trình (Itineraries)

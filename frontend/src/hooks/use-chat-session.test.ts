@@ -307,3 +307,36 @@ describe('chatSessionReducer — thinking groups', () => {
     expect(next.thinking).toEqual([])
   })
 })
+
+describe('chatSessionReducer — typewriter flag', () => {
+  const reply = (data: Partial<Record<string, unknown>> = {}) => ({
+    session_id: 'A', reply: 'Mình tìm được 5 khách sạn phù hợp.', suggestions: [],
+    stage: 'hotel_options', hotel_options: [], trip_plan: null, ...data,
+  })
+
+  it('marks a reply that never streamed, so it is revealed rather than snapped in', () => {
+    const next = chatSessionReducer(
+      { ...INITIAL_STATE, pending: true, streamingText: '' },
+      { type: 'SEND_SUCCESS', id: 'm1', data: reply() as never, turnId: 0 },
+    )
+
+    expect(next.messages.at(-1)?.typewriter).toBe(true)
+  })
+
+  it('leaves a streamed reply alone — it already arrived a piece at a time', () => {
+    const next = chatSessionReducer(
+      { ...INITIAL_STATE, pending: true, streamingText: 'Tháng 7 hay' },
+      { type: 'SEND_SUCCESS', id: 'm2', data: reply({ reply: 'Tháng 7 hay mưa.' }) as never, turnId: 0 },
+    )
+
+    expect(next.messages.at(-1)?.typewriter).toBe(false)
+  })
+
+  it('never marks restored history — replaying old messages on reload is theatre', () => {
+    const next = chatSessionReducer(INITIAL_STATE, {
+      type: 'RESTORE', sessionId: 's2', data: restoreDataFor('s2'),
+    })
+
+    expect(next.messages.every((m) => !m.typewriter)).toBe(true)
+  })
+})
