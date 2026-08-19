@@ -1200,6 +1200,8 @@ export interface components {
             stage: "intake" | "hotel_options" | "planned" | "error";
             /** At */
             at: string;
+            /** Thinking Trace */
+            thinking_trace: components["schemas"]["ThinkingTraceEntry"][] | null;
         };
         /** RoomDetailPayload */
         RoomDetailPayload: {
@@ -1354,6 +1356,26 @@ export interface components {
              */
             value: string;
         };
+        /**
+         * ThinkingTraceEntry
+         * @description One completed step of the turn that produced a reply.
+         *
+         *     Facts, never sentences: the wording is composed on the client from these and
+         *     follows the reader's current language, so storing text would render a
+         *     Vietnamese conversation in Vietnamese inside an English session and freeze
+         *     today's phrasing into history.
+         *
+         *     What may appear in `facts` is whitelisted at the source
+         *     (`agents/graph/phase_facts.py`): keys, counts and schema field paths only.
+         */
+        ThinkingTraceEntry: {
+            /** Phase Key */
+            phase_key: string;
+            /** Facts */
+            facts: {
+                [key: string]: unknown;
+            };
+        };
         /** TripPlanHotel */
         TripPlanHotel: {
             /** Id */
@@ -1410,10 +1432,6 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: Record<string, never>;
         };
     };
     responses: never;
