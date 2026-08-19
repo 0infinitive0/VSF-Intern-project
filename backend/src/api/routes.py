@@ -44,7 +44,7 @@ from src.agents.graph.nodes.load_context import load_context
 from src.agents.graph.phase_keys import PHASE_KEY_BY_NODE, STREAMING_NODES
 from src.agents.graph.response_payload import (
     derive_stage,
-    hotel_options_from_task_results,
+    durable_hotel_options,
     intake_status_from_travel_state,
 )
 from src.agents.session import (
@@ -487,7 +487,7 @@ def restore_session(
     app = _get_graph_v2()
     state = app.get_state({"configurable": {"thread_id": session_id}}).values or {}
     travel_state = TravelState.from_dict(state.get("travel_state"))
-    hotel_options = hotel_options_from_task_results(state)
+    hotel_options = durable_hotel_options(state)
 
     return SessionRestorePayload(
         session_id=session_id,
