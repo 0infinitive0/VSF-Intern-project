@@ -61,6 +61,7 @@ export default function HotelDetailPanel({
   checkInDate,
   checkOutDate,
   onConfirmHotel,
+  onSelectHotel,
   heldElsewhereHotelName,
 }: {
   /** null while no hotel has ever been focused yet this session (the caller
@@ -84,6 +85,8 @@ export default function HotelDetailPanel({
   /** Fires the EXISTING itinerary-build call once a hold succeeds — see
    * use-room-hold.ts's module doc comment on why room selection now gates it. */
   onConfirmHotel: (hotel: HotelOption) => void
+  /** Selects this hotel in the hotel list when rooms are added. */
+  onSelectHotel?: (index: number) => void
   /** Name of the hotel `roomHold.heldHotelId` currently points at, when
    * that's a DIFFERENT hotel than the one being viewed here — resolved by
    * the caller (stage-hotels.tsx) from the current session's hotel list,
@@ -399,7 +402,13 @@ export default function HotelDetailPanel({
                           delay={`${i * 90}ms`}
                           qty={room.id ? (roomHold.cartFor(hotelId)[room.id] ?? 0) : 0}
                           maxQty={maxQty}
-                          onQtyChange={(next) => room.id && roomHold.setQty(hotelId, room.id, next)}
+                          onQtyChange={(next) => {
+                            if (!room.id) return
+                            roomHold.setQty(hotelId, room.id, next)
+                            if (next > 0 && option != null && onSelectHotel) {
+                              onSelectHotel(option.index)
+                            }
+                          }}
                           amenityDetails={detail.room_amenities ?? []}
                         />
                       )
