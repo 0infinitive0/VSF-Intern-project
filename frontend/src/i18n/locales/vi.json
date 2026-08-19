@@ -470,5 +470,6 @@
   "checkoutDoneTitle": "Đặt phòng đã được xác nhận",
   "checkoutDoneSub": "Đặt phòng của bạn đã được xác nhận với khách sạn.",
   "checkoutDoneCode": "Mã đặt phòng",
-  "checkoutDoneRoomsLabel": "Phòng đã đặt"
+  "checkoutDoneRoomsLabel": "Phòng đã đặt",
+  "checkoutDoneClose": "Đóng"
 }

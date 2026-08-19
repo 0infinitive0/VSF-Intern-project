@@ -472,5 +472,6 @@
   "checkoutDoneTitle": "Booking confirmed",
   "checkoutDoneSub": "Your booking is confirmed with the hotel.",
   "checkoutDoneCode": "Booking code",
-  "checkoutDoneRoomsLabel": "Rooms booked"
+  "checkoutDoneRoomsLabel": "Rooms booked",
+  "checkoutDoneClose": "Close"
 }

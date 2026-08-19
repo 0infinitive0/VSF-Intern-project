@@ -165,9 +165,9 @@ export default function BookingReceiptModal({
                 ✕
               </button>
             </div>
-            <div className="px-6 pb-6 -mt-[29px] flex flex-col items-center gap-4 w-full">
+            <div className="relative z-10 px-6 pb-6 -mt-[29px] flex flex-col items-center gap-4 w-full">
               <div
-                className="w-[58px] h-[58px] rounded-full flex items-center justify-center text-[24px] flex-none"
+                className="relative z-10 w-[58px] h-[58px] rounded-full flex items-center justify-center text-[24px] flex-none"
                 style={{
                   background: 'linear-gradient(145deg,#4FB3A5,#2A9187)',
                   color: '#FCFDFE',
@@ -179,14 +179,11 @@ export default function BookingReceiptModal({
                 ✓
               </div>
               <div className="-mt-1">
-                <div className="text-[14.5px] font-[590] tracking-[-0.1px] text-on-surface">
-                  {t('holdBannerBookedTitle')}
+                <div className="text-[15.5px] font-[590] tracking-[-0.1px] text-on-surface">
+                  {t('checkoutDoneTitle')}
                 </div>
                 {receipt.hotel_name && (
-                  <div className="text-[13px] text-on-surface-muted mt-1">{receipt.hotel_name}</div>
-                )}
-                {receipt.hotel_address && (
-                  <div className="text-[11.5px] text-on-surface-muted">{receipt.hotel_address}</div>
+                  <div className="text-[13px] text-on-surface-muted mt-1 font-medium">{receipt.hotel_name}</div>
                 )}
               </div>
 
@@ -269,6 +266,18 @@ export default function BookingReceiptModal({
                   ))}
                 </div>
               )}
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full sm:w-auto px-8 h-[44px] rounded-2xl border-none text-[14px] font-[590] text-white cursor-pointer transition-all duration-200 hover:opacity-95 active:scale-[0.98] mt-2"
+                style={{
+                  background: 'linear-gradient(135deg,#3A73DE,#2C5FC9)',
+                  boxShadow: '0 12px 26px -10px rgba(44,95,201,.6)',
+                }}
+              >
+                {t('bookingReceiptClose')}
+              </button>
             </div>
           </>
         )}
