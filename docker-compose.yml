@@ -20,52 +20,15 @@ services:
     environment:
       # Use host's Ollama
       - OLLAMA_URL=http://host.docker.internal:11434
-      # LangGraph checkpointer. Without these the backend falls back to a
-      # process-local MemorySaver, and EVERY conversation — trip, hotel
-      # shortlist, itinerary — is silently lost the moment the container
-      # restarts, while the UI keeps showing its own retained copy of the
-      # cards. Overridable from ./backend/.env: point
-      # CHECKPOINTER_DATABASE_URL at the Supabase session-pooler DSN instead
-      # for a deployment where this compose file's local `postgres` isn't
-      # the right home for durable state.
-      - CHECKPOINTER_BACKEND=${CHECKPOINTER_BACKEND:-postgres}
-      - CHECKPOINTER_DATABASE_URL=${CHECKPOINTER_DATABASE_URL:-postgresql://vsf:vsf@postgres:5432/vsf_checkpoints}
     volumes:
       - ./backend/data:/app/data
       - ./backend/logs:/app/logs
-    depends_on:
-      postgres:
-        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
-
-  # ── Postgres (LangGraph checkpointer) ───────────────────────────────────────
-  # Holds graph state only — conversations, travel_state, hotel cards,
-  # itineraries. Trip/hotel CONTENT still lives in Supabase; this is the
-  # per-thread checkpoint store LangGraph needs to resume a conversation, and
-  # the reason a backend restart no longer wipes one. Named volume, so it
-  # outlives `docker compose down` (use `down -v` to actually discard it).
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      - POSTGRES_USER=vsf
-      - POSTGRES_PASSWORD=vsf
-      - POSTGRES_DB=vsf_checkpoints
-    volumes:
-      - checkpointer-data:/var/lib/postgresql/data
-    healthcheck:
-      # The backend's lifespan runs `checkpointer.setup()` on boot and fails
-      # the whole app if the DB isn't accepting connections yet, so this gate
-      # is what makes `docker compose up` order-independent.
-      test: ["CMD-SHELL", "pg_isready -U vsf -d vsf_checkpoints"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
 
   # ── Frontend (React + Vite → Nginx) ─────────────────────────────────────────
   frontend:
@@ -112,9 +75,3 @@ services:
       "
     depends_on:
       - ollama
-
-# ── Named volumes ─────────────────────────────────────────────────────────────
-volumes:
-  # LangGraph checkpoints. Survives `docker compose down`; `down -v` discards
-  # it, which means every in-flight conversation is gone.
-  checkpointer-data:
