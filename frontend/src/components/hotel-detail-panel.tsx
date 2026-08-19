@@ -155,6 +155,22 @@ export default function HotelDetailPanel({
   return (
     <div className="min-w-0 h-full">
       <div className="glass-panel relative h-full flex flex-col rounded-[26px] overflow-hidden">
+        {/* Sticky Close Button — stays fixed at top right even when scrolling */}
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={t('detailCloseLabel')}
+          className="absolute top-4 right-4 z-30 w-[34px] h-[34px] rounded-full border border-stroke text-on-surface text-[14px] cursor-pointer transition-transform duration-200 hover:scale-[1.08] active:scale-[0.92] flex items-center justify-center"
+          style={{
+            background: 'var(--g3)',
+            backdropFilter: 'blur(18px)',
+            WebkitBackdropFilter: 'blur(18px)',
+            boxShadow: '0 4px 16px -4px rgb(var(--shadow-rgb) / 0.35)',
+          }}
+        >
+          ✕
+        </button>
+
         {status === 'error' ? (
           <div className="h-full flex flex-col items-center justify-center gap-3 p-8 text-center">
             <span className="material-symbols-outlined text-4xl text-on-surface-faint" aria-hidden="true">
@@ -171,7 +187,7 @@ export default function HotelDetailPanel({
           </div>
         ) : status === 'loading' ? (
           <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
-            {/* Hero — 240px, vHero reveal, bottom fade, close ✕ */}
+            {/* Hero — 240px, vHero reveal, bottom fade */}
             <div className="relative h-[240px] overflow-hidden animate-[vHero_0.9s_cubic-bezier(0.22,1,0.36,1)_both]">
               <RemoteImage
                 src={heroSrc}
@@ -183,20 +199,6 @@ export default function HotelDetailPanel({
                 style={{ background: 'linear-gradient(to top, var(--g3), transparent)' }}
                 aria-hidden="true"
               />
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label={t('detailCloseLabel')}
-                className="absolute top-4 right-4 w-[34px] h-[34px] rounded-full border border-edge text-on-surface text-[14px] cursor-pointer transition-transform duration-200 hover:scale-[1.08] active:scale-[0.92]"
-                style={{
-                  background: 'var(--g3)',
-                  backdropFilter: 'blur(18px)',
-                  WebkitBackdropFilter: 'blur(18px)',
-                  boxShadow: '0 10px 24px -10px rgb(var(--shadow-rgb) / 0.5)',
-                }}
-              >
-                ✕
-              </button>
               <div className="absolute left-5 bottom-4 right-[70px]">
                 {starRating != null && (
                   <div className="flex items-center gap-2 mb-1.5">
@@ -255,7 +257,7 @@ export default function HotelDetailPanel({
         ) : (
           <>
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
-              {/* Hero — 240px, vHero reveal, bottom fade, close ✕ */}
+              {/* Hero — 240px, vHero reveal, bottom fade */}
               <div className="relative h-[240px] overflow-hidden animate-[vHero_0.9s_cubic-bezier(0.22,1,0.36,1)_both]">
               <RemoteImage
                 src={heroSrc}
@@ -267,20 +269,6 @@ export default function HotelDetailPanel({
                 style={{ background: 'linear-gradient(to top, var(--g3), transparent)' }}
                 aria-hidden="true"
               />
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label={t('detailCloseLabel')}
-                className="absolute top-4 right-4 w-[34px] h-[34px] rounded-full border border-edge text-on-surface text-[14px] cursor-pointer transition-transform duration-200 hover:scale-[1.08] active:scale-[0.92]"
-                style={{
-                  background: 'var(--g3)',
-                  backdropFilter: 'blur(18px)',
-                  WebkitBackdropFilter: 'blur(18px)',
-                  boxShadow: '0 10px 24px -10px rgb(var(--shadow-rgb) / 0.5)',
-                }}
-              >
-                ✕
-              </button>
               <div className="absolute left-5 bottom-4 right-[70px]">
                 {starRating != null && (
                   <div className="flex items-center gap-2 mb-1.5">

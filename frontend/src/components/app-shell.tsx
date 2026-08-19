@@ -11,6 +11,7 @@ import type { IntakeChecklistRowKey } from '../lib/intake-checklist-rows'
 import type { PreferenceKey } from '../lib/intake-options'
 import type { IntakeField } from '../lib/next-intake-field'
 import type { StageView } from '../lib/derive-stage'
+import type { TabKey } from './stage-workspace'
 import type { ChatState, HotelFilterData, HotelOption, SessionSummary } from '../types'
 
 const DESKTOP_BREAKPOINT_PX = 768 // Tailwind `md`
@@ -87,6 +88,8 @@ export default function AppShell({
   sessionBookedFromBackend,
   onOpenBooking,
   onOpenReceipt,
+  activeWorkspaceTab,
+  onSelectWorkspaceTab,
 }: {
   state: ChatState
   onSend: (text: string) => void
@@ -147,6 +150,8 @@ export default function AppShell({
    * (sessionBookedFromBackend above) but no longer owns roomHold, so there's
    * no live hold data left to drive booking-modal.tsx's "done" screen with. */
   onOpenReceipt: () => void
+  activeWorkspaceTab?: TabKey
+  onSelectWorkspaceTab?: (tab: TabKey) => void
 }) {
   const { theme, toggleTheme } = useTheme()
   const focusMode = useFocusMode()
@@ -322,6 +327,8 @@ export default function AppShell({
             sessionBookedFromBackend={sessionBookedFromBackend}
             onOpenBooking={onOpenBooking}
             onOpenReceipt={onOpenReceipt}
+            activeWorkspaceTab={activeWorkspaceTab}
+            onSelectWorkspaceTab={onSelectWorkspaceTab}
           />
         </div>
       </div>

@@ -75,53 +75,67 @@ def _confirmation_html(
         ("Trả phòng", check_out_date),
     ]
     rows_html = "".join(
-        f'<tr><td style="padding:8px 0;color:#60646c;font-size:13px">{label}</td>'
-        f'<td style="padding:8px 0;text-align:right;font-weight:600;color:#15181c;font-size:13px">{value}</td></tr>'
+        f'<tr><td style="padding:10px 0;color:#60646c;font-size:13px;border-bottom:1px solid #f1f4f9">{label}</td>'
+        f'<td style="padding:10px 0;text-align:right;font-weight:600;color:#15181c;font-size:13px;border-bottom:1px solid #f1f4f9">{value}</td></tr>'
         for label, value in rows
     )
     greeting = f"Chào {guest_name}," if guest_name else "Xin chào,"
-    # Email-client HTML note: flexbox (display:flex) isn't reliably supported
-    # across email clients (esp. Outlook desktop, which renders with Word's
-    # engine) — the "V" logo badge below is centered with line-height +
-    # text-align instead, and the room list is a <table>, not flex/grid.
     hero_html = (
-        f'<img src="{hotel_image_url}" width="432" alt="" '
-        'style="width:100%;max-width:432px;height:160px;object-fit:cover;border-radius:16px;display:block;margin-bottom:20px" />'
+        f'<img src="{hotel_image_url}" width="496" alt="" '
+        'style="width:100%;max-width:496px;height:200px;object-fit:cover;border-radius:18px;display:block;margin-bottom:24px" />'
         if hotel_image_url
         else ""
     )
     room_rows_html = _room_rows_html(rooms, currency)
     rooms_section_html = (
         f"""
-  <div style="margin-top:20px">
-    <div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#8a8f99;margin-bottom:4px">Phòng đã đặt</div>
+  <div style="margin-top:22px">
+    <div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#8a8f99;font-weight:600;margin-bottom:6px">Phòng đã đặt</div>
     <table style="width:100%;border-collapse:collapse;border-top:1px solid #e6eaf5">{room_rows_html}</table>
   </div>"""
         if room_rows_html
         else ""
     )
-    total_html = (
-        f"""
-  <div style="margin-top:16px;padding-top:12px;border-top:1px solid #e6eaf5;display:table;width:100%">
-    <span style="color:#60646c;font-size:13px">Tổng cộng</span>
-    <span style="float:right;font-weight:600;color:#15181c;font-size:15px">{amount_line}</span>
-  </div>"""
-        if amount_line
-        else ""
-    )
+
+    amount_display = amount_line or "—"
+
     return f"""
-<div style="font-family:-apple-system,'Segoe UI',sans-serif;max-width:480px;margin:0 auto;padding:32px 24px">
-  {hero_html}
-  <div style="width:44px;height:44px;border-radius:14px;background:linear-gradient(145deg,#5C93EE,#2C5FC9);
-              color:#fff;line-height:44px;text-align:center;font-weight:600;font-size:18px">V</div>
-  <h1 style="font-size:20px;margin:20px 0 4px;color:#15181c">Đặt phòng đã được xác nhận</h1>
-  <p style="color:#60646c;font-size:14px;line-height:1.5">{greeting} thanh toán của bạn đã thành công và đặt phòng đã được xác nhận.</p>
-  <div style="margin:20px 0;padding:14px 16px;border-radius:14px;background:#f3f5fa">
-    <div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#8a8f99">Mã đặt phòng</div>
-    <div style="font-size:18px;font-weight:600;letter-spacing:.03em;color:#15181c;margin-top:2px">{booking_code}</div>
+<div style="background-color:#f4f6fa;padding:32px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:22px;border:1px solid #e2e8f0;padding:28px 24px;box-shadow:0 8px 30px rgba(0,0,0,0.04)">
+    {hero_html}
+    <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+      <tr>
+        <td style="vertical-align:middle">
+          <div style="width:44px;height:44px;border-radius:14px;background:linear-gradient(145deg,#5C93EE,#2C5FC9);
+                      color:#fff;line-height:44px;text-align:center;font-weight:700;font-size:18px">V</div>
+        </td>
+        <td style="text-align:right;vertical-align:middle">
+          <span style="display:inline-block;padding:6px 14px;border-radius:99px;background:#e8f7f5;color:#1f6f67;font-size:12px;font-weight:600">
+            ✓ Đã xác nhận
+          </span>
+        </td>
+      </tr>
+    </table>
+    <h1 style="font-size:22px;font-weight:700;margin:0 0 6px;color:#15181c;letter-spacing:-0.3px">Đặt phòng đã được xác nhận</h1>
+    <p style="color:#60646c;font-size:14px;line-height:1.5;margin:0 0 20px">{greeting} thanh toán của bạn đã thành công và đặt phòng đã được xác nhận với khách sạn.</p>
+    
+    <table style="width:100%;border-collapse:collapse;margin:20px 0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden">
+      <tr>
+        <td style="padding:14px 16px;width:50%;text-align:center;border-right:1px solid #e2e8f0;vertical-align:middle">
+          <div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#737885;font-weight:600">Mã đặt phòng</div>
+          <div style="font-size:18px;font-weight:700;letter-spacing:.03em;color:#15181c;margin-top:3px">{booking_code}</div>
+        </td>
+        <td style="padding:14px 16px;width:50%;text-align:center;vertical-align:middle">
+          <div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#737885;font-weight:600">Tổng cộng</div>
+          <div style="font-size:18px;font-weight:700;color:#2C5FC9;margin-top:3px">{amount_display}</div>
+        </td>
+      </tr>
+    </table>
+
+    <table style="width:100%;border-collapse:collapse;border-top:1px solid #e6eaf5;margin-top:8px">{rows_html}</table>{rooms_section_html}
+
+    <p style="color:#8a8f99;font-size:12px;margin-top:28px;text-align:center;line-height:1.5">V‑OTA Travel · Email này được gửi tự động, vui lòng không trả lời trực tiếp.</p>
   </div>
-  <table style="width:100%;border-collapse:collapse;border-top:1px solid #e6eaf5">{rows_html}</table>{rooms_section_html}{total_html}
-  <p style="color:#8a8f99;font-size:12px;margin-top:28px">V‑OTA · Email này được gửi tự động, vui lòng không trả lời trực tiếp.</p>
 </div>
 """.strip()
 
