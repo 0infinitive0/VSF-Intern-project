@@ -23,6 +23,10 @@ nhìn thấy — mọi phase trước tồn tại để phục vụ nó.
   thắng hành vi tự động.
 - Trước khi phase đầu tiên về: fallback `ElapsedSpinner` (giữ nguyên component, không xoá).
 - Nhóm không có dòng nào: chỉ tiêu đề + ✓/spinner, **không** vùng text rỗng lửng lơ.
+- **Làn reasoning** (thêm 2026-08-19, plan `260819-0931` Phase 5): dưới các dòng dữ kiện,
+  thụt vào, độ tương phản thấp hơn, có nhãn i18n nói rõ đây là suy luận của mô hình. Chỉ
+  mount khi có nội dung — không dựng khung rỗng chờ sẵn, vì rỗng là trường hợp thường.
+  Nội dung là tiếng Anh và giữ nguyên tiếng Anh. Nó **không** thay thế dòng dữ kiện thiếu.
 - `streamingText` về (câu trả lời bắt đầu chạy): khối thinking thu gọn, `MessageBubble`
   streaming hiện như hiện tại. Hai thứ không đè nhau.
 - **Vùng cuộn riêng**: nội dung giới hạn chiều cao, tự cuộn trong khối, không đẩy dài

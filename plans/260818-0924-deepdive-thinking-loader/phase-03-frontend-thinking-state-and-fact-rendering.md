@@ -32,6 +32,10 @@ backend gửi khoá đục + số liệu, không bao giờ gửi câu chữ.
 **Non-functional**
 - **Thiếu dữ kiện thì không hiện dòng.** Không có câu chống chế kiểu "Đang xử lý…" —
   dòng trống còn thật thà hơn câu vô nghĩa. Đây là ranh giới giữa plan này và text mẫu.
+- **Reasoning KHÔNG được dùng để thoả mãn luật trên** (thêm 2026-08-19). Plan
+  `260819-0931` thêm event SSE `reasoning` mang bản tóm tắt suy luận do model viết.
+  Dùng nó lấp chỗ một nhóm thiếu dữ kiện là quay lại đúng câu chống chế mà luật này cấm,
+  chỉ khác là bằng tiếng Anh. Hai field song song, không cái nào fallback sang cái kia.
 - Phase key lạ bỏ qua im lặng (như `phaseLabelKey` đang làm). Field extras lạ cũng bỏ qua.
 - `phases` giữ nguyên — panel phải đang dùng. `thinking` là state song song, không thay thế.
 - Số tiền/ngày dùng formatter sẵn có (`lib/format-currency.ts`, `lib/format-trip-dates.ts`),
@@ -55,7 +59,8 @@ const GROUP_ORDER: ThinkingGroupKey[] = ['understand', 'gather', 'build', 'final
 export interface ThinkingGroup {
   key: ThinkingGroupKey
   labelKey: string
-  lines: string[]   // câu đã dựng sẵn, rỗng nếu không có dữ kiện
+  lines: string[]   // câu đã dựng sẵn từ dữ kiện graph, rỗng nếu không có dữ kiện
+  reasoning: string // chữ model tự tóm tắt (plan 260819-0931), '' là bình thường
   done: boolean
 }
 ```
@@ -133,3 +138,26 @@ bao giờ nội suy `undefined` vào câu.
 | Trượt dần thành câu mẫu vô nghĩa | Ranh giới ghi thành yêu cầu non-functional + ca test `facts = {}` |
 | Vòng lặp supervisor tạo dòng trùng | Ca test "routing 3 lần" |
 | Xung đột với plan `260816-2205` Phase 8 (codegen type từ OpenAPI) | Type SSE là hand-written ngoài OpenAPI; đặt type mới cùng vùng đó |
+
+## Bổ sung 2026-08-19 — làn reasoning
+
+Plan `260819-0931` Phase 4 đã ship event SSE `reasoning` (backend xong, hợp đồng đã ghi
+trong `docs/chat_api_contract.md`). Phase 5 của plan đó thêm phần FE, và nó **thêm vào**
+phase này chứ không thay:
+
+- `stream-client.ts`: thêm `onReasoning?: (text: string) => void` + nhánh
+  `case 'reasoning'` trong `switch` sẵn có (`stream-client.ts:163`).
+- `use-chat-session.ts`: action `STREAM_REASONING` nối text vào **nhóm đang chạy**, không
+  phải một buffer toàn cục.
+- `reasoning` phải được xoá ở mọi chỗ `thinking` đang bị xoá.
+
+Bốn thuộc tính của event, đã đo, không phải giả định:
+
+1. **Luôn tiếng Anh**, kể cả hội thoại tiếng Việt và kể cả khi prompt ép ngược lại.
+   Không dịch. Nhãn giới thiệu là chữ sản phẩm nên qua i18n; nội dung thì không.
+2. **Thường vắng.** Đo live 2026-08-19: prompt khó cho 203 frame, prompt đơn giản cho
+   **0 frame**. Không được gate render vào sự xuất hiện của nó.
+3. **Không phải prefix của `final.reply`**, không bao giờ nằm trong `final`.
+4. **Nhịp khác nhau theo node.** `intake_qa` stream nhiều frame; `qa_node` là subgraph
+   biên dịch sẵn nên cả cục về trong **một** frame. UI phải chịu được cả hai — xem
+   `plans/reports/debug-260819-qa-node-not-token-streaming.md`.

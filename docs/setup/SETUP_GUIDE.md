@@ -32,6 +32,9 @@ cp .env.example .env
 # Open .env and fill in:
 #   SUPABASE_URL and SUPABASE_SERVICE_KEY (required for hotel/attraction search)
 #   LLM_PROVIDER / LLM_MODEL / LLM_API_KEY (if using cloud LLM — see .env.example)
+#   LLM_USE_RESPONSES_API / LLM_REASONING_SUMMARY — both off by default; leave them
+#     off unless you specifically want the OpenAI Responses API transport. Rationale
+#     and constraints are in .env.example next to each variable.
 #   AI_LOG_API_KEY (from BTC invite link)
 ```
 

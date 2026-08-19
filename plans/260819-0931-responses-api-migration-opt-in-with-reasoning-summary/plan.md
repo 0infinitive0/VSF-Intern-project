@@ -105,18 +105,25 @@ Nên cờ phải đi kèm một guard họ model, dùng lại đúng vị từ �
 `gpt-5/o1/o3/o4` với phần còn lại. Bật Responses API cho model nằm ngoài họ đó là
 sai, kể cả khi env bảo bật.
 
-### `stream_options` — hazard chưa ai đo
+### ~~`stream_options` — hazard~~ — đã đo, không tồn tại
 
-`llm.py` với base URL mặc định của OpenAI → langchain tự set `stream_usage=True`
-(`base.py:1246`), và test `backend/tests/test_llm_provider.py:161` đang khoá hành vi đó.
-Khi stream, `_stream` nhét `stream_options` vào kwargs (`base.py:1642`). Nhưng
-`_construct_responses_api_payload` (`base.py:4293`) pop `stop`, `max_tokens`,
-`tool_choice`, `response_format`, `verbosity` — **không pop `stream_options`**.
-Payload Responses API sẽ mang theo một key API đó không có.
+> **Bác bỏ 2026-08-19 bằng phép đo.** Mục này giữ lại vì nó là ví dụ đắt giá về việc
+> đọc source suy ra hậu quả sai.
 
-Đây là suy luận từ đọc source, **chưa chạy thật**. Phase 2 bước 1 phải đo trước khi
-viết fix, và fix phải nằm ở `llm.py` (set `stream_usage=False` khi bật Responses API),
-không phải patch vào langchain.
+Lập luận ban đầu: `llm.py` với base URL mặc định → langchain tự set `stream_usage=True`
+(`base.py:1246`); khi stream, `_stream` nhét `stream_options` vào kwargs
+(`base.py:1642`); `_construct_responses_api_payload` (`base.py:4293`) pop `stop`,
+`max_tokens`, `tool_choice`, `response_format`, `verbosity` — **không** pop
+`stream_options`. Kết luận rút ra: payload sẽ mang một key API không có → 400.
+
+**Mọi mệnh đề về code đều đúng. Kết luận thì sai.** Đo thật
+(`plans/reports/probe-260819-responses-api-payload-and-usage.md`): request chạy bình
+thường, và `usage_metadata` tới `usage_recorder` đầy đủ ở cả bốn cấu hình.
+
+Nếu làm theo bản đầu, `stream_usage=False` sẽ được ship và **mất token usage của mọi
+call streaming** — đúng thứ `test_llm_provider.py:161` khoá và `eval/harness/cost.py`
+cần — để chữa một căn bệnh không tồn tại. Đây là lý do Phase 2 bước 1 là phép đo, không
+phải bản sửa.
 
 ### Reasoning là lớp phụ, không phải nguồn chính
 
@@ -141,11 +148,12 @@ là thứ lấp khối UI; reasoning chỉ chồng thêm khi có.
 | 3b | [A/B chi phí và số hop](./phase-03b-deferred-cost-and-hop-ab.md) | **Hoãn** |
 | 4 | [Reasoning summary qua dây](./phase-04-reasoning-summary-over-the-wire.md) | **Done** |
 | 5 | [Làn reasoning ở frontend](./phase-05-frontend-reasoning-lane-in-the-thinking-block.md) | Pending |
-| 6 | [Quyết định rollout + hoà giải cross-plan](./phase-06-rollout-decision-and-cross-plan-reconciliation.md) | Pending |
+| 6 | [Quyết định rollout + hoà giải cross-plan](./phase-06-rollout-decision-and-cross-plan-reconciliation.md) | **Done** |
 
 Phase 1 độc lập hoàn toàn — ship riêng được, không phụ thuộc quyết định migrate.
-**Phase 2.5 chặn Phase 4**: cờ của Phase 2 hiện là súng đã lên đạn — bật lên là 8 chỗ
-gọi LLM hỏng im lặng, mà Phase 4/5 lại đòi bật nó.
+**Phase 2.5 chặn Phase 4** — và đã xong. Cờ của Phase 2 từng là súng đã lên đạn: bật lên
+là 8 chỗ gọi LLM hỏng im lặng, mà Phase 4/5 lại đòi bật nó. Phase 2.5 vá cả 8, xác nhận
+bằng phép đo live hai chiều trên `extract_patch`.
 Phase 5 bị chặn bởi `260818-0924-deepdive-thinking-loader` Phase 4 (khối thinking UI
 phải tồn tại trước).
 
@@ -186,16 +194,22 @@ Phase 1, 2.5 và 4 cùng chạm vòng drain của `routes.py`; Phase 2 và 2.5 c
 - [x] Smoke test qua graph thật: kết quả khớp nhau giữa cờ tắt và cờ bật
 - [ ] Reasoning summary hiện trong khối thinking, và khối vẫn đầy đủ nội dung khi summary rỗng (Phase 5)
 - [x] `docs/chat_api_contract.md` mô tả event `reasoning`
-- [ ] Không còn mâu thuẫn giữa plan này, deepdive plan, và spike report
+- [x] Không còn mâu thuẫn giữa plan này, deepdive plan, và spike report
 
 ## Open questions
 
 1. ~~`stream_options` có làm Responses API trả 400 không?~~ **Không** — đo 2026-08-19, `plans/reports/probe-260819-responses-api-payload-and-usage.md`.
 2. ~~`usage_recorder._record` đọc được `model_name` từ Responses API không?~~ **Có** —
    đúng dated snapshot id, `usage_metadata` đầy đủ gồm `cache_read` và `reasoning`.
-3. Rollout thật: bật cờ ở staging trước hay bật thẳng cho một tỉ lệ traffic? Chưa có
-   hạ tầng feature-flag theo % trong repo — Phase 6 cần người dùng chốt.
-4. **Mới 2026-08-19.** `qa_node` chỉ phát 2 frame delta cho ~650 ký tự — không stream
-   theo token, khác hẳn `intake_qa` (41 frame / 154 ký tự). Không phải hồi quy của plan
-   này (giống nhau ở cả hai transport), nhưng Phase 5 dựng khối thinking trên luồng delta
-   đó. Cần điều tra riêng trước Phase 5.
+3. ~~Rollout thật: staging trước hay % traffic?~~ **Không còn là câu hỏi.** Phase 6 quyết
+   giữ default `false`, nên không có đợt rollout nào để dàn. Việc bật chỉ xảy ra ở môi
+   trường chạy Phase 5, và đó là quyết định phạm vi môi trường. Nếu sau này có đề xuất
+   đổi default, câu hỏi này sống lại — cùng lúc với Phase 3b.
+4. **`qa_node` không stream theo token** — đã chẩn đoán xong 2026-08-19, chưa sửa.
+   Nguyên nhân: nó là node duy nhất được `add_node` bằng subgraph biên dịch sẵn
+   (`graph.py:119`), và `stream_mode="messages"` không đi xuống subgraph. 27 frame token
+   vẫn ở đó, chỉ không ai nhìn thấy. Bản sửa (`subgraphs=True`) đổi hình dạng tuple và
+   trục lọc của `STREAMING_NODES`, nên **không phải một dòng**, và rủi ro tool-call rò
+   vào `delta` chưa được đo. Chi tiết:
+   `plans/reports/debug-260819-qa-node-not-token-streaming.md`. **Cần plan riêng** —
+   không thuộc plan này, nhưng Phase 5 dựng UI trên chính luồng đó.

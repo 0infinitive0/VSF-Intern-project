@@ -1,7 +1,7 @@
 ---
 phase: 6
 title: "Quyết định rollout + hoà giải cross-plan"
-status: pending
+status: completed
 priority: P2
 effort: "0.5d"
 dependencies: [3, 5]
@@ -67,13 +67,13 @@ Không có. Đây là phase tài liệu + quyết định.
 
 ## Success Criteria
 
-- [ ] Quyết định default có lý do bằng số, không bằng cảm tính
-- [ ] Deepdive plan không còn khai "Không đụng Responses API"
-- [ ] Deepdive Phase 3/4 tính đến làn reasoning
-- [ ] Spike report có ghi chú đảo quyết định, kết luận cũ giữ nguyên
-- [ ] `blockedBy`/`blocks` đúng hai chiều giữa hai plan
-- [ ] Consistency sweep báo 0 mâu thuẫn còn lại
-- [ ] Không file code sản phẩm nào bị sửa ở phase này (trừ `.env.example` nếu đổi default)
+- [x] Quyết định default có lý do — giữ `false`, xem mục Quyết định
+- [x] Deepdive plan không còn khai "Không đụng Responses API"
+- [x] Deepdive Phase 3/4 tính đến làn reasoning
+- [x] Spike report có ghi chú đảo quyết định, kết luận cũ giữ nguyên
+- [x] `blockedBy`/`blocks` đúng hai chiều giữa hai plan
+- [x] Consistency sweep báo 0 mâu thuẫn còn lại
+- [x] Không file code sản phẩm nào bị sửa ở phase này
 
 ## Risk Assessment
 
@@ -82,3 +82,51 @@ Không có. Đây là phase tài liệu + quyết định.
 | Sửa deepdive plan trong khi ai đó đang implement nó | Trung bình | Deepdive đang `pending`, chưa ai bắt đầu. Kiểm tra lại status trước khi sửa |
 | Đổi default dựa trên số đo mỏng (3 lần chạy) | Trung bình | Nếu số liệu không dứt khoát, giữ `false`. Không quyết định lớn trên dữ liệu yếu |
 | Mất dấu vết vì sao quyết định bị đảo | Trung bình | Bước 6 bắt buộc thêm ghi chú có ngày, không viết đè |
+
+## Quyết định: giữ default `false`
+
+**`LLM_USE_RESPONSES_API` và `LLM_REASONING_SUMMARY` đều giữ mặc định tắt.**
+
+Lý do, theo thứ tự sức nặng:
+
+1. **Không có số nào ủng hộ việc đổi.** Phase 3 rút xuống smoke test — nó trả lời "có vỡ
+   không" (không), chứ không đo latency, chi phí, hay số hop. Phép đo đó nằm ở Phase 3b,
+   đang hoãn vì nó phục vụ hai quyết định là non-goal. Đổi default dựa trên "không thấy
+   vỡ" là đổi mà không có lý do.
+2. **Lợi ích lớn nhất đã bị vô hiệu.** Spike đo TTFT giảm 17.6s → 1.0s, nhưng đó là do
+   token summary lấp chỗ trống. Dự án lấp chỗ đó bằng dữ kiện graph (deepdive plan), nên
+   phần lớn lợi ích không còn thu được.
+3. **Prompt caching đã có trên cả hai đường.** `eval/pricing/model-prices.json` có
+   `cached_input` (gpt-5.1: 1.25 → 0.125). Lý do chi phí không đứng vững.
+4. **Cái còn lại là future-proof**, và nó **không cần** default đổi: guard
+   `_streamed_text`/`response_text` (Phase 1 + 2.5) đã đóng đường vỡ, kể cả khi ai đó đặt
+   `LLM_MODEL=gpt-5-pro` và langchain tự chuyển transport.
+
+Giá trị thật sự thu được từ plan này không phải việc migrate, mà là **9 chỗ giả định
+`.content` luôn là `str` đã được vá**, và đường Responses API giờ bật được an toàn khi
+cần — bằng một biến env, không phải một đợt deploy.
+
+### Bật khi nào
+
+Khi Phase 5 dựng làn reasoning trong khối thinking. Lúc đó môi trường chạy Phase 5 cần
+`LLM_USE_RESPONSES_API=true` + `LLM_REASONING_SUMMARY=auto`. Đó là quyết định phạm vi
+môi trường, không phải đổi default sản phẩm.
+
+## Docs đã cập nhật
+
+- `docs/chat_api_contract.md` — event `reasoning` + 4 thuộc tính bắt buộc (Phase 4).
+- `docs/setup/SETUP_GUIDE.md` — một dòng chỉ đường; chi tiết từng biến ở `.env.example`,
+  đúng quy ước file đó đang trỏ tới. Không nhân bản.
+- Không tạo cây `docs/decisions/` mới — repo không có quy ước ADR, và tạo một cây thư mục
+  cho một quyết định là dựng cấu trúc trước khi có nhu cầu.
+
+## Consistency sweep
+
+Đọc lại `plan.md` + 8 phase file. Đã sửa trong lượt này:
+
+- Bảng phase trong `plan.md` thiếu Phase 2.5 và 3b → đã thêm.
+- Non-goal của plan nói "phép đo chi phí phục vụ Phase 3" → sửa thành trỏ Phase 3b.
+- Phase 3 vẫn mang tiêu đề "A/B" trong tên file (`phase-03-measure-the-a-b-on-real-turns.md`)
+  dù nội dung đã thành smoke test. **Không đổi tên file** — link từ `plan.md` và các
+  report đang trỏ vào đó; đổi tên tạo link chết để đổi lấy một cái tên đẹp hơn.
+- Open question #1, #2 đã đóng bằng số đo; #3 vẫn mở; #4 (bug `qa_node`) mới thêm.

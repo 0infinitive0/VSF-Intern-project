@@ -7,7 +7,7 @@ effort: "~5d"
 tags: [streaming, sse, ux, frontend, i18n, supabase]
 created: 2026-08-18
 updated: 2026-08-18
-blockedBy: []
+blockedBy: []  # xem ghi chú cross-plan: 260819-0931 Phase 5 chạy sau Phase 4 của plan này
 blocks: [260819-0931-responses-api-migration-opt-in-with-reasoning-summary]
 ---
 
@@ -61,6 +61,21 @@ lại bao nhiêu kết quả. Nên nguồn nội dung chuyển sang đó.
 - Không thêm event SSE → không đổi contract, client cũ không vỡ.
 - Không đụng Responses API → rủi ro `routes.py:548` (`isinstance(content, str)` nuốt `delta`)
   **biến mất hoàn toàn**.
+
+> **HẾT HIỆU LỰC 2026-08-19 — hai gạch đầu dòng ngay trên.**
+>
+> Cả hai đều đã bị việc khác vượt qua, và theo hướng có lợi:
+>
+> - **Guard `isinstance(content, str)` đã được vá** (`routes.py`, plan
+>   `260819-0931`). Rủi ro không "biến mất nhờ tránh né" — nó được đóng lại. Lý do phải
+>   đóng: langchain định tuyến model sang Responses API theo **tên** (`gpt-5-pro*`, mọi
+>   tên chứa `codex`), nên tránh né chưa bao giờ là một chiến lược.
+> - **Đã có thêm một event SSE**: `reasoning`. Client cũ vẫn không vỡ — SSE bỏ qua event
+>   lạ, và `stream-client.ts:163` có `switch` với nhánh `default` không làm gì.
+>
+> Người dùng chọn ngày 2026-08-19: bật reasoning summary và render **kèm** dữ kiện graph.
+> Phần còn lại của mục này vẫn đúng — dữ kiện graph vẫn là nguồn chính, reasoning chỉ
+> chồng thêm khi có, và FE vẫn sở hữu mọi text sản phẩm.
 - Không thêm lượt gọi LLM → không thêm chi phí, không thêm latency.
 - FE giữ quyền sở hữu text hiển thị — đúng nguyên tắc `phase-labels.ts` đã lập:
   *"backend never sends display text"*.
@@ -132,6 +147,11 @@ Phase 1 đã xong; kết quả của nó là lý do plan có hình dạng hiện
 | 2 | `backend/src/api/routes.py` (vòng drain), `backend/src/api/streaming.py`, `backend/src/agents/graph/nodes/hotel_node.py`, `backend/src/services/{trip_planner,routing,itinerary_store}.py`, `docs/chat_api_contract.md` |
 | 3 | `frontend/src/types/index.ts`, `frontend/src/lib/thinking-groups.ts`, `frontend/src/hooks/use-chat-session.ts`, `frontend/src/api/stream-client.ts`, `frontend/src/i18n/` |
 | 4 | `frontend/src/components/thinking-block.tsx`, `frontend/src/components/message-list.tsx` |
+
+Plan `260819-0931` Phase 5 chạm **cùng** `stream-client.ts`, `use-chat-session.ts`, và
+`thinking-block.tsx` để thêm làn reasoning. Nó chạy **sau** Phase 4 của plan này (khối
+thinking phải tồn tại trước) và chỉ thêm field `reasoning` cạnh `lines` — không sửa
+đường dữ kiện. Không chạy song song hai plan trên nhóm file này.
 | 5 | `supabase/migrations/`, `supabase/seed.sql`, `backend/scripts/database_schema.sql`, `backend/src/services/session_store.py`, `backend/src/models/schemas.py`, `backend/src/api/routes.py` (restore) |
 
 Phase 2 và Phase 5 cùng chạm `routes.py` nhưng khác hàm (vòng drain vs `restore_session`),
