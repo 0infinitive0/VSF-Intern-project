@@ -14,7 +14,7 @@ from typing import Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from src.services.llm import get_fast_llm
+from src.services.llm import get_fast_llm, response_text
 from src.services.supabase_search import get_supabase_client
 
 logger = logging.getLogger(__name__)
@@ -325,7 +325,7 @@ def _approved_discovery_rows(
                 + json.dumps(list(relevant_entries_by_id.values()), ensure_ascii=False)
             )),
         ])
-        payload = _parse_model_json(getattr(response, "content", ""))
+        payload = _parse_model_json(response_text(response))
     except Exception as exc:
         logger.warning("Amenity discovery classification failed: %s", type(exc).__name__)
         return []

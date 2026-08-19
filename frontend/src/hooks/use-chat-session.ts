@@ -25,7 +25,24 @@ import type { CreateSessionResponse, SessionPing } from '../api/chat-client'
 import { restoreSession } from '../api/session-client'
 import { sendMessageStream, StreamUnsupported } from '../api/stream-client'
 import i18n from '../i18n'
-import type { ChatMessage, ChatState, PlannerChatResponse, PhaseKey, SessionRestore } from '../types'
+import { appendReasoning, applyPhaseToGroups, completeGroups } from '../lib/thinking-groups'
+import { thinkingLines, type Translate } from '../lib/thinking-lines'
+import type {
+  ChatMessage,
+  ChatState,
+  PlannerChatResponse,
+  PhaseFacts,
+  PhaseKey,
+  SessionRestore,
+} from '../types'
+
+/**
+ * `thinkingLines` takes the narrow `Translate` shape so it stays a pure function
+ * in tests; i18next's own `t` carries far richer overloads than that. Adapting
+ * here keeps the cast in one place instead of at every call.
+ */
+const translate: Translate = (key, params) =>
+  i18n.t(key, params as Record<string, unknown>) as string
 
 const SESSION_KEY = 'vsf_trip_planner_session_id'
 
@@ -48,7 +65,7 @@ export const INITIAL_STATE: ChatState = {
   elapsedMs: 0,
   error: null,
   streamingText: '',
-  phases: [],
+  phases: [], thinking: [],
 }
 
 // ── Action types ─────────────────────────────────────────────────────────────
@@ -73,8 +90,9 @@ export type Action =
   | { type: 'TICK' }
   | { type: 'RESET'; sessionId: string }
   | { type: 'RESTORE'; sessionId: string; data: SessionRestore }
-  | { type: 'STREAM_PHASE'; key: PhaseKey; at: number; turnId: number }
+  | { type: 'STREAM_PHASE'; key: PhaseKey; at: number; facts: PhaseFacts; turnId: number }
   | { type: 'STREAM_DELTA'; text: string; turnId: number }
+  | { type: 'STREAM_REASONING'; text: string; phaseKey: string; turnId: number }
   // Dedicated hotels/change round-trip (step-navigator.tsx's "đổi khách sạn"
   // action) — never part of the chat turn machinery: no message, no LLM call,
   // just a hotel-list refresh. Own pending flag (`hotelsLoading`) so Composer/
@@ -88,6 +106,9 @@ function applyPlannerResponse(state: ChatState, data: PlannerChatResponse, messa
     ...state,
     pending: false,
     elapsedMs: 0,
+    // The turn is over, so nothing can still be running. Without this the last
+    // step kept its spinner forever, under a header reading "finished".
+    thinking: completeGroups(state.thinking),
     messages: message ? [...state.messages, message] : state.messages,
     suggestions: data.suggestions || [],
     hotelOptions: data.hotel_options || [],
@@ -103,6 +124,9 @@ function applyPlannerResponse(state: ChatState, data: PlannerChatResponse, messa
     intake: data.intake || state.intake,
     error: null,
     streamingText: '',
+    // `phases` clears — the right-hand panel is a live progress strip and has
+    // nothing to show between turns. `thinking` does NOT: it stays with the
+    // answer it produced, and is cleared when the next turn starts instead.
     phases: [],
   }
 }
@@ -136,7 +160,7 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
         suggestedPlaces: [],
         hotelFilterData: INITIAL_STATE.hotelFilterData,
         streamingText: '',
-        phases: [],
+        phases: [], thinking: [],
       }
 
     case 'HOTEL_SELECTION_START':
@@ -155,7 +179,7 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
         suggestedPlaces: [],
         hotelFilterData: INITIAL_STATE.hotelFilterData,
         streamingText: '',
-        phases: [],
+        phases: [], thinking: [],
       }
 
     // Unchanged shape on purpose: `final` (stream) and the plain POST body
@@ -174,6 +198,10 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
         text: data.reply,
         stage: data.stage,
         isError,
+        // Nothing streamed for this turn, so the reply arrived whole. Reveal it
+        // progressively rather than letting it snap in, which made deterministic
+        // answers feel like a different assistant from the streamed ones.
+        typewriter: !state.streamingText,
         at: new Date().toISOString(),
       }
       return applyPlannerResponse(state, data, newMsg)
@@ -213,12 +241,12 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
         ],
         suggestions: [],
         streamingText: '',
-        phases: [],
+        phases: [], thinking: [],
       }
 
     case 'HOTEL_SELECTION_ERROR':
       if (action.turnId !== state.turnId) return state
-      return { ...state, pending: false, elapsedMs: 0, error: action.error, streamingText: '', phases: [] }
+      return { ...state, pending: false, elapsedMs: 0, error: action.error, streamingText: '', phases: [], thinking: [] }
 
     case 'TICK':
       return { ...state, elapsedMs: state.elapsedMs + 1000 }
@@ -242,6 +270,9 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
           role: m.role === 'assistant' ? ('ai' as const) : ('user' as const),
           text: m.text,
           stage: m.stage,
+          // Carried through as facts; the sentences are rebuilt at render time
+          // in whatever language the reader is in now.
+          thinkingTrace: (m.thinking_trace ?? undefined) as ChatMessage['thinkingTrace'],
           // Known limitation, not an oversight: a restored bubble can never be
           // marked as an error today, because `chat_messages` has no `stage`
           // column (backend/scripts/database_schema.sql) and
@@ -263,13 +294,31 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
       }
     }
 
-    case 'STREAM_PHASE':
+    case 'STREAM_PHASE': {
       if (action.turnId !== state.turnId) return state
-      return { ...state, phases: [...state.phases, { key: action.key, at: action.at }] }
+      // `phases` stays exactly as it was — the right-hand progress panel reads
+      // it and is not part of this change. `thinking` is a parallel view of the
+      // same frames, grouped for the chat column.
+      const lines = thinkingLines(translate, action.key, action.facts)
+      // A step now reports twice — it started, then it finished. The
+      // right-hand panel lists one row per entry and treats the last as the one
+      // in progress, so appending both listed every step twice. The opening
+      // edge is the one that matches what that panel means by a row.
+      const opensAStep = action.facts.status !== 'completed'
+      return {
+        ...state,
+        phases: opensAStep ? [...state.phases, { key: action.key, at: action.at }] : state.phases,
+        thinking: applyPhaseToGroups(state.thinking, action.key, lines, action.facts.status),
+      }
+    }
 
     case 'STREAM_DELTA':
       if (action.turnId !== state.turnId) return state
       return { ...state, streamingText: state.streamingText + action.text }
+
+    case 'STREAM_REASONING':
+      if (action.turnId !== state.turnId) return state
+      return { ...state, thinking: appendReasoning(state.thinking, action.phaseKey, action.text) }
 
     case 'HOTELS_CHANGE_START':
       return { ...state, hotelsLoading: true, error: null }
@@ -470,8 +519,11 @@ export function useChatSession() {
           trimmed,
           i18n.language,
           {
-            onPhase: (key, at) => dispatch({ type: 'STREAM_PHASE', key: key as PhaseKey, at, turnId }),
+            onPhase: (key, at, facts) =>
+              dispatch({ type: 'STREAM_PHASE', key: key as PhaseKey, at, facts: (facts ?? {}) as PhaseFacts, turnId }),
             onDelta: (deltaText) => dispatch({ type: 'STREAM_DELTA', text: deltaText, turnId }),
+            onReasoning: (text, phaseKey) =>
+              dispatch({ type: 'STREAM_REASONING', text, phaseKey, turnId }),
           },
           controller.signal,
         )

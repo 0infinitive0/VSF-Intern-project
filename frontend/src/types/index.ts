@@ -153,6 +153,22 @@ export interface ChatMessage {
   text: string
   stage: Stage
   isError?: boolean
+  /**
+   * Reveal this reply character by character.
+   *
+   * Set only for a reply that arrived complete, with no `delta` frames behind
+   * it — a deterministic answer such as a hotel-search result, which has no
+   * model producing tokens to stream. Never set on restored history: replaying
+   * an old message on reload would be theatre, not feedback.
+   */
+  typewriter?: boolean
+  /**
+   * The steps behind this reply, as facts rather than sentences — the wording
+   * is rebuilt here so it follows the reader's current language rather than the
+   * one the turn ran in. Absent for every message written before the column
+   * existed, which is most of history and the ordinary case.
+   */
+  thinkingTrace?: PhaseTraceEntry[]
   // Client-side ISO timestamp, stamped in the reducer at SEND_START/SEND_SUCCESS.
   // Only ever present for messages sent this session — restored history carries
   // the server's real `at` and must not be invented here.
@@ -204,6 +220,12 @@ export interface ChatState {
   // pre-populated with placeholder steps — a branch that doesn't emit a key
   // simply never adds that row (contract §Streaming).
   phases: TurnPhase[]
+  /**
+   * The same turn's progress, folded into user-facing steps with sentences
+   * built from each step's facts. Parallel to `phases`, not a replacement:
+   * `phases` feeds the right-hand panel and keeps its own shape.
+   */
+  thinking: ThinkingGroup[]
 }
 
 // ── SSE streaming contract (POST /planner_chat/stream) ──────────────────────
@@ -232,12 +254,87 @@ export interface TurnPhase {
   at: number // epoch seconds from the backend
 }
 
+/**
+ * Facts a `phase` frame may carry about the step that just ran.
+ *
+ * EVERY field is optional, and that is the contract rather than caution: a step
+ * with nothing to report sends `key` and `at` alone. Field names come from
+ * docs/chat_api_contract.md §Streaming; the backend whitelists them in
+ * `agents/graph/phase_facts.py`, so no display text and no internal id appears
+ * here — only keys, counts, and schema field paths.
+ */
+export interface PhaseFacts {
+  /**
+   * Which edge of the step this frame reports. `started` when the node begins,
+   * `completed` when it returns; facts only ever ride `completed`. A phase
+   * emitted from inside a service reports `started` and never completes — close
+   * it when a later step opens, or at `final`.
+   */
+  status?: 'started' | 'completed'
+  /** intake_check: how the message was classified. */
+  intent?: string
+  /** intake_check: travel-state field paths touched (`people`, `budget.target`). */
+  fields?: string[]
+  /** routing: node the supervisor picked. */
+  worker?: string
+  /** hotel_search: `ok`, `no_results`, `error`, … — what the search found,
+   * which is not the step's own `status` above. */
+  outcome?: string
+  /** hotel_search: what the user asked for. */
+  destination?: string
+  /** hotel_search: present only when the user set one. */
+  radius_km?: number
+  /** hotel_search: amenity ids the user required. */
+  amenities?: string[]
+  /** hotel_search: options shown. */
+  kept?: number
+  /** routing_legs: days the route recalculation covers. */
+  days?: number
+}
+
+/**
+ * One completed step, as stored with the reply it helped produce.
+ *
+ * The wire type types `facts` as an open dict — OpenAPI cannot express the
+ * whitelist `agents/graph/phase_facts.py` enforces — so `PhaseFacts` is layered
+ * on here, where the fields are actually read.
+ */
+export type PhaseTraceEntry = Omit<Schemas['ThinkingTraceEntry'], 'facts'> & {
+  facts: PhaseFacts
+}
+
+/** The user-facing steps the nine phase keys fold into. */
+export type ThinkingGroupKey =
+  | 'analyze'
+  | 'route'
+  | 'hotels'
+  | 'itinerary'
+  | 'save'
+  | 'reply'
+
+/** One step of the thinking block, with the sentences built for it. */
+export interface ThinkingGroup {
+  key: ThinkingGroupKey
+  labelKey: string
+  /** Sentences built from graph facts. Empty when the step reported none. */
+  lines: string[]
+  /**
+   * The model's summary of its own reasoning, when it produced one.
+   * Always English, often empty — see docs/chat_api_contract.md. It supplements
+   * `lines` and must never be used to fill in for missing facts.
+   */
+  reasoning: string
+  done: boolean
+}
+
 export type StreamEvent =
-  // `days` present on routing_legs; the backend may attach other extras.
-  | { event: 'phase'; data: { key: PhaseKey; at: number; days?: number } }
+  | { event: 'phase'; data: { key: PhaseKey; at: number } & PhaseFacts }
   // Reply text, token by token — emitted only for the graph nodes that write
   // prose for the user (backend `STREAMING_NODES`).
   | { event: 'delta'; data: { text: string } }
+  // The model's own reasoning summary. Never a prefix of `final.reply`, and a
+  // valid turn may carry none of these frames at all.
+  | { event: 'reasoning'; data: { text: string; key: PhaseKey } }
   | { event: 'final'; data: PlannerChatResponse } // same dict as POST /planner_chat
   | { event: 'error'; data: { detail: string } }
 

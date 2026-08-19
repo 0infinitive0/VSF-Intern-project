@@ -583,6 +583,22 @@ class SessionListPayload(ResponsePayload):
     has_more: bool
 
 
+class ThinkingTraceEntry(ResponsePayload):
+    """One completed step of the turn that produced a reply.
+
+    Facts, never sentences: the wording is composed on the client from these and
+    follows the reader's current language, so storing text would render a
+    Vietnamese conversation in Vietnamese inside an English session and freeze
+    today's phrasing into history.
+
+    What may appear in `facts` is whitelisted at the source
+    (`agents/graph/phase_facts.py`): keys, counts and schema field paths only.
+    """
+
+    phase_key: str
+    facts: dict[str, Any] = Field(default_factory=dict)
+
+
 class RestoredMessagePayload(ResponsePayload):
     role: Literal["user", "assistant"]
     text: str
@@ -591,6 +607,12 @@ class RestoredMessagePayload(ResponsePayload):
     # stage column), but the type is the contract, not that limitation.
     stage: ChatStage
     at: str
+    # The steps behind this reply, as facts rather than sentences: the wording
+    # is built on the client and depends on the reader's language, so storing
+    # Vietnamese text would render it in Vietnamese inside an English session.
+    # `None` for every message written before the column existed, which is most
+    # of the history and the ordinary case rather than an edge one.
+    thinking_trace: list[ThinkingTraceEntry] | None = None
 
 
 class SessionRestorePayload(ResponsePayload):

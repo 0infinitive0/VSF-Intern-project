@@ -26,6 +26,7 @@ from langchain_core.tools import BaseTool
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
+from src.services.llm import response_text
 from src.agents.state import TripState
 
 _compiled_graphs: dict[str, Any] = {}
@@ -63,4 +64,4 @@ def invoke_tool_directly(
     )
     tool_message = result["messages"][-1]
     updates = {key: value for key, value in result.items() if key != "messages"}
-    return str(tool_message.content), updates
+    return response_text(tool_message), updates

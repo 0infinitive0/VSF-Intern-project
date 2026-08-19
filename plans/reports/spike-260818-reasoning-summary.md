@@ -196,6 +196,22 @@ theo gì, còn lại bao nhiêu kết quả. Đó là lý do chọn tường thu
 2. **Render** → template i18n ở FE; BE chỉ phát dữ kiện có cấu trúc.
 3. **Model** → `backend/.env:69` (`gpt-5.1-2025-11-13`) là nguồn đúng; xem mục 4.2.
 
+> **BỔ SUNG 2026-08-19 — quyết định #1 đã bị đảo, một phần.**
+>
+> Người dùng chọn **bật** reasoning summary và render nó **kèm** dữ kiện graph, không
+> phải thay thế. Quyết định #2 giữ nguyên và chính nó định hình cách làm: FE vẫn sở hữu
+> mọi text sản phẩm; reasoning đi trên một event SSE **riêng** (`reasoning`), có kiểu
+> riêng, để ngoại lệ "chữ do model viết" là tường minh chứ không lẫn vào `delta`.
+>
+> **Kết luận của spike vẫn đúng và là lý do kiến trúc có hình dạng đó.** Đo lại trên
+> chính sản phẩm ngày 2026-08-19: cùng cấu hình, prompt lịch trình khó cho 203 frame /
+> 1017 ký tự, prompt thời tiết đơn giản cho **0 frame**. Độ phủ vẫn không dự đoán được,
+> nên reasoning là lớp phụ chồng lên dữ kiện graph — dữ kiện mới là thứ lấp khối UI.
+>
+> Hợp đồng SSE ghi rõ client **không được** gate render vào sự xuất hiện của `reasoning`.
+>
+> Xem `plans/260819-0931-responses-api-migration-opt-in-with-reasoning-summary/`.
+
 ## 7. Giới hạn của phép đo
 
 - Mỗi ô đo **1 lần**, không phải 2 như plan viết. Chênh lệch giữa các lần chạy của cùng một

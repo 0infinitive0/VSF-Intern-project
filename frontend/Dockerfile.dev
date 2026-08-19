@@ -1,0 +1,17 @@
+# Dev-only image: bakes node_modules in at build time so a fresh
+# frontend_node_modules volume (docker-compose.override.yml) gets
+# auto-seeded from this image on first mount instead of running
+# `npm ci` against a just-created volume mount (a source of ENOENT/
+# ENOTDIR races on some Docker Desktop setups).
+#
+# Source itself is bind-mounted over /app at runtime for live-reload —
+# this image only needs to produce node_modules, not ship the app.
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --prefer-offline --no-audit --no-fund \
+    && md5sum package-lock.json | cut -d' ' -f1 > node_modules/.ci-stamp
+
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

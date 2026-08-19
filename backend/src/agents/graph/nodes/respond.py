@@ -96,6 +96,8 @@ from typing import Any
 
 from langchain_core.messages import AIMessage
 
+from src.services.llm import response_text
+
 from src.agents.graph.response_payload import (
     budget_from_travel_state,
     derive_stage,
@@ -300,9 +302,14 @@ def _reply_from_messages(state: TravelGraphState) -> str | None:
             metadata = getattr(message, "additional_kwargs", None) or {}
             if metadata.get("emitted_by") == _EMITTED_BY_RESPOND:
                 continue
-            content = getattr(message, "content", None)
-            if content:
-                return str(content)
+            # `str(content)` here rendered the provider's raw block list — the
+            # Python repr, encrypted reasoning payload and all — straight into
+            # the user's reply the moment a model answered over the Responses
+            # API. `qa_node`'s answer reaches this node only through `messages`,
+            # so this is the one place that shape can leak into a reply.
+            text = response_text(message)
+            if text:
+                return text
     return None
 
 
