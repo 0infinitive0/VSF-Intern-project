@@ -434,6 +434,9 @@
   "holdBannerRecheck": "Kiểm tra lại phòng",
   "holdBannerBookedTitle": "✓ Đã xác nhận đặt phòng",
   "holdBannerViewBooking": "Xem đặt phòng",
+  "bookingReceiptLoading": "Đang tải thông tin đặt phòng…",
+  "bookingReceiptNotFound": "Không tìm thấy thông tin đặt phòng cho đoạn chat này.",
+  "bookingReceiptClose": "Đóng",
 
   "checkoutTitle": "Thanh toán an toàn",
   "checkoutCloseAria": "Về lịch trình",

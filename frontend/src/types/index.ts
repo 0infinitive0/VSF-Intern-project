@@ -56,6 +56,12 @@ export type CreateVnpayPaymentResponse = Schemas['CreateVnpayPaymentResponse']
 export type Payment = Schemas['PaymentPayload']
 export type PaymentStatus = Payment['status']
 
+// "Reopen a past session's booking" (plan 260818-vnpay-payment-and-email-
+// confirmation's addendum 4) — GET /chat/{session_id}/booking-receipt,
+// independent of roomHold (api/payment-client.ts's getBookingReceipt).
+export type BookingReceipt = Schemas['BookingReceiptPayload']
+export type BookingReceiptRoom = Schemas['BookingReceiptRoomPayload']
+
 /** The backend's `ChatStage`, derived from the response rather than restated,
  * so a stage that loses its producer breaks the build here too. `null` is the
  * frontend's own addition: a locally-authored bubble (the greeting, the intake

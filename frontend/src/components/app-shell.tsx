@@ -86,6 +86,7 @@ export default function AppShell({
   holdBelongsToSession,
   sessionBookedFromBackend,
   onOpenBooking,
+  onOpenReceipt,
 }: {
   state: ChatState
   onSend: (text: string) => void
@@ -141,6 +142,11 @@ export default function AppShell({
    * instead of the banner just disappearing. See hold-banner.tsx. */
   sessionBookedFromBackend: boolean
   onOpenBooking: () => void
+  /** Opens booking-receipt-modal.tsx for the ACTIVE session — App.tsx's
+   * fallback view for a session whose booking is confirmed per the backend
+   * (sessionBookedFromBackend above) but no longer owns roomHold, so there's
+   * no live hold data left to drive booking-modal.tsx's "done" screen with. */
+  onOpenReceipt: () => void
 }) {
   const { theme, toggleTheme } = useTheme()
   const focusMode = useFocusMode()
@@ -315,6 +321,7 @@ export default function AppShell({
             holdBelongsToSession={holdBelongsToSession}
             sessionBookedFromBackend={sessionBookedFromBackend}
             onOpenBooking={onOpenBooking}
+            onOpenReceipt={onOpenReceipt}
           />
         </div>
       </div>

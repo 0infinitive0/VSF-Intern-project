@@ -17,6 +17,7 @@ import type { HotelFilterData, HotelOption } from './types'
 import AppShell from './components/app-shell'
 import AuthPanel from './auth/auth-panel'
 import BookingModal from './components/booking-modal'
+import BookingReceiptModal from './components/booking-receipt-modal'
 import ConfirmDialog from './components/confirm-dialog'
 import SessionExpiredModal from './components/session-expired-modal'
 import BootSplash from './components/boot-splash'
@@ -197,6 +198,12 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   }, [explicitSelectedHotelIndex, state.tripPlan?.hotel, roomHold.heldHotelId, retainedHotelOptions])
 
   const [bookingModalOpen, setBookingModalOpen] = useState(false)
+  // Separate from bookingModalOpen: opened via hold-banner.tsx's fallback
+  // "Xem đặt phòng" (the sessionBookedFromBackend branch, below) for a
+  // session whose booking is confirmed but no longer owns roomHold —
+  // booking-receipt-modal.tsx fetches its own data by session_id rather
+  // than reading roomHold, so it needs no data threaded in here.
+  const [receiptModalOpen, setReceiptModalOpen] = useState(false)
   // roomHold is a single GLOBAL hold, not scoped per chat session (see
   // use-room-hold.ts's module doc comment) — this is what keeps every
   // hold-facing UI honest about whether the CURRENTLY ACTIVE session is
@@ -493,6 +500,7 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
         holdBelongsToSession={holdBelongsToSession}
         sessionBookedFromBackend={sessionBookedFromBackend}
         onOpenBooking={() => setBookingModalOpen(true)}
+        onOpenReceipt={() => setReceiptModalOpen(true)}
       />
       <BookingModal
         open={bookingModalOpen}
@@ -504,6 +512,11 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
         checkInDate={state.intake?.start_date ?? null}
         checkOutDate={state.intake?.end_date ?? null}
         guestsLabel={state.intake?.people ?? null}
+      />
+      <BookingReceiptModal
+        open={receiptModalOpen}
+        onClose={() => setReceiptModalOpen(false)}
+        sessionId={state.sessionId}
       />
       <ConfirmDialog
         open={confirmChangeHotelOpen}

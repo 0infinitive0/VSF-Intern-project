@@ -49,6 +49,7 @@ export default function StageRouter({
   holdBelongsToSession,
   sessionBookedFromBackend,
   onOpenBooking,
+  onOpenReceipt,
 }: {
   stage: StageView
   state: ChatState
@@ -73,6 +74,8 @@ export default function StageRouter({
   /** See app-shell.tsx's doc comment on the same prop. */
   sessionBookedFromBackend: boolean
   onOpenBooking: () => void
+  /** See app-shell.tsx's doc comment on the same prop. */
+  onOpenReceipt: () => void
 }): ReactNode {
   if (stage === 'intake') {
     return <StageIntake intake={state.intake} form={intakeForm} onEditField={onEditIntakeField} />
@@ -107,6 +110,7 @@ export default function StageRouter({
       holdBelongsToSession={holdBelongsToSession}
       sessionBookedFromBackend={sessionBookedFromBackend}
       onOpenBooking={onOpenBooking}
+      onOpenReceipt={onOpenReceipt}
     />
   )
 }

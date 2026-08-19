@@ -68,6 +68,7 @@ from src.models.schemas import (
     AttractionDetailPayload,
     BookingOwnershipRequest,
     BookingPayload,
+    BookingReceiptPayload,
     BookingReservationRequest,
     ChangeHotelRequest,
     CreateVnpayPaymentRequest,
@@ -396,6 +397,30 @@ def get_payment_endpoint(payment_id: UUID, temporary_user_ref: str = Query(...))
     if payment is None:
         raise HTTPException(status_code=404, detail="Payment not found.")
     return PaymentPayload.model_validate(payment)
+
+
+@router.get("/chat/{session_id}/booking-receipt", response_model=BookingReceiptPayload)
+def get_booking_receipt(
+    session_id: str, current_user: AuthenticatedUser | None = Depends(get_current_user)
+) -> BookingReceiptPayload:
+    """"Reopen a past session's booking" (plan 260818-vnpay-payment-and-
+    email-confirmation's addendum 4) — roomHold, the frontend's only other
+    source for booking details, is a single global hold that only ever
+    reflects whichever session most recently held/paid (use-room-hold.ts's
+    module doc comment), so a guest revisiting an OLDER paid session needs
+    this real, independent lookup instead. Ownership is the session's own
+    (same `_owned_session_or_404` every other /chat/{session_id}/... route
+    uses) — not `temporary_user_ref`, which a guest checkout session has no
+    reliable way to supply for a session that isn't the currently active
+    one. 404 both when the session itself doesn't exist/isn't the caller's,
+    and when it exists but has no CONFIRMED booking (never held anything,
+    hold expired unpaid, or payment failed) — same "don't distinguish who
+    is asking" posture booking_service's own 404s already use."""
+    _owned_session_or_404(session_id, current_user)
+    receipt = payment_service.get_booking_receipt_for_session(session_id)
+    if receipt is None:
+        raise HTTPException(status_code=404, detail="No confirmed booking for this session.")
+    return BookingReceiptPayload.model_validate(receipt)
 
 
 # ---------------------------------------------------------------------------

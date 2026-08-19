@@ -13,7 +13,7 @@
  * throws), but is reported to the session-expired bus so the rest of the
  * app still reacts.
  */
-import type { SessionRestore, SessionSummary } from '../types'
+import type { BookingReceipt, SessionRestore, SessionSummary } from '../types'
 import { authHeaders } from './auth-headers'
 import { reportSessionExpired } from '../auth/session-expired-bus'
 
@@ -40,6 +40,28 @@ export async function restoreSession(sessionId: string): Promise<SessionRestore 
     if (res.status === 401) reportSessionExpired()
     if (!res.ok) return null
     return (await res.json()) as SessionRestore
+  } catch {
+    return null
+  }
+}
+
+/** "Reopen a past session's booking" (plan 260818-vnpay-payment-and-email-
+ * confirmation's addendum 4, GET /chat/{session_id}/booking-receipt) —
+ * deliberately independent of roomHold, which only ever reflects whichever
+ * session most recently held/paid (use-room-hold.ts's module doc comment).
+ * null covers both "no confirmed booking for this session" (404, the
+ * common/expected case for a draft or still-holding session) and any
+ * network/auth failure — booking-receipt-modal.tsx shows the same
+ * "couldn't load" state either way, matching restoreSession's posture
+ * above. */
+export async function getBookingReceipt(sessionId: string): Promise<BookingReceipt | null> {
+  try {
+    const res = await fetch(`${BASE}/chat/${encodeURIComponent(sessionId)}/booking-receipt`, {
+      headers: await authHeaders(),
+    })
+    if (res.status === 401) reportSessionExpired()
+    if (!res.ok) return null
+    return (await res.json()) as BookingReceipt
   } catch {
     return null
   }

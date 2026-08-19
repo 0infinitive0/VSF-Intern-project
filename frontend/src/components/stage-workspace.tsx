@@ -57,6 +57,7 @@ export default function StageWorkspace({
   holdBelongsToSession,
   sessionBookedFromBackend,
   onOpenBooking,
+  onOpenReceipt,
 }: {
   state: ChatState
   focusMode: FocusModeApi
@@ -71,6 +72,8 @@ export default function StageWorkspace({
   /** See app-shell.tsx's doc comment on the same prop. */
   sessionBookedFromBackend: boolean
   onOpenBooking: () => void
+  /** See app-shell.tsx's doc comment on the same prop. */
+  onOpenReceipt: () => void
 }) {
   const { t, i18n } = useTranslation()
   const tripPlan = state.tripPlan
@@ -266,6 +269,7 @@ export default function StageWorkspace({
           holdBelongsToSession={holdBelongsToSession}
           sessionBookedFromBackend={sessionBookedFromBackend}
           onOpenBooking={onOpenBooking}
+          onOpenReceipt={onOpenReceipt}
         />
       </div>
 

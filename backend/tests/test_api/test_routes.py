@@ -874,3 +874,75 @@ async def test_get_payment_endpoint_returns_payment_for_the_owner(client, monkey
 
     assert response.status_code == 200
     assert response.json()["status"] == "PENDING"
+
+
+# ---------------------------------------------------------------------------
+# GET /chat/{session_id}/booking-receipt (plan
+# 260818-vnpay-payment-and-email-confirmation's addendum 4) — "reopen a
+# past session's booking". Ownership is the SESSION's (_owned_session_or_404,
+# same as every other /chat/{session_id}/... route), not a payment/
+# temporary_user_ref check, so these mirror test_delete_session_is_a_
+# silent_noop_for_a_different_owner's setup rather than the payment-owner
+# tests just above.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_booking_receipt_returns_404_for_a_different_owner(client, auth_override):
+    auth_override("user-a")
+    session_id = (await client.post("/api/v1/chat/session")).json()["session_id"]
+
+    auth_override("user-b")
+    response = await client.get(f"/api/v1/chat/{session_id}/booking-receipt")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_booking_receipt_returns_404_when_no_confirmed_booking(client, auth_override, monkeypatch):
+    from src.services import payment_service as _payment_service
+
+    auth_override("user-a")
+    session_id = (await client.post("/api/v1/chat/session")).json()["session_id"]
+
+    monkeypatch.setattr(_payment_service, "get_booking_receipt_for_session", lambda _sid: None)
+
+    response = await client.get(f"/api/v1/chat/{session_id}/booking-receipt")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_booking_receipt_returns_the_receipt_for_the_owner(client, auth_override, monkeypatch):
+    from src.services import payment_service as _payment_service
+
+    auth_override("user-a")
+    session_id = (await client.post("/api/v1/chat/session")).json()["session_id"]
+
+    fake_receipt = {
+        "payment_id": _PAYMENT_ID,
+        "hotel_name": "Khách sạn Biển Xanh",
+        "hotel_address": "123 Trần Phú",
+        "check_in_date": "2026-09-01",
+        "check_out_date": "2026-09-03",
+        "currency": "VND",
+        "total_amount": "1600000",
+        "paid_at": "2026-09-01T10:00:00+00:00",
+        "rooms": [
+            {"room_id": _BOOKING_ROOM_ID, "name": "Superior", "room_count": 2, "total_amount": "1000000"},
+        ],
+    }
+    monkeypatch.setattr(
+        _payment_service,
+        "get_booking_receipt_for_session",
+        lambda sid: fake_receipt if sid == session_id else None,
+    )
+
+    response = await client.get(f"/api/v1/chat/{session_id}/booking-receipt")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["hotel_name"] == "Khách sạn Biển Xanh"
+    assert data["total_amount"] == "1600000"
+    assert len(data["rooms"]) == 1
+    assert data["rooms"][0]["name"] == "Superior"

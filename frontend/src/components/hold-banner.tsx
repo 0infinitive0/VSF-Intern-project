@@ -34,16 +34,18 @@ function mmss(ms: number): string {
  * payment, then later lost `holdBelongsToSession` because roomHold moved
  * on to a different session. Backend-sourced (the same per-session status
  * the sidebar badge reads — see App.tsx), so it survives roomHold being
- * overwritten, unlike `roomHold.status === 'BOOKED'` itself. Rendered
- * WITHOUT the "Xem đặt phòng" button: roomHold no longer has this
- * session's booking data to show, so there is nothing safe to open —
- * see booking-modal.tsx, which only ever reads off roomHold.
+ * overwritten, unlike `roomHold.status === 'BOOKED'` itself. Its "Xem đặt
+ * phòng" button opens `onOpenReceipt`, not `onOpenBooking`: roomHold no
+ * longer has this session's booking data (booking-modal.tsx only ever
+ * reads off roomHold), so booking-receipt-modal.tsx fetches it fresh from
+ * the backend by session_id instead (GET /chat/{id}/booking-receipt).
  */
 export default function HoldBanner({
   roomHold,
   holdBelongsToSession,
   sessionBookedFromBackend,
   onOpenBooking,
+  onOpenReceipt,
 }: {
   roomHold: RoomHoldApi
   holdBelongsToSession: boolean
@@ -51,6 +53,9 @@ export default function HoldBanner({
   /** Opens booking-modal.tsx — it derives its own step from roomHold.status
    * (BOOKED always lands on the done screen), so this takes no arguments. */
   onOpenBooking: () => void
+  /** Opens booking-receipt-modal.tsx for the ACTIVE session specifically —
+   * only ever reachable from the sessionBookedFromBackend branch below. */
+  onOpenReceipt: () => void
 }) {
   const { t } = useTranslation()
   // Local re-render tick so the mm:ss label visibly counts down even though
@@ -73,6 +78,14 @@ export default function HoldBanner({
         <div className="text-[12.5px] font-[590] tracking-[-0.1px]" style={{ color: 'var(--ok-ink)' }}>
           {t('holdBannerBookedTitle')}
         </div>
+        <button
+          type="button"
+          onClick={onOpenReceipt}
+          className="px-[15px] py-2.5 rounded-xl border text-[12.5px] font-[530] cursor-pointer transition-colors duration-200 hover:bg-white"
+          style={{ borderColor: 'var(--stroke)', background: 'var(--g3)', color: 'var(--t1)' }}
+        >
+          {t('holdBannerViewBooking')}
+        </button>
       </div>
     )
   }

@@ -436,6 +436,9 @@
   "holdBannerRecheck": "Re-check rooms",
   "holdBannerBookedTitle": "✓ Booking confirmed",
   "holdBannerViewBooking": "View booking",
+  "bookingReceiptLoading": "Loading booking details…",
+  "bookingReceiptNotFound": "No booking found for this conversation.",
+  "bookingReceiptClose": "Close",
 
   "checkoutTitle": "Secure checkout",
   "checkoutCloseAria": "Back to itinerary",

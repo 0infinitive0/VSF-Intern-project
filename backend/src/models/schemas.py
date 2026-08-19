@@ -493,6 +493,32 @@ class PaymentPayload(BaseModel):
     created_at: datetime
 
 
+class BookingReceiptRoomPayload(BaseModel):
+    room_id: UUID
+    name: str
+    room_count: int
+    total_amount: Decimal | None = None
+
+
+class BookingReceiptPayload(BaseModel):
+    """Read-only "reopen a past session's booking" receipt (plan
+    260818-vnpay-payment-and-email-confirmation's addendum 4) — assembled
+    fresh from bookings/rooms/hotels/payments by session_id, deliberately
+    independent of the frontend's roomHold (which only ever reflects
+    whichever session most recently held/paid — see use-room-hold.ts's
+    module doc comment)."""
+
+    payment_id: UUID | None = None
+    hotel_name: str | None = None
+    hotel_address: str | None = None
+    check_in_date: date
+    check_out_date: date
+    currency: str
+    total_amount: Decimal
+    paid_at: datetime | None = None
+    rooms: list[BookingReceiptRoomPayload]
+
+
 class PreferencePayload(BaseModel):
     id: str
     label: str
