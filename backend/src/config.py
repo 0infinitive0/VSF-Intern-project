@@ -38,14 +38,16 @@ class Settings(BaseSettings):
         "`_openai_model_supports_temperature` in `services/llm.py`).",
     )
     llm_use_responses_api: bool = Field(
-        default=False,
+        default=True,
         description="Route OpenAI calls through the Responses API instead of Chat "
-        "Completions. Off by default: Chat Completions is what every node runs on "
-        "today, and flipping transports changes the streamed chunk shape for the "
-        "whole app. Applies ONLY to the `openai` provider and ONLY to the reasoning "
-        "family (gpt-5/o1/o3/o4) -- `gpt-4o-mini` answers the reasoning parameters "
-        "this route implies with a 400, and it is the model the eval judge hardcodes. "
-        "Rollback is an env change, not a deploy.",
+        "Completions. On by default. It was opt-in while the block-shaped `content` "
+        "it returns was still leaking through call sites that assumed a plain "
+        "string; every one of those now reads through `services.llm.response_text`, "
+        "and the streaming drain forwards only the agent's own text. Applies ONLY to "
+        "the `openai` provider and ONLY to the reasoning family (gpt-5/o1/o3/o4) -- "
+        "`gpt-4o-mini` answers the reasoning parameters this route implies with a "
+        "400, and it is the model the eval judge hardcodes. Setting it to false is "
+        "still the rollback, and it is an env change rather than a deploy.",
     )
     llm_reasoning_summary: Literal["off", "auto"] = Field(
         default="off",

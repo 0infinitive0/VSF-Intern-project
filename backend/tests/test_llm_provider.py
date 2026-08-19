@@ -262,20 +262,24 @@ class TestResponsesApiOptIn:
     provider-wide switch would take the whole eval harness down with it.
     """
 
-    def test_default_is_chat_completions(self):
+    def test_a_reasoning_model_uses_it_by_default(self):
         llm = get_llm(provider="openai", model="gpt-5-mini", api_key="sk-dummykey123")
 
         assert isinstance(llm, ChatOpenAI)
-        assert llm.use_responses_api is not True
-
-    def test_flag_switches_a_reasoning_model(self, monkeypatch):
-        monkeypatch.setenv("LLM_USE_RESPONSES_API", "true")
-
-        llm = get_llm(provider="openai", model="gpt-5-mini", api_key="sk-dummykey123")
-
         assert llm.use_responses_api is True
 
-    def test_flag_leaves_stream_usage_alone(self, monkeypatch):
+    def test_the_flag_is_the_rollback(self):
+        """Turning it off has to keep working: it is the way back if the
+        transport misbehaves, and it must not need a deploy."""
+        import os
+        from unittest.mock import patch
+
+        with patch.dict(os.environ, {"LLM_USE_RESPONSES_API": "false"}):
+            llm = get_llm(provider="openai", model="gpt-5-mini", api_key="sk-dummykey123")
+
+        assert llm.use_responses_api is not True
+
+    def test_it_leaves_stream_usage_alone(self, monkeypatch):
         """Measured 2026-08-19: the Responses API accepts the `stream_options`
         langchain sends for `stream_usage`, and reports usage either way. An
         earlier draft turned `stream_usage` off to dodge a 400 that does not
@@ -288,9 +292,7 @@ class TestResponsesApiOptIn:
         assert llm.stream_usage is True
 
     @pytest.mark.parametrize("model", ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"])
-    def test_flag_does_not_reach_models_outside_the_reasoning_family(self, model, monkeypatch):
-        monkeypatch.setenv("LLM_USE_RESPONSES_API", "true")
-
+    def test_it_does_not_reach_models_outside_the_reasoning_family(self, model):
         llm = get_llm(provider="openai", model=model, api_key="sk-dummykey123")
 
         assert llm.use_responses_api is not True
@@ -299,10 +301,9 @@ class TestResponsesApiOptIn:
         ("provider", "api_key"),
         [("openrouter", "sk-or-dummy123"), ("cloudflare", "cf-dummy123")],
     )
-    def test_flag_does_not_reach_other_providers(self, provider, api_key, monkeypatch):
+    def test_it_does_not_reach_other_providers(self, provider, api_key, monkeypatch):
         """Both build a `ChatOpenAI`-family object, and neither endpoint
         implements the Responses API at all."""
-        monkeypatch.setenv("LLM_USE_RESPONSES_API", "true")
         monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "test-account")
 
         llm = get_llm(provider=provider, model="gpt-5-mini", api_key=api_key)
@@ -310,11 +311,10 @@ class TestResponsesApiOptIn:
         assert isinstance(llm, ChatOpenAI)
         assert llm.use_responses_api is not True
 
-    def test_the_judge_config_is_unaffected(self, monkeypatch):
-        """`eval/harness/judge.py:19` calls exactly this, and the flag is set
-        process-wide when it is set at all."""
-        monkeypatch.setenv("LLM_USE_RESPONSES_API", "true")
-
+    def test_the_judge_config_is_unaffected(self):
+        """`eval/harness/judge.py:19` calls exactly this. It answers the
+        reasoning parameters this transport implies with a 400, so the default
+        must never reach it."""
         llm = get_llm(provider="openai", model="gpt-4o-mini", temperature=0.0, api_key="sk-dummykey123")
 
         assert llm.use_responses_api is not True
