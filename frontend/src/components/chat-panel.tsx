@@ -81,7 +81,7 @@ export default function ChatPanel({
    * right after dates/people resolve, independent of this widget rail). */
   serverAskedField: IntakeField | null
 }) {
-  const { messages, suggestions, hotelOptions, tripPlan, intake, pending, hotelsLoading, streamingText } = state
+  const { messages, suggestions, hotelOptions, tripPlan, intake, pending, hotelsLoading, streamingText, thinking } = state
   const { t, i18n } = useTranslation()
 
   const lastStage = lastAiStage(messages)
@@ -216,6 +216,7 @@ export default function ChatPanel({
         messages={messages}
         pending={pending}
         streamingText={streamingText}
+        thinking={thinking}
         intakeQuestion={intakeQuestion}
       />
 

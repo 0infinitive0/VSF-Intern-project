@@ -28,6 +28,87 @@ def _openai_model_supports_temperature(model: str) -> bool:
     return not model.casefold().startswith(("gpt-5", "o1", "o3", "o4"))
 
 
+def response_text(response: Any) -> str:
+    """The user-readable text in a chat response or a streamed chunk.
+
+    Chat Completions puts `content` in a plain string. The Responses API puts it
+    in a list of content blocks, and reaching that shape does NOT require anyone
+    to opt into `LLM_USE_RESPONSES_API`: langchain routes a model there on its
+    NAME alone (`_model_prefers_responses_api` — `gpt-5-pro*`, anything
+    containing `codex`), so one env change is enough.
+
+    Every call site that reads `.content` must go through here. Reading it
+    directly is how the same bug appeared in eight places at once: each one sits
+    inside a broad `except Exception` with a fallback, so a list-shaped answer
+    produced no exception, no failing test, and no user-visible error — just a
+    silently degraded reply. `extract_patch` was the worst of them: its
+    `json.loads` failed every retry and returned `general_question` with an empty
+    patch for every message the user sent.
+
+    Blocks are read through `.content_blocks`, langchain's normalized view,
+    rather than by parsing the provider's raw shape. Non-text blocks (reasoning,
+    tool calls) are not the answer and are dropped. Verified against a live
+    Responses API stream: `plans/reports/probe-260819-responses-api-payload-and-usage.md`.
+    """
+    content = getattr(response, "content", response)
+    if isinstance(content, str):
+        return content
+    blocks = getattr(response, "content_blocks", None)
+    if blocks is None and isinstance(content, list):
+        blocks = content
+    return "".join(
+        block.get("text", "")
+        for block in (blocks or [])
+        if isinstance(block, dict) and block.get("type") == "text"
+    )
+
+
+def reasoning_text(response: Any) -> str:
+    """The model's summary of its own reasoning, empty when there is none.
+
+    Empty is the common case, not a failure: measured 2026-08-18, a model emits a
+    summary only when it actually reasons -- nothing for a simple request, and
+    nothing at all for a tool-calling step, which has no reasoning to summarize.
+
+    Always English, even for a Vietnamese conversation with an explicit
+    instruction to reason in Vietnamese; prompts do not control it.
+
+    Counterpart to `response_text`, reading the same normalized `.content_blocks`
+    but keeping exactly what that one drops.
+    """
+    blocks = getattr(response, "content_blocks", None)
+    if blocks is None:
+        content = getattr(response, "content", response)
+        blocks = content if isinstance(content, list) else []
+    return "".join(
+        block.get("reasoning", "")
+        for block in (blocks or [])
+        if isinstance(block, dict) and block.get("type") == "reasoning"
+    )
+
+
+def _openai_model_is_reasoning_family(model: str) -> bool:
+    """Whether an OpenAI model belongs to the reasoning family (gpt-5/o1/o3/o4).
+
+    Same boundary as `_openai_model_supports_temperature`, stated positively.
+    One list of model families, read two ways -- not two lists that can drift.
+    """
+    return not _openai_model_supports_temperature(model)
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    """Read a boolean env var, falling back to `default` when it is unset.
+
+    An `or` chain cannot be used for booleans the way the string settings in this
+    file do it: an explicit `false` is falsy and would silently fall through to
+    whatever comes next.
+    """
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().casefold() in {"1", "true", "yes", "on"}
+
+
 class _CloudflareChatOpenAI(ChatOpenAI):
     """ChatOpenAI variant for Cloudflare Workers AI's OpenAI-compatible endpoint.
 
@@ -149,10 +230,45 @@ def get_llm(
                 "model": target_model or "gpt-4o-mini",
                 "api_key": openai_key,
             }
-            if _openai_model_supports_temperature(str(kwargs["model"])):
-                kwargs["temperature"] = target_temp
-            else:
+            is_reasoning_family = _openai_model_is_reasoning_family(str(kwargs["model"]))
+            if is_reasoning_family:
                 kwargs["reasoning_effort"] = target_reasoning_effort
+            else:
+                kwargs["temperature"] = target_temp
+            # The Responses API is opt-in and narrower than the flag name: only the
+            # reasoning family switches. `gpt-4o-mini` -- the model
+            # `eval/harness/judge.py` hardcodes -- answers the reasoning parameters
+            # this route implies with a 400 (measured 2026-08-18), so a
+            # provider-wide switch would take the eval harness down with it.
+            #
+            # `stream_usage` is deliberately left alone: measured 2026-08-19, the
+            # Responses API accepts the `stream_options` langchain sends for it and
+            # reports usage either way, so turning it off would cost every streamed
+            # call's token count to avoid a failure that does not happen.
+            if _env_flag(
+                "LLM_USE_RESPONSES_API", bool(getattr(settings, "llm_use_responses_api", False))
+            ):
+                if is_reasoning_family:
+                    kwargs["use_responses_api"] = True
+                    summary = (
+                        os.environ.get("LLM_REASONING_SUMMARY")
+                        or getattr(settings, "llm_reasoning_summary", "off")
+                    ).casefold()
+                    if summary == "auto":
+                        # `reasoning` and `reasoning_effort` are mutually exclusive:
+                        # langchain only promotes the flat kwarg when `reasoning` is
+                        # absent (base.py:4300), so sending both is ambiguous.
+                        kwargs.pop("reasoning_effort", None)
+                        kwargs["reasoning"] = {
+                            "effort": target_reasoning_effort,
+                            "summary": "auto",
+                        }
+                else:
+                    logger.info(
+                        "LLM_USE_RESPONSES_API is on, but %s is outside the reasoning "
+                        "family; keeping Chat Completions for it.",
+                        kwargs["model"],
+                    )
             if target_base:
                 kwargs["base_url"] = target_base
             if streaming is not None:

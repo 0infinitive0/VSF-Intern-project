@@ -37,6 +37,29 @@ class Settings(BaseSettings):
         "Non-reasoning models never receive this kwarg (see "
         "`_openai_model_supports_temperature` in `services/llm.py`).",
     )
+    llm_use_responses_api: bool = Field(
+        default=True,
+        description="Route OpenAI calls through the Responses API instead of Chat "
+        "Completions. On by default. It was opt-in while the block-shaped `content` "
+        "it returns was still leaking through call sites that assumed a plain "
+        "string; every one of those now reads through `services.llm.response_text`, "
+        "and the streaming drain forwards only the agent's own text. Applies ONLY to "
+        "the `openai` provider and ONLY to the reasoning family (gpt-5/o1/o3/o4) -- "
+        "`gpt-4o-mini` answers the reasoning parameters this route implies with a "
+        "400, and it is the model the eval judge hardcodes. Setting it to false is "
+        "still the rollback, and it is an env change rather than a deploy.",
+    )
+    llm_reasoning_summary: Literal["off", "auto"] = Field(
+        default="auto",
+        description="Ask OpenAI reasoning models to emit a summary of their own "
+        "reasoning, streamed to the client as `reasoning` SSE frames. Requires "
+        "`llm_use_responses_api` -- Chat Completions has no channel for it. Off by "
+        "default because coverage is unpredictable: measured 2026-08-18, a model "
+        "emits a summary only when it actually reasons, so the same step yields "
+        "2000 characters for a hard request and nothing at all for a simple one, "
+        "and a tool-calling step has no reasoning to summarize. Treat it as a layer "
+        "over the graph's own facts, never as the only thing filling a UI slot.",
+    )
     llm_provider: str = "ollama"
     llm_model: str = "llama3.1"
     llm_fast_model: str = "llama3.1"

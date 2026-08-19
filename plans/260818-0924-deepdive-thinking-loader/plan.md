@@ -7,8 +7,8 @@ effort: "~5d"
 tags: [streaming, sse, ux, frontend, i18n, supabase]
 created: 2026-08-18
 updated: 2026-08-18
-blockedBy: []
-blocks: []
+blockedBy: []  # xem ghi chú cross-plan: 260819-0931 Phase 5 chạy sau Phase 4 của plan này
+blocks: [260819-0931-responses-api-migration-opt-in-with-reasoning-summary]
 ---
 
 # DeepDive thinking loader
@@ -61,6 +61,21 @@ lại bao nhiêu kết quả. Nên nguồn nội dung chuyển sang đó.
 - Không thêm event SSE → không đổi contract, client cũ không vỡ.
 - Không đụng Responses API → rủi ro `routes.py:548` (`isinstance(content, str)` nuốt `delta`)
   **biến mất hoàn toàn**.
+
+> **HẾT HIỆU LỰC 2026-08-19 — hai gạch đầu dòng ngay trên.**
+>
+> Cả hai đều đã bị việc khác vượt qua, và theo hướng có lợi:
+>
+> - **Guard `isinstance(content, str)` đã được vá** (`routes.py`, plan
+>   `260819-0931`). Rủi ro không "biến mất nhờ tránh né" — nó được đóng lại. Lý do phải
+>   đóng: langchain định tuyến model sang Responses API theo **tên** (`gpt-5-pro*`, mọi
+>   tên chứa `codex`), nên tránh né chưa bao giờ là một chiến lược.
+> - **Đã có thêm một event SSE**: `reasoning`. Client cũ vẫn không vỡ — SSE bỏ qua event
+>   lạ, và `stream-client.ts:163` có `switch` với nhánh `default` không làm gì.
+>
+> Người dùng chọn ngày 2026-08-19: bật reasoning summary và render **kèm** dữ kiện graph.
+> Phần còn lại của mục này vẫn đúng — dữ kiện graph vẫn là nguồn chính, reasoning chỉ
+> chồng thêm khi có, và FE vẫn sở hữu mọi text sản phẩm.
 - Không thêm lượt gọi LLM → không thêm chi phí, không thêm latency.
 - FE giữ quyền sở hữu text hiển thị — đúng nguyên tắc `phase-labels.ts` đã lập:
   *"backend never sends display text"*.
@@ -118,9 +133,9 @@ Thứ tự theo thứ tự nhóm cố định, không theo thứ tự phase tớ
 | # | Phase | Status | Ưu tiên | Phụ thuộc |
 |---|-------|--------|---------|-----------|
 | 1 | [Spike: đo reasoning summary](./phase-01-start.md) | **Complete** | P1 | — |
-| 2 | [Phát dữ kiện thật từ state graph](./phase-02-emit-real-facts-from-graph-state.md) | Pending | P1 | 1 |
-| 3 | [FE thinking state + render dữ kiện](./phase-03-frontend-thinking-state-and-fact-rendering.md) | Pending | P1 | 2 |
-| 4 | [ThinkingBlock UI trong chat](./phase-04-thinkingblock-ui-in-chat.md) | Pending | P1 | 3 |
+| 2 | [Phát dữ kiện thật từ state graph](./phase-02-emit-real-facts-from-graph-state.md) | **Done** | P1 | 1 |
+| 3 | [FE thinking state + render dữ kiện](./phase-03-frontend-thinking-state-and-fact-rendering.md) | **Done** | P1 | 2 |
+| 4 | [ThinkingBlock UI trong chat](./phase-04-thinkingblock-ui-in-chat.md) | **Done** | P1 | 3 |
 | 5 | [Persist + restore thinking trace](./phase-05-persist-and-restore-thinking-trace.md) | Pending | P2 | 4 |
 
 Phase 1 đã xong; kết quả của nó là lý do plan có hình dạng hiện tại.
@@ -132,6 +147,11 @@ Phase 1 đã xong; kết quả của nó là lý do plan có hình dạng hiện
 | 2 | `backend/src/api/routes.py` (vòng drain), `backend/src/api/streaming.py`, `backend/src/agents/graph/nodes/hotel_node.py`, `backend/src/services/{trip_planner,routing,itinerary_store}.py`, `docs/chat_api_contract.md` |
 | 3 | `frontend/src/types/index.ts`, `frontend/src/lib/thinking-groups.ts`, `frontend/src/hooks/use-chat-session.ts`, `frontend/src/api/stream-client.ts`, `frontend/src/i18n/` |
 | 4 | `frontend/src/components/thinking-block.tsx`, `frontend/src/components/message-list.tsx` |
+
+Plan `260819-0931` Phase 5 chạm **cùng** `stream-client.ts`, `use-chat-session.ts`, và
+`thinking-block.tsx` để thêm làn reasoning. Nó chạy **sau** Phase 4 của plan này (khối
+thinking phải tồn tại trước) và chỉ thêm field `reasoning` cạnh `lines` — không sửa
+đường dữ kiện. Không chạy song song hai plan trên nhóm file này.
 | 5 | `supabase/migrations/`, `supabase/seed.sql`, `backend/scripts/database_schema.sql`, `backend/src/services/session_store.py`, `backend/src/models/schemas.py`, `backend/src/api/routes.py` (restore) |
 
 Phase 2 và Phase 5 cùng chạm `routes.py` nhưng khác hàm (vòng drain vs `restore_session`),
@@ -177,3 +197,26 @@ và Phase 5 chạy sau nên không giao nhau.
 Không còn. Ba câu hỏi mở của spike đã chốt (xem bảng Quyết định).
 
 <!-- slug: deepdive-thinking-loader -->
+
+## Bổ sung 2026-08-19 — step events có cả hai vế
+
+Plan này được thiết kế trên `stream_mode="updates"`, mà `updates` **chỉ phát khi node kết
+thúc**. Hệ quả không ai nhận ra lúc lập plan: khối thinking tạo nhóm đúng lúc node đó *đã
+xong*, nên spinner luôn quay trên một bước đã kết thúc, còn bước đang thật sự chạy thì
+chưa được công bố. Đo được:
+
+```
+phase intake_check  →  reasoning  →  delta  →  delta  →  phase generating
+       (đã xong)         ← intake_qa đang chạy ở đây →      (đã xong)
+```
+
+`stream_mode="tasks"` phát **cả hai** vế (`START` + `RESULT`) cho mọi node, nên frame
+`phase` giờ mang `status: "started" | "completed"`. Dữ kiện chỉ đi cùng vế `completed` —
+node chưa trả về thì chưa có gì để mô tả.
+
+Phase phát từ trong service (`itinerary_build`, `routing_legs`, `persisting`) mang
+`status: "started"` và **không có** vế kết thúc: công việc chúng báo không có biên node để
+đóng. FE đóng chúng khi một bước sau mở, và đóng hết ở `final`.
+
+Kèm theo: `hotel_search` từng dùng `status` cho kết quả tìm kiếm (`ok`/`no_results`/…).
+Đổi thành `outcome` — hai nghĩa trên cùng một tên field sẽ va nhau.

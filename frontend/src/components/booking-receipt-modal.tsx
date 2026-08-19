@@ -3,10 +3,10 @@ import { useTranslation } from 'react-i18next'
 import { getBookingReceipt } from '../api/session-client'
 import RemoteImage from './remote-image'
 import { formatCurrency } from '../lib/format-currency'
-import { formatFullDate } from '../lib/format-trip-dates'
+import { formatDateTile, nightsBetween } from '../lib/format-trip-dates'
 import type { BookingReceipt } from '../types'
 
-const CLOSE_TRANSITION_MS = 200
+const CLOSE_TRANSITION_MS = 350
 
 type LoadState = 'loading' | 'found' | 'not-found'
 
@@ -91,8 +91,9 @@ export default function BookingReceiptModal({
   if (!render) return null
 
   const code = receipt?.payment_id ? receipt.payment_id.slice(0, 8).toUpperCase() : null
-  const ci = receipt ? formatFullDate(receipt.check_in_date, i18n.language) : null
-  const co = receipt ? formatFullDate(receipt.check_out_date, i18n.language) : null
+  const ci = receipt ? formatDateTile(receipt.check_in_date, i18n.language) : null
+  const co = receipt ? formatDateTile(receipt.check_out_date, i18n.language) : null
+  const nights = receipt ? nightsBetween(receipt.check_in_date, receipt.check_out_date) : 1
 
   return (
     <div
@@ -102,7 +103,7 @@ export default function BookingReceiptModal({
         backdropFilter: 'blur(10px)',
         WebkitBackdropFilter: 'blur(10px)',
         opacity: visible ? 1 : 0,
-        transition: 'opacity .2s ease',
+        transition: 'opacity .34s ease',
       }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
@@ -115,12 +116,15 @@ export default function BookingReceiptModal({
         className="glass-panel relative z-10 w-full max-w-[420px] rounded-[26px] overflow-hidden text-on-surface flex flex-col items-center text-center"
         style={{
           opacity: visible ? 1 : 0,
-          transform: visible ? 'none' : 'scale(.96)',
-          transition: 'opacity .2s ease, transform .2s ease',
+          transform: visible ? 'none' : 'translateY(18px) scale(.98)',
+          transition: 'opacity .34s cubic-bezier(.22,1,.36,1), transform .44s cubic-bezier(.22,1,.36,1)',
         }}
       >
         {loadState === 'loading' && (
-          <div className="py-8 px-6 text-[13px] text-on-surface-muted">{t('bookingReceiptLoading')}</div>
+          <div className="py-16 px-6 text-[13px] text-on-surface-muted flex flex-col items-center gap-3">
+            <div className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+            <div>{t('bookingReceiptLoading')}</div>
+          </div>
         )}
 
         {loadState === 'not-found' && (
@@ -137,69 +141,121 @@ export default function BookingReceiptModal({
         )}
 
         {loadState === 'found' && receipt && (
-          <>
-            <RemoteImage
-              src={receipt.hotel_image_url}
-              alt={receipt.hotel_name ?? ''}
-              className="w-full h-[130px] flex-none"
-            />
-            <div className="px-6 pb-6 flex flex-col items-center gap-4 w-full">
+          <div
+            className="w-full flex flex-col items-center"
+            style={{ animation: 'vRise .5s cubic-bezier(.22,1,.36,1) both' }}
+          >
+            <div className="relative w-full h-[150px] flex-none overflow-hidden">
+              <RemoteImage
+                src={receipt.hotel_image_url}
+                alt={receipt.hotel_name ?? ''}
+                className="absolute inset-0"
+              />
               <div
-                className="w-[58px] h-[58px] -mt-[29px] rounded-full flex items-center justify-center text-[24px] flex-none"
+                className="absolute inset-x-0 bottom-0 h-[90px] pointer-events-none"
+                style={{ background: 'linear-gradient(to top, var(--g3), transparent)' }}
+                aria-hidden="true"
+              />
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label={t('bookingReceiptClose')}
+                className="absolute top-3.5 right-3.5 w-[34px] h-[34px] rounded-full border border-edge text-on-surface text-[14px] cursor-pointer transition-transform duration-200 hover:scale-[1.08] active:scale-[0.92]"
+                style={{
+                  background: 'var(--g3)',
+                  backdropFilter: 'blur(18px)',
+                  WebkitBackdropFilter: 'blur(18px)',
+                  boxShadow: '0 10px 24px -10px rgb(var(--shadow-rgb) / 0.5)',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="relative z-10 px-6 pb-6 -mt-[29px] flex flex-col items-center gap-4 w-full">
+              <div
+                className="relative z-10 w-[58px] h-[58px] rounded-full flex items-center justify-center text-[24px] flex-none"
                 style={{
                   background: 'linear-gradient(145deg,#4FB3A5,#2A9187)',
                   color: '#FCFDFE',
                   boxShadow: '0 16px 34px -14px rgba(42,145,135,.7)',
-                  border: '3px solid var(--g1)',
+                  border: '4px solid var(--g3)',
+                  animation: 'vPop .6s .1s cubic-bezier(.34,1.5,.64,1) both',
                 }}
                 aria-hidden="true"
               >
                 ✓
               </div>
-              <div>
-                <div className="text-[14.5px] font-[590] tracking-[-0.1px] text-on-surface">
-                  {t('holdBannerBookedTitle')}
+              <div className="-mt-1">
+                <div className="text-[15.5px] font-[590] tracking-[-0.1px] text-on-surface">
+                  {t('checkoutDoneTitle')}
                 </div>
                 {receipt.hotel_name && (
-                  <div className="text-[13px] text-on-surface-muted mt-1">{receipt.hotel_name}</div>
-                )}
-                {receipt.hotel_address && (
-                  <div className="text-[11.5px] text-on-surface-muted">{receipt.hotel_address}</div>
+                  <div className="text-[13px] text-on-surface-muted mt-1 font-medium">{receipt.hotel_name}</div>
                 )}
               </div>
 
-              {code && (
-                <div className="px-5 py-3 rounded-2xl bg-glass-2 border border-edge">
+              <div
+                className="flex w-full rounded-2xl overflow-hidden border border-edge"
+                style={{ background: 'var(--g2)' }}
+              >
+                <div className="flex-1 px-5 py-3.5 text-center border-r border-line">
                   <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
                     {t('checkoutDoneCode')}
                   </div>
-                  <div className="text-[18px] font-[590] tracking-[0.5px] tabular-nums mt-0.5 text-on-surface">
-                    {code}
+                  <div className="text-[16px] font-[590] tracking-[0.4px] tabular-nums mt-0.5 text-on-surface">
+                    {code ?? '—'}
                   </div>
                 </div>
-              )}
+                <div className="flex-1 px-5 py-3.5 text-center">
+                  <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
+                    {t('holdTotal')}
+                  </div>
+                  <div
+                    className="text-[16px] font-[590] tracking-[-0.2px] tabular-nums mt-0.5"
+                    style={{ color: 'var(--acc)' }}
+                  >
+                    {formatCurrency(Number(receipt.total_amount), i18n.language)}
+                  </div>
+                </div>
+              </div>
 
-              <div className="grid grid-cols-2 gap-2.5 w-full">
-                <div className="p-3 rounded-2xl bg-glass-2 border border-edge text-left">
-                  <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
-                    {t('policyCheckIn')}
+              <div className="w-full rounded-2xl border border-edge px-5 py-4" style={{ background: 'var(--g2)' }}>
+                <div className="flex items-center gap-3">
+                  <div className="text-center">
+                    <div className="text-[20px] font-[590] tracking-[-0.5px] leading-none text-on-surface">
+                      {ci?.day ?? '—'}
+                    </div>
+                    <div className="text-[9px] font-[590] tracking-[0.09em] text-on-surface-muted mt-[3px]">
+                      {ci?.month ?? ''}
+                    </div>
                   </div>
-                  <div className="text-[13px] font-[590] tracking-[-0.15px] mt-0.5 text-on-surface">{ci ?? '—'}</div>
-                </div>
-                <div className="p-3 rounded-2xl bg-glass-2 border border-edge text-left">
-                  <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
-                    {t('policyCheckOut')}
+                  <div className="flex-1 flex flex-col items-center gap-1">
+                    <div className="text-[10px] font-[450] text-on-surface-muted whitespace-nowrap">
+                      {nights} {t('nightsWord')}
+                    </div>
+                    <div className="w-full h-px" style={{ background: 'var(--stroke)' }} />
                   </div>
-                  <div className="text-[13px] font-[590] tracking-[-0.15px] mt-0.5 text-on-surface">{co ?? '—'}</div>
+                  <div className="text-center">
+                    <div className="text-[20px] font-[590] tracking-[-0.5px] leading-none text-on-surface">
+                      {co?.day ?? '—'}
+                    </div>
+                    <div className="text-[9px] font-[590] tracking-[0.09em] text-on-surface-muted mt-[3px]">
+                      {co?.month ?? ''}
+                    </div>
+                  </div>
                 </div>
               </div>
 
               {receipt.rooms.length > 0 && (
-                <div className="w-full flex flex-col gap-2">
+                <div className="w-full flex flex-col gap-2 text-left">
+                  <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted px-1">
+                    {t('checkoutDoneRoomsLabel')}
+                  </div>
                   {receipt.rooms.map((room) => (
                     <div
                       key={room.room_id}
-                      className="flex items-center gap-3 p-2.5 rounded-2xl bg-glass-2 border border-edge text-left"
+                      className="flex items-center gap-3 p-2.5 rounded-2xl bg-glass-2 border border-edge"
+                      style={{ boxShadow: '0 10px 24px -18px rgb(var(--shadow-rgb) / 0.5)' }}
                     >
                       <RemoteImage src={room.image_url} alt={room.name} className="w-[52px] h-[52px] rounded-xl flex-none" />
                       <div className="flex-1 min-w-0">
@@ -217,29 +273,8 @@ export default function BookingReceiptModal({
                   ))}
                 </div>
               )}
-
-              <div className="flex items-baseline gap-2 pt-2 mt-0.5 w-full border-t border-line">
-                <span className="text-[11.5px] text-on-surface-muted">{t('holdTotal')}</span>
-                <span className="flex-1" />
-                <span className="text-[17px] font-[590] tracking-[-0.4px] tabular-nums text-on-surface">
-                  {formatCurrency(Number(receipt.total_amount), i18n.language)}
-                </span>
-              </div>
-
-              <button
-                type="button"
-                onClick={onClose}
-                className="mt-1 px-5 py-2.5 rounded-2xl border-none text-[13px] font-[590] cursor-pointer transition-transform duration-200 active:scale-[0.98]"
-                style={{
-                  background: 'linear-gradient(135deg,#3A73DE,#2C5FC9)',
-                  color: 'var(--on-acc)',
-                  boxShadow: '0 10px 24px -10px rgba(44,95,201,.6)',
-                }}
-              >
-                {t('bookingReceiptClose')}
-              </button>
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>

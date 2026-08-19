@@ -84,7 +84,7 @@ from src.agents.graph.routing import _INCOMPLETE_EDIT_INTENTS
 from src.agents.graph.state import TravelGraphState
 from src.domain.slot_registry import pending_question_slots
 from src.domain.travel_state import TravelState, trip_duration_days
-from src.services.llm import get_reasoning_llm
+from src.services.llm import get_reasoning_llm, response_text
 from src.services.trip_intake import (
     _COMPANION_LABELS,
     _DAY_RHYTHM_LABELS,
@@ -566,7 +566,7 @@ def _extract_with_llm(
                 repair=str(last_error) if attempt else None,
             )
             response = model.invoke(prompt)
-            payload = json.loads(_strip_json_fence(getattr(response, "content", response)))
+            payload = json.loads(_strip_json_fence(response_text(response)))
             intent, changes, reason = _parse_extraction_payload(payload)
             return intent, changes, reason, False
         except (json.JSONDecodeError, PatchExtractionError, TypeError, ValueError) as exc:

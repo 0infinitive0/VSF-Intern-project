@@ -8,12 +8,14 @@ Only nodes worth a line of UI appear in `PHASE_KEY_BY_NODE`. `scope_guard`,
 are deliberately absent: they finish faster than a user can read, and a
 progress list that scrolls is worse than one that doesn't move.
 
-`itinerary_node` is absent for a different, more specific reason. The services
-it calls already emit finer-grained phases from inside the work —
+`hotel_node` and `itinerary_node` are absent for a different, more specific
+reason. The work itself already emits a finer-grained phase from inside —
+`hotel_search` (`hotel_node`'s own `_result`, which every exit path returns
+through, carrying the destination, radius, amenities and result count), plus
 `itinerary_build` (`trip_planner.py`), `routing_legs` (`routing.py`) and
-`persisting` (`itinerary_store.py`). Mapping the node as well would emit
-`itinerary_build` twice for one turn, and the frontend keys its progress rows
-by `${key}-${at}`, so the user would see the same step listed twice. The
+`persisting` (`itinerary_store.py`). Mapping the node as well would emit the
+same key twice for one turn, and the frontend keys its progress rows by
+`${key}-${at}`, so the user would see the same step listed twice. The
 in-service emits win because they say more; the node mapping covers only nodes
 that report nothing about themselves.
 """
@@ -28,7 +30,6 @@ PHASE_KEY_BY_NODE: dict[str, str] = {
     "supervisor": "routing",
     "intake_qa": "generating",
     "qa_node": "generating",
-    "hotel_node": "hotel_search",
 }
 
 #: Nodes whose LLM tokens may be forwarded to the client as `delta` frames.
@@ -48,3 +49,17 @@ PHASE_KEY_BY_NODE: dict[str, str] = {
 #: subgraph reports `metadata["langgraph_node"] == "qa_node"` (the parent node
 #: name, not an inner one), so matching on these names is enough.
 STREAMING_NODES: frozenset[str] = frozenset({"qa_node", "intake_qa"})
+
+#: For a member of `STREAMING_NODES` that is a compiled subgraph, the ONE inner
+#: node whose tokens are the reply.
+#:
+#: `qa_node` is a `create_react_agent` subgraph, so its tokens only become
+#: visible when the drain streams with `subgraphs=True`. That also exposes every
+#: other node inside it — and measured 2026-08-19, the `tools` node emits a
+#: `ToolMessage` whose content is real text (a tool's error string, in the run
+#: that was recorded). Allowing a whole subgraph by name would put that on the
+#: user's screen, so membership is by (subgraph, inner node), not by subgraph.
+#:
+#: A plain node has no entry here: it streams under the empty namespace and is
+#: matched by `STREAMING_NODES` alone.
+SUBGRAPH_STREAMING_NODE: dict[str, str] = {"qa_node": "agent"}

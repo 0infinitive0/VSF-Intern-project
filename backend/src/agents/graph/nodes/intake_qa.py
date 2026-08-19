@@ -58,25 +58,9 @@ from src.agents.graph.nodes.extract_patch import _known_facts_summary, _last_hum
 from src.agents.graph.prompts import INTAKE_QA_NO_ANSWER_SENTINEL, build_intake_qa_prompt
 from src.agents.graph.state import TravelGraphState
 from src.domain.travel_state import TravelState
-from src.services.llm import get_fast_llm
+from src.services.llm import get_fast_llm, response_text
 
 logger = logging.getLogger(__name__)
-
-
-def _response_text(response: Any) -> str:
-    """Some chat models return `.content` as a list of content blocks
-    (e.g. `[{"type": "text", "text": "..."}]`) rather than a plain string.
-    Unlike a bare `str(response.content)`, which would render the Python
-    list/dict repr straight into the user-facing reply, this joins only the
-    actual text parts."""
-    content = getattr(response, "content", response)
-    if isinstance(content, list):
-        parts = [
-            block.get("text", "") if isinstance(block, dict) else str(block)
-            for block in content
-        ]
-        return "".join(parts).strip()
-    return str(content or "").strip()
 
 
 def intake_qa(state: TravelGraphState) -> dict[str, Any]:
@@ -98,7 +82,7 @@ def intake_qa(state: TravelGraphState) -> dict[str, Any]:
     try:
         llm = get_fast_llm(temperature=0.2, streaming=True)
         response = llm.invoke(prompt)
-        answer = _response_text(response)
+        answer = response_text(response).strip()
     except Exception:
         logger.warning("intake_qa failed for message %r", message, exc_info=True)
         return {"intake_answer": None}

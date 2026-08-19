@@ -33,6 +33,8 @@ type FocusModeApi = ReturnType<typeof useFocusMode>
  * its entrance animation (vRise), so intake → generating → hotels → workspace
  * transitions don't jump layout.
  */
+import type { TabKey } from './stage-workspace'
+
 export default function StageRouter({
   stage,
   state,
@@ -54,6 +56,8 @@ export default function StageRouter({
   finalizeError,
   onRequestFinalize,
   onDuplicateTrip,
+  activeWorkspaceTab,
+  onSelectWorkspaceTab,
 }: {
   stage: StageView
   state: ChatState
@@ -85,6 +89,8 @@ export default function StageRouter({
   finalizeError: string | null
   onRequestFinalize: () => void
   onDuplicateTrip: () => void
+  activeWorkspaceTab?: TabKey
+  onSelectWorkspaceTab?: (tab: TabKey) => void
 }): ReactNode {
   if (stage === 'intake') {
     return <StageIntake intake={state.intake} form={intakeForm} onEditField={onEditIntakeField} />
@@ -124,6 +130,8 @@ export default function StageRouter({
       finalizeError={finalizeError}
       onRequestFinalize={onRequestFinalize}
       onDuplicateTrip={onDuplicateTrip}
+      activeTab={activeWorkspaceTab}
+      onSelectTab={onSelectWorkspaceTab}
     />
   )
 }

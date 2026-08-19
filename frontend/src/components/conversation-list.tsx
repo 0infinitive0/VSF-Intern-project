@@ -130,7 +130,7 @@ export default function ConversationList({
                   />
                 </div>
               ) : session.thumbnail_url ? (
-                <img src={session.thumbnail_url} alt="" className="w-8 h-8 rounded-[11px] object-cover shrink-0" />
+                  <img src={session.thumbnail_url} alt="" className="w-8 h-8 rounded-[11px] object-cover shrink-0 max-w-none" />
               ) : (
                 <div
                   className="w-8 h-8 rounded-[11px] shrink-0"

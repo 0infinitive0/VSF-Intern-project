@@ -3346,6 +3346,20 @@
           "at": {
             "type": "string",
             "title": "At"
+          },
+          "thinking_trace": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ThinkingTraceEntry"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thinking Trace"
           }
         },
         "type": "object",
@@ -3353,7 +3367,8 @@
           "role",
           "text",
           "stage",
-          "at"
+          "at",
+          "thinking_trace"
         ],
         "title": "RestoredMessagePayload"
       },
@@ -3920,6 +3935,26 @@
         ],
         "title": "SuggestionPayload"
       },
+      "ThinkingTraceEntry": {
+        "properties": {
+          "phase_key": {
+            "type": "string",
+            "title": "Phase Key"
+          },
+          "facts": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Facts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "phase_key",
+          "facts"
+        ],
+        "title": "ThinkingTraceEntry",
+        "description": "One completed step of the turn that produced a reply.\n\nFacts, never sentences: the wording is composed on the client from these and\nfollows the reader's current language, so storing text would render a\nVietnamese conversation in Vietnamese inside an English session and freeze\ntoday's phrasing into history.\n\nWhat may appear in `facts` is whitelisted at the source\n(`agents/graph/phase_facts.py`): keys, counts and schema field paths only."
+      },
       "TripPlanHotel": {
         "properties": {
           "id": {
@@ -4166,13 +4201,6 @@
           "type": {
             "type": "string",
             "title": "Error Type"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "ctx": {
-            "type": "object",
-            "title": "Context"
           }
         },
         "type": "object",

@@ -145,8 +145,10 @@ function restoreDataFor(sessionId: string): SessionRestore {
   return {
     session_id: sessionId,
     messages: [
-      { role: 'user', text: 'đi đà nẵng', stage: null, at: '2026-08-01T00:00:00Z' },
-      { role: 'assistant', text: 'ok, khi nào đi?', stage: 'intake', at: '2026-08-01T00:00:05Z' },
+      { role: 'user', text: 'đi đà nẵng', stage: null, at: '2026-08-01T00:00:00Z', thinking_trace: null },
+      // `null` is the ordinary case: every message written before the column
+      // existed carries it, and restore must render those unchanged.
+      { role: 'assistant', text: 'ok, khi nào đi?', stage: 'intake', at: '2026-08-01T00:00:05Z', thinking_trace: null },
     ],
     suggestions: [],
     stage: 'intake',
@@ -233,5 +235,190 @@ describe('chatSessionReducer — stale-turn guard', () => {
       data: { session_id: 'A', reply: 'stale reply from first A episode', suggestions: [], stage: null, hotel_options: [], trip_plan: null },
     })
     expect(staleReply).toBe(backOnA)
+  })
+})
+
+describe('chatSessionReducer — thinking groups', () => {
+  const withThinking = (): ChatState =>
+    chatSessionReducer(
+      { ...INITIAL_STATE, pending: true },
+      { type: 'STREAM_PHASE', key: 'intake_check', at: 1, facts: { intent: 'update_trip' }, turnId: 0 },
+    )
+
+  it('builds a group from a phase frame and its facts', () => {
+    const next = withThinking()
+
+    expect(next.thinking).toHaveLength(1)
+    expect(next.thinking[0].key).toBe('analyze')
+    expect(next.thinking[0].lines).toHaveLength(1)
+  })
+
+  it('creates the group even when the frame carried no facts', () => {
+    const next = chatSessionReducer(INITIAL_STATE, {
+      type: 'STREAM_PHASE', key: 'persisting', at: 1, facts: {}, turnId: 0,
+    })
+
+    expect(next.thinking).toHaveLength(1)
+    expect(next.thinking[0].lines).toEqual([])
+  })
+
+  it('leaves `phases` behaving exactly as before', () => {
+    const next = withThinking()
+
+    expect(next.phases).toEqual([{ key: 'intake_check', at: 1 }])
+  })
+
+  it('accumulates reasoning onto the running group', () => {
+    const next = chatSessionReducer(withThinking(), {
+      type: 'STREAM_REASONING', text: 'Checking dates', phaseKey: 'generating', turnId: 0,
+    })
+
+    expect(next.thinking.find((g) => g.key === 'reply')?.reasoning).toBe('Checking dates')
+  })
+
+  it('ignores frames from a turn that is no longer current', () => {
+    const state = withThinking()
+    const stale = chatSessionReducer(state, {
+      type: 'STREAM_PHASE', key: 'hotel_search', at: 2, facts: {}, turnId: 99,
+    })
+
+    expect(stale).toBe(state)
+  })
+
+  it.each([
+    ['SEND_START', { type: 'SEND_START', id: 'm1', text: 'hi' }],
+    ['HOTEL_SELECTION_START', { type: 'HOTEL_SELECTION_START', id: 'h1', text: 'Tôi chọn khách sạn 1', turnId: 0 }],
+    ['RESET', { type: 'RESET' }],
+    ['SEND_ERROR', { type: 'SEND_ERROR', error: 'boom', turnId: 0 }],
+  ])('clears thinking on %s, so it cannot bleed into the next turn', (_label, action) => {
+    const dirty = withThinking()
+    expect(dirty.thinking).not.toHaveLength(0)
+
+    const next = chatSessionReducer(dirty, action as never)
+
+    expect(next.thinking).toEqual([])
+  })
+
+  it('clears thinking when restoring another session', () => {
+    const dirty = withThinking()
+
+    const next = chatSessionReducer(dirty, {
+      type: 'RESTORE', sessionId: 's2', data: restoreDataFor('s2'),
+    })
+
+    expect(next.thinking).toEqual([])
+  })
+})
+
+describe('chatSessionReducer — typewriter flag', () => {
+  const reply = (data: Partial<Record<string, unknown>> = {}) => ({
+    session_id: 'A', reply: 'Mình tìm được 5 khách sạn phù hợp.', suggestions: [],
+    stage: 'hotel_options', hotel_options: [], trip_plan: null, ...data,
+  })
+
+  it('marks a reply that never streamed, so it is revealed rather than snapped in', () => {
+    const next = chatSessionReducer(
+      { ...INITIAL_STATE, pending: true, streamingText: '' },
+      { type: 'SEND_SUCCESS', id: 'm1', data: reply() as never, turnId: 0 },
+    )
+
+    expect(next.messages.at(-1)?.typewriter).toBe(true)
+  })
+
+  it('leaves a streamed reply alone — it already arrived a piece at a time', () => {
+    const next = chatSessionReducer(
+      { ...INITIAL_STATE, pending: true, streamingText: 'Tháng 7 hay' },
+      { type: 'SEND_SUCCESS', id: 'm2', data: reply({ reply: 'Tháng 7 hay mưa.' }) as never, turnId: 0 },
+    )
+
+    expect(next.messages.at(-1)?.typewriter).toBe(false)
+  })
+
+  it('never marks restored history — replaying old messages on reload is theatre', () => {
+    const next = chatSessionReducer(INITIAL_STATE, {
+      type: 'RESTORE', sessionId: 's2', data: restoreDataFor('s2'),
+    })
+
+    expect(next.messages.every((m) => !m.typewriter)).toBe(true)
+  })
+})
+
+describe('chatSessionReducer — thinking survives the turn', () => {
+  const reply = {
+    session_id: 'A', reply: 'Xong rồi.', suggestions: [],
+    stage: 'planned', hotel_options: [], trip_plan: null,
+  }
+
+  const midTurn = (): ChatState =>
+    chatSessionReducer(
+      { ...INITIAL_STATE, pending: true },
+      { type: 'STREAM_PHASE', key: 'intake_check', at: 1, facts: { status: 'started' }, turnId: 0 },
+    )
+
+  it('closes every step when the turn ends', () => {
+    const running = midTurn()
+    expect(running.thinking.some((g) => !g.done)).toBe(true)
+
+    const next = chatSessionReducer(running, {
+      type: 'SEND_SUCCESS', id: 'm1', data: reply as never, turnId: 0,
+    })
+
+    expect(next.thinking.every((g) => g.done)).toBe(true)
+  })
+
+  it('keeps the trace after the answer arrives, rather than clearing it', () => {
+    const next = chatSessionReducer(midTurn(), {
+      type: 'SEND_SUCCESS', id: 'm1', data: reply as never, turnId: 0,
+    })
+
+    expect(next.thinking).toHaveLength(1)
+  })
+
+  it('clears it only when the next turn starts', () => {
+    const afterAnswer = chatSessionReducer(midTurn(), {
+      type: 'SEND_SUCCESS', id: 'm1', data: reply as never, turnId: 0,
+    })
+
+    const nextTurn = chatSessionReducer(afterAnswer, {
+      type: 'SEND_START', id: 'm2', text: 'câu tiếp theo',
+    } as never)
+
+    expect(nextTurn.thinking).toEqual([])
+  })
+})
+
+describe('chatSessionReducer — one row per step', () => {
+  const phase = (key: string, status: 'started' | 'completed') =>
+    ({ type: 'STREAM_PHASE', key, at: 1, facts: { status }, turnId: 0 }) as never
+
+  it('does not list a step twice now that it reports both edges', () => {
+    // The right-hand panel renders one row per entry and treats the last as the
+    // step in progress; appending both edges listed everything twice.
+    let state = chatSessionReducer(INITIAL_STATE, phase('intake_check', 'started'))
+    state = chatSessionReducer(state, phase('intake_check', 'completed'))
+
+    expect(state.phases.map((p) => p.key)).toEqual(['intake_check'])
+  })
+
+  it('still lists a phase a service emits without an edge', () => {
+    // `itinerary_build`, `routing_legs` and `persisting` are announced from
+    // inside the work and never report a completion.
+    const state = chatSessionReducer(INITIAL_STATE, {
+      type: 'STREAM_PHASE', key: 'routing_legs', at: 1, facts: { days: 4 }, turnId: 0,
+    })
+
+    expect(state.phases.map((p) => p.key)).toEqual(['routing_legs'])
+  })
+
+  it('keeps the completed edge for the thinking block, which needs its facts', () => {
+    let state = chatSessionReducer(INITIAL_STATE, phase('intake_check', 'started'))
+    state = chatSessionReducer(state, {
+      type: 'STREAM_PHASE', key: 'intake_check', at: 1,
+      facts: { status: 'completed', intent: 'general_question' }, turnId: 0,
+    })
+
+    expect(state.thinking).toHaveLength(1)
+    expect(state.thinking[0].lines.length).toBeGreaterThan(0)
+    expect(state.thinking[0].done).toBe(true)
   })
 })

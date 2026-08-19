@@ -13,6 +13,7 @@ from postgrest.exceptions import APIError
 from supabase import Client, create_client
 
 from src.config import get_settings
+from src.services.llm import response_text
 
 if TYPE_CHECKING:
     from src.agents.session import TripSession
@@ -182,7 +183,9 @@ def _v3_context(state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _graph_message_records(state: dict[str, Any]) -> list[dict[str, Any]]:
+def _graph_message_records(
+    state: dict[str, Any], thinking_trace: list[dict[str, Any]] | None = None
+) -> list[dict[str, Any]]:
     """The conversation as the user saw it, out of the graph's message channel.
 
     `messages` also carries `qa_node`'s ReAct scratchpad — tool calls, tool
@@ -203,11 +206,16 @@ def _graph_message_records(state: dict[str, Any]) -> list[dict[str, Any]]:
             sender = "user"
         else:
             continue  # tool results and anything else the graph adds later
-        content = getattr(message, "content", "")
         records.append(
             {
                 "sender_type": sender,
-                "message_content": content if isinstance(content, str) else str(content),
+                # `str(content)` wrote a block-shaped answer to the database as
+                # its Python repr — reasoning payload included — and the row
+                # stayed wrong for good. This is the path the HTTP plane uses.
+                "message_content": response_text(message),
+                # Filled in below for this turn's reply; older replies keep
+                # whatever was stored with them.
+                "thinking_trace": metadata.get("thinking_trace"),
                 # Each message carries the moment it was created (stamped where
                 # it is built). Every write re-sends the whole transcript, so
                 # stamping "now" here would move every past message to the
@@ -215,10 +223,22 @@ def _graph_message_records(state: dict[str, Any]) -> list[dict[str, Any]]:
                 "created_at": str(metadata.get("at") or datetime.now(UTC).isoformat()),
             }
         )
+
+    # This turn's steps belong to the reply this turn produced — the last one.
+    # They arrive as an argument rather than off the message because
+    # `app.get_state()` hands back a fresh copy each call, so stamping them onto
+    # a message there is lost before anything reads it.
+    if thinking_trace:
+        for record in reversed(records):
+            if record["sender_type"] == "assistant":
+                record["thinking_trace"] = thinking_trace
+                break
     return records
 
 
-def persist_graph_session(session: TripSession, state: dict[str, Any]) -> None:
+def persist_graph_session(
+    session: TripSession, state: dict[str, Any], thinking_trace: list[dict[str, Any]] | None = None
+) -> None:
     """Write one graph turn's session row and transcript.
 
     Replaces the `persist_hook` -> `upsert(TripSession)` path the graph cutover
@@ -231,7 +251,7 @@ def persist_graph_session(session: TripSession, state: dict[str, Any]) -> None:
         session_id=session.session_id,
         owner_user_id=session.owner_user_id,
         checkpoint=_v3_context(state),
-        messages=_graph_message_records(state),
+        messages=_graph_message_records(state, thinking_trace),
     )
 
 
@@ -266,10 +286,13 @@ def _messages_from_rows(rows: Iterable[dict[str, Any]]) -> list[HumanMessage | A
     restored: list[HumanMessage | AIMessage] = []
     for row in rows:
         role = str(row.get("sender_type") or "user")
-        metadata = {
+        metadata: dict[str, Any] = {
             "stage": "intake",
             "at": str(row.get("created_at") or ""),
         }
+        trace = row.get("thinking_trace")
+        if trace:
+            metadata["thinking_trace"] = trace
         message_type = AIMessage if role == "assistant" else HumanMessage
         restored.append(message_type(content=str(row.get("message_content") or ""), additional_kwargs=metadata))
     return restored
@@ -307,11 +330,12 @@ def _message_records(session: TripSession) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for message in session.state.get("messages") or []:
         metadata = getattr(message, "additional_kwargs", {}) or {}
-        content = message.content
+        # Not `str(content)`: a block-shaped answer would be written to the
+        # database as its Python repr and stay wrong for the life of the row.
         records.append(
             {
                 "sender_type": "assistant" if message.type == "ai" else "user",
-                "message_content": content if isinstance(content, str) else str(content),
+                "message_content": response_text(message),
                 "created_at": str(metadata.get("at") or datetime.now(UTC).isoformat()),
             }
         )
@@ -407,7 +431,10 @@ def load(session_id: str) -> dict[str, Any] | None:
     row = dict(rows[0])
     row["messages"] = (
         client.table("chat_messages")
-        .select("sender_type,message_content,created_at")
+        # `thinking_trace` is named here for the same reason the others are: the
+        # select lists its columns, so a column added later is simply absent
+        # from every row until it is added to this line too.
+        .select("sender_type,message_content,created_at,thinking_trace")
         .eq("session_id", session_id)
         .order("created_at")
         .execute().data or []
@@ -518,7 +545,7 @@ def list_sessions(user_id: str, page: int = 1, page_size: int = 10) -> SessionPa
     )
 
 
-def restored_messages(source: dict[str, Any] | Iterable[Any] | None) -> list[dict[str, str]]:
+def restored_messages(source: dict[str, Any] | Iterable[Any] | None) -> list[dict[str, Any]]:
     if isinstance(source, dict):
         messages = messages_from_dict(source.get("messages") or [])
     else:
@@ -533,18 +560,19 @@ def restored_messages(source: dict[str, Any] | Iterable[Any] | None) -> list[dic
                     "text": str(message.get("message_content") or ""),
                     "stage": str(message.get("stage") or "intake"),
                     "at": str(message.get("created_at") or ""),
+                    "thinking_trace": message.get("thinking_trace"),
                 }
             )
             continue
         role = "assistant" if message.type == "ai" else "user"
         metadata = getattr(message, "additional_kwargs", {}) or {}
-        content = message.content
         restored.append(
             {
                 "role": role,
-                "text": content if isinstance(content, str) else str(content),
+                "text": response_text(message),
                 "stage": str(metadata.get("stage") or "intake"),
                 "at": str(metadata.get("at") or ""),
+                "thinking_trace": metadata.get("thinking_trace"),
             }
         )
     return restored

@@ -43,7 +43,7 @@ class _FakeResponse:
 class _FakeLLM:
     """Returns one queued response per `.invoke()` call, in order."""
 
-    def __init__(self, contents: list[str]) -> None:
+    def __init__(self, contents: list) -> None:
         self._contents = list(contents)
         self.call_count = 0
         self.prompts: list[str] = []
@@ -73,6 +73,22 @@ def _patch(monkeypatch, llm: _FakeLLM, destinations: tuple = _DESTINATIONS) -> _
     monkeypatch.setattr(extract_patch_module, "get_reasoning_llm", lambda **_kwargs: llm)
     monkeypatch.setattr(extract_patch_module, "_get_destination_names", lambda: destinations)
     return llm
+
+
+def test_a_block_shaped_response_still_yields_a_patch(monkeypatch):
+    """The Responses API answers in content blocks, and this node is the entry
+    point of every turn. Reading `.content` directly made `json.loads` fail on
+    every retry, so the node returned `general_question` with an empty patch for
+    ANY message — inside a broad `except`, so nothing surfaced but a log line.
+    """
+    payload = _payload("update_trip", [{"path": "people", "operation": "set", "value": 4}])
+    llm = _patch(monkeypatch, _FakeLLM([[{"type": "text", "text": payload}]]))
+
+    result = extract_patch_module.extract_patch(_state("đi 4 người"))
+
+    assert llm.call_count == 1
+    assert result["intent"] == "update_trip"
+    assert result["patch"] == [{"path": "people", "operation": "set", "value": 4}]
 
 
 # --- Call-count invariants ---------------------------------------------------

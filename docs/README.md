@@ -7,6 +7,7 @@ Welcome to the **VSF Trip Planner AI Agent** documentation. This directory is or
 * **[Data Dictionary](file:///d:/Git%20repo/vsf-project/docs/architecture/data_dictionary.md)**: Comprehensive schema definitions for all database tables (`destinations`, `hotels`, `rooms`, `attractions`, `itineraries`, `itinerary_items`, `events`).
 * **[Database ERD](file:///d:/Git%20repo/vsf-project/docs/architecture/database_erd.md)**: Relational entity-relationship diagram and foreign key relationships.
 * **[Data Pipeline Flow](file:///d:/Git%20repo/vsf-project/docs/architecture/data_pipeline_flow.md)**: Airflow ETL data pipeline specs for OSM, Booking.com, and Agoda producers.
+* **[Đặt phòng & Thanh toán VNPay](architecture/booking_and_payment_workflow_vi.md)** (tiếng Việt): Luồng giữ phòng → thanh toán VNPay → xác nhận → email, mô hình dữ liệu, sơ đồ Mermaid, và nhật ký các sự cố đã xử lý.
 
 ## 🚀 Setup & Operations (`docs/setup/`)
 * **[Setup Guide](file:///d:/Git%20repo/vsf-project/docs/setup/SETUP_GUIDE.md)**: Step-by-step instructions for initializing Docker Compose, Airflow, PostgreSQL, Adminer, and the Real-Time Dashboard.

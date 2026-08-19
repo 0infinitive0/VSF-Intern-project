@@ -44,8 +44,9 @@ Frame format (contract: docs/chat_api_contract.md §Streaming, frozen by plan
 
 Event names (shipped subset — `cancelled` is reserved by the plan but not
 shipped; turn cancellation is out of scope, see phase-04, currently paused):
-    phase | delta | final | error
+    phase | delta | reasoning | final | error
 Every stream ends with EXACTLY ONE terminal frame: `final` or `error`.
+`reasoning` is never terminal, and a valid turn may carry none of it.
 
 `reset` used to be a fifth name. It meant "discard the text streamed so far",
 which only a producer that could stream text it might have to retract needed —
@@ -90,7 +91,7 @@ STREAM_HEADERS = {
 class StreamEvent:
     """One SSE event: `event` name + JSON-serializable `data` dict."""
 
-    event: str  # "phase" | "delta" | "final" | "error"
+    event: str  # "phase" | "delta" | "reasoning" | "final" | "error"
     data: dict[str, Any]
 
 
@@ -147,7 +148,13 @@ def emit_phase(key: str, **data: Any) -> None:
 
     NEVER raises — a bug in the instrumentation path must not kill a chat
     turn. `key` is an opaque progress key (contract §Streaming — the frontend
-    owns i18n labels); `data` carries optional extras like tool= / route=.
+    owns i18n labels).
+
+    `data` carries the step's facts: counts, ids, and field paths, never display
+    text. Two producers supply them — `phase_facts` reads the dict a node just
+    returned, and a service that knows more than its state delta shows emits its
+    own (`hotel_node._result`, `routing.py`). The contract's phase-key table
+    lists every field; anything not listed there must not be added here.
     """
     try:
         em = _current_emitter.get()
@@ -194,6 +201,71 @@ def emit_delta(text: str) -> None:
             em.emit("delta", text=text)
     except Exception:
         logger.debug("emit_delta failed", exc_info=True)
+
+
+#: The steps this turn completed, in order, with the facts each reported.
+#: Collected alongside the `phase` frames so the block a user watched can be
+#: stored with the reply and shown again after a reload.
+#:
+#: A ContextVar for the same reason the emitter is one: two concurrent turns
+#: must never see each other's steps, and a plain POST turn collects nothing.
+_current_trace: ContextVar[list[dict[str, Any]] | None] = ContextVar("turn_trace", default=None)
+
+
+@contextmanager
+def collecting_trace() -> Iterator[list[dict[str, Any]]]:
+    """Collect this turn's completed steps for the block's stored copy."""
+    trace: list[dict[str, Any]] = []
+    token = _current_trace.set(trace)
+    try:
+        yield trace
+    finally:
+        _current_trace.reset(token)
+
+
+def record_step(phase_key: str, facts: dict[str, Any]) -> None:
+    """Add one completed step to the turn's trace, if one is being collected.
+
+    Never raises, for the same reason `emit_phase` does not: a record of the
+    work must not be able to cost the user the work itself.
+    """
+    try:
+        trace = _current_trace.get()
+        if trace is not None:
+            trace.append({"phase_key": phase_key, "facts": facts})
+    except Exception:
+        logger.debug("record_step failed for %s", phase_key, exc_info=True)
+
+
+def emit_reasoning(text: str, phase_key: str) -> None:
+    """Emit one `reasoning` SSE event carrying the model's summary of its own
+    reasoning.
+
+    Deliberately NOT folded into `delta`. The contract says `delta` is a prefix
+    of the reply `final` carries (docs/chat_api_contract.md §Streaming), and a
+    reasoning summary is not part of the reply at all — mixing them would break
+    an invariant clients rely on. A separate event also lets a client tell
+    model-written prose from product-written prose, which matters here: this text
+    is always English, even in a Vietnamese conversation.
+
+    `phase_key` names the step the reasoning belongs to, and it is required
+    rather than optional: these frames arrive WHILE the node runs, but the node's
+    own `phase` frame is emitted only once it finishes. A client that attached
+    the text to whichever step was open would file the model's thinking about
+    composing an answer under whatever ran before it.
+
+    Same guards as `emit_delta`: no-op without an emitter, never raises, drops
+    the empty string — and empty is the COMMON case. A model emits a summary only
+    when it actually reasons, and a tool-calling step has none to summarize.
+    """
+    if not text:
+        return
+    try:
+        em = _current_emitter.get()
+        if em is not None:
+            em.emit("reasoning", text=text, key=phase_key)
+    except Exception:
+        logger.debug("emit_reasoning failed", exc_info=True)
 
 
 async def sse_stream(

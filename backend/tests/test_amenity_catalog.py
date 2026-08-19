@@ -199,6 +199,27 @@ def test_discovery_derives_an_english_canonical_id_and_keeps_source_mapping(monk
     )]
 
 
+def test_discovery_reads_a_block_shaped_response(monkeypatch):
+    """`_parse_model_json` used to return `{}` for anything that was not a `str`,
+    with no exception — so a Responses API answer produced an empty catalog that
+    looked exactly like "the model found no amenities"."""
+    body = '{"amenities":[{"id":"ho_boi","is_amenity":true,"label_vi":"Hồ bơi","label_en":"Swimming Pool","scope":"hotel","category":"facility","icon_key":null,"match_keywords":["swimming pool","hồ bơi"]}]}'
+
+    class _Response:
+        content = [{"type": "text", "text": body}]
+
+    class _FastModel:
+        def invoke(self, _messages): return _Response()
+
+    monkeypatch.setattr(amenity_catalog, "get_fast_llm", lambda **_: _FastModel())
+
+    entries = amenity_catalog.discover_and_store_amenities(
+        [{"id": "ho_boi", "label": "Hồ bơi"}], persist=False
+    )
+
+    assert [e.id for e in entries] == ["swimming_pool"]
+
+
 def test_discovery_removes_broad_outdoor_cooking_aliases(monkeypatch):
     class _Response:
         content = '''{"amenities":[{"id":"outdoor_cooking","is_amenity":true,"label_vi":"Tiện nghi nấu nướng ngoài trời","label_en":"Outdoor Cooking Facilities","scope":"hotel","category":"facility","icon_key":null,"match_keywords":["outdoor kitchen","cooking amenities","bbq","outdoor grill area"]}]}'''

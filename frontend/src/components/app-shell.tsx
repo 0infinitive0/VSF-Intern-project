@@ -11,6 +11,7 @@ import type { IntakeChecklistRowKey } from '../lib/intake-checklist-rows'
 import type { PreferenceKey } from '../lib/intake-options'
 import type { IntakeField } from '../lib/next-intake-field'
 import type { StageView } from '../lib/derive-stage'
+import type { TabKey } from './stage-workspace'
 import type { ChatState, HotelFilterData, HotelOption, SessionSummary } from '../types'
 
 const DESKTOP_BREAKPOINT_PX = 768 // Tailwind `md`
@@ -91,6 +92,8 @@ export default function AppShell({
   finalizeError,
   onRequestFinalize,
   onDuplicateTrip,
+  activeWorkspaceTab,
+  onSelectWorkspaceTab,
 }: {
   state: ChatState
   onSend: (text: string) => void
@@ -159,6 +162,8 @@ export default function AppShell({
   finalizeError: string | null
   onRequestFinalize: () => void
   onDuplicateTrip: () => void
+  activeWorkspaceTab?: TabKey
+  onSelectWorkspaceTab?: (tab: TabKey) => void
 }) {
   const { theme, toggleTheme } = useTheme()
   const focusMode = useFocusMode()
@@ -338,6 +343,8 @@ export default function AppShell({
             finalizeError={finalizeError}
             onRequestFinalize={onRequestFinalize}
             onDuplicateTrip={onDuplicateTrip}
+            activeWorkspaceTab={activeWorkspaceTab}
+            onSelectWorkspaceTab={onSelectWorkspaceTab}
           />
         </div>
       </div>

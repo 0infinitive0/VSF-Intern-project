@@ -16,6 +16,7 @@ import { deriveStageView, type StageView } from './lib/derive-stage'
 import { isFieldFilled } from './lib/next-intake-field'
 import { consumeVnpayReturn, isVnpayReturnPending } from './lib/vnpay-return'
 import type { HotelFilterData, HotelOption } from './types'
+import type { TabKey } from './components/stage-workspace'
 import AppShell from './components/app-shell'
 import AuthPanel from './auth/auth-panel'
 import BookingModal from './components/booking-modal'
@@ -150,6 +151,7 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   // because displayAmenityLabels has nothing to resolve them against.
   const [hotelFilterDataBySession, setHotelFilterDataBySession] = useState<Record<string, HotelFilterData>>({})
   const [selectedHotelIndexBySession, setSelectedHotelIndexBySession] = useState<Record<string, number | null>>({})
+  const [workspaceTabBySession, setWorkspaceTabBySession] = useState<Record<string, TabKey>>({})
   const retainedHotelOptions = state.sessionId ? (hotelOptionsBySession[state.sessionId] ?? []) : []
   const retainedHotelFilterData =
     (state.sessionId ? hotelFilterDataBySession[state.sessionId] : undefined) ?? state.hotelFilterData
@@ -162,14 +164,40 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   // StepNavigator can jump to a step whose data is already sitting in `state`
   // (e.g. hopping back to "Thông tin" while hotel options are still loaded)
   // as a pure client-side view swap — no chat turn. `viewOverride` holds that
-  // choice; it's cleared whenever the real derived stage moves (a genuine
-  // backend turn happened), so the view always snaps back to following the
-  // live conversation once one does.
-  const [viewOverride, setViewOverride] = useState<StageView | null>(null)
+  // choice, per session, so hopping between chats doesn't lose it. It's
+  // cleared whenever the real derived stage moves FOR THE SESSION CURRENTLY
+  // BEING VIEWED (a genuine backend turn happened), so the view always snaps
+  // back to following the live conversation once one does.
+  const [viewOverrideBySession, setViewOverrideBySession] = useState<Record<string, StageView | null>>({})
+  const viewOverride = state.sessionId ? (viewOverrideBySession[state.sessionId] ?? null) : null
+  const handleSetViewOverride = (v: StageView | null) => {
+    if (state.sessionId) {
+      setViewOverrideBySession((prev) => ({ ...prev, [state.sessionId!]: v }))
+    }
+  }
+  // `stage` also changes when the guest SWITCHES to a different session
+  // (each session derives its own stage from its own state) — that must NOT
+  // clear the just-restored override for the newly active session, or a
+  // step manually picked earlier for that session is forgotten every time
+  // its chat is reopened. Only clear when `stage` changed while the active
+  // session itself stayed the same, i.e. a real turn happened for the
+  // session currently on screen.
+  const stageClearSessionRef = useRef<string | null>(null)
   useEffect(() => {
-    setViewOverride(null)
-  }, [stage])
+    const sameSessionAsLastCheck = stageClearSessionRef.current === state.sessionId
+    stageClearSessionRef.current = state.sessionId
+    if (sameSessionAsLastCheck && state.sessionId) {
+      setViewOverrideBySession((prev) => ({ ...prev, [state.sessionId!]: null }))
+    }
+  }, [stage, state.sessionId])
   const displayStage = viewOverride ?? stage
+
+  const activeWorkspaceTab = state.sessionId ? (workspaceTabBySession[state.sessionId] ?? 'overview') : 'overview'
+  const handleSelectWorkspaceTab = (tab: TabKey) => {
+    if (state.sessionId) {
+      setWorkspaceTabBySession((prev) => ({ ...prev, [state.sessionId!]: tab }))
+    }
+  }
 
   // Real room hold (use-room-hold.ts) — owned here (not lower in the tree)
   // because it must survive across the hotels/workspace stage swap AND be
@@ -351,13 +379,13 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   function handleSend(text: string) {
     // Confirmation starts a real backend turn, so it must release the local
     // phase override and resume the server-derived flow from that point.
-    setViewOverride(null)
+    handleSetViewOverride(null)
     send(text)
   }
 
   function handleHotelSelection(hotel: HotelOption) {
     if (!hotel.id) return
-    setViewOverride(null)
+    handleSetViewOverride(null)
     selectHotelDirect(hotel.id, `Chọn khách sạn ${hotel.name}`)
   }
 
@@ -583,7 +611,7 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
         onChangeHotel={handleChangeHotelClick}
         onNewTrip={handleNewTrip}
         stage={displayStage}
-        onViewStage={setViewOverride}
+        onViewStage={handleSetViewOverride}
         hotelOptions={retainedHotelOptions}
         hotelFilterData={retainedHotelFilterData}
         selectedHotelIndex={selectedHotelIndex}
@@ -614,6 +642,8 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
         finalizeError={finalizeError}
         onRequestFinalize={() => setFinalizeConfirmOpen(true)}
         onDuplicateTrip={handleDuplicateTrip}
+        activeWorkspaceTab={activeWorkspaceTab}
+        onSelectWorkspaceTab={handleSelectWorkspaceTab}
       />
       <BookingModal
         open={bookingModalOpen}

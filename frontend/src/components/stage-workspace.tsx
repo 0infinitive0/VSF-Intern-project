@@ -18,7 +18,7 @@ import type { Theme } from '../hooks/use-theme'
 import type { ChatState, Day, DayItem } from '../types'
 
 type FocusModeApi = ReturnType<typeof useFocusMode>
-type TabKey = 'overview' | number
+export type TabKey = 'overview' | number
 
 // Nights from the real trip dates — duration_days - 1 is only a fallback for
 // when the dates are missing/unusable (never invented).
@@ -63,6 +63,8 @@ export default function StageWorkspace({
   finalizeError,
   onRequestFinalize,
   onDuplicateTrip,
+  activeTab: activeTabProp,
+  onSelectTab,
 }: {
   state: ChatState
   focusMode: FocusModeApi
@@ -84,6 +86,8 @@ export default function StageWorkspace({
   finalizeError: string | null
   onRequestFinalize: () => void
   onDuplicateTrip: () => void
+  activeTab?: TabKey
+  onSelectTab?: (tab: TabKey) => void
 }) {
   const { t, i18n } = useTranslation()
   const tripPlan = state.tripPlan
@@ -94,7 +98,8 @@ export default function StageWorkspace({
   const days = useMemo(() => tripPlan?.days ?? [], [tripPlan])
   const mapSync = useMapSync()
 
-  const [activeTab, setActiveTab] = useState<TabKey>('overview')
+  const [internalActiveTab, setInternalActiveTab] = useState<TabKey>('overview')
+  const activeTab = activeTabProp ?? internalActiveTab
   // Transient, per-component (not persisted) — resets to visible whenever
   // this component remounts. A fresh batch of suggestedPlaces from a new
   // turn does NOT reset it back to true: the user's ẩn/hiện choice should
@@ -152,7 +157,11 @@ export default function StageWorkspace({
   const savedScroll = useRef(0)
 
   function pickTab(tab: TabKey) {
-    setActiveTab(tab)
+    if (onSelectTab) {
+      onSelectTab(tab)
+    } else {
+      setInternalActiveTab(tab)
+    }
     focusMode.closeFocus()
   }
 
