@@ -120,15 +120,18 @@ export default function HoldBanner({
     const warn = roomHold.holdLeftMs <= 5 * 60 * 1000
     const danger = roomHold.holdLeftMs <= 60 * 1000
     return (
-      <div className="flex items-center gap-2.5">
-        <div
-          className="flex items-center gap-2 px-3.5 py-2 rounded-[13px] border whitespace-nowrap"
-          style={{
-            background: danger ? 'var(--err-soft, rgba(192,94,112,.14))' : warn ? 'var(--warn-soft)' : 'var(--fill)',
-            borderColor: danger ? 'var(--err)' : warn ? 'var(--warn)' : 'var(--stroke)',
-            animation: danger ? 'vPulse 1.6s ease-in-out infinite' : 'none',
-          }}
-        >
+      <div
+        className="flex items-center gap-2 pl-3 pr-1.5 py-1 rounded-full border transition-all duration-200"
+        style={{
+          background: danger ? 'var(--err-soft, rgba(192,94,112,.14))' : warn ? 'var(--warn-soft)' : 'var(--g1)',
+          borderColor: danger ? 'var(--err)' : warn ? 'var(--warn)' : 'var(--edge)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          boxShadow: '0 8px 24px -12px rgb(var(--shadow-rgb) / 0.35)',
+          animation: danger ? 'vPulse 1.6s ease-in-out infinite' : 'none',
+        }}
+      >
+        <div className="flex items-center gap-2 pr-1">
           <span
             className="material-symbols-outlined text-[16px] leading-none"
             style={{ color: danger ? 'var(--err)' : warn ? 'var(--warn)' : 'var(--t2)' }}
@@ -136,27 +139,35 @@ export default function HoldBanner({
           >
             schedule
           </span>
-          <span className="text-[9.5px] font-[590] tracking-[0.09em] uppercase text-on-surface-muted">
+          <span className="text-[10px] font-[590] tracking-[0.09em] uppercase text-on-surface-muted">
             {t('holdBannerHeldLabel')}
           </span>
           <span
-            className="text-[15px] font-[590] tracking-[-0.35px] tabular-nums"
-            style={{ color: danger ? 'var(--err)' : warn ? 'var(--warn)' : 'var(--t2)' }}
+            className="text-[14px] font-[600] tracking-[-0.2px] tabular-nums"
+            style={{ color: danger ? 'var(--err)' : warn ? 'var(--warn)' : 'var(--t1)' }}
           >
             {mmss(roomHold.holdLeftMs)}
           </span>
         </div>
+
+        <div className="w-px h-3.5" style={{ background: 'var(--stroke)' }} />
+
         <button
           type="button"
           onClick={onOpenBooking}
-          className="px-[22px] py-3 rounded-[14px] border-none text-[13px] font-[590] tracking-[-0.12px] cursor-pointer transition-all duration-200 hover:-translate-y-px active:scale-[0.97]"
+          className="group flex items-center gap-1 px-3 py-1.5 rounded-full border-none text-[12px] font-[590] tracking-[-0.1px] text-white cursor-pointer transition-all duration-200 hover:opacity-95 hover:shadow-md active:scale-[0.97]"
           style={{
             background: 'linear-gradient(135deg,#3A73DE,#2C5FC9)',
-            color: 'var(--on-acc)',
-            boxShadow: '0 14px 30px -14px rgba(44,95,201,.7)',
+            boxShadow: '0 4px 12px -3px rgba(44,95,201,.55)',
           }}
         >
-          {t('holdBannerBook')}
+          <span>{t('holdBannerBook')}</span>
+          <span
+            className="material-symbols-outlined text-[14px] leading-none group-hover:translate-x-0.5 transition-transform duration-200"
+            aria-hidden="true"
+          >
+            arrow_forward
+          </span>
         </button>
       </div>
     )
@@ -165,20 +176,30 @@ export default function HoldBanner({
   if (roomHold.status === 'EXPIRED') {
     return (
       <div
-        className="flex items-center gap-3 pl-3.5 pr-2.5 py-2 rounded-[14px] border"
-        style={{ background: 'var(--err-soft, rgba(192,94,112,.12))', borderColor: 'var(--err)' }}
+        className="flex items-center gap-2 pl-3 pr-1.5 py-1 rounded-full border border-err/30 transition-all duration-200"
+        style={{
+          background: 'var(--err-soft, rgba(192,94,112,.12))',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          boxShadow: '0 8px 24px -12px rgb(var(--shadow-rgb) / 0.35)',
+        }}
       >
-        <div>
-          <div className="text-[12.5px] font-[590] tracking-[-0.1px]" style={{ color: 'var(--err)' }}>
+        <div className="flex items-center gap-2 pr-1">
+          <span className="material-symbols-outlined text-[16px] text-err leading-none" aria-hidden="true">
+            timer_off
+          </span>
+          <span className="text-[12px] font-[590] text-err tracking-[-0.1px]">
             {t('holdBannerExpiredTitle')}
-          </div>
-          <div className="text-[11px] text-on-surface-muted">{t('holdBannerExpiredBody')}</div>
+          </span>
         </div>
+
+        <div className="w-px h-3.5" style={{ background: 'var(--stroke)' }} />
+
         <button
           type="button"
           onClick={() => void roomHold.recheckRooms()}
-          className="px-[15px] py-2.5 rounded-xl border-none text-[12.5px] font-[590] cursor-pointer transition-transform duration-200 active:scale-[0.97]"
-          style={{ background: 'var(--err)', color: '#FCFDFE' }}
+          className="flex items-center gap-1 px-3 py-1.5 rounded-full border-none text-[12px] font-[590] tracking-[-0.1px] text-white cursor-pointer transition-all duration-200 hover:opacity-95 active:scale-[0.97]"
+          style={{ background: 'var(--err)', boxShadow: '0 4px 12px -3px rgba(192,94,112,.5)' }}
         >
           {t('holdBannerRecheck')}
         </button>
