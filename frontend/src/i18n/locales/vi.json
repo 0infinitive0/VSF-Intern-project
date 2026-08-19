@@ -315,6 +315,7 @@
   "mapShowSuggested": "Hiện gợi ý",
   "mapHideSuggested": "Ẩn gợi ý",
   "authBootLoading": "Đang đăng nhập…",
+  "paymentReturnProcessing": "Đang xử lý thanh toán…",
   "authSignIn": "Đăng nhập",
   "authSignOut": "Đăng xuất",
   "authLoginTitle": "Chào mừng trở lại",

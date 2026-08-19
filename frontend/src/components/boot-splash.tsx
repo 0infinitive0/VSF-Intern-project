@@ -7,8 +7,14 @@ import { useTranslation } from 'react-i18next'
  * (Design Update - Authentication Ex.md §8) — there is no separate
  * placeholder "workspace" in this real app the way the design prototype had
  * one, so this is that beat's entire on-screen presence.
+ *
+ * Also reused by App.tsx for the VNPay-return processing gate (a different
+ * "brief launching transition": the session-bootstrap flash that would
+ * otherwise show right after returning from a real payment) — `messageKey`
+ * lets that call site swap the label without needing its own near-identical
+ * component.
  */
-export default function BootSplash() {
+export default function BootSplash({ messageKey = 'authBootLoading' }: { messageKey?: string }) {
   const { t } = useTranslation()
 
   return (
@@ -29,7 +35,7 @@ export default function BootSplash() {
           }}
         />
         <div className="text-[13.5px] font-medium text-on-surface tracking-tight">
-          {t('authBootLoading')}
+          {t(messageKey)}
         </div>
       </div>
     </div>

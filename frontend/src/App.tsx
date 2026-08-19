@@ -12,7 +12,7 @@ import { shouldReleaseHoldForDeletedSession, useRoomHold } from './hooks/use-roo
 import { useSessionHistory } from './hooks/use-session-history'
 import { deriveStageView, type StageView } from './lib/derive-stage'
 import { isFieldFilled } from './lib/next-intake-field'
-import { consumeVnpayReturn } from './lib/vnpay-return'
+import { consumeVnpayReturn, isVnpayReturnPending } from './lib/vnpay-return'
 import type { HotelFilterData, HotelOption } from './types'
 import AppShell from './components/app-shell'
 import AuthPanel from './auth/auth-panel'
@@ -228,6 +228,23 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   // is called.
   const refreshRef = useRef<() => void>(() => {})
 
+  // True only when the URL says the guest just landed back from VNPay
+  // (lazy init: a plain, non-consuming read of the same marker
+  // consumeVnpayReturn() below strips — see isVnpayReturnPending's own doc
+  // comment). Gates the render below: while true, PlannerApp shows a
+  // processing splash instead of the real UI, so the guest never sees the
+  // brief "back to intake" flash a full page reload causes here (state.
+  // sessionId/tripPlan both start out empty on every mount until
+  // use-chat-session.ts's async bootstrap resolves — see sessionResolved's
+  // own doc comment on BookingModal for the same underlying gap).
+  const [paymentReturnPending, setPaymentReturnPending] = useState(isVnpayReturnPending)
+  // Flips true once the payment-status poll below reaches ANY terminal
+  // outcome (paid, failed/cancelled, or its own ~20s timeout — see
+  // pollUntilSettled). Session bootstrap resolving alone isn't enough to
+  // reveal the app: the guest came back specifically to see the payment
+  // outcome, so the splash should outlast whichever of the two is slower.
+  const [paymentPollDone, setPaymentPollDone] = useState(false)
+
   // Runs once on boot: the guest may have just been bounced back from
   // VNPay's hosted payment page (plan 260818-vnpay-payment-and-email-
   // confirmation). consumeVnpayReturn() only tells us THAT — never the
@@ -241,7 +258,10 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   useEffect(() => {
     if (!consumeVnpayReturn()) return
     const paymentId = roomHold.paymentId
-    if (!paymentId) return
+    if (!paymentId) {
+      setPaymentPollDone(true)
+      return
+    }
     let cancelled = false
     const guestRef = roomHold.guestRef
 
@@ -261,6 +281,7 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
             // DIFFERENT session's workspace until some unrelated refetch
             // happened to occur later.
             refreshRef.current()
+            setPaymentPollDone(true)
             return
           }
           if (payment.status === 'FAILED' || payment.status === 'CANCELLED') {
@@ -268,6 +289,7 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
             // reopening the modal just lands back on the Payment step so
             // the guest can try again.
             setBookingModalOpen(true)
+            setPaymentPollDone(true)
             return
           }
         } catch {
@@ -279,7 +301,10 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
       // IPN still hasn't landed after ~20s — open the modal anyway rather
       // than leave the guest on a blank page; GET /payments/{id} is cheap
       // to check again from there once they notice nothing happened.
-      if (!cancelled) setBookingModalOpen(true)
+      if (!cancelled) {
+        setBookingModalOpen(true)
+        setPaymentPollDone(true)
+      }
     }
 
     void pollUntilSettled()
@@ -288,6 +313,26 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Reveals the app once BOTH the session has actually resolved
+  // (state.sessionId past its initial null — see sessionResolved's own doc
+  // comment on BookingModal for why every mount starts there) AND the
+  // payment poll above reached a terminal outcome — whichever is slower
+  // gates the other.
+  useEffect(() => {
+    if (!paymentReturnPending) return
+    if (paymentPollDone && state.sessionId != null) setPaymentReturnPending(false)
+  }, [paymentReturnPending, paymentPollDone, state.sessionId])
+
+  // Safety ceiling: the payment poll above always resolves paymentPollDone
+  // within ~20s no matter what, but session bootstrap has no such ceiling
+  // of its own — this is the "never leave the guest stuck" backstop if
+  // that somehow hangs, matching this same file's own posture on the poll.
+  useEffect(() => {
+    if (!paymentReturnPending) return
+    const timeout = setTimeout(() => setPaymentReturnPending(false), 15_000)
+    return () => clearTimeout(timeout)
+  }, [paymentReturnPending])
 
   useEffect(() => {
     if (!state.sessionId || state.hotelOptions.length === 0) return
@@ -464,6 +509,15 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
     if (!restored) await startNew()
     resetIntakeForm()
     refresh()
+  }
+
+  // Hides the session-bootstrap flash specifically for the VNPay-return
+  // case (paymentReturnPending's own doc comment above) — every hook above
+  // this point still runs normally either way (roomHold's markBooked()/
+  // setPendingPayment side effects must fire regardless of what's on
+  // screen), only the JSX below is swapped.
+  if (paymentReturnPending) {
+    return <BootSplash messageKey="paymentReturnProcessing" />
   }
 
   return (
