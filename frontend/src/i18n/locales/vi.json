@@ -437,7 +437,7 @@
   "bookingReceiptClose": "Đóng",
   "checkoutTitle": "Thanh toán an toàn",
   "checkoutCloseAria": "Về lịch trình",
-  "checkoutStepGuest": "Thông tin khách",
+  "checkoutStepGuest": "Thông tin",
   "checkoutStepPay": "Thanh toán",
   "checkoutStepDone": "Hoàn tất",
   "checkoutStepEyebrow": "Bước {{n}}",
