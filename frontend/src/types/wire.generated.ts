@@ -645,6 +645,8 @@ export interface components {
             total_amount?: number | string | null;
             /** Currency */
             currency?: string | null;
+            /** Session Id */
+            session_id?: string | null;
         };
         /** ChangeHotelRequest */
         ChangeHotelRequest: {
@@ -1223,7 +1225,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "draft" | "completed";
+            status: "draft" | "completed" | "holding" | "paid";
             /** Created At */
             created_at: string | null;
             /** Updated At */
@@ -1327,6 +1329,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
     };
     responses: never;

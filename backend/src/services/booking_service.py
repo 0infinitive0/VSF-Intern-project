@@ -44,6 +44,14 @@ def _call(rpc_name: str, params: dict[str, Any]) -> dict[str, Any]:
         # booking_operation_failed and surfaced as a bare 500.
         if "invalid_booking_request" in message:
             raise BookingError("invalid_booking_request") from exc
+        # A different browser tab (same guest ref, shared via localStorage —
+        # see frontend/src/lib/guest-ref.ts) already holds a live RESERVED
+        # booking at a DIFFERENT hotel — create_booking_reservation's
+        # cross-hotel guard (migration 20260819_add_guest_single_hotel_hold_
+        # guard.sql). Rejected, not auto-resolved: the other tab's hold is
+        # left untouched.
+        if "guest_already_holding_elsewhere" in message:
+            raise BookingError("guest_already_holding_elsewhere") from exc
         raise BookingError("booking_operation_failed") from exc
 
 
@@ -51,6 +59,7 @@ def reserve_booking(
     *, room_id: UUID, temporary_user_ref: str, check_in_date: date,
     check_in_time: time, check_out_date: date, check_out_time: time,
     room_count: int, total_amount: Decimal | None, currency: str | None,
+    session_id: str | None = None,
 ) -> dict[str, Any]:
     return _call("create_booking_reservation", {
         "p_room_id": str(room_id),
@@ -62,6 +71,7 @@ def reserve_booking(
         "p_room_count": room_count,
         "p_total_amount": str(total_amount) if total_amount is not None else None,
         "p_currency": currency,
+        "p_session_id": session_id,
     })
 
 

@@ -113,7 +113,40 @@ function nightsBetween(checkIn: string, checkOut: string): number {
   return nights > 0 ? nights : 1
 }
 
-export function useRoomHold() {
+/** Pure reducer behind `setQty`. `cartByHotel` holds at most one DRAFT
+ * hotel's entries at a time: editing `hotelId`'s qty drops every OTHER
+ * hotel's draft entries in the same step — previously nothing ever cleared
+ * a stale hotel's cart, so a guest could accumulate non-zero quantities at
+ * arbitrarily many hotels simultaneously with no way to notice (only one
+ * can ever actually be held/reserved server-side, but the cart itself
+ * never reflected that).
+ *
+ * The currently-HELD hotel (`heldHotelId`) is the one exception: its entry
+ * mirrors a REAL, already-reserved booking (`roomHold.bookings`), not
+ * draft state, so it survives being edited elsewhere — otherwise merely
+ * browsing a different hotel while holding would zero out the held
+ * hotel's cart, and hotel-detail-panel.tsx's RoomCard/`cartChanged` would
+ * then silently show 0 rooms / "nothing changed" for a hotel that is
+ * still actually held. */
+export function applyCartQty(
+  prev: Record<string, RoomCart>,
+  hotelId: string,
+  roomId: string,
+  qty: number,
+  heldHotelId: string | null,
+): Record<string, RoomCart> {
+  const current = { ...(prev[hotelId] ?? {}) }
+  const clamped = Math.max(0, Math.min(MAX_QTY_PER_ROOM, qty))
+  if (clamped === 0) delete current[roomId]
+  else current[roomId] = clamped
+  const next: Record<string, RoomCart> = { [hotelId]: current }
+  if (heldHotelId && heldHotelId !== hotelId && prev[heldHotelId]) {
+    next[heldHotelId] = prev[heldHotelId]
+  }
+  return next
+}
+
+export function useRoomHold(sessionId: string | null) {
   const [cartByHotel, setCartByHotel] = useState<Record<string, RoomCart>>({})
   const [heldHotelId, setHeldHotelId] = useState<string | null>(() => loadPersistedHold()?.heldHotelId ?? null)
   const [bookings, setBookings] = useState<Booking[]>(() => loadPersistedHold()?.bookings ?? [])
@@ -136,6 +169,15 @@ export function useRoomHold() {
   const [now, setNow] = useState(() => Date.now())
   const guestRefRef = useRef<string>('')
   if (!guestRefRef.current) guestRefRef.current = getGuestRef()
+  // Read fresh (not lazy-init-once like guestRefRef) since the ACTIVE chat
+  // session can change over this hook's lifetime — App.tsx instantiates
+  // useRoomHold() once, globally (see the module doc comment), so this ref
+  // just needs to reflect whichever session is current at the moment a
+  // reservation actually fires, for booking_service.reserve_booking's new
+  // session_id passthrough (sidebar "Đang giữ phòng"/"Đã thanh toán" badge —
+  // plan 260818-vnpay-payment-and-email-confirmation's addendum 2).
+  const sessionIdRef = useRef<string | null>(sessionId)
+  sessionIdRef.current = sessionId
 
   // Keeps sessionStorage in sync with the live hold — cleared once there's
   // nothing worth restoring (IDLE: released/never started; ERROR: the
@@ -160,14 +202,8 @@ export function useRoomHold() {
   const cartFor = useCallback((hotelId: string): RoomCart => cartByHotel[hotelId] ?? {}, [cartByHotel])
 
   const setQty = useCallback((hotelId: string, roomId: string, qty: number) => {
-    setCartByHotel((prev) => {
-      const current = { ...(prev[hotelId] ?? {}) }
-      const clamped = Math.max(0, Math.min(MAX_QTY_PER_ROOM, qty))
-      if (clamped === 0) delete current[roomId]
-      else current[roomId] = clamped
-      return { ...prev, [hotelId]: current }
-    })
-  }, [])
+    setCartByHotel((prev) => applyCartQty(prev, hotelId, roomId, qty, heldHotelId))
+  }, [heldHotelId])
 
   const cartCount = useCallback(
     (hotelId: string) => Object.values(cartByHotel[hotelId] ?? {}).reduce((n, q) => n + q, 0),
@@ -218,6 +254,7 @@ export function useRoomHold() {
           const booking = await reserveBooking({
             room_id: roomId,
             temporary_user_ref: guestRefRef.current,
+            session_id: sessionIdRef.current ?? undefined,
             check_in_date: stay.checkInDate,
             check_in_time: DEFAULT_CHECK_IN_TIME,
             check_out_date: stay.checkOutDate,

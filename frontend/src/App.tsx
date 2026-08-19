@@ -173,7 +173,7 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   // reachable from BookingModal, which is mounted as a sibling of AppShell
   // for the same "escape any backdrop-filter ancestor" reason
   // profile-password-modal.tsx documents for its own portal.
-  const roomHold = useRoomHold()
+  const roomHold = useRoomHold(state.sessionId)
   const explicitSelectedHotelIndex = state.sessionId ? (selectedHotelIndexBySession[state.sessionId] ?? null) : null
   const selectedHotelIndex = useMemo(() => {
     if (explicitSelectedHotelIndex != null) return explicitSelectedHotelIndex

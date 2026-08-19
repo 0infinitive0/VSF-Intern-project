@@ -19,6 +19,7 @@ export function bookingErrorKey(message: string | null | undefined): string {
   if (message.includes('booking_reservation_expired')) return 'bookingErrHoldExpired'
   if (message.includes('booking_not_confirmable')) return 'bookingErrNotConfirmable'
   if (message.includes('invalid_booking_request')) return 'bookingErrInvalidRequest'
+  if (message.includes('guest_already_holding_elsewhere')) return 'bookingErrGuestHoldingElsewhere'
   if (message.includes('booking_not_found') || message.toLowerCase().includes('booking not found')) {
     return 'bookingErrNotFound'
   }

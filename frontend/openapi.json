@@ -1583,6 +1583,18 @@
               }
             ],
             "title": "Currency"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
           }
         },
         "type": "object",
@@ -3482,7 +3494,9 @@
             "type": "string",
             "enum": [
               "draft",
-              "completed"
+              "completed",
+              "holding",
+              "paid"
             ],
             "title": "Status"
           },
@@ -3866,6 +3880,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",

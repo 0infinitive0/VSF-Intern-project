@@ -197,7 +197,12 @@ def _booking_http_error(exc: BookingError) -> HTTPException:
         return HTTPException(status_code=404, detail="Booking not found.")
     if str(exc) == "invalid_booking_request":
         return HTTPException(status_code=422, detail=str(exc))
-    if str(exc) in {"insufficient_room_availability", "booking_reservation_expired", "booking_not_confirmable"}:
+    if str(exc) in {
+        "insufficient_room_availability",
+        "booking_reservation_expired",
+        "booking_not_confirmable",
+        "guest_already_holding_elsewhere",
+    }:
         return HTTPException(status_code=409, detail=str(exc))
     logger.exception("Booking operation failed", exc_info=exc)
     return HTTPException(status_code=500, detail="Unable to process booking.")
@@ -433,8 +438,19 @@ def list_persisted_sessions(
         return SessionListPayload(sessions=[], page=page, page_size=page_size, has_more=False)
     try:
         persisted = session_store.list_sessions(user_id=current_user.id, page=page, page_size=page_size)
+        # One extra batched query for the whole page, not N+1 — see its
+        # own doc comment for why "holding"/"paid" can't be baked into the
+        # persisted checkpoint summarize() otherwise reads from.
+        booking_states = session_store.booking_states_for_sessions(
+            [row["session_id"] for row in persisted.rows]
+        )
         return SessionListPayload(
-            sessions=[SessionSummaryPayload.model_validate(session_store.summarize(row)) for row in persisted.rows],
+            sessions=[
+                SessionSummaryPayload.model_validate(
+                    session_store.summarize(row, booking_states.get(row["session_id"]))
+                )
+                for row in persisted.rows
+            ],
             page=persisted.page,
             page_size=persisted.page_size,
             has_more=persisted.has_more,

@@ -428,6 +428,11 @@ class BookingReservationRequest(BaseModel):
     room_count: int = Field(default=1, ge=1, le=20)
     total_amount: Decimal | None = Field(default=None, ge=0)
     currency: str | None = Field(default=None, min_length=3, max_length=16)
+    # Which chat session created this hold (sidebar "Đang giữ phòng"/"Đã
+    # thanh toán" badge — session_store.py's booking_states_for_sessions).
+    # Optional: a hold created with no active session still works exactly
+    # as before, just invisible to the badge.
+    session_id: str | None = Field(default=None, max_length=255)
 
     @model_validator(mode="after")
     def check_out_must_follow_check_in(self) -> BookingReservationRequest:
@@ -531,7 +536,13 @@ class SessionSummaryPayload(ResponsePayload):
     title: str | None = None
     destination: str | None = None
     duration_days: int | None = None
-    status: Literal["draft", "completed"]
+    # "holding"/"paid" are derived fresh from bookings.status per session at
+    # list time (session_store.py's booking_states_for_sessions), not stored
+    # on the row — a hold/payment can happen with zero chat turns in between,
+    # so this can't be baked into the persisted checkpoint the way
+    # draft/completed already are. Precedence when a session has more than
+    # one signal: paid > holding > completed > draft.
+    status: Literal["draft", "completed", "holding", "paid"]
     created_at: str | None = None
     updated_at: str | None = None
     thumbnail_url: str | None = None

@@ -433,6 +433,54 @@ def delete(session_id: str, *, user_id: str | None = None) -> None:
     query.execute()
 
 
+def booking_states_for_sessions(session_ids: list[str]) -> dict[str, str]:
+    """One extra query per page of GET /chat/sessions rows -> {session_id:
+    'paid'|'holding'} — the sidebar "Đang giữ phòng"/"Đã thanh toán" badge
+    (plan 260818-vnpay-payment-and-email-confirmation's addendum 2).
+    bookings.status='CONFIRMED' already reliably means "paid" in this app:
+    confirm_booking_reservation is only ever called from the VNPay IPN
+    handler (routes.py's vnpay_ipn) after a real payment succeeds, so no
+    separate join to `payments` is needed.
+
+    Deliberately does NOT push the RESERVED-and-unexpired filter into the
+    query as a raw `now()` comparison via postgrest's string `.or_()`
+    filters (no precedent for that in this codebase) — pulls every
+    CONFIRMED/RESERVED row for the page's sessions and filters expiry here
+    instead, same idea as routes.py's create_vnpay_payment already does for
+    a single booking's expires_at. Page sizes are small (<=100 sessions,
+    normally far fewer bookings each), so this stays one cheap query.
+
+    Precedence (paid beats holding for the same session_id) is applied
+    here so callers never have to re-derive it."""
+    if not session_ids:
+        return {}
+    rows = (
+        _get_supabase_client()
+        .table("bookings")
+        .select("session_id,status,expires_at")
+        .in_("session_id", session_ids)
+        .in_("status", ["CONFIRMED", "RESERVED"])
+        .execute()
+        .data
+        or []
+    )
+    now = datetime.now(UTC)
+    states: dict[str, str] = {}
+    for row in rows:
+        session_id = row.get("session_id")
+        if not session_id:
+            continue
+        if row.get("status") == "CONFIRMED":
+            states[session_id] = "paid"
+            continue
+        if states.get(session_id) == "paid":
+            continue
+        expires_at = row.get("expires_at")
+        if expires_at and datetime.fromisoformat(str(expires_at).replace("Z", "+00:00")) > now:
+            states[session_id] = "holding"
+    return states
+
+
 def list_sessions(user_id: str, page: int = 1, page_size: int = 10) -> SessionPage:
     """List sessions owned by `user_id` only.
 
@@ -502,7 +550,13 @@ def restored_messages(source: dict[str, Any] | Iterable[Any] | None) -> list[dic
     return restored
 
 
-def summarize(row: dict[str, Any]) -> dict[str, Any]:
+def summarize(row: dict[str, Any], booking_state: str | None = None) -> dict[str, Any]:
+    """`booking_state` ('holding'/'paid'/None) comes from
+    `booking_states_for_sessions` and, when set, overrides the
+    itinerary-derived draft/completed status below — see
+    SessionSummaryPayload.status's doc comment for the precedence rule.
+    Applied identically in both branches (a session's booking state is
+    unrelated to which checkpoint schema version wrote its context_data)."""
     context = row.get("context_data") or {}
     # v2 and v3 differ in everything except this block: both carry the same
     # `ui_summary` shape, which is exactly why v3 kept it. A row written by
@@ -514,6 +568,8 @@ def summarize(row: dict[str, Any]) -> dict[str, Any]:
         # SessionSummaryPayload's Literal validation never rejects a row.
         raw_status = str(summary.get("status") or "").casefold()
         status = "completed" if raw_status in ("completed", "finalized") else "draft"
+        if booking_state in ("paid", "holding"):
+            status = booking_state
         return {
             "session_id": str(row["session_id"]),
             "title": None,
@@ -533,12 +589,15 @@ def summarize(row: dict[str, Any]) -> dict[str, Any]:
     if duration_days is None:
         itineraries = trip_data.get("itineraries") or []
         duration_days = itineraries[0].get("duration_days") if itineraries else None
+    status = "completed" if trip_data else "draft"
+    if booking_state in ("paid", "holding"):
+        status = booking_state
     return {
         "session_id": str(row["session_id"]),
         "title": first_user_text[:120] if first_user_text else None,
         "destination": intake.get("destination") or trip_data.get("destination"),
         "duration_days": duration_days,
-        "status": "completed" if trip_data else "draft",
+        "status": status,
         "created_at": row.get("created_at"),
         "updated_at": row.get("updated_at"),
         "thumbnail_url": hotel.get("image_url"),

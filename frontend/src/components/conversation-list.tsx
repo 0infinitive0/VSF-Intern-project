@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ConfirmDialog from './confirm-dialog'
 import { formatSessionDate } from '../lib/session-date'
+import { sessionStatusBadge } from '../lib/session-status-badge'
 import { composeSessionTitle } from '../lib/session-title'
 import type { SessionSummary } from '../types'
 
@@ -150,12 +151,10 @@ export default function ConversationList({
                     </span>
                     <span
                       className={`text-[9px] px-1.5 py-px rounded-full font-medium whitespace-nowrap ${
-                        session.status === 'completed'
-                          ? 'bg-success-soft text-success-ink'
-                          : 'bg-warning-soft text-warning-ink'
-                      }`}
+                        sessionStatusBadge(session.status).bgClass
+                      } ${sessionStatusBadge(session.status).inkClass}`}
                     >
-                      {t(session.status === 'completed' ? 'sidebarStatusCompleted' : 'sidebarStatusDraft')}
+                      {t(sessionStatusBadge(session.status).labelKey)}
                     </span>
                   </div>
                 </div>

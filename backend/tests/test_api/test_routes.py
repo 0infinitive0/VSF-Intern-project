@@ -385,6 +385,35 @@ async def test_create_booking_sold_out_returns_409(client, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_create_booking_guest_already_holding_elsewhere_returns_409(client, monkeypatch):
+    """The same guest ref (shared cross-tab via localStorage — see
+    frontend/src/lib/guest-ref.ts) already holds a live RESERVED booking at
+    a different hotel — create_booking_reservation's cross-hotel guard
+    (migration 20260819_add_guest_single_hotel_hold_guard.sql). Rejected
+    with a clear domain code, not a bare 500."""
+    import src.api.routes as _routes
+    from src.services.booking_service import BookingError
+
+    def _raise(**_kwargs):
+        raise BookingError("guest_already_holding_elsewhere")
+
+    monkeypatch.setattr(_routes, "reserve_booking", _raise)
+
+    response = await client.post(
+        "/api/v1/bookings",
+        json={
+            "room_id": _BOOKING_ROOM_ID,
+            "temporary_user_ref": "guest-2",
+            "check_in_date": "2026-09-01",
+            "check_out_date": "2026-09-03",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "guest_already_holding_elsewhere"
+
+
+@pytest.mark.asyncio
 async def test_create_booking_invalid_request_returns_422(client, monkeypatch):
     import src.api.routes as _routes
     from src.services.booking_service import BookingError
