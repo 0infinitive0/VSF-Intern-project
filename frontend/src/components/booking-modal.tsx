@@ -77,6 +77,7 @@ export default function BookingModal({
   onClose,
   roomHold,
   holdBelongsToSession,
+  sessionResolved,
   hotelName,
   hotelArea,
   checkInDate,
@@ -97,6 +98,19 @@ export default function BookingModal({
    * the rarer case where the modal was ALREADY open when the hold moved to
    * a different session out from under it. */
   holdBelongsToSession: boolean
+  /** True once `state.sessionId` (App.tsx) has resolved past its initial
+   * `null` — use-chat-session.ts's bootstrap is async (a real network
+   * round trip), so `state.sessionId` is briefly null on EVERY mount,
+   * including right after the guest returns from VNPay's redirect (a full
+   * page reload — everything here remounts, see App.tsx's
+   * consumeVnpayReturn). Without gating the auto-close effect below on
+   * this, `holdBelongsToSession` reads as false during that transient
+   * window (heldSessionId, a real id, can never equal null) and the
+   * "thanh toán thành công" modal consumeVnpayReturn just opened would
+   * close itself before the bootstrap even finishes — the guest lands back
+   * on the app with no success modal at all, even though the payment (and
+   * the session it belongs to) were both actually fine. */
+  sessionResolved: boolean
   hotelName: string
   hotelArea?: string | null
   checkInDate: string | null
@@ -128,8 +142,8 @@ export default function BookingModal({
   }, [open])
 
   useEffect(() => {
-    if (open && !holdBelongsToSession) onClose()
-  }, [open, holdBelongsToSession, onClose])
+    if (open && sessionResolved && !holdBelongsToSession) onClose()
+  }, [open, sessionResolved, holdBelongsToSession, onClose])
 
   const [step, setStep] = useState<'guest' | 'pay'>('guest')
   const [guestTouched, setGuestTouched] = useState(false)

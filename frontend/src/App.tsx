@@ -507,6 +507,7 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
         onClose={() => setBookingModalOpen(false)}
         roomHold={roomHold}
         holdBelongsToSession={holdBelongsToSession}
+        sessionResolved={state.sessionId != null}
         hotelName={bookingHotelName}
         hotelArea={bookingHotelArea}
         checkInDate={state.intake?.start_date ?? null}
