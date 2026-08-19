@@ -9,6 +9,7 @@ from __future__ import annotations
 import inspect
 import json
 from collections import deque
+from types import SimpleNamespace
 
 import pytest
 from langchain_core.messages import HumanMessage
@@ -310,6 +311,97 @@ def test_graph_routes_a_completed_worker_through_budget_check_to_respond(monkeyp
 
     response = PlannerChatResponse(**result["response"])
     assert response.reply  # respond ran and built the frozen shape after budget_check
+
+
+def test_read_only_nearby_turn_skips_budget_check_and_keeps_its_pins(monkeypatch):
+    """Regression for the code-review finding on the nearby-places fix
+    (`plans/260819-1627-route-nearby-places-questions-to-itinerary-node`):
+    `itinerary_node -> all_tasks_done(True) -> budget_check` is the normal
+    edge for a real edit, but `budget_check` re-plans (hotel search +
+    unlocked-day rebuild) whenever `budget.trip_total` is set, and
+    `response_payload.suggested_places_from_task_results` reads only
+    `task_results[-1]` -- so routing a read-only `list_nearby` turn through
+    that same edge would silently erase the very pins this fix exists to
+    produce (and, on an over-budget session, rebuild the plan behind the
+    user's back). This drives the real compiled graph end to end with
+    `budget.trip_total` SET and asserts `itinerary_node`'s result is what
+    `respond` actually sees.
+    """
+    import src.agents.graph.graph as graph_module
+    import src.agents.graph.nodes.itinerary_node as itinerary_node_module
+    from src.domain.travel_state import TravelState, apply_patch
+
+    def _fake_extract_patch(_state):
+        return {"intent": "general_question", "patch": [], "asks_nearby_places": True}
+
+    def _unreachable(*_args, **_kwargs):
+        raise AssertionError("read-only nearby branch must not call the LLM")
+
+    fake_candidate = SimpleNamespace(
+        id="place-1",
+        name="Bãi biển Mỹ Khê",
+        category="beach",
+        coordinates="16.06,108.25",
+        description="Bãi biển nổi tiếng",
+        rating=4.5,
+    )
+
+    monkeypatch.setattr(graph_module, "extract_patch", _fake_extract_patch)
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", _unreachable)
+    monkeypatch.setattr(
+        itinerary_node_module, "search_attraction_candidates", lambda *_a, **_kw: [fake_candidate]
+    )
+
+    seeded_state = apply_patch(
+        TravelState(),
+        [
+            {"path": "destination", "operation": "set", "value": "Đà Nẵng"},
+            {"path": "people", "operation": "set", "value": 2},
+            {"path": "dates.start", "operation": "set", "value": "2099-01-01"},
+            {"path": "dates.end", "operation": "set", "value": "2099-01-05"},
+            {"path": "budget.trip_total", "operation": "set", "value": 5000000},
+            # Already-derived range, as a real session would have by the
+            # time a later turn asks a nearby-places question -- otherwise
+            # `validate_patch._derive_budget_range_from_trip_total` derives
+            # a fresh budget.min/max THIS turn even with an empty `patch`,
+            # which impacts the hotel workflow and defeats the "workers
+            # empty" precondition this test means to exercise.
+            {"path": "budget.min", "operation": "set", "value": 800000},
+            {"path": "budget.max", "operation": "set", "value": 1200000},
+        ],
+    ).state
+
+    app = graph_module.build_graph()
+    result = app.invoke(
+        {
+            "session_id": "turn-nearby",
+            "language": "vi",
+            "travel_state": seeded_state.to_dict(),
+            "trip_data": {"hotel": {"coordinates": "16.06,108.22", "destination_id": "dest-1"}},
+            "messages": [HumanMessage(content="liệt kê các địa điểm nổi bật trong vòng bán kính 3km")],
+        },
+        config={"configurable": {"thread_id": "test-nearby-budget-thread"}},
+    )
+
+    assert result["routing_source"] == "read_only_intent_nearby"
+    # budget_check never ran: the last (and only new) task_results entry is
+    # itinerary_node's own, not a "budget_check" one appended after it.
+    assert [entry["worker"] for entry in result["task_results"]] == ["itinerary_node"]
+    assert result["task_results"][-1]["suggested_places"] == [
+        {
+            "id": "place-1",
+            "name": "Bãi biển Mỹ Khê",
+            "category": "beach",
+            "coordinates": "16.06,108.25",
+            "description": "Bãi biển nổi tiếng",
+            "rating": 4.5,
+        }
+    ]
+    # trip_data/hotel is untouched -- no re-plan happened.
+    assert result["trip_data"]["hotel"]["coordinates"] == "16.06,108.22"
+
+    response = PlannerChatResponse(**result["response"])
+    assert response.reply
 
 
 # --- End-to-end: clarify branch for an incomplete edit (Phase 16) ----------

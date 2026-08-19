@@ -117,6 +117,7 @@ def test_invalid_json_retries_once_then_falls_back_without_raising(monkeypatch):
         "extraction_failed": True,
         "patch_reason": "",
         "pending_clarify_day": None,
+        "asks_nearby_places": False,
     }
 
 
@@ -134,6 +135,7 @@ def test_invalid_first_response_recovers_on_retry(monkeypatch):
         "extraction_failed": False,
         "patch_reason": "",
         "pending_clarify_day": None,
+        "asks_nearby_places": False,
     }
 
 
@@ -153,6 +155,7 @@ def test_no_human_message_short_circuits_without_calling_the_llm(monkeypatch):
         "extraction_failed": True,
         "patch_reason": "",
         "pending_clarify_day": None,
+        "asks_nearby_places": False,
     }
 
 
@@ -230,6 +233,93 @@ def test_reason_is_carried_even_when_changes_is_non_empty(monkeypatch):
     assert result["patch_reason"] == "missing_value"
 
 
+# --- asks_nearby_places: non-strict routing hint ------------------------------
+#
+# Same fall-open contract as `patch_reason` above, but stricter about WHICH
+# value counts as true: `is True` on the literal, not truthiness, so this
+# group proves every non-`true` shape -- missing, null, wrong type, and
+# falsy-but-not-`False` -- collapses to `False` without spending a retry.
+# `intent`/`changes` stay strictly validated regardless of this field.
+
+
+def _payload_with_nearby(nearby: object, *, omit: bool = False) -> str:
+    body: dict[str, object] = {"intent": "general_question", "changes": []}
+    if not omit:
+        body["asks_nearby_places"] = nearby
+    return json.dumps(body)
+
+
+def test_asks_nearby_places_true_is_read_as_true(monkeypatch):
+    llm = _patch(monkeypatch, _FakeLLM([_payload_with_nearby(True)]))
+    result = extract_patch(_state("liệt kê địa điểm nổi bật gần đây"))
+
+    assert llm.call_count == 1
+    assert result["asks_nearby_places"] is True
+
+
+def test_asks_nearby_places_missing_key_falls_open_to_false(monkeypatch):
+    llm = _patch(monkeypatch, _FakeLLM([_payload_with_nearby(None, omit=True)]))
+    result = extract_patch(_state("chào bạn"))
+
+    assert llm.call_count == 1
+    assert result["asks_nearby_places"] is False
+
+
+def test_asks_nearby_places_null_falls_open_to_false(monkeypatch):
+    llm = _patch(monkeypatch, _FakeLLM([_payload_with_nearby(None)]))
+    result = extract_patch(_state("chào bạn"))
+
+    assert llm.call_count == 1
+    assert result["asks_nearby_places"] is False
+
+
+def test_asks_nearby_places_string_true_falls_open_to_false(monkeypatch):
+    """The string `"true"`, not the JSON literal -- a model quoting the
+    schema value by mistake must not be treated as an answer."""
+    llm = _patch(monkeypatch, _FakeLLM([_payload_with_nearby("true")]))
+    result = extract_patch(_state("chào bạn"))
+
+    assert llm.call_count == 1
+    assert result["asks_nearby_places"] is False
+
+
+def test_asks_nearby_places_integer_one_falls_open_to_false(monkeypatch):
+    llm = _patch(monkeypatch, _FakeLLM([_payload_with_nearby(1)]))
+    result = extract_patch(_state("chào bạn"))
+
+    assert llm.call_count == 1
+    assert result["asks_nearby_places"] is False
+
+
+def test_asks_nearby_places_empty_list_falls_open_to_false(monkeypatch):
+    llm = _patch(monkeypatch, _FakeLLM([_payload_with_nearby([])]))
+    result = extract_patch(_state("chào bạn"))
+
+    assert llm.call_count == 1
+    assert result["asks_nearby_places"] is False
+
+
+def test_asks_nearby_places_false_on_invalid_json_fallback(monkeypatch):
+    llm = _patch(monkeypatch, _FakeLLM(["not json", "still not json"]))
+    result = extract_patch(_state("asdkjasd"))
+
+    assert llm.call_count == 2
+    assert result["asks_nearby_places"] is False
+
+
+def test_asks_nearby_places_false_on_empty_message_fallback(monkeypatch):
+    def _unreachable(**_kwargs):
+        raise AssertionError("no human message -> the LLM must never be called")
+
+    monkeypatch.setattr(extract_patch_module, "get_reasoning_llm", _unreachable)
+    state = initial_graph_state("t1")
+    state["messages"] = [AIMessage(content="a stale reply from a previous turn")]
+
+    result = extract_patch(state)
+
+    assert result["asks_nearby_places"] is False
+
+
 # --- Pending-slot anchor ------------------------------------------------------
 #
 # The prompt is deliberately single-message, so a short reply ("Hồ Chí
@@ -269,6 +359,7 @@ def test_anchor_tells_the_model_a_question_naming_the_slot_value_is_not_an_answe
         "extraction_failed": False,
         "patch_reason": "",
         "pending_clarify_day": None,
+        "asks_nearby_places": False,
     }
 
 

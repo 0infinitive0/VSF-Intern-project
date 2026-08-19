@@ -60,6 +60,7 @@ from src.agents.graph.nodes.supervisor import supervisor
 from src.agents.graph.nodes.validate_patch import validate_patch
 from src.agents.graph.routing import (
     all_tasks_done,
+    route_after_itinerary_node,
     route_ask_slot,
     route_intake_qa,
     route_scope_guard,
@@ -151,7 +152,14 @@ def build_graph(checkpointer: BaseCheckpointSaver | None = None) -> CompiledStat
 
     # --- Workers -> deterministic completion check -> supervisor or onward
     builder.add_conditional_edges("hotel_node", all_tasks_done, {True: "budget_check", False: "supervisor"})
-    builder.add_conditional_edges("itinerary_node", all_tasks_done, {True: "budget_check", False: "supervisor"})
+    # itinerary_node's read-only `list_nearby` turn (supervisor.py's
+    # `read_only_intent_nearby` source) skips `budget_check` -- see
+    # `route_after_itinerary_node`'s docstring for why.
+    builder.add_conditional_edges(
+        "itinerary_node",
+        route_after_itinerary_node,
+        {"respond": "respond", "budget_check": "budget_check", "supervisor": "supervisor"},
+    )
     builder.add_conditional_edges("booking_node", all_tasks_done, {True: "budget_check", False: "supervisor"})
     builder.add_edge("qa_node", "respond")  # read-only: no budget or orchestration follow-up
 

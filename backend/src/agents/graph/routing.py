@@ -101,6 +101,26 @@ def all_tasks_done(state: TravelGraphState) -> bool:
     return not state.get("pending_tasks")
 
 
+def route_after_itinerary_node(state: TravelGraphState) -> str:
+    """`itinerary_node`'s own completion edge, `all_tasks_done`, still
+    decides `supervisor` vs. moving on -- this only picks what "moving on"
+    means. `budget_check` re-plans (hotel search + unlocked-day rebuild)
+    whenever `budget.trip_total` is set, regardless of whether THIS turn
+    wrote anything: harmless after a real edit, but for the read-only
+    `list_nearby` turn (`supervisor.py`'s `read_only_intent_nearby` source)
+    it does two things a read-only turn must never do -- silently mutate
+    the plan, and overwrite `task_results[-1]`, which is where
+    `suggested_places_from_task_results` (`response_payload.py`) reads the
+    pins this turn exists to produce. Routing straight to `respond` instead
+    mirrors `qa_node`'s own edge (`graph.py`: "read-only: no budget or
+    orchestration follow-up")."""
+    if not all_tasks_done(state):
+        return "supervisor"
+    if state.get("routing_source") == "read_only_intent_nearby":
+        return "respond"
+    return "budget_check"
+
+
 def route_scope_guard(state: TravelGraphState) -> str:
     """`scope_guard` blocked a jailbreak attempt (`detect_jailbreak`,
     `JAILBREAK_GUARD_MODE=block`) -> skip the whole patch pipeline and go

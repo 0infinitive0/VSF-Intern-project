@@ -27,6 +27,7 @@ from pydantic import BaseModel
 
 from src.agents.graph.routing import WORKER_ORDER, is_impossible, needs_trip_first
 from src.agents.graph.prompts import build_supervisor_prompt
+from src.agents.graph.nodes.extract_patch import _last_human_message
 from src.agents.graph.state import TravelGraphState, build_manifest
 from src.services.llm import get_fast_llm
 
@@ -216,6 +217,31 @@ def supervisor(state: TravelGraphState) -> dict[str, Any]:
     # LLM was asking a model to re-derive a decision already made, with data
     # loss as the failure mode.
     if not workers and state.get("intent") == _READ_ONLY_INTENT:
+        # `list_nearby` is the ONE itinerary_node action that writes nothing
+        # (pure search + `_ok()` passthrough -- no `_invoke_rebuild_day`, no
+        # patch), so it is the one worker branch a read-only turn may take.
+        # It is also the only path that can put places on the map at all:
+        # `qa_node`'s tools reach `messages` and nothing else, so
+        # `suggested_places` is structurally unreachable from there (see
+        # qa_node.py's QAState docstring).
+        #
+        # The action is a CONSTANT here, never a model's pick. That is what
+        # keeps the day-recap incident closed (see the note above): with no
+        # choice offered, there is no route from a read-only turn to
+        # `rebuild_days` for a model to take by mistake. `radius_km` is left
+        # out on purpose -- `itinerary_node._resolve_radius_km` re-reads it
+        # from the user's own words deterministically when it is absent.
+        # `is_impossible` guards this the same as every other delegation:
+        # with no trip yet, `itinerary_node.list_nearby` can only hard-stop
+        # ("chọn khách sạn trước..."), where `qa_node` could at least
+        # attempt an answer -- so a nearby-places question asked before any
+        # hotel is picked still falls through to `qa_node`, unchanged.
+        if state.get("asks_nearby_places") and not is_impossible("itinerary_node", state):
+            task = {"action": "list_nearby", "user_request": _last_human_message(state)}
+            return {
+                **_delegate("itinerary_node", "read_only_intent_nearby", state),
+                "task_description": json.dumps(task),
+            }
         return _delegate("qa_node", "read_only_intent", state)
 
     # Fast path: a first delegation, whatever its size -> no LLM needed.
