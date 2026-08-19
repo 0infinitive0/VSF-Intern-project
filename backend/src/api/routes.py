@@ -743,9 +743,17 @@ def _drive_turn(app, config: dict, turn_input, *, stream: bool) -> dict:
                     emit_phase(phase_key, **phase_facts(node_name, update))
         elif mode == "messages":
             message_chunk, metadata = chunk
-            if _may_stream(namespace, metadata.get("langgraph_node")):
+            node = metadata.get("langgraph_node")
+            if _may_stream(namespace, node):
                 emit_delta(response_text(message_chunk))
-                emit_reasoning(reasoning_text(message_chunk))
+                # The reasoning frame names its own step: it is sent while the
+                # node runs, whereas the node's `phase` frame lands only once it
+                # finishes, so position in the stream cannot identify it.
+                reasoning_key = PHASE_KEY_BY_NODE.get(
+                    str(namespace[0]).split(":", 1)[0] if namespace else str(node)
+                )
+                if reasoning_key:
+                    emit_reasoning(reasoning_text(message_chunk), reasoning_key)
 
     result = dict(app.get_state(config).values or {})
     if interrupts:

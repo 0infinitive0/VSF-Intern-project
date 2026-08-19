@@ -203,7 +203,7 @@ def emit_delta(text: str) -> None:
         logger.debug("emit_delta failed", exc_info=True)
 
 
-def emit_reasoning(text: str) -> None:
+def emit_reasoning(text: str, phase_key: str) -> None:
     """Emit one `reasoning` SSE event carrying the model's summary of its own
     reasoning.
 
@@ -214,6 +214,12 @@ def emit_reasoning(text: str) -> None:
     model-written prose from product-written prose, which matters here: this text
     is always English, even in a Vietnamese conversation.
 
+    `phase_key` names the step the reasoning belongs to, and it is required
+    rather than optional: these frames arrive WHILE the node runs, but the node's
+    own `phase` frame is emitted only once it finishes. A client that attached
+    the text to whichever step was open would file the model's thinking about
+    composing an answer under whatever ran before it.
+
     Same guards as `emit_delta`: no-op without an emitter, never raises, drops
     the empty string — and empty is the COMMON case. A model emits a summary only
     when it actually reasons, and a tool-calling step has none to summarize.
@@ -223,7 +229,7 @@ def emit_reasoning(text: str) -> None:
     try:
         em = _current_emitter.get()
         if em is not None:
-            em.emit("reasoning", text=text)
+            em.emit("reasoning", text=text, key=phase_key)
     except Exception:
         logger.debug("emit_reasoning failed", exc_info=True)
 

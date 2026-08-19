@@ -107,13 +107,29 @@ function appendNew(current: string[], incoming: string[]): string[] {
   return additions.length ? [...current, ...additions] : current
 }
 
-/** Appends the model's own reasoning text to the group still in progress. */
-export function appendReasoning(groups: ThinkingGroup[], text: string): ThinkingGroup[] {
+/**
+ * Appends the model's reasoning to the step that produced it.
+ *
+ * Routed by the frame's own `key`, never by "whichever step is open": a
+ * reasoning frame is sent WHILE its node runs, and that node's `phase` frame
+ * only lands once it finishes — so the step it belongs to usually does not
+ * exist yet. It is created here rather than dropped.
+ */
+export function appendReasoning(
+  groups: ThinkingGroup[],
+  phaseKey: string,
+  text: string,
+): ThinkingGroup[] {
   if (!text) return groups
-  const active = [...groups].reverse().find((g) => !g.done)
-  if (!active) return groups
-  return groups.map((g) =>
-    g === active ? { ...g, reasoning: g.reasoning + text } : g,
+  const groupKey = groupForPhase(phaseKey)
+  if (!groupKey) return groups
+
+  const withGroup = groups.some((g) => g.key === groupKey)
+    ? groups
+    : applyPhaseToGroups(groups, phaseKey, [])
+
+  return withGroup.map((g) =>
+    g.key === groupKey ? { ...g, reasoning: g.reasoning + text } : g,
   )
 }
 

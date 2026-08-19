@@ -177,7 +177,7 @@ event: delta
 data: {"text":"Khách sạn này "}
 
 event: reasoning
-data: {"text":"**Checking amenities**\n\nThe user asked "}
+data: {"text":"**Checking amenities**\n\nThe user asked ","key":"generating"}
 
 event: final
 data: {"session_id":"...","reply":"...","suggestions":[...],"stage":"hotel_options",
@@ -203,6 +203,10 @@ data: {"detail":"Đã xảy ra lỗi máy chủ. Vui lòng thử lại."}
   inside it is forwarded, never the `tools` node beside it, whose `ToolMessage`
   content is tool output rather than the reply.
 - `reasoning` — the model's own summary of its reasoning, when it produced one.
+  `key` names the step it belongs to, and clients must use it rather than
+  attaching the text to whichever step is currently open: these frames arrive
+  WHILE the node runs, while that node's own `phase` frame is only sent once it
+  finishes.
   Requires `LLM_USE_RESPONSES_API=true` **and** `LLM_REASONING_SUMMARY=auto`;
   Chat Completions has no channel for it. Four properties clients must honor:
   - **Always English**, even in a Vietnamese conversation and even when the

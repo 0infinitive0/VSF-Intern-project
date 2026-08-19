@@ -294,7 +294,7 @@ export type StreamEvent =
   | { event: 'delta'; data: { text: string } }
   // The model's own reasoning summary. Never a prefix of `final.reply`, and a
   // valid turn may carry none of these frames at all.
-  | { event: 'reasoning'; data: { text: string } }
+  | { event: 'reasoning'; data: { text: string; key: PhaseKey } }
   | { event: 'final'; data: PlannerChatResponse } // same dict as POST /planner_chat
   | { event: 'error'; data: { detail: string } }
 

@@ -92,7 +92,7 @@ export type Action =
   | { type: 'RESTORE'; sessionId: string; data: SessionRestore }
   | { type: 'STREAM_PHASE'; key: PhaseKey; at: number; facts: PhaseFacts; turnId: number }
   | { type: 'STREAM_DELTA'; text: string; turnId: number }
-  | { type: 'STREAM_REASONING'; text: string; turnId: number }
+  | { type: 'STREAM_REASONING'; text: string; phaseKey: string; turnId: number }
   // Dedicated hotels/change round-trip (step-navigator.tsx's "đổi khách sạn"
   // action) — never part of the chat turn machinery: no message, no LLM call,
   // just a hotel-list refresh. Own pending flag (`hotelsLoading`) so Composer/
@@ -300,7 +300,7 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
 
     case 'STREAM_REASONING':
       if (action.turnId !== state.turnId) return state
-      return { ...state, thinking: appendReasoning(state.thinking, action.text) }
+      return { ...state, thinking: appendReasoning(state.thinking, action.phaseKey, action.text) }
 
     case 'HOTELS_CHANGE_START':
       return { ...state, hotelsLoading: true, error: null }
@@ -504,7 +504,8 @@ export function useChatSession() {
             onPhase: (key, at, facts) =>
               dispatch({ type: 'STREAM_PHASE', key: key as PhaseKey, at, facts: (facts ?? {}) as PhaseFacts, turnId }),
             onDelta: (deltaText) => dispatch({ type: 'STREAM_DELTA', text: deltaText, turnId }),
-            onReasoning: (text) => dispatch({ type: 'STREAM_REASONING', text, turnId }),
+            onReasoning: (text, phaseKey) =>
+              dispatch({ type: 'STREAM_REASONING', text, phaseKey, turnId }),
           },
           controller.signal,
         )

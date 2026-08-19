@@ -95,7 +95,7 @@ export interface StreamHandlers {
    * The model's summary of its own reasoning. Always English, and a valid turn
    * may never call this — see docs/chat_api_contract.md §Streaming.
    */
-  onReasoning?: (text: string) => void
+  onReasoning?: (text: string, phaseKey: string) => void
 }
 
 /**
@@ -174,8 +174,8 @@ export async function sendMessageStream(
           break
         }
         case 'reasoning': {
-          const d = frame.data as { text: string }
-          handlers.onReasoning?.(d.text)
+          const d = frame.data as { text: string; key: string }
+          handlers.onReasoning?.(d.text, d.key)
           break
         }
         case 'final':

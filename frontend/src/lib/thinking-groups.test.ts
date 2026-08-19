@@ -103,23 +103,34 @@ describe('applyPhaseToGroups', () => {
 })
 
 describe('appendReasoning', () => {
-  it('accumulates text on the step still running', () => {
-    let groups = apply(['intake_check', 'hotel_search'])
-    groups = appendReasoning(groups, 'Checking ')
-    groups = appendReasoning(groups, 'amenities')
+  it('files the text under the step named by the frame, not the open one', () => {
+    // The real ordering: `generating` is announced only after the node that
+    // produced this text has finished.
+    let groups = apply(['intake_check'])
+    groups = appendReasoning(groups, 'generating', 'Checking ')
+    groups = appendReasoning(groups, 'generating', 'the season')
 
-    expect(groups.find((g) => g.key === 'hotels')?.reasoning).toBe('Checking amenities')
+    expect(groups.find((g) => g.key === 'reply')?.reasoning).toBe('Checking the season')
     expect(groups.find((g) => g.key === 'analyze')?.reasoning).toBe('')
+  })
+
+  it('creates the step when its phase frame has not arrived yet', () => {
+    const groups = appendReasoning([], 'generating', 'thinking...')
+
+    expect(groups.map((g) => g.key)).toEqual(['reply'])
+    expect(groups[0].reasoning).toBe('thinking...')
   })
 
   it('ignores empty text — the common case, not an error', () => {
     const groups = apply(['intake_check'])
 
-    expect(appendReasoning(groups, '')).toBe(groups)
+    expect(appendReasoning(groups, 'generating', '')).toBe(groups)
   })
 
-  it('does not crash when reasoning arrives before any group exists', () => {
-    expect(appendReasoning([], 'thinking...')).toEqual([])
+  it('ignores a phase key it does not know', () => {
+    const groups = apply(['intake_check'])
+
+    expect(appendReasoning(groups, 'future_key', 'x')).toBe(groups)
   })
 })
 

@@ -268,10 +268,10 @@ describe('chatSessionReducer — thinking groups', () => {
 
   it('accumulates reasoning onto the running group', () => {
     const next = chatSessionReducer(withThinking(), {
-      type: 'STREAM_REASONING', text: 'Checking dates', turnId: 0,
+      type: 'STREAM_REASONING', text: 'Checking dates', phaseKey: 'generating', turnId: 0,
     })
 
-    expect(next.thinking[0].reasoning).toBe('Checking dates')
+    expect(next.thinking.find((g) => g.key === 'reply')?.reasoning).toBe('Checking dates')
   })
 
   it('ignores frames from a turn that is no longer current', () => {
