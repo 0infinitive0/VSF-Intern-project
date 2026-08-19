@@ -162,9 +162,10 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   // StepNavigator can jump to a step whose data is already sitting in `state`
   // (e.g. hopping back to "Thông tin" while hotel options are still loaded)
   // as a pure client-side view swap — no chat turn. `viewOverride` holds that
-  // choice; it's cleared whenever the real derived stage moves (a genuine
-  // backend turn happened), so the view always snaps back to following the
-  // live conversation once one does.
+  // choice, per session, so hopping between chats doesn't lose it. It's
+  // cleared whenever the real derived stage moves FOR THE SESSION CURRENTLY
+  // BEING VIEWED (a genuine backend turn happened), so the view always snaps
+  // back to following the live conversation once one does.
   const [viewOverrideBySession, setViewOverrideBySession] = useState<Record<string, StageView | null>>({})
   const viewOverride = state.sessionId ? (viewOverrideBySession[state.sessionId] ?? null) : null
   const handleSetViewOverride = (v: StageView | null) => {
@@ -172,11 +173,21 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
       setViewOverrideBySession((prev) => ({ ...prev, [state.sessionId!]: v }))
     }
   }
+  // `stage` also changes when the guest SWITCHES to a different session
+  // (each session derives its own stage from its own state) — that must NOT
+  // clear the just-restored override for the newly active session, or a
+  // step manually picked earlier for that session is forgotten every time
+  // its chat is reopened. Only clear when `stage` changed while the active
+  // session itself stayed the same, i.e. a real turn happened for the
+  // session currently on screen.
+  const stageClearSessionRef = useRef<string | null>(null)
   useEffect(() => {
-    if (state.sessionId) {
+    const sameSessionAsLastCheck = stageClearSessionRef.current === state.sessionId
+    stageClearSessionRef.current = state.sessionId
+    if (sameSessionAsLastCheck && state.sessionId) {
       setViewOverrideBySession((prev) => ({ ...prev, [state.sessionId!]: null }))
     }
-  }, [stage])
+  }, [stage, state.sessionId])
   const displayStage = viewOverride ?? stage
 
   const activeWorkspaceTab = state.sessionId ? (workspaceTabBySession[state.sessionId] ?? 'overview') : 'overview'

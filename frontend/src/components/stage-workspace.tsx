@@ -17,7 +17,7 @@ import type { Theme } from '../hooks/use-theme'
 import type { ChatState, Day, DayItem } from '../types'
 
 type FocusModeApi = ReturnType<typeof useFocusMode>
-type TabKey = 'overview' | number
+export type TabKey = 'overview' | number
 
 // Nights from the real trip dates — duration_days - 1 is only a fallback for
 // when the dates are missing/unusable (never invented).
