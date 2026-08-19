@@ -44,7 +44,7 @@ const FIELD_I18N_KEY: Record<string, string> = {
   preferences: 'thinkingFieldPreferences',
 }
 
-/** hotel_search statuses worth a sentence of their own. */
+/** hotel_search outcomes worth a sentence of their own. */
 const EMPTY_RESULT_I18N_KEY: Record<string, string> = {
   no_results: 'thinkingHotelNoResults',
   no_results_dates: 'thinkingHotelNoResultsDates',
@@ -98,7 +98,7 @@ function hotelSearchLines(t: Translate, facts: PhaseFacts): string[] {
     lines.push(t('thinkingHotelAmenities', { count: facts.amenities.length }))
   }
 
-  const emptyKey = facts.status ? EMPTY_RESULT_I18N_KEY[facts.status] : undefined
+  const emptyKey = facts.outcome ? EMPTY_RESULT_I18N_KEY[facts.outcome] : undefined
   if (emptyKey) {
     lines.push(t(emptyKey))
   } else if (typeof facts.kept === 'number' && facts.kept > 0) {

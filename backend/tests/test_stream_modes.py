@@ -413,7 +413,8 @@ class TestPhaseFacts:
         )
 
         assert emitter.facts_for("intake_check") == [
-            {"intent": "update_trip", "fields": ["people"]}
+            {"status": "started"},
+            {"status": "completed", "intent": "update_trip", "fields": ["people"]},
         ]
 
     def test_a_field_value_never_rides_along_with_its_path(self, streaming_turn):
@@ -436,7 +437,7 @@ class TestPhaseFacts:
         )
 
         facts = emitter.facts_for("routing")
-        assert {"worker": "hotel_node"} in facts
+        assert {"status": "completed", "worker": "hotel_node"} in facts
         # `task_description` sits in the same update dict and is written by the LLM.
         assert "probe" not in str(facts)
 
@@ -451,6 +452,8 @@ class TestPhaseFacts:
             force_worker="hotel_node",
         )
 
+        # `hotel_node` is absent from PHASE_KEY_BY_NODE, so the only frame is
+        # the one the node emits itself — no started/completed pair from `tasks`.
         assert emitter.phase_keys.count("hotel_search") == 1
 
     def test_a_phase_with_no_facts_still_sends_its_key(self, streaming_turn):
@@ -462,7 +465,59 @@ class TestPhaseFacts:
         )
 
         assert "compacting_history" in emitter.phase_keys
-        assert emitter.facts_for("compacting_history") == [{}]
+        assert emitter.facts_for("compacting_history") == [
+            {"status": "started"},
+            {"status": "completed"},
+        ]
+
+
+class TestStepEdges:
+    """Every mapped node reports both edges: it started, and it finished.
+
+    `updates` only fires on completion, so a client built on it could spin on a
+    step that had already ended while the one actually running went unannounced.
+    """
+
+    def test_a_step_reports_started_before_completed(self, streaming_turn):
+        emitter = streaming_turn(
+            message="Đà Nẵng tháng 7 thời tiết thế nào?",
+            thread="stream-step-edges",
+            travel_state=_travel_state(with_budget=False),
+        )
+
+        statuses = [f.get("status") for f in emitter.facts_for("intake_check")]
+        assert statuses == ["started", "completed"]
+
+    def test_the_answering_step_opens_before_its_tokens_flow(self, streaming_turn):
+        """The point of the whole change: `generating` used to arrive AFTER the
+        reply had finished streaming, so the step the user was watching could
+        never be the one producing the text."""
+        emitter = streaming_turn(
+            message="Đà Nẵng tháng 7 thời tiết thế nào?",
+            thread="stream-generating-opens-first",
+            travel_state=_travel_state(with_budget=False),
+        )
+
+        order = [
+            name if name != "phase" else f"phase:{data['key']}:{data.get('status')}"
+            for name, data in emitter.frames
+        ]
+        assert order.index("phase:generating:started") < order.index("delta")
+        assert order.index("delta") < order.index("phase:generating:completed")
+
+    def test_facts_ride_the_completed_edge_only(self, streaming_turn):
+        """A node that has not returned yet has reported nothing to describe."""
+        emitter = streaming_turn(
+            message="đổi thành 3 người",
+            thread="stream-facts-on-completion",
+            travel_state=_travel_state(with_budget=True),
+            patch=[{"path": "people", "operation": "set", "value": 3}],
+            intent="update_trip",
+        )
+
+        started, completed = emitter.facts_for("intake_check")
+        assert started == {"status": "started"}
+        assert completed["intent"] == "update_trip"
 
 
 class TestMappingIntegrity:

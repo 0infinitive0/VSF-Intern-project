@@ -66,6 +66,23 @@ describe('applyPhaseToGroups', () => {
     expect(groups.map((g) => g.key)).toEqual(['analyze'])
   })
 
+  it('closes a step when the node reports it finished', () => {
+    let groups = applyPhaseToGroups([], 'intake_check', [], 'started')
+    expect(groups[0].done).toBe(false)
+
+    groups = applyPhaseToGroups(groups, 'intake_check', [], 'completed')
+    expect(groups[0].done).toBe(true)
+  })
+
+  it('reopens a step when a second key of the same group starts', () => {
+    // `itinerary` covers both `itinerary_build` and `routing_legs`.
+    let groups = applyPhaseToGroups([], 'itinerary_build', [], 'completed')
+    expect(groups[0].done).toBe(true)
+
+    groups = applyPhaseToGroups(groups, 'routing_legs', [], 'started')
+    expect(groups[0].done).toBe(false)
+  })
+
   it('closes earlier steps when a later one starts', () => {
     const groups = apply(['intake_check', 'hotel_search'])
 

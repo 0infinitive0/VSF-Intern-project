@@ -251,14 +251,22 @@ export interface TurnPhase {
  * here — only keys, counts, and schema field paths.
  */
 export interface PhaseFacts {
+  /**
+   * Which edge of the step this frame reports. `started` when the node begins,
+   * `completed` when it returns; facts only ever ride `completed`. A phase
+   * emitted from inside a service reports `started` and never completes — close
+   * it when a later step opens, or at `final`.
+   */
+  status?: 'started' | 'completed'
   /** intake_check: how the message was classified. */
   intent?: string
   /** intake_check: travel-state field paths touched (`people`, `budget.target`). */
   fields?: string[]
   /** routing: node the supervisor picked. */
   worker?: string
-  /** hotel_search: `ok`, `no_results`, `error`, … */
-  status?: string
+  /** hotel_search: `ok`, `no_results`, `error`, … — what the search found,
+   * which is not the step's own `status` above. */
+  outcome?: string
   /** hotel_search: what the user asked for. */
   destination?: string
   /** hotel_search: present only when the user set one. */

@@ -171,7 +171,10 @@ ASCII-escaped):
 : open
 
 event: phase
-data: {"key":"hotel_search","at":1754...,"status":"ok","destination":"Đà Nẵng","kept":5}
+data: {"key":"generating","at":1754...,"status":"started"}
+
+event: phase
+data: {"key":"hotel_search","at":1754...,"status":"completed","outcome":"ok","destination":"Đà Nẵng","kept":5}
 
 event: delta
 data: {"text":"Khách sạn này "}
@@ -256,12 +259,26 @@ exist for that turn, and UIs must tolerate missing steps):
 about the step that just happened. Every one of them is optional — a client must render
 the step whether or not any arrive, and must ignore names it does not know.
 
+**Every mapped step reports both edges.** A node emits `phase` twice: `status:
+"started"` when it begins and `status: "completed"` when it returns. That pair is
+the difference between a UI that can show what is running and one that can only
+show what already finished — `generating` used to arrive *after* the reply had
+streamed, so the step a user was watching could never be the step producing the
+text. Facts ride the `completed` edge only: a node that has not returned has
+reported nothing to describe.
+
+Phases emitted from inside a service (`itinerary_build`, `routing_legs`,
+`persisting`) carry `status: "started"` and have no completion edge — the work
+they announce has no node boundary to close on. A client should close a step
+when a later one starts, and close everything at `final`.
+
 | `key` | field | type | meaning |
 |---|---|---|---|
+| *(all)* | `status` | string | `started` or `completed` |
 | `intake_check` | `intent` | string | the classification, an opaque key the client labels |
 | | `fields` | string[] | travel-state field paths the message touched (`people`, `budget.target`), at most 12. Paths only — never the values |
 | `routing` | `worker` | string | node the supervisor chose (`hotel_node`, `qa_node`, …) |
-| `hotel_search` | `status` | string | `ok`, `no_results`, `no_results_dates`, `no_results_amenities`, `no_results_rating`, `error` |
+| `hotel_search` | `outcome` | string | `ok`, `no_results`, `no_results_dates`, `no_results_amenities`, `no_results_rating`, `error` — what the search found, distinct from the step's own `status` |
 | | `destination` | string | what the user asked for |
 | | `radius_km` | number | present only when the user set a radius |
 | | `amenities` | string[] | amenity ids the user required |

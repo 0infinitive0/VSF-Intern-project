@@ -79,7 +79,7 @@ describe('hotel_search', () => {
 
   it('reports the count kept on a successful search', () => {
     const lines = thinkingLines(t, 'hotel_search', {
-      status: 'ok',
+      outcome: 'ok',
       destination: 'Đà Nẵng',
       kept: 8,
     })
@@ -89,7 +89,7 @@ describe('hotel_search', () => {
 
   it('says the search came back empty rather than reporting zero kept', () => {
     const lines = thinkingLines(t, 'hotel_search', {
-      status: 'no_results',
+      outcome: 'no_results',
       destination: 'Đà Nẵng',
       kept: 0,
     })
@@ -99,7 +99,7 @@ describe('hotel_search', () => {
   })
 
   it('distinguishes a failed search from an empty one', () => {
-    expect(thinkingLines(t, 'hotel_search', { status: 'error' })).toEqual(['thinkingHotelError'])
+    expect(thinkingLines(t, 'hotel_search', { outcome: 'error' })).toEqual(['thinkingHotelError'])
   })
 
   it('counts the amenities the user required', () => {
@@ -159,10 +159,10 @@ describe('translations', () => {
       thinkingLines(spy, 'routing', { worker })
     }
     thinkingLines(spy, 'hotel_search', { destination: 'x', radius_km: 1, amenities: ['a'], kept: 1 })
-    for (const status of [
+    for (const outcome of [
       'no_results', 'no_results_dates', 'no_results_amenities', 'no_results_rating', 'error',
     ]) {
-      thinkingLines(spy, 'hotel_search', { status })
+      thinkingLines(spy, 'hotel_search', { outcome })
     }
     thinkingLines(spy, 'routing_legs', { days: 1 })
     return [...collected]

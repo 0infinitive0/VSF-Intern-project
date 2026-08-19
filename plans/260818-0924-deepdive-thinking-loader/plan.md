@@ -197,3 +197,26 @@ và Phase 5 chạy sau nên không giao nhau.
 Không còn. Ba câu hỏi mở của spike đã chốt (xem bảng Quyết định).
 
 <!-- slug: deepdive-thinking-loader -->
+
+## Bổ sung 2026-08-19 — step events có cả hai vế
+
+Plan này được thiết kế trên `stream_mode="updates"`, mà `updates` **chỉ phát khi node kết
+thúc**. Hệ quả không ai nhận ra lúc lập plan: khối thinking tạo nhóm đúng lúc node đó *đã
+xong*, nên spinner luôn quay trên một bước đã kết thúc, còn bước đang thật sự chạy thì
+chưa được công bố. Đo được:
+
+```
+phase intake_check  →  reasoning  →  delta  →  delta  →  phase generating
+       (đã xong)         ← intake_qa đang chạy ở đây →      (đã xong)
+```
+
+`stream_mode="tasks"` phát **cả hai** vế (`START` + `RESULT`) cho mọi node, nên frame
+`phase` giờ mang `status: "started" | "completed"`. Dữ kiện chỉ đi cùng vế `completed` —
+node chưa trả về thì chưa có gì để mô tả.
+
+Phase phát từ trong service (`itinerary_build`, `routing_legs`, `persisting`) mang
+`status: "started"` và **không có** vế kết thúc: công việc chúng báo không có biên node để
+đóng. FE đóng chúng khi một bước sau mở, và đóng hết ở `final`.
+
+Kèm theo: `hotel_search` từng dùng `status` cho kết quả tìm kiếm (`ok`/`no_results`/…).
+Đổi thành `outcome` — hai nghĩa trên cùng một tên field sẽ va nhau.

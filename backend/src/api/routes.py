@@ -676,6 +676,25 @@ def _fresh_turn_input(session_id: str, message: str, language: str, extra_state:
     }
 
 
+def _task_result_update(chunk: dict) -> Any:
+    """The dict a finished node returned, out of a `tasks` frame.
+
+    LangGraph reports it as `result`, which is a sequence of (channel, value)
+    writes rather than the dict the node handed back. `phase_facts` reads node
+    return values, so the writes are folded back into one.
+    """
+    result = chunk.get("result")
+    if isinstance(result, dict):
+        return result
+    if isinstance(result, (list, tuple)):
+        merged: dict[str, Any] = {}
+        for write in result:
+            if isinstance(write, (list, tuple)) and len(write) == 2 and isinstance(write[0], str):
+                merged[write[0]] = write[1]
+        return merged
+    return {}
+
+
 def _may_stream(namespace: tuple[str, ...] | None, node_name: str | None) -> bool:
     """Whether a `messages` chunk from this position may reach the user as `delta`.
 
@@ -727,20 +746,38 @@ def _drive_turn(app, config: dict, turn_input, *, stream: bool) -> dict:
     # for the product's main answering node. It also changes the yielded shape
     # to (namespace, mode, chunk).
     for namespace, mode, chunk in app.stream(
-        turn_input, config=config, stream_mode=["updates", "messages"], subgraphs=True
+        turn_input, config=config, stream_mode=["updates", "messages", "tasks"], subgraphs=True
     ):
-        if mode == "updates":
-            # Progress is a top-level concern: a phase key names a graph node,
-            # and a subgraph's internal steps are not steps the user tracks.
-            if namespace:
+        # Progress is a top-level concern: a phase key names a graph node, and a
+        # subgraph's internal steps are not steps the user tracks.
+        if mode in {"updates", "tasks"} and namespace:
+            continue
+
+        if mode == "tasks":
+            # `updates` only fires once a node has FINISHED, so a UI built on it
+            # can say "this step is done" and nothing else — it would spin on a
+            # step that already ended while the one actually running stayed
+            # unannounced. `tasks` reports both edges of every node.
+            node_name = chunk.get("name")
+            phase_key = PHASE_KEY_BY_NODE.get(str(node_name))
+            if not phase_key:
                 continue
+            if "result" in chunk or "error" in chunk:
+                emit_phase(
+                    phase_key,
+                    status="completed",
+                    **phase_facts(str(node_name), _task_result_update(chunk)),
+                )
+            else:
+                # No facts on the opening edge: the node has not returned yet,
+                # and `input` is the state going in, not what this step found.
+                emit_phase(phase_key, status="started")
+        elif mode == "updates":
+            # Kept solely for interrupts. Phase frames come from `tasks` now;
+            # emitting here too would double every step.
             for node_name, update in chunk.items():
                 if node_name == "__interrupt__":
                     interrupts = update
-                    continue
-                phase_key = PHASE_KEY_BY_NODE.get(node_name)
-                if phase_key:
-                    emit_phase(phase_key, **phase_facts(node_name, update))
         elif mode == "messages":
             message_chunk, metadata = chunk
             node = metadata.get("langgraph_node")

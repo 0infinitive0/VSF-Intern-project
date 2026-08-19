@@ -333,7 +333,10 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
         # here, so it is not reported rather than being recomputed for a
         # progress line. `destination` and the amenities are the user's own
         # inputs; no internal id is published.
-        facts: dict[str, Any] = {"status": status}
+        # `outcome`, not `status`: a phase frame's `status` names the step's edge
+        # (started / completed) for every key, and this one describes what the
+        # search found. Two meanings on one field name would collide.
+        facts: dict[str, Any] = {"outcome": status}
         if destination:
             facts["destination"] = destination
         if max_radius_km is not None:

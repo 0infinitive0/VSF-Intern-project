@@ -71,14 +71,21 @@ export function applyPhaseToGroups(
   groups: ThinkingGroup[],
   phaseKey: string,
   lines: string[],
+  status?: 'started' | 'completed',
 ): ThinkingGroup[] {
   const groupKey = groupForPhase(phaseKey)
   if (!groupKey) return groups
 
+  // A step is finished when the node says so, not when a later step happens to
+  // start. The old inference spun on a step that had already ended.
+  const finished = status === 'completed'
+
   const existing = groups.find((g) => g.key === groupKey)
   const next: ThinkingGroup[] = existing
     ? groups.map((g) =>
-        g.key === groupKey ? { ...g, lines: appendNew(g.lines, lines) } : g,
+        g.key === groupKey
+          ? { ...g, lines: appendNew(g.lines, lines), done: finished }
+          : g,
       )
     : [
         ...groups,
@@ -87,12 +94,12 @@ export function applyPhaseToGroups(
           labelKey: GROUP_LABEL_I18N_KEY[groupKey],
           lines: [...lines],
           reasoning: '',
-          done: false,
+          done: finished,
         },
       ]
 
-  // Reaching a later group means every earlier one finished. Derived from
-  // GROUP_ORDER rather than from arrival order, for the same reason as sorting.
+  // Still a safety net: a step emitted from inside a service never reports a
+  // completion, so reaching a later one is the only signal it can get.
   const reachedIndex = GROUP_ORDER.indexOf(groupKey)
   return next
     .map((g) =>

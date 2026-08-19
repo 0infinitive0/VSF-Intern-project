@@ -294,7 +294,7 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
       return {
         ...state,
         phases: [...state.phases, { key: action.key, at: action.at }],
-        thinking: applyPhaseToGroups(state.thinking, action.key, lines),
+        thinking: applyPhaseToGroups(state.thinking, action.key, lines, action.facts.status),
       }
     }
 
