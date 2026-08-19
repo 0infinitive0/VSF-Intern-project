@@ -6,7 +6,7 @@ import { formatCurrency } from '../lib/format-currency'
 import { formatDateTile, nightsBetween } from '../lib/format-trip-dates'
 import type { BookingReceipt } from '../types'
 
-const CLOSE_TRANSITION_MS = 200
+const CLOSE_TRANSITION_MS = 350
 
 type LoadState = 'loading' | 'found' | 'not-found'
 
@@ -103,7 +103,7 @@ export default function BookingReceiptModal({
         backdropFilter: 'blur(10px)',
         WebkitBackdropFilter: 'blur(10px)',
         opacity: visible ? 1 : 0,
-        transition: 'opacity .2s ease',
+        transition: 'opacity .34s ease',
       }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
@@ -116,12 +116,15 @@ export default function BookingReceiptModal({
         className="glass-panel relative z-10 w-full max-w-[420px] rounded-[26px] overflow-hidden text-on-surface flex flex-col items-center text-center"
         style={{
           opacity: visible ? 1 : 0,
-          transform: visible ? 'none' : 'scale(.96)',
-          transition: 'opacity .2s ease, transform .2s ease',
+          transform: visible ? 'none' : 'translateY(18px) scale(.98)',
+          transition: 'opacity .34s cubic-bezier(.22,1,.36,1), transform .44s cubic-bezier(.22,1,.36,1)',
         }}
       >
         {loadState === 'loading' && (
-          <div className="py-8 px-6 text-[13px] text-on-surface-muted">{t('bookingReceiptLoading')}</div>
+          <div className="py-16 px-6 text-[13px] text-on-surface-muted flex flex-col items-center gap-3">
+            <div className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+            <div>{t('bookingReceiptLoading')}</div>
+          </div>
         )}
 
         {loadState === 'not-found' && (
@@ -138,7 +141,10 @@ export default function BookingReceiptModal({
         )}
 
         {loadState === 'found' && receipt && (
-          <>
+          <div
+            className="w-full flex flex-col items-center"
+            style={{ animation: 'vRise .5s cubic-bezier(.22,1,.36,1) both' }}
+          >
             <div className="relative w-full h-[150px] flex-none overflow-hidden">
               <RemoteImage
                 src={receipt.hotel_image_url}
@@ -173,6 +179,7 @@ export default function BookingReceiptModal({
                   color: '#FCFDFE',
                   boxShadow: '0 16px 34px -14px rgba(42,145,135,.7)',
                   border: '4px solid var(--g3)',
+                  animation: 'vPop .6s .1s cubic-bezier(.34,1.5,.64,1) both',
                 }}
                 aria-hidden="true"
               >
@@ -191,7 +198,7 @@ export default function BookingReceiptModal({
                 className="flex w-full rounded-2xl overflow-hidden border border-edge"
                 style={{ background: 'var(--g2)' }}
               >
-                <div className="flex-1 px-5 py-3.5 text-left border-r border-line">
+                <div className="flex-1 px-5 py-3.5 text-center border-r border-line">
                   <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
                     {t('checkoutDoneCode')}
                   </div>
@@ -199,7 +206,7 @@ export default function BookingReceiptModal({
                     {code ?? '—'}
                   </div>
                 </div>
-                <div className="flex-1 px-5 py-3.5 text-left">
+                <div className="flex-1 px-5 py-3.5 text-center">
                   <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
                     {t('holdTotal')}
                   </div>
@@ -266,20 +273,8 @@ export default function BookingReceiptModal({
                   ))}
                 </div>
               )}
-
-              <button
-                type="button"
-                onClick={onClose}
-                className="w-full sm:w-auto px-8 h-[44px] rounded-2xl border-none text-[14px] font-[590] text-white cursor-pointer transition-all duration-200 hover:opacity-95 active:scale-[0.98] mt-2"
-                style={{
-                  background: 'linear-gradient(135deg,#3A73DE,#2C5FC9)',
-                  boxShadow: '0 12px 26px -10px rgba(44,95,201,.6)',
-                }}
-              >
-                {t('bookingReceiptClose')}
-              </button>
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>

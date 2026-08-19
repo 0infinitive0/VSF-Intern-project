@@ -562,7 +562,7 @@ export default function BookingModal({
                     />
                   </div>
 
-                  <div className="relative z-10 px-6 pb-6 -mt-[30px] flex flex-col items-center flex-1 w-full justify-between gap-5">
+                  <div className="relative z-10 px-6 pb-6 -mt-[30px] flex flex-col items-center flex-1 w-full justify-center gap-4">
                     <div className="flex flex-col items-center gap-3 w-full">
                       <div
                         className="relative z-10 w-[60px] h-[60px] rounded-full flex items-center justify-center text-[26px] flex-none"
@@ -589,19 +589,6 @@ export default function BookingModal({
                         </div>
                       </div>
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={requestClose}
-                      className="w-full h-[46px] rounded-2xl border-none text-[14px] font-[590] tracking-[-0.12px] cursor-pointer transition-all duration-200 hover:opacity-95 active:scale-[0.98]"
-                      style={{
-                        background: 'linear-gradient(135deg,#3A73DE,#2C5FC9)',
-                        color: 'var(--on-acc)',
-                        boxShadow: '0 14px 30px -14px rgba(44,95,201,.7)',
-                      }}
-                    >
-                      {t('checkoutDoneClose')}
-                    </button>
                   </div>
                 </div>
 
@@ -621,7 +608,7 @@ export default function BookingModal({
                       className="flex w-full rounded-2xl overflow-hidden border border-edge"
                       style={{ background: 'var(--g2)' }}
                     >
-                      <div className="flex-1 px-5 py-3.5 border-r border-line">
+                      <div className="flex-1 px-5 py-3.5 text-center border-r border-line">
                         <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
                           {t('checkoutDoneCode')}
                         </div>
@@ -629,7 +616,7 @@ export default function BookingModal({
                           {bookedCode}
                         </div>
                       </div>
-                      <div className="flex-1 px-5 py-3.5">
+                      <div className="flex-1 px-5 py-3.5 text-center">
                         <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
                           {t('holdTotal')}
                         </div>
