@@ -146,10 +146,24 @@ export default function BookingReceiptModal({
                 className="absolute inset-0"
               />
               <div
-                className="absolute inset-x-0 bottom-0 h-[64px] pointer-events-none"
-                style={{ background: 'linear-gradient(to top, var(--g1), transparent)' }}
+                className="absolute inset-x-0 bottom-0 h-[90px] pointer-events-none"
+                style={{ background: 'linear-gradient(to top, var(--g3), transparent)' }}
                 aria-hidden="true"
               />
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label={t('bookingReceiptClose')}
+                className="absolute top-3.5 right-3.5 w-[34px] h-[34px] rounded-full border border-edge text-on-surface text-[14px] cursor-pointer transition-transform duration-200 hover:scale-[1.08] active:scale-[0.92]"
+                style={{
+                  background: 'var(--g3)',
+                  backdropFilter: 'blur(18px)',
+                  WebkitBackdropFilter: 'blur(18px)',
+                  boxShadow: '0 10px 24px -10px rgb(var(--shadow-rgb) / 0.5)',
+                }}
+              >
+                ✕
+              </button>
             </div>
             <div className="px-6 pb-6 -mt-[29px] flex flex-col items-center gap-4 w-full">
               <div
@@ -158,7 +172,7 @@ export default function BookingReceiptModal({
                   background: 'linear-gradient(145deg,#4FB3A5,#2A9187)',
                   color: '#FCFDFE',
                   boxShadow: '0 16px 34px -14px rgba(42,145,135,.7)',
-                  border: '4px solid var(--g1)',
+                  border: '4px solid var(--g3)',
                 }}
                 aria-hidden="true"
               >
@@ -255,19 +269,6 @@ export default function BookingReceiptModal({
                   ))}
                 </div>
               )}
-
-              <button
-                type="button"
-                onClick={onClose}
-                className="mt-1 px-5 py-2.5 rounded-2xl border-none text-[13px] font-[590] cursor-pointer transition-transform duration-200 active:scale-[0.98]"
-                style={{
-                  background: 'linear-gradient(135deg,#3A73DE,#2C5FC9)',
-                  color: 'var(--on-acc)',
-                  boxShadow: '0 10px 24px -10px rgba(44,95,201,.6)',
-                }}
-              >
-                {t('bookingReceiptClose')}
-              </button>
             </div>
           </>
         )}

@@ -556,8 +556,8 @@ export default function BookingModal({
                     className="absolute inset-0"
                   />
                   <div
-                    className="absolute inset-x-0 bottom-0 h-[130px] pointer-events-none"
-                    style={{ background: 'linear-gradient(to top, var(--g1) 18%, transparent)' }}
+                    className="absolute inset-x-0 bottom-0 h-[140px] pointer-events-none"
+                    style={{ background: 'linear-gradient(to top, var(--g3), transparent)' }}
                     aria-hidden="true"
                   />
                   <div className="absolute left-5 right-5 bottom-5 flex items-center gap-3">
