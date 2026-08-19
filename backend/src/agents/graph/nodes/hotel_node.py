@@ -42,6 +42,7 @@ from src.agents.graph.state import TravelGraphState
 from src.api.streaming import emit_phase
 from src.domain.travel_state import Presence, TravelState, apply_patch
 from src.i18n import t
+from src.services import session_store
 from src.services.amenity_catalog import all_approved_amenities, resolve_hotel_amenity_ids
 from src.services.hotel_selection import (
     NoHotelsMatchAmenities,
@@ -206,6 +207,29 @@ def _handle_hotel_selection(
 def hotel_node(state: TravelGraphState) -> dict[str, Any]:
     pending = [worker for worker in (state.get("pending_tasks") or []) if worker != _WORKER_NAME]
     language = state.get("language") or "vi"
+
+    # Absolute lock, checked before anything else in this node (including
+    # `destination_slot` below): once this session's booking is CONFIRMED
+    # (paid), searching or re-selecting a hotel here must never touch
+    # `trip_data` again — that would rebuild the itinerary around a
+    # different hotel and destroy the one the guest already paid for. This
+    # is the single point every path that can reach hotel_node funnels
+    # through — POST /hotels/select (selected_hotel_id set), POST
+    # /hotels/change (Command(goto="hotel_node", ...), bypassing the whole
+    # intake pipeline), and organic chat text ("tôi muốn đổi khách sạn",
+    # routed here by the supervisor's LLM classification) — so guarding
+    # only the REST routes would miss the third one entirely.
+    session_id = state.get("session_id") or ""
+    if session_id and session_store.session_has_paid_booking(session_id):
+        reply = t(
+            "Đoạn chat này đã thanh toán xong nên mình không thể đổi hoặc tìm khách sạn khác nữa — "
+            "việc đó sẽ làm mất lịch trình đã đặt. Nếu muốn lên kế hoạch cho chuyến đi khác, "
+            "bạn hãy mở một đoạn chat mới nhé.",
+            language,
+        )
+        task_results = [*(state.get("task_results") or []), {"worker": _WORKER_NAME, "status": "already_paid", "reply": reply}]
+        return {"pending_tasks": pending, "task_results": task_results, "selected_hotel_id": None}
+
     travel_state = TravelState.from_dict(state.get("travel_state"))
     selected_hotel_id = state.get("selected_hotel_id")
 

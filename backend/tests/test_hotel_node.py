@@ -113,6 +113,48 @@ class _FakeSupabaseClient:
 # --- direct unit tests: no interrupt involved -------------------------------
 
 
+def test_already_paid_session_declines_before_searching(monkeypatch):
+    """The absolute lock (plan 260819-lock-hotel-after-payment): a session
+    with a CONFIRMED booking must never let hotel_node touch anything —
+    checked before even the destination guard above."""
+    monkeypatch.setattr(hotel_node_module.session_store, "session_has_paid_booking", lambda _sid: True)
+    monkeypatch.setattr(hotel_node_module, "_get_destination_id", _unreachable_llm)
+
+    result = hotel_node(_graph_state(TravelState().to_dict()))
+
+    assert result["task_results"][-1]["status"] == "already_paid"
+    assert result["task_results"][-1]["reply"]
+    assert "hotel_node" not in result["pending_tasks"]
+    assert result["selected_hotel_id"] is None
+    assert "trip_data" not in result
+    assert "hotel_search_result" not in result["task_results"][-1]
+
+
+def test_already_paid_session_declines_a_pending_hotel_selection_too(monkeypatch):
+    """Same lock, but hit via the selected_hotel_id branch (POST /hotels/
+    select) -- the one branch that can actually overwrite trip_data."""
+    monkeypatch.setattr(hotel_node_module.session_store, "session_has_paid_booking", lambda _sid: True)
+    monkeypatch.setattr(hotel_node_module, "_handle_hotel_selection", _unreachable_llm)
+
+    state = _graph_state(_seeded_travel_state())
+    state["selected_hotel_id"] = "h1"
+    state["trip_data"] = {"hotel": {"id": "already-paid-hotel"}}
+
+    result = hotel_node(state)
+
+    assert result["task_results"][-1]["status"] == "already_paid"
+    assert result["selected_hotel_id"] is None
+    assert "trip_data" not in result
+
+
+def test_not_paid_session_is_unaffected_by_the_guard(monkeypatch):
+    monkeypatch.setattr(hotel_node_module.session_store, "session_has_paid_booking", lambda _sid: False)
+
+    result = hotel_node(_graph_state(TravelState().to_dict()))
+
+    assert result["task_results"][-1]["status"] == "no_destination"
+
+
 def test_missing_destination_returns_defensive_message_and_completes():
     state = _graph_state(TravelState().to_dict())
 
