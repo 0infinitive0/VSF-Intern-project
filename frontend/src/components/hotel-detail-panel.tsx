@@ -582,15 +582,26 @@ function HoldFooter({
   // opens a brand new chat to plan a second trip gets told they're
   // "holding a room at another hotel" for a hold that's long since been
   // paid for (roomHold is a single global hold, not scoped to a chat
-  // session — see use-room-hold.ts's module doc comment). Every other
-  // non-idle status means a hold is still actually live somewhere and must
-  // be resolved from its own state first (heldHere/heldElsewhere/busy
-  // above).
+  // session — see use-room-hold.ts's module doc comment). EXPIRED counts
+  // as startable too, for the same "nothing left to protect" reason (an
+  // expired hold no longer reserves anything server-side either) — and
+  // MUST be listed here, unlike ERROR/BOOKED: this panel has no "Kiểm tra
+  // lại phòng" recheck affordance of its own (that only exists on
+  // hold-banner.tsx, in the itinerary/workspace stage — unreachable while
+  // still browsing hotels), so a guest whose hold quietly expired while
+  // Browse-ing (e.g. an old hold left over from a deleted chat session)
+  // would otherwise see the plain "Giữ phòng" label rendered permanently
+  // disabled with no way to ever click it again. Every other non-idle
+  // status (HELD/HOLDING) means a hold is still actually live and must be
+  // resolved from its own state first (heldHere/heldElsewhere/busy above).
   const canStart =
     cartCount > 0 &&
     !!checkInDate &&
     !!checkOutDate &&
-    (roomHold.status === 'IDLE' || roomHold.status === 'ERROR' || roomHold.status === 'BOOKED')
+    (roomHold.status === 'IDLE' ||
+      roomHold.status === 'ERROR' ||
+      roomHold.status === 'BOOKED' ||
+      roomHold.status === 'EXPIRED')
   // heldHere with an edited cart -> the guest is proposing a DIFFERENT room
   // selection for the hotel they're already holding (add/remove/change qty).
   // heldElsewhere with a fillable cart -> the guest wants to hold rooms at
