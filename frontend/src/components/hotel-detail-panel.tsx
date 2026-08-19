@@ -63,6 +63,7 @@ export default function HotelDetailPanel({
   onConfirmHotel,
   onSelectHotel,
   heldElsewhereHotelName,
+  sessionBookedFromBackend,
 }: {
   /** null while no hotel has ever been focused yet this session (the caller
    * keeps mounting this component always — see stage-hotels.tsx's
@@ -96,6 +97,16 @@ export default function HotelDetailPanel({
    * use-room-hold.ts's module doc comment); the switch-hotel confirm
    * dialog falls back to generic copy in that case. */
   heldElsewhereHotelName?: string | null
+  /** Whether the CURRENTLY ACTIVE chat session's booking is already paid
+   * (App.tsx's sessionBookedFromBackend) — absolute lock on HoldFooter's
+   * "Giữ phòng" button (plan 260819-lock-hotel-after-payment): re-selecting
+   * a hotel here would rebuild the itinerary and destroy the one already
+   * paid for. Independent of `roomHold` (global, not session-scoped —
+   * `roomHold.status === 'BOOKED'` only tells you SOME session somewhere
+   * just paid, not that THIS one did), and independent of which hotel is
+   * being viewed — even re-picking the SAME paid hotel is blocked, to keep
+   * the rule simple and absolute. */
+  sessionBookedFromBackend: boolean
 }) {
   const { t, i18n } = useTranslation()
   const { detail, status } = useHotelDetail(hotelId)
@@ -503,6 +514,7 @@ export default function HotelDetailPanel({
                 onConfirmHotel={onConfirmHotel}
                 option={option}
                 heldElsewhereHotelName={heldElsewhereHotelName ?? null}
+                sessionBookedFromBackend={sessionBookedFromBackend}
               />
             )}
           </>
@@ -524,6 +536,7 @@ function HoldFooter({
   onConfirmHotel,
   option,
   heldElsewhereHotelName,
+  sessionBookedFromBackend,
 }: {
   hotelId: string
   rooms: RoomDetail[]
@@ -533,6 +546,7 @@ function HoldFooter({
   onConfirmHotel: (hotel: HotelOption) => void
   option?: HotelOption
   heldElsewhereHotelName?: string | null
+  sessionBookedFromBackend: boolean
 }) {
   const { t, i18n } = useTranslation()
   const [confirmSwitchOpen, setConfirmSwitchOpen] = useState(false)
@@ -608,18 +622,21 @@ function HoldFooter({
   const cartChanged = heldHere && cartCount > 0 && !cartMatchesHeldBookings(cart, roomHold.bookings)
   const canSwitchHere = heldElsewhere && cartCount > 0 && !!checkInDate && !!checkOutDate
 
-  const label = heldHere
-    ? cartChanged
-      ? t('holdCtaUpdate')
-      : t('holdCtaHeld')
-    : heldElsewhere
-      ? canSwitchHere
-        ? t('holdCtaSwitchHere')
-        : t('holdCtaBlocked')
-      : busy
-        ? t('holdCtaBusy')
-        : t('holdCta')
+  const label = sessionBookedFromBackend
+    ? t('holdCtaSessionPaid')
+    : heldHere
+      ? cartChanged
+        ? t('holdCtaUpdate')
+        : t('holdCtaHeld')
+      : heldElsewhere
+        ? canSwitchHere
+          ? t('holdCtaSwitchHere')
+          : t('holdCtaBlocked')
+        : busy
+          ? t('holdCtaBusy')
+          : t('holdCta')
   const disabled =
+    sessionBookedFromBackend ||
     busy ||
     (heldHere && !cartChanged) ||
     (heldElsewhere && !canSwitchHere) ||
@@ -628,7 +645,7 @@ function HoldFooter({
   const stay = { checkInDate: checkInDate!, checkOutDate: checkOutDate! }
 
   function handleClick() {
-    if (busy || !option) return
+    if (sessionBookedFromBackend || busy || !option) return
     if (heldHere) {
       if (!cartChanged) return
       // Editing your own not-yet-paid cart doesn't warrant a confirm dialog

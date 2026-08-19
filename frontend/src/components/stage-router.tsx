@@ -75,7 +75,12 @@ export default function StageRouter({
    * doc comment on the same prop); the hotels stage's own heldHere/
    * heldElsewhere logic already scopes correctly by hotel, not session. */
   holdBelongsToSession: boolean
-  /** See app-shell.tsx's doc comment on the same prop. */
+  /** See app-shell.tsx's doc comment on the same prop. Also threaded into
+   * the 'hotels' branch below (plan 260819-lock-hotel-after-payment): once
+   * THIS session's booking is paid, HotelDetailPanel's HoldFooter must lock
+   * "Giữ phòng" for every hotel in the retained list, not only the workspace
+   * stage's hold banner — re-picking a hotel here would rebuild the
+   * itinerary and destroy the one already paid for. */
   sessionBookedFromBackend: boolean
   onOpenBooking: () => void
   /** See app-shell.tsx's doc comment on the same prop. */
@@ -103,6 +108,7 @@ export default function StageRouter({
         focusMode={focusMode}
         theme={theme}
         roomHold={roomHold}
+        sessionBookedFromBackend={sessionBookedFromBackend}
       />
     )
   }
