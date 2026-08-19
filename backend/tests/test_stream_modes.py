@@ -131,6 +131,7 @@ def streaming_turn(monkeypatch: pytest.MonkeyPatch):
         force_worker: str | None = None,
         extractor=None,
         intake_llm=None,
+        qa_llm=None,
     ) -> _RecordingEmitter:
         # `intake_llm` is a parameter rather than something a test monkeypatches
         # itself: this fixture patches inside `_run`, which executes AFTER the
@@ -138,9 +139,8 @@ def streaming_turn(monkeypatch: pytest.MonkeyPatch):
         # here and the test would pass against the default model instead.
         intake_model = intake_llm or _fake_llm("Tháng 7 hay mưa rải rác.")
         monkeypatch.setattr(intake_qa_module, "get_fast_llm", lambda **_k: intake_model)
-        monkeypatch.setattr(
-            qa_node_module, "get_fast_llm", lambda **_k: _fake_llm("Có hồ bơi ngoài trời.")
-        )
+        qa_model = qa_llm or _fake_llm("Có hồ bơi ngoài trời.")
+        monkeypatch.setattr(qa_node_module, "get_fast_llm", lambda **_k: qa_model)
         monkeypatch.setattr(
             graph_module,
             "extract_patch",
@@ -248,6 +248,79 @@ class TestBlockShapedContent:
         )
 
         assert "cân nhắc" not in emitter.delta_text
+
+
+class TestReasoningFrames:
+    """Reasoning summaries ride their own SSE event, never `delta`.
+
+    The contract makes `delta` a prefix of the reply `final` carries; a summary
+    of the model's own reasoning is not part of the reply, and it is always
+    English even in a Vietnamese conversation. Folding it into `delta` would
+    break the first invariant and hide the second from clients.
+    """
+
+    def test_a_reasoning_block_is_emitted_on_its_own_event(self, streaming_turn):
+        emitter = streaming_turn(
+            message="Đà Nẵng tháng 7 thời tiết thế nào?",
+            thread="stream-reasoning-frame",
+            travel_state=_travel_state(with_budget=False),
+            intake_llm=_fake_block_llm(
+                [
+                    {"type": "reasoning", "reasoning": "Checking the rainy season"},
+                    {"type": "text", "text": "Tháng 7 hay mưa rải rác."},
+                ]
+            ),
+        )
+
+        assert [f["text"] for f in emitter.of("reasoning")] == ["Checking the rainy season"]
+        assert "mưa" in emitter.delta_text
+
+    def test_reasoning_never_leaks_into_delta(self, streaming_turn):
+        emitter = streaming_turn(
+            message="Đà Nẵng tháng 7 thời tiết thế nào?",
+            thread="stream-reasoning-not-delta",
+            travel_state=_travel_state(with_budget=False),
+            intake_llm=_fake_block_llm(
+                [
+                    {"type": "reasoning", "reasoning": "Checking the rainy season"},
+                    {"type": "text", "text": "Tháng 7 hay mưa rải rác."},
+                ]
+            ),
+        )
+
+        assert "Checking" not in emitter.delta_text
+
+    def test_a_turn_with_no_reasoning_emits_no_reasoning_frame(self, streaming_turn):
+        """The common case, not an edge one: a model summarizes its reasoning only
+        when it actually reasons, and a tool-calling step never does."""
+        emitter = streaming_turn(
+            message="Đà Nẵng tháng 7 thời tiết thế nào?",
+            thread="stream-reasoning-absent",
+            travel_state=_travel_state(with_budget=False),
+        )
+
+        assert emitter.of("reasoning") == []
+        assert emitter.of("delta")
+
+    def test_the_reply_never_carries_the_reasoning_text(self, streaming_turn):
+        """`final.reply` is built from graph state rather than from chunks, so
+        this holds structurally — but it is the invariant that matters most, so
+        it is locked rather than argued."""
+        emitter = streaming_turn(
+            message="Đà Nẵng tháng 7 thời tiết thế nào?",
+            thread="stream-reasoning-not-in-reply",
+            travel_state=_travel_state(with_budget=False),
+            intake_llm=_fake_block_llm(
+                [
+                    {"type": "reasoning", "reasoning": "Checking the rainy season"},
+                    {"type": "text", "text": "Tháng 7 hay mưa rải rác."},
+                ]
+            ),
+        )
+
+        assert emitter.of("reasoning")  # guard: the fixture really produced one
+        replies = [f.get("reply", "") for f in emitter.of("final")]
+        assert not any("Checking" in str(r) for r in replies)
 
 
 class TestWhatMustNeverStream:
@@ -364,3 +437,38 @@ class TestBlockingPathUnchanged:
         )
 
         assert response.reply
+
+
+class TestReasoningFromQaNodeArrivesInOnePiece:
+    """`qa_node` delivers its reasoning, but all at once rather than as it thinks.
+
+    It is the one node added as a compiled subgraph (`graph.py:119`), and
+    `stream_mode="messages"` does not descend into subgraphs. What reaches the
+    drain is the subgraph's single complete `AIMessage` at the node boundary —
+    which does carry the reasoning blocks, so the text is not lost; it simply
+    appears in one frame instead of accumulating.
+
+    `intake_qa`, a plain node, streams the same content across many frames.
+    Diagnosis: `plans/reports/debug-260819-qa-node-not-token-streaming.md`.
+
+    A UI that renders reasoning incrementally will look different between these
+    two nodes, and that difference is structural, not cosmetic.
+    """
+
+    def test_qa_node_reasoning_arrives_as_a_single_frame(self, streaming_turn):
+        emitter = streaming_turn(
+            message="khách sạn này có hồ bơi không?",
+            thread="stream-qa-reasoning-bulk",
+            travel_state=_travel_state(with_budget=True),
+            force_worker="qa_node",
+            qa_llm=_fake_block_llm(
+                [
+                    {"type": "reasoning", "reasoning": "Looking up the amenity list"},
+                    {"type": "text", "text": "Có hồ bơi ngoài trời."},
+                ]
+            ),
+        )
+
+        frames = emitter.of("reasoning")
+        assert [f["text"] for f in frames] == ["Looking up the amenity list"]
+        assert len(frames) == 1, "one frame is the subgraph limitation; more means it was fixed"

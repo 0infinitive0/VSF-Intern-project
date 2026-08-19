@@ -44,8 +44,9 @@ Frame format (contract: docs/chat_api_contract.md §Streaming, frozen by plan
 
 Event names (shipped subset — `cancelled` is reserved by the plan but not
 shipped; turn cancellation is out of scope, see phase-04, currently paused):
-    phase | delta | final | error
+    phase | delta | reasoning | final | error
 Every stream ends with EXACTLY ONE terminal frame: `final` or `error`.
+`reasoning` is never terminal, and a valid turn may carry none of it.
 
 `reset` used to be a fifth name. It meant "discard the text streamed so far",
 which only a producer that could stream text it might have to retract needed —
@@ -90,7 +91,7 @@ STREAM_HEADERS = {
 class StreamEvent:
     """One SSE event: `event` name + JSON-serializable `data` dict."""
 
-    event: str  # "phase" | "delta" | "final" | "error"
+    event: str  # "phase" | "delta" | "reasoning" | "final" | "error"
     data: dict[str, Any]
 
 
@@ -194,6 +195,31 @@ def emit_delta(text: str) -> None:
             em.emit("delta", text=text)
     except Exception:
         logger.debug("emit_delta failed", exc_info=True)
+
+
+def emit_reasoning(text: str) -> None:
+    """Emit one `reasoning` SSE event carrying the model's summary of its own
+    reasoning.
+
+    Deliberately NOT folded into `delta`. The contract says `delta` is a prefix
+    of the reply `final` carries (docs/chat_api_contract.md §Streaming), and a
+    reasoning summary is not part of the reply at all — mixing them would break
+    an invariant clients rely on. A separate event also lets a client tell
+    model-written prose from product-written prose, which matters here: this text
+    is always English, even in a Vietnamese conversation.
+
+    Same guards as `emit_delta`: no-op without an emitter, never raises, drops
+    the empty string — and empty is the COMMON case. A model emits a summary only
+    when it actually reasons, and a tool-calling step has none to summarize.
+    """
+    if not text:
+        return
+    try:
+        em = _current_emitter.get()
+        if em is not None:
+            em.emit("reasoning", text=text)
+    except Exception:
+        logger.debug("emit_reasoning failed", exc_info=True)
 
 
 async def sse_stream(

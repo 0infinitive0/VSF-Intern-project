@@ -47,6 +47,17 @@ class Settings(BaseSettings):
         "this route implies with a 400, and it is the model the eval judge hardcodes. "
         "Rollback is an env change, not a deploy.",
     )
+    llm_reasoning_summary: Literal["off", "auto"] = Field(
+        default="off",
+        description="Ask OpenAI reasoning models to emit a summary of their own "
+        "reasoning, streamed to the client as `reasoning` SSE frames. Requires "
+        "`llm_use_responses_api` -- Chat Completions has no channel for it. Off by "
+        "default because coverage is unpredictable: measured 2026-08-18, a model "
+        "emits a summary only when it actually reasons, so the same step yields "
+        "2000 characters for a hard request and nothing at all for a simple one, "
+        "and a tool-calling step has no reasoning to summarize. Treat it as a layer "
+        "over the graph's own facts, never as the only thing filling a UI slot.",
+    )
     llm_provider: str = "ollama"
     llm_model: str = "llama3.1"
     llm_fast_model: str = "llama3.1"

@@ -139,7 +139,7 @@ là thứ lấp khối UI; reasoning chỉ chồng thêm khi có.
 | 2.5 | [Helper đọc text dùng chung](./phase-02b-shared-response-text-helper.md) | **Done** |
 | 3 | [Smoke test qua graph thật](./phase-03-measure-the-a-b-on-real-turns.md) | **Done** |
 | 3b | [A/B chi phí và số hop](./phase-03b-deferred-cost-and-hop-ab.md) | **Hoãn** |
-| 4 | [Reasoning summary qua dây](./phase-04-reasoning-summary-over-the-wire.md) | Pending |
+| 4 | [Reasoning summary qua dây](./phase-04-reasoning-summary-over-the-wire.md) | **Done** |
 | 5 | [Làn reasoning ở frontend](./phase-05-frontend-reasoning-lane-in-the-thinking-block.md) | Pending |
 | 6 | [Quyết định rollout + hoà giải cross-plan](./phase-06-rollout-decision-and-cross-plan-reconciliation.md) | Pending |
 
@@ -184,8 +184,8 @@ Phase 1, 2.5 và 4 cùng chạm vòng drain của `routes.py`; Phase 2 và 2.5 c
 - [x] OpenRouter / Cloudflare / Ollama không đổi hành vi — test khoá
 - [x] Không call site nào còn giả định `.content` luôn là `str`
 - [x] Smoke test qua graph thật: kết quả khớp nhau giữa cờ tắt và cờ bật
-- [ ] Reasoning summary hiện trong khối thinking, và khối vẫn đầy đủ nội dung khi summary rỗng
-- [ ] `docs/chat_api_contract.md` mô tả event `reasoning`
+- [ ] Reasoning summary hiện trong khối thinking, và khối vẫn đầy đủ nội dung khi summary rỗng (Phase 5)
+- [x] `docs/chat_api_contract.md` mô tả event `reasoning`
 - [ ] Không còn mâu thuẫn giữa plan này, deepdive plan, và spike report
 
 ## Open questions

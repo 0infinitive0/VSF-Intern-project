@@ -176,6 +176,9 @@ data: {"key":"hotel_search","tool":"recommend_hotels","at":1754...}
 event: delta
 data: {"text":"Khách sạn này "}
 
+event: reasoning
+data: {"text":"**Checking amenities**\n\nThe user asked "}
+
 event: final
 data: {"session_id":"...","reply":"...","suggestions":[...],"stage":"hotel_options",
        "hotel_options":[...],"trip_plan":null,"intake":{...},"requires_stay_dates":false}
@@ -195,6 +198,24 @@ data: {"detail":"Đã xảy ra lỗi máy chủ. Vui lòng thử lại."}
   `intake_qa`). Clients must NOT assume every turn has deltas — a turn whose
   work is deterministic (hotel search, itinerary build, a slot question) has no
   tokens to stream and sends none.
+  **Granularity differs by node.** `intake_qa` streams token by token; `qa_node`
+  is a compiled subgraph, and `stream_mode="messages"` does not descend into
+  subgraphs, so its whole answer arrives in one frame at the node boundary. Same
+  text, same order, different pacing — a client animating deltas must tolerate
+  both. See `plans/reports/debug-260819-qa-node-not-token-streaming.md`.
+- `reasoning` — the model's own summary of its reasoning, when it produced one.
+  Requires `LLM_USE_RESPONSES_API=true` **and** `LLM_REASONING_SUMMARY=auto`;
+  Chat Completions has no channel for it. Four properties clients must honor:
+  - **Always English**, even in a Vietnamese conversation and even when the
+    prompt instructs otherwise — measured, prompts do not control it. Do not
+    translate it and do not assume a language.
+  - **Often absent.** A model summarizes only when it actually reasons, and a
+    tool-calling step has nothing to summarize. Zero `reasoning` frames is a
+    normal turn, so never gate rendering on its arrival.
+  - **Not part of the reply.** It is not a prefix of `final.reply` and never
+    appears inside `final`.
+  - **Never terminal.** It carries model-written prose, not product copy — mark
+    it as such in the UI rather than presenting it as the assistant speaking.
 - `final` — terminal frame carrying the full `PlannerChatResponse` dict.
 - `error` — terminal frame for turn failures; `detail` is sanitized, no internals.
 
@@ -205,7 +226,8 @@ data: {"detail":"Đã xảy ra lỗi máy chủ. Vui lòng thử lại."}
 - `final.data` is the same dict `POST /planner_chat` serializes for the same
   scenario — no extra/missing/renamed fields.
 - `delta` text is a prefix of the answer `final.reply` carries; `final` is
-  always the authoritative reply.
+  always the authoritative reply. `reasoning` text is NOT — it is a separate
+  channel precisely so this invariant keeps holding.
 - `delta` never carries a node's structured output. Filtering is by producing
   node, not by inspecting the text, so JSON from `extract_patch`/`supervisor`
   and the finished reply from `respond` are excluded structurally.

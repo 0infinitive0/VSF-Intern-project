@@ -63,6 +63,30 @@ def response_text(response: Any) -> str:
     )
 
 
+def reasoning_text(response: Any) -> str:
+    """The model's summary of its own reasoning, empty when there is none.
+
+    Empty is the common case, not a failure: measured 2026-08-18, a model emits a
+    summary only when it actually reasons -- nothing for a simple request, and
+    nothing at all for a tool-calling step, which has no reasoning to summarize.
+
+    Always English, even for a Vietnamese conversation with an explicit
+    instruction to reason in Vietnamese; prompts do not control it.
+
+    Counterpart to `response_text`, reading the same normalized `.content_blocks`
+    but keeping exactly what that one drops.
+    """
+    blocks = getattr(response, "content_blocks", None)
+    if blocks is None:
+        content = getattr(response, "content", response)
+        blocks = content if isinstance(content, list) else []
+    return "".join(
+        block.get("reasoning", "")
+        for block in (blocks or [])
+        if isinstance(block, dict) and block.get("type") == "reasoning"
+    )
+
+
 def _openai_model_is_reasoning_family(model: str) -> bool:
     """Whether an OpenAI model belongs to the reasoning family (gpt-5/o1/o3/o4).
 
@@ -226,6 +250,19 @@ def get_llm(
             ):
                 if is_reasoning_family:
                     kwargs["use_responses_api"] = True
+                    summary = (
+                        os.environ.get("LLM_REASONING_SUMMARY")
+                        or getattr(settings, "llm_reasoning_summary", "off")
+                    ).casefold()
+                    if summary == "auto":
+                        # `reasoning` and `reasoning_effort` are mutually exclusive:
+                        # langchain only promotes the flat kwarg when `reasoning` is
+                        # absent (base.py:4300), so sending both is ambiguous.
+                        kwargs.pop("reasoning_effort", None)
+                        kwargs["reasoning"] = {
+                            "effort": target_reasoning_effort,
+                            "summary": "auto",
+                        }
                 else:
                     logger.info(
                         "LLM_USE_RESPONSES_API is on, but %s is outside the reasoning "

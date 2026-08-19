@@ -1,7 +1,7 @@
 ---
 phase: 4
 title: "Reasoning summary qua dây"
-status: pending
+status: completed
 priority: P2
 effort: "1d"
 dependencies: [2]
@@ -121,12 +121,12 @@ data: {"text": "..."}
 
 ## Success Criteria
 
-- [ ] `event: reasoning` xuất hiện trên dây khi model có suy luận
-- [ ] 0 frame reasoning là trường hợp hợp lệ, có test
-- [ ] `delta` và `final.reply` không bị ô nhiễm
-- [ ] Đúng một frame terminal mỗi stream, không đổi
-- [ ] Hợp đồng ghi rõ: tiếng Anh, có thể vắng, không phải prefix reply
-- [ ] Cờ `off` → hành vi giống Phase 2
+- [x] `event: reasoning` xuất hiện trên dây — 203 frame / 1017 ký tự trên prompt khó
+- [x] 0 frame reasoning là trường hợp hợp lệ, có test — và quan sát được trên prompt dễ
+- [x] `delta` và `final.reply` không bị ô nhiễm — 2 test riêng
+- [x] Đúng một frame terminal mỗi stream, không đổi
+- [x] Hợp đồng ghi rõ 4 thuộc tính client phải tôn trọng
+- [x] Cờ `off` → 0 frame, xác nhận live
 
 ## Risk Assessment
 
@@ -137,3 +137,35 @@ data: {"text": "..."}
 | Client cũ không biết event `reasoning` | Thấp | SSE: event lạ bị bỏ qua. `stream-client.ts:163` có `switch` — nhánh `default` không làm gì |
 | Đặt cả `reasoning` và `reasoning_effort` gây 400 | Trung bình | Bước 2 loại bỏ key rời; test khẳng định chỉ một trong hai có mặt |
 | Suy luận nội bộ lộ thông tin không nên hiện | Trung bình | Chỉ `STREAMING_NODES` phát. `supervisor` (routing JSON) và `extract_patch` bị loại theo cấu trúc, không theo lọc chuỗi |
+
+## Kết quả đo live
+
+`gpt-5-mini` qua graph thật, `LLM_USE_RESPONSES_API=true`:
+
+| prompt | `LLM_REASONING_SUMMARY` | frame reasoning | ký tự |
+|---|---|---|---|
+| "Đà Nẵng tháng 7 thời tiết thế nào?" | `off` | 0 | 0 |
+| "Đà Nẵng tháng 7 thời tiết thế nào?" | `auto` | **0** | 0 |
+| lịch trình 5 ngày, 3 ràng buộc, yêu cầu giải thích cách cân nhắc | `auto` | **203** | 1017 |
+
+Mẫu thật (stream từng token, tiếng Anh dù hội thoại tiếng Việt):
+
+```
+**Planning itinerary considerations**
+
+I know the user's destination, dates, and budget, which is 8 million VN...
+```
+
+**Dòng giữa là dòng quan trọng nhất.** Cùng cấu hình, prompt dễ cho 0 frame. Đây chính
+xác là giới hạn spike 2026-08-18 đã đo và là lý do kiến trúc phase này đặt reasoning làm
+lớp phụ chồng lên dữ kiện graph, không bao giờ là nguồn duy nhất lấp khối UI.
+
+## Một dự đoán sai, đã sửa
+
+Trước khi làm, tôi dự đoán reasoning từ `qa_node` sẽ **không** tới được client vì nó là
+subgraph. **Sai.** Thông điệp đầu ra của subgraph phát ở biên node có mang theo cả block
+reasoning, nên chữ không mất — nó chỉ tới trong **một** frame thay vì tích luỹ dần.
+
+`intake_qa` (node thường) stream nhiều frame; `qa_node` cho một cục. Cùng chữ, cùng thứ
+tự, khác nhịp. Đã khoá bằng `TestReasoningFromQaNodeArrivesInOnePiece` và ghi vào hợp
+đồng — UI của Phase 5 phải chịu được cả hai nhịp.
