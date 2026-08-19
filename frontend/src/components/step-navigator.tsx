@@ -4,9 +4,21 @@ import { navigationTarget } from '../lib/phase-navigation'
 
 type StepKey = 'intake' | 'hotels' | 'workspace'
 
-function stepFromStage(stage: StageView): StepKey {
+/** 'generating' covers TWO very different moments (derive-stage.ts never
+ * tells them apart, both are just "AI is working"): searching for hotels
+ * right after intake (no hotel has ever been found yet this session), and
+ * building the itinerary right after confirming/holding one (hotels were
+ * already found — the guest is long past step 1). Defaulting the latter to
+ * 'intake' used to yank the rail back to "1. Thông tin" the instant a guest
+ * held a room, even though nothing about their trip details changed —
+ * `hotelOptionsAvailable` (the RETAINED per-session list, never the
+ * turn-local one that empties out for this exact turn) is what
+ * distinguishes the two: stay on 'hotels' until the real derived stage
+ * lands on 'workspace' once the itinerary actually exists. */
+function stepFromStage(stage: StageView, hotelOptionsAvailable: boolean): StepKey {
   if (stage === 'hotels') return 'hotels'
   if (stage === 'workspace') return 'workspace'
+  if (stage === 'generating' && hotelOptionsAvailable) return 'hotels'
   return 'intake'
 }
 
@@ -31,7 +43,7 @@ export default function StepNavigator({
   onViewStage: (stage: StageView) => void
 }) {
   const { t } = useTranslation()
-  const current = stepFromStage(stage)
+  const current = stepFromStage(stage, hotelOptionsAvailable)
   const steps: { key: StepKey; n: string; label: string }[] = [
     { key: 'intake', n: '1', label: t('stepDetails') },
     { key: 'hotels', n: '2', label: t('stepHotel') },
