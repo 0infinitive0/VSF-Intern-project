@@ -73,7 +73,7 @@ QA_TOOLS: Sequence[Any] = (
 
 
 class QAState(AgentState):
-    """The react agent's state, widened by exactly two READ-ONLY parent keys.
+    """The react agent's state, widened by READ-ONLY parent keys only.
 
     `create_react_agent`'s default `AgentState` declares only `messages` (plus
     its own `remaining_steps`), and a subgraph node is handed only the parent
@@ -84,7 +84,7 @@ class QAState(AgentState):
     lookup returned `None` on every call and every hotel question came back
     as "no hotel list is currently active" while the cards sat on screen.
 
-    Adding these two does not widen what the node can WRITE: the agent emits
+    Adding these does not widen what the node can WRITE: the agent emits
     `messages` only (its tools all return `Command(update={"messages": ...})`),
     and `CONTRACTS["qa_node"].writes` stays empty. `travel_state`,
     `pending_tasks` and `task_results` remain structurally unreachable.
@@ -92,6 +92,12 @@ class QAState(AgentState):
 
     language: str
     previous_hotel_options: list[dict[str, Any]]
+    # The check-in/check-out the current hotel list was searched for
+    # (`hotel_node.py`). `query_hotel_rooms` needs it to price rooms for the
+    # right dates -- without it the tool could only say a price/availability
+    # question had no answer, which is what made it blind to both in the
+    # first place.
+    previous_hotel_search_context: dict[str, Any]
     # Read so `get_trip_plan` can answer about the itinerary on screen.
     # Reading a plan is not editing one — this node still writes nothing.
     trip_data: dict[str, Any]

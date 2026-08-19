@@ -378,26 +378,34 @@ def test_the_hotel_tool_emits_no_column_names(monkeypatch):
     assert "Liberty" in text and "2097309" in text.replace(",", "").replace(".", "")
 
 
+def _hotel_state(*, language="vi", **extra):
+    state = {
+        "language": language,
+        "previous_hotel_options": [{"rank": 1, "name": "Liberty", "id": "h1"}],
+        "previous_hotel_search_context": {
+            "destination_id": "d1", "start_date": "2026-07-01", "end_date": "2026-07-04", "people": "4",
+        },
+    }
+    state.update(extra)
+    return state
+
+
 def test_a_room_with_no_recorded_capacity_carries_no_null(monkeypatch):
     """The exact shape behind "nhiều phòng có max_guests = null"."""
     from src.agents.tools import query_hotel_rooms as rooms_module
 
     _stub_catalog(monkeypatch)
+    monkeypatch.setattr(
+        rooms_module,
+        "get_hotel_detail",
+        lambda *_a, **_k: {"rooms": [
+            {"name": "Executive Twin", "max_guests": None, "room_size_sqm": 27,
+             "bed_description": "2 giường đơn", "view": None, "room_facilities": ["swimming_pool"],
+             "price": None, "available_room_count": 3},
+        ]},
+    )
 
-    class _Q:
-        def select(self, *_a, **_k): return self
-        def eq(self, *_a, **_k): return self
-        def ilike(self, *_a, **_k): return self
-        def execute(self):
-            return type("R", (), {"data": [
-                {"name": "Executive Twin", "max_guests": None, "room_size_sqm": 27,
-                 "bed_description": "2 giường đơn", "view": None, "room_facilities": ["swimming_pool"]},
-            ]})()
-
-    monkeypatch.setattr(rooms_module, "get_supabase_client", lambda: type("C", (), {"table": lambda *_a: _Q()})())
-    state = {"language": "vi", "previous_hotel_options": [{"rank": 1, "name": "Liberty", "id": "h1"}]}
-
-    text = _tool_text(rooms_module.query_hotel_rooms.invoke({"hotel_identifier": "1", "runtime": _Runtime(state)}))
+    text = _tool_text(rooms_module.query_hotel_rooms.invoke({"hotel_identifier": "1", "runtime": _Runtime(_hotel_state())}))
 
     for leaked in ("max_guests", "room_size_sqm", "bed_description", "room_facilities",
                    "null", "sleeps", "facilities"):
@@ -413,18 +421,136 @@ def test_english_sessions_get_english_keys(monkeypatch):
     from src.agents.tools import query_hotel_rooms as rooms_module
 
     _stub_catalog(monkeypatch)
+    monkeypatch.setattr(
+        rooms_module,
+        "get_hotel_detail",
+        lambda *_a, **_k: {"rooms": [
+            {"name": "Suite", "max_guests": 2, "price": None, "available_room_count": 1},
+        ]},
+    )
 
-    class _Q:
-        def select(self, *_a, **_k): return self
-        def eq(self, *_a, **_k): return self
-        def ilike(self, *_a, **_k): return self
-        def execute(self):
-            return type("R", (), {"data": [{"name": "Suite", "max_guests": 2}]})()
-
-    monkeypatch.setattr(rooms_module, "get_supabase_client", lambda: type("C", (), {"table": lambda *_a: _Q()})())
-    state = {"language": "en", "previous_hotel_options": [{"rank": 1, "name": "Liberty", "id": "h1"}]}
-
-    text = _tool_text(rooms_module.query_hotel_rooms.invoke({"hotel_identifier": "1", "runtime": _Runtime(state)}))
+    text = _tool_text(
+        rooms_module.query_hotel_rooms.invoke(
+            {"hotel_identifier": "1", "runtime": _Runtime(_hotel_state(language="en"))}
+        )
+    )
 
     assert '"sleeps": 2' in text
     assert "max_guests" not in text
+
+
+# ---------------------------------------------------------------------------
+# Price and availability -- Errors #3 from the family-persona QA run.
+#
+# The tool used to select only name/max_guests/room_size_sqm/bed_description/
+# view/room_facilities from the `rooms` table: no price column, no
+# availability column. Asked how much a room cost, it said the data wasn't
+# returned while the UI showed 2.097.309 ₫ for the same room, and it listed
+# sold-out rooms as options with no indication they could not be booked.
+# `get_hotel_detail` is the exact function `GET /hotels/{id}` uses to build
+# those cards, so reusing it makes the two sources structurally the same.
+# ---------------------------------------------------------------------------
+
+
+def test_price_and_availability_reach_the_model(monkeypatch):
+    from src.agents.tools import query_hotel_rooms as rooms_module
+
+    _stub_catalog(monkeypatch)
+    captured = {}
+
+    def _fake_detail(hotel_id, check_in, check_out):
+        captured["args"] = (hotel_id, check_in, check_out)
+        return {"rooms": [
+            {"name": "Suite", "max_guests": 2,
+             "price": {"amount": 2_097_309, "currency": "VND"}, "available_room_count": 6},
+        ]}
+
+    monkeypatch.setattr(rooms_module, "get_hotel_detail", _fake_detail)
+
+    text = _tool_text(rooms_module.query_hotel_rooms.invoke({"hotel_identifier": "1", "runtime": _Runtime(_hotel_state())}))
+
+    assert "2097309" in text.replace(",", "").replace(".", "")
+    assert "Còn 6 phòng" in text
+    # The dates from previous_hotel_search_context reached get_hotel_detail.
+    from datetime import date
+    assert captured["args"] == ("h1", date(2026, 7, 1), date(2026, 7, 4))
+
+
+def test_a_sold_out_room_is_reported_sold_out_not_omitted(monkeypatch):
+    """The bug wasn't just "no price" -- it was recommending rooms nobody
+    could book. available_room_count == 0 must read as sold out, in words."""
+    from src.agents.tools import query_hotel_rooms as rooms_module
+
+    _stub_catalog(monkeypatch)
+    monkeypatch.setattr(
+        rooms_module,
+        "get_hotel_detail",
+        lambda *_a, **_k: {"rooms": [
+            {"name": "Presidential Suite", "price": None, "available_room_count": 0},
+        ]},
+    )
+
+    text = _tool_text(rooms_module.query_hotel_rooms.invoke({"hotel_identifier": "1", "runtime": _Runtime(_hotel_state())}))
+
+    assert "Hết phòng" in text
+    assert "Presidential Suite" in text
+
+
+def test_no_price_row_reads_as_price_on_request_not_a_missing_field(monkeypatch):
+    from src.agents.tools import query_hotel_rooms as rooms_module
+
+    _stub_catalog(monkeypatch)
+    monkeypatch.setattr(
+        rooms_module,
+        "get_hotel_detail",
+        lambda *_a, **_k: {"rooms": [{"name": "Villa", "price": None, "available_room_count": 2}]},
+    )
+
+    text = _tool_text(rooms_module.query_hotel_rooms.invoke({"hotel_identifier": "1", "runtime": _Runtime(_hotel_state())}))
+
+    assert "Giá theo yêu cầu" in text
+
+
+def test_missing_search_dates_still_returns_rooms_without_crashing(monkeypatch):
+    """A session old enough to predate this fix, or a turn where the search
+    context genuinely never landed -- get_hotel_detail must be called with
+    (None, None) rather than the tool raising."""
+    from src.agents.tools import query_hotel_rooms as rooms_module
+
+    _stub_catalog(monkeypatch)
+    captured = {}
+
+    def _fake_detail(hotel_id, check_in, check_out):
+        captured["args"] = (hotel_id, check_in, check_out)
+        return {"rooms": [{"name": "Suite", "price": None, "available_room_count": 1}]}
+
+    monkeypatch.setattr(rooms_module, "get_hotel_detail", _fake_detail)
+    state = {"language": "vi", "previous_hotel_options": [{"rank": 1, "name": "Liberty", "id": "h1"}]}
+
+    text = _tool_text(rooms_module.query_hotel_rooms.invoke({"hotel_identifier": "1", "runtime": _Runtime(state)}))
+
+    assert captured["args"] == ("h1", None, None)
+    assert "Suite" in text
+
+
+def test_dates_fall_back_to_the_built_itinerary_when_search_context_is_stale(monkeypatch):
+    from datetime import date
+    from src.agents.tools import query_hotel_rooms as rooms_module
+
+    _stub_catalog(monkeypatch)
+    captured = {}
+
+    def _fake_detail(hotel_id, check_in, check_out):
+        captured["args"] = (hotel_id, check_in, check_out)
+        return {"rooms": [{"name": "Suite", "price": None, "available_room_count": 1}]}
+
+    monkeypatch.setattr(rooms_module, "get_hotel_detail", _fake_detail)
+    state = {
+        "language": "vi",
+        "previous_hotel_options": [{"rank": 1, "name": "Liberty", "id": "h1"}],
+        "trip_data": {"itineraries": [{"start_date": "2026-08-01", "end_date": "2026-08-05"}]},
+    }
+
+    rooms_module.query_hotel_rooms.invoke({"hotel_identifier": "1", "runtime": _Runtime(state)})
+
+    assert captured["args"] == ("h1", date(2026, 8, 1), date(2026, 8, 5))

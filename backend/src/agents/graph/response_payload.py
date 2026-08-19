@@ -88,6 +88,37 @@ def hotel_options_from_task_results(state: TravelGraphState) -> list[dict[str, A
     return [option.model_dump() for option in to_hotel_options_payload(hotel_search_result)]
 
 
+def durable_hotel_options(state: TravelGraphState) -> list[dict[str, Any]]:
+    """The hotel cards the user has actually seen, independent of what the
+    LAST recorded action happened to be.
+
+    `hotel_options_from_task_results` answers "what did the last worker just
+    do" -- correct for a live turn's own reply, where an empty list on a
+    qa_node/itinerary turn is the truth about THAT turn (the frontend has its
+    own retention layer for showing the previous cards anyway,
+    `App.tsx`'s `hotelOptionsBySession`). It is the wrong question for a
+    fresh page load: there IS no "last turn" from the new tab's point of
+    view, and `task_results[-1]` is whatever the session's last action
+    happened to be days ago -- an itinerary build, a question, a hotel pick
+    -- almost never a search. Restoring against it meant a reload silently
+    dropped the hotel list and threw the step navigator back to "Bước 1"
+    even though a trip was fully in progress.
+
+    `previous_hotel_options` is `hotel_node`'s own durable record (deliberately
+    outliving `load_context`'s per-turn reset, same as the Q&A tools' source
+    -- see `agents/tools/shown_hotels.py`) and is exactly the list a
+    continuously-running frontend session would have retained. Wrapped
+    through `to_hotel_options_payload` so the shape matches the live path
+    (index numbering, computed `display_amenities`) exactly; falls back to
+    the task-results view only for a session old enough to predate this
+    field, or one that genuinely never completed a search.
+    """
+    previous = state.get("previous_hotel_options") or []
+    if previous:
+        return [option.model_dump() for option in to_hotel_options_payload({"options": previous})]
+    return hotel_options_from_task_results(state)
+
+
 def suggested_places_from_task_results(state: TravelGraphState) -> list[dict[str, Any]]:
     """The places the last worker turn wants the map to point at.
 
