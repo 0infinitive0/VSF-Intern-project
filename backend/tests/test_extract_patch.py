@@ -905,3 +905,106 @@ def test_an_unrelated_amenity_is_never_dropped_by_the_rescue(monkeypatch):
         {"path": "hotel_preferences.amenities", "operation": "append", "value": "gym"},
         {"path": "hotel_preferences.amenities", "operation": "append", "value": "sea_view"},
     ]
+
+
+# --- Bare-agreement context ---------------------------------------------------
+#
+# A message that states nothing carries its meaning entirely in the offer it
+# accepts, and that offer is in the ASSISTANT's previous message. Without it,
+# "có nha" extracted to `general_question` with an empty patch and routed to
+# the read-only worker, which cannot search hotels — it improvised a question
+# about districts the destination data has no rows for, and re-asked forever.
+# These tests assert the previous reply reaches (or is withheld from) the
+# prompt; whether a real model then reads the offer correctly is Phase 10's
+# accuracy eval, as with every other case in this file.
+
+_ANSWERED_INTAKE = {
+    "destination": {"presence": "set", "value": "Đà Nẵng"},
+    "people": {"presence": "set", "value": 2},
+    "dates.start": {"presence": "set", "value": _FUTURE_START},
+    "dates.end": {"presence": "set", "value": _FUTURE_END},
+    "budget.target": {"presence": "n/a", "value": None},
+}
+
+_POOL_OFFER = "Muốn mình tìm thêm khách sạn khác ở Đà Nẵng mà có hồ bơi không?"
+
+
+def _state_with_reply(message: str, reply: str, *, travel_state: dict | None = _ANSWERED_INTAKE):
+    state = _state(message, travel_state=travel_state)
+    state["messages"] = [AIMessage(content=reply), HumanMessage(content=message)]
+    return state
+
+
+def test_bare_agreement_carries_the_offer_it_accepts_into_the_prompt(monkeypatch):
+    llm = _patch(
+        monkeypatch,
+        _FakeLLM(
+            [
+                _payload(
+                    "hotel_search",
+                    [{"path": "hotel_preferences.amenities", "operation": "append", "value": "hồ bơi"}],
+                )
+            ]
+        ),
+    )
+
+    result = extract_patch(_state_with_reply("có nha", _POOL_OFFER))
+
+    assert _POOL_OFFER in llm.prompts[0]
+    # The whole point: this turn now reaches a worker that can search, instead
+    # of falling to the read-only one with an empty patch.
+    assert result["intent"] == "hotel_search"
+    assert result["patch"] == [
+        {"path": "hotel_preferences.amenities", "operation": "append", "value": "hồ bơi"}
+    ]
+
+
+def test_a_substantive_message_never_sees_the_previous_reply(monkeypatch):
+    """The length gate is what keeps this from widening the single-message
+    design: anything long enough to stand on its own extracts from its own
+    words, byte-identically to before."""
+    llm = _patch(monkeypatch, _FakeLLM([_payload("general_question", [])]))
+
+    extract_patch(
+        _state_with_reply(
+            "cho mình hỏi khách sạn số 2 có bãi đỗ xe riêng cho khách không vậy?", _POOL_OFFER
+        )
+    )
+
+    assert _POOL_OFFER not in llm.prompts[0]
+
+
+def test_an_open_slot_question_owns_the_short_reply_instead(monkeypatch):
+    """`pending_suffix` already explains a short reply while a slot question
+    is open. Both hints firing on one "2" would have them competing to
+    explain the same word."""
+    llm = _patch(monkeypatch, _FakeLLM([_payload("update_trip", [{"path": "people", "operation": "set", "value": 2}])]))
+
+    extract_patch(
+        _state_with_reply(
+            "2",
+            "Chuyến đi này có mấy người vậy bạn?",
+            travel_state={"destination": {"presence": "set", "value": "Đà Nẵng"}},
+        )
+    )
+
+    assert "asked the user for `people`" in llm.prompts[0]
+    assert "The assistant's previous message was" not in llm.prompts[0]
+
+
+def test_a_long_previous_reply_is_trimmed_to_its_tail_where_the_offer_is(monkeypatch):
+    llm = _patch(monkeypatch, _FakeLLM([_payload("hotel_search", [])]))
+    reply = ("Ngày 1: " + "đi chơi biển rồi ăn tối. " * 80) + _POOL_OFFER
+
+    extract_patch(_state_with_reply("ok", reply))
+
+    assert _POOL_OFFER in llm.prompts[0]
+    assert "Ngày 1:" not in llm.prompts[0]
+
+
+def test_the_first_turn_of_a_thread_has_no_previous_reply_to_carry(monkeypatch):
+    llm = _patch(monkeypatch, _FakeLLM([_payload("general_question", [])]))
+
+    extract_patch(_state("ok"))
+
+    assert "The assistant's previous message was" not in llm.prompts[0]

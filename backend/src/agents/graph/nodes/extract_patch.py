@@ -29,10 +29,18 @@ them itself before a change is handed off:
   / `.day_rhythm` (`trip_intake.py`'s vocabulary, kept as the grounding
   authority per this phase's plan)
 
-The prompt sees exactly one message, never the transcript. The only
-cross-turn context it gets is the pending slot names (`_pending_slots`),
-which is what makes a short reply ("Hồ Chí Minh", "1", "20/7") interpretable
-without paying for unbounded history on every turn.
+The prompt sees exactly one message, never the transcript. Its cross-turn
+context is the pending slot names (`_pending_slots`), which is what makes a
+short reply ("Hồ Chí Minh", "1", "20/7") interpretable without paying for
+unbounded history on every turn -- plus, for a message too short to mean
+anything on its own, the previous reply alone (`_acknowledgement_context`).
+That second one exists because a bare agreement carries its meaning entirely
+in the offer it accepts: "có nha" answering "muốn mình tìm khách sạn có hồ
+bơi không?" states nothing, extracted to `general_question` with an empty
+patch, and routed to the read-only worker -- which cannot search hotels, so
+it improvised a question about districts the destination data has no rows
+for, and re-asked it forever. Both gates there keep every substantive
+message extracting from its own words exactly as before.
 
 Day-scope resolution ("ngày 1", "hôm đầu", "ngày cuối") is deterministic,
 not model-decided: `_resolve_day_scope`/`_rewrite_day_scope` force any
@@ -109,6 +117,13 @@ _OPERATIONS = frozenset({"set", "unset", "append", "remove"})
 # non-string value that `in` can't even hash, falls open to "".
 _PATCH_REASONS = frozenset({"missing_value", "no_change"})
 _MAX_DAY_NUMBER_FALLBACK = 90  # mirrors travel_state.py's own pre-dates ceiling
+# Longest a message can be and still be treated as a bare agreement worth
+# reading against the previous reply ("có nha", "ok tìm giúp mình"). Anything
+# longer states enough to extract from on its own.
+_ACKNOWLEDGEMENT_CHAR_LIMIT = 40
+# Bounds the previous reply pasted into the prompt -- a reply can be a whole
+# itinerary listing, and this prompt is otherwise constant-size.
+_PREVIOUS_REPLY_CHAR_LIMIT = 600
 
 # Theme-shaped paths eligible for the deterministic day-scope rewrite --
 # everything else (budget, destination, amenities, ...) passes through
@@ -158,6 +173,42 @@ def _last_human_message(state: TravelGraphState) -> str:
         if getattr(message, "type", None) == "human":
             return str(getattr(message, "content", "") or "")
     return ""
+
+
+def _previous_assistant_reply(state: TravelGraphState) -> str:
+    """The reply the user is answering, tail-trimmed, or "" when there is none.
+
+    `respond` appends every reply it sends back to `messages` as an
+    `AIMessage`, so the newest AI message is what the user actually read
+    before typing this turn's message. The TAIL is what's kept when it is
+    long: an offer is made at the end of a reply ("... Muốn mình tìm thêm
+    khách sạn có hồ bơi không?"), so trimming the front keeps the part a
+    bare "có nha" is agreeing to while bounding a reply that could otherwise
+    be a whole itinerary listing.
+    """
+    for message in reversed(state.get("messages") or []):
+        if getattr(message, "type", None) != "ai":
+            continue
+        reply = str(getattr(message, "content", "") or "").strip()
+        return reply[-_PREVIOUS_REPLY_CHAR_LIMIT:] if len(reply) > _PREVIOUS_REPLY_CHAR_LIMIT else reply
+    return ""
+
+
+def _acknowledgement_context(state: TravelGraphState, message: str, pending_slots: tuple[str, ...]) -> str:
+    """The previous reply, but only for the turn that cannot be read without
+    it: a message short enough to be a bare agreement, with no slot question
+    open.
+
+    Both gates keep this from widening the prompt's single-message design
+    (see the module docstring) any further than the bug requires. The length
+    gate leaves every substantive message extracting from its own words
+    alone, exactly as before. The `pending_slots` gate hands short replies to
+    `pending_suffix` instead whenever a slot question is open, so the two
+    hints never compete to explain the same "1" or "Hồ Chí Minh".
+    """
+    if pending_slots or len(message.strip()) > _ACKNOWLEDGEMENT_CHAR_LIMIT:
+        return ""
+    return _previous_assistant_reply(state)
 
 
 def _pending_slots(travel_state: TravelState) -> tuple[str, ...]:
@@ -529,6 +580,7 @@ def _extract_with_llm(
     destination_names: Sequence[str | DestinationOption],
     *,
     pending_slots: tuple[str, ...] = (),
+    previous_reply: str = "",
     llm: Any | None = None,
 ) -> tuple[str, list[dict[str, Any]], str, bool]:
     """Ask the configured model once, retrying exactly once for invalid
@@ -563,6 +615,7 @@ def _extract_with_llm(
                 pace_labels=", ".join(_PACE_LABELS),
                 day_rhythm_labels=", ".join(_DAY_RHYTHM_LABELS),
                 pending_slots=pending_slots,
+                previous_reply=previous_reply,
                 repair=str(last_error) if attempt else None,
             )
             response = model.invoke(prompt)
@@ -592,8 +645,13 @@ def extract_patch(state: TravelGraphState) -> dict[str, Any]:
     travel_state = TravelState.from_dict(state.get("travel_state"))
     destination_names = _get_destination_names()
 
+    pending_slots = _pending_slots(travel_state)
     intent, raw_changes, reason, extraction_failed = _extract_with_llm(
-        message, travel_state, destination_names, pending_slots=_pending_slots(travel_state)
+        message,
+        travel_state,
+        destination_names,
+        pending_slots=pending_slots,
+        previous_reply=_acknowledgement_context(state, message, pending_slots),
     )
 
     # This message's own day mention, falling back to the day

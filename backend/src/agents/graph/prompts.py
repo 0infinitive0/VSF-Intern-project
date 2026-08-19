@@ -99,7 +99,7 @@ Allowed change paths, one change per fact actually stated (omit anything not men
 
 Already confirmed this conversation: {known_facts}
 Destinations this system supports, for reference only (do not invent one not on this list, but always copy what the user actually said into `destination` and let validation reject an unsupported one): {destination_choices}
-Today's date in the planning timezone is {today}.{pending_slots}{repair}
+Today's date in the planning timezone is {today}.{pending_slots}{previous_reply}{repair}
 
 Message: "{message}"
 """
@@ -116,6 +116,7 @@ def build_extract_patch_prompt(
     pace_labels: str,
     day_rhythm_labels: str,
     pending_slots: tuple[str, ...] = (),
+    previous_reply: str = "",
     repair: str | None = None,
 ) -> str:
     # The one piece of conversational context a short reply needs. Anchoring
@@ -150,6 +151,32 @@ def build_extract_patch_prompt(
                 f" If it gives exactly one value and does not say which of {quoted} it means, treat it as "
                 f"`{pending_slots[0]}`."
             )
+    # A bare agreement ("có nha", "ừ", "ok") carries its meaning entirely in
+    # the offer it accepts, and that offer is in the ASSISTANT's previous
+    # message -- so without this, the turn extracts nothing, lands as
+    # `general_question`, and routes to the read-only worker, which cannot
+    # search hotels and improvises a question instead (reported: agreeing to
+    # "tìm thêm khách sạn có hồ bơi?" was answered by asking which district).
+    #
+    # Scoped as narrowly as the fix allows, because pasting an earlier turn
+    # into this prompt is exactly what the single-message design avoids (see
+    # this module's header): the caller passes it only for a message short
+    # enough to be an acknowledgement and only when no slot question is open
+    # (`pending_suffix` already owns short replies then), and the wording
+    # below forbids extracting from it in every other case.
+    previous_reply_suffix = ""
+    if previous_reply:
+        previous_reply_suffix = (
+            f'\nThe assistant\'s previous message was: "{previous_reply}"\n'
+            f"Use it ONLY to interpret a message that states nothing itself and merely agrees, accepts, or "
+            f'acknowledges ("có", "có nha", "ừ", "ok", "vâng", "được", "yes", "sure"). When the assistant '
+            f"OFFERED to do something specific and this message simply agrees to it, extract the intent and "
+            f"changes that OFFER describes, exactly as if the user had asked for it in their own words -- an "
+            f'offer to search for hotels with an amenity becomes intent "hotel_search" with that amenity '
+            f"appended to `hotel_preferences.amenities`. If this message says anything of its own, ignore the "
+            f"assistant's message entirely: facts already in it are confirmed, not new, and must never be "
+            f"re-emitted as changes."
+        )
     repair_suffix = f"\nPrevious response was rejected: {repair}. Return corrected JSON only." if repair else ""
     return _EXTRACT_PATCH_SYSTEM_PROMPT.format(
         preference_labels=preference_labels,
@@ -160,6 +187,7 @@ def build_extract_patch_prompt(
         destination_choices=destination_choices or "unknown",
         today=today,
         pending_slots=pending_suffix,
+        previous_reply=previous_reply_suffix,
         repair=repair_suffix,
         message=message,
     )
