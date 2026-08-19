@@ -138,14 +138,12 @@ export default function AppShell({
   const { closeFocus } = focusMode
   const focused = focusMode.focus !== null
 
-  // A stage change (e.g. picking a hotel moves hotels → generating → workspace)
-  // must not carry a focus panel from the previous stage along with it — the
-  // panel it pointed at (a hotel card) no longer exists in the new stage's
-  // tree, which would otherwise leave chat/map permanently collapsed with no
-  // way back (review finding H3). `closeFocus` is a stable useCallback ref.
+  // A stage change or chat session switch must not carry a focus panel
+  // from the previous stage/session along with it — the panel it pointed
+  // at no longer exists in the new context. `closeFocus` is a stable useCallback ref.
   useEffect(() => {
     closeFocus()
-  }, [stage, closeFocus])
+  }, [stage, activeSessionId, closeFocus])
   const viewportWidth = useViewportWidth()
   const isDesktop = viewportWidth >= DESKTOP_BREAKPOINT_PX
   const isLgUp = viewportWidth >= SIDEBAR_PUSH_BREAKPOINT_PX

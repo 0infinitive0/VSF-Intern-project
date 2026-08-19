@@ -528,7 +528,7 @@ export default function MapView({ variant, theme, markers, segments, hoveredId, 
   const { containerRef, mapRef, status, styleVersion, tokenMissing, retry } = useMapboxMap(theme, styleKind)
   const markerRegistry = useRef(new Map<string, { marker: mapboxgl.Marker; spec: MapMarkerSpec }>())
   const badgeRegistry = useRef<mapboxgl.Marker[]>([])
-  const hotelCameraSet = useRef(false)
+  const prevPointsKey = useRef<string>('')
   const onHoverRef = useRef(onHoverChange); onHoverRef.current = onHoverChange
   const onClickRef = useRef(onMarkerClick); onClickRef.current = onMarkerClick
   const markerKey = useMemo(() => markers.map((marker) => JSON.stringify(marker)).join('|'), [markers])
@@ -584,15 +584,12 @@ export default function MapView({ variant, theme, markers, segments, hoveredId, 
       const marker = new mapboxgl.Marker({ element: root, anchor: spec.kind === 'hotel' ? 'bottom' : 'center', offset }).setLngLat(toLngLat(point)).addTo(map)
       markerRegistry.current.set(spec.syncId, { marker, spec })
     }
-    // Frame the real hotel coordinates once on first load (not a hardcoded
-    // Đà Nẵng fallback — that put the camera somewhere with zero hotels for
-    // any other destination). Only "consumes" the one-time flag once there
-    // are actual points to fit, so an empty first render (options still
-    // loading) doesn't lock the camera out of framing the real markers once
-    // they arrive.
-    if (variant === 'hotels' && !hotelCameraSet.current && points.length > 0) {
+    // Frame the hotel coordinates whenever points change (e.g. switching chat
+    // sessions or arriving on stage 2 for a different destination).
+    const currentPointsKey = points.map((p) => `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`).join('|')
+    if (variant === 'hotels' && points.length > 0 && currentPointsKey !== prevPointsKey.current) {
+      prevPointsKey.current = currentPointsKey
       fitWorkspace(map, points)
-      hotelCameraSet.current = true
     }
     if (variant === 'workspace') fitWorkspace(map, points)
   }, [markerKey, markers, status, variant, mapRef])

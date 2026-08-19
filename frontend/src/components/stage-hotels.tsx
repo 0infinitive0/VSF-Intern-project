@@ -111,8 +111,12 @@ export default function StageHotels({
   // so nothing else lags behind the real focus state.
   const [lastFocusedId, setLastFocusedId] = useState<string | null>(null)
   useEffect(() => {
-    if (focusedId != null) setLastFocusedId(focusedId)
-  }, [focusedId])
+    if (focusedId != null) {
+      setLastFocusedId(focusedId)
+    } else if (lastFocusedId != null && !hotels.some((h) => h.id === lastFocusedId)) {
+      setLastFocusedId(null)
+    }
+  }, [focusedId, hotels, lastFocusedId])
   const selectedHotel = useMemo(() => {
     if (selectedIndex != null) {
       const found = hotels.find((h) => h.index === selectedIndex)
