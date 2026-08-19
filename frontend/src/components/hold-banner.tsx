@@ -19,12 +19,23 @@ function mmss(ms: number): string {
  * The countdown is a plain 1s re-render off `roomHold.holdLeftMs`, which
  * itself ticks off the group's real server `expires_at` (use-room-hold.ts) —
  * never a client-invented duration.
+ *
+ * `roomHold` is a single GLOBAL hold, not scoped per chat session (see
+ * use-room-hold.ts's module doc comment) — `holdBelongsToSession` is what
+ * keeps this banner honest about that: without it, switching the live hold
+ * to a different hotel from a DIFFERENT session (hotel-detail-panel.tsx's
+ * heldElsewhere -> switchHold flow) would leave THIS session's workspace
+ * still showing the countdown and an enabled "Đặt phòng" button for a hold
+ * it no longer owns — a real guest-facing bug (checking out for the wrong
+ * hotel) this early-return exists specifically to prevent.
  */
 export default function HoldBanner({
   roomHold,
+  holdBelongsToSession,
   onOpenBooking,
 }: {
   roomHold: RoomHoldApi
+  holdBelongsToSession: boolean
   /** Opens booking-modal.tsx — it derives its own step from roomHold.status
    * (BOOKED always lands on the done screen), so this takes no arguments. */
   onOpenBooking: () => void
@@ -39,6 +50,8 @@ export default function HoldBanner({
     const id = setInterval(() => forceTick((n) => n + 1), 1000)
     return () => clearInterval(id)
   }, [roomHold.status])
+
+  if (!holdBelongsToSession) return null
 
   if (roomHold.status === 'HELD') {
     const warn = roomHold.holdLeftMs <= 5 * 60 * 1000

@@ -197,6 +197,17 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   }, [explicitSelectedHotelIndex, state.tripPlan?.hotel, roomHold.heldHotelId, retainedHotelOptions])
 
   const [bookingModalOpen, setBookingModalOpen] = useState(false)
+  // roomHold is a single GLOBAL hold, not scoped per chat session (see
+  // use-room-hold.ts's module doc comment) — this is what keeps every
+  // hold-facing UI honest about whether the CURRENTLY ACTIVE session is
+  // actually the one that owns it. Without this check, switching the live
+  // hold to a different hotel from a different session (hotel-detail-
+  // panel.tsx's heldElsewhere -> switchHold flow) would leave the
+  // now-unrelated session's workspace still showing a countdown and an
+  // enabled "Đặt phòng" button for a hold it no longer owns. Same
+  // heldSessionId comparison handleDeleteSession already makes below (via
+  // shouldReleaseHoldForDeletedSession) — this is the display-side twin.
+  const holdBelongsToSession = roomHold.heldSessionId === state.sessionId
   const heldHotel =
     retainedHotelOptions.find((h) => h.id === roomHold.heldHotelId) ?? null
   const bookingHotelName = heldHotel?.name ?? state.tripPlan?.hotel?.name ?? ''
@@ -450,12 +461,14 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
         restoringSessionId={restoringSessionId}
         onOpenAuthPanel={onOpenAuthPanel}
         roomHold={roomHold}
+        holdBelongsToSession={holdBelongsToSession}
         onOpenBooking={() => setBookingModalOpen(true)}
       />
       <BookingModal
         open={bookingModalOpen}
         onClose={() => setBookingModalOpen(false)}
         roomHold={roomHold}
+        holdBelongsToSession={holdBelongsToSession}
         hotelName={bookingHotelName}
         hotelArea={bookingHotelArea}
         checkInDate={state.intake?.start_date ?? null}

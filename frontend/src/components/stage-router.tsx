@@ -46,6 +46,7 @@ export default function StageRouter({
   onEditIntakeField,
   theme,
   roomHold,
+  holdBelongsToSession,
   onOpenBooking,
 }: {
   stage: StageView
@@ -63,6 +64,11 @@ export default function StageRouter({
   /** Real room hold (use-room-hold.ts) — hotels stage uses it for the cart +
    * "Giữ phòng" CTA, workspace stage uses it for the header hold banner. */
   roomHold: RoomHoldApi
+  /** Whether roomHold's current hold was created by `state.sessionId` (App.tsx)
+   * — only the workspace stage's HoldBanner needs this (see app-shell.tsx's
+   * doc comment on the same prop); the hotels stage's own heldHere/
+   * heldElsewhere logic already scopes correctly by hotel, not session. */
+  holdBelongsToSession: boolean
   onOpenBooking: () => void
 }): ReactNode {
   if (stage === 'intake') {
@@ -95,6 +101,7 @@ export default function StageRouter({
       focusMode={focusMode}
       theme={theme}
       roomHold={roomHold}
+      holdBelongsToSession={holdBelongsToSession}
       onOpenBooking={onOpenBooking}
     />
   )

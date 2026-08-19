@@ -76,6 +76,7 @@ export default function BookingModal({
   open,
   onClose,
   roomHold,
+  holdBelongsToSession,
   hotelName,
   hotelArea,
   checkInDate,
@@ -85,6 +86,17 @@ export default function BookingModal({
   open: boolean
   onClose: () => void
   roomHold: RoomHoldApi
+  /** Whether `roomHold`'s current hold/booking was created by the CURRENTLY
+   * ACTIVE chat session (App.tsx: `roomHold.heldSessionId === state.
+   * sessionId`) — roomHold is a single global hold, not scoped per session
+   * (see use-room-hold.ts's module doc comment), so this is the only thing
+   * standing between this modal and paying for/viewing the wrong hotel's
+   * booking. hold-banner.tsx's own copy of this check already keeps its
+   * "Đặt phòng" button from ever opening this modal for a hold that isn't
+   * the active session's — the effect below is the narrower safety net for
+   * the rarer case where the modal was ALREADY open when the hold moved to
+   * a different session out from under it. */
+  holdBelongsToSession: boolean
   hotelName: string
   hotelArea?: string | null
   checkInDate: string | null
@@ -114,6 +126,10 @@ export default function BookingModal({
     const timer = setTimeout(() => setRender(false), CLOSE_TRANSITION_MS)
     return () => clearTimeout(timer)
   }, [open])
+
+  useEffect(() => {
+    if (open && !holdBelongsToSession) onClose()
+  }, [open, holdBelongsToSession, onClose])
 
   const [step, setStep] = useState<'guest' | 'pay'>('guest')
   const [guestTouched, setGuestTouched] = useState(false)

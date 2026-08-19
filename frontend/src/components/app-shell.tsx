@@ -83,6 +83,7 @@ export default function AppShell({
   restoringSessionId,
   onOpenAuthPanel,
   roomHold,
+  holdBelongsToSession,
   onOpenBooking,
 }: {
   state: ChatState
@@ -122,6 +123,14 @@ export default function AppShell({
   /** Real room hold (use-room-hold.ts), owned by App.tsx and threaded through
    * to StageRouter — see its own doc comment for why. */
   roomHold: RoomHoldApi
+  /** True iff `roomHold`'s current hold was created by THIS chat session
+   * (App.tsx: `roomHold.heldSessionId === state.sessionId`) — roomHold is a
+   * single global hold, not scoped per session, so a DIFFERENT session's
+   * workspace can otherwise end up showing this one's countdown/"Đặt phòng"
+   * button after the hold has moved on (e.g. via hotel-detail-panel.tsx's
+   * switchHold-to-another-hotel flow). Threaded through to
+   * hold-banner.tsx, the only place that actually renders hold-status UI. */
+  holdBelongsToSession: boolean
   onOpenBooking: () => void
 }) {
   const { theme, toggleTheme } = useTheme()
@@ -296,6 +305,7 @@ export default function AppShell({
             onEditIntakeField={onEditIntakeField}
             theme={theme}
             roomHold={roomHold}
+            holdBelongsToSession={holdBelongsToSession}
             onOpenBooking={onOpenBooking}
           />
         </div>
