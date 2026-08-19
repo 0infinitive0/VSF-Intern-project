@@ -49,3 +49,17 @@ PHASE_KEY_BY_NODE: dict[str, str] = {
 #: subgraph reports `metadata["langgraph_node"] == "qa_node"` (the parent node
 #: name, not an inner one), so matching on these names is enough.
 STREAMING_NODES: frozenset[str] = frozenset({"qa_node", "intake_qa"})
+
+#: For a member of `STREAMING_NODES` that is a compiled subgraph, the ONE inner
+#: node whose tokens are the reply.
+#:
+#: `qa_node` is a `create_react_agent` subgraph, so its tokens only become
+#: visible when the drain streams with `subgraphs=True`. That also exposes every
+#: other node inside it — and measured 2026-08-19, the `tools` node emits a
+#: `ToolMessage` whose content is real text (a tool's error string, in the run
+#: that was recorded). Allowing a whole subgraph by name would put that on the
+#: user's screen, so membership is by (subgraph, inner node), not by subgraph.
+#:
+#: A plain node has no entry here: it streams under the empty namespace and is
+#: matched by `STREAMING_NODES` alone.
+SUBGRAPH_STREAMING_NODE: dict[str, str] = {"qa_node": "agent"}

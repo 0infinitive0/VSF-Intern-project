@@ -198,11 +198,10 @@ data: {"detail":"Đã xảy ra lỗi máy chủ. Vui lòng thử lại."}
   `intake_qa`). Clients must NOT assume every turn has deltas — a turn whose
   work is deterministic (hotel search, itinerary build, a slot question) has no
   tokens to stream and sends none.
-  **Granularity differs by node.** `intake_qa` streams token by token; `qa_node`
-  is a compiled subgraph, and `stream_mode="messages"` does not descend into
-  subgraphs, so its whole answer arrives in one frame at the node boundary. Same
-  text, same order, different pacing — a client animating deltas must tolerate
-  both. See `plans/reports/debug-260819-qa-node-not-token-streaming.md`.
+  Both stream token by token. `qa_node` is a compiled subgraph, so the drain
+  streams with `subgraphs=True` to reach its tokens at all; only the agent node
+  inside it is forwarded, never the `tools` node beside it, whose `ToolMessage`
+  content is tool output rather than the reply.
 - `reasoning` — the model's own summary of its reasoning, when it produced one.
   Requires `LLM_USE_RESPONSES_API=true` **and** `LLM_REASONING_SUMMARY=auto`;
   Chat Completions has no channel for it. Four properties clients must honor:

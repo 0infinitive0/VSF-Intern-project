@@ -511,36 +511,56 @@ class TestBlockingPathUnchanged:
         assert response.reply
 
 
-class TestReasoningFromQaNodeArrivesInOnePiece:
-    """`qa_node` delivers its reasoning, but all at once rather than as it thinks.
+class TestQaNodeStreamsTokenByToken:
+    """`qa_node` is a compiled subgraph, so its tokens only surface when the
+    drain streams with `subgraphs=True`.
 
-    It is the one node added as a compiled subgraph (`graph.py:119`), and
-    `stream_mode="messages"` does not descend into subgraphs. What reaches the
-    drain is the subgraph's single complete `AIMessage` at the node boundary —
-    which does carry the reasoning blocks, so the text is not lost; it simply
-    appears in one frame instead of accumulating.
-
-    `intake_qa`, a plain node, streams the same content across many frames.
-    Diagnosis: `plans/reports/debug-260819-qa-node-not-token-streaming.md`.
-
-    A UI that renders reasoning incrementally will look different between these
-    two nodes, and that difference is structural, not cosmetic.
+    Before that, the drain saw a single finished `AIMessage` at the node
+    boundary: one `delta` frame carrying the whole answer, for the node that
+    writes most of what a user reads. Nothing failed — `intake_qa`, a plain
+    node, streamed normally — so only a frame COUNT catches it. Asserting that
+    deltas merely exist is what let it survive.
     """
 
-    def test_qa_node_reasoning_arrives_as_a_single_frame(self, streaming_turn):
+    def test_the_answer_arrives_across_many_frames_not_one(self, streaming_turn):
         emitter = streaming_turn(
             message="khách sạn này có hồ bơi không?",
-            thread="stream-qa-reasoning-bulk",
+            thread="stream-qa-token-by-token",
             travel_state=_travel_state(with_budget=True),
             force_worker="qa_node",
             qa_llm=_fake_block_llm(
-                [
-                    {"type": "reasoning", "reasoning": "Looking up the amenity list"},
-                    {"type": "text", "text": "Có hồ bơi ngoài trời."},
-                ]
+                [{"type": "text", "text": tok} for tok in ["Có ", "hồ ", "bơi ", "ngoài ", "trời."]]
             ),
         )
 
-        frames = emitter.of("reasoning")
-        assert [f["text"] for f in frames] == ["Looking up the amenity list"]
-        assert len(frames) == 1, "one frame is the subgraph limitation; more means it was fixed"
+        assert len(emitter.of("delta")) > 1, "qa_node is back to one bulk frame"
+        assert emitter.delta_text == "Có hồ bơi ngoài trời."
+
+
+class TestToolOutputNeverStreams:
+    """The `tools` node lives inside qa_node's subgraph, and `subgraphs=True`
+    exposes it alongside the agent.
+
+    Its `ToolMessage` content is real text — measured 2026-08-19, a tool error
+    string — so a filter that allowed the subgraph by name would have handed
+    that to the user. Membership is by (subgraph, inner node) for this reason.
+    """
+
+    def test_a_tool_message_is_not_part_of_the_reply(self):
+        from src.api.routes import _may_stream
+
+        assert _may_stream(("qa_node:abc-123",), "agent") is True
+        assert _may_stream(("qa_node:abc-123",), "tools") is False
+
+    def test_a_subgraph_the_whitelist_does_not_name_streams_nothing(self):
+        from src.api.routes import _may_stream
+
+        assert _may_stream(("itinerary_node:xyz",), "agent") is False
+
+    def test_a_plain_node_is_matched_by_name_alone(self):
+        from src.api.routes import _may_stream
+
+        assert _may_stream((), "intake_qa") is True
+        assert _may_stream(None, "respond") is False
+
+

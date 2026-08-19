@@ -42,7 +42,11 @@ from langgraph.types import Command
 
 from src.agents.graph.nodes.load_context import load_context
 from src.agents.graph.phase_facts import phase_facts
-from src.agents.graph.phase_keys import PHASE_KEY_BY_NODE, STREAMING_NODES
+from src.agents.graph.phase_keys import (
+    PHASE_KEY_BY_NODE,
+    STREAMING_NODES,
+    SUBGRAPH_STREAMING_NODE,
+)
 from src.agents.graph.response_payload import (
     derive_stage,
     hotel_options_from_task_results,
@@ -672,6 +676,25 @@ def _fresh_turn_input(session_id: str, message: str, language: str, extra_state:
     }
 
 
+def _may_stream(namespace: tuple[str, ...] | None, node_name: str | None) -> bool:
+    """Whether a `messages` chunk from this position may reach the user as `delta`.
+
+    Two axes, because one is not enough. A plain node streams under the empty
+    namespace and only has to be in `STREAMING_NODES`. A node that is a compiled
+    subgraph — `qa_node` — streams under its own namespace, and being inside it
+    is NOT sufficient: the agent's tokens are the reply, while the `tools` node
+    beside it emits `ToolMessage` content that is real text and must never be
+    shown (measured 2026-08-19; it was a tool error string).
+
+    LangGraph namespaces a subgraph as `"<node>:<uuid>"`, so the node name is the
+    part before the colon.
+    """
+    if not namespace:
+        return node_name in STREAMING_NODES
+    root = str(namespace[0]).split(":", 1)[0]
+    return root in STREAMING_NODES and node_name == SUBGRAPH_STREAMING_NODE.get(root)
+
+
 def _drive_turn(app, config: dict, turn_input, *, stream: bool) -> dict:
     """Run one turn and return its result dict, streaming or not.
 
@@ -698,8 +721,19 @@ def _drive_turn(app, config: dict, turn_input, *, stream: bool) -> dict:
         return app.invoke(turn_input, config=config)
 
     interrupts: Any = None
-    for mode, chunk in app.stream(turn_input, config=config, stream_mode=["updates", "messages"]):
+    # `subgraphs=True` is what makes `qa_node` stream at all: it is a compiled
+    # subgraph, and without this its tokens never surface — the drain saw one
+    # finished message at the node boundary and the typewriter effect never ran
+    # for the product's main answering node. It also changes the yielded shape
+    # to (namespace, mode, chunk).
+    for namespace, mode, chunk in app.stream(
+        turn_input, config=config, stream_mode=["updates", "messages"], subgraphs=True
+    ):
         if mode == "updates":
+            # Progress is a top-level concern: a phase key names a graph node,
+            # and a subgraph's internal steps are not steps the user tracks.
+            if namespace:
+                continue
             for node_name, update in chunk.items():
                 if node_name == "__interrupt__":
                     interrupts = update
@@ -709,7 +743,7 @@ def _drive_turn(app, config: dict, turn_input, *, stream: bool) -> dict:
                     emit_phase(phase_key, **phase_facts(node_name, update))
         elif mode == "messages":
             message_chunk, metadata = chunk
-            if metadata.get("langgraph_node") in STREAMING_NODES:
+            if _may_stream(namespace, metadata.get("langgraph_node")):
                 emit_delta(response_text(message_chunk))
                 emit_reasoning(reasoning_text(message_chunk))
 
