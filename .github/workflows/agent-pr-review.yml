@@ -60,7 +60,11 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          files=$(gh pr diff "$PR" --name-only)
+          # Not `gh pr diff`: that requests the diff media type, which needs
+          # contents:read on top of pull-requests:read, and a permissions block
+          # sets every unlisted scope to none. This endpoint returns the file
+          # list as plain JSON and needs only the permission declared above.
+          files=$(gh api --paginate "repos/$GH_REPO/pulls/$PR/files" --jq '.[].filename')
           echo "Changed files:"; echo "$files"
 
           match() { echo "$files" | grep -qE "$1" && echo true || echo false; }
