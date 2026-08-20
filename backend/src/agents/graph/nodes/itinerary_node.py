@@ -511,12 +511,31 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
         try:
             from dataclasses import replace
             edit_plan = plan_trip_edit(user_request, working)
+
+            # `plan_trip_edit` can decide it needs more information instead of
+            # committing an edit (`decision in ("clarify", "not_edit")`), and
+            # by construction such a plan carries zero operations (validated
+            # in `trip_edit_planner.parse_trip_edit_plan`). `apply_trip_edit_plan`
+            # hard-rejects any non-"apply" decision, so these two cases MUST
+            # be handled here, before the apply call, the same way the legacy
+            # `resolve_trip_edit_request` (`trip_planner.py`) already does —
+            # otherwise every clarify/not_edit turn raises and gets reported
+            # to the user as a generic "Chỉnh sửa thất bại" failure instead
+            # of the actual follow-up question.
+            if edit_plan.decision == "clarify":
+                return _ok(
+                    edit_plan.clarification_question
+                    or t("Bạn muốn chỉnh sửa phần nào của lịch trình?", language)
+                )
+            if edit_plan.decision == "not_edit":
+                return _ok(edit_plan.summary or t("Mình chưa hiểu bạn muốn chỉnh sửa gì.", language))
+
             suggest_ops = [op for op in edit_plan.operations if op.operation == "suggest"]
             other_ops = [op for op in edit_plan.operations if op.operation != "suggest"]
-            
+
             if suggest_ops:
                 edit_plan = replace(edit_plan, operations=other_ops)
-            
+
             messages = apply_trip_edit_plan(working, edit_plan)
         except Exception as exc:
             logger.exception("itinerary_node: edit_item failed")
