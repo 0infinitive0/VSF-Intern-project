@@ -199,10 +199,33 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   useEffect(() => {
     const sameSessionAsLastCheck = stageClearSessionRef.current === state.sessionId
     stageClearSessionRef.current = state.sessionId
-    if (sameSessionAsLastCheck && state.sessionId) {
-      setViewOverrideBySession((prev) => ({ ...prev, [state.sessionId!]: null }))
+    if (sameSessionAsLastCheck) {
+      if (state.sessionId) {
+        setViewOverrideBySession((prev) => ({ ...prev, [state.sessionId!]: null }))
+      }
+      return
     }
-  }, [stage, state.sessionId])
+    // Just switched TO a different session (or first mount) -- the branch
+    // above didn't run. A session that ever had a hotel picked keeps its
+    // retained hotelOptions forever (hotelOptionsBySession below), and
+    // deriveStageView deliberately checks hotelOptions BEFORE tripPlan (its
+    // own doc comment: a guest can still reselect hotels live while a trip
+    // plan exists) -- so the raw `stage` for ANY session that ever had a
+    // hotel picked always comes back 'hotels', even one with a finished
+    // itinerary sitting right there. Default such a session's view to its
+    // itinerary instead, but only the first time it's opened this tab
+    // session -- never overwrite a step the guest already explicitly
+    // picked via StepNavigator for it (the `undefined` check; `null` means
+    // "explicitly following the live stage", already resolved to 'hotels'
+    // and left alone). Doesn't touch hotelOptions/hotelOptionsBySession at
+    // all, so StepNavigator's "2. Chọn khách sạn" step stays exactly as
+    // clickable as it always was.
+    if (state.sessionId && stage === 'hotels' && state.tripPlan != null) {
+      setViewOverrideBySession((prev) =>
+        prev[state.sessionId!] === undefined ? { ...prev, [state.sessionId!]: 'workspace' } : prev,
+      )
+    }
+  }, [stage, state.sessionId, state.tripPlan])
   const displayStage = viewOverride ?? stage
 
   const activeWorkspaceTab = state.sessionId ? (workspaceTabBySession[state.sessionId] ?? 'overview') : 'overview'

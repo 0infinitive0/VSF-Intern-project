@@ -293,21 +293,20 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
           at: m.at || undefined,
         })),
         suggestions: data.suggestions || [],
-        // Once a trip plan exists, the backend's `hotel_options` here is
-        // durable_hotel_options (routes.py's restore_session) -- kept
-        // around ONLY so "revisit hotel picking" can re-fetch a fresh list
-        // through the deterministic change-hotel endpoint (step-
-        // navigator.tsx), never meant to be replayed as real content.
-        // deriveStageView (lib/derive-stage.ts) reads state.hotelOptions as
-        // "the CURRENT turn's options" and checks it BEFORE tripPlan (by
-        // its own doc comment, deliberately, for the live case where the
-        // guest reselects hotels while a trip plan already exists) — so
-        // feeding it back in here on every restore made ANY session that
-        // ever had a hotel picked always reopen on the hotel-selection
-        // step instead of its finished itinerary, no matter which step the
-        // guest was last looking at. A restore is never "the current
-        // turn", so it should never win that priority check.
-        hotelOptions: data.trip_plan ? [] : data.hotel_options || [],
+        // NOT trip_plan-conditional (tried that, reverted -- 2026-08-20):
+        // this hotelOptions value also feeds hotelOptionsBySession (App.tsx)
+        // and StepNavigator's `hotelOptionsAvailable`/canChangeHotel/
+        // navigationTarget, which assume a session that ever had a hotel
+        // picked keeps its retained options forever -- zeroing it here on
+        // restore made the "2. Chọn khách sạn" step permanently unclickable
+        // for any session with a finished trip plan (navigationTarget needs
+        // hotelOptionsAvailable=true; the canChangeHotel fallback isn't a
+        // real substitute for it). The "defaults to the wrong step on
+        // reopen" bug this used to fix is instead handled at the view layer
+        // in App.tsx (viewOverrideBySession defaulting to 'workspace'),
+        // which doesn't disturb this data at all -- see App.tsx's
+        // stageClearSessionRef effect.
+        hotelOptions: data.hotel_options || [],
         hotelFilterData: {
           ...INITIAL_STATE.hotelFilterData,
           hotelAmenities: data.hotel_amenities ?? [],
