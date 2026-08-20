@@ -274,12 +274,15 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   // reveal the app: the guest came back specifically to see the payment
   // outcome, so the splash should outlast whichever of the two is slower.
   const [paymentPollDone, setPaymentPollDone] = useState(false)
-  // Set only on a FAILED/CANCELLED verdict below, read once by booking-
+  // Set on a FAILED/CANCELLED verdict, OR when the poll below exhausts its
+  // ~20s budget with the payment still PENDING ('pending' — VNPay's IPN
+  // webhook hasn't reached the backend yet, e.g. a slow/misconfigured
+  // callback URL rather than any real decline). Read once by booking-
   // modal.tsx to land on the Payment step (not its default Guest step —
   // this IS a fresh mount, the full-page VNPay redirect wiped every local
-  // state there) with a visible "you cancelled/the payment failed" notice,
-  // instead of silently reopening on step 1 with no explanation.
-  const [paymentReturnOutcome, setPaymentReturnOutcome] = useState<'failed' | 'cancelled' | null>(null)
+  // state there) with a visible notice, instead of silently reopening on
+  // step 1 with no explanation at all.
+  const [paymentReturnOutcome, setPaymentReturnOutcome] = useState<'failed' | 'cancelled' | 'pending' | null>(null)
 
   // Runs once on boot: the guest may have just been bounced back from
   // VNPay's hosted payment page (plan 260818-vnpay-payment-and-email-
@@ -337,8 +340,12 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
       }
       // IPN still hasn't landed after ~20s — open the modal anyway rather
       // than leave the guest on a blank page; GET /payments/{id} is cheap
-      // to check again from there once they notice nothing happened.
+      // to check again from there once they notice nothing happened. Says
+      // so explicitly (paymentReturnOutcome) instead of silently reopening
+      // on the Payment step with no explanation, same as a real FAILED/
+      // CANCELLED verdict gets.
       if (!cancelled) {
+        setPaymentReturnOutcome('pending')
         setBookingModalOpen(true)
         setPaymentPollDone(true)
       }

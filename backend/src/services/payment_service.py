@@ -255,12 +255,22 @@ def get_booking_receipt_for_session(session_id: str) -> dict[str, Any] | None:
     }
 
 
-def mark_payment_failed(*, payment_id: UUID, vnp_response_code: str) -> dict[str, Any] | None:
+def mark_payment_failed(
+    *, payment_id: UUID, vnp_response_code: str, status: str = "FAILED"
+) -> dict[str, Any] | None:
+    """`status` lets the caller distinguish a genuine failure from the guest
+    explicitly cancelling at VNPay (routes.py's vnpay_ipn passes "CANCELLED"
+    for vnp_ResponseCode "24" — VNPay's own "customer cancelled the
+    transaction" code) — PaymentPayload's schema already reserves both
+    "FAILED" and "CANCELLED" (schemas.py), but until this parameter existed
+    every non-success IPN wrote "FAILED" unconditionally, so a guest who
+    cancelled saw the same "thanh toán không thành công" message as a real
+    failure instead of "bạn đã huỷ thanh toán"."""
     response = (
         get_supabase_client()
         .table("payments")
         .update({
-            "status": "FAILED",
+            "status": status,
             "vnp_response_code": vnp_response_code,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         })

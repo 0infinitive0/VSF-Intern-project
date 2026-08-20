@@ -438,6 +438,7 @@
   "bookingErrGeneric": "Đã có lỗi xảy ra, vui lòng thử lại.",
   "bookingErrVnpayCancelled": "Bạn đã huỷ thanh toán. Vui lòng thử lại khi bạn sẵn sàng.",
   "bookingErrVnpayFailed": "Thanh toán không thành công. Vui lòng thử lại.",
+  "bookingErrVnpayPending": "Chúng tôi vẫn đang chờ xác nhận từ cổng thanh toán. Vui lòng kiểm tra lại sau ít phút hoặc thử thanh toán lại.",
   "hotelHeaderPickRooms": "Chọn phòng cho khách sạn này",
   "holdBannerHeldLabel": "Giữ phòng",
   "holdBannerBook": "Đặt phòng",

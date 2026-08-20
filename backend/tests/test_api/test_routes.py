@@ -806,6 +806,70 @@ async def test_vnpay_ipn_confirms_bookings_on_a_successful_payment(client, monke
 
 
 @pytest.mark.asyncio
+async def test_vnpay_ipn_marks_a_customer_cancellation_as_cancelled_not_failed(client, monkeypatch):
+    """vnp_ResponseCode "24" is VNPay's own "customer cancelled" code — must
+    not be lumped in with a genuine failure, since App.tsx/booking-modal.tsx
+    show the guest a different message for each (see mark_payment_failed's
+    own doc comment)."""
+    from src.services import payment_service as _payment_service
+    from src.services import vnpay_service as _vnpay_service
+
+    monkeypatch.setattr(_vnpay_service, "verify_signature", lambda *_a, **_k: True)
+    monkeypatch.setattr(_payment_service, "get_payment", lambda _id: _fake_payment())
+    recorded: dict = {}
+
+    def _fake_mark_failed(**kwargs):
+        recorded.update(kwargs)
+        return _fake_payment(status=kwargs["status"])
+
+    monkeypatch.setattr(_payment_service, "mark_payment_failed", _fake_mark_failed)
+
+    response = await client.get(
+        "/api/v1/payments/vnpay/ipn",
+        params={
+            "vnp_TxnRef": _PAYMENT_ID,
+            "vnp_Amount": "150000000",
+            "vnp_ResponseCode": "24",
+            "vnp_TransactionStatus": "02",
+            "vnp_TransactionNo": "VNP123",
+        },
+    )
+
+    assert response.json()["RspCode"] == "00"
+    assert recorded["status"] == "CANCELLED"
+
+
+@pytest.mark.asyncio
+async def test_vnpay_ipn_marks_a_genuine_failure_as_failed(client, monkeypatch):
+    from src.services import payment_service as _payment_service
+    from src.services import vnpay_service as _vnpay_service
+
+    monkeypatch.setattr(_vnpay_service, "verify_signature", lambda *_a, **_k: True)
+    monkeypatch.setattr(_payment_service, "get_payment", lambda _id: _fake_payment())
+    recorded: dict = {}
+
+    def _fake_mark_failed(**kwargs):
+        recorded.update(kwargs)
+        return _fake_payment(status=kwargs["status"])
+
+    monkeypatch.setattr(_payment_service, "mark_payment_failed", _fake_mark_failed)
+
+    response = await client.get(
+        "/api/v1/payments/vnpay/ipn",
+        params={
+            "vnp_TxnRef": _PAYMENT_ID,
+            "vnp_Amount": "150000000",
+            "vnp_ResponseCode": "51",
+            "vnp_TransactionStatus": "02",
+            "vnp_TransactionNo": "VNP123",
+        },
+    )
+
+    assert response.json()["RspCode"] == "00"
+    assert recorded["status"] == "FAILED"
+
+
+@pytest.mark.asyncio
 async def test_get_payment_endpoint_returns_404_for_wrong_owner(client, monkeypatch):
     from src.services import payment_service as _payment_service
 

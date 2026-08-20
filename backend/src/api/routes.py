@@ -405,7 +405,16 @@ def vnpay_ipn(request: Request) -> dict[str, str]:
         _send_confirmation_email_best_effort(updated)
         return {"RspCode": "00", "Message": "Confirm Success"}
 
-    payment_service.mark_payment_failed(payment_id=payment["id"], vnp_response_code=response_code)
+    # "24" is VNPay's own "customer cancelled the transaction" code (the
+    # guest hit "Huỷ" on VNPay's hosted page, rather than the payment
+    # genuinely failing) — App.tsx's return-poll and booking-modal.tsx
+    # already show a distinct "bạn đã huỷ thanh toán" message for this vs.
+    # a real failure, but that split only means anything if this row
+    # actually lands as CANCELLED instead of FAILED.
+    status = "CANCELLED" if response_code == "24" else "FAILED"
+    payment_service.mark_payment_failed(
+        payment_id=payment["id"], vnp_response_code=response_code, status=status
+    )
     return {"RspCode": "00", "Message": "Confirm Success"}
 
 

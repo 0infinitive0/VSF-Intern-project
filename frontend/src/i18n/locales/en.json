@@ -440,6 +440,7 @@
   "bookingErrGeneric": "Something went wrong. Please try again.",
   "bookingErrVnpayCancelled": "You cancelled the payment. Try again whenever you're ready.",
   "bookingErrVnpayFailed": "The payment didn't go through. Please try again.",
+  "bookingErrVnpayPending": "We're still waiting for confirmation from the payment gateway. Please check back in a few minutes or try paying again.",
   "hotelHeaderPickRooms": "Pick a room for this hotel",
   "holdBannerHeldLabel": "Hold",
   "holdBannerBook": "Book rooms",

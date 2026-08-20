@@ -17,9 +17,12 @@ export function bookingErrorKey(message: string | null | undefined): string {
   if (!message) return 'bookingErrGeneric'
   // Not backend error codes — sentinels booking-modal.tsx sets itself once
   // App.tsx's VNPay-return poll (GET /payments/{id}) settles on FAILED/
-  // CANCELLED, so the guest sees why they're back on the Payment step
-  // instead of silently landing there with no explanation.
+  // CANCELLED, or gives up after ~20s with the payment still PENDING
+  // (vnpay_still_pending — the IPN webhook hasn't reached the backend
+  // yet), so the guest sees why they're back on the Payment step instead
+  // of silently landing there with no explanation.
   if (message.includes('vnpay_cancelled')) return 'bookingErrVnpayCancelled'
+  if (message.includes('vnpay_still_pending')) return 'bookingErrVnpayPending'
   if (message.includes('vnpay_payment_failed')) return 'bookingErrVnpayFailed'
   if (message.includes('insufficient_room_availability')) return 'bookingErrRoomSoldOut'
   if (message.includes('booking_reservation_expired')) return 'bookingErrHoldExpired'

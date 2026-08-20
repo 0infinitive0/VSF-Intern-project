@@ -118,14 +118,15 @@ export default function BookingModal({
    * người"), rendered verbatim per types/index.ts's own note on that field. */
   guestsLabel?: string | null
   /** Set by App.tsx's consumeVnpayReturn once GET /payments/{id} settles on
-   * FAILED/CANCELLED (never optimistically from the redirect's own query
-   * params — see that effect's doc comment). This is a FRESH page load (the
-   * VNPay redirect wipes every local state below), so without this the
-   * guest lands back on step 1 "Thông tin" with the fields they already
-   * typed gone and no explanation — this instead lands them on step 2
-   * "Thanh toán" (guestName/etc. were already validated once to get this
-   * far) with a visible reason. */
-  paymentReturnOutcome?: 'failed' | 'cancelled' | null
+   * FAILED/CANCELLED, or once its poll gives up after ~20s with the
+   * payment still PENDING ('pending' — never optimistically from the
+   * redirect's own query params, see that effect's doc comment). This is a
+   * FRESH page load (the VNPay redirect wipes every local state below), so
+   * without this the guest lands back on step 1 "Thông tin" with the
+   * fields they already typed gone and no explanation — this instead
+   * lands them on step 2 "Thanh toán" (guestName/etc. were already
+   * validated once to get this far) with a visible reason. */
+  paymentReturnOutcome?: 'failed' | 'cancelled' | 'pending' | null
 }) {
   const { t, i18n } = useTranslation()
   const { detail: hotelDetail } = useHotelDetail(roomHold.heldHotelId)
@@ -194,7 +195,13 @@ export default function BookingModal({
   useEffect(() => {
     if (!paymentReturnOutcome) return
     setStep('pay')
-    setPaymentError(paymentReturnOutcome === 'cancelled' ? 'vnpay_cancelled' : 'vnpay_payment_failed')
+    setPaymentError(
+      paymentReturnOutcome === 'cancelled'
+        ? 'vnpay_cancelled'
+        : paymentReturnOutcome === 'pending'
+          ? 'vnpay_still_pending'
+          : 'vnpay_payment_failed',
+    )
   }, [paymentReturnOutcome])
 
   // Resets the wizard only when the HOLD GROUP itself changes (a fresh set
