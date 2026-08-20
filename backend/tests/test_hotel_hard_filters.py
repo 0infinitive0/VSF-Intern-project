@@ -202,6 +202,51 @@ def test_rating_filter_runs_before_amenity_filter_so_zero_blames_rating(monkeypa
         )
 
 
+# --- min_guests: enforced inside the RPC, not app-level -------------------
+#
+# The real filter (summing `available units * max_guests` across every room
+# type at a hotel, so a party that needs multiple rooms/room types is
+# accounted for) lives in `match_hotels_with_rooms` itself -- see
+# scripts/migrations/20260820_add_guest_capacity_filter_to_match_hotels_with_
+# rooms.sql. That SQL logic isn't exercised by these unit tests (`_wire`
+# stubs `search_hotels_with_rooms` entirely); what belongs here is only that
+# `select_hotel_candidates` forwards `min_guests` through untouched, and
+# does NOT lump it in with the app-level hard filters that need overfetching.
+
+
+def test_min_guests_is_forwarded_to_the_search_rpc(monkeypatch):
+    captured: dict = {}
+    _wire(monkeypatch, [], search_kwargs_capture=captured)
+
+    select_hotel_candidates("Đà Nẵng", "dest-1", "4", min_guests=4)
+
+    assert captured["min_guests"] == 4
+
+
+def test_min_guests_omitted_is_not_forwarded(monkeypatch):
+    """The pre-existing call sites never pass `min_guests` -- confirm the RPC
+    call omits the key entirely (byte-identical request shape), the same
+    convention `start_date`/`root_latitude`/etc. already follow here."""
+    captured: dict = {}
+    _wire(monkeypatch, [], search_kwargs_capture=captured)
+
+    select_hotel_candidates("Đà Nẵng", "dest-1", "2 người")
+
+    assert "min_guests" not in captured
+
+
+def test_min_guests_alone_does_not_trigger_the_hard_filter_overfetch(monkeypatch):
+    """Unlike `required_amenities`/`min_star_rating`/`min_review_score`, capacity
+    is filtered by the RPC before its own LIMIT -- `match_count` hotels back
+    already satisfy it, so no app-side overfetch-then-reduce is needed."""
+    captured: dict = {}
+    _wire(monkeypatch, [], search_kwargs_capture=captured)
+
+    select_hotel_candidates("Đà Nẵng", "dest-1", "4", match_count=5, min_guests=4)
+
+    assert captured["match_count"] == 5
+
+
 def test_hard_filter_overfetches_the_rpc_match_count(monkeypatch):
     captured: dict = {}
     _wire(monkeypatch, [], search_kwargs_capture=captured)

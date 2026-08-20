@@ -15,6 +15,12 @@
  */
 export function bookingErrorKey(message: string | null | undefined): string {
   if (!message) return 'bookingErrGeneric'
+  // Not backend error codes — sentinels booking-modal.tsx sets itself once
+  // App.tsx's VNPay-return poll (GET /payments/{id}) settles on FAILED/
+  // CANCELLED, so the guest sees why they're back on the Payment step
+  // instead of silently landing there with no explanation.
+  if (message.includes('vnpay_cancelled')) return 'bookingErrVnpayCancelled'
+  if (message.includes('vnpay_payment_failed')) return 'bookingErrVnpayFailed'
   if (message.includes('insufficient_room_availability')) return 'bookingErrRoomSoldOut'
   if (message.includes('booking_reservation_expired')) return 'bookingErrHoldExpired'
   if (message.includes('booking_not_confirmable')) return 'bookingErrNotConfirmable'

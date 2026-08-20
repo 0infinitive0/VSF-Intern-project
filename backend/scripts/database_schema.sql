@@ -451,7 +451,8 @@ CREATE FUNCTION public.match_hotels_with_rooms(
     root_longitude DOUBLE PRECISION DEFAULT NULL::double precision,
     max_radius_km DOUBLE PRECISION DEFAULT NULL::double precision,
     filter_start_date DATE DEFAULT NULL::date,
-    filter_end_date DATE DEFAULT NULL::date
+    filter_end_date DATE DEFAULT NULL::date,
+    filter_min_guests INTEGER DEFAULT NULL::integer
 )
 RETURNS TABLE(
     id UUID,
@@ -535,6 +536,25 @@ AS $$
       array_remove(array_agg(DISTINCT room_name), NULL) AS matched_rooms
     FROM combined
     GROUP BY hotel_id
+  ),
+  -- Total guests this hotel could seat by booking every bookable unit of every
+  -- room type it has -- the ceiling on what's assemblable across multiple rooms
+  -- and multiple room types, not just the single largest room.
+  hotel_capacity AS (
+    SELECT
+      r.hotel_id,
+      sum(
+        greatest(
+          CASE
+            WHEN filter_start_date IS NULL OR filter_end_date IS NULL
+              THEN coalesce(r.available_room_count, 0)
+            ELSE public.get_room_availability(r.id, filter_start_date, filter_end_date)
+          END,
+          0
+        ) * coalesce(r.max_guests, 0)
+      ) AS total_capacity
+    FROM public.rooms AS r
+    GROUP BY r.hotel_id
   )
   SELECT
     h.id,
@@ -570,12 +590,14 @@ AS $$
     ) AS amenities
   FROM aggregated AS a
   JOIN public.hotels AS h ON h.id = a.hotel_id
+  LEFT JOIN hotel_capacity AS hc ON hc.hotel_id = h.id
   WHERE (filter_min_price IS NULL OR h.lowest_price IS NULL OR h.lowest_price >= filter_min_price)
     AND (filter_max_price IS NULL OR h.lowest_price IS NULL OR h.lowest_price <= filter_max_price)
     AND (
       cardinality(coalesce(filter_exclude_hotel_ids, ARRAY[]::uuid[])) = 0
       OR h.id <> ALL(filter_exclude_hotel_ids)
     )
+    AND (filter_min_guests IS NULL OR coalesce(hc.total_capacity, 0) >= filter_min_guests)
   ORDER BY a.max_sim DESC
   LIMIT match_count;
 $$;
@@ -592,7 +614,8 @@ GRANT EXECUTE ON FUNCTION public.match_hotels_with_rooms(
     DOUBLE PRECISION,
     DOUBLE PRECISION,
     DATE,
-    DATE
+    DATE,
+    INTEGER
 ) TO anon, authenticated, service_role;
 
 /*

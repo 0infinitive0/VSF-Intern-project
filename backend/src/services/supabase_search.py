@@ -208,8 +208,16 @@ def search_hotels_with_rooms(
     root_latitude: Optional[float] = None,
     root_longitude: Optional[float] = None,
     max_radius_km: Optional[float] = None,
+    min_guests: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
-    """Tìm kiếm semantic hotels và rooms cùng nhau sử dụng Supabase RPC match_hotels_with_rooms và local Ollama LLM filtering."""
+    """Tìm kiếm semantic hotels và rooms cùng nhau sử dụng Supabase RPC match_hotels_with_rooms và local Ollama LLM filtering.
+
+    `min_guests`, when given, is enforced by the RPC itself (`filter_min_guests` —
+    see scripts/migrations/20260820_add_guest_capacity_filter_to_match_hotels_with_
+    rooms.sql): a hotel qualifies only if the sum of `available units * max_guests`
+    across all its room types clears `min_guests`, applied before the RPC's own
+    `LIMIT match_count` so the requested count of qualifying hotels comes back
+    directly, with no app-side re-filtering needed."""
     radius = validate_radius_filter(root_latitude, root_longitude, max_radius_km)
     stay_dates = validate_stay_dates(start_date, end_date)
 
@@ -260,21 +268,32 @@ def search_hotels_with_rooms(
         params["root_latitude"] = radius.root_latitude
         params["root_longitude"] = radius.root_longitude
         params["max_radius_km"] = radius.max_radius_km
+    if min_guests is not None:
+        params["filter_min_guests"] = min_guests
 
     try:
         data = _execute_rpc("match_hotels_with_rooms", params)
     except Exception as exc:
-        # Deploying the exclusion-aware RPC can lag behind the backend. Keep the
-        # hotel search available against the prior date/radius-aware signature
-        # while filtering already-presented hotels locally.
-        if not valid_excluded_ids or not _is_missing_exclusion_rpc_signature(exc):
-            raise
+        # Deploying a newer RPC signature can lag behind the backend. Keep the
+        # hotel search available against whichever prior signature is still
+        # live, degrading gracefully instead of hard-failing the whole search.
         fallback_params = params.copy()
-        fallback_params.pop("filter_exclude_hotel_ids", None)
-        fallback_params["match_count"] = fetch_count + len(valid_excluded_ids)
-        logger.warning(
-            "match_hotels_with_rooms lacks filter_exclude_hotel_ids; using local exclusion fallback"
-        )
+        adjusted = False
+        if valid_excluded_ids and _is_missing_exclusion_rpc_signature(exc):
+            fallback_params.pop("filter_exclude_hotel_ids", None)
+            fallback_params["match_count"] = fetch_count + len(valid_excluded_ids)
+            logger.warning(
+                "match_hotels_with_rooms lacks filter_exclude_hotel_ids; using local exclusion fallback"
+            )
+            adjusted = True
+        if min_guests is not None and _is_missing_min_guests_rpc_signature(exc):
+            fallback_params.pop("filter_min_guests", None)
+            logger.warning(
+                "match_hotels_with_rooms lacks filter_min_guests; capacity filter skipped for this call"
+            )
+            adjusted = True
+        if not adjusted:
+            raise
         data = _execute_rpc("match_hotels_with_rooms", fallback_params)
 
     if valid_excluded_ids:
@@ -302,6 +321,12 @@ def _is_missing_exclusion_rpc_signature(exc: Exception) -> bool:
     """Return whether PostgREST rejected only the newly added exclusion parameter."""
     error_text = str(exc)
     return "PGRST202" in error_text and "filter_exclude_hotel_ids" in error_text
+
+
+def _is_missing_min_guests_rpc_signature(exc: Exception) -> bool:
+    """Return whether PostgREST rejected only the newly added capacity parameter."""
+    error_text = str(exc)
+    return "PGRST202" in error_text and "filter_min_guests" in error_text
 
 
 def _normalized_attraction_exclusion_ids(

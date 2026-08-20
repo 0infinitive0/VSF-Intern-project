@@ -33,7 +33,6 @@ function HotelOptionCard({
   delay,
   nights,
   hotelAmenities,
-  onSelect,
   onOpen,
   hovered,
   onHoverChange,
@@ -44,7 +43,6 @@ function HotelOptionCard({
   delay: string
   nights: number | null
   hotelAmenities: AmenityCatalogOption[]
-  onSelect: (hotel: HotelOption) => void
   onOpen: (hotel: HotelOption) => void
   /** Phase 10 map hover sync — optional so this component still works standalone. */
   hovered?: boolean
@@ -76,10 +74,21 @@ function HotelOptionCard({
       data-focused={focused ? 'true' : undefined}
       data-hovered={hovered ? 'true' : undefined}
       data-card={syncId}
+      role={canOpen ? 'button' : undefined}
+      tabIndex={canOpen ? 0 : undefined}
+      onClick={() => {
+        if (canOpen) onOpen(hotel)
+      }}
+      onKeyDown={(e) => {
+        if (canOpen && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault()
+          onOpen(hotel)
+        }
+      }}
       onMouseEnter={() => onHoverChange?.(syncId)}
       onMouseLeave={() => onHoverChange?.(null)}
       style={{
-        cursor: 'default',
+        cursor: canOpen ? 'pointer' : 'default',
         animation: `vFade .55s ${delay} ease both`,
       }}
     >
@@ -161,46 +170,12 @@ function HotelOptionCard({
           </div>
         </div>
       )}
-
-      <div className="flex gap-2 mt-[13px]">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            onSelect(hotel)
-          }}
-          className="flex-1 p-[11px] rounded-[15px] border-none text-[13px] font-[590] tracking-[-0.12px] cursor-pointer transition-all duration-200"
-          style={{
-            background: selected ? 'var(--btn)' : 'var(--fill)',
-            color: selected ? 'var(--btn-fg)' : 'var(--t2)',
-          }}
-        >
-          {selected ? t('hotelPickBtnSelected') : t('hotelPickBtn')}
-        </button>
-        {canOpen && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              onOpen(hotel)
-            }}
-            className="flex-none px-[15px] py-[11px] rounded-[15px] border border-stroke bg-glass-2 text-on-surface-variant text-[13px] font-[530] tracking-[-0.1px] cursor-pointer transition-all duration-200 hover:bg-glass-3 hover:text-on-surface"
-          >
-            {t('viewDetail')}
-          </button>
-        )}
-      </div>
     </div>
   )
 }
 
 /**
- * HotelOptionCards — the controlled card list for the hotels stage. The stage
- * (stage-hotels.tsx) owns selectedIndex because the header confirm button
- * reads it: the selection is now user-meaningful state that lives long enough
- * to open details, compare, then commit — not a transient optimistic flash.
- * (This comment supersedes the pre-Phase-8 "transient" note; the wire itself
- * is unchanged: only the header confirm posts String(hotel.index).)
+ * HotelOptionCards — the controlled card list for the hotels stage.
  */
 export default function HotelOptionCards({
   hotels,
@@ -208,7 +183,6 @@ export default function HotelOptionCards({
   focusedId,
   nights,
   hotelAmenities,
-  onSelect,
   onOpen,
   hoveredId,
   onHoverChange,
@@ -218,7 +192,6 @@ export default function HotelOptionCards({
   focusedId?: string | null
   nights: number | null
   hotelAmenities: AmenityCatalogOption[]
-  onSelect: (hotel: HotelOption) => void
   onOpen: (hotel: HotelOption) => void
   /** Phase 10 map hover sync (lib/map-sync-id.ts ids) — optional so this component still works standalone. */
   hoveredId?: string | null
@@ -237,7 +210,6 @@ export default function HotelOptionCards({
           delay={`${i * 90}ms`}
           nights={nights}
           hotelAmenities={hotelAmenities}
-          onSelect={onSelect}
           onOpen={onOpen}
           hovered={hoveredId != null && hoveredId === hotelOptionSyncId(hotel)}
           onHoverChange={onHoverChange}

@@ -18,6 +18,27 @@ const CLOSE_TRANSITION_MS = 380
 const TAX_RATE = 0.1
 
 type Step = 'guest' | 'pay' | 'done'
+type GuestField = 'name' | 'email' | 'phone' | 'note'
+
+// "Thanh toán qua VNPay" is a REAL full-page redirect (see the module doc
+// comment) — every local state in this component, guest fields included,
+// is gone by the time the guest comes back. sessionStorage (not
+// localStorage, same reasoning as use-room-hold.ts's own persistence: this
+// only needs to survive one round trip within the same tab, not linger
+// across unrelated future visits) so a cancelled/failed payment doesn't
+// also make the guest re-type their own name/email/phone to try again.
+const GUEST_STORAGE_KEY = 'vota_booking_guest_v1'
+
+function loadPersistedGuestField(field: GuestField): string {
+  try {
+    const raw = sessionStorage.getItem(GUEST_STORAGE_KEY)
+    if (!raw) return ''
+    const parsed = JSON.parse(raw) as Partial<Record<GuestField, unknown>>
+    return typeof parsed[field] === 'string' ? (parsed[field] as string) : ''
+  } catch {
+    return ''
+  }
+}
 
 function mmss(ms: number): string {
   const totalSeconds = Math.max(0, Math.round(ms / 1000))
@@ -60,6 +81,7 @@ export default function BookingModal({
   checkInDate,
   checkOutDate,
   guestsLabel,
+  paymentReturnOutcome,
 }: {
   open: boolean
   onClose: () => void
@@ -95,6 +117,15 @@ export default function BookingModal({
   /** ChatState.intake.people — already a backend-formatted string ("2
    * người"), rendered verbatim per types/index.ts's own note on that field. */
   guestsLabel?: string | null
+  /** Set by App.tsx's consumeVnpayReturn once GET /payments/{id} settles on
+   * FAILED/CANCELLED (never optimistically from the redirect's own query
+   * params — see that effect's doc comment). This is a FRESH page load (the
+   * VNPay redirect wipes every local state below), so without this the
+   * guest lands back on step 1 "Thông tin" with the fields they already
+   * typed gone and no explanation — this instead lands them on step 2
+   * "Thanh toán" (guestName/etc. were already validated once to get this
+   * far) with a visible reason. */
+  paymentReturnOutcome?: 'failed' | 'cancelled' | null
 }) {
   const { t, i18n } = useTranslation()
   const { detail: hotelDetail } = useHotelDetail(roomHold.heldHotelId)
@@ -124,13 +155,47 @@ export default function BookingModal({
 
   const [step, setStep] = useState<'guest' | 'pay'>('guest')
   const [guestTouched, setGuestTouched] = useState(false)
-  const [guestName, setGuestName] = useState('')
-  const [guestEmail, setGuestEmail] = useState('')
-  const [guestPhone, setGuestPhone] = useState('')
-  const [guestNote, setGuestNote] = useState('')
+  const [guestName, setGuestName] = useState(() => loadPersistedGuestField('name'))
+  const [guestEmail, setGuestEmail] = useState(() => loadPersistedGuestField('email'))
+  const [guestPhone, setGuestPhone] = useState(() => loadPersistedGuestField('phone'))
+  const [guestNote, setGuestNote] = useState(() => loadPersistedGuestField('note'))
 
   const [creatingPayment, setCreatingPayment] = useState(false)
   const [paymentError, setPaymentError] = useState<string | null>(null)
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        GUEST_STORAGE_KEY,
+        JSON.stringify({ name: guestName, email: guestEmail, phone: guestPhone, note: guestNote }),
+      )
+    } catch {
+      // sessionStorage unavailable (private mode, quota) — guest info just
+      // won't survive a reload; not worth failing the flow over.
+    }
+  }, [guestName, guestEmail, guestPhone, guestNote])
+
+  // The checkout is genuinely done — no reason for a future, unrelated hold
+  // to inherit this guest's details from a stale sessionStorage entry.
+  useEffect(() => {
+    if (roomHold.status !== 'BOOKED') return
+    try {
+      sessionStorage.removeItem(GUEST_STORAGE_KEY)
+    } catch {
+      // ignore
+    }
+  }, [roomHold.status])
+
+  // Lands the guest back on step 2 (not the default step 1) with a visible
+  // reason once App.tsx's poll confirms a FAILED/CANCELLED verdict — see
+  // paymentReturnOutcome's own doc comment above for why this can't just be
+  // the initial `step` value (this component is already mounted by the
+  // time the poll resolves, well after its own first render).
+  useEffect(() => {
+    if (!paymentReturnOutcome) return
+    setStep('pay')
+    setPaymentError(paymentReturnOutcome === 'cancelled' ? 'vnpay_cancelled' : 'vnpay_payment_failed')
+  }, [paymentReturnOutcome])
 
   // Resets the wizard only when the HOLD GROUP itself changes (a fresh set
   // of booking ids from a new startHold), not on every open/close — so
@@ -171,8 +236,13 @@ export default function BookingModal({
   const effectiveStep: Step = booked ? 'done' : step
   const stepIndex: Record<Step, number> = { guest: 1, pay: 2, done: 3 }
   const currentStepN = stepIndex[effectiveStep]
-  const guestValid =
-    guestName.trim().length > 2 && EMAIL_RE.test(guestEmail.trim()) && isValidPhone(guestPhone)
+  // Split so a guest missing/mistyping just ONE field (e.g. email) gets told
+  // exactly that, instead of one blanket "something's wrong" line covering
+  // all three regardless of which one is actually the problem.
+  const nameValid = guestName.trim().length > 2
+  const emailValid = EMAIL_RE.test(guestEmail.trim())
+  const phoneValid = isValidPhone(guestPhone)
+  const guestValid = nameValid && emailValid && phoneValid
 
   const rows = roomHold.bookings.map((b) => {
     const room = hotelDetail?.rooms?.find((r) => r.id === b.room_id)
@@ -406,6 +476,7 @@ export default function BookingModal({
                       placeholder={t('authNamePlaceholder')}
                       value={guestName}
                       onChange={(e) => setGuestName(e.target.value)}
+                      error={guestTouched && !nameValid ? t('guestErrName') : undefined}
                     />
                   </div>
                   <AuthTextField
@@ -416,6 +487,7 @@ export default function BookingModal({
                     placeholder="you@email.com"
                     value={guestEmail}
                     onChange={(e) => setGuestEmail(e.target.value)}
+                    error={guestTouched && !emailValid ? t('guestErrEmail') : undefined}
                   />
                   <AuthTextField
                     label={t('authPhoneLabel')}
@@ -425,6 +497,7 @@ export default function BookingModal({
                     placeholder={t('authPhonePlaceholder')}
                     value={guestPhone}
                     onChange={(e) => setGuestPhone(e.target.value)}
+                    error={guestTouched && !phoneValid ? t('guestErrPhone') : undefined}
                   />
                   <div className="sm:col-span-2 flex flex-col gap-1.5">
                     <span className="text-[10.5px] font-semibold tracking-wide uppercase text-on-surface-muted">
@@ -440,11 +513,6 @@ export default function BookingModal({
                   </div>
                 </div>
                 <div className="flex flex-col gap-3 pt-1 border-t border-line">
-                  {guestTouched && !guestValid && (
-                    <div role="alert" className="text-[12px] font-medium pt-3" style={{ color: 'var(--err)' }}>
-                      {t('guestErr')}
-                    </div>
-                  )}
                   <button
                     type="button"
                     onClick={goPay}

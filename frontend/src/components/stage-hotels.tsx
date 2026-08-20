@@ -302,7 +302,6 @@ export default function StageHotels({
             focusedId={focusedId}
             nights={nights}
             hotelAmenities={amenityCatalog}
-            onSelect={(hotel) => onSelectHotel(hotel.index)}
             onOpen={openFocus}
             hoveredId={mapSync.hoveredId}
             onHoverChange={mapSync.setHoveredId}
