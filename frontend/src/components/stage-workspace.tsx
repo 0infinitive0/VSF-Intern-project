@@ -424,7 +424,6 @@ export default function StageWorkspace({
             colorByDay={resolvedTab === 'overview'}
             showSuggested={showSuggested}
             onToggleSuggested={state.suggestedPlaces.length > 0 ? () => setShowSuggested((v) => !v) : undefined}
-            active={!focused}
           />
           {rebuilding && <RebuildingOverlay />}
         </div>

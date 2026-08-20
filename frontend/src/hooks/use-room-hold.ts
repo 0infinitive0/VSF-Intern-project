@@ -194,6 +194,7 @@ export function useRoomHold(sessionId: string | null) {
   })
   const [paymentId, setPaymentId] = useState<string | null>(() => loadPersistedHold()?.paymentId ?? null)
   const [error, setError] = useState<string | null>(null)
+  const [now, setNow] = useState(() => Date.now())
   const guestRefRef = useRef<string>('')
   if (!guestRefRef.current) guestRefRef.current = getGuestRef()
   // Read fresh (not lazy-init-once like guestRefRef) since the ACTIVE chat
@@ -234,6 +235,14 @@ export function useRoomHold(sessionId: string | null) {
     persistCurrentHold(paymentId)
   }, [persistCurrentHold, paymentId])
 
+  // Ticks the countdown once a second, only while a hold is actually
+  // counting down — no timer running in IDLE/HOLDING/BOOKED/EXPIRED.
+  useEffect(() => {
+    if (status !== 'HELD') return
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [status])
+
   const cartFor = useCallback((hotelId: string): RoomCart => cartByHotel[hotelId] ?? {}, [cartByHotel])
 
   const setQty = useCallback((hotelId: string, roomId: string, qty: number) => {
@@ -246,39 +255,23 @@ export function useRoomHold(sessionId: string | null) {
   )
 
   // Earliest expires_at across the hold group — the group is only as
-  // long-lived as its shortest-held reservation. Exported below (not just
-  // used locally) so hold-banner.tsx/booking-modal.tsx's own live countdown
-  // (useHoldCountdown, below) can subscribe to it directly, instead of this
-  // hook ticking on their behalf and re-rendering everything above them.
+  // long-lived as its shortest-held reservation.
   const expiresAtMs = bookings.reduce<number | null>((earliest, b) => {
     if (!b.expires_at) return earliest
     const t = new Date(b.expires_at).getTime()
     if (!Number.isFinite(t)) return earliest
     return earliest == null ? t : Math.min(earliest, t)
   }, null)
-  // Point-in-time snapshot, NOT a live-ticking countdown — fine for the
-  // one-off "X phút" copy this feeds (App.tsx/hotel-detail-panel.tsx's
-  // confirm dialogs, read once when they open). A continuously-updating
-  // display (hold-banner.tsx, booking-modal.tsx) uses useHoldCountdown
-  // instead, which owns its own 1s tick local to just that component.
-  const holdLeftMs = expiresAtMs != null ? Math.max(0, expiresAtMs - Date.now()) : 0
+  const holdLeftMs = expiresAtMs != null ? Math.max(0, expiresAtMs - now) : 0
 
   // The countdown reaching zero is a real transition, not just a display
   // fact — flip status here (once) so every consumer (hold banner, booking
-  // modal) agrees on 'EXPIRED' instead of each re-deriving it. A single
-  // setTimeout fired exactly at the real expiry instant, instead of the
-  // previous 1s poll — removes a recurring timer AND fires more precisely
-  // (right on time instead of up to ~1s late).
+  // modal) agrees on 'EXPIRED' instead of each re-deriving it from now/expiresAtMs.
   useEffect(() => {
-    if (status !== 'HELD' || expiresAtMs == null) return
-    const msLeft = expiresAtMs - Date.now()
-    if (msLeft <= 0) {
+    if (status === 'HELD' && expiresAtMs != null && now >= expiresAtMs) {
       setStatus('EXPIRED')
-      return
     }
-    const id = setTimeout(() => setStatus('EXPIRED'), msLeft)
-    return () => clearTimeout(id)
-  }, [status, expiresAtMs])
+  }, [status, expiresAtMs, now])
 
   /** The actual reserve-everything-in-the-cart mechanics, shared by
    * `startHold` and `switchHold` below. Deliberately has NO `status` check
@@ -324,6 +317,7 @@ export function useRoomHold(sessionId: string | null) {
         setHeldHotelId(hotelId)
         setHeldSessionId(sessionIdRef.current)
         setStatus('HELD')
+        setNow(Date.now())
         onHeld?.()
       } catch (err) {
         // Partial failure releases whatever DID get reserved — never leave
@@ -436,7 +430,6 @@ export function useRoomHold(sessionId: string | null) {
     status,
     error,
     holdLeftMs,
-    expiresAtMs,
     paymentId,
     startHold,
     switchHold,
@@ -446,23 +439,6 @@ export function useRoomHold(sessionId: string | null) {
     markBooked,
     guestRef: guestRefRef.current,
   }
-}
-
-/** Live, 1s-updating "ms left" for a hold's countdown — owns its own tick,
- * scoped to whichever component calls it, instead of `useRoomHold` itself
- * ticking and re-rendering every consumer above it (App.tsx down through
- * StageWorkspace/DayTimeline/MapView) once a second. Pass `expiresAtMs` only
- * while there's something to actually count down (e.g. `status === 'HELD'
- * ? roomHold.expiresAtMs : null`); passing `null` stops the interval. */
-export function useHoldCountdown(expiresAtMs: number | null): number {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    if (expiresAtMs == null) return
-    setNow(Date.now())
-    const id = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(id)
-  }, [expiresAtMs])
-  return expiresAtMs != null ? Math.max(0, expiresAtMs - now) : 0
 }
 
 export type RoomHoldApi = ReturnType<typeof useRoomHold>
