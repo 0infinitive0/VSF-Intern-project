@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import DayTimeline from './day-timeline'
-import FinalizeAction from './finalize-action'
 import HoldBanner from './hold-banner'
 import MapView, { type MapMarkerSpec } from './map-view'
 import PlaceDetailPanel from './place-detail-panel'
@@ -325,14 +324,6 @@ export default function StageWorkspace({
           {meta && <div className="text-[11.5px] text-on-surface-muted font-normal truncate">{meta}</div>}
         </div>
         <div className="flex-1" />
-        <FinalizeAction
-          tripPlan={tripPlan}
-          sessionBookedFromBackend={sessionBookedFromBackend}
-          finalizing={finalizing}
-          error={finalizeError}
-          onRequestFinalize={onRequestFinalize}
-          onDuplicateTrip={onDuplicateTrip}
-        />
         <HoldBanner
           roomHold={roomHold}
           holdBelongsToSession={holdBelongsToSession}
