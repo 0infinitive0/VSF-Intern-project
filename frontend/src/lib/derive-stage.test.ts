@@ -75,6 +75,33 @@ describe('deriveStageView', () => {
     expect(deriveStageView({ ...BASE, pending: true, tripPlan: SOME_TRIP_PLAN })).toBe('workspace')
   })
 
+  it('swaps to generating once a rebuild of an existing trip plan reports real heavy work', () => {
+    // A hotel/destination change on an existing trip — same full progress
+    // screen the first build gets, once the backend actually confirms it
+    // (never a bare `pending` guess for this case either).
+    expect(
+      deriveStageView({
+        ...BASE,
+        pending: true,
+        tripPlan: SOME_TRIP_PLAN,
+        phases: [{ key: 'itinerary_build', at: 0 }],
+      }),
+    ).toBe('generating')
+  })
+
+  it('stays on workspace for an existing trip plan when the pending turn is not heavy work', () => {
+    // An unrelated QA question about the itinerary on screen must not blank
+    // it out — only phases genuinely tied to a rebuild do that.
+    expect(
+      deriveStageView({
+        ...BASE,
+        pending: true,
+        tripPlan: SOME_TRIP_PLAN,
+        phases: [{ key: 'intake_check', at: 0 }],
+      }),
+    ).toBe('workspace')
+  })
+
   it('is hotels when hotel options are present', () => {
     expect(deriveStageView({ ...BASE, hotelOptions: SOME_HOTEL_OPTIONS })).toBe('hotels')
   })
