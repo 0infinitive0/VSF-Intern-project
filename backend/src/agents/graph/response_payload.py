@@ -196,6 +196,22 @@ def derive_stage(state: TravelGraphState, hotel_options: list[dict[str, Any]], r
         return "planned"
     if hotel_options:
         return "hotel_options"
+    # A hotel search that actually ran and came back with zero matches (wrong
+    # dates, amenities too strict, ...) is not "intake incomplete" --
+    # `missing_slots` above already ruled that out. Falling through to
+    # "intake" here reopens the just-submitted preferences card (see
+    # IntakeParametersForm's terminal widget) right next to a reply telling
+    # the user to try different dates, which reads as "answer this again"
+    # for a field that was never the problem. Scoped to hotel_node's own
+    # no-results outcomes only -- a qa_node turn with no hotel_options this
+    # turn (e.g. a question asked between intake steps) must keep falling to
+    # "intake", or a still-pending budget/preferences card would vanish the
+    # moment the user asks something unrelated.
+    last_worker = last_worker_from_task_results(state)
+    if last_worker is not None:
+        worker, status = last_worker
+        if worker == "hotel_node" and status.startswith("no_results"):
+            return "hotel_options"
     return "intake"
 
 

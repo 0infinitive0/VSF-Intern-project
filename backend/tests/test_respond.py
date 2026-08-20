@@ -111,6 +111,25 @@ class TestDeriveStage:
         state = _state(missing_slots=["destination"], trip_data={"x": 1})
         assert derive_stage(state, hotel_options=[{"id": "h1"}], reply="SYSTEM ERROR: x") == "error"
 
+    def test_a_hotel_search_with_zero_results_is_hotel_options_not_intake(self):
+        """`missing_slots` is already empty here (intake is genuinely done) --
+        falling to "intake" just because this turn's own search found nothing
+        reopened the just-submitted preferences card next to a reply telling
+        the user to try different dates. Covers all four of hotel_node's
+        no-results outcomes (no_results, no_results_dates,
+        no_results_amenities, no_results_rating)."""
+        for status in ("no_results", "no_results_dates", "no_results_amenities", "no_results_rating"):
+            state = _state(task_results=[{"worker": "hotel_node", "status": status, "reply": "..."}])
+            assert derive_stage(state, hotel_options=[], reply="") == "hotel_options"
+
+    def test_a_qa_turn_with_no_hotel_options_still_falls_to_intake(self):
+        """A question asked between intake steps (no hotel search this turn,
+        no missing slots yet either) must keep re-opening the still-pending
+        widget -- only hotel_node's own no-results outcomes get the
+        "hotel_options" treatment above."""
+        state = _state(task_results=[{"worker": "qa_node", "status": "ok", "reply": "..."}])
+        assert derive_stage(state, hotel_options=[], reply="") == "intake"
+
     def test_an_ordinary_reply_mentioning_an_error_is_not_an_error_turn(self):
         """The prefix is a contract (`sanitize_system_error`), not a keyword
         search — a user asking about errors must not turn their own turn red."""
