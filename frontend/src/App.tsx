@@ -59,7 +59,7 @@ export default function App() {
   // is unavoidable — Supabase has no way to "just sign in" without a fresh
   // OAuth round-trip once the link attempt has already failed.
   const [retryingGoogleSignIn, setRetryingGoogleSignIn] = useState(false)
-  // test agent
+
   // Runs once on mount, independent of auth.status: a failed OAuth link
   // shows up as error params on the very first render after Google
   // redirects back, not as something signInWithGoogle()'s own await ever

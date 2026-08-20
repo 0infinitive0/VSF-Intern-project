@@ -12,7 +12,7 @@ from psycopg_pool import ConnectionPool
 from src.api.routes import registry, router
 from src.config import Settings, get_settings
 from src.observability import install_api_error_logging
-# test agent
+
 logger = logging.getLogger(__name__)
 
 _CheckpointerPool = ConnectionPool[Connection[DictRow]]
