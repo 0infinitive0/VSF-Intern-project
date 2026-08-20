@@ -293,7 +293,21 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
           at: m.at || undefined,
         })),
         suggestions: data.suggestions || [],
-        hotelOptions: data.hotel_options || [],
+        // Once a trip plan exists, the backend's `hotel_options` here is
+        // durable_hotel_options (routes.py's restore_session) -- kept
+        // around ONLY so "revisit hotel picking" can re-fetch a fresh list
+        // through the deterministic change-hotel endpoint (step-
+        // navigator.tsx), never meant to be replayed as real content.
+        // deriveStageView (lib/derive-stage.ts) reads state.hotelOptions as
+        // "the CURRENT turn's options" and checks it BEFORE tripPlan (by
+        // its own doc comment, deliberately, for the live case where the
+        // guest reselects hotels while a trip plan already exists) — so
+        // feeding it back in here on every restore made ANY session that
+        // ever had a hotel picked always reopen on the hotel-selection
+        // step instead of its finished itinerary, no matter which step the
+        // guest was last looking at. A restore is never "the current
+        // turn", so it should never win that priority check.
+        hotelOptions: data.trip_plan ? [] : data.hotel_options || [],
         hotelFilterData: {
           ...INITIAL_STATE.hotelFilterData,
           hotelAmenities: data.hotel_amenities ?? [],

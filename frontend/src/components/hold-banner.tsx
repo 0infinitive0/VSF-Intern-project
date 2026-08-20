@@ -199,7 +199,16 @@ export default function HoldBanner({
 
         <button
           type="button"
-          onClick={() => void roomHold.recheckRooms()}
+          // TEMPORARY no-op (user request, 2026-08-20): this used to call
+          // roomHold.recheckRooms(), which is just releaseHold() under a
+          // different name (see its doc comment in use-room-hold.ts) — no
+          // actual re-check-availability logic exists yet. Clicking it set
+          // heldSessionId/status back to null/IDLE, which made
+          // holdBelongsToSession go false and this whole banner vanish with
+          // no trace the hold had ever expired. Until the real "recheck
+          // rooms" flow is built, do nothing on click so the EXPIRED banner
+          // stays visible instead of disappearing.
+          onClick={() => {}}
           className="flex items-center gap-1 px-3 py-1.5 rounded-full border-none text-[12px] font-[590] tracking-[-0.1px] text-white cursor-pointer transition-all duration-200 hover:opacity-95 active:scale-[0.97]"
           style={{ background: 'var(--err)', boxShadow: '0 4px 12px -3px rgba(192,94,112,.5)' }}
         >

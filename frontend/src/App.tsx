@@ -461,6 +461,21 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   const sessionBookedFromBackend = sessions?.find((s) => s.session_id === state.sessionId)?.status === 'paid'
   refreshRef.current = refresh
 
+  // Sidebar "Đang giữ phòng" badge is derived server-side per session
+  // (session-status-badge.ts / session_store.py's booking_states_for_
+  // sessions) from the booking row's own expires_at, but the sessions list
+  // itself only ever refetches on mount or when a chat turn finishes (see
+  // refreshRef above) — nothing was re-fetching it just because a hold's
+  // countdown silently ticks past zero while the guest sits here watching
+  // it, so the badge kept reading "Đang giữ phòng" until some unrelated
+  // refetch happened to occur later. roomHold.status flipping to 'EXPIRED'
+  // (use-room-hold.ts's own client-side expiry effect, driven by the real
+  // server expires_at) is the first moment this app knows for certain —
+  // refresh right then so the badge flips to "Bản nháp" promptly.
+  useEffect(() => {
+    if (roomHold.status === 'EXPIRED') refreshRef.current()
+  }, [roomHold.status])
+
   // ── Finalize itinerary (plan 260819-finalize-itinerary) ─────────────────
   // Confirm dialog + the actual mutation live here (not in finalize-
   // action.tsx) so the dialog can mount as a sibling of <AppShell>, escaping
