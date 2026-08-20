@@ -45,33 +45,58 @@ def _get_supabase_client() -> Client:
     return create_client(url, key)
 
 
-def _price_payload(price: dict[str, Any]) -> dict[str, Any]:
+def _average_price(
+    prices: list[dict[str, Any]], check_in: date | None, check_out: date | None
+) -> dict[str, Any] | None:
+    """Average this room's per-night price snapshots across the requested stay.
+
+    `room_prices` holds one row per crawled NIGHT (each row's `check_in_date`
+    is that night; see hotel_pipeline.py's `normalize_room`, which stores the
+    crawler's own `price_per_night`) — never one row spanning a whole
+    multi-night stay. So a 3-night stay's room price is the average of each
+    of those 3 nights' own snapshots, not a single row lookup. Restricted to
+    `[check_in, check_out)` when a stay is given; averages every known night
+    otherwise (a representative nightly rate for the detail view with no
+    stay picked yet).
+
+    A night re-crawled more than once keeps only its freshest (max
+    `crawled_at`) snapshot before averaging, so a stale re-crawl of the same
+    night never gets double-counted against a fresh one. Nights with no
+    non-sold-out snapshot are simply absent from the average — never
+    fabricated (same "no invented data" stance as the rest of this module).
+    Returns None when nothing in range has a usable price at all — the
+    caller shows "price on request", never falls back to hotel-level
+    pricing.
+    """
+    candidates = [row for row in prices if not row.get("sold_out", False) and row.get("check_in_date")]
+    if check_in is not None and check_out is not None:
+        check_in_value, check_out_value = check_in.isoformat(), check_out.isoformat()
+        candidates = [
+            row for row in candidates if check_in_value <= row["check_in_date"] < check_out_value
+        ]
+
+    freshest_by_night: dict[str, dict[str, Any]] = {}
+    for row in candidates:
+        night = row["check_in_date"]
+        current = freshest_by_night.get(night)
+        if current is None or str(row.get("crawled_at") or "") > str(current.get("crawled_at") or ""):
+            freshest_by_night[night] = row
+
+    priced_nights = [row for row in freshest_by_night.values() if row.get("price") is not None]
+    if not priced_nights:
+        return None
+
+    average_amount = sum(float(row["price"]) for row in priced_nights) / len(priced_nights)
+    latest = max(priced_nights, key=lambda row: str(row.get("crawled_at") or ""))
     return {
-        "amount": price.get("price"),
-        "currency": price.get("currency"),
-        "check_in_date": price.get("check_in_date"),
-        "check_out_date": price.get("check_out_date"),
-        "sold_out": price.get("sold_out"),
+        "amount": average_amount,
+        "currency": latest.get("currency"),
+        "check_in_date": check_in.isoformat() if check_in else min(freshest_by_night),
+        "check_out_date": check_out.isoformat() if check_out else None,
+        "sold_out": False,
         # The current schema has no package-detail column; preserve null.
         "package_details": None,
     }
-
-
-def _choose_price(
-    prices: list[dict[str, Any]], check_in: date | None, check_out: date | None
-) -> dict[str, Any] | None:
-    """Return one applicable price, never falling back to hotel-level pricing."""
-    if check_in is not None and check_out is not None:
-        check_in_value, check_out_value = check_in.isoformat(), check_out.isoformat()
-        matches = [
-            row for row in prices
-            if row.get("check_in_date") == check_in_value
-            and row.get("check_out_date") == check_out_value
-            and not row.get("sold_out", False)
-        ]
-    else:
-        matches = [row for row in prices if not row.get("sold_out", False)]
-    return max(matches, key=lambda row: str(row.get("crawled_at") or "")) if matches else None
 
 
 def _room_availability(
@@ -176,11 +201,16 @@ def get_hotel_detail(
         room_ids = [str(room["id"]) for room in rooms if room.get("id")]
         prices: list[dict[str, Any]] = []
         if room_ids:
-            query = client.table("room_prices").select(_PRICE_FIELDS).in_("room_id", room_ids)
+            # One row per crawled night (see _average_price's docstring) --
+            # a requested stay is a NIGHT RANGE, not a single exact
+            # check_in/check_out row, so this fetches every night in
+            # [check_in, check_out) for averaging rather than looking for
+            # one row spanning the whole stay.
+            query = client.table("room_prices").select(_PRICE_FIELDS).in_("room_id", room_ids).eq("sold_out", False)
             if check_in is not None and check_out is not None:
-                query = query.eq("check_in_date", check_in.isoformat()).eq("check_out_date", check_out.isoformat())
-            else:
-                query = query.eq("sold_out", False)
+                query = query.gte("check_in_date", check_in.isoformat()).lt(
+                    "check_in_date", check_out.isoformat()
+                )
             prices = query.execute().data or []
         availability_check_in = check_in or date.today()
         availability_check_out = check_out or availability_check_in + timedelta(days=1)
@@ -202,8 +232,7 @@ def get_hotel_detail(
     hotel["available_room_count"] = 0
     for room in rooms:
         room_detail = dict(room)
-        selected = _choose_price(prices_by_room.get(str(room.get("id")), []), check_in, check_out)
-        room_detail["price"] = _price_payload(selected) if selected else None
+        room_detail["price"] = _average_price(prices_by_room.get(str(room.get("id")), []), check_in, check_out)
         room_detail["available_room_count"] = availability_by_room.get(str(room.get("id")), 0)
         hotel["available_room_count"] += room_detail["available_room_count"]
         hotel["rooms"].append(room_detail)

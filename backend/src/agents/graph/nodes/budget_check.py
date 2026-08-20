@@ -255,7 +255,8 @@ def _replan_hotel_for_budget(
             "Không tìm thấy dữ liệu điểm đến cho {destination}.", language, destination=destination
         )
 
-    people = str(int(itinerary.get("number_of_adults") or 1))
+    people_count = int(itinerary.get("number_of_adults") or 1)
+    people = str(people_count)
     start_date = itinerary.get("start_date")
     end_date = itinerary.get("end_date")
 
@@ -271,6 +272,7 @@ def _replan_hotel_for_budget(
             start_date=start_date,
             end_date=end_date,
             exclude_hotel_ids=exclude_ids,
+            min_guests=people_count,
         )
     except Exception as exc:
         logger.warning("budget_check replan: hotel search failed: %s", exc)
