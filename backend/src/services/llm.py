@@ -161,6 +161,7 @@ def get_llm(
     base_url: str | None = None,
     reasoning_effort: str | None = None,
     streaming: bool | None = None,
+    timeout: float | None = None,
 ) -> BaseChatModel:
     """Return configured Chat LLM instance with local Ollama fallback.
 
@@ -176,6 +177,9 @@ def get_llm(
         streaming: OpenAI-only. Left unset (ChatOpenAI's own default: no streaming)
             unless a caller opts in -- most call sites (e.g. `supervisor`, `extract_patch`)
             must NOT stream their JSON output to the client.
+        timeout: OpenAI-only request timeout in seconds. Left unset (provider default)
+            unless a caller opts in. The Ollama branch does not accept it -- a caller
+            that needs a hard bound on a local model's latency must enforce it itself.
     """
     settings = get_settings()
 
@@ -273,6 +277,8 @@ def get_llm(
                 kwargs["base_url"] = target_base
             if streaming is not None:
                 kwargs["streaming"] = streaming
+            if timeout is not None:
+                kwargs["timeout"] = timeout
             return ChatOpenAI(**kwargs)
         except Exception as exc:
             logger.warning("Failed to initialize ChatOpenAI (%s). Falling back to local Ollama LLM.", exc)
@@ -410,6 +416,7 @@ def get_fast_llm(
     model: str | None = None,
     temperature: float | None = None,
     streaming: bool | None = None,
+    timeout: float | None = None,
 ) -> BaseChatModel:
     """Return the economical model for short Q&A and summarization work.
 
@@ -417,6 +424,9 @@ def get_fast_llm(
     output is meant to reach the user token-by-token (`qa_node`, `intake_qa` --
     `STREAMING_NODES` in `phase_keys.py`) should pass `streaming=True`. `supervisor` uses
     this same factory for routing JSON and must keep it unset.
+
+    `timeout` is opt-in the same way (see `get_llm`'s docstring) -- a call site with no
+    downstream deadline to protect (most of them) leaves it unset.
     """
     kwargs: dict[str, Any] = {
         "model": _get_role_model(
@@ -428,6 +438,8 @@ def get_fast_llm(
     }
     if streaming is not None:
         kwargs["streaming"] = streaming
+    if timeout is not None:
+        kwargs["timeout"] = timeout
     return get_llm(**kwargs)
 
 

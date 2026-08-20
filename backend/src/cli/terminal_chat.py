@@ -12,16 +12,16 @@ from src.agents.session import (
     process_chat_turn,
 )
 from src.config import get_settings
-from src.services.suggestions import generate_next_chat_suggestions
+from src.services.suggestions import SuggestionContext, SuggestionHotelCard, generate_next_chat_suggestions
 
 logger = logging.getLogger(__name__)
 
 _CLI_SESSION_ID = "poc_trip_planner_1"
 
 
-def _print_suggestions(context_text: str, last_action: str) -> None:
+def _print_suggestions(context: SuggestionContext) -> None:
     try:
-        suggestions = generate_next_chat_suggestions(context_text, last_action=last_action)
+        suggestions = generate_next_chat_suggestions(context)
         if suggestions:
             print("\n💡 Gợi ý câu hỏi tiếp theo:")
             for index, suggestion in enumerate(suggestions, 1):
@@ -30,16 +30,46 @@ def _print_suggestions(context_text: str, last_action: str) -> None:
         logger.debug("Could not print suggestions: %s", exc)
 
 
-def _suggestion_action(session, reply: str, had_pending_hotel_selection: bool) -> str | None:
-    if had_pending_hotel_selection:
-        return "hotel_selected"
-    if session.pending_hotel_selection is not None:
-        return "recommend_hotels"
-    if "đã xác nhận lịch trình" in reply.casefold():
-        return "finalized"
-    if session.trip_data is not None:
-        return "general"
-    return None
+def _cli_suggestion_context(session, reply: str, had_pending_hotel_selection: bool) -> SuggestionContext | None:
+    """Best-effort `SuggestionContext` from the CLI's legacy `TripSession`.
+
+    The CLI runs the pre-graph_v2 plane (`src.agents.session`), a
+    structurally different session type from the web path's
+    `TravelGraphState` -- no `task_results`, so there is no worker/status
+    signal to gate on here the way `routes.py` does. This infers an
+    equivalent "what did this turn just do" label from the same session
+    fields the old `_suggestion_action` read, kept only so the CLI and web
+    call the same `generate_next_chat_suggestions(context)` API -- grounding
+    detail (amenity labels, active filters) is intentionally thinner here,
+    the CLI is a dev tool, not the shipped surface this plan is fixing.
+    """
+    if had_pending_hotel_selection or session.pending_hotel_selection is not None:
+        worker = "hotel_node"
+    elif "đã xác nhận lịch trình" in reply.casefold():
+        worker = "booking_node"
+    elif session.trip_data is not None:
+        worker = "itinerary_node"
+    else:
+        return None
+
+    pending = session.pending_hotel_selection or {}
+    hotel_cards = tuple(
+        SuggestionHotelCard(
+            name=str(option.get("name") or ""),
+            price=option.get("average_nightly_price"),
+            review_score=option.get("review_score"),
+        )
+        for option in pending.get("options") or []
+        if isinstance(option, dict) and option.get("name")
+    )
+
+    return SuggestionContext(
+        worker=worker,
+        status="ok",
+        reply=reply,
+        language=session.language,
+        hotel_cards=hotel_cards,
+    )
 
 
 def run_terminal_chat() -> None:
@@ -77,9 +107,9 @@ def run_terminal_chat() -> None:
             print(f"\nAI:\n{reply}")
 
             if not reply.startswith("SYSTEM ERROR:"):
-                action = _suggestion_action(session, reply, had_pending_hotel_selection)
-                if action:
-                    _print_suggestions(reply, action)
+                context = _cli_suggestion_context(session, reply, had_pending_hotel_selection)
+                if context:
+                    _print_suggestions(context)
 
         except (KeyboardInterrupt, EOFError):
             print("\nExiting...")

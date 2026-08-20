@@ -8,7 +8,7 @@
  * only ever issues GET. Frames are parsed by hand from a fetch() body stream.
  */
 
-import type { PlannerChatResponse } from '../types'
+import type { PlannerChatResponse, Suggestion } from '../types'
 import { authHeaders } from './auth-headers'
 import { reportSessionExpired } from '../auth/session-expired-bus'
 
@@ -96,11 +96,32 @@ export interface StreamHandlers {
    * may never call this — see docs/chat_api_contract.md §Streaming.
    */
   onReasoning?: (text: string, phaseKey: string) => void
+  /**
+   * Fires once, at the `final` frame — the reply itself, before the stream
+   * has necessarily closed. Callers that want to stop showing "pending" the
+   * moment the reply lands (rather than waiting for the whole stream, which
+   * may still carry a `suggestions` frame after this) should hook this
+   * instead of the resolved promise.
+   */
+  onFinal?: (data: PlannerChatResponse) => void
+  /**
+   * Fires at most once, on the `suggestions` frame that `routes.py` sends
+   * AFTER `final` (docs/chat_api_contract.md §Streaming) — never called at
+   * all when the turn produced no chips (LLM failure/timeout/empty result,
+   * or a turn whose worker isn't gated for suggestions). That absence is a
+   * valid, designed state, not something this handler needs to distinguish
+   * from "not yet arrived".
+   */
+  onSuggestions?: (suggestions: Suggestion[]) => void
 }
 
 /**
  * Run one chat turn over SSE. Resolves with the `final` payload once the
- * stream's single terminal frame arrives.
+ * stream closes — which is AFTER any `suggestions` frame that follows
+ * `final` (§Streaming's one documented exception to "final/error is the
+ * last frame"). Callers that need the reply the moment it lands, without
+ * waiting for `suggestions`, should use `onFinal` rather than the resolved
+ * value.
  *
  * Throws `StreamUnsupported` ONLY for failures that happen before a valid
  * response is established: `fetch()` itself rejecting (network unreachable),
@@ -157,6 +178,7 @@ export async function sendMessageStream(
 
   // From here on the server has accepted and already started the turn —
   // every exit below is a plain Error, never StreamUnsupported.
+  let finalData: PlannerChatResponse | null = null
   try {
     for await (const frame of parseSse(res.body, controller.signal)) {
       receivedAnyFrame = true
@@ -179,7 +201,18 @@ export async function sendMessageStream(
           break
         }
         case 'final':
-          return frame.data as PlannerChatResponse
+          // No `return` here (Phase 3, plan
+          // 260819-1554-llm-grounded-chat-suggestions): a `suggestions` frame
+          // can follow `final`, and stopping the read here would drop it —
+          // keep draining until the stream actually closes.
+          finalData = frame.data as PlannerChatResponse
+          handlers.onFinal?.(finalData)
+          break
+        case 'suggestions': {
+          const d = frame.data as { suggestions: Suggestion[] }
+          handlers.onSuggestions?.(d.suggestions)
+          break
+        }
         case 'error': {
           const d = frame.data as { detail: string }
           throw new Error(d.detail)
@@ -188,10 +221,22 @@ export async function sendMessageStream(
           break // unknown event name — ignore, forward-compatible
       }
     }
+  } catch (err) {
+    // The reply already landed (`onFinal` already fired) — a failure while
+    // draining the trailing `suggestions` frame (network drop, an aborted
+    // read from a session switch) must not turn a delivered reply into a
+    // user-visible error. The trailing frame is best-effort; the reply is
+    // not. A genuine `error` frame is expected strictly BEFORE `final` per
+    // contract, so `finalData` is null in that real case and this still
+    // rethrows.
+    if (finalData) return finalData
+    throw err
   } finally {
     clearTimeout(firstFrameTimer)
     signal.removeEventListener('abort', onOuterAbort)
   }
+
+  if (finalData) return finalData
 
   // Stream ended (body closed, or the first-frame timeout aborted it) without
   // ever sending a terminal frame — this violates the contract (exactly one

@@ -115,7 +115,7 @@ Submits a new chat message to the trip planner agent.
 {
   "session_id": "uuid",
   "reply": "text reply, already formatted",
-  "suggestions": [ { "label": "1. Muong Thanh", "value": "1" } ],
+  "suggestions": [],
   "stage": "intake | hotel_options | planned | modified | finalized | error",
   "hotel_options": [
     { "index": 1, "id": "uuid", "name": "...", "star_rating": 4,
@@ -127,10 +127,16 @@ Submits a new chat message to the trip planner agent.
 }
 ```
 
-- `reply` and `suggestions` — shipped today (`src/models/schemas.py:49-57`). Unchanged
-  meaning: `reply` is the formatted text reply; `suggestions` is a list of tappable
-  quick-reply chips (`{label, value}`), built by `suggestions_for()`
-  (`chat_session.py:67`). Empty means the turn wants free text.
+- `reply` — the formatted text reply (`src/models/schemas.py`).
+- `suggestions` — tappable quick-reply chips (`{label, value}`, `SuggestionPayload`).
+  **Always `[]` on this endpoint** (plan `260819-1554-llm-grounded-chat-suggestions`,
+  Phase 2): `respond` no longer generates chips itself. Chips are LLM-generated,
+  grounded in the real turn's data (worker action, hotel cards actually shown, their
+  real amenities, active filters, trip length, language), and gated by which worker
+  ran this turn — they exist **only** on the SSE path, as the `suggestions` frame
+  described under §Streaming below. `POST /planner_chat` (this endpoint), `POST
+  /hotels/select`, and `GET /chat/{id}/restore` all return `suggestions: []` by
+  design, not as a missing feature — see §Streaming's "non-streaming callers" note.
 - `stage`, `hotel_options`, `trip_plan`, `intake` — added in Phase 3. `stage` is
   **derived, not routed** (see section below). `hotel_options` is populated only when
   `stage="hotel_options"`.
@@ -183,8 +189,11 @@ event: reasoning
 data: {"text":"**Checking amenities**\n\nThe user asked ","key":"generating"}
 
 event: final
-data: {"session_id":"...","reply":"...","suggestions":[...],"stage":"hotel_options",
+data: {"session_id":"...","reply":"...","suggestions":[],"stage":"hotel_options",
        "hotel_options":[...],"trip_plan":null,"intake":{...},"requires_stay_dates":false}
+
+event: suggestions
+data: {"session_id":"...","suggestions":[{"label":"Lọc khách sạn có điểm đánh giá trên 9","value":"Lọc khách sạn có điểm đánh giá trên 9"}]}
 
 event: error
 data: {"detail":"Đã xảy ra lỗi máy chủ. Vui lòng thử lại."}
@@ -223,12 +232,27 @@ data: {"detail":"Đã xảy ra lỗi máy chủ. Vui lòng thử lại."}
   - **Never terminal.** It carries model-written prose, not product copy — mark
     it as such in the UI rather than presenting it as the assistant speaking.
 - `final` — terminal frame carrying the full `PlannerChatResponse` dict.
+  `final.suggestions` is always `[]` here — see `suggestions` below.
+- `suggestions` — **the one frame allowed to follow a terminal frame** (plan
+  `260819-1554-llm-grounded-chat-suggestions`, Phase 2). Sent AFTER `final`, once the
+  worker has generated grounded next-chat-suggestion chips for this turn — so the
+  reply is never delayed by it. Carries `{session_id, suggestions: [{label, value},
+  ...]}`, the same `SuggestionPayload` shape `PlannerChatResponse.suggestions` uses.
+  **Never sent at all** when the turn produced no chips: the LLM call failed, timed
+  out, or returned nothing; or the turn's worker isn't one of the gated ones
+  (`hotel_node`, `itinerary_node`, `budget_check`, `booking_node`) or hit a
+  no-grounding-data status. Absence is a valid, designed state — clients must not
+  wait for it or treat a stream that never sends it as broken. A client built before
+  this frame existed is unaffected: it already ignores unknown event names
+  (`default: break` in `stream-client.ts`'s frame switch).
 - `error` — terminal frame for turn failures; `detail` is sanitized, no internals.
 
 **Invariants:**
 
 - Every stream ends with EXACTLY ONE terminal frame: `final` or `error`. Never both,
-  never zero (`emitter.close()` is in the worker's `finally`).
+  never zero (`emitter.close()` is in the worker's `finally`). `suggestions` is the
+  one documented exception to "the terminal frame is the last frame" — it is
+  non-terminal and may follow `final`, never `error`.
 - `final.data` is the same dict `POST /planner_chat` serializes for the same
   scenario — no extra/missing/renamed fields.
 - `delta` text is a prefix of the answer `final.reply` carries; `final` is
@@ -238,6 +262,18 @@ data: {"detail":"Đã xảy ra lỗi máy chủ. Vui lòng thử lại."}
   node, not by inspecting the text, so JSON from `extract_patch`/`supervisor`
   and the finished reply from `respond` are excluded structurally.
 - `phase.key` is an opaque key — no display text crosses the wire.
+
+**Non-streaming callers never get chips.** The `suggestions` frame only exists on this
+SSE path. Every response built by a non-streaming route returns `suggestions: []`
+unconditionally, by design, not as a missing feature:
+- `POST /planner_chat` (this section's plain fallback) — `respond` sets `[]` itself.
+- `POST /hotels/select` — shares `_response_from_result`/`applyPlannerResponse`
+  (`HOTEL_SELECTION_SUCCESS`) with the chat-turn path but never runs the SSE
+  suggestion worker. This is not a regression: before this plan, a hotel-selection
+  turn had no `suggestions` either (its `stage` was never `hotel_options`, the only
+  stage the old hardcoded-list logic mapped).
+- `GET /chat/{id}/restore` — see its own entry below; this was already the decided
+  behavior of plan `260816-2205-fe-be-contract-reconciliation`, unchanged here.
 
 **`phase` key table** (every key = a real code position it is emitted at; nothing is
 emitted on a schedule — if a branch doesn't pass through a position, the key does not
@@ -467,14 +503,14 @@ Searches for hotels and rooms by semantic similarity.
 
 ## Internal Architecture & Routing
 
-### `hotel_options[].index` <-> `suggestions[].value`
+### `hotel_options[].index`
 
-When a hotel list is pending, `suggestions_for()` emits one chip per option:
-`{label: "<index>. <hotel name>", value: "<index>"}` (`chat_session.py:81-89`). The
-client sends the chosen `index` back as the plain next `message` — that is exactly what
-`select_hotel` already parses (`process_chat_turn`, branch 1 below). `hotel_options[].index`
-in the structured payload is the same ordinal as `suggestions[].value`; the two are two
-views of one list, not independent contracts.
+`hotel_options[].index` is the card's 1-based ordinal in the pending list — unrelated
+to `suggestions` since plan `260819-1554-llm-grounded-chat-suggestions`. Chips are no
+longer "one per hotel option"; they are free-text, LLM-authored next-turn prompts
+grounded in the cards, filters, and trip data of this turn (see §Streaming's
+`suggestions` frame). A chip's `value` is a full sentence meant to be sent back as the
+next chat `message`, never a bare index.
 
 ### `stage` values
 
@@ -553,7 +589,7 @@ re-derivation of this machine that drops 1c reintroduces that bug.
   `chat_session.py:342` and returns a generic Vietnamese `"SYSTEM ERROR: ..."` string —
   the raw exception is never surfaced to the reply text at this layer.
 - HTTP-level failure: `POST /api/v1/planner_chat` currently wraps any exception from
-  `process_chat_turn`/`suggestions_for` in `HTTPException(status_code=500, detail=str(e))`
+  `process_chat_turn` in `HTTPException(status_code=500, detail=str(e))`
   (`routes.py:36`) — this leaks raw exception text to the client and is a known defect
   (plan.md "Verified current state", row "Raw exception text leaks"). Phase 3 is expected
   to replace `detail=str(e)` with a generic 5xx body; not fixed in Phase 1.
@@ -669,6 +705,10 @@ timeline. `404` if `session_id` doesn't exist or was never persisted.
   "intake": { "...same shape as PlannerChatResponse.intake..." }
 }
 ```
+
+`suggestions` is always `[]` here, by design — chips only exist on the live SSE path
+(§Streaming's `suggestions` frame); a restored conversation has no in-flight turn to
+generate one for.
 
 ## Authentication (plan `260814-supabase-auth-and-per-user-history`)
 

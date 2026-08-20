@@ -183,4 +183,52 @@ describe('sendMessageStream', () => {
     expect(onPhase).toHaveBeenCalledWith('received', 1, { key: 'received', at: 1 })
     expect(onDelta).toHaveBeenCalledWith('xin ')
   })
+
+  // ── suggestions frame after final (plan 260819-1554-llm-grounded-chat-suggestions) ──
+  // routes.py sends `final` then, separately, an optional `suggestions` frame
+  // before closing — the one documented exception to "the terminal frame is
+  // the last frame" (contract §Streaming). The reader must keep draining past
+  // `final` instead of returning immediately, or this frame is lost.
+
+  it('keeps reading past final and reports both final and suggestions frames', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        mockResponse([
+          'event: final\ndata: {"reply":"ok"}\n\n',
+          'event: suggestions\ndata: {"suggestions":[{"label":"Lọc theo giá","value":"Lọc theo giá"}]}\n\n',
+        ]),
+      ),
+    )
+    const onFinal = vi.fn()
+    const onSuggestions = vi.fn()
+    const data = await sendMessageStream(
+      'sid',
+      'hi',
+      'vi',
+      { onFinal, onSuggestions },
+      new AbortController().signal,
+    )
+
+    expect(onFinal).toHaveBeenCalledTimes(1)
+    expect(onFinal).toHaveBeenCalledWith({ reply: 'ok' })
+    expect(onSuggestions).toHaveBeenCalledTimes(1)
+    expect(onSuggestions).toHaveBeenCalledWith([{ label: 'Lọc theo giá', value: 'Lọc theo giá' }])
+    // The resolved value is still the `final` payload — callers that only
+    // need the reply (not the trailing suggestions) can keep awaiting it.
+    expect(data).toEqual({ reply: 'ok' })
+  })
+
+  it('resolves with no suggestions frame at all when the turn produced none', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(mockResponse(['event: final\ndata: {"reply":"ok"}\n\n'])),
+    )
+    const onFinal = vi.fn()
+    const onSuggestions = vi.fn()
+    await sendMessageStream('sid', 'hi', 'vi', { onFinal, onSuggestions }, new AbortController().signal)
+
+    expect(onFinal).toHaveBeenCalledTimes(1)
+    expect(onSuggestions).not.toHaveBeenCalled()
+  })
 })

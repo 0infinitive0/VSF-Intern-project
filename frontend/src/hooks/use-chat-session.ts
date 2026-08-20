@@ -34,6 +34,7 @@ import type {
   PhaseFacts,
   PhaseKey,
   SessionRestore,
+  Suggestion,
 } from '../types'
 
 /**
@@ -93,6 +94,14 @@ export type Action =
   | { type: 'STREAM_PHASE'; key: PhaseKey; at: number; facts: PhaseFacts; turnId: number }
   | { type: 'STREAM_DELTA'; text: string; turnId: number }
   | { type: 'STREAM_REASONING'; text: string; phaseKey: string; turnId: number }
+  // The `suggestions` SSE frame that arrives AFTER `final` (contract
+  // §Streaming) — never dispatched at all when the turn produced no chips.
+  // Same turnId guard as STREAM_DELTA/STREAM_PHASE, but turnId alone only
+  // catches a RESET/RESTORE-level session switch (it does not advance
+  // between two ordinary messages in the same session) — send() also aborts
+  // the previous turn's stream on a new send, which is what actually stops
+  // a still-draining turn N frame from landing under turn N+1.
+  | { type: 'STREAM_SUGGESTIONS'; suggestions: Suggestion[]; turnId: number }
   // Dedicated hotels/change round-trip (step-navigator.tsx's "đổi khách sạn"
   // action) — never part of the chat turn machinery: no message, no LLM call,
   // just a hotel-list refresh. Own pending flag (`hotelsLoading`) so Composer/
@@ -320,6 +329,10 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
       if (action.turnId !== state.turnId) return state
       return { ...state, thinking: appendReasoning(state.thinking, action.phaseKey, action.text) }
 
+    case 'STREAM_SUGGESTIONS':
+      if (action.turnId !== state.turnId) return state
+      return { ...state, suggestions: action.suggestions }
+
     case 'HOTELS_CHANGE_START':
       return { ...state, hotelsLoading: true, error: null }
 
@@ -511,10 +524,23 @@ export function useChatSession() {
       const turnId = state.turnId
       dispatch({ type: 'SEND_START', id, text: trimmed, displayText: options?.displayText })
 
+      // `pending` now clears at `final` (see `onFinal` below), before the
+      // stream necessarily closes — the connection can still be draining a
+      // trailing `suggestions` frame when the user sends the NEXT message.
+      // Two turns in one session share one `turnId` (it only advances on
+      // RESET/RESTORE), so that guard alone would let a late `suggestions`
+      // frame from turn N land under turn N+1. Aborting turn N's stream here
+      // is what actually prevents it — same pattern startNew()/restore() use.
+      abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
       try {
-        const data = await sendMessageStream(
+        // `SEND_SUCCESS` fires from `onFinal`, not from the resolved promise
+        // below — the promise only resolves once the whole stream closes,
+        // which is AFTER any `suggestions` frame that follows `final`
+        // (stream-client.ts's docstring), and `pending` must clear the
+        // moment the reply itself lands, not after that trailing frame.
+        await sendMessageStream(
           sessionId,
           trimmed,
           i18n.language,
@@ -524,10 +550,11 @@ export function useChatSession() {
             onDelta: (deltaText) => dispatch({ type: 'STREAM_DELTA', text: deltaText, turnId }),
             onReasoning: (text, phaseKey) =>
               dispatch({ type: 'STREAM_REASONING', text, phaseKey, turnId }),
+            onFinal: (data) => dispatch({ type: 'SEND_SUCCESS', id, data, turnId }),
+            onSuggestions: (suggestions) => dispatch({ type: 'STREAM_SUGGESTIONS', suggestions, turnId }),
           },
           controller.signal,
         )
-        dispatch({ type: 'SEND_SUCCESS', id, data, turnId })
       } catch (err) {
         if (err instanceof StreamUnsupported) {
           try {

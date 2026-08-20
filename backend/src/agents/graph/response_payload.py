@@ -119,6 +119,26 @@ def durable_hotel_options(state: TravelGraphState) -> list[dict[str, Any]]:
     return hotel_options_from_task_results(state)
 
 
+def last_worker_from_task_results(state: TravelGraphState) -> tuple[str, str] | None:
+    """`(worker, status)` of this turn's last recorded action, or `None`.
+
+    `task_results` is reset to `[]` by `load_context` every turn (see that
+    module), so its last entry -- when present -- is always THIS turn's own
+    action, never a stale one from a previous turn. `None` covers both "no
+    worker ran" (a pure `qa_node`/`scope_guard` turn writes no `task_results`
+    entry at all -- `qa_node`'s subgraph state has no `task_results` channel)
+    and a malformed entry missing its `worker` key.
+    """
+    task_results = state.get("task_results") or []
+    if not task_results:
+        return None
+    last = task_results[-1]
+    worker = last.get("worker")
+    if not worker:
+        return None
+    return str(worker), str(last.get("status") or "")
+
+
 def suggested_places_from_task_results(state: TravelGraphState) -> list[dict[str, Any]]:
     """The places the last worker turn wants the map to point at.
 

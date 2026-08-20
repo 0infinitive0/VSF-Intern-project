@@ -52,6 +52,7 @@ from src.agents.graph.response_payload import (
     derive_stage,
     durable_hotel_options,
     intake_status_from_travel_state,
+    last_worker_from_task_results,
 )
 from src.agents.session import (
     SessionRegistry,
@@ -109,6 +110,11 @@ from src.services.booking_service import (
 from src.services.email_service import EmailError, send_booking_confirmation_email
 from src.services.place_details import get_attraction_detail, get_hotel_detail
 from src.services.trip_finalize import FinalizeTripError, finalize_session_trip, is_trip_finalized
+from src.services.suggestions import (
+    SuggestionContext,
+    SuggestionHotelCard,
+    generate_next_chat_suggestions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1097,6 +1103,84 @@ def _response_from_result(session_id: str, result: dict) -> PlannerChatResponse:
     return PlannerChatResponse(**result["response"])
 
 
+# ---------------------------------------------------------------------------
+# Suggestion chips (plan 260819-1554-llm-grounded-chat-suggestions)
+# ---------------------------------------------------------------------------
+
+#: Only these workers can leave a turn with something worth grounding a chip
+#: in (a hotel card, a trip plan, a budget verdict). `qa_node` writes no
+#: `task_results` entry at all (see its own docstring), and `scope_guard`
+#: writes one this set simply excludes -- both are unreachable here
+#: regardless of `_SKIP_STATUSES` below.
+_SUGGESTION_WORKERS = frozenset({"hotel_node", "itinerary_node", "budget_check", "booking_node"})
+
+#: Statuses that mean "this worker ran but produced nothing to ground a
+#: suggestion in" (validation decision #6: no card, no trip -> a chip would
+#: have to invent one) OR "the reply carries state a chip could not actually
+#: act on" (`already_paid`: hotel_node's own paid-booking lock, `hotel_node.py`
+#: -- any "đổi/lọc khách sạn" chip would just get refused again). Deliberately
+#: narrow: a business-outcome status like `over_budget`/`no_results` still has
+#: real destination/dates/filters to ground a chip in, and is NOT in this set.
+_SKIP_STATUSES = frozenset(
+    {
+        "no_destination",
+        "unknown_destination",
+        "error",
+        "partial_error",
+        "declined",
+        "blocked",
+        "hotel_selection_failed",
+        "already_paid",
+    }
+)
+
+
+def _suggestion_context(app, config: dict, response: PlannerChatResponse) -> SuggestionContext | None:
+    """Grounding data for this turn's suggestion chips, or `None` when the
+    turn doesn't qualify (no gated worker ran, or it ran but hit a status in
+    `_SKIP_STATUSES`).
+
+    MUST be called while still holding `session.lock` (see `_run_turn`
+    below): `app.get_state(config)` reads the checkpointer's current
+    snapshot, and outside the lock a concurrent turn on the same session
+    could have already advanced it past the state this `response` was built
+    from.
+    """
+    state = app.get_state(config).values or {}
+    last_worker = last_worker_from_task_results(state)
+    if last_worker is None:
+        return None
+    worker, status = last_worker
+    if worker not in _SUGGESTION_WORKERS or status in _SKIP_STATUSES:
+        return None
+
+    hotel_cards = tuple(
+        SuggestionHotelCard(
+            name=option.name,
+            price=option.average_nightly_price,
+            review_score=option.review_score,
+        )
+        for option in response.hotel_options
+    )
+    language = str(state.get("language") or "vi")
+    amenity_labels = tuple(
+        amenity.label_en if language == "en" else amenity.label_vi for amenity in response.hotel_amenities
+    )
+    active_filter_labels = tuple(preference.label for preference in response.active_preferences)
+
+    return SuggestionContext(
+        worker=worker,
+        status=status,
+        reply=response.reply,
+        language=language,
+        destination=response.intake.destination if response.intake else None,
+        hotel_cards=hotel_cards,
+        hotel_amenity_labels=amenity_labels,
+        active_filter_labels=active_filter_labels,
+        trip_duration_days=response.trip_plan.duration_days if response.trip_plan else None,
+    )
+
+
 @router.post("/planner_chat", response_model=PlannerChatResponse)
 @router.post("/chat", response_model=PlannerChatResponse)
 def planner_chat(
@@ -1114,6 +1198,73 @@ def planner_chat(
             raise HTTPException(status_code=500, detail="Đã xảy ra lỗi máy chủ. Vui lòng thử lại.")
 
 
+def _run_stream_turn(
+    session,
+    session_id: str,
+    message: str,
+    language: str,
+    emitter: TurnEmitter,
+    *,
+    extra_state: dict | None = None,
+) -> None:
+    """The whole worker-thread body of one `POST /planner_chat/stream` turn.
+
+    A top-level function (not a closure inside the endpoint) so it can be
+    driven directly in tests the same way `test_stream_modes.py`'s
+    `streaming_turn` fixture drives `_run_turn_via_graph` -- bind a
+    `_RecordingEmitter` via `emitting_to`, call this, inspect `emitter.frames`.
+    No behavior change from being a closure: still runs inside
+    `loop.run_in_executor(None, ...)`, still the sole writer to `emitter`.
+
+    `extra_state` is never set by the real endpoint (`PlannerChatRequest` has
+    no such field) -- it exists purely as a test seam, the same shape
+    `_run_turn_via_graph` already exposes for `change_hotel`'s entry point.
+    """
+    try:
+        with emitting_to(emitter), session.lock:
+            response = _run_turn_via_graph(
+                session_id, message, language, extra_state, stream=True
+            )
+            # Read while still holding the lock (see `_suggestion_context`'s
+            # docstring) -- cheap, no LLM call yet. Guarded on its own: a
+            # failure here must never block `final` below from going out, the
+            # turn's reply is already computed by this point.
+            suggestion_context = None
+            try:
+                config = {"configurable": {"thread_id": session_id}}
+                suggestion_context = _suggestion_context(_get_graph_v2(), config, response)
+            except Exception:
+                logger.exception(
+                    "Unexpected error building suggestion context for session %s", session_id
+                )
+
+        # `final` goes out before anything below runs: the reply must never
+        # wait on the suggestion LLM call (plan
+        # 260819-1554-llm-grounded-chat-suggestions, decision #3).
+        emitter.emit("final", **response.model_dump(mode="json"))
+
+        if suggestion_context is not None:
+            try:
+                chips = generate_next_chat_suggestions(suggestion_context)
+                # Empty is a valid, designed outcome (LLM failed/timed out/
+                # returned nothing) -- no frame at all, not an empty one.
+                if chips:
+                    emitter.emit(
+                        "suggestions",
+                        session_id=session_id,
+                        suggestions=[{"label": text, "value": text} for text in chips],
+                    )
+            except Exception:
+                # A broken suggestion step must not take the stream down --
+                # `final` already went out and `close()` below still runs.
+                logger.exception("Unexpected error generating suggestions for session %s", session_id)
+    except Exception:
+        logger.exception("Unexpected error in planner_chat_stream for session %s", session_id)
+        emitter.emit("error", detail="Đã xảy ra lỗi máy chủ. Vui lòng thử lại.")
+    finally:
+        emitter.close()
+
+
 @router.post("/planner_chat/stream")
 async def planner_chat_stream(
     request: PlannerChatRequest, current_user: AuthenticatedUser | None = Depends(get_current_user)
@@ -1125,20 +1276,9 @@ async def planner_chat_stream(
     loop = asyncio.get_running_loop()
     emitter = TurnEmitter(loop)
 
-    def _run_turn() -> None:
-        try:
-            with emitting_to(emitter), session.lock:
-                response = _run_turn_via_graph(
-                    session_id, request.message, request.language, stream=True
-                )
-            emitter.emit("final", **response.model_dump(mode="json"))
-        except Exception:
-            logger.exception("Unexpected error in planner_chat_stream for session %s", session_id)
-            emitter.emit("error", detail="Đã xảy ra lỗi máy chủ. Vui lòng thử lại.")
-        finally:
-            emitter.close()
-
-    loop.run_in_executor(None, _run_turn)
+    loop.run_in_executor(
+        None, _run_stream_turn, session, session_id, request.message, request.language, emitter
+    )
 
     return StreamingResponse(
         sse_stream(emitter),

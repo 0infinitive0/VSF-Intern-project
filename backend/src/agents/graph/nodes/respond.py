@@ -63,15 +63,14 @@ reads `hotel_preferences.amenities`, mirroring `hotel_node`'s own
 `{id, label}` shape for the same slot. `all_preferences` (Phase 17) is the
 TTL-cached approved amenity catalog, fetched only on a `hotel_options` turn
 so the terminal node of every other turn stays free of the Supabase
-round-trip. `suggestions` (Phase 17) calls `generate_next_chat_suggestions`,
-mapped through a `stage` → `last_action` table so a `hotel_options` turn
-hits that function's hardcoded-list short-circuit; every other reachable
-stage (`intake`, `planned`) skips the call entirely rather than reaching the
-function's LLM-calling general branch — `intake` because its suggestions are
-never rendered (`chat-panel.tsx`'s `lastStage !== 'intake'` gate), `planned`
-because `trip_data` is sticky for the rest of the session (never reset by
-`load_context`), so mapping it to the general branch would put an untimed
-LLM call on every post-plan turn, not just the turn a trip was built on.
+round-trip. `suggestions` is always `[]` here (rewrite, plan
+260819-1554-llm-grounded-chat-suggestions): this node no longer generates chat
+suggestion chips at all. That work now happens in `routes.py`'s
+`planner_chat_stream`, AFTER this node's response has already been emitted as
+the `final` SSE frame -- gated by the turn's worker
+(`last_worker_from_task_results`), not by `stage`, and delivered as its own
+`suggestions` frame so it can never add latency to the reply. See
+`docs/chat_api_contract.md` §Streaming and `src/services/suggestions.py`.
 
 `trip_plan` (review finding F1): built from `state["trip_data"]` -- the
 `itinerary_node`/`hotel_node`-generated trip bundle, now its own state key
@@ -109,7 +108,6 @@ from src.agents.graph.state import TravelGraphState
 from src.domain.travel_state import Presence, TravelState
 from src.models.schemas import AmenityCatalogPayload, hotel_amenities_from_hotel_options, to_trip_plan_payload
 from src.services.amenity_catalog import AmenityCatalogEntry, all_approved_amenities, resolve_hotel_amenity_ids
-from src.services.suggestions import generate_next_chat_suggestions
 
 logger = logging.getLogger(__name__)
 
@@ -192,33 +190,6 @@ def _reply_from_task_results(state: TravelGraphState) -> str | None:
     return None
 
 
-# Only stages whose suggestions already have a hardcoded list in
-# `generate_next_chat_suggestions` (no LLM call) are mapped here. `intake` is
-# deliberately absent -- it is the most frequent stage in the app and its
-# suggestions are never rendered (`chat-panel.tsx`'s `lastStage !== 'intake'`
-# gate), so generating them would be a pure-waste LLM call on every intake
-# turn. `planned` is deliberately absent too, for a stronger reason:
-# `trip_data` is never reset by `load_context` (see state.py), so `planned`
-# is sticky for the rest of the session once a trip exists -- mapping it to
-# `generate_next_chat_suggestions`'s "general" branch would put an untimed
-# LLM call on every turn after that point, including qa_node answers and
-# scope_guard-blocked turns. No worker currently signals "a trip was just
-# (re)built this turn"; add that signal before wiring an LLM call here.
-_LAST_ACTION_BY_STAGE: dict[str, str] = {
-    "hotel_options": "recommend_hotels",
-}
-
-
-def _suggestions_for_stage(stage: str, reply: str) -> list[dict[str, str]]:
-    last_action = _LAST_ACTION_BY_STAGE.get(stage)
-    if last_action is None:
-        return []
-    return [
-        {"label": suggestion, "value": suggestion}
-        for suggestion in generate_next_chat_suggestions(reply or "", last_action=last_action)
-    ]
-
-
 def _catalog_preferences(ids: list[str], catalog: tuple[AmenityCatalogEntry, ...]) -> list[dict[str, str]]:
     by_id = {entry.id: entry for entry in catalog if entry.scope in {"hotel", "both"}}
     return [
@@ -236,19 +207,6 @@ def _active_preferences_from_travel_state(
     if amenities_slot.presence is not Presence.SET:
         return []
     return _catalog_preferences(list(resolve_hotel_amenity_ids(amenities_slot.value).ids), catalog)
-
-
-def _available_preferences_from_hotel_options(
-    hotel_options: list[dict[str, Any]], catalog: tuple[AmenityCatalogEntry, ...]
-) -> list[dict[str, str]]:
-    """Catalog-bound filters limited to the amenities shown on current cards."""
-    amenity_ids = [
-        amenity_id
-        for hotel in hotel_options
-        for amenity_id in hotel.get("display_amenities") or []
-        if isinstance(amenity_id, str)
-    ]
-    return _catalog_preferences(amenity_ids, catalog)
 
 
 def _payload_preferences(ids: list[str], catalog: list[AmenityCatalogPayload]) -> list[dict[str, str]]:
@@ -380,7 +338,15 @@ def respond(state: TravelGraphState) -> dict[str, Any]:
     response = {
         "session_id": state.get("session_id", ""),
         "reply": reply,
-        "suggestions": _suggestions_for_stage(stage, reply),
+        # Always empty here (Phase 17 rewrite, plan
+        # 260819-1554-llm-grounded-chat-suggestions): suggestion chips are now
+        # built by the SSE worker AFTER this node returns, from real turn
+        # data this node has no reason to duplicate — see `routes.py`'s
+        # `_suggestion_context` helper and its call in `planner_chat_stream`.
+        # A non-streaming caller (`POST /planner_chat`, `POST /hotels/select`,
+        # `restore`) never runs that worker, so it
+        # always gets `[]` here, by design (see `docs/chat_api_contract.md`).
+        "suggestions": [],
         "stage": stage,
         "hotel_options": hotel_options,
         "hotel_amenities": hotel_amenities,

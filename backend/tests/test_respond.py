@@ -139,63 +139,25 @@ class TestDeriveStage:
         assert set(get_args(ChatStage)) == {"intake", "planned", "hotel_options", "error"}
 
 
-# `generate_next_chat_suggestions` swallows any exception from the LLM call
-# and falls back to a hardcoded list (suggestions.py's `except Exception`),
-# so a monkeypatch that *raises* can't distinguish "never called" from
-# "called and failed" -- both leave the test green. A call counter can.
-def _counting_llm(calls: list[int]):
-    def _invoke(**_kwargs: Any) -> Any:
-        calls.append(1)
-        raise AssertionError("unreachable: only .invoke() should be called, not get_llm() again")
-
-    return _invoke
-
-
-# The exact hardcoded list `suggestions.py`'s `recommend_hotel*` short-circuit
-# returns -- asserting equality (not just non-empty) is what actually
-# distinguishes the short-circuit from the LLM-fallback list, which is
-# different text.
-_HOTEL_OPTIONS_HARDCODED_SUGGESTIONS = [
-    "Khách sạn nào có đánh giá cao nhất?",
-    "Lọc theo đánh giá cao hơn",
-    "Lọc khách sạn có bể bơi và bao gồm ăn sáng",
-]
-
-
 class TestRespondSuggestions:
-    def test_hotel_options_turn_gets_the_hardcoded_list_without_calling_the_llm(self, monkeypatch):
-        calls: list[int] = []
-        monkeypatch.setattr("src.services.suggestions.get_llm", _counting_llm(calls))
+    """`respond` no longer generates suggestion chips itself (plan
+    260819-1554-llm-grounded-chat-suggestions): the SSE worker in
+    `routes.py` does that AFTER this node returns, grounded in real turn
+    data instead of a hardcoded per-stage list. `suggestions` is always `[]`
+    here -- this node doesn't even import `generate_next_chat_suggestions`
+    any more -- regardless of stage."""
 
-        response = respond(_state(task_results=_hotel_task_results()))["response"]
+    def test_suggestions_is_always_empty_regardless_of_stage(self):
+        hotel_response = respond(_state(task_results=_hotel_task_results()))["response"]
+        intake_response = respond(_state(missing_slots=["destination"]))["response"]
+        planned_response = respond(_state(trip_data={"destination": "Đà Nẵng"}))["response"]
 
-        assert response["stage"] == "hotel_options"
-        assert [item["label"] for item in response["suggestions"]] == _HOTEL_OPTIONS_HARDCODED_SUGGESTIONS
-        assert all(item["label"] == item["value"] for item in response["suggestions"])
-        assert calls == []
-
-    def test_intake_turn_skips_suggestions_entirely_without_calling_the_llm(self, monkeypatch):
-        calls: list[int] = []
-        monkeypatch.setattr("src.services.suggestions.get_llm", _counting_llm(calls))
-
-        response = respond(_state(missing_slots=["destination"]))["response"]
-
-        assert response["stage"] == "intake"
-        assert response["suggestions"] == []
-        assert calls == []
-
-    def test_planned_turn_skips_suggestions_entirely_without_calling_the_llm(self, monkeypatch):
-        # trip_data is sticky for the rest of the session (never reset by
-        # load_context), so `planned` must never reach the LLM branch either
-        # -- unlike hotel_options, it has no hardcoded list to fall back to.
-        calls: list[int] = []
-        monkeypatch.setattr("src.services.suggestions.get_llm", _counting_llm(calls))
-
-        response = respond(_state(trip_data={"destination": "Đà Nẵng"}))["response"]
-
-        assert response["stage"] == "planned"
-        assert response["suggestions"] == []
-        assert calls == []
+        assert hotel_response["stage"] == "hotel_options"
+        assert intake_response["stage"] == "intake"
+        assert planned_response["stage"] == "planned"
+        assert hotel_response["suggestions"] == []
+        assert intake_response["suggestions"] == []
+        assert planned_response["suggestions"] == []
 
 
 class TestRespondCompoundPrice:

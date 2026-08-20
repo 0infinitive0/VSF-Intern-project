@@ -216,6 +216,29 @@ describe('chatSessionReducer — stale-turn guard', () => {
     expect(currentDelta.streamingText).toBe('live')
   })
 
+  it('ignores STREAM_SUGGESTIONS for a stale turn but applies it for the current one', () => {
+    const restored = chatSessionReducer(
+      { ...INITIAL_STATE, sessionId: 's1' },
+      { type: 'RESTORE', sessionId: 's2', data: restoreDataFor('s2') },
+    )
+    const chip = { label: 'Lọc theo giá', value: 'Lọc theo giá' }
+
+    const staleSuggestions = chatSessionReducer(restored, {
+      type: 'STREAM_SUGGESTIONS',
+      suggestions: [chip],
+      turnId: 0,
+    })
+    expect(staleSuggestions).toBe(restored)
+    expect(staleSuggestions.suggestions).toEqual(restored.suggestions)
+
+    const currentSuggestions = chatSessionReducer(restored, {
+      type: 'STREAM_SUGGESTIONS',
+      suggestions: [chip],
+      turnId: restored.turnId,
+    })
+    expect(currentSuggestions.suggestions).toEqual([chip])
+  })
+
   // The scenario the turnId design specifically defends against: sessionId
   // alone can't tell an ABA switch apart from "nothing happened". A→B→A
   // leaves sessionId back at "A", but a reply captured for the FIRST "A"
