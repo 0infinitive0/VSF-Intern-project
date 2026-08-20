@@ -113,6 +113,49 @@ def test_recalculate_itinerary_routes_batching(mock_batch_api):
     assert items[1]["route_to_next"]["profile"] == "driving-traffic"
     assert items[1]["route_to_next"]["polyline"] == "d3"
 
+@patch("src.services.routing.MapboxDirectionsClient.get_route_info_batch")
+def test_recalculate_itinerary_routes_skips_item_with_no_coordinates(mock_batch_api):
+    """Regression: a mid-day item with no parseable coordinates is a genuine gap --
+    it must be left alone (no route assigned, frontend falls back to a straight
+    line), and every OTHER item's route must still describe ITS OWN leg, not a
+    leg spliced across the gap onto the wrong pair of points. Previously, once
+    `day_sequence` had already been seeded (by the hotel->item0 leg), the item
+    right after a gap silently re-used the stale coordinate before it instead of
+    its own -- see routing.py's recalculate_itinerary_routes for the full story."""
+    # 4 legs after the gap-item (B) is bridged: hotel->A, A->C (bridging, unassigned),
+    # C->D, D->hotel.
+    mock_batch_api.return_value = [
+        {"distance_km": 1.0, "duration_mins": 2.0, "polyline": "hotel_to_a", "profile": "driving-traffic"},
+        {"distance_km": 1.0, "duration_mins": 2.0, "polyline": "a_to_c_bridge", "profile": "driving-traffic"},
+        {"distance_km": 1.0, "duration_mins": 2.0, "polyline": "c_to_d", "profile": "driving-traffic"},
+        {"distance_km": 1.0, "duration_mins": 2.0, "polyline": "d_to_hotel", "profile": "driving-traffic"},
+    ]
+
+    trip_data = {
+        "hotel": {"coordinates": "10.0, 106.0"},
+        "itinerary_items": [
+            {"day_number": 1, "order_index": 1, "coordinates": "10.1, 106.1", "name": "A"},
+            {"day_number": 1, "order_index": 2, "coordinates": None, "name": "B (no coords)"},
+            {"day_number": 1, "order_index": 3, "coordinates": "10.3, 106.3", "name": "C"},
+            {"day_number": 1, "order_index": 4, "coordinates": "10.4, 106.4", "name": "D"},
+        ],
+    }
+
+    updated = recalculate_itinerary_routes(trip_data)
+    a, b, c, d = updated["itinerary_items"]
+
+    assert a["route_from_hotel"]["polyline"] == "hotel_to_a"
+    assert "route_to_next" not in a  # A->B never resolves: B has no coordinates
+
+    assert "route_to_next" not in b  # the gap item itself is never assigned a route
+
+    # The bug: this used to come back as "a_to_c_bridge" (C's OWN leg silently
+    # replaced by the bridging leg computed to reach it).
+    assert c["route_to_next"]["polyline"] == "c_to_d"
+
+    assert d["route_to_next"]["polyline"] == "d_to_hotel"
+
+
 def test_encode_polyline():
     from src.services.routing import encode_polyline
     coords = [(10.76262, 106.66017), (10.77123, 106.67123)]

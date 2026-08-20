@@ -238,6 +238,12 @@ export default function StageWorkspace({
         coordinates: tripPlan.hotel.coordinates,
         kind: 'hotel',
         hoverLabel: hotelItemNumbers.join(' · ') || undefined,
+        // The hotel is every day's actual start AND end point (each day's
+        // route runs hotel -> ... -> hotel), not the day's first/last
+        // attraction — only shown on a single day's own tab, same gate the
+        // badge used before it lived here, to avoid clutter on Tổng quan
+        // where many days' routes are on screen at once.
+        endpoint: resolvedTab !== 'overview' && (activeDay?.items.length ?? 0) > 0 ? 'both' : undefined,
       })
     }
     for (const day of daysToShow) {
@@ -250,7 +256,6 @@ export default function StageWorkspace({
           label: index + 1,
           dayNumber: day.day_number,
           openId: item.reference_type === 'Attraction' && item.reference_id ? item.reference_id : undefined,
-          endpoint: resolvedTab !== 'overview' && index === 0 ? 'start' : resolvedTab !== 'overview' && index === day.items.length - 1 ? 'end' : undefined,
         })
       })
     }

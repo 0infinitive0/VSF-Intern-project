@@ -225,59 +225,71 @@ def recalculate_itinerary_routes(trip_data: Dict[str, Any]) -> Dict[str, Any]:
         
         # Build the sequence of coordinates for the day
         day_sequence = []
-        item_mapping = [] # stores tuple: (item_dict, field_to_update, origin_coords, dest_coords)
-        
+        # stores tuple: (item_dict, field_to_update, origin_coords, dest_coords, leg_index) --
+        # leg_index is this entry's position among the legs Mapbox will return for
+        # day_sequence (leg i connects day_sequence[i] and day_sequence[i+1]), tracked
+        # explicitly rather than assumed from item_mapping's own list position. An item
+        # with no parseable coordinates contributes NEITHER a day_sequence point NOR an
+        # item_mapping entry -- it's a genuine gap, left for the frontend's straight-line
+        # fallback -- but the coordinate immediately after such a gap must still be
+        # RE-SEEDED into day_sequence (it's not already the last point there), which
+        # inserts an extra "bridging" leg with no item of its own. Relying on
+        # enumerate(item_mapping) to index into the returned legs silently drifted by
+        # exactly one leg per gap once that bridging leg existed, splicing each
+        # following item's route onto the wrong pair of points.
+        item_mapping = []
+
         if parsed_hotel_coords and len(day_items) > 0:
             first_item = day_items[0]
             first_coords = parse_coordinates(first_item.get("coordinates"))
             if first_coords:
                 day_sequence.append(parsed_hotel_coords)
                 day_sequence.append(first_coords)
-                item_mapping.append((first_item, "route_from_hotel", parsed_hotel_coords, first_coords))
+                item_mapping.append((first_item, "route_from_hotel", parsed_hotel_coords, first_coords, len(day_sequence) - 2))
 
         for i in range(len(day_items)):
             curr_item = day_items[i]
             curr_coords = parse_coordinates(curr_item.get("coordinates"))
-            
+
             if i < len(day_items) - 1:
                 next_item = day_items[i + 1]
                 next_coords = parse_coordinates(next_item.get("coordinates"))
                 if curr_coords and next_coords:
-                    if not day_sequence:
+                    if not day_sequence or day_sequence[-1] != curr_coords:
                         day_sequence.append(curr_coords)
                     day_sequence.append(next_coords)
-                    item_mapping.append((curr_item, "route_to_next", curr_coords, next_coords))
+                    item_mapping.append((curr_item, "route_to_next", curr_coords, next_coords, len(day_sequence) - 2))
             else:
                 # Last item -> back to hotel
                 if curr_coords and parsed_hotel_coords:
-                    if not day_sequence:
+                    if not day_sequence or day_sequence[-1] != curr_coords:
                         day_sequence.append(curr_coords)
                     day_sequence.append(parsed_hotel_coords)
-                    item_mapping.append((curr_item, "route_to_next", curr_coords, parsed_hotel_coords))
-                    
+                    item_mapping.append((curr_item, "route_to_next", curr_coords, parsed_hotel_coords, len(day_sequence) - 2))
+
         if not day_sequence or not item_mapping:
             continue
-            
-        # Deduplicate consecutive identical coordinates for Mapbox API to avoid empty legs,
-        # but mapbox can handle them. Wait, if Mapbox receives identical consecutive coords,
-        # it returns a leg with 0 distance. It's safer to just send them and let Mapbox handle it.
-        # This keeps leg indexes aligned with item_mapping!
-        
+
+        # NOTE: day_sequence can now contain a "bridging" leg with no item_mapping entry
+        # (the re-seed above, right after a gap) -- leg indexes are no longer simply
+        # 1:1 with item_mapping's own order, which is exactly why each entry carries its
+        # real leg_index instead of relying on position.
+
         driving_legs = MapboxDirectionsClient.get_route_info_batch(day_sequence, "driving-traffic")
-        
+
         # Check if any leg requires walking
         needs_walking = False
-        for (item, field, origin, dest) in item_mapping:
+        for (item, field, origin, dest, _leg_index) in item_mapping:
             if origin != dest and _haversine_km(origin, dest) < WALKING_THRESHOLD_KM:
                 needs_walking = True
                 break
-                
+
         walking_legs = None
         if needs_walking:
             walking_legs = MapboxDirectionsClient.get_route_info_batch(day_sequence, "walking")
-            
+
         # Assign back to items
-        for i, (item, field, origin, dest) in enumerate(item_mapping):
+        for (item, field, origin, dest, leg_index) in item_mapping:
             if origin == dest:
                 item[field] = {
                     "distance_km": 0.0,
@@ -286,17 +298,17 @@ def recalculate_itinerary_routes(trip_data: Dict[str, Any]) -> Dict[str, Any]:
                     "profile": "walking"
                 }
                 continue
-                
+
             dist_km = _haversine_km(origin, dest)
             use_walking = dist_km < WALKING_THRESHOLD_KM
-            
+
             # Select appropriate leg data
             leg_data = None
-            if use_walking and walking_legs and i < len(walking_legs):
-                leg_data = walking_legs[i]
-            elif driving_legs and i < len(driving_legs):
-                leg_data = driving_legs[i]
-                
+            if use_walking and walking_legs and leg_index < len(walking_legs):
+                leg_data = walking_legs[leg_index]
+            elif driving_legs and leg_index < len(driving_legs):
+                leg_data = driving_legs[leg_index]
+
             if leg_data:
                 item[field] = leg_data
 

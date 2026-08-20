@@ -230,7 +230,11 @@ export interface MapMarkerSpec {
   label?: number
   dayNumber?: number
   openId?: string
-  endpoint?: 'start' | 'end'
+  /** 'both' marks the hotel as the day's single start/end point (every day
+   * starts and ends there) — 'start'/'end' remain for a non-hotel endpoint,
+   * though the itinerary day view no longer produces those (see
+   * stage-workspace.tsx's markers useMemo). */
+  endpoint?: 'start' | 'end' | 'both'
   /** Hotel itinerary position number(s), revealed only while hovering the pin. */
   hoverLabel?: string
   priceLabel?: string
@@ -424,6 +428,20 @@ function startDrawIn(map: mapboxgl.Map): () => void {
   return () => cancelAnimationFrame(frame)
 }
 
+const ENDPOINT_BADGE_TEXT: Record<NonNullable<MapMarkerSpec['endpoint']>, string> = {
+  start: 'XUẤT PHÁT',
+  end: 'KẾT THÚC',
+  both: 'XUẤT PHÁT & KẾT THÚC',
+}
+
+function appendEndpointBadge(content: HTMLElement, endpoint: MapMarkerSpec['endpoint']) {
+  if (!endpoint) return
+  const badge = document.createElement('div')
+  badge.textContent = ENDPOINT_BADGE_TEXT[endpoint]
+  badge.style.cssText = "position:absolute;left:50%;bottom:30px;transform:translateX(-50%);white-space:nowrap;padding:2px 8px;border-radius:99px;background:var(--btn);color:var(--btn-fg);font:600 9.5px/1.4 'Be Vietnam Pro',sans-serif;letter-spacing:.04em;box-shadow:0 6px 14px -6px rgba(0,0,0,.6)"
+  content.appendChild(badge)
+}
+
 function createMarkerElement(marker: MapMarkerSpec): { root: HTMLDivElement; content: HTMLDivElement } {
   const root = document.createElement('div')
   const content = document.createElement('div')
@@ -454,7 +472,12 @@ function createMarkerElement(marker: MapMarkerSpec): { root: HTMLDivElement; con
     }
     if (marker.priceLabel) { const price = document.createElement('b'); price.textContent = marker.priceLabel; price.style.fontWeight = '590'; content.appendChild(price) }
     if (marker.matchLabel) { const match = document.createElement('span'); match.textContent = marker.matchLabel; match.style.opacity = '.75'; content.appendChild(match) }
-    if (marker.hoverLabel) {
+    // A day view's hotel never carries a hoverLabel (hotelItemNumbers is
+    // empty whenever the hotel isn't literally embedded as a day item — see
+    // stage-workspace.tsx), so this static badge and the hover-only number
+    // label below never actually compete for the same spot in practice.
+    if (marker.endpoint) appendEndpointBadge(content, marker.endpoint)
+    else if (marker.hoverLabel) {
       const label = document.createElement('div')
       label.dataset.hotelMarkerNumber = 'true'
       label.textContent = marker.hoverLabel
@@ -489,12 +512,7 @@ function createMarkerElement(marker: MapMarkerSpec): { root: HTMLDivElement; con
     content.style.textAlign = 'center'
     content.style.animation = `vPinIn .6s ${(marker.label ?? 1) * 65}ms cubic-bezier(.34,1.4,.64,1) backwards`
     content.textContent = marker.label != null ? String(marker.label) : ''
-    if (marker.endpoint) {
-      const badge = document.createElement('div')
-      badge.textContent = marker.endpoint === 'start' ? 'XUẤT PHÁT' : 'KẾT THÚC'
-      badge.style.cssText = "position:absolute;left:50%;bottom:30px;transform:translateX(-50%);white-space:nowrap;padding:2px 8px;border-radius:99px;background:var(--btn);color:var(--btn-fg);font:600 9.5px/1.4 'Be Vietnam Pro',sans-serif;letter-spacing:.04em;box-shadow:0 6px 14px -6px rgba(0,0,0,.6)"
-      content.appendChild(badge)
-    }
+    appendEndpointBadge(content, marker.endpoint)
   }
   return { root, content }
 }
