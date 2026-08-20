@@ -6,7 +6,7 @@
 
 **Agent:** Bạn muốn mức giá khách sạn khoảng nào? Có thể nói một mức cụ thể (vd "4 triệu/đêm"), một khoảng (vd "2-3 triệu/đêm"), hoặc "không cần lọc theo giá" nếu bạn không có yêu cầu.
 
-**Scores:** faithfulness=N/A (no contexts), response_relevancy=N/A (agent asking a clarifying question, not answering one)
+**Scores:** faithfulness=N/A (no contexts)
 
 **Retrieved contexts:** none
 
@@ -20,60 +20,48 @@
 
 ```
 Mình tìm được 5 khách sạn phù hợp.
-1. Wink Đà Nẵng Riverside, Unscripted by Hyatt - lưu trú 24 giờ (Wink Danang Riverside, Unscripted by Hyatt- 24 hours stay) — 5 sao — 1,400,000 VND/đêm — tổng 2,800,000 VND cho 2 đêm
-2. Golden Lotus Hotel Da Nang - Rooftop Bar Sea View — 4 sao — 1,576,879 VND/đêm — tổng 3,153,758 VND cho 2 đêm
-3. Cicilia Hotels & Spa Danang — 4 sao — 1,410,937 VND/đêm — tổng 2,821,874 VND cho 2 đêm
-4. Tru by Hilton Da Nang City Centre — 4 sao — 1,432,080 VND/đêm — tổng 2,864,160 VND cho 2 đêm
-5. Khu nghỉ dưỡng The Blossom Resort Island Đà Nẵng - Bao gồm Onsen (The Blossom Resort Island Da Nang - Onsen Included) — 5 sao — 1,639,068 VND/đêm — tổng 3,278,136 VND cho 2 đêm
+1. Wink Đà Nẵng Riverside, Unscripted by Hyatt - lưu trú 24 giờ (Wink Danang Riverside, Unscripted by Hyatt- 24 hours stay) — 5 sao — 1,400,000 VND/đêm — tổng 1,400,000 VND cho 1 đêm
+2. Khách sạn Wink Đà Nẵng Centre, Unscripted by Hyatt (Wink Danang Centre, Unscripted by Hyatt - 24 hours stay) — 4 sao — 1,250,000 VND/đêm — tổng 1,250,000 VND cho 1 đêm
+3. Golden Lotus Hotel Da Nang - Rooftop Bar Sea View — 4 sao — 1,576,879 VND/đêm — tổng 1,576,879 VND cho 1 đêm
+4. M Village Hotel Da Nang Centre, a brand of Modern Village Lifestyle — 4 sao — 1,602,720 VND/đêm — tổng 1,602,720 VND cho 1 đêm
+5. Mandila Beach Hotel Danang — 4 sao — 1,599,079 VND/đêm — tổng 1,599,079 VND cho 1 đêm
 ```
 
-**Scores:** faithfulness=0.8947368421052632, response_relevancy=N/A (hotel_node answers a slot statement, not a question)
+**Scores:** faithfulness=0.9
 
 **Retrieved contexts (10):**
-- [6601b010-4691-4706-9736-6ca14c5a08c0] Golden Lotus Hotel Da Nang - Rooftop Bar Sea View — 4 sao — 1,576,879 VND/đêm — tổng 3,153,758 VND cho 2 đêm
-- [06620240-a787-4020-a568-37a5e01c5a85] Yarra Ocean Suites Danang — 4 sao — 1,780,906 VND/đêm — tổng 3,561,812 VND cho 2 đêm
-- [5884bdd2-bfbc-469f-828a-ff10b706b173] Wink Đà Nẵng Riverside, Unscripted by Hyatt - lưu trú 24 giờ (Wink Danang Riverside, Unscripted by Hyatt- 24 hours stay) — 5 sao — 1,400,000 VND/đêm — tổng 2,800,000 VND cho 2 đêm
-- [84915fa2-dc5f-4ffa-9c39-a46ce04096a2] Lilly Apartment — 1,400,000 VND/đêm — tổng 2,800,000 VND cho 2 đêm
-- [4de2582a-55b9-4cec-8339-9e29077d76ca] Cicilia Hotels & Spa Danang — 4 sao — 1,410,937 VND/đêm — tổng 2,821,874 VND cho 2 đêm
-- [d542ea48-e871-482f-b25e-b7a3916f9695] DLG Hotel Danang — 5 sao — 1,652,335 VND/đêm — tổng 3,304,670 VND cho 2 đêm
-- [24001acf-2da2-4f00-be45-a1a238b2d33f] Khu nghỉ dưỡng The Blossom Resort Island Đà Nẵng - Bao gồm Onsen (The Blossom Resort Island Da Nang - Onsen Included) — 5 sao — 1,639,068 VND/đêm — tổng 3,278,136 VND cho 2 đêm
-- [2740452f-1008-4657-8cf1-4383c59591ec] Mandila Beach Hotel Danang — 4 sao — 1,599,079 VND/đêm — tổng 3,198,158 VND cho 2 đêm
-- [d978a2e4-1ab1-4b1e-9eec-0e651d4fe627] Mangata Beachfront Hotel - Rooftop Bar Sea View — 4 sao — 1,599,342 VND/đêm — tổng 3,198,684 VND cho 2 đêm
-- [78e196dd-97c0-4f66-8280-977e9958500e] Tru by Hilton Da Nang City Centre — 4 sao — 1,432,080 VND/đêm — tổng 2,864,160 VND cho 2 đêm
+- [6601b010-4691-4706-9736-6ca14c5a08c0] Golden Lotus Hotel Da Nang - Rooftop Bar Sea View — 4 sao — 1,576,879 VND/đêm — tổng 1,576,879 VND cho 1 đêm
+- [06620240-a787-4020-a568-37a5e01c5a85] Yarra Ocean Suites Danang — 4 sao — 1,780,906 VND/đêm — tổng 1,780,906 VND cho 1 đêm
+- [73b92868-2f17-46a4-876b-fc30c987169e] Vanda Hotel — 4 sao — 1,760,118 VND/đêm — tổng 1,760,118 VND cho 1 đêm
+- [2b80612d-77c1-4b76-8eab-a852d25bbc76] Olwen Boutique Hotel — 3 sao — 1,636,181 VND/đêm — tổng 1,636,181 VND cho 1 đêm
+- [76646889-c8bf-43da-af7e-6bbd7e615872] M Village Hotel Da Nang Centre, a brand of Modern Village Lifestyle — 4 sao — 1,602,720 VND/đêm — tổng 1,602,720 VND cho 1 đêm
+- [84915fa2-dc5f-4ffa-9c39-a46ce04096a2] Lilly Apartment — 1,400,000 VND/đêm — tổng 1,400,000 VND cho 1 đêm
+- [2740452f-1008-4657-8cf1-4383c59591ec] Mandila Beach Hotel Danang — 4 sao — 1,599,079 VND/đêm — tổng 1,599,079 VND cho 1 đêm
+- [d978a2e4-1ab1-4b1e-9eec-0e651d4fe627] Mangata Beachfront Hotel - Rooftop Bar Sea View — 4 sao — 1,599,342 VND/đêm — tổng 1,599,342 VND cho 1 đêm
+- [53c65b53-05fe-4c51-bb5f-d86190ac3f7e] Khách sạn Wink Đà Nẵng Centre, Unscripted by Hyatt (Wink Danang Centre, Unscripted by Hyatt - 24 hours stay) — 4 sao — 1,250,000 VND/đêm — tổng 1,250,000 VND cho 1 đêm
+- [5884bdd2-bfbc-469f-828a-ff10b706b173] Wink Đà Nẵng Riverside, Unscripted by Hyatt - lưu trú 24 giờ (Wink Danang Riverside, Unscripted by Hyatt- 24 hours stay) — 5 sao — 1,400,000 VND/đêm — tổng 1,400,000 VND cho 1 đêm
 
 ## Turn 3 (template, worker=hotel_node)
 
 **User:** __ACTION:select_first_hotel__
 
-**Agent:** Đã dựng xong lịch trình 2 ngày quanh Wink Đà Nẵng Riverside, Unscripted by Hyatt - lưu trú 24 giờ (Wink Danang Riverside, Unscripted by Hyatt- 24 hours stay). Chi tiết từng ngày ở bảng lịch trình bên cạnh.
+**Agent:** Đã dựng xong lịch trình 1 ngày quanh Wink Đà Nẵng Riverside, Unscripted by Hyatt - lưu trú 24 giờ (Wink Danang Riverside, Unscripted by Hyatt- 24 hours stay). Chi tiết từng ngày ở bảng lịch trình bên cạnh.
 
-**Scores:** faithfulness=N/A (hotel-pick confirmation - no factual claims to check), response_relevancy=N/A (hotel-pick confirmation - no factual claims to check)
+**Scores:** faithfulness=N/A (hotel-pick confirmation - no factual claims to check)
 
-**Retrieved contexts (66):**
-- [a16373a3-c3a0-5266-a926-dc6320108387] Nhà Hàng Việt Xưa Đà Nẵng
-- [16d4ac5b-7e78-5995-9a19-d82030d8e585] Passion Café
-- [4dca597b-ecb6-5493-be96-541dd2263879] Forest Coffee Da Nang
-- [90564062-d94a-5304-96ca-388c938511af] Trình cà phê
-- [00340b93-6b25-5c46-8ec2-ec042c30c054] Bistecca - Italian Restaurant in Da Nang
-- [a6870942-b8dd-5ec4-b424-86996b3c1cc6] Đà Phin Cafe
-- [b5af5d40-9dc3-5386-9f1e-45f172f8d13a] Nhà hàng Thiên Kim
-- [b9e377b3-a725-5611-82f7-d5698435f087] Ăn Thôi
-- [c62a6b6c-4f11-5fb0-b9b3-dd12010d8391] Ngon Phố Đà - Homey Authentic Vietnamese Cuisine
-- [22a6846f-c122-511e-b671-be82d2f02607] Venus Coffee
-- [5267d6a7-57f4-5403-a5be-eb68ddcd9aea] Tượng Mẹ Âu Cơ
-- [8eab43a3-3ab9-5c9e-ad73-185609f632c2] Nhà hàng Nhà Gỗ Việt Đà Nẵng
+**Retrieved contexts (54):**
 - [2b628617-b48e-5895-aa23-555ba8d074c4] Du Thuyền Sông Hàn Đà Nẵng (2Da Tickets)
-- [04369170-223f-56fd-b6c7-972cc9a02e38] Nhà hàng Mr.Anh
-- [c3a1eb41-c13c-5232-8716-3e38eb42c8ce] Mia Café
-- [4dca597b-ecb6-5493-be96-541dd2263879] Forest Coffee Da Nang
-- [064f958b-014c-5da8-b52c-e7a72e1182a7] Vincom Plaza Đà Nẵng
 - [762ba4e8-902d-5796-bc27-1632156f9790] Sông Hàn
-- [16d4ac5b-7e78-5995-9a19-d82030d8e585] Passion Café
-- [22a6846f-c122-511e-b671-be82d2f02607] Venus Coffee
 - [057c055c-8648-5130-ae2f-dc59b75de863] Làng Bích họa Đà Nẵng
-- [3e0ff385-b035-530f-b652-b63fdd702a98] P Coffee
-- [b5af5d40-9dc3-5386-9f1e-45f172f8d13a] Nhà hàng Thiên Kim
-- [2416273e-0832-5c8f-acfa-8c22f918de5f] Cafe đà nẵng
+- [5267d6a7-57f4-5403-a5be-eb68ddcd9aea] Tượng Mẹ Âu Cơ
+- [92babc6d-c993-5af4-bde1-8a67d8be6b53] Di tích Thành Điện Hải
+- [7e1783c0-f8fc-5ca3-96b1-ec7212504205] Công viên Biển Đông
+- [0cfde447-cec6-5be1-8c71-66427e3cf3a8] Công viên 29/3
+- [91faf1fe-fad9-5a21-94b2-9ccea2dc6559] Trà Quán Góc Nhà Tụi Mình
+- [aa414655-8aad-55eb-842d-5ad334746aba] Cầu Rồng
+- [4dca597b-ecb6-5493-be96-541dd2263879] Forest Coffee Da Nang
+- [c3a1eb41-c13c-5232-8716-3e38eb42c8ce] Mia Café
+- [43378b43-0f52-534e-babc-05653a905b00] Tượng Cá Chép Hóa Rồng
 - [5267d6a7-57f4-5403-a5be-eb68ddcd9aea] Tượng Mẹ Âu Cơ
 - [92babc6d-c993-5af4-bde1-8a67d8be6b53] Di tích Thành Điện Hải
 - [057c055c-8648-5130-ae2f-dc59b75de863] Làng Bích họa Đà Nẵng
@@ -119,28 +107,89 @@ Mình tìm được 5 khách sạn phù hợp.
 
 ## Turn 4 (generated, worker=None)
 
-**User:** Khách sạn mình vừa chọn có những loại phòng nào?
+**User:** Khách sạn mình vừa chọn có những loại phòng nào và giá mỗi đêm bao nhiêu?
 
-**Agent:** Khách sạn bạn đã chọn (Wink Đà Nẵng Riverside) có những loại phòng sau cho ngày 2026-07-01 — 2026-07-03 (2 đêm). Mình liệt kê tên phòng, sức chứa (nếu có), giá mỗi đêm và tình trạng còn phòng:
+**Agent:** Khách sạn Wink Đà Nẵng Riverside, Unscripted by Hyatt có các loại phòng sau:
 
-- 1 Queen Bed River View — sức chứa: 2 khách — 1.680.000 VND/đêm — Còn 6 phòng.  
-- Suite hướng thành phố có giường King (1 King Bed Suite City View) — sức chứa: 2 khách — 1.900.000 VND/đêm — Còn 9 phòng.  
-- 2 Twin Beds Suite River View — (không ghi sức chứa) — giá: theo yêu cầu — Tình trạng: Hết phòng.  
-- 2 Twin Beds City View Deluxe — sức chứa: 2 khách — 1.662.500 VND/đêm — Còn 1 phòng.  
-- 1 King Bed River View Deluxe — sức chứa: 3 khách — 1.805.000 VND/đêm — Còn 9 phòng.  
-- 2 Twin Beds City View — sức chứa: 2 khách — 1.575.000 VND/đêm — Còn 6 phòng.  
-- 1 Giường Đôi Lớn Hướng Thành Phố (1 Queen Bed City View) — sức chứa: 2 khách — 1.425.000 VND/đêm — Còn 2 phòng.  
-- 2 Twin Beds River View Deluxe — sức chứa: 3 khách — 1.805.000 VND/đêm — Còn 7 phòng.  
-- 1 King Bed Suite River View — (không ghi sức chứa) — giá: theo yêu cầu — Tình trạng: Hết phòng.  
-- 1 King Bed City View Deluxe — sức chứa: 3 khách — 1.662.500 VND/đêm — Còn 3 phòng.  
-- 2 Twin Beds River View — sức chứa: 2 khách — 1.520.000 VND/đêm — Còn 4 phòng.  
-- Phòng có giường Queen (1 Queen Bed) — sức chứa: 2 khách — 1.470.000 VND/đêm — Còn 9 phòng.  
-- 2 Twin Beds Suite City View — sức chứa: 2 khách — 1.900.000 VND/đêm — Còn 3 phòng.
+1. **1 Queen Bed River View**
+   - Giá: 1.600.000 VND/đêm
+   - Số khách: 2
+   - Hướng nhìn: Hướng Sông
+   - Tình trạng: Còn 6 phòng
 
-Ghi chú:
-- Một vài phòng chỉ hiện “Giá theo yêu cầu” thay vì giá cụ thể; trong dữ liệu này những phòng đó đang ghi là đã hết phòng.  
-- Nếu bạn muốn mình so sánh những phòng phù hợp cho 3 người (ví dụ cần 1 giường lớn cho 3 người hoặc phòng cho 3 khách), mình có thể lọc và đề xuất những lựa chọn còn phòng ngay bây giờ. Bạn muốn xem những phòng chứa 3 người hay chọn phòng có ban công/hướng sông?
+2. **Suite hướng thành phố có giường King (1 King Bed Suite City View)**
+   - Giá: 2.000.000 VND/đêm
+   - Số khách: 2
+   - Hướng nhìn: Hướng Thành phố
+   - Tình trạng: Còn 9 phòng
 
-**Scores:** faithfulness=N/A (no contexts), response_relevancy=0.5940664479523197
+3. **2 Twin Beds Suite River View**
+   - Giá: Giá theo yêu cầu
+   - Số khách: 2
+   - Hướng nhìn: Hướng Sông
+   - Tình trạng: Hết phòng
+
+4. **2 Twin Beds City View Deluxe**
+   - Giá: 1.750.000 VND/đêm
+   - Số khách: 2
+   - Hướng nhìn: Hướng Thành phố
+   - Tình trạng: Còn 1 phòng
+
+5. **1 King Bed River View Deluxe**
+   - Giá: 1.900.000 VND/đêm
+   - Số khách: 3
+   - Hướng nhìn: Hướng Sông
+   - Tình trạng: Còn 9 phòng
+
+6. **2 Twin Beds City View**
+   - Giá: 1.500.000 VND/đêm
+   - Số khách: 2
+   - Hướng nhìn: Hướng Thành phố
+   - Tình trạng: Còn 6 phòng
+
+7. **1 Giường Đôi Lớn Hướng Thành Phố (1 Queen Bed City View)**
+   - Giá: 1.500.000 VND/đêm
+   - Số khách: 2
+   - Hướng nhìn: Hướng Thành phố
+   - Tình trạng: Còn 2 phòng
+
+8. **2 Twin Beds River View Deluxe**
+   - Giá: 1.900.000 VND/đêm
+   - Số khách: 3
+   - Hướng nhìn: Hướng Sông
+   - Tình trạng: Còn 7 phòng
+
+9. **1 King Bed Suite River View**
+   - Giá: Giá theo yêu cầu
+   - Số khách: 2
+   - Hướng nhìn: Hướng Sông
+   - Tình trạng: Hết phòng
+
+10. **1 King Bed City View Deluxe**
+    - Giá: 1.750.000 VND/đêm
+    - Số khách: 3
+    - Hướng nhìn: Hướng Thành phố
+    - Tình trạng: Còn 3 phòng
+
+11. **2 Twin Beds River View**
+    - Giá: 1.600.000 VND/đêm
+    - Số khách: 2
+    - Hướng nhìn: Hướng Sông
+    - Tình trạng: Còn 4 phòng
+
+12. **Phòng có giường Queen (1 Queen Bed)**
+    - Giá: 1.400.000 VND/đêm
+    - Số khách: 2
+    - Tình trạng: Còn 9 phòng
+
+13. **2 Twin Beds Suite City View**
+    - Giá: 2.000.000 VND/đêm
+    - Số khách: 2
+    - Hướng nhìn: Hướng Thành phố
+    - Tình trạng: Còn 3 phòng
+
+Nếu bạn cần thêm thông tin về bất kỳ loại phòng nào, hãy cho mình biết!
+
+**Scores:** faithfulness=N/A (no contexts), answer_coverage=1.0 (exact match against the data, no judge)
 
 **Retrieved contexts:** none

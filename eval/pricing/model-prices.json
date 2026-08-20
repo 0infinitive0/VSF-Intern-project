@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "as_of": "2026-08-18",
+  "source": "https://developers.openai.com/api/docs/pricing",
+  "currency": "USD",
+  "unit": "per_1m_tokens",
+  "_note": "Rates were read from the live page on as_of, not carried over from memory or another repo. A stale rate produces a confidently wrong cost figure, which is worse than no figure - so `as_of` and `source` are printed in the report's run metadata for date-checking. Token counts are measured independently of price and are unaffected if a rate here is wrong.",
+  "_matching": "Model names are matched EXACTLY against the string the callback reports, which is the dated snapshot id (e.g. 'gpt-4o-mini-2024-07-18'). Aliases are listed explicitly rather than prefix-matched: prefix-matching 'gpt-5' would happily price 'gpt-5-mini' at 'gpt-5' rates, a 5x error in the wrong direction.",
+  "models": {
+    "gpt-5.1": {
+      "input": 1.25,
+      "cached_input": 0.125,
+      "output": 10.00,
+      "aliases": ["gpt-5.1-2025-11-13"]
+    },
+    "gpt-5-mini": {
+      "input": 0.25,
+      "cached_input": 0.025,
+      "output": 2.00,
+      "aliases": ["gpt-5-mini-2025-08-07"]
+    },
+    "gpt-4o-mini": {
+      "input": 0.15,
+      "cached_input": 0.075,
+      "output": 0.60,
+      "aliases": ["gpt-4o-mini-2024-07-18"]
+    }
+  },
+  "embeddings": {
+    "@cf/baai/bge-m3": {
+      "unpriced_by_design": true,
+      "note": "Cloudflare Workers AI bills per neuron, not per token, so a token-derived dollar figure would be category-wrong - a number that looks authoritative and measures nothing. Excluded from every rolled-up dollar total; never raises UnpricedModelError. Pricing this correctly means adding neuron accounting, not inventing a per-token rate. Measured 2026-08-18: the Cloudflare embedding response carries no `usage` field at all (keys: data, model, object), so there is no token count to report either - only call counts."
+    }
+  }
+}

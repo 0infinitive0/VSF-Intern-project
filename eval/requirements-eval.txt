@@ -25,3 +25,9 @@ langchain-google-genai>=2.0.0
 langgraph>=1.2.0,<2.0.0
 psycopg2-binary>=2.9.0,<3.0.0
 Babel>=2.15.0
+# needed to import backend/src/api/routes.py directly (Phase 2 of the eval refresh) -
+# the e2e harness drives turns through `routes._run_turn_via_graph`, and importing
+# that module pulls in `models/schemas.py` (pydantic EmailStr -> email-validator) and
+# `services/email_service.py` (resend). Same pins as backend/requirements.txt.
+email-validator>=2.0.0
+resend>=2.0.0,<3.0.0

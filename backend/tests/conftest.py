@@ -5,6 +5,13 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from src.main import app
+from tests import llm_network_guard
+
+
+def pytest_configure(config):
+    """Honour TEST_SKIP_LLM before any test opens a connection."""
+    if llm_network_guard.enabled():
+        llm_network_guard.install()
 
 
 @pytest_asyncio.fixture

@@ -532,11 +532,18 @@ def _validate_date_start(value: Any, path: str, state: TravelState) -> str:
     return start.isoformat()
 
 
+#: The one rejection on `dates.end` that is an ordinary user request rather than a
+#: malformed value: a same-day trip. `ask_slot` matches on this to explain it in the
+#: user's language instead of echoing this English sentence into the chat — matched
+#: against the constant, never a copy of the literal, so the two cannot drift.
+END_NOT_AFTER_START_REASON = "end date must be after the trip's start date"
+
+
 def _validate_date_end(value: Any, path: str, state: TravelState) -> str:
     end = _parse_date_value(value, path)
     start_slot = state.get("dates.start")
     if start_slot.presence is Presence.SET and end <= date.fromisoformat(str(start_slot.value)):
-        raise PatchValidationError(f"{path}: end date must be after the trip's start date")
+        raise PatchValidationError(f"{path}: {END_NOT_AFTER_START_REASON}")
     return end.isoformat()
 
 

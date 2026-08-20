@@ -83,9 +83,15 @@ harness never has its own copy of the key. `python-dotenv`'s `load_dotenv()` ins
 searches upward from that file's own location, so this resolves regardless of the directory the
 harness is invoked from.
 
-Embeddings (needed for `ResponseRelevancy`) come from `get_embeddings()`, which by default
-resolves to the app's local Ollama `bge-m3` — a running Ollama server at `OLLAMA_URL` is
-required for those metrics. Non-LLM metrics and `Faithfulness` do not need it.
+Embeddings (needed for `ResponseRelevancy`) come from `get_embeddings()`, which resolves to
+whatever `backend/.env` configures — currently **Cloudflare Workers AI** (`EMBEDDING_PROVIDER=
+cloudflare`, `EMBEDDING_MODEL=@cf/baai/bge-m3`), not local Ollama. Non-LLM metrics and
+`Faithfulness` do not need it.
+
+`harness/__init__.py` loads `backend/.env` with `override=True`. That is deliberate: an
+`LLM_MODEL` or `EMBEDDING_PROVIDER` exported in your shell would otherwise win over the
+committed config and the eval would silently measure a model the app does not run (observed
+2026-08-18 — `gpt-4o-mini` scored in place of the configured `gpt-5.1`, with no error).
 
 ## Judge response caching
 
@@ -117,6 +123,9 @@ eval/.venv-eval/bin/python eval/run_ragas.py
 # cheap iteration on one layer
 eval/.venv-eval/bin/python eval/run_ragas.py --layer retrieval --limit 5 --no-llm-metrics
 
+# restore the 14 EN mirrors + conv-hcm-luxury-en (default is Vietnamese only)
+eval/.venv-eval/bin/python eval/run_ragas.py --include-en-mirrors
+
 # turn a raw run into a report (recommended: pass hand-authored findings/caveats -
 # see eval/harness/report.py's docstring for why these aren't auto-generated)
 eval/.venv-eval/bin/python eval/harness/report.py eval/results/ragas-<ts>.json \
@@ -132,19 +141,40 @@ eval/.venv-eval/bin/python eval/run_ragas.py --compare-baseline
 make -C backend eval-ragas
 ```
 
-`eval/run_ragas.py --layer e2e` replays the scripted conversations through the **real** agent
-(`create_chat_session`/`process_chat_turn`) with a hook-less, `ragas-eval-`-prefixed session ID
-— it never writes to the real session store. Expect this to take minutes, not seconds: it is
-real LLM + real Supabase traffic per turn, not a mock.
+`eval/run_ragas.py --layer e2e` replays the scripted conversations through the **real** agent,
+driving each turn with `routes._run_turn_via_graph` — the same function the HTTP chat endpoints
+call, so eval and production cannot answer the same message differently. Session IDs are
+`ragas-eval-`-prefixed, and `harness/__init__.py` sets `SESSION_PERSISTENCE_ENABLED=false`
+before `routes` can be imported (`e2e_eval.py` asserts it took effect), so no session row or
+transcript is written. One exception, measured and accepted: `trip_planner` upserts an **empty**
+`sessions` row as an FK prerequisite before persisting an itinerary, which
+`SESSION_PERSISTENCE_ENABLED` does not gate. That leaves one empty prefixed row per conversation,
+idempotent across runs. Expect minutes, not seconds: real LLM + real Supabase traffic per turn.
+
+**Scope: Vietnamese only.** A default run scores 30 retrieval records and 9 conversations. The 14
+English mirror records and `conv-hcm-luxury-en` are filtered out at load time — they are still in
+the `.jsonl` files, and `--include-en-mirrors` restores the full 44/10. All 5 `hotel-crosslang-*`
+BR-10 probes run either way, including the two labelled `en`: the filter keys off pair
+partnership, not the `language` field, precisely so those survive.
 
 ## What a run costs
 
-The 2026-08-11 baseline run: 44 retrieval queries (~313s of retrieval-side latency, judge-side
-latency not separately measured) and 10 conversations / 37 turns (~240s of agent-turn latency).
-Cost is reported as wall-clock + call count, not metered tokens — `ragas==0.3.9`'s token-usage
-parser was not verified against this run's OpenAI client; see `eval/results/ragas-20260811-0732.md`'s
-Run metadata and Caveats sections. The smoke check costs a handful of `gpt-4o-mini` calls —
-negligible.
+Token-metered since 2026-08-18. Every run reports input/output tokens and USD cost **app-side and
+judge-side separately** — "what a user turn costs" and "what an eval pass costs" are different
+questions and are never summed. Rates come from `eval/pricing/model-prices.json`, which carries
+its `source` URL and `as_of` date; a chat model with no rate aborts the cost section by name
+rather than reporting `$0`.
+
+Measured on a single `conv-nhatrang-couple-3d` replay (2026-08-18): app-side $0.0088 for the
+conversation (3 turns, gpt-5.1 + gpt-5-mini, including 264 reasoning tokens and 2048 cached input
+tokens), judge-side $0.0004. Latency is reported as P50/P95/P99 per family — retrieval search,
+e2e turn, whole conversation, and judge scoring — never as a single pooled number.
+
+Cloudflare embeddings are **token-counted where possible and never priced**: Workers AI bills per
+neuron, so a token-derived dollar figure would measure nothing. In practice the Cloudflare
+endpoint returns no `usage` field at all, so the report shows embedding calls rather than tokens.
+
+The smoke check costs a handful of `gpt-4o-mini` calls — negligible.
 
 ## Layout
 
@@ -154,14 +184,19 @@ eval/
   .ragas_cache/         # gitignored — judge response cache
   requirements-eval.txt
   datasets/             # golden-retrieval.jsonl, golden-conversations.jsonl, README.md
+  pricing/
+    model-prices.json    # committed rate table with source URL + as_of date
   harness/
     judge.py            # judge LLM + embeddings, wired through src/services/llm.py
-    dataset_loader.py    # strict-schema loaders for both golden datasets
+    dataset_loader.py    # strict-schema loaders + the Vietnamese-only mirror filter
     corpus_helper.py     # offline fixture filtering, authoring aid
     context_format.py    # as_context()/context_id() - ID-anchored string rendering
     context_recorder.py  # monkeypatches _execute_rpc for the duration of a turn
+    usage_recorder.py    # per-call LLM token + latency capture, scoped app vs judge
+    stats.py             # percentile_summary() - one interpolation method, everywhere
+    cost.py              # price lookup, cost computation, UnpricedModelError
     retrieval_eval.py    # Layer 1 runner
-    e2e_eval.py          # Layer 2 runner
+    e2e_eval.py          # Layer 2 runner, drives turns via routes._run_turn_via_graph
     transcripts.py        # per-conversation markdown transcript writer
     report.py             # raw JSON -> report .md + .json, baseline diff, thresholds
     smoke_check.py         # Phase 1 sanity check — run this first

@@ -6,7 +6,7 @@
 
 **Agent:** Bạn muốn đi đâu? Hiện mình có dữ liệu cho: Nha Trang, Hà Nội, Đà Nẵng, Huế, Hồ Chí Minh.
 
-**Scores:** faithfulness=N/A (no contexts), response_relevancy=N/A (agent asking a clarifying question, not answering one)
+**Scores:** faithfulness=N/A (no contexts)
 
 **Retrieved contexts:** none
 
@@ -16,7 +16,7 @@
 
 **Agent:** Bạn muốn đi đâu? Hiện mình có dữ liệu cho: Nha Trang, Hà Nội, Đà Nẵng, Huế, Hồ Chí Minh.
 
-**Scores:** faithfulness=N/A (no contexts), response_relevancy=N/A (agent asking a clarifying question, not answering one)
+**Scores:** faithfulness=N/A (no contexts)
 
 **Retrieved contexts:** none
 
@@ -26,7 +26,7 @@
 
 **Agent:** Bạn muốn đi đâu? Hiện mình có dữ liệu cho: Nha Trang, Hà Nội, Đà Nẵng, Huế, Hồ Chí Minh.
 
-**Scores:** faithfulness=N/A (no contexts), response_relevancy=N/A (agent asking a clarifying question, not answering one)
+**Scores:** faithfulness=N/A (no contexts)
 
 **Retrieved contexts:** none
 
@@ -36,6 +36,6 @@
 
 **Agent:** Bạn muốn đi đâu? Hiện mình có dữ liệu cho: Nha Trang, Hà Nội, Đà Nẵng, Huế, Hồ Chí Minh.
 
-**Scores:** faithfulness=N/A (no contexts), response_relevancy=N/A (agent asking a clarifying question, not answering one)
+**Scores:** faithfulness=N/A (no contexts)
 
 **Retrieved contexts:** none

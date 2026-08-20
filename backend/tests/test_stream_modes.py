@@ -645,18 +645,18 @@ class TestToolOutputNeverStreams:
     """
 
     def test_a_tool_message_is_not_part_of_the_reply(self):
-        from src.api.routes import _may_stream
+        from src.agents.graph.turn_runner import _may_stream
 
         assert _may_stream(("qa_node:abc-123",), "agent") is True
         assert _may_stream(("qa_node:abc-123",), "tools") is False
 
     def test_a_subgraph_the_whitelist_does_not_name_streams_nothing(self):
-        from src.api.routes import _may_stream
+        from src.agents.graph.turn_runner import _may_stream
 
         assert _may_stream(("itinerary_node:xyz",), "agent") is False
 
     def test_a_plain_node_is_matched_by_name_alone(self):
-        from src.api.routes import _may_stream
+        from src.agents.graph.turn_runner import _may_stream
 
         assert _may_stream((), "intake_qa") is True
         assert _may_stream(None, "respond") is False

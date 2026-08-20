@@ -22,5 +22,9 @@ def build_judge():
 
 
 def build_judge_embeddings():
-    """ResponseRelevancy needs embeddings; reuse the app's configured model."""
+    """The app's configured embedding, for the metrics that need one.
+
+    Layer 2 no longer does: `ResponseRelevancy` was dropped on 2026-08-20 and
+    Faithfulness is text-only. `smoke_check.py` still builds this, so it stays.
+    """
     return LangchainEmbeddingsWrapper(get_embeddings(), cache=_CACHE)

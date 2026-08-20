@@ -83,7 +83,7 @@ from src.agents.graph.prompts import build_extract_patch_prompt
 from src.agents.graph.routing import _INCOMPLETE_EDIT_INTENTS
 from src.agents.graph.state import TravelGraphState
 from src.domain.slot_registry import pending_question_slots
-from src.domain.travel_state import TravelState, trip_duration_days
+from src.domain.travel_state import Presence, TravelState, trip_duration_days
 from src.services.llm import get_reasoning_llm, response_text
 from src.services.trip_intake import (
     _COMPANION_LABELS,
@@ -118,6 +118,10 @@ _THEME_PATH_RE = re.compile(r"^(preferences\.themes|daily_preferences\.\d+\.them
 _FIRST_DAY_RE = re.compile(r"\b(?:ngay|hom)\s+dau(?:\s+tien)?\b")
 _LAST_DAY_RE = re.compile(r"\b(?:ngay|hom)\s+cuoi(?:\s+cung)?\b")
 _DURATION_DAYS_RE = re.compile(r"\b(?P<days>[1-9]\d?)\s*(?:ngay|day)\b")
+# "2 ngày 1 đêm" states the stay length twice, and the night count is the one a
+# checkout date is made of. Read on its own so the explicit number wins over the
+# day count instead of quietly booking an extra night the user never asked for.
+_STAY_NIGHTS_RE = re.compile(r"\b(?P<nights>[1-9]\d?)\s*(?:dem|night)s?\b")
 _BREAKFAST_INCLUDED_RE = re.compile(r"\b(?:bao\s+gom|included)\s+(?:(?:an|bua)\s+sang|breakfast)\b")
 _BREAKFAST_NEGATED_RE = re.compile(r"\b(?:khong|without|no)\s+(?:bao\s+gom\s+)?(?:(?:an|bua)\s+sang|breakfast)\b")
 # Same phrasing set as schemas.py's _AMENITY_INTENT_ALIASES["sea_view"], plus
@@ -151,6 +155,21 @@ class PatchExtractionError(ValueError):
 def _normalize(value: str) -> str:
     decomposed = unicodedata.normalize("NFKD", value.replace("Đ", "D").replace("đ", "d"))
     return "".join(character for character in decomposed if not unicodedata.combining(character)).casefold()
+
+
+def _earlier_human_messages(state: TravelGraphState) -> tuple[str, ...]:
+    """Every human turn before this one, newest first.
+
+    The current turn is already in `messages` when this node runs (that is what
+    `_last_human_message` reads), so it is dropped here — a caller looking for
+    something the user said EARLIER must not re-read the message it already has.
+    """
+    texts = [
+        str(getattr(message, "content", "") or "")
+        for message in (state.get("messages") or [])
+        if getattr(message, "type", None) == "human"
+    ]
+    return tuple(reversed(texts[:-1]))
 
 
 def _last_human_message(state: TravelGraphState) -> str:
@@ -356,6 +375,58 @@ def _ground_sea_view(changes: list[dict[str, Any]], message: str, intent: str) -
     )
 
 
+def _ground_destination_from_message(
+    changes: list[dict[str, Any]],
+    message: str,
+    travel_state: TravelState,
+    destination_names: Sequence[str | DestinationOption],
+) -> list[dict[str, Any]]:
+    """Rescue a destination the database already knows but the extractor dropped.
+
+    Same shape as `_ground_sea_view`, for the same failure: the extractor is the
+    only thing that turns "Sài Gòn" into a `destination` change, and on a message
+    that also carries a stay length and a party size it sometimes returns none.
+    The conversation then deadlocks — `ask_slot` re-asks "Bạn muốn đi đâu?" while
+    listing the very city the user named, and no later turn re-reads turn 1.
+    Measured on `conv-hcm-district-switch`, which passed one replay and looped
+    through the next on identical input.
+
+    Deliberately narrow. It only fires while `destination` is still UNKNOWN, so it
+    can never override a destination already chosen (a mid-trip switch stays the
+    extractor's job, where the intent matters), and it only fires when the message
+    names exactly one known destination — a message mentioning two is ambiguous,
+    and guessing is what this module exists to prevent.
+    """
+    if any(change.get("path") == "destination" for change in changes):
+        return changes
+    if travel_state.get("destination").presence is Presence.SET:
+        return changes
+
+    normalized_message = _normalize(message)
+    matched: set[str] = set()
+    for destination in destination_names:
+        option = (
+            destination
+            if isinstance(destination, DestinationOption)
+            else DestinationOption(str(destination))
+        )
+        if not option.name:
+            continue
+        for phrase in (option.name, *option.aliases):
+            normalized_phrase = _normalize(str(phrase)).strip()
+            # Whole words only. A plain substring test lets a short alias ("HA" for
+            # Hội An) match inside an unrelated word and move the whole trip.
+            if normalized_phrase and re.search(
+                rf"(?<![0-9a-z]){re.escape(normalized_phrase)}(?![0-9a-z])", normalized_message
+            ):
+                matched.add(option.name)
+                break
+
+    if len(matched) != 1:
+        return changes
+    return [*changes, {"path": "destination", "operation": "set", "value": matched.pop()}]
+
+
 def _derive_dates_from_explicit_range(changes: list[dict[str, Any]], message: str) -> list[dict[str, Any]]:
     """Force dates.start/dates.end from an explicit "từ ngày D/M/Y đến ngày
     D/M/Y" range stated verbatim, overriding whatever the LLM extracted for
@@ -383,21 +454,63 @@ def _derive_dates_from_explicit_range(changes: list[dict[str, Any]], message: st
     ]
 
 
+def _stay_nights(text: str) -> int | None:
+    """Nights the phrase asks for, or None if it states no stay length.
+
+    Two readings, one rule each. An explicit night count wins outright: "2 ngày 1
+    đêm" is one night, and reading the "2" would book a night the user did not ask
+    for. A bare day count is `N - 1` nights, the same arithmetic the extraction
+    prompt already applies — "trong 2 ngày" has always produced a *"lịch trình 1
+    ngày"*. This helper used to return `N`, so whether a trip ran one night or two
+    depended on whether the LLM happened to emit `dates.end` itself that turn;
+    `conv-hue-finalize-2d` was blocked on one run and sailed through on the next
+    from that alone.
+
+    `N = 1` therefore yields 0, and the caller declines to derive anything: a
+    same-day trip is a rejection the user must be told about (`ask_slot` explains
+    the one-night minimum), not a checkout date quietly invented a day later.
+    """
+    normalized = _normalize(text)
+    nights = _STAY_NIGHTS_RE.search(normalized)
+    if nights is not None:
+        return int(nights.group("nights"))
+    days = _DURATION_DAYS_RE.search(normalized)
+    return int(days.group("days")) - 1 if days is not None else None
+
+
 def _derive_end_date_from_duration(
-    changes: list[dict[str, Any]], message: str, travel_state: TravelState
+    changes: list[dict[str, Any]],
+    message: str,
+    travel_state: TravelState,
+    earlier_messages: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
-    """Fill the exclusive checkout date from an explicit day count and ISO start.
+    """Fill the exclusive checkout date from a stated stay length and ISO start.
 
     The graph stores an end date rather than a duration slot.  A phrase such
     as ``2 ngày từ 2026-07-01`` is therefore complete hotel-search input and
     must not trigger a redundant checkout-date question.  An explicit end
     date returned by the extractor always wins.
+
+    `earlier_messages` (newest first) covers the ordinary case where the two
+    halves arrive in different turns: "Sài Gòn 2 ngày 1 đêm" first, the start
+    date two turns later.  Without it the stay length is simply lost, and the
+    conversation deadlocks on a checkout-date question the user already
+    answered — measured on `conv-hcm-district-switch` and
+    `conv-hue-thin-corpus-probe`, both of which looped until the script ran
+    out of turns.  Only consulted while `dates.end` is still UNKNOWN, so a
+    stay length from earlier in the conversation can never overwrite a date
+    that has since been settled.
     """
     if any(change.get("path") == "dates.end" for change in changes):
         return changes
 
-    match = _DURATION_DAYS_RE.search(_normalize(message))
-    if match is None:
+    nights = _stay_nights(message)
+    if nights is None and travel_state.get("dates.end").presence is not Presence.SET:
+        for earlier in earlier_messages:
+            nights = _stay_nights(earlier)
+            if nights is not None:
+                break
+    if not nights:  # nothing stated, or a same-day trip - see `_stay_nights`
         return changes
 
     start_value: Any = travel_state.get("dates.start").value
@@ -411,13 +524,12 @@ def _derive_end_date_from_duration(
     except (TypeError, ValueError):
         return changes
 
-    days = int(match.group("days"))
     return [
         *changes,
         {
             "path": "dates.end",
             "operation": "set",
-            "value": (start + timedelta(days=days)).isoformat(),
+            "value": (start + timedelta(days=nights)).isoformat(),
         },
     ]
 
@@ -618,10 +730,13 @@ def extract_patch(state: TravelGraphState) -> dict[str, Any]:
 
     changes = _rewrite_day_scope(raw_changes, day_scope)
     changes = _ground_changes(changes, destination_names)
+    changes = _ground_destination_from_message(changes, message, travel_state, destination_names)
     changes = _ground_included_breakfast(changes, message, intent)
     changes = _ground_sea_view(changes, message, intent)
     changes = _derive_dates_from_explicit_range(changes, message)
-    changes = _derive_end_date_from_duration(changes, message, travel_state)
+    changes = _derive_end_date_from_duration(
+        changes, message, travel_state, _earlier_human_messages(state)
+    )
 
     # Persist the day THIS message itself named -- never the carried-over
     # one, or a later turn that also happens to be empty/missing_value but

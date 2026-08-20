@@ -8,7 +8,7 @@
 
 Bạn dự định kết thúc chuyến đi vào ngày nào?
 
-**Scores:** faithfulness=N/A (no contexts), response_relevancy=N/A (agent asking a clarifying question, not answering one)
+**Scores:** faithfulness=N/A (no contexts)
 
 **Retrieved contexts:** none
 
@@ -18,6 +18,6 @@ Bạn dự định kết thúc chuyến đi vào ngày nào?
 
 **Agent:** Bạn dự định kết thúc chuyến đi vào ngày nào?
 
-**Scores:** faithfulness=N/A (no contexts), response_relevancy=N/A (agent asking a clarifying question, not answering one)
+**Scores:** faithfulness=N/A (no contexts)
 
 **Retrieved contexts:** none

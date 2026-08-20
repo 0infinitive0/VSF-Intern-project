@@ -6,7 +6,7 @@
 
 **Agent:** Tuyệt vời. Chuyến đi này có bao nhiêu người tham gia?
 
-**Scores:** faithfulness=N/A (no contexts), response_relevancy=N/A (agent asking a clarifying question, not answering one)
+**Scores:** faithfulness=N/A (no contexts)
 
 **Retrieved contexts:** none
 
@@ -16,7 +16,7 @@
 
 **Agent:** Bạn dự định đi và về ngày nào?
 
-**Scores:** faithfulness=N/A (no contexts), response_relevancy=N/A (agent asking a clarifying question, not answering one)
+**Scores:** faithfulness=N/A (no contexts)
 
 **Retrieved contexts:** none
 
@@ -26,7 +26,7 @@
 
 **Agent:** Bạn dự định kết thúc chuyến đi vào ngày nào?
 
-**Scores:** faithfulness=N/A (no contexts), response_relevancy=N/A (agent asking a clarifying question, not answering one)
+**Scores:** faithfulness=N/A (no contexts)
 
 **Retrieved contexts:** none
 
@@ -41,29 +41,29 @@
 ```
 Mình tìm được 5 khách sạn phù hợp.
 1. M Village Hotel Hai Bà Trưng, a brand of Modern Village Lifestyle — 4 sao — 1,485,404 VND/đêm — tổng 1,485,404 VND cho 1 đêm
-2. M Village Hotel Tôn Thất Đạm, a brand of Modern Village Lifestyle — 4 sao — 1,572,480 VND/đêm — tổng 1,572,480 VND cho 1 đêm
-3. Khách sạn Wink Saigon Centre, Unscripted by Hyatt (Wink Saigon Centre, Unscripted by Hyatt - 24 hours stay) — 4 sao — 1,587,600 VND/đêm — tổng 1,587,600 VND cho 1 đêm
-4. Eastin Grand Hotel Saigon — 5 sao — 1,861,691 VND/đêm — tổng 1,861,691 VND cho 1 đêm
-5. Khách sạn Mường Thanh Sài Gòn Centre (Muong Thanh Saigon Centre Hotel) — 4 sao — 1,575,592 VND/đêm — tổng 1,575,592 VND cho 1 đêm
+2. Eastin Grand Hotel Saigon — 5 sao — 1,861,691 VND/đêm — tổng 1,861,691 VND cho 1 đêm
+3. Khách sạn Mường Thanh khách sạn Sài Gòn sang trọng (Khach san Muong Thanh Luxury Saigon Hotel) — 4 sao — 1,584,729 VND/đêm — tổng 1,584,729 VND cho 1 đêm
+4. M Village Hotel Tôn Thất Đạm, a brand of Modern Village Lifestyle — 4 sao — 1,572,480 VND/đêm — tổng 1,572,480 VND cho 1 đêm
+5. Tan Son Nhat Saigon Hotel — 5 sao — 1,900,107 VND/đêm — tổng 1,900,107 VND cho 1 đêm
 ```
 
-**Scores:** faithfulness=0.76, response_relevancy=N/A (hotel_node answers a slot statement, not a question)
+**Scores:** faithfulness=0.9473684210526315
 
 **Retrieved contexts (15):**
-- [e9ded90b-ebd8-4cf1-aaad-e4b93d50772e] Jovia Hotel — 3 sao — 1,856,216 VND/đêm — tổng 1,856,216 VND cho 1 đêm
-- [df184d39-6564-457d-9ead-ce54714aab8e] M Village Hotel Hai Bà Trưng, a brand of Modern Village Lifestyle — 4 sao — 1,485,404 VND/đêm — tổng 1,485,404 VND cho 1 đêm
-- [6a404b48-66b9-43a6-a122-c730a314c09b] M Village Hotel Tôn Thất Đạm, a brand of Modern Village Lifestyle — 4 sao — 1,572,480 VND/đêm — tổng 1,572,480 VND cho 1 đêm
-- [2bf9cff1-8fea-41cf-af15-e6654492d8b0] Saigon Prince Hotel — 4.5 sao — 2,098,880 VND/đêm — tổng 2,098,880 VND cho 1 đêm
-- [086fec3e-f3e7-4ab7-95f1-46fd350c933f] Liberty Central Saigon Centre Hotel — 4 sao — 1,875,720 VND/đêm — tổng 1,875,720 VND cho 1 đêm
-- [e3ac73a4-55d3-4cf8-bba6-47e83c1fb909] Khách sạn Wink Saigon Centre, Unscripted by Hyatt (Wink Saigon Centre, Unscripted by Hyatt - 24 hours stay) — 4 sao — 1,587,600 VND/đêm — tổng 1,587,600 VND cho 1 đêm
-- [9a563f3d-4921-43c8-bdf8-3047c28d9c4b] Alagon D'antique Boutique Hotel & Spa — 5 sao — 2,015,097 VND/đêm — tổng 2,015,097 VND cho 1 đêm
 - [9a6a2fa0-aecb-4469-a0fa-9b685ced16bc] NiK Hotel Nguyen Trai — 4 sao — 1,749,330 VND/đêm — tổng 1,749,330 VND cho 1 đêm
-- [e43ff3af-e9b0-461d-b0ec-ab9bd1272b71] Khách sạn Mường Thanh Sài Gòn Centre (Muong Thanh Saigon Centre Hotel) — 4 sao — 1,575,592 VND/đêm — tổng 1,575,592 VND cho 1 đêm
-- [3d7cbe91-e113-4b2e-8c5d-8e73ef2910ec] Eastin Grand Hotel Saigon — 5 sao — 1,861,691 VND/đêm — tổng 1,861,691 VND cho 1 đêm
+- [086fec3e-f3e7-4ab7-95f1-46fd350c933f] Liberty Central Saigon Centre Hotel — 4 sao — 1,875,720 VND/đêm — tổng 1,875,720 VND cho 1 đêm
 - [f881b1b6-7f43-4592-9a29-a299f4516ce7] Royal Hotel Saigon — 4 sao — 1,795,024 VND/đêm — tổng 1,795,024 VND cho 1 đêm
-- [38f6c415-3d1b-4305-8228-d2062d32a814] Nexus House Retreat Xuân Thuỷ — 5 sao — 1,987,180 VND/đêm — tổng 1,987,180 VND cho 1 đêm
-- [b341124f-bfa4-4c10-8341-853035e93158] Khách sạn Mường Thanh khách sạn Sài Gòn sang trọng (Khach san Muong Thanh Luxury Saigon Hotel) — 4 sao — 1,584,729 VND/đêm — tổng 1,584,729 VND cho 1 đêm
 - [e560a4ca-49d0-4602-8c43-30fce58199fc] Tan Son Nhat Saigon Hotel — 5 sao — 1,900,107 VND/đêm — tổng 1,900,107 VND cho 1 đêm
+- [9a563f3d-4921-43c8-bdf8-3047c28d9c4b] Alagon D'antique Boutique Hotel & Spa — 5 sao — 2,015,097 VND/đêm — tổng 2,015,097 VND cho 1 đêm
+- [df184d39-6564-457d-9ead-ce54714aab8e] M Village Hotel Hai Bà Trưng, a brand of Modern Village Lifestyle — 4 sao — 1,485,404 VND/đêm — tổng 1,485,404 VND cho 1 đêm
+- [e9ded90b-ebd8-4cf1-aaad-e4b93d50772e] Jovia Hotel — 3 sao — 1,856,216 VND/đêm — tổng 1,856,216 VND cho 1 đêm
+- [2bf9cff1-8fea-41cf-af15-e6654492d8b0] Saigon Prince Hotel — 4.5 sao — 2,098,880 VND/đêm — tổng 2,098,880 VND cho 1 đêm
+- [b341124f-bfa4-4c10-8341-853035e93158] Khách sạn Mường Thanh khách sạn Sài Gòn sang trọng (Khach san Muong Thanh Luxury Saigon Hotel) — 4 sao — 1,584,729 VND/đêm — tổng 1,584,729 VND cho 1 đêm
+- [3d7cbe91-e113-4b2e-8c5d-8e73ef2910ec] Eastin Grand Hotel Saigon — 5 sao — 1,861,691 VND/đêm — tổng 1,861,691 VND cho 1 đêm
+- [6a404b48-66b9-43a6-a122-c730a314c09b] M Village Hotel Tôn Thất Đạm, a brand of Modern Village Lifestyle — 4 sao — 1,572,480 VND/đêm — tổng 1,572,480 VND cho 1 đêm
+- [e3ac73a4-55d3-4cf8-bba6-47e83c1fb909] Khách sạn Wink Saigon Centre, Unscripted by Hyatt (Wink Saigon Centre, Unscripted by Hyatt - 24 hours stay) — 4 sao — 1,587,600 VND/đêm — tổng 1,587,600 VND cho 1 đêm
+- [e43ff3af-e9b0-461d-b0ec-ab9bd1272b71] Khách sạn Mường Thanh Sài Gòn Centre (Muong Thanh Saigon Centre Hotel) — 4 sao — 1,575,592 VND/đêm — tổng 1,575,592 VND cho 1 đêm
+- [38f6c415-3d1b-4305-8228-d2062d32a814] Nexus House Retreat Xuân Thuỷ — 5 sao — 1,987,180 VND/đêm — tổng 1,987,180 VND cho 1 đêm
 - [08b26042-f9ab-484e-812a-2d07071194f4] Ethereal Home — 4 sao — 1,800,000 VND/đêm — tổng 1,800,000 VND cho 1 đêm
 
 ## Turn 5 (template, worker=hotel_node)
@@ -72,21 +72,21 @@ Mình tìm được 5 khách sạn phù hợp.
 
 **Agent:** Đã dựng xong lịch trình 1 ngày quanh M Village Hotel Hai Bà Trưng, a brand of Modern Village Lifestyle. Chi tiết từng ngày ở bảng lịch trình bên cạnh.
 
-**Scores:** faithfulness=N/A (hotel-pick confirmation - no factual claims to check), response_relevancy=N/A (hotel-pick confirmation - no factual claims to check)
+**Scores:** faithfulness=N/A (hotel-pick confirmation - no factual claims to check)
 
 **Retrieved contexts (64):**
-- [7e58d6e8-3741-5ce2-b0ed-6e17a0bfae2f] Khu du lịch Văn Thánh
-- [1f8ada5b-37a3-5d85-9c22-93d3b3c93d85] Sài Gòn Garden
-- [00e91585-c75f-5301-8b22-928ce2def403] Vincom Center Đồng Khởi
 - [6605a8be-0f51-5266-af82-65ea5ff49e19] Nguyễn Huệ
-- [fcf2324e-3193-5858-8877-dfc0176972f5] rêu.coffee
+- [7e58d6e8-3741-5ce2-b0ed-6e17a0bfae2f] Khu du lịch Văn Thánh
 - [ab80a9ae-05f0-5db8-a67e-e16005c2b301] UBND Thành phố Hồ Chí Minh
-- [7576dfc4-d8ee-53ce-85ee-37fc91af34fe] The Hummingbird Café & Roastery
-- [dbaab6f8-1f2a-540c-90e5-3c846cd5fd48] Khu vui chơi thiếu nhi
-- [d089eff3-7781-5ff8-b903-1c9ba5ef789b] Công viên Bến Bạch Đằng
-- [83f45c44-1f2f-55d0-a450-35a28d5b5275] Viet Kitchen - International Vietnamese Restaurant
-- [49bcc18f-9a20-5a3c-a117-bd04fb2edf46] CHOICE - Fresh Coffee and Tea
-- [507bb4c6-dbdf-557c-ae0a-900cfa965f27] Đường sách Thành phố Hồ Chí Minh
+- [6ceae114-f913-5cea-92c6-ae315b4f8251] Bảo tàng Thành phố Hồ Chí Minh
+- [9a4f0859-67b3-5a56-91a9-27c6f1bb8369] Quảng trường Nguyễn Huệ
+- [693a3261-7496-5b1a-be62-0573861e2c70] White Palace Hoàng Văn Thụ
+- [e274cfe3-eec7-5b94-bb90-5fda8bdf7fe3] Bảo tàng Lịch sử Thành phố Hồ Chí Minh
+- [cd246a1f-f780-5be7-82ff-4863a4b8500f] Bảo tàng Mỹ thuật Thành phố Hồ Chí Minh
+- [fdfead4f-07d3-54c8-b863-a423a3bef13e] Tonkin Garden Egg Coffee & Eatery Cafe & Croissant
+- [41d78a39-ec91-5517-83da-7c0966be9607] Bảo tàng Chiến dịch Hồ Chí Minh
+- [7e34c143-067a-5d09-9ffb-27663d2282f8] Bảo tàng Đỗ Hùng
+- [5e8a872b-97c1-5e3f-bf0e-d44397e224a8] Bến Nhà Rồng - Bảo tàng Hồ Chí Minh
 - [6ceae114-f913-5cea-92c6-ae315b4f8251] Bảo tàng Thành phố Hồ Chí Minh
 - [7e34c143-067a-5d09-9ffb-27663d2282f8] Bảo tàng Đỗ Hùng
 - [6605a8be-0f51-5266-af82-65ea5ff49e19] Nguyễn Huệ

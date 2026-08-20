@@ -16,6 +16,7 @@ from datetime import date, timedelta
 
 from src.agents.graph.nodes.ask_slot import ask_slot
 from src.agents.graph.state import TravelGraphState, initial_graph_state
+from src.domain.travel_state import END_NOT_AFTER_START_REASON
 
 _FUTURE_START = (date.today() + timedelta(days=30)).isoformat()
 _ANSWERED = {
@@ -57,3 +58,31 @@ def test_combined_dates_question_is_translated() -> None:
     result = ask_slot(_state(dict(_ANSWERED), language="en"))
 
     assert result["next_question"] == "When do you plan to depart and return?"
+
+
+def test_a_same_day_trip_is_explained_not_dumped_as_a_validator_string() -> None:
+    """"đi Huế trong 1 ngày" resolves to end == start and is rejected. The reply the
+    user saw was the validator's own English sentence — "Dữ liệu chưa hợp lệ: end date
+    must be after the trip's start date" — which reads as an internal error and says
+    nothing about what to do next."""
+    state = _state({**_ANSWERED, "dates.start": {"presence": "set", "value": _FUTURE_START}})
+    state["rejected_changes"] = [
+        {"path": "dates.end", "reason": f"dates.end: {END_NOT_AFTER_START_REASON}"}
+    ]
+
+    reply = ask_slot(state)["next_question"]
+
+    assert END_NOT_AFTER_START_REASON not in reply
+    assert "ít nhất 1 đêm" in reply
+    assert "kết thúc" in reply  # the question itself still follows the explanation
+
+
+def test_an_unrecognised_rejection_still_shows_its_reason() -> None:
+    """Only the same-day case is special-cased; anything else must keep surfacing
+    the reason rather than silently becoming a bare re-ask."""
+    state = _state({**_ANSWERED, "dates.start": {"presence": "set", "value": _FUTURE_START}})
+    state["rejected_changes"] = [{"path": "dates.end", "reason": "dates.end: expected YYYY-MM-DD"}]
+
+    reply = ask_slot(state)["next_question"]
+
+    assert "expected YYYY-MM-DD" in reply

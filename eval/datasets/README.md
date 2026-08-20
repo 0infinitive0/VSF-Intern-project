@@ -143,6 +143,183 @@ two still failed for unrelated reasons:
 Removed, not disproven: both are real, legitimate gaps worth a case again once addressed
 separately - this just narrows what the current suite measures.
 
+## `expected_stage: finalized` adjudication (2026-08-18)
+
+`conv-hcm-finalize-4d` and `conv-hue-finalize-2d` both declared `expected_stage:
+finalized`. **`finalized` is no longer an emittable stage.** `ChatStage`
+(`models/schemas.py:379`) is `intake | hotel_options | planned | error`, and
+`agents/graph/response_payload.py::derive_stage` can return nothing else. `respond.py`'s
+module docstring states the removal outright: *"`finalized`/`modified` are gone from
+`ChatStage` entirely: their only producer was the deleted `process_chat_turn` cascade."*
+So these two records were unachievable **by construction**, and would have reported as
+failures for a reason with nothing to do with agent quality.
+
+**Decision: both re-pointed to `planned`.** `planned` is what a fully-built trip is now
+called; keeping `finalized` would have made two records permanently and uninformatively
+red. Both were replayed through the graph plane before the edit, and neither expectation
+was changed to match observed behavior without the evidence below.
+
+**This is a stage-label change only. It does not mean the finalize flow works — it does
+not.** Two separate defects were found while adjudicating, and both are recorded here
+rather than absorbed by the edit. Neither is fixed: this plan measures, it does not
+change agent behavior (see plan Non-goals).
+
+**Finding 1 — the finalize request is not understood (`conv-hcm-finalize-4d`).**
+The first three turns work: intake, 5 hotels retrieved, hotel picked, 2-day itinerary
+built. Turn 4, `"Chốt lịch trình"`, routes to `itinerary_node` and fails:
+
+```
+log:   itinerary_node: malformed task — lock_days received an empty days_to_lock
+reply: "Mình chưa hiểu yêu cầu này, bạn nói rõ hơn giúp mình nhé."
+state: trip_data present, itinerary status still "Draft"
+```
+
+The turn reaches `planned` because the itinerary from turn 3 is still there — the stage
+check passes while the behavior underneath it is broken. That is precisely why the
+record's `"finalize confirmation message is shown"` assertion is left in place: the stage
+field cannot see this, and the assertion is the only thing in the record that still says
+what should have happened.
+
+**Finding 2 — a 1-day trip cannot be created at all (`conv-hue-finalize-2d`).**
+This conversation never reaches its hotel turn. Turn 1, `"đi Huế trong 1 ngày từ
+2026-07-01"`, is rejected during intake:
+
+```
+reply: "Dữ liệu chưa hợp lệ: end date must be after the trip's start date"
+```
+
+`"trong N ngày"` resolves to an end date `N-1` days after the start, so `N=1` produces
+`end == start` and fails validation. The same `N-1` arithmetic is visible on the
+conversations that do pass — `"trong 2 ngày"` builds a *"lịch trình 1 ngày"*, `"trong 3
+ngày"` builds a *"lịch trình 2 ngày"* — so whether that reading of `ngày` (nights, not
+days) is right is a product question, but `N=1` failing outright is not: it is a hard
+validation error on an ordinary request, and it takes the record's actual subject (the
+thin Huế corpus, a long-tail destination probe) with it.
+
+The record keeps its `1 ngày` phrasing. Rewriting it to `2 ngày` would make the
+conversation pass and would delete the only evidence of this defect in the suite.
+
+## Same-day trips and stay length carried across turns (2026-08-20)
+
+A free `--no-llm-metrics` replay of all 9 Vietnamese conversations put 5 of them in the
+failure column. Four traced back to two causes, adjudicated here; the fifth
+(`conv-nhatrang-attraction-mix`) was a harness defect and is not a dataset matter.
+
+**Cause 1 — stay length stated before the start date was dropped.**
+`extract_patch._derive_end_date_from_duration` read the CURRENT message only. A user who
+opens with `"Sài Gòn 2 ngày 1 đêm"` and gives the departure date two turns later had the
+stay length silently discarded, and the agent then re-asked for a checkout date forever:
+
+```
+User:  Khởi hành ngày 01/07/2026        Agent: Bạn dự định kết thúc chuyến đi vào ngày nào?
+User:  Khách sạn 4 sao ở Quận 1 ~1.8tr  Agent: Bạn dự định kết thúc chuyến đi vào ngày nào?
+```
+
+`conv-hcm-district-switch` and `conv-hue-thin-corpus-probe` both deadlocked this way.
+**Fixed in the product**: the helper now also reads earlier human turns (newest first,
+and only while `dates.end` is still UNKNOWN), and an explicit night count wins over the
+day count — `"2 ngày 1 đêm"` is one night, not two. `conv-hcm-district-switch` reaches
+`planned` unchanged.
+
+**The same fix exposed a split-brain on `"N ngày"`.** The extraction prompt reads it as
+`N-1` nights (`"trong 2 ngày"` has always produced a *"lịch trình 1 ngày"*) while the
+deterministic helper read it as `N`. Which one applied depended on whether the LLM
+happened to emit `dates.end` itself that turn, so `conv-hue-finalize-2d` was blocked on
+one replay and sailed through on the next — same code, same input. The helper now uses
+`N-1` too (project owner's decision, 2026-08-20), which also makes `"1 ngày"` resolve to
+zero nights consistently, i.e. the same-day rejection above happens every run instead of
+sometimes. `test_extract_patch.py`'s expectation moved from `2026-07-03` to `2026-07-02`
+with it.
+
+**Cause 3 — a known destination the extractor silently dropped.**
+`conv-hcm-district-switch` reached `planned` on one replay and looped through the next on
+byte-identical input. On the failing replay the agent answered turn 1 (`"Tôi muốn đi Sài
+Gòn 2 ngày 1 đêm"`) with `"Bạn muốn đi đâu? Hiện mình có dữ liệu cho: … Hồ Chí Minh"` —
+re-asking for a city it was listing. `"Sài Gòn"` is a real alias on the live
+`destinations` row, so `_match_known_destination` would have grounded it; the extractor
+simply returned no `destination` change at all that turn, on a message that also carried
+a stay length and a party size. **Fixed in the product** with a deterministic rescue
+(`extract_patch._ground_destination_from_message`), the same shape as the existing
+breakfast and sea-view rescues: if the message names exactly one known destination and
+`destination` is still UNKNOWN, the change is added. It matches whole words only (the
+`"HA"` alias would otherwise fire inside unrelated words) and never overrides a
+destination already chosen. Record unchanged.
+
+**`conv-nhatrang-couple-3d` and `conv-danang-family-3d` gained a closing question turn:
+`"Khách sạn mình vừa chọn có những loại phòng nào?"`**
+The suite had no read-only Q&A turn at all, so `response_relevancy` was computed zero
+times and its breakdown came back `{}` on every run. That metric only means anything
+where `user_input` really was a question (see the harness guide): it reverse-generates
+questions from the answer and embeds them against the user's turn, and every other turn
+here answers a slot STATEMENT. Rather than loosen the scoring rule to produce numbers
+from turns the metric does not fit, the dataset now contains the turn shape it fits.
+
+**The question was then reworded to match what the metric reverse-generates, on the
+project owner's explicit instruction (2026-08-20), and that is what the reader of any
+future score needs to know.** `ResponseRelevancy` scores
+`cosine(user_input, generated_question)`, and the question it generates from a good
+answer is richer than the one a user types: an answer that lists prices produces
+*"…có những loại phòng nào **và giá của chúng là bao nhiêu**?"* against a golden turn
+that asked only *"…có những loại phòng nào?"*. The metric therefore scores a MORE
+complete answer LOWER. The golden turn now reads *"…có những loại phòng nào và giá mỗi
+đêm bao nhiêu?"*, which is a phrasing a real user would plausibly type — but it was
+chosen because it matches the generator's output.
+
+**A relevancy rise across this change is the dataset moving toward the metric, not the
+agent getting better.** It is not comparable to any relevancy figure recorded before
+2026-08-20, and it must not be cited as evidence of an improvement in answer quality.
+The assertion list on both records carries the same warning.
+
+Placed last, after the itinerary exists, so it routes `supervisor -> qa_node`
+(read-only intent, no `task_results` entry, `stage` unchanged at `planned`). The question
+is answerable from `qa_node`'s own tools (`query_hotel_rooms`), so it also carries
+retrieved context and is scored for faithfulness — a question with no data behind it
+would come back noncommittal, which `ResponseRelevancy` multiplies straight to 0.0 and
+would have measured the dataset rather than the agent.
+
+**`conv-hue-thin-corpus-probe` gained a fourth turn: `"Không cần lọc theo giá"`.**
+`budget.target` is a required slot (`slot_registry.py`), so the original three turns
+could not reach a hotel search no matter how the date handling behaved — the record
+stalled in `intake` while claiming `expected_stage: hotel_options`. The phrasing is the
+product's own suggested opt-out, quoted from `ask_slot._render_budget`. Without this turn
+the record tests intake plumbing; with it, it tests what it was written for — whether a
+thin Huế corpus makes the agent invent a resort.
+
+**Cause 2 — `conv-unsupported-destination` expected a stage it cannot reach.**
+The agent handles Phú Quốc correctly: it declines and names the five destinations that
+have data, which is exactly what the record's own assertions ask for. But
+`expected_stage: hotel_options` cannot happen — there are no Phú Quốc hotels to show, so
+the conversation stays in `intake` by design. **Re-pointed to `intake`.** The assertions
+are untouched; they, not the stage field, are what this record is really about.
+
+**`conv-hue-finalize-2d` trimmed to the turns that can occur.** Product decision
+(2026-08-20, project owner): a same-day trip stays rejected — the planner books hotel
+nights, so it needs at least one — and only the message changes, from the validator's raw
+English to a Vietnamese sentence explaining the minimum. That makes turns 3-4 of this
+record (a hotel-card click and a finalize confirmation) unreachable **by construction**,
+since no hotel list is ever produced. The two intake turns and the `1 ngày` phrasing stay,
+`expected_stage` is now `intake`, and the assertions were rewritten to state what this
+record now proves: the rejection happens, and it is explained in the user's language.
+The finalize flow keeps its coverage in `conv-hcm-finalize-4d`.
+
+## Conversations excluded from default runs — English (2026-08-18)
+
+`conv-hcm-luxury-en` is excluded from a default run, along with the 14 EN mirror records
+in `golden-retrieval.jsonl`. The eval scores Vietnamese only (project owner's decision).
+
+**Filtered, not deleted.** Every excluded record is still in its `.jsonl` file, and
+`--include-en-mirrors` restores the full 44 retrieval records and 10 conversations. Deleting
+them would have thrown away the 14-record EN rationale rewrite from the 2026-08-11 pass and
+turned re-enabling English into an authoring job instead of a flag.
+
+**All 5 `hotel-crosslang-*` probes still run, including the 2 labelled `en`.** They are not
+mirrors: each holds a `pair_id` with no partner, and the filter keys off pair partnership
+rather than the `language` field for exactly that reason (`dataset_loader._is_en_mirror`).
+`hotel-crosslang-khachsan-en` and `hotel-crosslang-khachsan-pullman-en` run an English
+sentence carrying a Vietnamese brand name — a mixed-language query is a Vietnamese-user
+scenario, and it is half of BR-10's only evidence. A `language == "en"` filter would have
+deleted both silently.
+
 ## Context Recall audit (2026-08-11)
 
 12 of the 44 retrieval records score `non_llm_recall=0.0`. Audited each one individually

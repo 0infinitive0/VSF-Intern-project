@@ -27,7 +27,7 @@ from typing import Any
 from src.agents.graph.routing import is_intake_question
 from src.agents.graph.state import TravelGraphState
 from src.domain.slot_registry import SlotSpec, next_question, pending_question_slots
-from src.domain.travel_state import TravelState
+from src.domain.travel_state import END_NOT_AFTER_START_REASON, TravelState
 from src.i18n import t
 from src.services.trip_intake import DestinationOption
 from src.services.trip_planner import _get_destination_names
@@ -113,6 +113,16 @@ def _context_line(state: TravelGraphState, spec: SlotSpec, language: str) -> str
             prefix = f"{spec.name}: "
             if reason.startswith(prefix):
                 reason = reason[len(prefix):]
+            if reason == END_NOT_AFTER_START_REASON:
+                # A same-day trip is an ordinary request, not a malformed value: the
+                # planner books hotel nights, so it needs at least one. Echoing the
+                # validator's own English sentence into a Vietnamese conversation
+                # ("Dữ liệu chưa hợp lệ: end date must be after the trip's start
+                # date") reads as an internal error and says nothing actionable.
+                return t(
+                    "Chuyến đi cần ít nhất 1 đêm nghỉ, nên ngày kết thúc phải sau ngày bắt đầu.",
+                    language,
+                )
             return t("Dữ liệu chưa hợp lệ: {reason}", language, reason=reason)
 
     # Phase 15: a genuine question routes to `intake_qa` right after this

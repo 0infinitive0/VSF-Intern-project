@@ -450,10 +450,169 @@ def test_duration_from_iso_start_derives_the_required_end_date(monkeypatch):
 
     result = extract_patch(_state("Tôi muốn đi trong 2 ngày từ 2026-07-01"))
 
+    # N days is N-1 nights, the same arithmetic the extraction prompt applies:
+    # "trong 2 ngày" has always produced a "lịch trình 1 ngày". This helper used to
+    # return N, so a trip ran one night or two depending on whether the LLM happened
+    # to emit `dates.end` itself that turn.
     assert result["patch"] == [
         {"path": "dates.start", "operation": "set", "value": "2026-07-01"},
-        {"path": "dates.end", "operation": "set", "value": "2026-07-03"},
+        {"path": "dates.end", "operation": "set", "value": "2026-07-02"},
     ]
+
+
+def test_a_one_day_trip_derives_no_end_date_at_all(monkeypatch):
+    """"1 ngày" is zero nights. Deriving `end = start` would only feed the validator a
+    rejection, and deriving `start + 1` would silently sell an overnight stay to
+    someone who asked for a day trip — so the slot stays open and `ask_slot` explains
+    the one-night minimum."""
+    _patch(
+        monkeypatch,
+        _FakeLLM(
+            [
+                _payload(
+                    "update_trip",
+                    [{"path": "dates.start", "operation": "set", "value": "2026-07-01"}],
+                )
+            ]
+        ),
+    )
+
+    result = extract_patch(_state("Tôi muốn đi Huế trong 1 ngày từ 2026-07-01 cho 2 người"))
+
+    assert all(change["path"] != "dates.end" for change in result["patch"])
+
+
+def test_stated_night_count_wins_over_the_day_count(monkeypatch):
+    """"2 ngày 1 đêm" states the stay twice. Reading the day count books a night
+    the user never asked for, on the single most common Vietnamese phrasing."""
+    _patch(
+        monkeypatch,
+        _FakeLLM(
+            [
+                _payload(
+                    "update_trip",
+                    [{"path": "dates.start", "operation": "set", "value": "2026-07-01"}],
+                )
+            ]
+        ),
+    )
+
+    result = extract_patch(_state("Tôi muốn đi Sài Gòn 2 ngày 1 đêm từ 2026-07-01"))
+
+    assert {"path": "dates.end", "operation": "set", "value": "2026-07-02"} in result["patch"]
+
+
+def test_stay_length_stated_in_an_earlier_turn_still_fills_the_end_date(monkeypatch):
+    """The two halves normally arrive in different turns: the stay length up front,
+    the start date once the agent asks for it. Dropping the earlier half deadlocked
+    `conv-hcm-district-switch` and `conv-hue-thin-corpus-probe` on a checkout-date
+    question the user had already answered."""
+    _patch(
+        monkeypatch,
+        _FakeLLM(
+            [
+                _payload(
+                    "update_trip",
+                    [{"path": "dates.start", "operation": "set", "value": "2026-07-01"}],
+                )
+            ]
+        ),
+    )
+
+    state = _state("Khởi hành ngày 01/07/2026")
+    state["messages"] = [
+        HumanMessage(content="Tôi muốn đi Sài Gòn 2 ngày 1 đêm"),
+        AIMessage(content="Chuyến đi này có bao nhiêu người tham gia?"),
+        HumanMessage(content="1 người lớn, đi công tác"),
+        AIMessage(content="Bạn dự định đi và về ngày nào?"),
+        HumanMessage(content="Khởi hành ngày 01/07/2026"),
+    ]
+
+    result = extract_patch(state)
+
+    assert {"path": "dates.end", "operation": "set", "value": "2026-07-02"} in result["patch"]
+
+
+def test_a_settled_end_date_is_never_rewritten_from_an_older_message(monkeypatch):
+    """The history fallback fills a blank, it does not revise a decision: once
+    `dates.end` is SET, a stay length mentioned earlier must not move it."""
+    _patch(
+        monkeypatch,
+        _FakeLLM(
+            [
+                _payload(
+                    "update_trip",
+                    [{"path": "dates.start", "operation": "set", "value": "2026-07-01"}],
+                )
+            ]
+        ),
+    )
+
+    state = _state(
+        "Đổi ngày khởi hành sang 01/07/2026",
+        travel_state={
+            "dates.start": {"presence": "set", "value": "2026-06-01"},
+            "dates.end": {"presence": "set", "value": "2026-06-10"},
+        },
+    )
+    state["messages"] = [
+        HumanMessage(content="Tôi muốn đi Sài Gòn 2 ngày 1 đêm"),
+        AIMessage(content="Bạn dự định đi và về ngày nào?"),
+        HumanMessage(content="Đổi ngày khởi hành sang 01/07/2026"),
+    ]
+
+    result = extract_patch(state)
+
+    assert all(change["path"] != "dates.end" for change in result["patch"])
+
+
+def test_a_known_destination_the_extractor_dropped_is_rescued(monkeypatch):
+    """The extractor is the only thing that turns "Sài Gòn" into a destination change,
+    and on a message that also carries a stay length and a party size it sometimes
+    returns none — `conv-hcm-district-switch` passed one replay and looped through the
+    next on identical input, with `ask_slot` re-asking "Bạn muốn đi đâu?" while listing
+    the very city the user had named."""
+    _patch(monkeypatch, _FakeLLM([_payload("update_trip", [{"path": "people", "operation": "set", "value": 1}])]))
+
+    result = extract_patch(_state("Tôi muốn đi Hội An 2 ngày 1 đêm"))
+
+    assert {"path": "destination", "operation": "set", "value": "Hội An"} in result["patch"]
+
+
+def test_the_destination_rescue_matches_whole_words_only(monkeypatch):
+    """"HA" is a real alias here. Matched as a bare substring it also fires on any
+    word containing those letters, which would move the trip on a message about
+    something else entirely."""
+    _patch(monkeypatch, _FakeLLM([_payload("update_trip", [])]))
+
+    result = extract_patch(_state("Cho mình hỏi khách sạn có bãi đỗ xe không?"))
+
+    assert all(change["path"] != "destination" for change in result["patch"])
+
+
+def test_the_destination_rescue_never_overrides_one_already_chosen(monkeypatch):
+    """A mid-trip switch stays the extractor's job, where the intent is what matters.
+    An incidental mention ("khách sạn gần sân bay Đà Nẵng") must not move the trip."""
+    _patch(monkeypatch, _FakeLLM([_payload("update_trip", [{"path": "people", "operation": "set", "value": 2}])]))
+
+    result = extract_patch(
+        _state(
+            "Tìm khách sạn gần sân bay Đà Nẵng giúp mình",
+            travel_state={"destination": {"presence": "set", "value": "Hội An"}},
+        )
+    )
+
+    assert all(change["path"] != "destination" for change in result["patch"])
+
+
+def test_the_destination_rescue_declines_when_two_cities_are_named(monkeypatch):
+    """Two known destinations in one message is ambiguous, and guessing is the exact
+    failure this module's grounding exists to prevent."""
+    _patch(monkeypatch, _FakeLLM([_payload("update_trip", [])]))
+
+    result = extract_patch(_state("Nên đi Hội An hay Đà Nẵng thì hợp hơn?"))
+
+    assert all(change["path"] != "destination" for change in result["patch"])
 
 
 def test_anchor_survives_the_repair_retry(monkeypatch):
@@ -909,7 +1068,12 @@ def test_explicit_date_range_overrides_whatever_the_llm_extracted(monkeypatch):
         _state("Tôi muốn đi Đà Nẵng từ ngày 10/09/2026 đến ngày 13/09/2026 cho 4 người.")
     )
 
+    # The destination entry is the deterministic rescue firing on a message that names
+    # a known city while `destination` is still UNKNOWN — the LLM stub here returns
+    # only dates. It is listed rather than filtered out so this test keeps asserting
+    # the WHOLE patch, which is what makes the date-range override provable.
     assert result["patch"] == [
+        {"path": "destination", "operation": "set", "value": "Đà Nẵng"},
         {"path": "dates.start", "operation": "set", "value": "10/09/2026"},
         {"path": "dates.end", "operation": "set", "value": "13/09/2026"},
     ]

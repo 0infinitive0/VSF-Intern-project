@@ -19,13 +19,48 @@ from ragas.metrics import (
 from harness.context_format import as_context
 from harness.dataset_loader import RetrievalRecord, load_golden_retrieval
 from harness.judge import build_judge
+from harness.usage_recorder import note_scoring_operations, record_usage
 
 from src.services.supabase_search import (
     _get_destination_id_by_name,
     extract_search_filters,
+    get_supabase_client,
     search_attractions,
     search_hotels_with_rooms,
 )
+
+#: destination_id -> name. Fetched once per process (5 rows as of 2026-08-20) rather
+#: than per record, since it never changes mid-run.
+_destination_names: dict[str, str] | None = None
+
+
+def _all_destination_names() -> dict[str, str]:
+    global _destination_names
+    if _destination_names is None:
+        rows = get_supabase_client().table("destinations").select("id,name").execute().data or []
+        _destination_names = {row["id"]: row["name"] for row in rows}
+    return _destination_names
+
+
+def _city_names_for(ids: list[str], table: str) -> dict[str, str]:
+    """place id -> its OWN verified city name, for `as_context`'s `city` kwarg.
+
+    Neither `hotels` nor `attractions` RPC rows carry a destination name (verified
+    2026-08-20 - `match_hotels_with_rooms`/`match_attractions` return star rating,
+    price, amenities, description... never destination_id), so an LLM judge asked to
+    verify "is this in Nha Trang" has nothing in the rendered context to check
+    against. This looks the real city up from the place's own row, never assumes
+    the query's target city - a wrong-city result must still render as wrong-city.
+    """
+    if not ids:
+        return {}
+    rows = get_supabase_client().table(table).select("id,destination_id").in_("id", ids).execute().data or []
+    names = _all_destination_names()
+    return {
+        row["id"]: names[row["destination_id"]]
+        for row in rows
+        if row.get("destination_id") and row["destination_id"] in names
+    }
 
 
 @dataclass
@@ -102,22 +137,32 @@ def score_non_llm(result: RetrievalResult) -> None:
 
 
 def score_llm(result: RetrievalResult, judge) -> None:
+    table = "hotels" if result.record.search == "hotels" else "attractions"
+    city_by_id = _city_names_for(result.retrieved_ids, table)
     sample = SingleTurnSample(
         user_input=result.record.query,
-        retrieved_contexts=[as_context(p) for p in result.retrieved_places],
+        retrieved_contexts=[
+            as_context(p, city=city_by_id.get(str(p.get("id")))) for p in result.retrieved_places
+        ],
         reference=result.record.rationale,
     )
     precision_metric = LLMContextPrecisionWithReference(llm=judge)
     relevance_metric = ContextRelevance(llm=judge)
-    result.llm_precision = precision_metric.single_turn_score(sample)
-    result.llm_context_relevance = relevance_metric.single_turn_score(sample)
+    # scope="judge": this is the eval's own spend, never the product's. Two scoring
+    # operations, so a warm cache shows up as two calls that never reached a model.
+    note_scoring_operations(2)
+    with record_usage(scope="judge"):
+        result.llm_precision = precision_metric.single_turn_score(sample)
+        result.llm_context_relevance = relevance_metric.single_turn_score(sample)
 
 
 def run_retrieval_eval(
     limit: int | None = None,
     llm_metrics: bool = True,
+    *,
+    include_en_mirrors: bool = False,
 ) -> list[RetrievalResult]:
-    records = load_golden_retrieval()
+    records = load_golden_retrieval(include_en_mirrors=include_en_mirrors)
     if limit:
         records = records[:limit]
 
@@ -125,8 +170,12 @@ def run_retrieval_eval(
 
     results: list[RetrievalResult] = []
     for record in records:
-        result = _run_one(record)
-        score_non_llm(result)
+        # scope="app": the product's own spend for one query. Wrapped at the call site
+        # rather than inside `_run_one` so it also covers `extract_search_filters`,
+        # which makes its own LLM call before the search timer even starts.
+        with record_usage(scope="app"):
+            result = _run_one(record)
+        score_non_llm(result)  # deterministic, no model involved
         if llm_metrics and result.error is None:
             score_llm(result, judge)
         results.append(result)
