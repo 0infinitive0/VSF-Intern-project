@@ -37,15 +37,29 @@ const HEAVY_WORK_PHASES = new Set(['hotel_search', 'itinerary_build'])
  *   gone. Checked AFTER `tripPlan` so a built itinerary still opens the
  *   workspace; the user reaches hotels again through the step navigator's
  *   client-side view override.
+ *
+ * A trip that already exists can ALSO swap to 'generating' mid-turn — a
+ * hotel/destination change rebuilds the whole itinerary (a real Mapbox
+ * routing pass, several seconds), and showing the same full progress screen
+ * the first build gets (rather than leaving the stale plan on screen with no
+ * feedback) is what the guest actually asked for. This only fires once
+ * `heavyWorkStarted` is real backend-confirmed work, never a bare `pending`
+ * guess — an unrelated QA question never emits `hotel_search`/
+ * `itinerary_build`, so it still leaves the itinerary/map exactly where they
+ * were (stage-workspace.tsx's own lighter-weight overlay covers that case,
+ * and the brief window before the first phase event streams in).
  */
 export function deriveStageView(
   state: ChatState,
   intakeReady = true,
   hotelsEverFound = false,
 ): StageView {
-  if (state.pending && state.tripPlan == null && state.hotelOptions.length === 0) {
+  if (state.pending && state.hotelOptions.length === 0) {
     const heavyWorkStarted = state.phases.some((phase) => HEAVY_WORK_PHASES.has(phase.key))
-    return intakeReady || heavyWorkStarted ? 'generating' : 'intake'
+    if (state.tripPlan == null) {
+      return intakeReady || heavyWorkStarted ? 'generating' : 'intake'
+    }
+    if (heavyWorkStarted) return 'generating'
   }
   if (state.hotelOptions.length > 0) return 'hotels'
   if (state.tripPlan != null) return 'workspace'

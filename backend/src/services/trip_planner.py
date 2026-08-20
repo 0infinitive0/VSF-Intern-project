@@ -2151,6 +2151,16 @@ def build_selected_hotel_trip(
         if current_trip_data is None:
             raise ValueError("No current trip exists for hotel replacement.")
 
+        # Same phase key _generate_and_save_itinerary emits for the new-trip
+        # branch below (line ~2087) — this branch never went through that
+        # function, so a rebuild streamed no phase events at all until the
+        # routing pass at the very end (see recalculate_itinerary_routes'
+        # own "routing_legs" emission above). The frontend's derive-stage.ts
+        # treats this exact key as "heavy work genuinely started" and swaps
+        # to the same full generating screen a fresh itinerary build gets,
+        # instead of leaving the guest staring at the stale plan.
+        emit_phase("itinerary_build")
+
         planning_constraints = pending.get("planning_constraints") or {} if mode == "change_hotel" else {}
         trip_data = _build_trip_data(
             destination,
