@@ -1,0 +1,226 @@
+name: Agent PR Review
+
+# Two independent review agents, each gated on the paths it owns:
+#   - backend  -> Python / FastAPI / LangGraph / eval harness / Airflow
+#   - frontend -> React / TypeScript / Vite
+#
+# Kill switches (Settings -> Secrets and variables -> Actions -> Variables):
+#   CLAUDE_REVIEW_ENABLED=false   -> disable both agents
+#   CLAUDE_REVIEW_BACKEND=false   -> disable the backend agent only
+#   CLAUDE_REVIEW_FRONTEND=false  -> disable the frontend agent only
+#   CLAUDE_REVIEW_MODEL=<id>      -> override the review model, no file edit
+# Unset means enabled. Only the literal string "false" disables.
+#
+# Both agents run through OpenRouter rather than the Anthropic API: OpenRouter
+# serves an Anthropic-format /v1/messages endpoint, so pointing
+# ANTHROPIC_BASE_URL at it is all Claude Code needs. Requires the repo secret
+# OPENROUTER_API_KEY. Model ids are OpenRouter ids.
+#
+# The review model defaults to google/gemini-3.7-flash. OpenRouter translates
+# the Anthropic request format for it, but Claude Code is built against Claude
+# and its own docs call non-Anthropic models "subject to compatibility
+# limitations" — agentic tool use is what degrades first, and these agents
+# depend on it (reading files, inline comments, writing the review file).
+#
+# Neither agent runs tests or builds: the backend suite reaches production
+# Supabase and a real LLM, so it cannot run in CI without those credentials.
+# Reviews are read-only.
+# If reviews come back empty, truncated, or with no inline comments, set
+# CLAUDE_REVIEW_MODEL=anthropic/claude-haiku-4.5 to rule the model out.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# One review per PR: a new push cancels the in-flight review instead of
+# stacking a second billed run on top of it.
+concurrency:
+  group: claude-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # Resolves which areas the PR touches so each agent only runs when its own
+  # files changed. Workflow-level `paths:` cannot do this per job.
+  changes:
+    if: |
+      vars.CLAUDE_REVIEW_ENABLED != 'false' &&
+      github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      backend: ${{ steps.detect.outputs.backend }}
+      frontend: ${{ steps.detect.outputs.frontend }}
+    steps:
+      - name: Detect changed areas
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          files=$(gh pr diff "$PR" --name-only)
+          echo "Changed files:"; echo "$files"
+
+          match() { echo "$files" | grep -qE "$1" && echo true || echo false; }
+
+          echo "backend=$(match '^(backend/|eval/|src/airflow/|tests/|supabase/)')" >> "$GITHUB_OUTPUT"
+          echo "frontend=$(match '^frontend/')" >> "$GITHUB_OUTPUT"
+
+  review-backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' && vars.CLAUDE_REVIEW_BACKEND != 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+      actions: read # lets Claude read CI results on the PR
+    env:
+      # Route Claude Code at OpenRouter's Anthropic-format endpoint. Claude Code
+      # appends /v1/messages, so the base URL stops at /api.
+      ANTHROPIC_BASE_URL: https://openrouter.ai/api
+      # Alias resolution ("haiku"/"sonnet"/"opus") otherwise yields bare
+      # Anthropic ids that OpenRouter does not serve. The action forwards
+      # exactly these three names, and its inline-comment classifier runs on
+      # the haiku one, so it must stay a Claude model.
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: anthropic/claude-haiku-4.5
+      ANTHROPIC_DEFAULT_SONNET_MODEL: anthropic/claude-sonnet-5
+      ANTHROPIC_DEFAULT_OPUS_MODEL: anthropic/claude-opus-5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Review backend changes
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Sent as x-api-key to ANTHROPIC_BASE_URL above, i.e. to OpenRouter.
+          anthropic_api_key: ${{ secrets.OPENROUTER_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            You are the BACKEND reviewer. The PR branch is already checked out.
+            Review only changes under backend/, eval/, src/airflow/, tests/ and
+            supabase/. Ignore frontend/ entirely — another agent owns it.
+
+            Read backend/CLAUDE.md and AGENTS.md first if they exist, and hold the
+            diff to the conventions recorded there.
+
+            Review by reading. You cannot run the suite: it reaches real
+            Supabase and a real LLM, so it cannot run in CI without production
+            credentials. Judge test adequacy from the test sources themselves.
+
+            Focus, in priority order:
+            1. Correctness — logic errors, unhandled edge cases, broken async or
+               LangGraph state transitions, mutable state shared across requests.
+            2. Contracts — FastAPI route signatures, Pydantic models and the
+               OpenAPI surface. Flag any change that breaks frontend/openapi.json
+               without a matching regeneration.
+            3. Tests — does backend/tests/ cover the changed behavior? Name the
+               specific missing case, not "add more tests". Flag any new test
+               that would call a real LLM or hit production Supabase.
+            4. Security — authn/authz on new routes, input validation, secrets,
+               SQL/prompt injection.
+            5. Performance — N+1 queries, blocking I/O inside async handlers,
+               unbounded LLM calls or retries.
+
+            Post inline comments on specific lines. Report only defects you can
+            point to in the diff; skip praise and style nits already enforced by
+            ruff. If the diff is clean, say so in one line.
+
+            Finally, write your full review as markdown to /tmp/claude-review.md.
+            Do NOT post a top-level PR comment yourself — a later step publishes
+            that file.
+          claude_args: |
+            --model ${{ vars.CLAUDE_REVIEW_MODEL || 'google/gemini-3.7-flash' }}
+            --max-turns 30
+            --allowedTools "Read,Grep,Glob,Write,mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff:*),Bash(gh pr view:*)"
+
+      - name: Publish backend review comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          MARKER: "<!-- claude-review:backend -->"
+        run: .github/scripts/upsert-pr-comment.sh /tmp/claude-review.md
+
+  review-frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' && vars.CLAUDE_REVIEW_FRONTEND != 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+      actions: read
+    env:
+      # Route Claude Code at OpenRouter's Anthropic-format endpoint. Claude Code
+      # appends /v1/messages, so the base URL stops at /api.
+      ANTHROPIC_BASE_URL: https://openrouter.ai/api
+      # Alias resolution ("haiku"/"sonnet"/"opus") otherwise yields bare
+      # Anthropic ids that OpenRouter does not serve. The action forwards
+      # exactly these three names, and its inline-comment classifier runs on
+      # the haiku one, so it must stay a Claude model.
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: anthropic/claude-haiku-4.5
+      ANTHROPIC_DEFAULT_SONNET_MODEL: anthropic/claude-sonnet-5
+      ANTHROPIC_DEFAULT_OPUS_MODEL: anthropic/claude-opus-5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Review frontend changes
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Sent as x-api-key to ANTHROPIC_BASE_URL above, i.e. to OpenRouter.
+          anthropic_api_key: ${{ secrets.OPENROUTER_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            You are the FRONTEND reviewer. The PR branch is already checked out.
+            Review only changes under frontend/. Ignore backend/, eval/ and
+            supabase/ — another agent owns them.
+
+            Read frontend/README.md and AGENTS.md first if they exist, and hold
+            the diff to the conventions recorded there.
+
+            Review by reading; no build or test step runs in this job.
+
+            Focus, in priority order:
+            1. Correctness — React state and effect bugs, stale closures, missing
+               cleanup, race conditions in streaming/SSE handling, error and
+               loading states that are never rendered.
+            2. Types — misuse of src/types/wire.generated.ts, `any` escapes, and
+               drift from the backend contract in openapi.json.
+            3. Accessibility — keyboard reachability, focus management on modals
+               and dialogs, labels on interactive elements, colour-only signals.
+            4. Design tokens — hardcoded colours/spacing that should come from
+               src/styles (scripts/check-design-tokens.mjs enforces this).
+            5. Performance — unnecessary re-renders, unkeyed lists, heavy work in
+               render, bundle-weight regressions from new dependencies.
+
+            Post inline comments on specific lines. Report only defects you can
+            point to in the diff; skip praise and style nits already enforced by
+            oxlint. If the diff is clean, say so in one line.
+
+            Finally, write your full review as markdown to /tmp/claude-review.md.
+            Do NOT post a top-level PR comment yourself — a later step publishes
+            that file.
+          claude_args: |
+            --model ${{ vars.CLAUDE_REVIEW_MODEL || 'google/gemini-3.7-flash' }}
+            --max-turns 30
+            --allowedTools "Read,Grep,Glob,Write,mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff:*),Bash(gh pr view:*)"
+
+      - name: Publish frontend review comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          MARKER: "<!-- claude-review:frontend -->"
+        run: .github/scripts/upsert-pr-comment.sh /tmp/claude-review.md
