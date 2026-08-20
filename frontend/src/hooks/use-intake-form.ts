@@ -192,6 +192,7 @@ export function useIntakeForm(intake: IntakeStatus | null) {
     // found here means THIS turn's real reply is a still-open question the
     // widget rail has already answered-but-not-sent and walked past.
     const pin = resyncField(intake, merged, editingField)
+    console.debug('useIntakeForm merge effect: pin', pin, 'editingField', editingField)
     if (pin) setEditingField(pin)
     setServerAskedField(serverAskedFieldFor(intake, merged, editingField))
     // `editingField` is deliberately not a dependency: it guards how THIS

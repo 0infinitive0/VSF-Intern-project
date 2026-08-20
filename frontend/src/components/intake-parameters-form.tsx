@@ -2,6 +2,7 @@ import type { IntakeFormState } from '../lib/compose-intake-message'
 import { composeIntakeMessage } from '../lib/compose-intake-message'
 import type { PreferenceKey } from '../lib/intake-options'
 import { currentIntakeField, type IntakeField } from '../lib/next-intake-field'
+import { QUICK_START_DESTINATIONS } from '../lib/quick-start-destinations'
 import type { IntakeStatus } from '../types'
 import IntakeDestinationChips from './intake-destination-chips'
 import IntakePeopleStepper from './intake-people-stepper'
@@ -55,7 +56,12 @@ export default function IntakeParametersForm({
   editingField?: IntakeField | null
   onDoneEditing?: () => void
 }) {
-  const destinations = intake?.available_destinations ?? []
+  // Pre-first-turn (`intake` still null — the local-only quick-start pick),
+  // there is no real backend destination list yet to re-derive from: fall
+  // back to the same static snapshot chat-panel.tsx's isEmptyConversation
+  // branch offered originally, so re-opening "Sửa" on that row isn't a blank
+  // widget just because no chat turn has happened yet.
+  const destinations = intake?.available_destinations ?? QUICK_START_DESTINATIONS.map((d) => d.value)
 
   const activeField = editingField ?? currentIntakeField(intake, form)
 
