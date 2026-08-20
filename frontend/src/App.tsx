@@ -60,7 +60,7 @@ export default function App() {
   // OAuth round-trip once the link attempt has already failed.
   const [retryingGoogleSignIn, setRetryingGoogleSignIn] = useState(false)
 
-  // Runs once on mount, independent of auth.status: a failed OAuth link
+  // Runs once on mount, independent of auth.status: a failed OAuth link attempt
   // shows up as error params on the very first render after Google
   // redirects back, not as something signInWithGoogle()'s own await ever
   // sees — see oauth-redirect-error.ts. "This Google email already belongs
