@@ -12,6 +12,8 @@ import { useTranslation } from 'react-i18next'
  * button still owns advancing the flow — selecting or editing the last cell
  * only updates `pending`.
  */
+const MAX_PEOPLE = 50
+
 export default function IntakePeopleStepper({
   value,
   onCommit,
@@ -53,6 +55,7 @@ export default function IntakePeopleStepper({
   const commitDraft = () => {
     let n = parseInt(draft, 10)
     if (Number.isNaN(n) || n < 5) n = 5
+    else if (n > MAX_PEOPLE) n = MAX_PEOPLE
     setLastValue(n)
     setPending(n)
     setIsEditing(false)
@@ -67,7 +70,7 @@ export default function IntakePeopleStepper({
   const step = (delta: number) => {
     const current = parseInt(draft, 10)
     const base = Number.isNaN(current) ? lastValue : current
-    const n = Math.max(5, base + delta)
+    const n = Math.min(MAX_PEOPLE, Math.max(5, base + delta))
     setDraft(String(n))
     setLastValue(n)
     setPending(n)
@@ -122,6 +125,7 @@ export default function IntakePeopleStepper({
               ref={inputRef}
               type="number"
               min={5}
+              max={MAX_PEOPLE}
               inputMode="numeric"
               aria-label={t('intakePeopleLabel')}
               disabled={disabled}
@@ -137,7 +141,7 @@ export default function IntakePeopleStepper({
             <button
               type="button"
               aria-label={t('intakeIncreaseGuests')}
-              disabled={disabled}
+              disabled={disabled || draftNum >= MAX_PEOPLE}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => step(1)}
               className="w-5 h-5 flex-none flex items-center justify-center rounded-full text-on-surface-variant text-[13px] leading-none hover:bg-fill disabled:opacity-40"

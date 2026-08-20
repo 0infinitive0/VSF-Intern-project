@@ -27,6 +27,7 @@ const MINIMAL: IntakeFormState = {
   pace: '',
   dayRhythm: [],
   notes: '',
+  preferencesNotes: '',
 }
 
 function fill(overrides: Partial<IntakeFormState>): IntakeFormState {
@@ -66,7 +67,7 @@ describe('composeIntakeMessage', () => {
 
   it('adds the budget skip phrase when budget is skipped', () => {
     const message = composeIntakeMessage(fill({ budgetSkipped: true }))
-    expect(message).toContain('Ngân sách khách sạn: không quan tâm giá khách sạn.')
+    expect(message).toContain('Ngân sách khách sạn: không giới hạn.')
   })
 
   it('omits the budget sentence when neither a range nor skip is set', () => {
@@ -77,6 +78,17 @@ describe('composeIntakeMessage', () => {
   it('adds preferences with the exact wire labels, joined by ", "', () => {
     const message = composeIntakeMessage(fill({ preferences: ['beach', 'food'] }))
     expect(message).toContain('Sở thích: biển, ẩm thực.')
+  })
+
+  it('appends free text typed at the preferences step verbatim, unchecked against wire labels', () => {
+    const message = composeIntakeMessage(fill({ preferences: ['beach'], preferencesNotes: 'trẻ em' }))
+    expect(message).toContain('Sở thích: biển, trẻ em.')
+    expect(message).not.toContain('Ghi chú')
+  })
+
+  it('emits a Sở thích sentence from free text alone, with no chip selected', () => {
+    const message = composeIntakeMessage(fill({ preferencesNotes: 'yên tĩnh' }))
+    expect(message).toContain('Sở thích: yên tĩnh.')
   })
 
   it('adds companions, pace, day rhythm and notes in stable order', () => {

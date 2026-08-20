@@ -7,7 +7,7 @@ import { formatCurrency } from '../lib/format-currency'
 // "Tầm trung" chip so replacing the chips changes the widget, not the default.
 const SLIDER_MIN_VND = 200_000
 const SLIDER_MAX_VND = 5_000_000
-const SLIDER_STEP_VND = 50_000
+const SLIDER_STEP_VND = 100_000
 const DEFAULT_MIN_VND = 800_000
 const DEFAULT_MAX_VND = 2_500_000
 

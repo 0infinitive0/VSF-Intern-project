@@ -43,6 +43,10 @@ export interface IntakeFormState {
   pace: PaceKey | ''
   dayRhythm: DayRhythmKey[]
   notes: string
+  // Free text typed into the composer while the sở thích (preferences) widget
+  // is the active step — appended to the "Sở thích:" sentence verbatim,
+  // unlike `notes`, with no check against the closed PreferenceKey label set.
+  preferencesNotes: string
 }
 
 /**
@@ -60,7 +64,7 @@ export function durationDaysBetween(startDate: string, endDate: string): number 
 
 // The exact skip phrase `_NO_BUDGET_PREFERENCE_PHRASES` recognises
 // (hotel_selection.py:383) — "no filter", a real answer, not a parse failure.
-export const BUDGET_SKIP_PHRASE = 'không quan tâm giá khách sạn'
+export const BUDGET_SKIP_PHRASE = 'không giới hạn'
 
 /**
  * Render a VND min–max range (from the budget slider) as the sentence
@@ -105,9 +109,11 @@ export function composeIntakeMessage(form: IntakeFormState): string {
     sentences.push(`Ngân sách khách sạn: ${budgetRangePhrase(form.budgetMinVnd, form.budgetMaxVnd)}.`)
   }
 
-  if (form.preferences.length > 0) {
-    const labels = form.preferences.map((key) => PREFERENCE_WIRE_VALUE_VI[key])
-    sentences.push(`Sở thích: ${labels.join(', ')}.`)
+  const preferenceLabels = form.preferences.map((key) => PREFERENCE_WIRE_VALUE_VI[key])
+  const freeTextPreference = form.preferencesNotes.trim()
+  if (preferenceLabels.length > 0 || freeTextPreference) {
+    const allLabels = freeTextPreference ? [...preferenceLabels, freeTextPreference] : preferenceLabels
+    sentences.push(`Sở thích: ${allLabels.join(', ')}.`)
   }
   if (form.companions) {
     sentences.push(`Đi cùng: ${COMPANION_WIRE_VALUE_VI[form.companions]}.`)

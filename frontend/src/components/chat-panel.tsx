@@ -6,7 +6,7 @@ import SuggestionChips from './suggestion-chips'
 import IntakeParametersForm from './intake-parameters-form'
 import IntakeDestinationChips from './intake-destination-chips'
 import { QUICK_START_DESTINATIONS } from '../lib/quick-start-destinations'
-import type { IntakeFormState } from '../lib/compose-intake-message'
+import { composeIntakeMessage, type IntakeFormState } from '../lib/compose-intake-message'
 import type { PreferenceKey } from '../lib/intake-options'
 import { buildIntakeChecklistRows } from '../lib/intake-checklist-rows'
 import { currentIntakeField, locallyAdvancedField, type IntakeField } from '../lib/next-intake-field'
@@ -167,6 +167,43 @@ export default function ChatPanel({
   const questionKey = questionField ? INTAKE_QUESTION_KEY[questionField] : undefined
   const intakeQuestion = questionKey ? t(questionKey) : null
 
+  // While the intake widget rail owns the flow, destination/people/dates/
+  // budget/preferences accumulate LOCALLY (progressive disclosure — see
+  // next-intake-field.ts) and only reach the backend when the terminal
+  // "Tìm khách sạn phù hợp" button fires composeIntakeMessage(form). A user
+  // who types free text into the composer instead of using the widgets (e.g.
+  // at the preferences step) must not have that text sent bare — the backend
+  // never received the earlier local answers, so a bare typed message alone
+  // can never look like "enough state to search hotels" (the exact bug this
+  // guards). Folding the typed text in and sending the same
+  // composeIntakeMessage sentence the widget's own submit button uses keeps
+  // both paths byte-identical once the required fields are filled.
+  //
+  // Text typed while the sở thích step is the active widget goes into
+  // `preferencesNotes` (rendered into the "Sở thích:" sentence) instead of
+  // `notes` (rendered into "Ghi chú:") — no check against the closed
+  // PreferenceKey label set, it's appended verbatim. Any other step still
+  // folds typed text into `notes`, unchanged.
+  const handleComposerSend = (text: string) => {
+    if (!showIntakeForm) {
+      onSend(text)
+      return
+    }
+    const atPreferencesStep = activeIntakeField === 'preferences'
+    onSend(
+      composeIntakeMessage({
+        ...intakeForm,
+        ...(atPreferencesStep
+          ? {
+              preferencesNotes: intakeForm.preferencesNotes
+                ? `${intakeForm.preferencesNotes} ${text}`
+                : text,
+            }
+          : { notes: intakeForm.notes ? `${intakeForm.notes} ${text}` : text }),
+      }),
+    )
+  }
+
   return (
     <section
       className="flex flex-col shrink-0 min-h-0 h-full glass-panel rounded-[26px] overflow-hidden"
@@ -269,7 +306,7 @@ export default function ChatPanel({
         {isTripFinalized(tripPlan) && (
           <div className="mb-2 text-[11px] text-on-surface-muted">{t('finalizeLockedChatHint')}</div>
         )}
-        <Composer onSend={onSend} disabled={pending} />
+        <Composer onSend={handleComposerSend} disabled={pending} />
       </div>
     </section>
   )

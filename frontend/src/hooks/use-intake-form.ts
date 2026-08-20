@@ -32,6 +32,7 @@ export const EMPTY_INTAKE_FORM: IntakeFormState = {
   pace: '',
   dayRhythm: [],
   notes: '',
+  preferencesNotes: '',
 }
 
 function isBlank(value: unknown): boolean {
@@ -121,6 +122,9 @@ export function mergeIntakeIntoForm(
     notes:
       intake.notes ||
       carry('preferences', wasCleared(previousIntake?.notes, intake.notes), prev.notes, ''),
+    // No backend slot to merge from — this is a local-only staging field for
+    // handleComposerSend (chat-panel.tsx), always carried forward unchanged.
+    preferencesNotes: prev.preferencesNotes,
   }
 }
 
