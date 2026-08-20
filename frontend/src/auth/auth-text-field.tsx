@@ -12,6 +12,7 @@ export default function AuthTextField({
   type = 'text',
   dense = false,
   showToggleLabels,
+  error,
   ...inputProps
 }: {
   label: string
@@ -23,8 +24,14 @@ export default function AuthTextField({
   dense?: boolean
   /** Present only for password fields — {show, hide} button text/aria-labels. */
   showToggleLabels?: { show: string; hide: string; showAria: string; hideAria: string }
+  /** Field-specific validation message shown right under the input, with its
+   * border tinted to match — lets a caller with several fields (e.g.
+   * booking-modal.tsx's guest step) point at exactly which one needs fixing
+   * instead of one blanket "something's wrong" line under the whole form. */
+  error?: string
 } & Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>) {
   const id = useId()
+  const errorId = useId()
   const [revealed, setRevealed] = useState(false)
   const isPassword = type === 'password'
   const resolvedType = isPassword ? (revealed ? 'text' : 'password') : type
@@ -38,10 +45,13 @@ export default function AuthTextField({
         <input
           id={id}
           type={resolvedType}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? errorId : undefined}
           {...inputProps}
           className={`${dense ? 'h-10' : 'h-11'} w-full rounded-[14px] border bg-glass-2 px-3.5 text-[14px] text-on-surface outline-none transition-[box-shadow,background-color,border-color] duration-200 placeholder:text-on-surface-faint focus:border-primary focus:bg-glass-3 focus:shadow-[0_0_0_4px_var(--color-primary-soft)] ${
             isPassword ? 'pr-[74px]' : ''
           } ${inputProps.className ?? ''}`}
+          style={error ? { ...inputProps.style, borderColor: 'var(--err)' } : inputProps.style}
         />
         {isPassword && showToggleLabels && (
           <button
@@ -55,6 +65,11 @@ export default function AuthTextField({
           </button>
         )}
       </span>
+      {error && (
+        <span id={errorId} role="alert" className="text-[11.5px] font-medium" style={{ color: 'var(--err)' }}>
+          {error}
+        </span>
+      )}
     </label>
   )
 }

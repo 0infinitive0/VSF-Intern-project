@@ -274,6 +274,12 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   // reveal the app: the guest came back specifically to see the payment
   // outcome, so the splash should outlast whichever of the two is slower.
   const [paymentPollDone, setPaymentPollDone] = useState(false)
+  // Set only on a FAILED/CANCELLED verdict below, read once by booking-
+  // modal.tsx to land on the Payment step (not its default Guest step —
+  // this IS a fresh mount, the full-page VNPay redirect wiped every local
+  // state there) with a visible "you cancelled/the payment failed" notice,
+  // instead of silently reopening on step 1 with no explanation.
+  const [paymentReturnOutcome, setPaymentReturnOutcome] = useState<'failed' | 'cancelled' | null>(null)
 
   // Runs once on boot: the guest may have just been bounced back from
   // VNPay's hosted payment page (plan 260818-vnpay-payment-and-email-
@@ -316,8 +322,9 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
           }
           if (payment.status === 'FAILED' || payment.status === 'CANCELLED') {
             // Hold is untouched by a failed payment (see use-room-hold.ts) —
-            // reopening the modal just lands back on the Payment step so
-            // the guest can try again.
+            // reopening the modal lands back on the Payment step (via
+            // paymentReturnOutcome below) so the guest can try again.
+            setPaymentReturnOutcome(payment.status === 'CANCELLED' ? 'cancelled' : 'failed')
             setBookingModalOpen(true)
             setPaymentPollDone(true)
             return
@@ -665,6 +672,7 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
         checkInDate={state.intake?.start_date ?? null}
         checkOutDate={state.intake?.end_date ?? null}
         guestsLabel={state.intake?.people ?? null}
+        paymentReturnOutcome={paymentReturnOutcome}
       />
       <BookingReceiptModal
         open={receiptModalOpen}
