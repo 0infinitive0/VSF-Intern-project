@@ -25,6 +25,19 @@ import ConfirmDialog from './components/confirm-dialog'
 import SessionExpiredModal from './components/session-expired-modal'
 import BootSplash from './components/boot-splash'
 
+/** Payment-status poll after a VNPay return (see the poll effect below):
+ * `VNPAY_POLL_MAX_ATTEMPTS` checks, `VNPAY_POLL_DELAY_MS` apart. The
+ * splash's own safety-ceiling timeout is derived from these same two
+ * numbers plus a network-latency buffer, instead of its own independent
+ * constant -- it used to be a hardcoded 15s against this poll's ~20s+
+ * worst case, so the splash could disappear (revealing the ordinary app --
+ * reads as "landed back on the homepage, nothing happened") several
+ * seconds before the poll's real outcome opened the result modal. */
+const VNPAY_POLL_MAX_ATTEMPTS = 10
+const VNPAY_POLL_DELAY_MS = 2000
+const VNPAY_POLL_SAFETY_CEILING_MS =
+  VNPAY_POLL_MAX_ATTEMPTS * VNPAY_POLL_DELAY_MS + 8_000
+
 /**
  * App — the auth boot gate (plan 260814-supabase-auth-and-per-user-history).
  * Every visitor gets a real Supabase session (anonymous or permanent) before
@@ -305,8 +318,8 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
     const guestRef = roomHold.guestRef
 
     async function pollUntilSettled() {
-      const maxAttempts = 10
-      const delayMs = 2000
+      const maxAttempts = VNPAY_POLL_MAX_ATTEMPTS
+      const delayMs = VNPAY_POLL_DELAY_MS
       for (let attempt = 0; attempt < maxAttempts && !cancelled; attempt++) {
         try {
           const payment = await getPaymentStatus(paymentId!, guestRef)
@@ -369,12 +382,15 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   }, [paymentReturnPending, paymentPollDone, state.sessionId])
 
   // Safety ceiling: the payment poll above always resolves paymentPollDone
-  // within ~20s no matter what, but session bootstrap has no such ceiling
-  // of its own — this is the "never leave the guest stuck" backstop if
-  // that somehow hangs, matching this same file's own posture on the poll.
+  // within VNPAY_POLL_SAFETY_CEILING_MS no matter what, but session
+  // bootstrap has no such ceiling of its own — this is the "never leave the
+  // guest stuck" backstop if that somehow hangs, matching this same file's
+  // own posture on the poll. Deliberately >= the poll's own worst-case
+  // budget (see VNPAY_POLL_SAFETY_CEILING_MS's doc comment) so this timeout
+  // never fires while the poll is still legitimately running.
   useEffect(() => {
     if (!paymentReturnPending) return
-    const timeout = setTimeout(() => setPaymentReturnPending(false), 15_000)
+    const timeout = setTimeout(() => setPaymentReturnPending(false), VNPAY_POLL_SAFETY_CEILING_MS)
     return () => clearTimeout(timeout)
   }, [paymentReturnPending])
 

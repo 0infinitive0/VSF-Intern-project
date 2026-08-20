@@ -6,6 +6,7 @@ import logging
 import os
 import re
 from datetime import date, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from supabase import Client, create_client
@@ -67,6 +68,16 @@ def _average_price(
     Returns None when nothing in range has a usable price at all — the
     caller shows "price on request", never falls back to hotel-level
     pricing.
+
+    The average is computed in `Decimal` and rounded to a whole VND (VND has
+    no real subunit) rather than left as a raw float division — VNPay's own
+    gateway settles/reports transactions in whole VND, so a fractional-đồng
+    total here would silently propagate into `booking.total_amount` and
+    `payments.amount`, then mismatch the whole-VND `vnp_Amount` VNPay's IPN
+    reports back, permanently failing `vnpay_ipn`'s amount check
+    (`RspCode 04`) for a real, successful payment -- exactly how an earlier
+    version of this function (plain `float` division, no rounding) broke
+    checkout right after per-night averaging shipped.
     """
     candidates = [row for row in prices if not row.get("sold_out", False) and row.get("check_in_date")]
     if check_in is not None and check_out is not None:
@@ -86,7 +97,10 @@ def _average_price(
     if not priced_nights:
         return None
 
-    average_amount = sum(float(row["price"]) for row in priced_nights) / len(priced_nights)
+    average_total = sum(Decimal(str(row["price"])) for row in priced_nights)
+    average_amount = float(
+        (average_total / len(priced_nights)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    )
     latest = max(priced_nights, key=lambda row: str(row.get("crawled_at") or ""))
     return {
         "amount": average_amount,

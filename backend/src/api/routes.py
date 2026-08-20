@@ -374,7 +374,13 @@ def vnpay_ipn(request: Request) -> dict[str, str]:
         received_amount = vnpay_service.vnpay_amount_to_decimal(params.get("vnp_Amount", ""))
     except Exception:
         return {"RspCode": "04", "Message": "Invalid amount"}
-    if received_amount != Decimal(str(payment["amount"])):
+    # Tolerate a sub-VND difference rather than requiring exact equality --
+    # VNPay settles/reports transactions in whole VND regardless of what we
+    # send, so any future source of a fractional-đồng `payments.amount`
+    # (VND has no real subunit; see place_details._average_price's doc
+    # comment for the incident this guards against) would otherwise fail
+    # this check forever for an otherwise-genuine, successful payment.
+    if abs(received_amount - Decimal(str(payment["amount"]))) >= Decimal("1"):
         return {"RspCode": "04", "Message": "Invalid amount"}
 
     if payment["status"] != "PENDING":

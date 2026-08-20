@@ -210,14 +210,30 @@ export function useRoomHold(sessionId: string | null) {
   // Keeps sessionStorage in sync with the live hold — cleared once there's
   // nothing worth restoring (IDLE: released/never started; ERROR: the
   // startHold that would have populated `bookings` already failed and rolled
-  // back).
+  // back). Factored out (rather than inlined in the effect below) so
+  // setPendingPayment can also call it SYNCHRONOUSLY, with the same guard,
+  // instead of only through the effect — see setPendingPayment's own doc
+  // comment for why that distinction matters.
+  const persistCurrentHold = useCallback(
+    (paymentIdForPersist: string | null) => {
+      if (heldHotelId && bookings.length > 0 && status !== 'IDLE' && status !== 'ERROR') {
+        persistHold({
+          heldHotelId,
+          heldSessionId,
+          bookings,
+          paymentId: paymentIdForPersist,
+          booked: status === 'BOOKED',
+        })
+      } else if (status === 'IDLE') {
+        persistHold(null)
+      }
+    },
+    [heldHotelId, heldSessionId, bookings, status],
+  )
+
   useEffect(() => {
-    if (heldHotelId && bookings.length > 0 && status !== 'IDLE' && status !== 'ERROR') {
-      persistHold({ heldHotelId, heldSessionId, bookings, paymentId, booked: status === 'BOOKED' })
-    } else if (status === 'IDLE') {
-      persistHold(null)
-    }
-  }, [heldHotelId, heldSessionId, bookings, status, paymentId])
+    persistCurrentHold(paymentId)
+  }, [persistCurrentHold, paymentId])
 
   // Ticks the countdown once a second, only while a hold is actually
   // counting down — no timer running in IDLE/HOLDING/BOOKED/EXPIRED.
@@ -372,10 +388,25 @@ export function useRoomHold(sessionId: string | null) {
   /** Called by booking-modal.tsx right before `window.location.href =
    * pay_url` — records WHICH payment this hold is now mid-checkout for, so
    * it survives the real navigation away (see the module doc comment) and
-   * App.tsx's consumeVnpayReturn knows what to poll once the guest is back. */
-  const setPendingPayment = useCallback((id: string) => {
-    setPaymentId(id)
-  }, [])
+   * App.tsx's consumeVnpayReturn knows what to poll once the guest is back.
+   *
+   * Persists to sessionStorage SYNCHRONOUSLY here (via persistCurrentHold),
+   * in addition to updating React state — the effect above that normally
+   * keeps sessionStorage in sync only runs on a LATER render/commit, with
+   * no guarantee it flushes before the browser starts unloading the page
+   * for the redirect booking-modal.tsx fires immediately after this call
+   * (`window.location.href = pay_url`, no `await` in between). If that
+   * write is lost, paymentId never makes it into sessionStorage: App.tsx's
+   * return-poll finds nothing to poll and silently gives up with no modal
+   * at all — indistinguishable from "nothing happened, back to the
+   * homepage" even though the guest may have genuinely just paid. */
+  const setPendingPayment = useCallback(
+    (id: string) => {
+      setPaymentId(id)
+      persistCurrentHold(id)
+    },
+    [persistCurrentHold],
+  )
 
   /** Called once App.tsx's consumeVnpayReturn confirms (via GET
    * /payments/{id}) that a real VNPay payment PAID — the authoritative
