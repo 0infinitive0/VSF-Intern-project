@@ -8,7 +8,7 @@
  * so `focus !== null` never toggles false in between and no exit/enter
  * transition re-triggers.
  */
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 export type Focus = { kind: 'hotel'; id: string } | { kind: 'place'; id: string } | null
 
@@ -23,5 +23,9 @@ export function useFocusMode() {
     setFocus(null)
   }, [])
 
-  return { focus, openFocus, closeFocus, setFocus }
+  // Memoized so this hook's return value keeps its identity across renders
+  // where focus state hasn't changed — openFocus/closeFocus are already
+  // stable, setFocus is stable by React contract, so `focus` is the only
+  // field that ever actually changes this.
+  return useMemo(() => ({ focus, openFocus, closeFocus, setFocus }), [focus, openFocus, closeFocus, setFocus])
 }

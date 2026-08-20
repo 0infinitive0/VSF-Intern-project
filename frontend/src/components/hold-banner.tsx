@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { RoomHoldApi } from '../hooks/use-room-hold'
+import { useHoldCountdown, type RoomHoldApi } from '../hooks/use-room-hold'
 
 function mmss(ms: number): string {
   const totalSeconds = Math.max(0, Math.round(ms / 1000))
@@ -16,9 +15,10 @@ function mmss(ms: number): string {
  * visible on hotel-detail-panel.tsx's own footer (still on screen at that
  * point), and IDLE/ERROR mean there's nothing to show at all.
  *
- * The countdown is a plain 1s re-render off `roomHold.holdLeftMs`, which
- * itself ticks off the group's real server `expires_at` (use-room-hold.ts) —
- * never a client-invented duration.
+ * The countdown ticks off useHoldCountdown(roomHold.expiresAtMs), which owns
+ * its own local 1s timer scoped to just this component — expires_at itself
+ * is always the real server value (use-room-hold.ts), never a
+ * client-invented duration.
  *
  * `roomHold` is a single GLOBAL hold, not scoped per chat session (see
  * use-room-hold.ts's module doc comment) — `holdBelongsToSession` is what
@@ -58,15 +58,10 @@ export default function HoldBanner({
   onOpenReceipt: () => void
 }) {
   const { t } = useTranslation()
-  // Local re-render tick so the mm:ss label visibly counts down even though
-  // holdLeftMs is only recomputed from `now`, which the hook already ticks —
-  // this just forces THIS component to re-read it every second too.
-  const [, forceTick] = useState(0)
-  useEffect(() => {
-    if (roomHold.status !== 'HELD') return
-    const id = setInterval(() => forceTick((n) => n + 1), 1000)
-    return () => clearInterval(id)
-  }, [roomHold.status])
+  // Live countdown, ticking once a second local to just this component —
+  // does not re-render anything above it (see useHoldCountdown's doc
+  // comment in use-room-hold.ts). null outside HELD stops the interval.
+  const holdLeftMs = useHoldCountdown(roomHold.status === 'HELD' ? roomHold.expiresAtMs : null)
 
   if (!holdBelongsToSession) {
     if (!sessionBookedFromBackend) return null
@@ -118,8 +113,8 @@ export default function HoldBanner({
   }
 
   if (roomHold.status === 'HELD') {
-    const warn = roomHold.holdLeftMs <= 5 * 60 * 1000
-    const danger = roomHold.holdLeftMs <= 60 * 1000
+    const warn = holdLeftMs <= 5 * 60 * 1000
+    const danger = holdLeftMs <= 60 * 1000
     return (
       <div
         className="flex items-center gap-2 pl-3 pr-1.5 py-1 rounded-full border transition-all duration-200"
@@ -147,7 +142,7 @@ export default function HoldBanner({
             className="text-[14.5px] font-[600] tracking-[-0.2px] tabular-nums"
             style={{ color: danger ? 'var(--err)' : warn ? 'var(--warn)' : 'var(--t1)' }}
           >
-            {mmss(roomHold.holdLeftMs)}
+            {mmss(holdLeftMs)}
           </span>
         </div>
 

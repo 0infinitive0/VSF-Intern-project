@@ -27,7 +27,7 @@
  * straight into that existing account, the same way any other "Continue with
  * Google" click would — see retryGoogleSignIn below.
  */
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { AuthError, User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase-client'
 import { onSessionExpired } from './session-expired-bus'
@@ -294,22 +294,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const dismissSessionExpired = useCallback(() => setSessionExpired(false), [])
 
-  const value: AuthContextValue = {
-    status,
-    user,
-    isAnonymous: user?.is_anonymous ?? false,
-    sessionExpired,
-    signInWithPassword,
-    registerWithPassword,
-    signInWithGoogle,
-    retryGoogleSignIn,
-    sendPasswordReset,
-    updateProfile,
-    updatePassword,
-    setInitialPassword,
-    signOut,
-    dismissSessionExpired,
-  }
+  // Memoized so consumers (useAuth() reaches PlannerApp and everything under
+  // it) only see a new `value` identity when something in it actually
+  // changed, instead of on every AuthProvider render — every field below is
+  // already a stable useCallback except the plain status/user/sessionExpired
+  // state, so this is a pure win with no staleness risk.
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      status,
+      user,
+      isAnonymous: user?.is_anonymous ?? false,
+      sessionExpired,
+      signInWithPassword,
+      registerWithPassword,
+      signInWithGoogle,
+      retryGoogleSignIn,
+      sendPasswordReset,
+      updateProfile,
+      updatePassword,
+      setInitialPassword,
+      signOut,
+      dismissSessionExpired,
+    }),
+    [
+      status,
+      user,
+      sessionExpired,
+      signInWithPassword,
+      registerWithPassword,
+      signInWithGoogle,
+      retryGoogleSignIn,
+      sendPasswordReset,
+      updateProfile,
+      updatePassword,
+      setInitialPassword,
+      signOut,
+      dismissSessionExpired,
+    ],
+  )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

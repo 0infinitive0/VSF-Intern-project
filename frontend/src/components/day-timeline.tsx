@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import TimelineItem from './timeline-item'
 import { dayRouteMetrics } from '../lib/leg'
@@ -35,9 +36,13 @@ export default function DayTimeline({
   onHoverChange?: (id: string | null) => void
 }) {
   const { t, i18n } = useTranslation()
-  const numFmt = new Intl.NumberFormat(NUM_LOCALE(i18n.language), { maximumFractionDigits: 1 })
+  // Memoized: these were previously recomputed on every render (including
+  // every hover-driven re-render of this whole tab), not just when the
+  // underlying day/hotel data actually changed.
+  const numFmt = useMemo(() => new Intl.NumberFormat(NUM_LOCALE(i18n.language), { maximumFractionDigits: 1 }), [i18n.language])
+  const m = useMemo(() => dayRouteMetrics(day.items), [day.items])
+  const stayPoints = useMemo(() => dayStayPoints(hotel), [hotel])
 
-  const m = dayRouteMetrics(day.items)
   const hasRoute = m.distanceKm > 0 || m.durationMins > 0
   const kmPart = `${m.approximate ? '≈ ' : ''}${t('legDistanceKm', { km: numFmt.format(m.distanceKm) })}`
   const routePart =
@@ -45,7 +50,6 @@ export default function DayTimeline({
   const daySub = [day.theme ? capitalizeFirst(day.theme) : null, hasRoute ? routePart : null]
     .filter((x): x is string => Boolean(x))
     .join(' · ')
-  const stayPoints = dayStayPoints(hotel)
   const startPoint = stayPoints.find((stayPoint) => stayPoint.position === 'start')
   const endPoint = stayPoints.find((stayPoint) => stayPoint.position === 'end')
 

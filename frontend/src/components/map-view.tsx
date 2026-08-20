@@ -140,14 +140,8 @@ for (const [i, id] of WALK_LAYER_IDS.entries()) {
 const DRIVE_FLOW_CYCLE_MS = 4_800
 /** Time for the walk dash train to advance by exactly one dash spacing. */
 const WALK_FLOW_CYCLE_MS = 1_600
-
-/** Hex `#rrggbb` -> a function giving that color at any alpha, for a pure-alpha gradient fade (see travelGradient). */
-function alphaColorOf(hex: string): (alpha: number) => string {
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
-  return (alpha: number) => `rgba(${r},${g},${b},${alpha})`
-}
+/** Cap on how often the flow loop's paint update actually runs (~30fps) — see the effect's own comment for why this doesn't change how the animation looks. */
+const FLOW_PAINT_INTERVAL_MS = 1000 / 30
 
 /** Classic 3t²-2t³ ease: 0 at t=0, 1 at t=1, S-curved (slow-fast-slow) in between — not a straight ramp. */
 function smoothstep(t: number): number {
@@ -157,6 +151,24 @@ function smoothstep(t: number): number {
 
 /** Fractions sampled across one rounded cap, fed through smoothstep — a handful of points on the S-curve approximate a round end with mapbox's piecewise-LINEAR interpolate, the same way a many-sided polygon approximates a circle. */
 const CAP_STEPS = [0, 0.25, 0.5, 0.75, 1]
+
+// travelGradient reruns every animation frame (see its own doc comment), but
+// only ever samples alpha at CAP_STEPS run through smoothstep (0, 1, and 3
+// points in between) for whichever `hexColor` this pulse uses — a small,
+// fixed set. Precomputing the `rgba(...)` string for each, once per color,
+// avoids allocating a fresh string per stop on every single frame.
+const alphaColorCache = new Map<string, string[]>()
+function alphaColorsOf(hex: string): string[] {
+  let colors = alphaColorCache.get(hex)
+  if (!colors) {
+    const r = parseInt(hex.slice(1, 3), 16)
+    const g = parseInt(hex.slice(3, 5), 16)
+    const b = parseInt(hex.slice(5, 7), 16)
+    colors = CAP_STEPS.map((t) => `rgba(${r},${g},${b},${smoothstep(t)})`)
+    alphaColorCache.set(hex, colors)
+  }
+  return colors
+}
 
 /**
  * Builds a line-progress gradient from a caller-supplied set of stops.
@@ -205,21 +217,23 @@ function buildGradient(addStops: (push: (at: number, color: string) => void) => 
  * "rounded" the same way a blurred/antialiased dot does.
  */
 function travelGradient(count: number, halfWidth: number, phase: number, hexColor: string, capFraction = 0.18): mapboxgl.ExpressionSpecification {
-  const colorAt = alphaColorOf(hexColor)
+  const colors = alphaColorsOf(hexColor)
+  const transparent = colors[0]
+  const opaque = colors[colors.length - 1]
   const capWidth = halfWidth * capFraction
   const coreHalf = halfWidth - capWidth
   return buildGradient((push) => {
-    push(0, colorAt(0))
+    push(0, transparent)
     for (let index = -1; index <= count; index++) {
       const center = (index + phase) / count
       if (center + halfWidth < 0 || center - halfWidth > 1) continue
       const leftCapStart = center - halfWidth
-      for (const t of CAP_STEPS) push(leftCapStart + t * capWidth, colorAt(smoothstep(t)))
-      if (coreHalf > 0) push(center + coreHalf, colorAt(1)) // flat shaft: hold full opacity across the middle
+      for (let i = 0; i < CAP_STEPS.length; i++) push(leftCapStart + CAP_STEPS[i] * capWidth, colors[i])
+      if (coreHalf > 0) push(center + coreHalf, opaque) // flat shaft: hold full opacity across the middle
       const rightCapStart = center + coreHalf
-      for (const t of CAP_STEPS) push(rightCapStart + t * capWidth, colorAt(smoothstep(1 - t)))
+      for (let i = 0; i < CAP_STEPS.length; i++) push(rightCapStart + CAP_STEPS[i] * capWidth, colors[colors.length - 1 - i])
     }
-    push(1, colorAt(0))
+    push(1, transparent)
   })
 }
 
@@ -266,6 +280,13 @@ export interface MapViewProps {
    * nothing to toggle this turn — same convention as `onLocate`. */
   showSuggested?: boolean
   onToggleSuggested?: () => void
+  /** False while this map is visually hidden (e.g. collapsed to 0×0 behind
+   * Focus Mode — see stage-workspace.tsx's `focused`) but still mounted.
+   * Pauses the per-frame direction-of-travel animation loop, which has no
+   * other way to know the map isn't on screen. Defaults to true so existing
+   * callers (the 'hotels' variant, which has no such collapse state) are
+   * unaffected. */
+  active?: boolean
 }
 
 type FeatureCollection = { type: 'FeatureCollection'; features: Array<Record<string, unknown>> }
@@ -540,7 +561,7 @@ function fitWorkspace(map: mapboxgl.Map, points: { lat: number; lng: number }[])
   else if (points.length > 1) { const bounds = boundsOf(points)!; map.fitBounds([[bounds.sw.lng, bounds.sw.lat], [bounds.ne.lng, bounds.ne.lat]], { padding: 56, maxZoom: 15, duration: 900 }) }
 }
 
-export default function MapView({ variant, theme, markers, segments, hoveredId, onHoverChange, onMarkerClick, selectedId = null, hotelRays = [], colorByDay = false, showSuggested, onToggleSuggested }: MapViewProps) {
+export default function MapView({ variant, theme, markers, segments, hoveredId, onHoverChange, onMarkerClick, selectedId = null, hotelRays = [], colorByDay = false, showSuggested, onToggleSuggested, active = true }: MapViewProps) {
   const { t } = useTranslation()
   const [styleKind, setStyleKind] = useState<MapStyleKind>('map')
   const { containerRef, mapRef, status, styleVersion, tokenMissing, retry } = useMapboxMap(theme, styleKind)
@@ -602,14 +623,17 @@ export default function MapView({ variant, theme, markers, segments, hoveredId, 
       const marker = new mapboxgl.Marker({ element: root, anchor: spec.kind === 'hotel' ? 'bottom' : 'center', offset }).setLngLat(toLngLat(point)).addTo(map)
       markerRegistry.current.set(spec.syncId, { marker, spec })
     }
-    // Frame the hotel coordinates whenever points change (e.g. switching chat
-    // sessions or arriving on stage 2 for a different destination).
+    // Frame the coordinates whenever the actual point set changes (e.g.
+    // switching chat sessions, arriving on stage 2 for a different
+    // destination, or switching itinerary days) — not on every
+    // marker-metadata change (hover label, price badge, ...) that leaves the
+    // real points untouched. One shared prevPointsKey is safe across both
+    // variants since a single mounted MapView's `variant` never changes.
     const currentPointsKey = points.map((p) => `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`).join('|')
-    if (variant === 'hotels' && points.length > 0 && currentPointsKey !== prevPointsKey.current) {
+    if (points.length > 0 && currentPointsKey !== prevPointsKey.current) {
       prevPointsKey.current = currentPointsKey
       fitWorkspace(map, points)
     }
-    if (variant === 'workspace') fitWorkspace(map, points)
   }, [markerKey, markers, status, variant, mapRef])
 
   useEffect(() => {
@@ -659,13 +683,25 @@ export default function MapView({ variant, theme, markers, segments, hoveredId, 
   // Direction-of-travel motion: ONE requestAnimationFrame loop writing one
   // paint property per moving overlay — filtered to activeFlowLayers (see
   // its own comment above) so an idle color's layer is never touched, never
-  // one loop per segment either way. Runs at display rate with no
-  // quantization at all, because line-gradient updates on the main thread
-  // (see travelGradient's doc comment for why the earlier
-  // scrolling-dasharray version could not).
+  // one loop per segment either way. `line-gradient` updates on the main
+  // thread (see travelGradient's doc comment for why the earlier
+  // scrolling-dasharray version could not), so unlike that version this CAN
+  // run every frame — but doesn't need to: the tick still re-registers every
+  // native frame (cheap — just a callback, keeps phase timing drift-free),
+  // while the actual expensive part (rebuilding the gradient + a real
+  // Mapbox style recompile via setPaintProperty) is throttled to
+  // FLOW_PAINT_INTERVAL_MS. The visual cycle itself is DRIVE_FLOW_CYCLE_MS/
+  // WALK_FLOW_CYCLE_MS long (1.6-4.8s) — stepping it ~30x/sec instead of at
+  // a high-refresh display's native 60-240Hz is not perceptible, but this
+  // loop otherwise runs continuously for as long as the itinerary tab stays
+  // open, so the saved work adds up to real, sustained CPU/GPU load.
+  // Also skipped outright while `active` is false — the map is collapsed
+  // behind Focus Mode but deliberately never unmounted (see
+  // stage-workspace.tsx's `focused`), so without this the loop would keep
+  // repainting a map nobody can see.
   useEffect(() => {
     const map = mapRef.current
-    if (!map || status !== 'ready' || variant !== 'workspace' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    if (!map || !active || status !== 'ready' || variant !== 'workspace' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
     // Built once per effect run (segments/style change), not per frame.
     const allFlowLayers: Array<[string, number]> = [
       [DRIVE_FLOW_LAYER, DRIVE_FLOW_CYCLE_MS],
@@ -675,19 +711,23 @@ export default function MapView({ variant, theme, markers, segments, hoveredId, 
     if (flowLayers.length === 0) return
     let frame = 0
     let start = 0
+    let lastPaint = -Infinity
     const tick = (time: number) => {
       if (!start) start = time
-      const elapsed = time - start
-      for (const [id, cycleMs] of flowLayers) {
-        const style = LAYER_STYLE[id]
-        if (!map.getLayer(id) || !style.pulse) continue
-        map.setPaintProperty(id, 'line-gradient', travelGradient(style.pulse.count, style.pulse.halfWidth, (elapsed % cycleMs) / cycleMs, style.pulse.color, style.pulse.capFraction))
+      if (time - lastPaint >= FLOW_PAINT_INTERVAL_MS) {
+        lastPaint = time
+        const elapsed = time - start
+        for (const [id, cycleMs] of flowLayers) {
+          const style = LAYER_STYLE[id]
+          if (!map.getLayer(id) || !style.pulse) continue
+          map.setPaintProperty(id, 'line-gradient', travelGradient(style.pulse.count, style.pulse.halfWidth, (elapsed % cycleMs) / cycleMs, style.pulse.color, style.pulse.capFraction))
+        }
       }
       frame = requestAnimationFrame(tick)
     }
     frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
-  }, [status, styleVersion, variant, mapRef, activeFlowLayers])
+  }, [status, styleVersion, variant, mapRef, activeFlowLayers, active])
 
   useEffect(() => {
     const map = mapRef.current

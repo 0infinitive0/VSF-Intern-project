@@ -5,7 +5,7 @@ import { EMAIL_RE } from '../auth/email-pattern'
 import { isValidPhone } from '../auth/phone-pattern'
 import RemoteImage from './remote-image'
 import { useHotelDetail } from '../hooks/use-hotel-detail'
-import type { RoomHoldApi } from '../hooks/use-room-hold'
+import { useHoldCountdown, type RoomHoldApi } from '../hooks/use-room-hold'
 import { createVnpayPayment } from '../api/payment-client'
 import { bookingErrorKey } from '../lib/booking-error'
 import { formatCurrency } from '../lib/format-currency'
@@ -130,6 +130,10 @@ export default function BookingModal({
 }) {
   const { t, i18n } = useTranslation()
   const { detail: hotelDetail } = useHotelDetail(roomHold.heldHotelId)
+  // Live countdown, ticking once a second local to just this component —
+  // does not re-render anything above it (see useHoldCountdown's doc
+  // comment in use-room-hold.ts). null outside HELD stops the interval.
+  const holdLeftMs = useHoldCountdown(roomHold.status === 'HELD' ? roomHold.expiresAtMs : null)
 
   const [render, setRender] = useState(open)
   const [visible, setVisible] = useState(false)
@@ -389,7 +393,7 @@ export default function BookingModal({
             <span className="text-[9.5px] font-[590] tracking-[0.09em] uppercase text-on-surface-muted">
               {t('holdBannerHeldLabel')}
             </span>
-            <span className="text-[14px] font-[590] tabular-nums text-on-surface">{mmss(roomHold.holdLeftMs)}</span>
+            <span className="text-[14px] font-[590] tabular-nums text-on-surface">{mmss(holdLeftMs)}</span>
           </div>
         )}
         <button
