@@ -241,7 +241,7 @@
 
         <div class="card-elevated tilt-n2 reveal r6" id="jumpToAppendixBtn" style="margin-top:16px; padding:16px 26px; display:flex; align-items:center; gap:18px; background:var(--yellow); width:fit-content; cursor:pointer;">
           <div class="icon-square" style="background:var(--white); width:40px; height:40px; font-size:16px;">→</div>
-          <span class="mono-tag" style="font-size:14px;">27 slide phụ lục chi tiết từng node, thuật toán, và cost/token — bấm để xem</span>
+          <span class="mono-tag" style="font-size:14px;">29 slide phụ lục chi tiết từng node, thuật toán, luồng đặt phòng/thanh toán, và cost/token — bấm để xem</span>
         </div>
       </div>
     </section>
@@ -494,6 +494,8 @@
           <div class="idx-item"><div class="idx-num">36</div><div class="idx-label">Q&amp;A — Vì sao giữ booking_node?</div></div>
           <div class="idx-item"><div class="idx-num">37</div><div class="idx-label">Q&amp;A — Greedy vs CSP/ILP?</div></div>
           <div class="idx-item"><div class="idx-num">38</div><div class="idx-label">Q&amp;A — Cache hit rate & cost thật?</div></div>
+          <div class="idx-item"><div class="idx-num">39</div><div class="idx-label">Luồng đặt phòng &amp; thanh toán VNPay</div></div>
+          <div class="idx-item"><div class="idx-num">40</div><div class="idx-label">Giữ phòng — quyết định thiết kế &amp; rủi ro</div></div>
         </div>
       </div>
     </section>
@@ -1479,6 +1481,93 @@ or such a turn would silently fall to respond with nothing said —
         </div>
         <div class="card-flat reveal r4" style="margin-top:16px; padding:16px 26px;">
           <p class="body-card">Đây là việc thêm 1 lớp aggregation, không phải xây lại từ đầu — hạ tầng log đã sẵn sàng để nối vào.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ APPENDIX — BOOKING FLOW OVERVIEW ============ -->
+    <section class="slide" id="s39" data-appendix="true">
+      <div class="slide-pad">
+        <div class="label-pill tilt-n2 reveal r1" style="background:var(--white);">Phụ lục · Kiến trúc</div>
+        <h2 class="heading-lg reveal r2" style="margin-top:22px;">Luồng đặt phòng &amp; thanh toán VNPay</h2>
+        <p class="mono-meta reveal r2" style="margin-top:8px;">use-room-hold.ts · routes.py · vnpay_service.py</p>
+
+        <div class="timeline-row reveal r3" style="margin-top:34px;">
+          <div class="card-small timeline-step">
+            <div class="step-num">1</div>
+            <h4>Chọn phòng &amp; giữ chỗ</h4>
+            <p>RPC khoá theo room_id + guest_ref, TTL 15 phút</p>
+            <div class="step-connector" style="top:50%; right:-36px;"></div>
+          </div>
+          <div class="card-small timeline-step">
+            <div class="step-num">2</div>
+            <h4>Đếm ngược</h4>
+            <p>Đọc lại expires_at từ server mỗi giây</p>
+            <div class="step-connector" style="top:50%; right:-36px;"></div>
+          </div>
+          <div class="card-small timeline-step">
+            <div class="step-num">3</div>
+            <h4>Nhập thông tin khách</h4>
+            <p>Tên, email, số điện thoại</p>
+            <div class="step-connector" style="top:50%; right:-36px;"></div>
+          </div>
+          <div class="card-small timeline-step">
+            <div class="step-num">4</div>
+            <h4>Tạo giao dịch VNPay</h4>
+            <p>Ký URL HMAC-SHA512, rời hẳn SPA</p>
+            <div class="step-connector" style="top:50%; right:-36px;"></div>
+          </div>
+          <div class="card-small timeline-step" style="background:var(--yellow);">
+            <div class="step-num">5</div>
+            <h4>2 kênh xác nhận song song</h4>
+            <p>Chỉ 1 trong 2 đáng tin — xem bên dưới</p>
+          </div>
+        </div>
+
+        <div class="node-cols reveal r4" style="margin-top:22px;">
+          <div class="card-elevated" style="flex:1; padding:20px 26px; background:var(--green);">
+            <span class="mono-tag" style="background:var(--white); padding:5px 12px;">IPN · SERVER-TO-SERVER</span>
+            <p class="body-card" style="margin-top:10px;">Xác minh chữ ký + đối chiếu số tiền → <code>UPDATE ... WHERE status='PENDING'</code> (chính câu lệnh này LÀ cơ chế idempotent) → xác nhận booking → gửi email. Nguồn xác nhận DUY NHẤT đáng tin.</p>
+          </div>
+          <div class="card-elevated" style="flex:1; padding:20px 26px; background:var(--pink);">
+            <span class="mono-tag" style="background:var(--white); padding:5px 12px;">REDIRECT · HIỂN THỊ</span>
+            <p class="body-card" style="margin-top:10px;">Query string có thể bị sửa, không được tin. SPA tải lại toàn bộ, poll <code>GET /payments/{id}</code> tối đa ~20s để hiện màn kết quả.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ APPENDIX — ROOM HOLD DESIGN & RISK ============ -->
+    <section class="slide" id="s40" data-appendix="true">
+      <div class="slide-pad">
+        <div class="label-pill tilt-n2 reveal r1" style="background:var(--pink);">Phụ lục · Q&amp;A</div>
+        <h2 class="heading-lg reveal r2" style="margin-top:22px;">Giữ phòng — quyết định thiết kế &amp; rủi ro</h2>
+        <p class="mono-meta reveal r2" style="margin-top:8px;">use-room-hold.ts — state toàn cục theo tab, không theo session</p>
+
+        <div class="node-cols reveal r3" style="margin-top:22px;">
+          <div class="spec-card" style="flex:1;">
+            <div class="spec-hd">Không có cron dọn dẹp</div>
+            <p class="note">Hold hết hạn chỉ đơn giản ngừng được tính vào "phòng đang giữ" (<code>expires_at &gt; now()</code> trong truy vấn còn phòng) — chỉ thật sự đổi <code>status→EXPIRED</code> khi có ai cố <code>confirm</code> nó.</p>
+          </div>
+          <div class="spec-card" style="flex:1;">
+            <div class="spec-hd">roomHold là state TOÀN CỤC</div>
+            <p class="note">Không theo từng đoạn chat — quyết định có chủ đích. Gốc rễ của nhiều bản vá sau này: đổi khách sạn, xoá session đang giữ, hiển thị nhầm hold của đoạn chat khác.</p>
+          </div>
+        </div>
+
+        <div class="node-cols reveal r4" style="margin-top:18px;">
+          <div class="spec-card" style="flex:1;">
+            <div class="spec-hd">Chỉ giữ 1 khách sạn 1 lúc</div>
+            <p class="note">Khoá advisory theo <code>guest_ref</code> (không chỉ <code>room_id</code>) chặn ở tầng DB — không phụ thuộc frontend kiểm tra đúng hay không.</p>
+          </div>
+          <div class="spec-card" style="flex:1;">
+            <div class="spec-hd">switchHold luôn huỷ rồi tạo lại</div>
+            <p class="note">Không có API "sửa" hold — đổi loại phòng hay đổi khách sạn đều release toàn bộ + reserve lại, TTL 15 phút mới tinh.</p>
+          </div>
+        </div>
+
+        <div class="card-flat reveal r5" style="margin-top:20px; padding:18px 28px; background:var(--yellow);">
+          <p class="body-card">⚠ <b>Sự cố thật đã gặp:</b> thanh toán VNPay thật thành công nhưng app từng kẹt "đang chờ xác nhận" — do tính giá trung bình ra số lẻ <code>float</code>, lệch với số VND nguyên VNPay trả về trong IPN → <code>RspCode 04 "Invalid amount"</code>. Đã sửa bằng <code>Decimal</code> + làm tròn VND nguyên, dung sai &lt;1 VND khi so khớp — đã xác nhận chạy đúng trên staging thật.</p>
         </div>
       </div>
     </section>

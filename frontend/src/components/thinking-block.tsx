@@ -139,7 +139,10 @@ function Step({
               belonging to the step above it. */}
           <div className="pl-[26px] pt-0.5 pb-1 flex flex-col gap-0">
             {group.lines.map((line) => (
-              <p key={line} className="text-[13px] leading-[1.65] text-on-surface-muted">
+              <p
+                key={line}
+                className="text-[13px] leading-[1.65] text-on-surface-muted motion-safe:animate-[vRise_.26s_ease-out]"
+              >
                 {line}
               </p>
             ))}
