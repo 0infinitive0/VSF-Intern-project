@@ -7,7 +7,6 @@ class SlidePresentation{
     this.currentSlide = 0;
     this.stage = document.getElementById('deckStage');
     this.counter = document.getElementById('counter');
-    this.appendixBadge = document.getElementById('appendixBadge');
     this.appendixBackBtn = document.getElementById('appendixBackBtn');
     this.jumpHint = document.getElementById('jumpHint');
     this.jumpBuffer = '';
@@ -101,9 +100,9 @@ class SlidePresentation{
       slide.classList.toggle('active', i===this.currentSlide);
       slide.classList.toggle('visible', i===this.currentSlide);
     });
-    this.counter.textContent = String(this.currentSlide+1).padStart(2,'0') + ' / ' + String(this.slides.length).padStart(2,'0');
     const isAppendix = this.slides[this.currentSlide].dataset.appendix === 'true';
-    this.appendixBadge.classList.toggle('show', isAppendix);
+    const num = String(this.currentSlide+1).padStart(2,'0') + ' / ' + String(this.slides.length).padStart(2,'0');
+    this.counter.textContent = isAppendix ? ('BACKUP · ' + num) : num;
     this.appendixBackBtn.classList.toggle('show', isAppendix);
   }
 }

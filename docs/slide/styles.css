@@ -145,6 +145,15 @@ img, video, canvas, svg{ max-width:100%; max-height:100%; }
 .nav-btn:hover{ transform:translate(-2px,-2px); box-shadow:var(--sh-hover); }
 .nav-btn:active{ transform:translate(2px,2px); box-shadow:2px 2px 0px var(--black); }
 .nav-btn svg{ width:20px; height:20px; }
+.nav-back-btn{
+  height:52px; padding:0 18px; border:var(--b3); background:var(--yellow); box-shadow:var(--sh-sm);
+  display:none; align-items:center; justify-content:center; cursor:pointer; white-space:nowrap;
+  font-family:var(--f-label); font-size:13px; font-weight:700; letter-spacing:0.03em; color:var(--black);
+  transition:transform .12s ease, box-shadow .12s ease;
+}
+.nav-back-btn.show{ display:flex; }
+.nav-back-btn:hover{ transform:translate(-2px,-2px); box-shadow:var(--sh-hover); }
+.nav-back-btn:active{ transform:translate(2px,2px); box-shadow:2px 2px 0px var(--black); }
 
 /* generic slide scaffolding */
 .slide-pad{ padding:64px 76px; height:100%; display:flex; flex-direction:column; }
@@ -303,7 +312,7 @@ img, video, canvas, svg{ max-width:100%; max-height:100%; }
    SLIDE 13 — GRAPH TOPOLOGY (dark, mermaid.js)
    =========================================== */
 #s13{ --slide-bg: #0d0e1a; }
-.mermaid-frame{ height:630px; margin-top:10px; }
+.mermaid-frame{ height:520px; margin-top:10px; }
 .mermaid-frame .mermaid{ display:block; width:100%; height:100%; margin:0; }
 .mermaid-frame svg{ display:block; width:100% !important; height:100% !important; object-fit:contain; }
 
@@ -322,23 +331,6 @@ img, video, canvas, svg{ max-width:100%; max-height:100%; }
 /* ===========================================
    APPENDIX — node cards, spec sheets, formulas
    =========================================== */
-.appendix-badge{
-  position:fixed; bottom:146px; right:22px; z-index:999; display:none;
-  border:var(--b3); background:var(--black); color:var(--white); padding:9px 20px;
-  font-family:var(--f-label); font-size:13px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;
-  box-shadow:var(--sh-sm);
-}
-.appendix-badge.show{ display:block; }
-.appendix-back-btn{
-  position:fixed; bottom:92px; right:22px; z-index:999; display:none;
-  border:var(--b3); background:var(--yellow); color:var(--black); padding:9px 20px;
-  font-family:var(--f-label); font-size:13px; font-weight:700; letter-spacing:0.05em;
-  box-shadow:var(--sh-sm); cursor:pointer; align-items:center; gap:8px;
-  transition:transform .12s ease, box-shadow .12s ease;
-}
-.appendix-back-btn.show{ display:flex; }
-.appendix-back-btn:hover{ transform:translate(-2px,-2px); box-shadow:var(--sh-hover); }
-.appendix-back-btn:active{ transform:translate(2px,2px); box-shadow:2px 2px 0px var(--black); }
 .jump-hint{
   position:fixed; left:50%; bottom:96px; transform:translateX(-50%); z-index:999; display:none;
   border:var(--b3); background:var(--yellow); padding:10px 22px;
@@ -361,7 +353,7 @@ img, video, canvas, svg{ max-width:100%; max-height:100%; }
 .node-name{ font-family:'Space Grotesk', monospace; font-weight:700; font-size:46px; letter-spacing:-0.01em; color:var(--black); margin-top:18px; }
 .file-tag{ border:var(--b2); padding:9px 18px; font-family:var(--f-label); font-size:13px; font-weight:600; background:var(--white); white-space:nowrap; box-shadow:var(--sh-sm); }
 .node-desc{ font-family:var(--f-display); font-weight:500; font-size:20px; line-height:1.55; margin-top:24px; max-width:1650px; }
-.node-cols{ display:flex; gap:28px; margin-top:32px; flex:1; }
+.node-cols{ display:flex; gap:28px; margin-top:32px; align-items:stretch; }
 .spec-card{ border:var(--b4); background:var(--white); padding:28px 32px; }
 .spec-card .spec-hd{ font-family:var(--f-label); font-weight:700; font-size:13px; letter-spacing:0.08em; margin-bottom:16px; display:inline-block; border:var(--b2); padding:6px 14px; background:var(--yellow); text-transform:uppercase; }
 .spec-card ul{ list-style:none; }
