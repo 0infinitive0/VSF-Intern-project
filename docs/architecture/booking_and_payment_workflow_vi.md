@@ -4,7 +4,7 @@
 
 Tài liệu này mô tả toàn bộ tính năng đặt phòng của V-OTA: từ lúc khách chọn phòng và **giữ chỗ tạm thời** (room hold), qua **thanh toán thật qua VNPay**, tới khi hệ thống **xác nhận đặt phòng** và **gửi email** cho khách — cùng với các quyết định kiến trúc, sự cố đã gặp và cách khắc phục trong quá trình xây dựng.
 
-Đây là nguồn tham khảo (source of truth) khớp với code đang chạy trên `main`, tính tới commit `c7337f6` (2026-08-19). Toàn bộ tính năng được xây trong khoảng 2026-08-18 → 2026-08-19, bắt đầu từ commit `bce43b6` ("room hold + real VNPay payment with Resend email confirmation").
+Đây là nguồn tham khảo (source of truth) khớp với code đang chạy trên `main`, tính tới commit `c6ba298` (2026-08-20). Toàn bộ tính năng được xây trong khoảng 2026-08-18 → 2026-08-20, bắt đầu từ commit `bce43b6` ("room hold + real VNPay payment with Resend email confirmation").
 
 Không thuộc phạm vi tài liệu này: luồng chat/lập lịch trình AI (xem `docs/architecture/agent_workflow_and_semantic_search_stack_vi.md`), luồng tìm kiếm khách sạn/địa điểm.
 
@@ -105,6 +105,20 @@ Ràng buộc bảng: `check_out_date > check_in_date`; `status <> 'RESERVED' OR 
 - **`cancel_booking(p_booking_id, p_temporary_user_ref)`** — huỷ giữ phòng, **idempotent** (gọi lại trên booking đã `CANCELLED`/`EXPIRED` không lỗi, trả nguyên dòng cũ).
 
 Không có cron/job quét dọn hold hết hạn — một `RESERVED` hết hạn đơn giản là ngừng được tính vào "phòng đang bị giữ" ngay khi `expires_at` trôi qua (điều kiện `expires_at > now()` trong câu truy vấn còn phòng), và chỉ thực sự đổi `status` thành `EXPIRED` khi có ai đó cố `confirm` nó.
+
+### Vì sao "còn bao nhiêu phòng" không phải một cột
+
+`rooms.available_room_count` là **sức chứa gốc** (crawl về), **không bao giờ bị `UPDATE` trừ trực tiếp** khi có booking mới. Số "còn lại thật" luôn được **tính lại mỗi lần đọc** bởi `get_room_availability(room_id, check_in, check_out)`: `available_room_count` trừ tổng `room_count` của mọi booking `CONFIRMED` hoặc `RESERVED` chưa hết hạn, trùng đêm — lấy `min()` qua từng đêm của cả kỳ ở (một đêm hết phòng là cả kỳ hết phòng, dù các đêm khác còn).
+
+Cố tình không lưu thành cột đếm riêng vì đó là **dữ liệu trùng lặp (denormalized)**: mọi đường tạo/huỷ/hết-hạn booking đều phải tự tay cập nhật đúng cột đó, chỉ cần bỏ sót một đường (sửa tay dữ liệu, một luồng huỷ quên cập nhật, một webhook retry...) là cột đếm **lệch khỏi thực tế mãi mãi mà không cách nào tự phát hiện** — đúng loại lỗi mục 20 dưới đây vừa gặp thật, chỉ ở bảng khác (`payments.amount`). Để `bookings` là nguồn sự thật duy nhất, số còn lại tính lại từ đó mỗi lần, không bao giờ có bản sao nào để mà lệch.
+
+Đánh đổi: không mở Table Editor lên là thấy ngay con số, phải query. Để vẫn trực quan mà không đánh đổi độ đúng, có thêm **view** `room_night_occupancy` (`20260820_add_room_night_occupancy_view.sql`) — mỗi dòng là 1 (phòng, đêm) đang bị giữ, tính đúng y hệt `get_room_availability` (cùng điều kiện status/khoảng ngày), chỉ khác là gộp sẵn theo từng đêm nên **xem được trực tiếp trong Table Editor**, không cần gõ SQL:
+
+```sql
+select * from room_night_occupancy where room_id = '...';
+```
+
+Phòng/đêm không có dòng nào nghĩa là chưa ai giữ, còn nguyên `base_capacity`.
 
 ## Luồng giữ phòng (Room Hold)
 
@@ -287,6 +301,7 @@ Toàn bộ tính năng được xây và vá liên tục trong ~1 ngày rưỡi;
 17. Bug tự gây ra: quên `overflow-hidden` ở khung ảnh hero mới thêm → ảnh tràn ra ngoài khung; nhân dịp sửa luôn đổi bố cục modal thành công sang **chiều ngang** (ảnh trái/nội dung phải) để không phải cuộn trang. — `be824db`
 18. Dải gradient làm mờ dần ảnh dùng nhầm token `--g1` (chỉ đặc ~60%, dành cho nền có backdrop-blur) thay vì `--g3` (đặc ~90%, đúng token mọi chỗ khác trong app đang dùng cho hiệu ứng ảnh-mờ-dần-vào-thẻ này) → ảnh trông "vỡ"/mờ đục; đồng thời bỏ nút "Đóng" màu xanh dương ở receipt modal, thay bằng nút ✕ nổi trên ảnh (đúng kiểu đã có sẵn ở `hotel-detail-panel.tsx`). — `ff194f7`
 19. Người dùng tự tay tinh chỉnh thêm bố cục modal thành công + receipt modal. — `c7337f6`
+20. **Thanh toán VNPay thật thành công nhưng app báo kẹt "đang chờ xác nhận" mãi** — root-cause qua log staging thật: IPN của VNPay **đã tới đúng URL**, chữ ký hợp lệ, nhưng backend trả `RspCode 04 "Invalid amount"` nên `mark_payment_paid` không bao giờ chạy. Nguyên nhân: `_average_price()` (thêm sáng cùng ngày, mục "average room price across stay") tính trung bình giá phòng bằng `float` thô, ra số lẻ đồng (VD `1023470.08`) — trong khi VNPay chốt giao dịch theo **VND nguyên**, IPN trả về `1023470.00`, lệch với số đã lưu → so khớp exact-equality fail vĩnh viễn dù thanh toán thật đã thành công. Sửa: `_average_price` chuyển sang `Decimal` + làm tròn VND nguyên; `vnpay_ipn` thêm dung sai <1 VND khi so khớp (phòng thủ thêm, không giảm bảo mật vì chữ ký vẫn phải hợp lệ trước). Nhân tiện sửa luôn 2 vấn đề nhỏ phát hiện lúc điều tra (không phải nguyên nhân sự cố này): timeout an toàn 15s của splash "Đang xử lý thanh toán…" ngắn hơn poll thật ~20s+ (splash có thể tắt sớm, thoáng hiện lại giao diện thường trước khi modal kết quả mở); `setPendingPayment` giờ ghi `sessionStorage` đồng bộ thay vì chỉ qua `useEffect` chạy sau, đóng 1 race lý thuyết có thể làm mất `paymentId` trước khi `window.location.href` điều hướng sang VNPay. — `c6ba298`
 
 Một sợi chỉ xuyên suốt gần một nửa danh sách trên (mục 5, 6–7, 9, 11–13): **`roomHold` là state toàn cục, không theo từng đoạn chat** — mọi nơi UI đọc thẳng `roomHold` mà không đối chiếu với đoạn chat đang xem đều có nguy cơ hiện nhầm dữ liệu của một đoạn chat khác. Cặp `heldSessionId`/`holdBelongsToSession` là cơ chế chung giải quyết việc này; `sessionBookedFromBackend` là phương án dự phòng cho đúng một trường hợp cặp đó không đủ (dữ liệu đã bị hold mới ghi đè hoàn toàn).
 
@@ -296,10 +311,12 @@ Một sợi chỉ xuyên suốt gần một nửa danh sách trên (mục 5, 6�
 
 | File | Vai trò |
 |---|---|
-| `backend/scripts/database_schema.sql` | Định nghĩa bảng `bookings`, `payments`, RPC `get_room_availability` |
+| `backend/scripts/database_schema.sql` | Định nghĩa bảng `bookings`, `payments`, RPC `get_room_availability`, view `room_night_occupancy` |
 | `backend/scripts/migrations/20260818_add_booking_reservation_rpcs.sql` | RPC `confirm_booking_reservation`, `cancel_booking` (và bản gốc — nay đã cũ — của `create_booking_reservation`) |
 | `backend/scripts/migrations/20260818_add_payments_table.sql` | Tạo bảng `payments` |
 | `backend/scripts/migrations/20260819_add_guest_single_hotel_hold_guard.sql` | Bản `create_booking_reservation` hiện hành: thêm `session_id`, khoá theo guest, guard chéo khách sạn |
+| `backend/scripts/migrations/20260820_add_room_night_occupancy_view.sql` | View `room_night_occupancy` — xem nhanh phòng còn lại theo từng đêm trong Table Editor, không cần query tay |
+| `backend/src/services/place_details.py` | `get_hotel_detail`, `_average_price` (làm tròn VND nguyên), `_room_availability` |
 | `backend/src/services/booking_service.py` | `reserve_booking`, `confirm_booking`, `cancel_booking`, `cancel_reserved_bookings_for_session`, `get_booking` |
 | `backend/src/services/payment_service.py` | `create_payment`, `mark_payment_paid/failed`, `get_booking_receipt_for_session`, `booking_summary_for_email` |
 | `backend/src/services/vnpay_service.py` | Ký/xác minh chữ ký HMAC-SHA512, build URL thanh toán |
@@ -327,7 +344,7 @@ Một sợi chỉ xuyên suốt gần một nửa danh sách trên (mục 5, 6�
 
 ## Giới hạn đã biết
 
-- **Luồng IPN thật (redirect → thanh toán → webhook) chưa được test round-trip qua VNPay sandbox thật** — cần domain public/ngrok để VNPay gọi được vào IPN URL (`localhost` không nhận được webhook). Logic ký/xác minh chữ ký đã được đối chiếu với ví dụ chính thức của VNPay, nhưng hành vi thật của IPN cần xác nhận riêng.
+- ~~Luồng IPN thật chưa được test round-trip qua VNPay sandbox thật~~ — **đã xác nhận hoạt động đúng trên staging** (`trip-planner-ai.duckdns.org` → Caddy → backend, domain public thật, không phải localhost/ngrok): IPN tới đúng URL, chữ ký hợp lệ, `RspCode 00`, `payments.status → PAID`, `bookings.status → CONFIRMED` — xem mục 20 ở trên (sự cố thật gặp phải + cách sửa lúc xác nhận điều này).
 - Migration `20260814_move_available_room_count_to_rooms.sql` được `test_room_availability_schema.py` tham chiếu nhưng **không tồn tại trong repo** — nhiều khả năng đã áp trực tiếp lên Supabase và không được commit.
 - Nếu đoạn chat A đã `BOOKED` rồi khách bắt đầu giữ phòng mới ở đoạn chat B, banner "Đã đặt phòng" của A vẫn phải đi qua `booking-receipt-modal.tsx` (đọc backend) thay vì tiếp tục hiện trực tiếp từ `roomHold` — booking thật trong DB không bị ảnh hưởng, chỉ là 2 đường hiển thị khác nhau tuỳ hold có còn "tươi" trong bộ nhớ hay không.
 - Chưa có test ở mức component cho `booking-modal.tsx`, `hold-banner.tsx`, `booking-receipt-modal.tsx`, `HoldFooter`, hay state machine `consumeVnpayReturn` của `App.tsx` — các phần này hiện chỉ được xác minh bằng `tsc`/`oxlint` sạch + test tay theo kịch bản, không có test tự động.

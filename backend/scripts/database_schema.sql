@@ -401,6 +401,41 @@ REVOKE ALL ON FUNCTION public.get_room_availability(UUID, DATE, DATE) FROM PUBLI
 GRANT EXECUTE ON FUNCTION public.get_room_availability(UUID, DATE, DATE)
     TO service_role;
 
+-- Convenience view for eyeballing room availability in Supabase Studio's
+-- Table Editor without writing SQL every time (20260820_add_room_night_
+-- occupancy_view.sql). Purely additive/read-only -- does not change
+-- get_room_availability() above or any table. One row per (room, night)
+-- that has at least one CONFIRMED or unexpired-RESERVED booking -- a
+-- room/night with zero rows simply means "nothing held, still at full
+-- base_capacity". Mirrors get_room_availability's own status/date-overlap
+-- predicate exactly, just pre-aggregated per night instead of min()'d
+-- across a queried stay range -- see that function's comment for why
+-- availability is computed on every read rather than a stored, decremented
+-- column: a denormalized counter needs every booking/cancel/expiry code
+-- path to keep it in sync by hand, and can silently drift from reality
+-- with no way to detect it.
+CREATE OR REPLACE VIEW public.room_night_occupancy AS
+SELECT
+    r.id AS room_id,
+    r.hotel_id,
+    r.name AS room_name,
+    r.available_room_count AS base_capacity,
+    nights.night::date AS night,
+    sum(b.room_count)::integer AS units_held,
+    (r.available_room_count - sum(b.room_count))::integer AS units_available
+FROM public.bookings AS b
+JOIN public.rooms AS r ON r.id = b.room_id
+CROSS JOIN LATERAL generate_series(
+    b.check_in_date::timestamp,
+    (b.check_out_date - 1)::timestamp,
+    interval '1 day'
+) AS nights(night)
+WHERE b.status = 'CONFIRMED' OR (b.status = 'RESERVED' AND b.expires_at > now())
+GROUP BY r.id, r.hotel_id, r.name, r.available_room_count, nights.night
+ORDER BY r.id, nights.night;
+REVOKE ALL ON public.room_night_occupancy FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.room_night_occupancy TO service_role;
+
 -- Approved, server-managed amenity definitions. Hotels and rooms store these
 -- canonical English IDs in their TEXT[] amenity columns; the backend resolves
 -- them to labels for search results and UI display.
