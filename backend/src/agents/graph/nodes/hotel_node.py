@@ -152,6 +152,14 @@ def _rating_reply(exc: NoHotelsMatchRating, language: str) -> str:
     return t("Không có khách sạn nào đạt {criteria}.", language, criteria=" và ".join(parts))
 
 
+def _capacity_reply(min_guests: int, language: str) -> str:
+    return t(
+        "Không có khách sạn nào (kể cả ghép nhiều phòng) đủ chỗ cho {n} người.",
+        language,
+        n=min_guests,
+    )
+
+
 def _handle_hotel_selection(
     *,
     hotel_id: str,
@@ -249,7 +257,8 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
         return {"pending_tasks": pending, "task_results": task_results, "selected_hotel_id": None}
 
     people_slot = travel_state.get("people")
-    people = str(int(people_slot.value)) if people_slot.presence is Presence.SET else ""
+    people_count = int(people_slot.value) if people_slot.presence is Presence.SET else None
+    people = str(people_count) if people_count is not None else ""
     start_slot = travel_state.get("dates.start")
     end_slot = travel_state.get("dates.end")
     start_date = str(start_slot.value) if start_slot.presence is Presence.SET else None
@@ -407,6 +416,7 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
             "required_amenities": required_amenities,
             "min_star_rating": min_star_rating,
             "min_review_score": min_review_score,
+            "min_guests": people_count,
         }
         if previous_ids:
             selection_kwargs["exclude_hotel_ids"] = previous_ids
@@ -451,6 +461,21 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
         return _result("error", t("Tìm khách sạn thất bại: {error}", language, error=str(exc)))
 
     if not options and not previous_options:
+        # Same diagnostic-retry idea as the dateless probe below, checked first
+        # since it's the more specific, user-stated constraint: re-run without
+        # `min_guests` to tell "no hotel here can seat this many people, even
+        # split across rooms" apart from a generic "nothing matched at all".
+        if people_count:
+            capacity_probe_kwargs = {**selection_kwargs, "min_guests": None}
+            capacity_probe_kwargs.pop("exclude_hotel_ids", None)
+            try:
+                capacity_probe_options = select_hotel_candidates(
+                    destination, destination_id, people, **capacity_probe_kwargs
+                )
+            except Exception:
+                capacity_probe_options = []
+            if capacity_probe_options:
+                return _result("no_results_capacity", _capacity_reply(people_count, language))
         # A generic "no hotel found" reads as "there are no hotels here at
         # all" -- when the real cause is the date range, that's misleading
         # and unactionable. Re-run the exact same filters minus the dates to

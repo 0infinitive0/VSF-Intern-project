@@ -186,6 +186,7 @@ def select_hotel_candidates(
     required_amenities: Collection[str] = (),
     min_star_rating: float | None = None,
     min_review_score: float | None = None,
+    min_guests: int | None = None,
 ) -> List[Tuple[Dict[str, Any], PlaceCandidate]]:
     """Search and return verified hotel options along with PlaceCandidate objects.
 
@@ -207,6 +208,21 @@ def select_hotel_candidates(
     radius filters already ran in — so a zero-result diagnostic
     (`NoHotelsMatchRating`/`NoHotelsMatchAmenities`) names the real binding
     constraint instead of the two collapsing into one ambiguous cause.
+
+    `min_guests`, unlike those three, is enforced INSIDE the RPC itself (see
+    `scripts/migrations/20260820_add_guest_capacity_filter_to_match_hotels_with_
+    rooms.sql`) — `match_hotels_with_rooms` sums, per hotel, `available units *
+    max_guests` across every room type, so a party that needs multiple rooms (or
+    a mix of room types) to fit is accounted for, not just whichever single room
+    is largest. Because it's applied before the RPC's own `ORDER BY`/`LIMIT`,
+    `min_guests` does NOT need the app-level over-fetch-then-filter dance the
+    other three hard filters use — asking for `match_count` hotels already
+    returns up to `match_count` hotels that can seat the party, same as
+    `min_price`/`max_price`. `people` — the free-text stay-size string this same
+    call already carries for the semantic query below — is deliberately NOT
+    reused as `min_guests` automatically: it's an un-parsed display string (e.g.
+    "2 người"). Callers that want the hard filter pass the parsed party size
+    explicitly.
     """
     query = hotel_query or f"Hotel in {destination} for {people} people"
     hard_filters_requested = (
@@ -233,6 +249,8 @@ def select_hotel_candidates(
         kwargs["root_latitude"] = root_latitude
         kwargs["root_longitude"] = root_longitude
         kwargs["max_radius_km"] = max_radius_km
+    if min_guests is not None:
+        kwargs["min_guests"] = min_guests
 
     logger.debug("match_hotels_with_rooms input parameters: %s", kwargs)
     search_results = search_hotels_with_rooms(**kwargs) or []

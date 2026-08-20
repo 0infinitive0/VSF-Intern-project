@@ -19,6 +19,12 @@ class FakeQuery:
     def eq(self, *_args):
         return self
 
+    def gte(self, *_args):
+        return self
+
+    def lt(self, *_args):
+        return self
+
     def in_(self, *_args):
         return self
 
@@ -58,8 +64,8 @@ def test_hotel_detail_selects_matching_room_price_and_never_uses_hotel_lowest_pr
     client = FakeClient({
         "hotels": [_hotel()], "rooms": [_room()],
         "room_prices": [
-            {"room_id": "room-1", "price": 1250000, "currency": "VND", "check_in_date": "2026-09-01", "check_out_date": "2026-09-03", "sold_out": False, "crawled_at": "2026-08-01T00:00:00"},
-            {"room_id": "room-1", "price": 1, "currency": "VND", "check_in_date": "2026-09-01", "check_out_date": "2026-09-03", "sold_out": True, "crawled_at": "2026-08-02T00:00:00"},
+            {"room_id": "room-1", "price": 1250000, "currency": "VND", "check_in_date": "2026-09-01", "check_out_date": "2026-09-02", "sold_out": False, "crawled_at": "2026-08-01T00:00:00"},
+            {"room_id": "room-1", "price": 1, "currency": "VND", "check_in_date": "2026-09-01", "check_out_date": "2026-09-02", "sold_out": True, "crawled_at": "2026-08-02T00:00:00"},
         ],
         "rpc": {"room-1": 9},
     })
@@ -70,6 +76,47 @@ def test_hotel_detail_selects_matching_room_price_and_never_uses_hotel_lowest_pr
     assert client.queries == ["hotels", "rooms", "room_prices"]
     assert result["rooms"][0]["price"]["amount"] == 1250000
     assert result["rooms"][0]["price"]["package_details"] is None
+
+
+def test_hotel_detail_averages_room_price_across_every_night_of_the_stay(monkeypatch):
+    """`room_prices` is one row per crawled NIGHT -- a 3-night stay averages
+    that room's 3 per-night snapshots, not a single row lookup."""
+    client = FakeClient({
+        "hotels": [_hotel()], "rooms": [_room()],
+        "room_prices": [
+            {"room_id": "room-1", "price": 1000000, "currency": "VND", "check_in_date": "2026-09-01", "check_out_date": "2026-09-02", "sold_out": False, "crawled_at": "2026-08-01T00:00:00"},
+            {"room_id": "room-1", "price": 1200000, "currency": "VND", "check_in_date": "2026-09-02", "check_out_date": "2026-09-03", "sold_out": False, "crawled_at": "2026-08-01T00:00:00"},
+            {"room_id": "room-1", "price": 1400000, "currency": "VND", "check_in_date": "2026-09-03", "check_out_date": "2026-09-04", "sold_out": False, "crawled_at": "2026-08-01T00:00:00"},
+        ],
+        "rpc": {"room-1": 9},
+    })
+    monkeypatch.setattr(place_details, "_get_supabase_client", lambda: client)
+
+    result = place_details.get_hotel_detail("hotel-1", date(2026, 9, 1), date(2026, 9, 4))
+
+    assert result["rooms"][0]["price"]["amount"] == 1200000
+
+
+def test_hotel_detail_price_average_ignores_sold_out_nights_and_re_crawls(monkeypatch):
+    """A sold-out night contributes nothing to the average (never averaged in
+    as if it had a real price), and a night crawled twice counts once, using
+    only its freshest snapshot."""
+    client = FakeClient({
+        "hotels": [_hotel()], "rooms": [_room()],
+        "room_prices": [
+            # Night 1: crawled twice -- the stale 900000 must be ignored.
+            {"room_id": "room-1", "price": 900000, "currency": "VND", "check_in_date": "2026-09-01", "check_out_date": "2026-09-02", "sold_out": False, "crawled_at": "2026-08-01T00:00:00"},
+            {"room_id": "room-1", "price": 1000000, "currency": "VND", "check_in_date": "2026-09-01", "check_out_date": "2026-09-02", "sold_out": False, "crawled_at": "2026-08-02T00:00:00"},
+            # Night 2: sold out -- excluded from the average entirely.
+            {"room_id": "room-1", "price": 5000000, "currency": "VND", "check_in_date": "2026-09-02", "check_out_date": "2026-09-03", "sold_out": True, "crawled_at": "2026-08-01T00:00:00"},
+        ],
+        "rpc": {"room-1": 9},
+    })
+    monkeypatch.setattr(place_details, "_get_supabase_client", lambda: client)
+
+    result = place_details.get_hotel_detail("hotel-1", date(2026, 9, 1), date(2026, 9, 3))
+
+    assert result["rooms"][0]["price"]["amount"] == 1000000
 
 
 def test_hotel_detail_returns_booking_aware_room_inventory_for_the_requested_stay(monkeypatch):
