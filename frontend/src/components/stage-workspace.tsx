@@ -34,6 +34,29 @@ function nightsFrom(start?: string | null, end?: string | null, fallbackDays?: n
   return fallbackDays != null && fallbackDays > 1 ? fallbackDays - 1 : null
 }
 
+/** Frosted "still working" veil for a stale itinerary/map panel while a
+ * chat turn is pending — see StageWorkspace's `rebuilding` doc comment for
+ * why it's shown for every pending turn, not only ones that actually change
+ * the plan. Reused identically over both the itinerary column and the map,
+ * so the two panels always agree about whether the trip on screen is fresh. */
+function RebuildingOverlay() {
+  const { t } = useTranslation()
+  return (
+    <div
+      className="glass-panel absolute inset-0 z-10 flex items-center justify-center gap-2.5 rounded-[26px]"
+      style={{ transition: 'opacity .3s ease' }}
+      role="status"
+      aria-live="polite"
+    >
+      <span
+        className="w-4 h-4 flex-none rounded-full border-2 border-primary border-t-transparent animate-spin"
+        aria-hidden="true"
+      />
+      <span className="text-[12.5px] font-[530] text-on-surface">{t('aiWorking')}</span>
+    </div>
+  )
+}
+
 /**
  * StageWorkspace — the Phase 9 workspace (V-OTA Planner.dc.html:192-295): a
  * glass trip header (logo, destination, date-range/days/nights/people meta —
@@ -251,6 +274,20 @@ export default function StageWorkspace({
 
   if (!tripPlan) return null
 
+  // A chat turn while already viewing a built itinerary — a hotel/
+  // destination change, a day edit, or just an unrelated QA question — all
+  // look identical from here until the reply lands (derive-stage.ts keeps
+  // `stage` on 'workspace' the whole time on purpose, so the itinerary/map
+  // don't blank out or jump away). Without this, the map and itinerary
+  // panels just sit there showing the STALE plan for however long the turn
+  // takes (rebuilds go through a real Mapbox routing pass — several
+  // seconds), which reads as "my change didn't register" rather than "still
+  // working". Shown for every pending turn, not only itinerary-changing
+  // ones, since there's no reliable way to tell those apart before the
+  // reply arrives — a brief flash for an unrelated QA answer is a small
+  // price for never leaving an actual rebuild silent.
+  const rebuilding = state.pending
+
   const dateRange = formatTripDateRange(tripPlan.start_date, tripPlan.end_date, i18n.language)
   const nights = nightsFrom(tripPlan.start_date, tripPlan.end_date, tripPlan.duration_days)
   const daysPart =
@@ -303,13 +340,14 @@ export default function StageWorkspace({
       {/* Content row — itinerary column | map | detail panel (focus). */}
       <div className="flex-1 flex gap-3.5 p-3.5 min-h-0 min-w-0">
         <div
-          className="glass-panel flex-none flex flex-col min-h-0 overflow-hidden rounded-[26px]"
+          className="relative glass-panel flex-none flex flex-col min-h-0 overflow-hidden rounded-[26px]"
           style={{
             flexBasis: focused ? '520px' : '470px',
             maxWidth: '100%',
             transition: 'flex-basis .62s cubic-bezier(.22,1,.36,1)',
           }}
         >
+          {rebuilding && <RebuildingOverlay />}
           <div className="flex-none p-3 border-b border-line overflow-x-auto">
             <div className="flex gap-[3px] p-[3px] rounded-[15px]" style={{ background: 'var(--fill)' }}>
               {tabs.map((tab) => {
@@ -359,7 +397,7 @@ export default function StageWorkspace({
 
         {/* Map — collapses to 0 on focus (scale + blur per design, never unmount) */}
         <div
-          className="min-w-0 overflow-hidden rounded-[26px]"
+          className="relative min-w-0 overflow-hidden rounded-[26px]"
           aria-hidden={focused}
           style={{
             flex: focused ? '0 0 0px' : '1 1 auto',
@@ -391,6 +429,7 @@ export default function StageWorkspace({
             showSuggested={showSuggested}
             onToggleSuggested={state.suggestedPlaces.length > 0 ? () => setShowSuggested((v) => !v) : undefined}
           />
+          {rebuilding && <RebuildingOverlay />}
         </div>
 
         {/* Always mounted (never conditionally rendered) so it can animate its
