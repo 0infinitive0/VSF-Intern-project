@@ -185,7 +185,7 @@ def _last_human_message(state: TravelGraphState) -> str:
 # actually observed (a correction points at the reply immediately before it,
 # occasionally the one before that); the per-message cap keeps one pasted
 # itinerary from crowding out five other turns.
-_TRANSCRIPT_TURNS = 10
+_TRANSCRIPT_TURNS = 6
 _TRANSCRIPT_CHARS = 240
 
 
