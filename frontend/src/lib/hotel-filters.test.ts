@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { activeAmenityPills, displayAmenityLabels, filterAndSortHotels, hotelPriceBounds, roundedPriceSliderBounds, sortAmenityLabels, type HotelFilterState } from './hotel-filters'
+import { activeAmenityPills, displayAmenityLabels, filterAndSortHotels, hotelPriceBounds, resolveAmenityCatalog, roundedPriceSliderBounds, sortAmenityLabels, type HotelFilterState } from './hotel-filters'
 import type { AmenityCatalogOption, HotelOption, PreferencePayload } from '../types'
 import { hotelOption } from '../test-fixtures'
 
@@ -102,6 +102,29 @@ describe('displayAmenityLabels', () => {
   it('uses joined amenity metadata in the selected language', () => {
     expect(displayAmenityLabels(['swimming_pool', 'wifi'], details, 'en')).toEqual(['Swimming pool', 'Wi-Fi'])
     expect(displayAmenityLabels(['swimming_pool', 'wifi'], details, 'vi')).toEqual(['Hồ bơi', 'Wi-Fi'])
+  })
+})
+
+describe('resolveAmenityCatalog', () => {
+  const fallback: AmenityCatalogOption[] = [
+    { id: 'swimming_pool', label_vi: 'Hồ bơi', label_en: 'Swimming pool', category: 'wellness', icon_key: 'pool' },
+  ]
+  const fullCatalog: AmenityCatalogOption[] = [
+    ...fallback,
+    { id: 'kitchen', label_vi: 'Bếp', label_en: 'Kitchen', category: 'room_comfort', icon_key: 'kitchen' },
+  ]
+
+  it('uses the full session catalog when it has loaded, including room-only entries', () => {
+    expect(resolveAmenityCatalog(fullCatalog, fallback)).toBe(fullCatalog)
+    expect(displayAmenityLabels(['kitchen'], resolveAmenityCatalog(fullCatalog, fallback), 'en')).toEqual(['Kitchen'])
+  })
+
+  it('retains the per-turn catalog when the session catalog request fails', () => {
+    expect(resolveAmenityCatalog(null, fallback)).toBe(fallback)
+  })
+
+  it('treats an empty cache response as unavailable instead of hiding the fallback', () => {
+    expect(resolveAmenityCatalog([], fallback)).toBe(fallback)
   })
 })
 

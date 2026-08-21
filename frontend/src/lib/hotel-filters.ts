@@ -43,6 +43,14 @@ export function displayAmenityLabels(
   })
 }
 
+/** Prefer the session-wide catalog while retaining the existing per-turn fallback. */
+export function resolveAmenityCatalog(
+  catalog: AmenityCatalogOption[] | null,
+  fallback: AmenityCatalogOption[],
+): AmenityCatalogOption[] {
+  return catalog && catalog.length > 0 ? catalog : fallback
+}
+
 /** Present a full amenity list deterministically in the active UI language. */
 export function sortAmenityLabels(labels: string[], language: string): string[] {
   const locale = language.startsWith('vi') ? 'vi' : 'en'
