@@ -19,6 +19,7 @@ from typing import Any
 
 from src.agents.graph.routing import WORKER_ORDER, WORKFLOW_TO_WORKER
 from src.agents.graph.state import TravelGraphState
+from src.domain.travel_state import Presence
 
 
 def _pending_tasks_from_impact(impacted: list[str], *, force_hotel: bool) -> list[str]:
@@ -30,6 +31,44 @@ def _pending_tasks_from_impact(impacted: list[str], *, force_hotel: bool) -> lis
         # picked hotel would never turn into `trip_data`.
         workers.add("hotel_node")
     return [worker for worker in WORKER_ORDER if worker in workers]
+
+
+def _revised_slots(
+    applied_changes: list[dict[str, Any]],
+    before: dict[str, Any],
+    committed: dict[str, Any],
+) -> list[str]:
+    """Applied paths that OVERWROTE a value the user had already given.
+
+    This node is the only place both halves exist at once: `travel_state` is
+    still the pre-patch snapshot here (`validate_patch` writes its result to
+    `proposed_travel_state`, not over it), and `committed` is what is about
+    to replace it. `ask_slot` reads the result to acknowledge the change
+    before asking its next question -- "đi Hà Nội" corrected to "đi Nha
+    Trang" otherwise gets only the next question back, with nothing
+    confirming the correction landed.
+
+    Two exclusions, both deliberate:
+
+    - A slot that was not already SET is a first-time ANSWER, not a
+      revision. Acknowledging those would put "đã cập nhật" in front of
+      every ordinary intake turn.
+    - An identical value is a restatement, not a change. A user who repeats
+      "đi Hà Nội" while Hà Nội is already set changed nothing, and saying
+      otherwise reads as the assistant misunderstanding them.
+    """
+    revised: list[str] = []
+    for change in applied_changes:
+        path = change.get("path")
+        if not isinstance(path, str) or not path or path in revised:
+            continue
+        previous = before.get(path) or {}
+        if previous.get("presence") != Presence.SET.value:
+            continue
+        if previous.get("value") == (committed.get(path) or {}).get("value"):
+            continue
+        revised.append(path)
+    return revised
 
 
 def apply_patch(state: TravelGraphState) -> dict[str, Any]:
@@ -71,4 +110,5 @@ def apply_patch(state: TravelGraphState) -> dict[str, Any]:
     return {
         "travel_state": committed,
         "pending_tasks": pending_tasks,
+        "revised_slots": _revised_slots(applied_changes, travel_state_before, committed),
     }

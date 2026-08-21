@@ -68,6 +68,21 @@ export function durationDaysBetween(startDate: string, endDate: string): number 
 export const BUDGET_SKIP_PHRASE = 'không giới hạn'
 
 /**
+ * The explicit "no particular preference" answer for `preferences.themes`,
+ * worded to match what `build_extract_patch_prompt` teaches the extractor to
+ * map to `{path: 'preferences.themes', operation: 'set', value: null}` —
+ * NOT_APPLICABLE, a real answer, distinct from never having been asked.
+ *
+ * Why the widget has to say this out loud: `preferences.themes` is a
+ * REQUIRED slot in the backend's SLOT_REGISTRY (skippable, so an opt-out
+ * satisfies it). A user who picks no chips and submits sends a sentence with
+ * no preference clause at all — silence, which the backend cannot tell from
+ * "not asked yet", so it would ask again in chat right after the widget
+ * already asked. Stating the opt-out is what keeps that question to one ask.
+ */
+export const PREFERENCES_SKIP_PHRASE = 'không có gì đặc biệt'
+
+/**
  * Render a VND min–max range (from the budget slider) as the sentence
  * `_parse_free_text_budget()`'s explicit-range branch matches — "từ X đến Y
  * triệu" — which now keeps its true (min, max), not a collapsed midpoint.
@@ -96,11 +111,23 @@ export interface ComposeIntakeOptions {
    * because those are exactly the turns that deliver them for the first time.
    */
   includeTripFacts?: boolean
+  /**
+   * Whether an empty preferences selection should be stated as an explicit
+   * opt-out rather than simply omitted. Default false.
+   *
+   * Only the TERMINAL submit passes true — the button that ends intake and
+   * sends everything. Every other caller composes mid-flow (a single-field
+   * correction, free text typed while an earlier widget is active), where
+   * "no chips picked yet" means the user has not reached that step, not that
+   * they have no preference. Emitting the opt-out there would answer a
+   * question on the user's behalf before it was ever put to them.
+   */
+  includePreferencesOptOut?: boolean
 }
 
 export function composeIntakeMessage(
   form: IntakeFormState,
-  { includeTripFacts = true }: ComposeIntakeOptions = {},
+  { includeTripFacts = true, includePreferencesOptOut = false }: ComposeIntakeOptions = {},
 ): string {
   const sentences: string[] = []
 
@@ -138,6 +165,8 @@ export function composeIntakeMessage(
   if (preferenceLabels.length > 0 || freeTextPreference) {
     const allLabels = freeTextPreference ? [...preferenceLabels, freeTextPreference] : preferenceLabels
     sentences.push(`Sở thích: ${allLabels.join(', ')}.`)
+  } else if (includePreferencesOptOut) {
+    sentences.push(`Sở thích: ${PREFERENCES_SKIP_PHRASE}.`)
   }
   if (form.companions) {
     sentences.push(`Đi cùng: ${COMPANION_WIRE_VALUE_VI[form.companions]}.`)

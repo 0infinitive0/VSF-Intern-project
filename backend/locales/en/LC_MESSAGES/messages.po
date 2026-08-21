@@ -365,3 +365,36 @@ msgstr ""
 
 msgid "Đoạn chat này đã thanh toán xong nên mình không thể đổi hoặc tìm khách sạn khác nữa — việc đó sẽ làm mất lịch trình đã đặt. Nếu muốn lên kế hoạch cho chuyến đi khác, bạn hãy mở một đoạn chat mới nhé."
 msgstr "This chat has already been paid for, so I can't change or search for a different hotel anymore — that would erase the itinerary you already booked. If you'd like to plan a different trip, please start a new chat."
+
+msgid "Cuối cùng, bạn thích kiểu trải nghiệm nào? Có thể chọn vài mục ({choices}), hoặc nói \"không có gì đặc biệt\" nếu bạn không có yêu cầu riêng."
+msgstr "One last thing - what kind of experiences do you enjoy? You can pick a few ({choices}), or say \"nothing in particular\" if you have no preference."
+
+msgid "Đã cập nhật {changes}."
+msgstr "Updated {changes}."
+
+msgid "{label} thành {value}"
+msgstr "{label} to {value}"
+
+msgid "điểm đến"
+msgstr "destination"
+
+msgid "số người"
+msgstr "number of people"
+
+msgid "ngày bắt đầu"
+msgstr "start date"
+
+msgid "ngày kết thúc"
+msgstr "end date"
+
+msgid "ngân sách"
+msgstr "budget"
+
+msgid "sở thích"
+msgstr "preferences"
+
+msgid "Rất tiếc, mình chưa hỗ trợ {value}."
+msgstr "Sorry, {value} isn't supported yet."
+
+msgid "Mình chưa hỗ trợ lựa chọn: {value}."
+msgstr "That option isn't supported yet: {value}."

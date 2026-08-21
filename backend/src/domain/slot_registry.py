@@ -63,6 +63,23 @@ SLOT_REGISTRY: tuple[SlotSpec, ...] = (
         skippable=True,
         alt_names=("budget.max", "budget.min"),
     ),
+    # Required but legitimately answerable with nothing: "no particular
+    # preference" is a real answer to what kind of trip someone wants, not a
+    # failure to answer, so it is `skippable` the same way budget is.
+    #
+    # Answering it is never left to silence. The chat path is told the
+    # opt-out phrase in the question itself (`ask_slot._render_preferences`)
+    # and the extractor maps it to `value: null` (`build_extract_patch_prompt`);
+    # the widget path states the opt-out for the user when they pick nothing
+    # (`composeIntakeMessage`'s `includePreferencesOptOut`). Both land as
+    # NOT_APPLICABLE, so the question is asked once and never re-asked.
+    SlotSpec(
+        name="preferences.themes",
+        required=True,
+        order=6,
+        prompt_key="preferences",
+        skippable=True,
+    ),
 )
 
 

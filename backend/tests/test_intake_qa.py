@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 from langchain_core.messages import HumanMessage
 
+import src.agents.graph.nodes.ask_slot as ask_slot_module
 import src.agents.graph.nodes.extract_patch as extract_patch_module
 import src.agents.graph.nodes.intake_qa as intake_qa_module
 from src.agents.graph.graph import build_graph
@@ -465,16 +466,20 @@ def test_question_during_intake_is_answered_without_repeating_the_last_question(
     assert "đi và về" in reply3
 
 
-def test_intake_turn_without_a_question_makes_exactly_one_llm_call(monkeypatch) -> None:
-    """The extractor's own call is the only LLM call when the message just
-    answers the pending slot normally -- `intake_qa` never runs."""
-    llm = _FakeLLM(json.dumps({"intent": "update_trip", "changes": [{"path": "people", "operation": "set", "value": 2}]}))
+def test_a_plain_intake_turn_spends_one_extractor_call_and_one_rewording_call(monkeypatch) -> None:
+    """The whole LLM budget for a turn that just answers the pending slot:
+    one extractor call, one `ask_slot` question rewording, and `intake_qa`
+    never running at all. Pinning the total is what stops a third call from
+    being added to the intake's hot path without anyone deciding to."""
+    extractor = _FakeLLM(json.dumps({"intent": "update_trip", "changes": [{"path": "people", "operation": "set", "value": 2}]}))
+    rewording = _FakeLLM("Bạn muốn đi đâu?")
 
     def _unreachable(**_kwargs):
         raise AssertionError("intake_qa must not run when the message isn't a question")
 
-    monkeypatch.setattr(extract_patch_module, "get_reasoning_llm", lambda **_kwargs: llm)
+    monkeypatch.setattr(extract_patch_module, "get_reasoning_llm", lambda **_kwargs: extractor)
     monkeypatch.setattr(extract_patch_module, "_get_destination_names", lambda: ())
+    monkeypatch.setattr(ask_slot_module, "get_fast_llm", lambda **_kwargs: rewording)
     monkeypatch.setattr(intake_qa_module, "get_fast_llm", _unreachable)
 
     app = build_graph()
@@ -487,4 +492,5 @@ def test_intake_turn_without_a_question_makes_exactly_one_llm_call(monkeypatch) 
         config={"configurable": {"thread_id": "test-intake-no-question-thread"}},
     )
 
-    assert llm.call_count == 1
+    assert extractor.call_count == 1
+    assert rewording.call_count == 1

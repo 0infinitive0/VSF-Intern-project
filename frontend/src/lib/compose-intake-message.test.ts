@@ -3,6 +3,7 @@ import {
   budgetRangePhrase,
   composeIntakeMessage,
   durationDaysBetween,
+  PREFERENCES_SKIP_PHRASE,
   type IntakeFormState,
 } from './compose-intake-message'
 
@@ -164,5 +165,45 @@ describe('composeIntakeMessage', () => {
       { includeTripFacts: false },
     )
     expect(message).toBe('Ngân sách khách sạn: không giới hạn. cho tôi xem khách sạn')
+  })
+})
+
+/**
+ * `preferences.themes` is a REQUIRED slot in the backend's SLOT_REGISTRY
+ * (skippable — an explicit opt-out satisfies it). The terminal submit has to
+ * state that opt-out for a user who picked nothing, or the backend cannot
+ * tell "no preference" from "not asked yet" and asks the question again in
+ * chat right after the widget already asked it.
+ *
+ * The flag is opt-in and defaults off, so every sentence the FROZEN
+ * assertions above pin stays byte-identical.
+ */
+describe('composeIntakeMessage preferences opt-out', () => {
+  it('omits preferences entirely by default, as every mid-flow caller needs', () => {
+    expect(composeIntakeMessage(MINIMAL)).not.toContain('Sở thích')
+  })
+
+  it('states the opt-out only when the terminal submit asks for it', () => {
+    expect(composeIntakeMessage(MINIMAL, { includePreferencesOptOut: true })).toBe(
+      `Tôi muốn đi Đà Nẵng từ ngày 10/08/2026 đến ngày 13/08/2026 cho 2 người. Sở thích: ${PREFERENCES_SKIP_PHRASE}.`,
+    )
+  })
+
+  it('never replaces a real pick with the opt-out', () => {
+    const message = composeIntakeMessage(fill({ preferences: ['beach'] }), {
+      includePreferencesOptOut: true,
+    })
+
+    expect(message).not.toContain(PREFERENCES_SKIP_PHRASE)
+    expect(message).toContain('Sở thích: biển.')
+  })
+
+  it('treats free text typed at the preferences step as a real answer too', () => {
+    const message = composeIntakeMessage(fill({ preferencesNotes: 'thích lặn biển' }), {
+      includePreferencesOptOut: true,
+    })
+
+    expect(message).not.toContain(PREFERENCES_SKIP_PHRASE)
+    expect(message).toContain('Sở thích: thích lặn biển.')
   })
 })

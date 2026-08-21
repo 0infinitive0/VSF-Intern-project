@@ -168,7 +168,9 @@ def test_deadlock_regression_budget_reply_after_answered_advances_past_it(monkey
     monkeypatch.setattr(supervisor_module, "get_fast_llm", _unreachable_llm)
 
     app = graph_module.build_graph()
-    seeded = _seeded_travel_state()
+    # preferences is the one required slot AFTER budget, opted out here so
+    # this test stays about the budget gate it was written for.
+    seeded = _seeded_travel_state(preferences__themes=None)
 
     result = app.invoke(
         {

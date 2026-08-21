@@ -67,7 +67,13 @@ export default function IntakeParametersForm({
 
   // Required fields are filled and the final optional card is confirmed — submit
   // the full sentence through the unchanged composeIntakeMessage.
-  const submitAll = () => onSubmit(composeIntakeMessage(form))
+  //
+  // This is the one caller that states an empty preferences pick as an
+  // explicit opt-out: it is the terminal submit, so "no chips selected" here
+  // really is the user's answer, not a step they have yet to reach. Without
+  // it the backend's required `preferences.themes` slot stays unanswered and
+  // gets asked again in chat, right after this widget asked it.
+  const submitAll = () => onSubmit(composeIntakeMessage(form, { includePreferencesOptOut: true }))
 
   // A single-field correction: apply it to `form`, resend the whole sentence
   // right away (there's no next widget to advance to), and close edit mode.

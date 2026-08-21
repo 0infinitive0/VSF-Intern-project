@@ -48,6 +48,7 @@ def _seeded_travel_state(**extra: object) -> dict:
         {"path": "dates.start", "operation": "set", "value": "2099-01-01"},
         {"path": "dates.end", "operation": "set", "value": "2099-01-05"},
         {"path": "budget.target", "operation": "set", "value": 1_000_000},
+        {"path": "preferences.themes", "operation": "set", "value": None},
     ]
     for path, value in extra.items():
         changes.append({"path": path.replace("__", "."), "operation": "set", "value": value})

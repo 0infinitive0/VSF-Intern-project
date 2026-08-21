@@ -603,15 +603,51 @@ def _ground_closed_label_list(value: Any, allowed: tuple[str, ...]) -> list[str]
     return [label for label in allowed if label in requested]
 
 
+# Why a change was dropped by grounding, carried to the user as an
+# explanation instead of being thrown away. Deliberately NOT phrased as
+# "invalid": "Rạch Giá" is a perfectly good place name, it is simply not one
+# this system has data for, and telling the user their input was malformed
+# sends them off to re-type something that was never mistyped.
+# `ask_slot._grounding_rejection_line` special-cases both of these ahead of
+# the generic "Dữ liệu chưa hợp lệ" rendering, exactly the way
+# `END_NOT_AFTER_START_REASON` is already special-cased.
+UNKNOWN_DESTINATION_REASON = "destination is not one this system has data for"
+UNSUPPORTED_LABEL_REASON = "value is not one of the supported options"
+
+
 def _ground_changes(
     changes: list[dict[str, Any]], destination_names: Sequence[str | DestinationOption]
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Re-applies the two grounding contracts `apply_patch`'s own validators
-    don't enforce (see module docstring). A change that fails grounding is
-    dropped here rather than passed through — an ungrounded guess must
-    never reach the patch layer, the same rule `_ground_extracted_facts`
-    already enforces for the legacy plane."""
+    don't enforce (see module docstring), as `(grounded, dropped)`.
+
+    A change that fails grounding never reaches the patch layer — an
+    ungrounded guess must not, the same rule `_ground_extracted_facts`
+    already enforces for the legacy plane. It used to be dropped and
+    forgotten in the same breath, which is the bug: naming an unsupported
+    destination left NO trace anywhere downstream, so `ask_slot` re-asked
+    its question as if the user had said nothing at all, and on the second
+    attempt blamed them for it ("Mình chưa hiểu rõ ý bạn"). The second
+    return value is that trace — the caller decides what survives to
+    `rejected_changes`, since a later grounding pass
+    (`_ground_destination_from_message`) can still rescue the same path.
+    """
     grounded: list[dict[str, Any]] = []
+    dropped: list[dict[str, Any]] = []
+
+    def _drop(change: dict[str, Any], reason: str) -> None:
+        dropped.append(
+            {
+                "path": str(change.get("path") or ""),
+                "operation": str(change.get("operation") or ""),
+                # The user's own wording, copied verbatim by the extractor
+                # (see the prompt's `destination` rule) -- what gets echoed
+                # back to them, so it has to be their text, not a guess.
+                "value": change.get("value"),
+                "reason": reason,
+            }
+        )
+
     for change in changes:
         path = str(change.get("path") or "")
         operation = change.get("operation")
@@ -620,6 +656,7 @@ def _ground_changes(
         if path == "destination" and operation == "set":
             destination = _match_known_destination(str(value or "").strip(), destination_names)
             if destination is None:
+                _drop(change, UNKNOWN_DESTINATION_REASON)
                 continue
             grounded.append({**change, "value": destination})
             continue
@@ -629,11 +666,13 @@ def _ground_changes(
             if operation == "set":
                 labels = _ground_closed_label_list(value, allowed)
                 if not labels:
+                    _drop(change, UNSUPPORTED_LABEL_REASON)
                     continue
                 grounded.append({**change, "value": labels})
             elif operation in ("append", "remove"):
                 label = _ground_closed_label(value, allowed)
                 if label is None:
+                    _drop(change, UNSUPPORTED_LABEL_REASON)
                     continue
                 grounded.append({**change, "value": label})
             else:
@@ -643,12 +682,13 @@ def _ground_changes(
         if path in _CLOSED_SCALAR_PATHS and operation == "set":
             label = _ground_closed_label(value, _CLOSED_SCALAR_PATHS[path])
             if label is None:
+                _drop(change, UNSUPPORTED_LABEL_REASON)
                 continue
             grounded.append({**change, "value": label})
             continue
 
         grounded.append(change)
-    return grounded
+    return grounded, dropped
 
 
 def _strip_json_fence(value: object) -> str:
@@ -766,6 +806,7 @@ def extract_patch(state: TravelGraphState) -> dict[str, Any]:
             "patch_reason": "",
             "pending_clarify_day": None,
             "asks_nearby_places": False,
+            "rejected_changes": [],
         }
 
     travel_state = TravelState.from_dict(state.get("travel_state"))
@@ -792,7 +833,7 @@ def extract_patch(state: TravelGraphState) -> dict[str, Any]:
     day_scope = own_day_scope or ((carried_day,) if carried_day is not None else None)
 
     changes = _rewrite_day_scope(raw_changes, day_scope)
-    changes = _ground_changes(changes, destination_names)
+    changes, ungrounded = _ground_changes(changes, destination_names)
     changes = _ground_destination_from_message(changes, message, travel_state, destination_names)
     changes = _ground_included_breakfast(changes, message, intent)
     changes = _ground_sea_view(changes, message, intent)
@@ -826,6 +867,11 @@ def extract_patch(state: TravelGraphState) -> dict[str, Any]:
     # key here would leave a stale value in place for any caller that
     # invokes this node outside `load_context`'s per-turn reset (a future
     # subgraph, a resume path, a test), silently misrouting on stale state.
+    # Only the drops NOTHING later rescued. `_ground_destination_from_message`
+    # runs after `_ground_changes` and can still resolve the same path off the
+    # raw message, and reporting a rejection for a path the turn went on to
+    # set anyway would contradict the change the user can see landing.
+    final_paths = {str(change.get("path") or "") for change in changes}
     return {
         "patch": changes,
         "intent": intent,
@@ -833,4 +879,7 @@ def extract_patch(state: TravelGraphState) -> dict[str, Any]:
         "patch_reason": reason,
         "pending_clarify_day": pending_clarify_day,
         "asks_nearby_places": asks_nearby_places,
+        # Merged, not overwritten, by `validate_patch` -- both nodes reject
+        # for different reasons in the same turn and the user needs both.
+        "rejected_changes": [drop for drop in ungrounded if drop["path"] not in final_paths],
     }

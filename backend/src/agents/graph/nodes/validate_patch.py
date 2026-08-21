@@ -149,6 +149,15 @@ def validate_patch(state: TravelGraphState) -> dict[str, Any]:
     return {
         "proposed_travel_state": result.state.to_dict(),
         "applied_changes": [asdict(change) for change in result.applied],
-        "rejected_changes": [asdict(rejection) for rejection in result.rejected],
+        # Appended to whatever `extract_patch` already rejected this turn --
+        # grounding rejections (an unsupported destination) and validation
+        # rejections (a malformed date) are different failures the user may
+        # hit in the same message, and overwriting here used to discard the
+        # first. `load_context` clears the channel per turn, so this only
+        # ever accumulates within one turn.
+        "rejected_changes": [
+            *(state.get("rejected_changes") or []),
+            *(asdict(rejection) for rejection in result.rejected),
+        ],
         "impacted_workflows": impacted,
     }

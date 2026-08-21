@@ -88,7 +88,7 @@ Allowed change paths, one change per fact actually stated (omit anything not men
 - budget.max / budget.min (number, VND per NIGHT): a hotel price ceiling/floor per night.
 - budget.target (number, VND per NIGHT): a preferred per-night price. When the user explicitly says they have no budget preference (e.g. "không cần lọc theo giá", "bao nhiêu cũng được", "any price is fine"), emit `{{"path": "budget.target", "operation": "set", "value": null}}` -- null is the explicit "no preference" answer, distinct from simply not mentioning budget at all.
 - budget.trip_total (number, VND for the WHOLE TRIP): only when the user clearly means the total for the whole stay, not per night.
-- preferences.themes (list of strings, ONLY from: {preference_labels}): trip-wide vibe/interest labels.
+- preferences.themes (list of strings, ONLY from: {preference_labels}): trip-wide vibe/interest labels. When the user explicitly says they have no particular preference (e.g. "không có gì đặc biệt", "sao cũng được", "no preference"), emit `{{"path": "preferences.themes", "operation": "set", "value": null}}` -- null is the explicit "no preference" answer, distinct from simply not mentioning preferences at all.
 - preferences.companions (string, ONLY from: {companion_labels}): who is traveling together.
 - preferences.pace (string, ONLY from: {pace_labels}): how packed the schedule should be.
 - preferences.day_rhythm (list of strings, ONLY from: {day_rhythm_labels}): early/late daily rhythm.
@@ -266,6 +266,20 @@ _CLARIFY_QUESTION_RULE = (
 # text above) -- containment for the upstream classifier's known
 # over-inclusion (`extract_patch`'s `general_question` bucket also catches
 # greetings/acks/unrescued short replies), not a fix to that classifier.
+# The exact "no particular preference" wording three surfaces have to agree
+# on: the question that offers it (`ask_slot._render_preferences`), the
+# extractor rule that maps it to `value: null` (the allowed-paths block
+# above), and the frontend's `PREFERENCES_SKIP_PHRASE`
+# (`compose-intake-message.ts`), which sends it when the widget's terminal
+# submit carries no picks.
+#
+# It cannot be interpolated into either the prompt or the question: the
+# prompt is a `.format()` template and the question is a gettext msgid, both
+# of which need the literal text in the source. So this is the value the
+# tests pin all three against, not the value they are built from -- the two
+# drifted apart once already.
+PREFERENCES_OPT_OUT_PHRASE = "không có gì đặc biệt"
+
 INTAKE_QA_NO_ANSWER_SENTINEL = "NO_ANSWER"
 
 _LANGUAGE_NAMES = {"vi": "Vietnamese", "en": "English"}
@@ -288,5 +302,88 @@ def build_intake_qa_prompt(
         question_rule=question_rule,
         message=message,
         known_facts=known_facts,
+        language_name=_LANGUAGE_NAMES.get(language, _LANGUAGE_NAMES["vi"]),
+    )
+
+
+# --- ask_slot's question rendering -------------------------------------------
+#
+# Rewords the ONE question `ask_slot` already decided to ask, so the intake
+# stops reading as a fixed form read aloud. It never decides WHICH slot is
+# asked -- `slot_registry.next_question` does that, deterministically, and
+# this prompt is handed the outcome. `{fallback}` is the hardcoded rendering
+# it replaces, passed in as the semantic anchor: with the exact sentence in
+# front of it the model can only rephrase, never redirect to a different
+# slot or bolt on a second question.
+#
+# The frontend keeps its OWN hardcoded copy of these questions
+# (`frontend/src/i18n/locales/*.json`, rendered by `chat-panel.tsx` when the
+# widget rail advances a step locally with no chat turn). That surface is
+# deliberately NOT rewritten -- it is a different renderer on a different
+# surface, and `serverAskedField` dedupes the two by FIELD, off
+# `IntakeStatus.missing`, never by matching reply text. So wording is free
+# to differ here without anything downstream noticing.
+
+_SLOT_QUESTION_SYSTEM_PROMPT = """You are a trip-planning assistant collecting trip details one step at a time. Write the single next question to put to the user.
+
+Rules:
+- Ask about exactly this and nothing else: {slot_brief}
+- Never invent, assume, or restate a trip fact. Only what is listed as already known below is known.
+- Do not answer anything, do not greet, do not summarise, do not explain -- output the question itself and nothing else.
+- ONE question on ONE line. No line breaks, no bullets, no numbered options.
+- Under 200 characters, ending with a question mark.
+- Write in {language_name}.
+{extra_rule}
+Already known so far: {known_facts}
+
+The question you are rewording (same meaning, same single subject -- do not add to it): {fallback}
+"""
+
+# Per-slot rules the shared prompt cannot express. `destination` enumerates a
+# real catalog, so a paraphrase that drops or invents an entry would offer
+# the user something the extractor cannot ground (`_match_known_destination`)
+# or hide something it could -- `_slot_question_is_usable` re-checks every
+# name verbatim afterward rather than trusting this instruction.
+_DESTINATION_EXTRA_RULE = (
+    "- You MUST list every one of these available destinations verbatim, and offer nothing outside "
+    "the list: {choices}\n"
+)
+# Free text, never a numbered menu -- the only interpreter for this answer is
+# `extract_patch`'s LLM, which reads plain VND amounts, not menu indices. A
+# bare "2" reply would land as `people=2`. Same reasoning as
+# `ask_slot._render_budget`, restated here because the model needs it as a
+# rule, not as a comment.
+_BUDGET_EXTRA_RULE = (
+    "- The user may answer with one amount, a range, or say they have no price preference -- keep all "
+    "three acceptable. Never present numbered or lettered options.\n"
+)
+
+# Asked once and never re-asked, so the one question has to carry both the
+# closed label set the extractor accepts and the fact that "nothing in
+# particular" is a real answer -- a user who is not told that has no way to
+# discharge the slot deliberately.
+_PREFERENCES_EXTRA_RULE = (
+    "- Offer these experience types and nothing outside them: {choices}\n"
+    '- Say explicitly that having no particular preference is a fine answer.\n'
+)
+
+SLOT_QUESTION_EXTRA_RULES = {
+    "destination": _DESTINATION_EXTRA_RULE,
+    "budget": _BUDGET_EXTRA_RULE,
+    "preferences": _PREFERENCES_EXTRA_RULE,
+}
+
+
+def build_slot_question_prompt(
+    *, slot_brief: str, known_facts: str, fallback: str, language: str, prompt_key: str, choices: str = ""
+) -> str:
+    extra_rule = SLOT_QUESTION_EXTRA_RULES.get(prompt_key, "")
+    if extra_rule and "{choices}" in extra_rule:
+        extra_rule = extra_rule.format(choices=choices)
+    return _SLOT_QUESTION_SYSTEM_PROMPT.format(
+        slot_brief=slot_brief,
+        extra_rule=extra_rule,
+        known_facts=known_facts,
+        fallback=fallback,
         language_name=_LANGUAGE_NAMES.get(language, _LANGUAGE_NAMES["vi"]),
     )

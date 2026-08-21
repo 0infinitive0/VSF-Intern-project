@@ -16,9 +16,24 @@ def _apply(state: TravelState, path: str, value: object) -> TravelState:
     return apply_patch(state, [{"path": path, "operation": "set", "value": value}]).state
 
 
-def test_default_ordering_is_destination_people_dates_budget() -> None:
+def test_default_ordering_is_destination_people_dates_budget_preferences() -> None:
     ordered = [spec.name for spec in sorted(SLOT_REGISTRY, key=lambda s: s.order)]
-    assert ordered == ["destination", "people", "dates.start", "dates.end", "budget.target"]
+    assert ordered == [
+        "destination",
+        "people",
+        "dates.start",
+        "dates.end",
+        "budget.target",
+        "preferences.themes",
+    ]
+
+
+def test_budget_and_preferences_are_the_only_skippable_slots() -> None:
+    """Both have a legitimate "no preference" answer. Every other slot has
+    none, which is what `test_not_applicable_on_a_non_skippable_slot_...`
+    below relies on."""
+    skippable = {spec.name for spec in SLOT_REGISTRY if spec.skippable}
+    assert skippable == {"budget.target", "preferences.themes"}
 
 
 def test_next_question_on_empty_state_asks_destination_first() -> None:
@@ -47,6 +62,7 @@ def test_next_question_returns_none_once_every_required_slot_is_answered() -> No
     state = _apply(state, "dates.start", _FUTURE_START)
     state = _apply(state, "dates.end", _FUTURE_END)
     state = _apply(state, "budget.target", 1_000_000)
+    state = _apply(state, "preferences.themes", None)  # skippable -> NOT_APPLICABLE
 
     assert next_question(state) is None
 
@@ -61,6 +77,7 @@ def test_budget_is_skippable_via_not_applicable_not_just_fixed_phrases() -> None
     state = _apply(state, "dates.start", _FUTURE_START)
     state = _apply(state, "dates.end", _FUTURE_END)
     state = _apply(state, "budget.target", None)  # NOT_APPLICABLE
+    state = _apply(state, "preferences.themes", None)  # skippable -> NOT_APPLICABLE
 
     assert next_question(state) is None
 
@@ -75,6 +92,7 @@ def test_budget_ceiling_only_counts_as_answered() -> None:
     state = _apply(state, "dates.start", _FUTURE_START)
     state = _apply(state, "dates.end", _FUTURE_END)
     state = _apply(state, "budget.max", 5_000_000)
+    state = _apply(state, "preferences.themes", None)  # skippable -> NOT_APPLICABLE
 
     assert next_question(state) is None
 
@@ -93,7 +111,8 @@ def test_an_already_filled_required_slot_never_reappears_as_next_question() -> N
 
 
 def test_not_applicable_on_a_non_skippable_slot_does_not_satisfy_it() -> None:
-    """A slot with skippable=False (every slot except budget) has no
+    """A slot with skippable=False (every slot except budget and
+    preferences) has no
     legitimate "no preference" answer -- a stray NOT_APPLICABLE (any patch
     can produce one via `value: null`, it is not scoped per-path) must not
     permanently mark it answered-but-empty and let intake proceed with, say,
@@ -142,5 +161,6 @@ def test_no_pending_slots_once_every_required_slot_is_answered() -> None:
     state = _apply(state, "dates.start", _FUTURE_START)
     state = _apply(state, "dates.end", _FUTURE_END)
     state = _apply(state, "budget.target", None)  # skippable -> NOT_APPLICABLE
+    state = _apply(state, "preferences.themes", None)  # skippable -> NOT_APPLICABLE
 
     assert pending_question_slots(state) == ()

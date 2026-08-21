@@ -53,6 +53,7 @@ def load_context(state: TravelGraphState) -> dict[str, Any]:
         "intent": "",
         "proposed_travel_state": {},
         "applied_changes": [],
+        "revised_slots": [],
         "rejected_changes": [],
         "impacted_workflows": [],
         "unresolved_resume_text": None,

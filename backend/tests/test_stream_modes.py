@@ -120,7 +120,11 @@ def _travel_state(*, with_budget: bool) -> dict:
         {"path": "dates.end", "operation": "set", "value": "2099-01-05"},
     ]
     if with_budget:
+        # Both remaining required slots at once: `with_budget` means "intake
+        # is complete", and preferences.themes sorts after budget.target, so
+        # seeding only budget would still stop the turn to ask for it.
         changes.append({"path": "budget.target", "operation": "set", "value": 1_000_000})
+        changes.append({"path": "preferences.themes", "operation": "set", "value": None})
     return apply_patch(TravelState(), changes).state.to_dict()
 
 

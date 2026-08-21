@@ -256,8 +256,9 @@ def test_graph_routes_a_completed_worker_through_budget_check_to_respond(monkeyp
 
     This substitutes `extract_patch` for one call so the test controls
     exactly what patch reaches `ask_slot`'s Phase 7 slot gate. Every OTHER
-    required slot (destination/people/dates) is pre-seeded directly in the
-    invoke's starting `travel_state` (not via the patch), so the gate lets
+    required slot (destination/people/dates/preferences) is pre-seeded
+    directly in the invoke's starting `travel_state` (not via the patch),
+    preferences as an explicit opt-out, so the gate lets
     the turn through to the supervisor instead of stopping to ask for one of
     them first, while the patch itself still only sets `budget.max` -- the
     ONE change that maps to a single workflow (`hotel`) in `IMPACT_MAP`, so
@@ -290,6 +291,7 @@ def test_graph_routes_a_completed_worker_through_budget_check_to_respond(monkeyp
             {"path": "people", "operation": "set", "value": 2},
             {"path": "dates.start", "operation": "set", "value": "2099-01-01"},
             {"path": "dates.end", "operation": "set", "value": "2099-01-05"},
+            {"path": "preferences.themes", "operation": "set", "value": None},
         ],
     ).state
 
@@ -368,6 +370,7 @@ def test_read_only_nearby_turn_skips_budget_check_and_keeps_its_pins(monkeypatch
             # empty" precondition this test means to exercise.
             {"path": "budget.min", "operation": "set", "value": 800000},
             {"path": "budget.max", "operation": "set", "value": 1200000},
+            {"path": "preferences.themes", "operation": "set", "value": None},
         ],
     ).state
 
@@ -456,6 +459,7 @@ def test_nearby_before_the_pick_anchors_on_the_numbered_hotel_card(monkeypatch):
             {"path": "budget.trip_total", "operation": "set", "value": 5000000},
             {"path": "budget.min", "operation": "set", "value": 800000},
             {"path": "budget.max", "operation": "set", "value": 1200000},
+            {"path": "preferences.themes", "operation": "set", "value": None},
         ],
     ).state
 
@@ -530,6 +534,7 @@ def test_nearby_before_the_pick_asks_which_card_when_no_number_is_given(monkeypa
             {"path": "budget.trip_total", "operation": "set", "value": 5000000},
             {"path": "budget.min", "operation": "set", "value": 800000},
             {"path": "budget.max", "operation": "set", "value": 1200000},
+            {"path": "preferences.themes", "operation": "set", "value": None},
         ],
     ).state
 
@@ -611,6 +616,7 @@ def _all_slots_set_travel_state() -> dict:
         {"path": "dates.start", "operation": "set", "value": "2099-01-01"},
         {"path": "dates.end", "operation": "set", "value": "2099-01-05"},
         {"path": "budget.target", "operation": "set", "value": None},  # explicit "no preference"
+        {"path": "preferences.themes", "operation": "set", "value": None},  # ditto, the other skippable slot
     ]
     return apply_patch(TravelState(), changes).state.to_dict()
 
@@ -733,7 +739,10 @@ def test_the_followup_answer_to_a_clarify_question_lands_on_the_day_it_answers(m
     # -- the rewrite joins preferences.themes' list value so it survives
     # _validate_daily_theme instead of being silently rejected.
     assert result["travel_state"]["daily_preferences.1.theme"]["value"] == "biển"
-    assert "preferences.themes" not in result["travel_state"]
+    # Seeded as an explicit opt-out (NOT_APPLICABLE) by
+    # `_all_slots_set_travel_state`; a trip-wide themes change would flip it
+    # to SET, which is exactly the leak this asserts against.
+    assert result["travel_state"]["preferences.themes"]["presence"] != "set"
     assert result["pending_clarify_day"] is None  # consumed, doesn't leak to a third turn
     assert result["task_results"][-1]["worker"] == "itinerary_node"
 

@@ -28,16 +28,17 @@ def _unreachable_llm(*_args, **_kwargs):
 
 
 def _seeded_travel_state(**extra_changes: object) -> dict:
-    # budget.target is a required (but skippable-via-NOT_APPLICABLE) slot
-    # ahead of hotel_node in the pipeline (ask_slot -> supervisor) -- seeded
-    # here so graph-level tests reach hotel_node instead of stopping to ask
-    # for a budget first.
+    # budget.target and preferences.themes are required (but
+    # skippable-via-NOT_APPLICABLE) slots ahead of hotel_node in the pipeline
+    # (ask_slot -> supervisor) -- seeded here so graph-level tests reach
+    # hotel_node instead of stopping to ask for one of them first.
     changes = [
         {"path": "destination", "operation": "set", "value": "Đà Nẵng"},
         {"path": "people", "operation": "set", "value": 2},
         {"path": "dates.start", "operation": "set", "value": "2099-01-01"},
         {"path": "dates.end", "operation": "set", "value": "2099-01-05"},
         {"path": "budget.target", "operation": "set", "value": 1_000_000},
+        {"path": "preferences.themes", "operation": "set", "value": None},
     ]
     for path, value in extra_changes.items():
         changes.append({"path": path.replace("__", "."), "operation": "set", "value": value})

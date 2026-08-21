@@ -66,6 +66,7 @@ def _travel_state() -> dict:
         {"path": "dates.start", "operation": "set", "value": "2099-01-01"},
         {"path": "dates.end", "operation": "set", "value": "2099-01-05"},
         {"path": "budget.target", "operation": "set", "value": 1_000_000},
+        {"path": "preferences.themes", "operation": "set", "value": None},
     ]
     return apply_patch(TravelState(), changes).state.to_dict()
 

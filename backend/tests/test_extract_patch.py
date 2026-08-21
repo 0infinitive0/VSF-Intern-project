@@ -140,6 +140,7 @@ def test_invalid_json_retries_once_then_falls_back_without_raising(monkeypatch):
         "patch_reason": "",
         "pending_clarify_day": None,
         "asks_nearby_places": False,
+        "rejected_changes": [],
     }
 
 
@@ -158,6 +159,7 @@ def test_invalid_first_response_recovers_on_retry(monkeypatch):
         "patch_reason": "",
         "pending_clarify_day": None,
         "asks_nearby_places": False,
+        "rejected_changes": [],
     }
 
 
@@ -178,6 +180,7 @@ def test_no_human_message_short_circuits_without_calling_the_llm(monkeypatch):
         "patch_reason": "",
         "pending_clarify_day": None,
         "asks_nearby_places": False,
+        "rejected_changes": [],
     }
 
 
@@ -382,6 +385,7 @@ def test_anchor_tells_the_model_a_question_naming_the_slot_value_is_not_an_answe
         "patch_reason": "",
         "pending_clarify_day": None,
         "asks_nearby_places": False,
+        "rejected_changes": [],
     }
 
 
@@ -406,6 +410,7 @@ def test_no_anchor_once_every_required_slot_is_answered(monkeypatch):
                 "dates.start": {"presence": "set", "value": _FUTURE_START},
                 "dates.end": {"presence": "set", "value": _FUTURE_END},
                 "budget.target": {"presence": "n/a", "value": None},
+                "preferences.themes": {"presence": "n/a", "value": None},
             },
         )
     )
@@ -1280,3 +1285,70 @@ def test_prompt_renders_transcript_and_bars_it_as_a_fact_source():
     assert "assistant: Mấy người?" in prompt
     # The guard against re-extracting facts out of replayed turns.
     assert "only authority on what is already known" in prompt
+
+
+# --- Grounding rejections reach the user instead of vanishing ----------------
+#
+# A dropped change used to leave no trace at all: naming a destination this
+# system has no data for produced an empty patch, and `ask_slot` then re-asked
+# its question as though the user had said nothing — blaming them for it
+# ("Mình chưa hiểu rõ ý bạn") from the second attempt on.
+
+
+def test_an_unsupported_destination_is_reported_with_the_user_s_own_wording(monkeypatch):
+    _patch(monkeypatch, _FakeLLM([_payload("update_trip", [
+        {"path": "destination", "operation": "set", "value": "Rạch Giá"},
+    ])]))
+
+    result = extract_patch_module.extract_patch(_state("đi rạch giá"))
+
+    assert result["patch"] == []
+    assert result["rejected_changes"] == [
+        {
+            "path": "destination",
+            "operation": "set",
+            "value": "Rạch Giá",  # verbatim — it is echoed back to the user
+            "reason": extract_patch_module.UNKNOWN_DESTINATION_REASON,
+        }
+    ]
+
+
+def test_an_unsupported_closed_label_is_reported_too(monkeypatch):
+    """Same class of silent drop, same fix — destination is only the case
+    that got reported."""
+    _patch(monkeypatch, _FakeLLM([_payload("update_trip", [
+        {"path": "preferences.pace", "operation": "set", "value": "siêu tốc"},
+    ])]))
+
+    result = extract_patch_module.extract_patch(_state("đi kiểu siêu tốc"))
+
+    assert result["patch"] == []
+    assert [r["reason"] for r in result["rejected_changes"]] == [
+        extract_patch_module.UNSUPPORTED_LABEL_REASON
+    ]
+
+
+def test_a_supported_destination_is_never_reported_as_rejected(monkeypatch):
+    _patch(monkeypatch, _FakeLLM([_payload("update_trip", [
+        {"path": "destination", "operation": "set", "value": "Đà Nẵng"},
+    ])]))
+
+    result = extract_patch_module.extract_patch(_state("đi đà nẵng"))
+
+    assert result["patch"] == [{"path": "destination", "operation": "set", "value": "Đà Nẵng"}]
+    assert result["rejected_changes"] == []
+
+
+def test_a_later_pass_rescuing_the_same_path_cancels_the_rejection(monkeypatch):
+    """`_ground_destination_from_message` runs after `_ground_changes` and can
+    still resolve the destination off the raw message. Reporting a rejection
+    for a path the turn went on to set anyway would contradict the change the
+    user can see landing."""
+    _patch(monkeypatch, _FakeLLM([_payload("update_trip", [
+        {"path": "destination", "operation": "set", "value": "Đà Nẽng"},  # misspelled
+    ])]))
+
+    result = extract_patch_module.extract_patch(_state("tôi muốn đi Đà Nẵng"))
+
+    assert result["patch"] == [{"path": "destination", "operation": "set", "value": "Đà Nẵng"}]
+    assert result["rejected_changes"] == []

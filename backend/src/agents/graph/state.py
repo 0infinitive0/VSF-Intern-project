@@ -42,6 +42,13 @@ class TravelGraphState(TypedDict, total=False):
     intent: str
     proposed_travel_state: dict[str, Any]  # validate_patch's output; apply_patch commits it
     applied_changes: list[dict[str, Any]]
+    # The subset of `applied_changes` that OVERWROTE a value the user had
+    # already given ("đi Hà Nội" -> "đi Nha Trang"), as canonical paths.
+    # Computed by `apply_patch`, which is the only node holding both the
+    # before-state and the committed one. A first-time answer is deliberately
+    # absent: nothing was revised, and `ask_slot` moving on to the next
+    # question is already the acknowledgement.
+    revised_slots: list[str]
     rejected_changes: list[dict[str, Any]]
     impacted_workflows: list[str]  # Workflow labels from detect_impact()
     # Raw text of a `Command(resume=...)` reply that did NOT resolve the
@@ -234,6 +241,7 @@ def initial_graph_state(session_id: str, *, language: str = "vi") -> TravelGraph
         intent="",
         proposed_travel_state={},
         applied_changes=[],
+        revised_slots=[],
         rejected_changes=[],
         impacted_workflows=[],
         unresolved_resume_text=None,
