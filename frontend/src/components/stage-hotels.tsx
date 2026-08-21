@@ -262,19 +262,25 @@ export default function StageHotels({
   return (
     <div className="flex-1 min-w-0 min-h-0 flex flex-col animate-[vRise_0.7s_cubic-bezier(0.22,1,0.36,1)_both]">
       {/* Header */}
-      <div className="glass-panel flex-none flex items-center gap-3.5 mx-3.5 mt-3.5 px-[18px] py-[13px] rounded-[26px]">
-        <div
-          className="w-[30px] h-[30px] rounded-[10px] bg-gradient-to-br from-[#5C93EE] to-[#2C5FC9] flex items-center justify-center text-on-primary font-[590] text-[14px]"
-          style={{ boxShadow: '0 6px 16px -5px rgba(44,95,201,.6)' }}
-          aria-hidden="true"
-        >
-          V
-        </div>
-        <div className="flex flex-col min-w-0">
-          <div className="text-[15px] font-[590] tracking-[-0.3px] text-on-surface">
-            {t('step2Full')}
+      <div className="glass-panel flex-none flex items-center justify-between gap-3.5 mx-3.5 mt-3.5 px-[18px] py-[13px] rounded-[26px]">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <div
+            className="w-[30px] h-[30px] rounded-[10px] bg-gradient-to-br from-[#5C93EE] to-[#2C5FC9] flex items-center justify-center text-on-primary font-[590] text-[14px] flex-none"
+            style={{ boxShadow: '0 6px 16px -5px rgba(44,95,201,.6)' }}
+            aria-hidden="true"
+          >
+            2
           </div>
-          <div className="text-[11.5px] text-on-surface-muted font-normal">{t('hotelHeadSub')}</div>
+          <div className="flex flex-col min-w-0">
+            <div className="text-[15px] font-[590] tracking-[-0.3px] text-on-surface">
+              {t('step2Full')}
+            </div>
+            <div className="text-[11.5px] text-on-surface-muted font-normal">{t('hotelHeadSub')}</div>
+          </div>
+        </div>
+        <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary-soft/80 border border-primary/20 text-[12px] text-primary font-[550] flex-none">
+          <span className="material-symbols-outlined text-[16px]">tips_and_updates</span>
+          <span>{t('step2GuideTip')}</span>
         </div>
       </div>
 

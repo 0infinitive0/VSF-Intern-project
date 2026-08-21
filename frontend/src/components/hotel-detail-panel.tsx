@@ -386,8 +386,11 @@ export default function HotelDetailPanel({
                   be in the cart at once; each becomes its own /bookings hold
                   when "Giữ phòng" fires below. */}
               {detail?.rooms && detail.rooms.length > 0 && (
-                <div>
-                  <div className={SECTION_EYEBROW}>{t('detailRooms')}</div>
+                <div id="detail-rooms-section">
+                  <div className="flex items-baseline justify-between mb-1">
+                    <div className={SECTION_EYEBROW}>{t('detailRooms')}</div>
+                    <span className="text-[11.5px] text-primary font-medium">{t('detailRoomsGuide')}</span>
+                  </div>
                   <div className="flex flex-col gap-2.5">
                     {detail.rooms.map((room, i) => {
                       const roomKey = room.id ?? room.name ?? String(i)
@@ -551,12 +554,15 @@ function HoldFooter({
   const { t, i18n } = useTranslation()
   const [confirmSwitchOpen, setConfirmSwitchOpen] = useState(false)
   const [updatedNotice, setUpdatedNotice] = useState(false)
+  const [detailsExpanded, setDetailsExpanded] = useState(false)
+
   // HoldFooter isn't remounted when the guest browses to a different hotel
   // (no `key` on it) — reset any transient UI left over from the PREVIOUS
   // hotel's footer so a stale dialog/notice can't reappear here.
   useEffect(() => {
     setConfirmSwitchOpen(false)
     setUpdatedNotice(false)
+    setDetailsExpanded(false)
   }, [hotelId])
   useEffect(() => {
     if (!updatedNotice) return
@@ -580,31 +586,10 @@ function HoldFooter({
     })
   const cartCount = rows.reduce((n, r) => n + r.qty, 0)
   const total = rows.reduce((sum, r) => sum + (r.subtotal ?? 0), 0)
-  const hasAnyPriced = rows.some((r) => r.subtotal != null)
 
   const heldHere = roomHold.status === 'HELD' && roomHold.heldHotelId === hotelId
   const heldElsewhere = roomHold.status === 'HELD' && roomHold.heldHotelId !== hotelId
   const busy = roomHold.status === 'HOLDING'
-  // ERROR is retryable from right here (startHold already cleans up any
-  // partial reservations before setting it — see use-room-hold.ts), so it
-  // counts as startable same as IDLE. BOOKED counts as startable too: it
-  // means a PREVIOUS hold's payment already completed, so there is nothing
-  // left to protect — without this, a guest who finished one booking and
-  // opens a brand new chat to plan a second trip gets told they're
-  // "holding a room at another hotel" for a hold that's long since been
-  // paid for (roomHold is a single global hold, not scoped to a chat
-  // session — see use-room-hold.ts's module doc comment). EXPIRED counts
-  // as startable too, for the same "nothing left to protect" reason (an
-  // expired hold no longer reserves anything server-side either) — and
-  // MUST be listed here, unlike ERROR/BOOKED: this panel has no "Kiểm tra
-  // lại phòng" recheck affordance of its own (that only exists on
-  // hold-banner.tsx, in the itinerary/workspace stage — unreachable while
-  // still browsing hotels), so a guest whose hold quietly expired while
-  // Browse-ing (e.g. an old hold left over from a deleted chat session)
-  // would otherwise see the plain "Giữ phòng" label rendered permanently
-  // disabled with no way to ever click it again. Every other non-idle
-  // status (HELD/HOLDING) means a hold is still actually live and must be
-  // resolved from its own state first (heldHere/heldElsewhere/busy above).
   const canStart =
     cartCount > 0 &&
     !!checkInDate &&
@@ -613,12 +598,6 @@ function HoldFooter({
       roomHold.status === 'ERROR' ||
       roomHold.status === 'BOOKED' ||
       roomHold.status === 'EXPIRED')
-  // heldHere with an edited cart -> the guest is proposing a DIFFERENT room
-  // selection for the hotel they're already holding (add/remove/change qty).
-  // heldElsewhere with a fillable cart -> the guest wants to hold rooms at
-  // THIS hotel instead, abandoning the other one. Both replace the whole
-  // hold via roomHold.switchHold (plan 260818-vnpay-payment-and-email-
-  // confirmation's addendum) rather than being permanently locked out.
   const cartChanged = heldHere && cartCount > 0 && !cartMatchesHeldBookings(cart, roomHold.bookings)
   const canSwitchHere = heldElsewhere && cartCount > 0 && !!checkInDate && !!checkOutDate
 
@@ -634,26 +613,26 @@ function HoldFooter({
           : t('holdCtaBlocked')
         : busy
           ? t('holdCtaBusy')
-          : t('holdCta')
+          : cartCount === 0
+            ? t('holdCtaSelectRoom')
+            : t('holdCtaWithRooms', { count: cartCount })
   const disabled =
     sessionBookedFromBackend ||
     busy ||
     (heldHere && !cartChanged) ||
-    (heldElsewhere && !canSwitchHere) ||
-    (!heldHere && !heldElsewhere && !canStart)
+    (heldElsewhere && !canSwitchHere)
 
   const stay = { checkInDate: checkInDate!, checkOutDate: checkOutDate! }
 
   function handleClick() {
     if (sessionBookedFromBackend || busy || !option) return
+    if (cartCount === 0) {
+      const el = document.getElementById('detail-rooms-section')
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      return
+    }
     if (heldHere) {
       if (!cartChanged) return
-      // Editing your own not-yet-paid cart doesn't warrant a confirm dialog
-      // (nothing's been lost yet) — just a brief notice once the fresh hold
-      // lands, since the timer silently resetting could otherwise look like
-      // nothing happened. Deliberately does NOT call onConfirmHotel: that
-      // fires a real "Chọn khách sạn X" chat turn, appropriate the first
-      // time a hotel is confirmed, not on every room-count tweak.
       void roomHold.switchHold(hotelId, rooms, stay, () => setUpdatedNotice(true))
       return
     }
@@ -675,7 +654,7 @@ function HoldFooter({
   return (
     <>
     <div
-      className="flex-none px-5 pt-3.5 pb-4 flex flex-col gap-2.5"
+      className="flex-none px-5 pt-3 pb-3.5 flex flex-col gap-2 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
       style={{
         background: 'var(--pop-bg, var(--g3))',
         backdropFilter: 'blur(26px) saturate(1.7)',
@@ -685,59 +664,109 @@ function HoldFooter({
       }}
     >
       {cartCount > 0 ? (
-        <div className="flex flex-col gap-1.5">
-          {rows.map((row) => (
-            <div key={row.roomId} className="flex items-center gap-2.5">
-              <span className="w-[5px] h-[5px] rounded-full bg-primary flex-none" aria-hidden="true" />
-              <span className="flex-1 min-w-0 text-[12.5px] font-[530] text-on-surface truncate">
-                {row.name}
+        <div className="flex flex-col gap-2 animate-[vRise_0.3s_cubic-bezier(0.22,1,0.36,1)_both]">
+          {/* Compact 1-Row Summary Header */}
+          <div className="flex items-center justify-between gap-3 px-0.5">
+            <button
+              type="button"
+              onClick={() => setDetailsExpanded((prev) => !prev)}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary-soft/90 border border-primary/30 text-primary text-[12px] font-[590] hover:bg-primary-soft transition-all duration-200 cursor-pointer shadow-sm active:scale-95"
+            >
+              <span className="material-symbols-outlined text-[15px]">king_bed</span>
+              <span>
+                {rows.length > 1
+                  ? t('holdRoomsSummaryBadgeTypes', { types: rows.length, count: cartCount })
+                  : t('holdRoomsSummaryBadge', { count: cartCount })}
               </span>
-              <span className="flex-none text-[11.5px] text-on-surface-muted">
-                {t('roomQtyLabel', { count: row.qty })}
+              <span
+                className={`material-symbols-outlined text-[14px] transition-transform duration-200 ${
+                  detailsExpanded ? 'rotate-180' : ''
+                }`}
+              >
+                expand_more
               </span>
-              <span className="flex-none text-[12px] font-[530] tabular-nums text-on-surface">
-                {row.subtotal != null ? formatCurrency(row.subtotal, i18n.language) : t('roomPriceOnRequest')}
-              </span>
-            </div>
-          ))}
-          {hasAnyPriced && (
-            <div className="flex items-baseline gap-2 pt-2 mt-0.5 border-t border-line">
-              <span className="text-[11.5px] text-on-surface-muted">{t('holdTotal')}</span>
-              <span className="flex-1" />
-              <span className="text-[18px] font-[590] tracking-[-0.45px] tabular-nums text-on-surface">
+            </button>
+            <div className="flex items-baseline gap-1.5 tabular-nums">
+              <span className="text-[11.5px] text-on-surface-muted font-normal">{t('holdTotal')}:</span>
+              <span className="text-[17.5px] font-[650] tracking-[-0.35px] text-primary">
                 {formatCurrency(total, i18n.language)}
               </span>
             </div>
+          </div>
+
+          {/* Collapsible Details Drawer */}
+          {detailsExpanded && (
+            <div className="max-h-[110px] overflow-y-auto custom-scrollbar flex flex-col gap-1.5 p-2 rounded-xl bg-fill/60 border border-line animate-[vRise_0.2s_ease-out_both]">
+              {rows.map((row) => (
+                <div key={row.roomId} className="flex items-center justify-between gap-2 text-[12px]">
+                  <span className="truncate text-on-surface font-medium">{row.name}</span>
+                  <div className="flex items-center gap-2 flex-none tabular-nums">
+                    <span className="text-on-surface-muted text-[11px]">{t('roomQtyLabel', { count: row.qty })}</span>
+                    <span className="font-semibold text-on-surface">
+                      {row.subtotal != null ? formatCurrency(row.subtotal, i18n.language) : t('roomPriceOnRequest')}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
+
+          {roomHold.status === 'ERROR' && roomHold.error && (
+            <div role="alert" className="text-[11.5px] font-medium" style={{ color: 'var(--err)' }}>
+              {t(bookingErrorKey(roomHold.error))}
+            </div>
+          )}
+          {updatedNotice && (
+            <div role="status" className="text-[11.5px] font-medium" style={{ color: 'var(--ok-ink)' }}>
+              {t('holdUpdateSuccessNotice')}
+            </div>
+          )}
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={handleClick}
+            className="w-full py-3 rounded-2xl text-[13.5px] font-[590] tracking-[-0.12px] text-center transition-all duration-200 active:not-disabled:scale-[0.99] disabled:cursor-not-allowed hover:shadow-lg"
+            style={{
+              background: disabled ? 'var(--fill2)' : 'linear-gradient(135deg,#3A73DE,#2C5FC9)',
+              color: disabled ? 'var(--t4)' : 'var(--on-acc)',
+              boxShadow: disabled ? 'none' : '0 10px 24px -8px rgba(44,95,201,.6)',
+            }}
+          >
+            {label}
+          </button>
         </div>
       ) : (
-        <div className="text-[12px] font-[450] leading-[1.45]" style={{ color: 'var(--warn)' }}>
-          {t('holdCartEmptyHint')}
+        <div className="animate-[vRise_0.3s_cubic-bezier(0.22,1,0.36,1)_both]">
+          {roomHold.status === 'ERROR' && roomHold.error && (
+            <div role="alert" className="text-[11.5px] font-medium mb-2" style={{ color: 'var(--err)' }}>
+              {t(bookingErrorKey(roomHold.error))}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              const el = document.getElementById('detail-rooms-section')
+              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            }}
+            className="group w-full flex items-center justify-between gap-3 px-4 py-3 rounded-full border cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.99]"
+            style={{
+              background: 'linear-gradient(135deg, rgba(58, 115, 222, 0.12), rgba(44, 95, 201, 0.05))',
+              borderColor: 'rgba(58, 115, 222, 0.35)',
+              boxShadow: '0 8px 24px -10px rgba(44, 95, 201, 0.25)',
+            }}
+          >
+            <div className="w-7 h-7 rounded-full bg-[#3A73DE]/15 flex items-center justify-center flex-none text-primary">
+              <span className="material-symbols-outlined text-[17px]">king_bed</span>
+            </div>
+            <span className="flex-1 text-center text-[13px] font-[590] tracking-[-0.1px] text-on-surface">
+              {t('holdCartEmptyHint')}
+            </span>
+            <div className="w-7 h-7 rounded-full bg-[#3A73DE]/10 flex items-center justify-center flex-none text-primary group-hover:-translate-y-0.5 transition-transform">
+              <span className="material-symbols-outlined text-[17px]">arrow_upward</span>
+            </div>
+          </button>
         </div>
       )}
-      {roomHold.status === 'ERROR' && roomHold.error && (
-        <div role="alert" className="text-[11.5px] font-medium" style={{ color: 'var(--err)' }}>
-          {t(bookingErrorKey(roomHold.error))}
-        </div>
-      )}
-      {updatedNotice && (
-        <div role="status" className="text-[11.5px] font-medium" style={{ color: 'var(--ok-ink)' }}>
-          {t('holdUpdateSuccessNotice')}
-        </div>
-      )}
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={handleClick}
-        className="w-full py-3 rounded-2xl border-none text-[13.5px] font-[590] tracking-[-0.12px] text-center transition-all duration-200 active:not-disabled:scale-[0.99] disabled:cursor-not-allowed"
-        style={{
-          background: disabled ? 'var(--fill2)' : 'linear-gradient(135deg,#3A73DE,#2C5FC9)',
-          color: disabled ? 'var(--t4)' : 'var(--on-acc)',
-          boxShadow: disabled ? 'none' : '0 14px 30px -14px rgba(44,95,201,.7)',
-        }}
-      >
-        {label}
-      </button>
     </div>
     <ConfirmDialog
       open={confirmSwitchOpen}
