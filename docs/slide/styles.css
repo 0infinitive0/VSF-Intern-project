@@ -242,14 +242,14 @@ img, video, canvas, svg{ max-width:100%; max-height:100%; }
 .layer-row .detail{ font-family:var(--f-label); font-size:18px; flex:1; }
 
 /* ===========================================
-   SLIDE 8 — TECH STACK (offwhite)
+   SLIDE 7 — LANGGRAPH FLOW (offwhite)
+   =========================================== */
+#s7{ --slide-bg: var(--offwhite); }
+
+/* ===========================================
+   SLIDE 8 — EVALUATION (offwhite)
    =========================================== */
 #s8{ --slide-bg: var(--offwhite); }
-.tech-grid{ display:grid; grid-template-columns:repeat(4,1fr); grid-template-rows:repeat(2,1fr); gap:28px; margin-top:52px; flex:1; }
-.tech-card{ padding:28px 20px; text-align:center; display:flex; flex-direction:column; align-items:center; justify-content:center; position:relative; }
-.tech-card .icon-square{ margin:0 auto 16px auto; }
-.tech-card .nm{ font-family:var(--f-display); font-weight:700; font-size:19px; text-transform:uppercase; margin-bottom:8px; }
-.tech-card .tag{ font-family:var(--f-label); font-size:14px; font-weight:600; letter-spacing:0.05em; text-transform:uppercase; }
 
 /* ===========================================
    SLIDE 9 — PRODUCT (blue)
