@@ -1,3 +1,4 @@
+import logging
 from types import SimpleNamespace
 
 from src.services import amenity_catalog
@@ -885,6 +886,49 @@ def test_ambiguous_resolution_preserves_top_k_for_clarification(monkeypatch):
     assert result.ids == ()
     assert result.unresolved == ("wireless internet",)
     assert result.ambiguities == (ambiguity,)
+
+
+def test_semantic_scores_embed_large_catalog_in_bounded_batches(monkeypatch):
+    class BatchLimitedEmbeddings:
+        def __init__(self):
+            self.batch_sizes = []
+
+        def embed_documents(self, documents):
+            self.batch_sizes.append(len(documents))
+            if len(documents) > 50:
+                raise RuntimeError("embedding request exceeds provider token limit")
+            return [[1.0, 0.0] for _ in documents]
+
+        def embed_query(self, _phrase):
+            return [1.0, 0.0]
+
+    embeddings = BatchLimitedEmbeddings()
+    entries = tuple(_entry(f"amenity_{index}", f"Amenity {index}") for index in range(453))
+    monkeypatch.setattr(amenity_catalog, "get_embeddings", lambda: embeddings)
+    monkeypatch.setattr(amenity_catalog, "_catalog_embedding_cache", None)
+
+    scores = amenity_catalog._semantic_scores("bãi đỗ xe", entries)
+
+    assert scores == (1.0,) * 453
+    assert embeddings.batch_sizes == [48] * 9 + [21]
+
+
+def test_semantic_embedding_failure_is_visible_at_warning(monkeypatch, caplog):
+    class BrokenEmbeddings:
+        def embed_documents(self, _documents):
+            raise RuntimeError("embedding service unavailable")
+
+        def embed_query(self, _phrase):
+            return [1.0]
+
+    monkeypatch.setattr(amenity_catalog, "get_embeddings", lambda: BrokenEmbeddings())
+    monkeypatch.setattr(amenity_catalog, "_catalog_embedding_cache", None)
+
+    with caplog.at_level(logging.WARNING, logger=amenity_catalog.__name__):
+        scores = amenity_catalog._semantic_scores("wifi miễn phí", (_entry("wifi", "Wi-Fi"),))
+
+    assert scores == ()
+    assert any("Amenity semantic candidates unavailable" in record.message for record in caplog.records)
 
 
 def test_price_phrase_does_not_bind_to_a_spice_amenity(monkeypatch):

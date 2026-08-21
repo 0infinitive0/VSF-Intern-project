@@ -30,6 +30,7 @@ _CATALOG_PAGE_SIZE = 500
 _MAX_DISCOVERY_CANDIDATES = 8
 _MAX_MATCH_KEYWORDS = 8
 _MAX_KEYWORD_LENGTH = 80
+_EMBEDDING_BATCH_SIZE = 48
 AMENITY_CATEGORIES = frozenset({
     "accessibility", "business", "connectivity", "facility", "family", "food", "general", "language",
     "outdoor", "policies", "room_comfort", "safety", "transport", "wellness",
@@ -389,11 +390,26 @@ def _semantic_scores(
                 " | ".join((entry.label, entry.label_en, *entry.match_keywords))
                 for entry in entries
             ]
-            vectors = tuple(tuple(float(value) for value in vector) for vector in model.embed_documents(documents))
+            embedded: list[tuple[float, ...]] = []
+            for start in range(0, len(documents), _EMBEDDING_BATCH_SIZE):
+                batch = documents[start : start + _EMBEDDING_BATCH_SIZE]
+                batch_vectors = model.embed_documents(batch)
+                if len(batch_vectors) != len(batch):
+                    raise ValueError("amenity embedding batch returned the wrong vector count")
+                embedded.extend(
+                    tuple(float(value) for value in vector)
+                    for vector in batch_vectors
+                )
+            vectors = tuple(embedded)
             _catalog_embedding_cache = (signature, vectors)
         query = tuple(float(value) for value in model.embed_query(phrase))
     except Exception as exc:
-        logger.info("Amenity semantic candidates unavailable: %s", type(exc).__name__)
+        logger.warning(
+            "Amenity semantic candidates unavailable: %s (catalog_size=%d, batch_size=%d)",
+            type(exc).__name__,
+            len(entries),
+            _EMBEDDING_BATCH_SIZE,
+        )
         return ()
 
     def cosine(vector: tuple[float, ...]) -> float:
