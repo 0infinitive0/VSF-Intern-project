@@ -20,21 +20,52 @@
       primaryBorderColor: '#5b8dee',
       primaryTextColor: '#e5e7eb',
       lineColor: '#8892a6',
-      fontFamily: "'Space Grotesk', monospace",
+      // System monospace, NOT the Space Grotesk webfont: htmlLabels sizes each
+      // node's <foreignObject> against whatever font is active at measurement
+      // time. A webfont swap after that measurement (even after waiting on
+      // document.fonts.ready — mermaid caches its own measurement pass and
+      // doesn't re-run it) leaves the outer <rect> and the inner label box
+      // sized from two different fonts, clipping the text. A system font is
+      // available synchronously, so there's no swap to race.
+      fontFamily: "ui-monospace, 'Courier New', monospace",
       fontSize: '15px',
       edgeLabelBackground: '#0d0e1a',
       clusterBkg: '#0d0e1a',
       clusterBorder: '#333333'
     },
-    flowchart: { curve: 'basis', useMaxWidth: true, htmlLabels: true, nodeSpacing: 40, rankSpacing: 55 }
+    flowchart: { curve: 'basis', useMaxWidth: true, htmlLabels: false, nodeSpacing: 40, rankSpacing: 55 }
   });
-  // Wait for webfonts to finish loading before mermaid measures node text —
-  // otherwise it sizes boxes for the fallback font, then the real (wider)
-  // Space Grotesk glyphs render clipped inside the too-narrow box.
-  Promise.all([
-    document.fonts ? document.fonts.ready : Promise.resolve(),
-    new Promise(r => setTimeout(r, 300)) // extra safety margin for slow font swaps
-  ]).then(() => mermaid.run());
+  mermaid.run().then(() => {
+    // Mermaid's internal text-measurement pass (used to size each node's
+    // <foreignObject>) consistently comes out narrower than the label's
+    // actual rendered content in this diagram — confirmed by direct
+    // inspection (measurement ~93px, real content ~108px for the same
+    // label), independent of font-loading timing or font choice.
+    // <foreignObject> hard-clips at its own SVG-level boundary regardless
+    // of the inner HTML's CSS overflow, so an undersized box clips text
+    // no matter what the inner <p>/<span> overflow rules say. Rather than
+    // trying to out-guess Mermaid's measurement, widen every node after
+    // the real DOM has rendered, based on the label's actual scrollWidth.
+    document.querySelectorAll('.mermaid svg .node').forEach(node => {
+      const rect = node.querySelector('rect');
+      const labelG = node.querySelector('g.label');
+      const fo = node.querySelector('foreignObject');
+      const textEl = fo ? fo.querySelector('p, span, div') : null;
+      if (!rect || !labelG || !fo || !textEl) return;
+      const PAD = 20; // extra safety margin beyond the measured natural width
+      const neededWidth = textEl.scrollWidth + PAD;
+      const foWidth = parseFloat(fo.getAttribute('width'));
+      if (neededWidth <= foWidth) return;
+      const rectWidth = parseFloat(rect.getAttribute('width'));
+      const extraPadding = rectWidth - foWidth; // preserve Mermaid's own rect-vs-label padding ratio
+      const newFoWidth = neededWidth;
+      const newRectWidth = neededWidth + extraPadding;
+      fo.setAttribute('width', newFoWidth);
+      labelG.setAttribute('transform', labelG.getAttribute('transform').replace(/translate\(-?[\d.]+/, `translate(${-newFoWidth / 2}`));
+      rect.setAttribute('width', newRectWidth);
+      rect.setAttribute('x', -newRectWidth / 2);
+    });
+  });
 </script>
 
 <link rel="stylesheet" href="styles.css">
