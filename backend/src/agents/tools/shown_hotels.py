@@ -23,11 +23,45 @@ still resolves.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from src.services.amenity_catalog import all_approved_amenities
 
 logger = logging.getLogger(__name__)
+
+# "khách sạn số 1", "ks 2", "hotel #3", "cái số 1", "option 2" -- a card
+# named by the number printed on it. The keyword prefix is required: without
+# it "trong bán kính 3 km" and "khách sạn 4 sao" both read as ordinal 3/4,
+# and the `sao|star` lookahead rejects the star rating even when the keyword
+# is there ("khách sạn 5 sao" is a filter, not a pick).
+_ORDINAL_PATTERN = re.compile(
+    r"(?:khách\s*sạn|khach\s*san|ks|hotel|option|lựa\s*chọn|lua\s*chon|cái|cai|số|so|#)"
+    r"\s*(?:số|so|#)?\s*(\d{1,2})\b(?!\s*(?:sao|star))",
+    re.IGNORECASE,
+)
+
+
+def hotel_option_at_ordinal(options: list[dict[str, Any]], message: str) -> dict[str, Any] | None:
+    """The shown hotel card a message points at by its printed number.
+
+    Positional, because position IS the number the user sees: the cards are
+    numbered by enumerating this same list in this same order
+    (`to_hotel_options_payload`), so `options[n - 1]` and "khách sạn số n"
+    are the same card by construction — no `index` key needed on the raw
+    dicts, which do not all carry one.
+
+    Returns None when the message names no number, or names one past the end
+    of the shortlist ("số 12" against 9 cards) — the caller asks rather than
+    silently answering about a different hotel.
+    """
+    match = _ORDINAL_PATTERN.search(message or "")
+    if not match:
+        return None
+    ordinal = int(match.group(1))
+    if 1 <= ordinal <= len(options):
+        return options[ordinal - 1]
+    return None
 
 
 def shown_hotel_options(state: Any) -> list[dict[str, Any]]:

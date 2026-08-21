@@ -404,6 +404,155 @@ def test_read_only_nearby_turn_skips_budget_check_and_keeps_its_pins(monkeypatch
     assert response.reply
 
 
+def test_nearby_before_the_pick_anchors_on_the_numbered_hotel_card(monkeypatch):
+    """"tìm quanh khách sạn số 2" while the shortlist is still on screen.
+
+    No `trip_data` exists at this stage, which used to route the turn to
+    `qa_node` and leave the map empty. The search must now center on the
+    SECOND card's coordinates -- not the first, and not the destination
+    centroid -- and the stage must stay `hotel_options` so the cards the
+    user is choosing between do not disappear underneath the answer.
+    """
+    import src.agents.graph.graph as graph_module
+    import src.agents.graph.nodes.itinerary_node as itinerary_node_module
+    from src.domain.travel_state import TravelState, apply_patch
+
+    def _fake_extract_patch(_state):
+        return {"intent": "general_question", "patch": [], "asks_nearby_places": True}
+
+    def _unreachable(*_args, **_kwargs):
+        raise AssertionError("read-only nearby branch must not call the LLM")
+
+    fake_candidate = SimpleNamespace(
+        id="place-9",
+        name="Hidden Gem Coffee",
+        category="Restaurants & cafes",
+        coordinates="21.03,105.85",
+        description=None,
+        rating=4.6,
+    )
+    search_calls: list[dict] = []
+
+    def _fake_search(query, destination_id, **kwargs):
+        search_calls.append({"query": query, "destination_id": destination_id, **kwargs})
+        return [fake_candidate]
+
+    monkeypatch.setattr(graph_module, "extract_patch", _fake_extract_patch)
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", _unreachable)
+    monkeypatch.setattr(itinerary_node_module, "search_attraction_candidates", _fake_search)
+    monkeypatch.setattr(itinerary_node_module, "_get_destination_id", lambda _name: "dest-hn")
+
+    seeded_state = apply_patch(
+        TravelState(),
+        [
+            {"path": "destination", "operation": "set", "value": "Hà Nội"},
+            {"path": "people", "operation": "set", "value": 2},
+            {"path": "dates.start", "operation": "set", "value": "2099-03-01"},
+            {"path": "dates.end", "operation": "set", "value": "2099-03-04"},
+            # Budget seeded (and its range already derived) for the same
+            # reason the budget test above does it: an unanswered budget slot
+            # sends the turn to `ask_slot` instead of the supervisor, and a
+            # fresh derivation would impact the hotel workflow this turn.
+            {"path": "budget.trip_total", "operation": "set", "value": 5000000},
+            {"path": "budget.min", "operation": "set", "value": 800000},
+            {"path": "budget.max", "operation": "set", "value": 1200000},
+        ],
+    ).state
+
+    app = graph_module.build_graph()
+    result = app.invoke(
+        {
+            "session_id": "turn-nearby-shortlist",
+            "language": "vi",
+            "travel_state": seeded_state.to_dict(),
+            "previous_hotel_options": [
+                {"id": "h1", "name": "Khách sạn A", "coordinates": "21.00,105.80"},
+                {"id": "h2", "name": "Khách sạn B", "coordinates": "21.02,105.84"},
+            ],
+            "messages": [HumanMessage(content="tìm quanh khách sạn số 2 trong bán kính 3km")],
+        },
+        config={"configurable": {"thread_id": "test-nearby-shortlist-thread"}},
+    )
+
+    assert result["routing_source"] == "read_only_intent_nearby"
+    assert [entry["worker"] for entry in result["task_results"]] == ["itinerary_node"]
+    assert search_calls == [
+        {
+            "query": "tìm quanh khách sạn số 2 trong bán kính 3km",
+            "destination_id": "dest-hn",
+            "match_count": 8,
+            "root_latitude": 21.02,
+            "root_longitude": 105.84,
+            "max_radius_km": 3.0,
+        }
+    ]
+    assert result["task_results"][-1]["suggested_places"][0]["id"] == "place-9"
+
+    response = PlannerChatResponse(**result["response"])
+    # The reply names which card was measured from: with several on screen,
+    # "quanh khách sạn" alone would not say which one the list belongs to.
+    assert "số 2" in response.reply and "Khách sạn B" in response.reply
+    # The pins reach the payload, which is the whole point of routing here
+    # instead of to `qa_node` (whose tools cannot write this field at all).
+    assert [place.id for place in response.suggested_places] == ["place-9"]
+
+
+def test_nearby_before_the_pick_asks_which_card_when_no_number_is_given(monkeypatch):
+    """Several cards on screen and no number in the message: the graph has
+    no way to know which hotel is meant (the card the user is looking at is
+    frontend-local state), so it asks instead of answering about hotel 1.
+    """
+    import src.agents.graph.graph as graph_module
+    import src.agents.graph.nodes.itinerary_node as itinerary_node_module
+    from src.domain.travel_state import TravelState, apply_patch
+
+    def _fake_extract_patch(_state):
+        return {"intent": "general_question", "patch": [], "asks_nearby_places": True}
+
+    def _unreachable(*_args, **_kwargs):
+        raise AssertionError("an ambiguous anchor must never reach the place search")
+
+    monkeypatch.setattr(graph_module, "extract_patch", _fake_extract_patch)
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", _unreachable)
+    monkeypatch.setattr(itinerary_node_module, "search_attraction_candidates", _unreachable)
+
+    seeded_state = apply_patch(
+        TravelState(),
+        [
+            {"path": "destination", "operation": "set", "value": "Hà Nội"},
+            {"path": "people", "operation": "set", "value": 2},
+            {"path": "dates.start", "operation": "set", "value": "2099-03-01"},
+            {"path": "dates.end", "operation": "set", "value": "2099-03-04"},
+            # Budget seeded (and its range already derived) for the same
+            # reason the budget test above does it: an unanswered budget slot
+            # sends the turn to `ask_slot` instead of the supervisor, and a
+            # fresh derivation would impact the hotel workflow this turn.
+            {"path": "budget.trip_total", "operation": "set", "value": 5000000},
+            {"path": "budget.min", "operation": "set", "value": 800000},
+            {"path": "budget.max", "operation": "set", "value": 1200000},
+        ],
+    ).state
+
+    app = graph_module.build_graph()
+    result = app.invoke(
+        {
+            "session_id": "turn-nearby-ambiguous",
+            "language": "vi",
+            "travel_state": seeded_state.to_dict(),
+            "previous_hotel_options": [
+                {"id": "h1", "name": "Khách sạn A", "coordinates": "21.00,105.80"},
+                {"id": "h2", "name": "Khách sạn B", "coordinates": "21.02,105.84"},
+            ],
+            "messages": [HumanMessage(content="quanh khách sạn có quán cà phê nào không")],
+        },
+        config={"configurable": {"thread_id": "test-nearby-ambiguous-thread"}},
+    )
+
+    assert result["task_results"][-1]["status"] == "error"
+    assert "số mấy" in result["task_results"][-1]["reply"]
+    assert not result["task_results"][-1].get("suggested_places")
+
+
 # --- End-to-end: clarify branch for an incomplete edit (Phase 16) ----------
 #
 # The extractor is faked at the node level in every case below so

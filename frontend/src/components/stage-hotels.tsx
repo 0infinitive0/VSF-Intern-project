@@ -5,7 +5,7 @@ import HotelOptionCards from './hotel-option-card'
 import HotelDetailPanel from './hotel-detail-panel'
 import MapView, { type MapMarkerSpec } from './map-view'
 import { useMapSync } from '../hooks/use-map-sync'
-import { hotelOptionSyncId } from '../lib/map-sync-id'
+import { hotelOptionSyncId, suggestedPlaceSyncId } from '../lib/map-sync-id'
 import { hotelMapFields, hotelMapRays } from '../lib/map-presentation'
 import { useHotelDetail } from '../hooks/use-hotel-detail'
 import { activeAmenityPills, filterAndSortHotels, type HotelSortOrder } from '../lib/hotel-filters'
@@ -122,6 +122,10 @@ export default function StageHotels({
       setLastFocusedId(null)
     }
   }, [focusedId, hotels, lastFocusedId])
+  // Same transient, per-component ẩn/hiện switch StageWorkspace keeps for
+  // these pins, and for the same reason: a later chat turn must not undo the
+  // user's choice to hide them.
+  const [showSuggested, setShowSuggested] = useState(true)
   const selectedHotel = useMemo(() => {
     if (selectedIndex != null) {
       const found = hotels.find((h) => h.index === selectedIndex)
@@ -171,16 +175,30 @@ export default function StageHotels({
   // like the card's own canOpen check — a marker for a hotel without an id
   // scrolls its card into view on click but never opens a focus panel that
   // has nothing to fetch.
+  // Places the chatbot listed around one of the shortlisted hotels ("quanh
+  // khách sạn số 1 có gì?"). Same numbering as the reply's own list — see
+  // map-view's 'suggested' branch — so a card, a pin, and a numbered line in
+  // chat all point at the same place while the user is still deciding.
   const markers: MapMarkerSpec[] = useMemo(
-    () =>
-      filteredHotels.map((hotel) => ({
+    () => [
+      ...filteredHotels.map((hotel) => ({
         syncId: hotelOptionSyncId(hotel),
         coordinates: hotel.coordinates,
         kind: 'hotel' as const,
         openId: hotel.id,
         ...hotelMapFields(hotel, i18n.language),
       })),
-    [filteredHotels, i18n.language],
+      ...(showSuggested
+        ? state.suggestedPlaces.map((place, index) => ({
+            syncId: suggestedPlaceSyncId(place),
+            coordinates: place.coordinates,
+            kind: 'suggested' as const,
+            label: index + 1,
+            name: place.name,
+          }))
+        : []),
+    ],
+    [filteredHotels, i18n.language, showSuggested, state.suggestedPlaces],
   )
 
   // Marker click mirrors the card's "Chọn" zone (user decision — an earlier
@@ -343,6 +361,8 @@ export default function StageHotels({
             onMarkerClick={handleMarkerClick}
             selectedId={selectedId}
             hotelRays={selectedHotelRays}
+            showSuggested={showSuggested}
+            onToggleSuggested={state.suggestedPlaces.length > 0 ? () => setShowSuggested((v) => !v) : undefined}
           />
         </div>
 

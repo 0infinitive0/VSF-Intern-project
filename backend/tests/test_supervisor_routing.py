@@ -350,13 +350,10 @@ def test_asks_nearby_places_true_routes_to_itinerary_node_list_nearby():
     assert task == {"action": "list_nearby", "user_request": message}
 
 
-def test_asks_nearby_places_true_with_no_trip_yet_still_routes_to_qa_node():
-    """A nearby-places question asked before any hotel is picked: routing
-    to `itinerary_node` would only hit its own hard "chọn khách sạn trước"
-    stop (`is_impossible`'s `requires_existing_trip`), where `qa_node`
-    could at least attempt an answer. Matches what happened before this
-    field existed -- `is_impossible` is the same guard every other
-    delegation path already goes through."""
+def test_asks_nearby_places_true_with_nothing_to_measure_from_routes_to_qa_node():
+    """No trip AND no hotel cards on screen: there is no location to center a
+    radius on, so `itinerary_node.list_nearby` could only hard-stop ("chọn
+    khách sạn trước..."), where `qa_node` can at least attempt an answer."""
     state = _state(
         messages=[HumanMessage(content="gợi ý vài chỗ tham quan gần đây")],
         intent="general_question",
@@ -369,6 +366,33 @@ def test_asks_nearby_places_true_with_no_trip_yet_still_routes_to_qa_node():
 
     assert result["next_worker"] == "qa_node"
     assert result["routing_source"] == "read_only_intent"
+
+
+def test_asks_nearby_places_with_hotel_shortlist_but_no_trip_routes_to_list_nearby():
+    """The reported gap: "tìm quanh khách sạn số 1" while still choosing
+    between the shortlist cards. No trip exists yet, so the old
+    `is_impossible` gate sent this to `qa_node`, whose tools cannot write
+    `suggested_places` -- the map stayed empty at the one stage where the
+    question is most useful."""
+    message = "tìm quanh khách sạn số 1 có gì"
+    state = _state(
+        messages=[HumanMessage(content=message)],
+        intent="general_question",
+        asks_nearby_places=True,
+        pending_tasks=[],
+        task_results=[],
+        trip_data={},
+        travel_state={"destination": {"presence": "set", "value": "Hà Nội"}},
+        previous_hotel_options=[{"id": "h1", "name": "A", "coordinates": "21.0,105.8"}],
+    )
+    result = supervisor(state)
+
+    assert result["next_worker"] == "itinerary_node"
+    assert result["routing_source"] == "read_only_intent_nearby"
+    assert json.loads(result["task_description"]) == {
+        "action": "list_nearby",
+        "user_request": message,
+    }
 
 
 def test_asks_nearby_places_false_routes_to_qa_node_unchanged():
