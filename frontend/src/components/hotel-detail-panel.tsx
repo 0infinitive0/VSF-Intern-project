@@ -694,27 +694,33 @@ function HoldFooter({
       }}
     >
       {cartCount > 0 ? (
-        <>
+        <div className="flex flex-col gap-2.5 animate-[vRise_0.35s_cubic-bezier(0.22,1,0.36,1)_both]">
           <div className="flex flex-col gap-1.5">
             {rows.map((row) => (
-              <div key={row.roomId} className="flex items-center gap-2.5">
-                <span className="w-[5px] h-[5px] rounded-full bg-primary flex-none" aria-hidden="true" />
-                <span className="flex-1 min-w-0 text-[12.5px] font-[530] text-on-surface truncate">
-                  {row.name}
-                </span>
-                <span className="flex-none text-[11.5px] text-on-surface-muted">
-                  {t('roomQtyLabel', { count: row.qty })}
-                </span>
-                <span className="flex-none text-[12px] font-[530] tabular-nums text-on-surface">
-                  {row.subtotal != null ? formatCurrency(row.subtotal, i18n.language) : t('roomPriceOnRequest')}
-                </span>
+              <div
+                key={row.roomId}
+                className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-fill/50 border border-line"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary flex-none" aria-hidden="true" />
+                  <span className="text-[13px] font-[590] text-on-surface truncate">
+                    {row.name}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 flex-none">
+                  <span className="text-[11px] px-1.5 py-0.5 rounded bg-fill text-on-surface-variant font-medium">
+                    {t('roomQtyLabel', { count: row.qty })}
+                  </span>
+                  <span className="text-[13px] font-[590] tabular-nums text-on-surface">
+                    {row.subtotal != null ? formatCurrency(row.subtotal, i18n.language) : t('roomPriceOnRequest')}
+                  </span>
+                </div>
               </div>
             ))}
             {hasAnyPriced && (
-              <div className="flex items-baseline gap-2 pt-2 mt-0.5 border-t border-line">
-                <span className="text-[11.5px] text-on-surface-muted">{t('holdTotal')}</span>
-                <span className="flex-1" />
-                <span className="text-[18px] font-[590] tracking-[-0.45px] tabular-nums text-on-surface">
+              <div className="flex items-baseline justify-between pt-2 px-1 border-t border-line">
+                <span className="text-[12.5px] text-on-surface-muted font-normal">{t('holdTotal')}</span>
+                <span className="text-[19px] font-[650] tracking-[-0.4px] tabular-nums text-primary">
                   {formatCurrency(total, i18n.language)}
                 </span>
               </div>
@@ -734,20 +740,20 @@ function HoldFooter({
             type="button"
             disabled={disabled}
             onClick={handleClick}
-            className="w-full py-3 rounded-2xl text-[13.5px] font-[590] tracking-[-0.12px] text-center transition-all duration-200 active:not-disabled:scale-[0.99] disabled:cursor-not-allowed"
+            className="w-full py-3.5 rounded-2xl text-[14px] font-[590] tracking-[-0.15px] text-center transition-all duration-200 active:not-disabled:scale-[0.99] disabled:cursor-not-allowed hover:shadow-lg"
             style={{
               background: disabled ? 'var(--fill2)' : 'linear-gradient(135deg,#3A73DE,#2C5FC9)',
               color: disabled ? 'var(--t4)' : 'var(--on-acc)',
-              boxShadow: disabled ? 'none' : '0 14px 30px -14px rgba(44,95,201,.7)',
+              boxShadow: disabled ? 'none' : '0 12px 28px -10px rgba(44,95,201,.65)',
             }}
           >
             {label}
           </button>
-        </>
+        </div>
       ) : (
-        <>
+        <div className="animate-[vRise_0.35s_cubic-bezier(0.22,1,0.36,1)_both]">
           {roomHold.status === 'ERROR' && roomHold.error && (
-            <div role="alert" className="text-[11.5px] font-medium" style={{ color: 'var(--err)' }}>
+            <div role="alert" className="text-[11.5px] font-medium mb-2" style={{ color: 'var(--err)' }}>
               {t(bookingErrorKey(roomHold.error))}
             </div>
           )}
@@ -774,7 +780,7 @@ function HoldFooter({
               <span className="material-symbols-outlined text-[17px]">arrow_upward</span>
             </div>
           </button>
-        </>
+        </div>
       )}
     </div>
     <ConfirmDialog

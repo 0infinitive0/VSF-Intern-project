@@ -414,7 +414,7 @@
   "holdTotal": "Tổng cộng",
   "holdCta": "Giữ phòng & Tạo lịch trình",
   "holdCtaSelectRoom": "Vui lòng chọn phòng để tạo lịch trình",
-  "holdCtaWithRooms": "Giữ {{count}} phòng & Tạo lịch trình ngay →",
+  "holdCtaWithRooms": "Giữ phòng & Tạo lịch trình ngay",
   "holdCtaBusy": "Đang giữ phòng & khởi tạo lịch trình…",
   "holdCtaHeld": "✓ Đã giữ phòng — đang tạo lịch trình…",
   "holdCtaBlocked": "Bạn đang giữ phòng ở một khách sạn khác",
