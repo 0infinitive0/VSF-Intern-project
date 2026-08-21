@@ -412,6 +412,8 @@
   "holdSectionSelected": "Đã chọn",
   "holdCartEmptyHint": "Vui lòng chọn ít nhất 1 phòng phía trên để tiếp tục tạo lịch trình.",
   "holdTotal": "Tổng cộng",
+  "holdRoomsSummaryBadge": "{{count}} phòng đã chọn",
+  "holdRoomsSummaryBadgeTypes": "{{types}} loại ({{count}} phòng)",
   "holdCta": "Giữ phòng & Tạo lịch trình",
   "holdCtaSelectRoom": "Vui lòng chọn phòng để tạo lịch trình",
   "holdCtaWithRooms": "Giữ phòng & Tạo lịch trình ngay",

@@ -414,6 +414,8 @@
   "holdSectionSelected": "Selected",
   "holdCartEmptyHint": "Please select at least 1 room above to build your itinerary.",
   "holdTotal": "Total",
+  "holdRoomsSummaryBadge": "{{count}} rooms selected",
+  "holdRoomsSummaryBadgeTypes": "{{types}} types ({{count}} rooms)",
   "holdCta": "Hold rooms & Build itinerary",
   "holdCtaSelectRoom": "Select a room to create itinerary",
   "holdCtaWithRooms": "Hold room & Build itinerary now",
