@@ -386,8 +386,11 @@ export default function HotelDetailPanel({
                   be in the cart at once; each becomes its own /bookings hold
                   when "Giữ phòng" fires below. */}
               {detail?.rooms && detail.rooms.length > 0 && (
-                <div>
-                  <div className={SECTION_EYEBROW}>{t('detailRooms')}</div>
+                <div id="detail-rooms-section">
+                  <div className="flex items-baseline justify-between mb-1">
+                    <div className={SECTION_EYEBROW}>{t('detailRooms')}</div>
+                    <span className="text-[11.5px] text-primary font-medium">{t('detailRoomsGuide')}</span>
+                  </div>
                   <div className="flex flex-col gap-2.5">
                     {detail.rooms.map((room, i) => {
                       const roomKey = room.id ?? room.name ?? String(i)
@@ -634,18 +637,24 @@ function HoldFooter({
           : t('holdCtaBlocked')
         : busy
           ? t('holdCtaBusy')
-          : t('holdCta')
+          : cartCount === 0
+            ? t('holdCtaSelectRoom')
+            : t('holdCtaWithRooms', { count: cartCount })
   const disabled =
     sessionBookedFromBackend ||
     busy ||
     (heldHere && !cartChanged) ||
-    (heldElsewhere && !canSwitchHere) ||
-    (!heldHere && !heldElsewhere && !canStart)
+    (heldElsewhere && !canSwitchHere)
 
   const stay = { checkInDate: checkInDate!, checkOutDate: checkOutDate! }
 
   function handleClick() {
     if (sessionBookedFromBackend || busy || !option) return
+    if (cartCount === 0) {
+      const el = document.getElementById('detail-rooms-section')
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      return
+    }
     if (heldHere) {
       if (!cartChanged) return
       // Editing your own not-yet-paid cart doesn't warrant a confirm dialog
@@ -711,8 +720,9 @@ function HoldFooter({
           )}
         </div>
       ) : (
-        <div className="text-[12px] font-[450] leading-[1.45]" style={{ color: 'var(--warn)' }}>
-          {t('holdCartEmptyHint')}
+        <div className="flex items-center gap-2.5 p-3 rounded-2xl bg-primary-soft/70 border border-primary/20 text-[12.5px] font-[480] text-on-surface">
+          <span className="material-symbols-outlined text-[18px] text-primary flex-none">touch_app</span>
+          <span>{t('holdCartEmptyHint')}</span>
         </div>
       )}
       {roomHold.status === 'ERROR' && roomHold.error && (
@@ -729,11 +739,20 @@ function HoldFooter({
         type="button"
         disabled={disabled}
         onClick={handleClick}
-        className="w-full py-3 rounded-2xl border-none text-[13.5px] font-[590] tracking-[-0.12px] text-center transition-all duration-200 active:not-disabled:scale-[0.99] disabled:cursor-not-allowed"
+        className="w-full py-3 rounded-2xl text-[13.5px] font-[590] tracking-[-0.12px] text-center transition-all duration-200 active:not-disabled:scale-[0.99] disabled:cursor-not-allowed"
         style={{
-          background: disabled ? 'var(--fill2)' : 'linear-gradient(135deg,#3A73DE,#2C5FC9)',
-          color: disabled ? 'var(--t4)' : 'var(--on-acc)',
-          boxShadow: disabled ? 'none' : '0 14px 30px -14px rgba(44,95,201,.7)',
+          background: disabled
+            ? 'var(--fill2)'
+            : cartCount === 0
+              ? 'var(--g3)'
+              : 'linear-gradient(135deg,#3A73DE,#2C5FC9)',
+          color: disabled
+            ? 'var(--t4)'
+            : cartCount === 0
+              ? 'var(--primary)'
+              : 'var(--on-acc)',
+          border: !disabled && cartCount === 0 ? '1.5px solid var(--primary)' : 'none',
+          boxShadow: disabled || cartCount === 0 ? 'none' : '0 14px 30px -14px rgba(44,95,201,.7)',
         }}
       >
         {label}

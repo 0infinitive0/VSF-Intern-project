@@ -170,6 +170,17 @@ function HotelOptionCard({
           </div>
         </div>
       )}
+
+      <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-line/60 text-[11.5px]">
+        <span className="text-on-surface-muted flex items-center gap-1">
+          <span className="material-symbols-outlined text-[14px] text-primary" aria-hidden="true">touch_app</span>
+          <span>{t('hotelCardActionHint')}</span>
+        </span>
+        <span className="font-[590] text-primary flex items-center gap-0.5">
+          <span>{t('hotelCardSelectRooms')}</span>
+          <span className="material-symbols-outlined text-[14px]" aria-hidden="true">arrow_forward</span>
+        </span>
+      </div>
     </div>
   )
 }
