@@ -493,7 +493,7 @@
   "checkoutDoneRoomsLabel": "Rooms booked",
   "checkoutDoneClose": "Close",
   "checkoutDoneEmailNotice": "Booking confirmation details have been sent to your email. Your itinerary is ready!",
-  "checkoutDoneExploreItinerary": "Explore your trip itinerary →",
+  "checkoutDoneExploreItinerary": "Explore trip itinerary",
   "thinkingIntentUpdateTrip": "trip update",
   "thinkingIntentGeneralQuestion": "general question",
   "thinkingIntentRebuildDays": "rebuild days",
