@@ -45,7 +45,8 @@ export interface IntakeFormState {
   notes: string
   // Free text typed into the composer while the sở thích (preferences) widget
   // is the active step — appended to the "Sở thích:" sentence verbatim,
-  // unlike `notes`, with no check against the closed PreferenceKey label set.
+  // unlike `notes`, which becomes its own unlabelled sentence. Neither is
+  // checked against the closed PreferenceKey label set.
   preferencesNotes: string
 }
 
@@ -125,9 +126,14 @@ export function composeIntakeMessage(form: IntakeFormState): string {
     const labels = form.dayRhythm.map((key) => DAY_RHYTHM_WIRE_VALUE_VI[key])
     sentences.push(`Nhịp sinh hoạt: ${labels.join(', ')}.`)
   }
+  // Free text goes in as its own plain sentence, with no "Ghi chú:" label.
+  // The label was only ever cosmetic — nothing in the backend matches it —
+  // and it showed up verbatim in the user's own chat bubble, so a person who
+  // simply typed "2 người" saw their message echoed back as "Ghi chú: 2
+  // người.". Ending punctuation is only added when the text lacks it.
   const notes = form.notes.trim()
   if (notes) {
-    sentences.push(`Ghi chú: ${notes}.`)
+    sentences.push(/[.!?]$/.test(notes) ? notes : `${notes}`)
   }
 
   return sentences.join(' ')
