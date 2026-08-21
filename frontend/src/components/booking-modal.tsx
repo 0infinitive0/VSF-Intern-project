@@ -798,14 +798,15 @@ export default function BookingModal({
                   <button
                     type="button"
                     onClick={requestClose}
-                    className="w-full sm:w-auto px-7 py-3 rounded-xl border-none text-[13.5px] font-[590] tracking-[-0.12px] cursor-pointer transition-all duration-200 hover:opacity-95 active:scale-[0.99] flex-none text-center"
+                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 rounded-full border-none text-[13.5px] font-[590] tracking-[-0.1px] cursor-pointer transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] flex-none text-center"
                     style={{
-                      background: 'linear-gradient(135deg,#3A73DE,#2C5FC9)',
-                      color: 'var(--on-acc)',
-                      boxShadow: '0 10px 24px -10px rgba(44,95,201,.7)',
+                      background: 'var(--btn)',
+                      color: 'var(--btn-fg)',
+                      boxShadow: '0 10px 24px -10px rgb(var(--shadow-rgb) / 0.55)',
                     }}
                   >
-                    {t('checkoutDoneExploreItinerary')}
+                    <span className="material-symbols-outlined text-[17px] text-ok">explore</span>
+                    <span>{t('checkoutDoneExploreItinerary')}</span>
                   </button>
                 </div>
               </div>
