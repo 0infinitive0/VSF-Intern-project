@@ -694,69 +694,88 @@ function HoldFooter({
       }}
     >
       {cartCount > 0 ? (
-        <div className="flex flex-col gap-1.5">
-          {rows.map((row) => (
-            <div key={row.roomId} className="flex items-center gap-2.5">
-              <span className="w-[5px] h-[5px] rounded-full bg-primary flex-none" aria-hidden="true" />
-              <span className="flex-1 min-w-0 text-[12.5px] font-[530] text-on-surface truncate">
-                {row.name}
-              </span>
-              <span className="flex-none text-[11.5px] text-on-surface-muted">
-                {t('roomQtyLabel', { count: row.qty })}
-              </span>
-              <span className="flex-none text-[12px] font-[530] tabular-nums text-on-surface">
-                {row.subtotal != null ? formatCurrency(row.subtotal, i18n.language) : t('roomPriceOnRequest')}
-              </span>
-            </div>
-          ))}
-          {hasAnyPriced && (
-            <div className="flex items-baseline gap-2 pt-2 mt-0.5 border-t border-line">
-              <span className="text-[11.5px] text-on-surface-muted">{t('holdTotal')}</span>
-              <span className="flex-1" />
-              <span className="text-[18px] font-[590] tracking-[-0.45px] tabular-nums text-on-surface">
-                {formatCurrency(total, i18n.language)}
-              </span>
+        <>
+          <div className="flex flex-col gap-1.5">
+            {rows.map((row) => (
+              <div key={row.roomId} className="flex items-center gap-2.5">
+                <span className="w-[5px] h-[5px] rounded-full bg-primary flex-none" aria-hidden="true" />
+                <span className="flex-1 min-w-0 text-[12.5px] font-[530] text-on-surface truncate">
+                  {row.name}
+                </span>
+                <span className="flex-none text-[11.5px] text-on-surface-muted">
+                  {t('roomQtyLabel', { count: row.qty })}
+                </span>
+                <span className="flex-none text-[12px] font-[530] tabular-nums text-on-surface">
+                  {row.subtotal != null ? formatCurrency(row.subtotal, i18n.language) : t('roomPriceOnRequest')}
+                </span>
+              </div>
+            ))}
+            {hasAnyPriced && (
+              <div className="flex items-baseline gap-2 pt-2 mt-0.5 border-t border-line">
+                <span className="text-[11.5px] text-on-surface-muted">{t('holdTotal')}</span>
+                <span className="flex-1" />
+                <span className="text-[18px] font-[590] tracking-[-0.45px] tabular-nums text-on-surface">
+                  {formatCurrency(total, i18n.language)}
+                </span>
+              </div>
+            )}
+          </div>
+          {roomHold.status === 'ERROR' && roomHold.error && (
+            <div role="alert" className="text-[11.5px] font-medium" style={{ color: 'var(--err)' }}>
+              {t(bookingErrorKey(roomHold.error))}
             </div>
           )}
-        </div>
+          {updatedNotice && (
+            <div role="status" className="text-[11.5px] font-medium" style={{ color: 'var(--ok-ink)' }}>
+              {t('holdUpdateSuccessNotice')}
+            </div>
+          )}
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={handleClick}
+            className="w-full py-3 rounded-2xl text-[13.5px] font-[590] tracking-[-0.12px] text-center transition-all duration-200 active:not-disabled:scale-[0.99] disabled:cursor-not-allowed"
+            style={{
+              background: disabled ? 'var(--fill2)' : 'linear-gradient(135deg,#3A73DE,#2C5FC9)',
+              color: disabled ? 'var(--t4)' : 'var(--on-acc)',
+              boxShadow: disabled ? 'none' : '0 14px 30px -14px rgba(44,95,201,.7)',
+            }}
+          >
+            {label}
+          </button>
+        </>
       ) : (
-        <div className="flex items-center gap-2.5 p-3 rounded-2xl bg-primary-soft/70 border border-primary/20 text-[12.5px] font-[480] text-on-surface">
-          <span className="material-symbols-outlined text-[18px] text-primary flex-none">touch_app</span>
-          <span>{t('holdCartEmptyHint')}</span>
-        </div>
+        <>
+          {roomHold.status === 'ERROR' && roomHold.error && (
+            <div role="alert" className="text-[11.5px] font-medium" style={{ color: 'var(--err)' }}>
+              {t(bookingErrorKey(roomHold.error))}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              const el = document.getElementById('detail-rooms-section')
+              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            }}
+            className="group w-full flex items-center justify-between gap-3 px-4 py-3 rounded-full border cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.99]"
+            style={{
+              background: 'linear-gradient(135deg, rgba(58, 115, 222, 0.12), rgba(44, 95, 201, 0.05))',
+              borderColor: 'rgba(58, 115, 222, 0.35)',
+              boxShadow: '0 8px 24px -10px rgba(44, 95, 201, 0.25)',
+            }}
+          >
+            <div className="w-7 h-7 rounded-full bg-[#3A73DE]/15 flex items-center justify-center flex-none text-primary">
+              <span className="material-symbols-outlined text-[17px]">king_bed</span>
+            </div>
+            <span className="flex-1 text-center text-[13px] font-[590] tracking-[-0.1px] text-on-surface">
+              {t('holdCartEmptyHint')}
+            </span>
+            <div className="w-7 h-7 rounded-full bg-[#3A73DE]/10 flex items-center justify-center flex-none text-primary group-hover:-translate-y-0.5 transition-transform">
+              <span className="material-symbols-outlined text-[17px]">arrow_upward</span>
+            </div>
+          </button>
+        </>
       )}
-      {roomHold.status === 'ERROR' && roomHold.error && (
-        <div role="alert" className="text-[11.5px] font-medium" style={{ color: 'var(--err)' }}>
-          {t(bookingErrorKey(roomHold.error))}
-        </div>
-      )}
-      {updatedNotice && (
-        <div role="status" className="text-[11.5px] font-medium" style={{ color: 'var(--ok-ink)' }}>
-          {t('holdUpdateSuccessNotice')}
-        </div>
-      )}
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={handleClick}
-        className="w-full py-3 rounded-2xl text-[13.5px] font-[590] tracking-[-0.12px] text-center transition-all duration-200 active:not-disabled:scale-[0.99] disabled:cursor-not-allowed"
-        style={{
-          background: disabled
-            ? 'var(--fill2)'
-            : cartCount === 0
-              ? 'var(--g3)'
-              : 'linear-gradient(135deg,#3A73DE,#2C5FC9)',
-          color: disabled
-            ? 'var(--t4)'
-            : cartCount === 0
-              ? 'var(--primary)'
-              : 'var(--on-acc)',
-          border: !disabled && cartCount === 0 ? '1.5px solid var(--primary)' : 'none',
-          boxShadow: disabled || cartCount === 0 ? 'none' : '0 14px 30px -14px rgba(44,95,201,.7)',
-        }}
-      >
-        {label}
-      </button>
     </div>
     <ConfirmDialog
       open={confirmSwitchOpen}
