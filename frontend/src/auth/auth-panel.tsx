@@ -16,13 +16,13 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
  * AuthPanel — the whole Login/Register/Forgot-password/Sent experience as
- * one glass overlay (design: "Authentication is a gateway into V-OTA, not a
+ * one glass overlay (design: "Authentication is a gateway into VP-OTA, not a
  * standalone page" — never a full route, this app has no router). Reachable
  * from SidebarRail's "Sign in" affordance (anonymous) or the account menu
  * (already-identified, e.g. reopening to link a password to a Google-only
  * account — out of scope for now but the same panel would host it later).
  *
- * State machine mirrors the design prototype's (V-OTA Auth.dc.html) exactly,
+ * State machine mirrors the design prototype's (VP-OTA Auth.dc.html) exactly,
  * reimplemented against real Supabase calls instead of a setTimeout mock —
  * see auth-context.tsx for the actual signInWithPassword/registerWithPassword/
  * signInWithGoogle/sendPasswordReset calls this dispatches to.

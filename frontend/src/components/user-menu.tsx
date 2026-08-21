@@ -75,7 +75,7 @@ export default function UserMenu({
   return (
     <div ref={rootRef} className="shrink-0 flex flex-col gap-1.5 animate-[vFade_0.28s_ease_both]">
       {open && (
-        // In-flow, not `position: absolute` (design: V-OTA Planner.dc.html:127-138)
+        // In-flow, not `position: absolute` (design: VP-OTA Planner.dc.html:127-138)
         // — SidebarRail's <aside> is `overflow-hidden`, so an absolutely
         // positioned popup wide enough for label text gets clipped once the
         // rail is collapsed to 68px. Stacking this as a normal sibling above

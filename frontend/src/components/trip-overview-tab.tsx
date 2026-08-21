@@ -24,7 +24,7 @@ function nightsFrom(start?: string | null, end?: string | null, fallbackDays?: n
 }
 
 /**
- * TripOverviewTab — the workspace "Tổng quan" tab (V-OTA Planner.dc.html:223+).
+ * TripOverviewTab — the workspace "Tổng quan" tab (VP-OTA Planner.dc.html:223+).
  * Only stats computable from trip_plan render; anything without a source is
  * dropped entirely (phase-09 §Các ô thống kê): days·nights, places, route km
  * (≈ when any leg used the haversine fallback), travel time (~ prefix, hidden

@@ -638,7 +638,7 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
     }
   }
 
-  // deleteConvo semantics (V-OTA Planner.dc.html): closing the open
+  // deleteConvo semantics (VP-OTA Planner.dc.html): closing the open
   // conversation moves to the next one left in the list, or a fresh trip
   // when none remain. Local list edit happens before the DELETE call —
   // deleteSession() is best-effort and never throws. If the fallback

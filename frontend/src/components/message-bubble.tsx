@@ -15,7 +15,7 @@ function formatMessageTime(at: string | undefined, locale: string): string | nul
 
 /**
  * MessageBubble — renders one chat turn per the Claude Design glassmorphism
- * export (V-OTA Planner.dc.html:2298-2308):
+ * export (VP-OTA Planner.dc.html:2298-2308):
  *   - asymmetric corners: AI `18px 18px 18px 6px`, user `18px 18px 6px 18px`
  *   - AI: glass-3 surface, on-surface ink, hairline --line border, soft drop shadow
  *   - user: `linear-gradient(145deg,#4F86E8,#2C5FC9)`, near-white ink, blue glow

@@ -23,7 +23,7 @@ export function legColor(index: number): string {
 
 /**
  * Solid accent per itinerary kind — the PlaceDetail hero-badge color map
- * (PlaceDetail.dc.html badge; detailData kindColor, V-OTA Planner.dc.html:938),
+ * (PlaceDetail.dc.html badge; detailData kindColor, VP-OTA Planner.dc.html:938),
  * keyed by the backend's kind codes (trip_formatter.py:325) exactly like the
  * timeline thumbs. Unknown kinds fall back to the design's attraction blue.
  */

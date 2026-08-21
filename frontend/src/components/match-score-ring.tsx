@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next'
  * satisfaction probability — so the "MATCH"/"ĐỘ KHỚP" word stays, per
  * phase-08 §"Vòng AI Match Score".
  *
- * Colour tiers come from the design script (V-OTA Planner.dc.html:2444):
+ * Colour tiers come from the design script (VP-OTA Planner.dc.html:2444):
  * ≥90% --ok, ≥80% --warn, below --err. Sizes: card 62/50px, detail panel
  * 58/46px (checklist Phase 8).
  *

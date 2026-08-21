@@ -13,7 +13,7 @@ const ROW_LABEL_KEY = {
 
 /**
  * IntakeChecklist — the "THÔNG TIN AI ĐANG THU THẬP" panel of the intake stage
- * (design V-OTA Planner.dc.html:96-111). Every row renders real IntakeStatus
+ * (design VP-OTA Planner.dc.html:96-111). Every row renders real IntakeStatus
  * data; uncollected rows show the design's literal "—" and never a guessed or
  * prefilled value (phase-07 acceptance criteria). Row derivation lives in the
  * pure lib/intake-checklist-rows.ts; this component only owns markup + i18n.

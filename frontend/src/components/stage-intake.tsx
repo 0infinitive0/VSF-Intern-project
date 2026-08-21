@@ -9,7 +9,7 @@ const STEP_NUMBERS = [1, 2, 3] as const
 
 /**
  * StageIntake — the hero + live-collection checklist shown while the chat is
- * still gathering trip details (design V-OTA Planner.dc.html:88-126,
+ * still gathering trip details (design VP-OTA Planner.dc.html:88-126,
  * reference screenshot data/design/screenshots/sb.png).
  *
  * Structure: eyebrow tagline → 42px headline with the animated vHue gradient

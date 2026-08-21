@@ -8,7 +8,7 @@ import type { Day, DayItem } from '../types'
 const NUM_LOCALE = (lang: string) => (lang === 'vi' ? 'vi-VN' : 'en-US')
 
 /**
- * DayTimeline — one day tab of the workspace (V-OTA Planner.dc.html:281-293).
+ * DayTimeline — one day tab of the workspace (VP-OTA Planner.dc.html:281-293).
  * Header row: big "Ngày N" title plus a small metadata sub line (theme · route
  * summary). The route figures come from dayRouteMetrics over the day's real
  * legs: km summed from route_to_next (haversine fallback prefixed with ≈ when

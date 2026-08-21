@@ -18,7 +18,7 @@ function fromISODate(value: string): Date | undefined {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed
 }
 
-// Design's own fallback month when nothing is picked yet (V-OTA
+// Design's own fallback month when nothing is picked yet (VP-OTA
 // Planner.dc.html:1997, `new Date(1994, 2, 1)`) — a birth-year-plausible
 // starting point beats defaulting to "now", which would put every
 // first-time user's calendar decades away from where they need to navigate.
@@ -28,7 +28,7 @@ const YEAR_RANGE = 100
 
 /**
  * DateOfBirthField — the profile modal's date-of-birth picker (design:
- * V-OTA Planner.dc.html:1016-1052, toggleDobCal/dobCalendarCells/dobYears
+ * VP-OTA Planner.dc.html:1016-1052, toggleDobCal/dobCalendarCells/dobYears
  * around lines 1996-2118). Built on the same @daypicker/react + date-fns
  * stack as IntakeDateRange (mode="single" here instead of "range"), sharing
  * its `.day-calendar` cell theming (styles.css) rather than duplicating it.

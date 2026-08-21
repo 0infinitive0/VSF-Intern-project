@@ -10,7 +10,7 @@ function mmss(ms: number): string {
 }
 
 /**
- * HoldBanner — the workspace header's room-hold status (V-OTA Planner design
+ * HoldBanner — the workspace header's room-hold status (VP-OTA Planner design
  * update, HELD/EXPIRED/BOOKED blocks). Mounted in stage-workspace.tsx's
  * header bar. Renders nothing outside those three states — HOLDING is
  * visible on hotel-detail-panel.tsx's own footer (still on screen at that

@@ -1,4 +1,4 @@
--- V-OTA AI Chat: PostgreSQL Database Schema
+-- VP-OTA AI Chat: PostgreSQL Database Schema
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS vector;

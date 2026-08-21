@@ -1,6 +1,6 @@
 /**
  * session-date.ts — history-rail row date label. Ported from
- * V-OTA Planner.dc.html's convoDate() but inverted: the design mock stores a
+ * VP-OTA Planner.dc.html's convoDate() but inverted: the design mock stores a
  * pre-formatted 'Hôm nay' string and translates it to 'Today'; here the
  * source is a real ISO `updated_at`, so the local calendar date is compared
  * first and only then mapped to a label.

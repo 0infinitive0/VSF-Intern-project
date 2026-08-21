@@ -179,7 +179,7 @@ def send_booking_confirmation_email(
         response = resend.Emails.send({
             "from": settings.resend_from_email,
             "to": [to_email],
-            "subject": f"Xác nhận đặt phòng {booking_code} — V-OTA",
+            "subject": f"Xác nhận đặt phòng {booking_code} — VP-OTA",
             "html": html,
         })
     except Exception as exc:

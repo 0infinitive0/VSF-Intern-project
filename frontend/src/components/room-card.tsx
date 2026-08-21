@@ -6,7 +6,7 @@ import { displayAmenityLabels } from '../lib/hotel-filters'
 import type { AmenityCatalogOption, RoomDetail } from '../types'
 
 /**
- * RoomCard — the room accordion, now with a real quantity stepper (V-OTA
+ * RoomCard — the room accordion, now with a real quantity stepper (VP-OTA
  * Planner design update: room selection now feeds an actual hold, not a
  * local highlight — see use-room-hold.ts). Click anywhere on the card (or
  * the toggle button) expands IN PLACE to show the gallery / facilities /

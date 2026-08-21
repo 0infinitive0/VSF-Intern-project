@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next'
 
 /**
  * password-strength-meter.tsx — same heuristic as the design prototype
- * (V-OTA Auth.dc.html's `renderVals()`): length >= 8, has both cases, has a
+ * (VP-OTA Auth.dc.html's `renderVals()`): length >= 8, has both cases, has a
  * digit, has a symbol — each present bumps the score by one, capped into
  * three bands. Purely a hint, never a submit gate (the real minimum-length
  * validation lives in register-form.tsx).

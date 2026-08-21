@@ -12,7 +12,7 @@ import UserAvatar from './user-avatar'
 
 /**
  * ProfilePasswordModal — the account slot's "Profile & password" screen
- * (design: V-OTA Planner.dc.html's profile dialog, opened from UserMenu's
+ * (design: VP-OTA Planner.dc.html's profile dialog, opened from UserMenu's
  * dropdown). Two independent sections/forms sharing one dialog, exactly like
  * the design: personal information (name/email/phone/city/date of birth,
  * saved via auth.updateProfile) and change password — each has its own
@@ -35,7 +35,7 @@ import UserAvatar from './user-avatar'
  * viewport.
  *
  * Open/close is a two-phase transition (design: openProfile/closeProfile,
- * V-OTA Planner.dc.html:2021-2032) rather than the one-shot vFade/vRise
+ * VP-OTA Planner.dc.html:2021-2032) rather than the one-shot vFade/vRise
  * AuthPanel/SessionExpiredModal use — this modal is reopened repeatedly
  * within the same session (unlike those two, which gate a page-load-once
  * flow), so a closing transition matters more here. `visible` starts false,

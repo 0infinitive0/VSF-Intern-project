@@ -31,11 +31,11 @@ function nightsFrom(startIso?: string | null, endIso?: string | null): number | 
 }
 
 /**
- * StageHotels — the split-view "hotels" stage (V-OTA Planner.dc.html:377+):
+ * StageHotels — the split-view "hotels" stage (VP-OTA Planner.dc.html:377+):
  * glass header (V logo, step title, status badge, confirm button) over three
  * flex columns: card list (with the filter bar) | map | detail panel.
  *
- * Two-step hotel pick, now gated by a room hold (V-OTA Planner design
+ * Two-step hotel pick, now gated by a room hold (VP-OTA Planner design
  * update — room selection moved BEFORE itinerary creation): a card's "Chọn"
  * only sets local selectedIndex; the header button no longer calls
  * onConfirmHotel directly — it opens the selected hotel's detail panel so

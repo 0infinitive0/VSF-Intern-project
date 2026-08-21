@@ -18,7 +18,7 @@ export default function AuthTextField({
   label: string
   type?: 'text' | 'email' | 'password' | 'tel'
   /** 40px instead of the default 44px — ProfilePasswordModal's fields (design:
-   * V-OTA Planner.dc.html's profile dialog uses `height:40px`, shorter than
+   * VP-OTA Planner.dc.html's profile dialog uses `height:40px`, shorter than
    * the 44px login/register/forgot-password screens use). Everywhere else
    * this defaults to false, unchanged. */
   dense?: boolean

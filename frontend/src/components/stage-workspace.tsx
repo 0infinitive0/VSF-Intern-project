@@ -57,7 +57,7 @@ function RebuildingOverlay() {
 }
 
 /**
- * StageWorkspace — the Phase 9 workspace (V-OTA Planner.dc.html:192-295): a
+ * StageWorkspace — the Phase 9 workspace (VP-OTA Planner.dc.html:192-295): a
  * glass trip header (logo, destination, date-range/days/nights/people meta —
  * no "Tạo lại"/"Chia sẻ" buttons, per user decisions 06/08/2026 and
  * 260818-booking-flow) over a segmented tab bar (Tổng quan + one tab per day)

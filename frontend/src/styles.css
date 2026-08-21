@@ -116,7 +116,7 @@
 }
 
 @theme {
-  /* Design's body{font-family} (V-OTA Planner.dc.html), not a Tailwind default —
+  /* Design's body{font-family} (VP-OTA Planner.dc.html), not a Tailwind default —
      Apple system fonts first, 'Be Vietnam Pro' (loaded in index.html) as the
      Vietnamese-glyph fallback before Segoe UI/sans-serif. Previously undeclared,
      so Tailwind emitted its own generic --font-sans default here instead. Not
@@ -314,7 +314,7 @@ button:not(:disabled),
 
 /* ============================================================
    Glass utilities — shared panel/card/chip surfaces, ported from the ~20 repeated
-   inline formulas in V-OTA Planner.dc.html. See phase-01 doc for the formula source.
+   inline formulas in VP-OTA Planner.dc.html. See phase-01 doc for the formula source.
    ============================================================ */
 
 @utility glass-panel {
@@ -347,7 +347,7 @@ button:not(:disabled),
 }
 
 /* Shimmer skeleton block — exact formula from the design's generating-state
-   skeletons (V-OTA Planner.dc.html:150). Shared by stage-generating (Phase 7)
+   skeletons (VP-OTA Planner.dc.html:150). Shared by stage-generating (Phase 7)
    and the hotel cards (Phase 8) via skeleton-card.tsx. */
 @utility shimmer-block {
   background: linear-gradient(
@@ -423,7 +423,7 @@ button:not(:disabled),
 }
 
 /* Phase 8 hotel card — hover/selected/focused surface states. Values from the
-   design's card-state table (V-OTA Planner.dc.html:2448-2454): hover lifts the
+   design's card-state table (VP-OTA Planner.dc.html:2448-2454): hover lifts the
    card; selection is a stronger --btn border; an open detail panel (hFocus)
    only changes border + outer ring, matching the design exactly. Declared as
    custom-property defaults so .hotel-card:hover (0,2,0) ties with the
@@ -516,7 +516,7 @@ button:not(:disabled),
    uses the .rdp-range_* rules below too) and ProfilePasswordModal's
    DateOfBirthField (single mode, never matches those range rules — harmless).
    Values ported from DatePicker.dc.html:16-25 and
-   V-OTA Planner.dc.html:2237-2243.
+   VP-OTA Planner.dc.html:2237-2243.
    ============================================================ */
 
 /* Custom nav row above (prev/next month + year buttons) replaces this —

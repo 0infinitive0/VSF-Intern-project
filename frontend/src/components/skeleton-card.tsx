@@ -7,7 +7,7 @@ import type { ReactNode } from 'react'
  *
  * Variants:
  *  - 'lines' (default): staggered shimmer bars, matching the design's
- *    generating-state skeletons (V-OTA Planner.dc.html:150 — bar radius 14,
+ *    generating-state skeletons (VP-OTA Planner.dc.html:150 — bar radius 14,
  *    gradient --fill → --g3 → --fill moving via vShimmer 1.5s).
  *  - 'hotel': mirrors the upcoming HotelCard shape (phase-08: 112×112 media
  *    thumb + name/area/price rows) so the hotels stage and its generating

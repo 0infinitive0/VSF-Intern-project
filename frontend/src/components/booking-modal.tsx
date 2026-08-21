@@ -12,7 +12,7 @@ import { formatCurrency } from '../lib/format-currency'
 import { formatDateTile, formatFullDate, nightsBetween } from '../lib/format-trip-dates'
 
 const CLOSE_TRANSITION_MS = 380
-// Design's client-computed 10% (V-OTA Planner.dc.html: `tax = sub * 0.1`) —
+// Design's client-computed 10% (VP-OTA Planner.dc.html: `tax = sub * 0.1`) —
 // no backend tax field exists, so this stays a display-only markup on top of
 // the real per-room subtotal, not something sent to the reservation API.
 const TAX_RATE = 0.1
@@ -46,7 +46,7 @@ function mmss(ms: number): string {
 }
 
 /**
- * BookingModal — the checkout flow added by the V-OTA Planner design update:
+ * BookingModal — the checkout flow added by the VP-OTA Planner design update:
  * guest details → payment → done, opened from hold-banner.tsx's "Đặt phòng".
  * A centered glass dialog over a backdrop (this app's existing modal
  * convention — ConfirmDialog, ProfilePasswordModal) rather than the design's
@@ -283,7 +283,7 @@ export default function BookingModal({
   const hotelAddress = hotelDetail?.address ?? hotelArea ?? null
 
   // Step-pill visual state — mirrors the design's `steps` builder exactly
-  // (V-OTA Planner.dc.html: completed = ok-green + check, active = dark
+  // (VP-OTA Planner.dc.html: completed = ok-green + check, active = dark
   // "btn" fill + ring, upcoming = faint fill).
   const stepMeta = (
     [

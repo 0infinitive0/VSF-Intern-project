@@ -7,7 +7,7 @@ import { composeSessionTitle } from '../lib/session-title'
 import type { SessionSummary } from '../types'
 
 // 115° diagonal stripe, matching convoRows' thumb token exactly
-// (V-OTA Planner.dc.html:1523). Real thumbnail_url always wins over this.
+// (VP-OTA Planner.dc.html:1523). Real thumbnail_url always wins over this.
 function thumbGradient(active: boolean): string {
   const stripe = active ? 'rgba(58,115,222,.28)' : 'var(--t4)'
   return `repeating-linear-gradient(115deg,${stripe} 0 7px,transparent 7px 14px)`
