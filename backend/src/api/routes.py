@@ -163,7 +163,7 @@ def _owned_session_or_404(session_id: str, current_user: AuthenticatedUser | Non
 
 @router.get("/hotel-amenities", response_model=list[AmenityCatalogPayload])
 def hotel_amenity_catalog() -> list[AmenityCatalogPayload]:
-    """Return approved hotel-scoped catalog entries for client-side filtering."""
+    """Return every approved amenity catalog entry for client-side labels."""
     return [
         AmenityCatalogPayload(
             id=entry.id,
@@ -173,7 +173,6 @@ def hotel_amenity_catalog() -> list[AmenityCatalogPayload]:
             icon_key=entry.icon_key,
         )
         for entry in query_approved_amenities()
-        if entry.scope in {"hotel", "both"}
     ]
 
 
