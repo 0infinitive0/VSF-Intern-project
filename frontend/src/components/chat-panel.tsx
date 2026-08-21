@@ -181,7 +181,7 @@ export default function ChatPanel({
   //
   // Text typed while the sở thích step is the active widget goes into
   // `preferencesNotes` (rendered into the "Sở thích:" sentence) instead of
-  // `notes` (rendered into "Ghi chú:") — no check against the closed
+  // `notes` (its own unlabelled sentence) — no check against the closed
   // PreferenceKey label set, it's appended verbatim. Any other step still
   // folds typed text into `notes`, unchanged.
   const handleComposerSend = (text: string) => {

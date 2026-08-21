@@ -103,7 +103,16 @@ describe('composeIntakeMessage', () => {
     expect(message).toContain('Đi cùng: đi cùng gia đình.')
     expect(message).toContain('Nhịp độ: thư thái.')
     expect(message).toContain('Nhịp sinh hoạt: bắt đầu sớm.')
-    expect(message).toContain('Ghi chú: Ưu tiên view biển.')
+    expect(message).toContain('Ưu tiên view biển.')
+    expect(message).not.toContain('Ghi chú')
+  })
+
+  // Typed free text is echoed back in the user's own chat bubble, so a bare
+  // "2 người" must read as itself, not as a labelled note.
+  it('emits notes as a plain sentence with no label, adding a period only when missing', () => {
+    expect(composeIntakeMessage(fill({ notes: '2 người' }))).toContain('2 người.')
+    expect(composeIntakeMessage(fill({ notes: 'Có trẻ nhỏ?' }))).toContain('Có trẻ nhỏ?')
+    expect(composeIntakeMessage(fill({ notes: 'Có trẻ nhỏ?' }))).not.toContain('Có trẻ nhỏ?.')
   })
 
   it('omits the trip-facts sentence when required fields are incomplete', () => {
