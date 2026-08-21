@@ -39,6 +39,14 @@ from src.services.trip_finalize import is_trip_finalized
 #: intent vocabulary in `prompts.py`.
 _READ_ONLY_INTENT = "general_question"
 
+#: `extract_patch`'s label for "the user is changing the itinerary". Same
+#: shared vocabulary as `_READ_ONLY_INTENT` (`prompts.py`).
+_ITINERARY_EDIT_INTENT = "update_itinerary"
+
+#: `extract_patch`'s label for "the user is picking one of the hotels
+#: already shown". Same shared vocabulary.
+_SELECT_HOTEL_INTENT = "select_hotel"
+
 logger = logging.getLogger(__name__)
 
 MAX_SUPERVISOR_ITERATIONS = 5
@@ -182,6 +190,48 @@ def _locked_turn_reply(state: TravelGraphState, blocked: list[str]) -> dict[str,
     }
 
 
+def _is_itinerary_edit_turn(state: TravelGraphState, workers: list[str]) -> bool:
+    """The extractor read this turn as an itinerary edit, but the patch layer
+    had nothing to queue.
+
+    `ALLOWED_PATHS` has no path for "drop this one place from my plan", so
+    "tôi không muốn đi vincom" extracts as `update_itinerary` with an empty
+    changes list. `pending_tasks` stays empty, and an empty queue is exactly
+    what makes the LLM branch below unconstrained -- it answered that turn
+    with `qa_node`, which writes nothing. The model read the plan, wrote a
+    revised one into the chat ("lịch trình đã điều chỉnh ... mà không có
+    Vincom"), and the itinerary on screen still had Vincom in it. A reply
+    describing an edit that never happened is the worst outcome available
+    here: the user believes the plan changed.
+
+    So the model still picks the ACTION (only it can tell "lên lịch lại" --
+    redo every day -- from "bỏ Vincom" -- touch one item), but it no longer
+    gets to answer an edit with the read-only worker. `is_impossible` leaves
+    the no-trip case on its existing paths (`needs_trip_first`, then
+    `qa_node`), and `_has_reported` means a re-entry after the node already
+    ran can never bounce back into it.
+    """
+    return (
+        not workers
+        and state.get("intent") == _ITINERARY_EDIT_INTENT
+        and not is_impossible("itinerary_node", state)
+        and not _has_reported(state, "itinerary_node")
+    )
+
+
+def _edit_item_delegation(state: TravelGraphState, source: str) -> dict[str, Any]:
+    """`itinerary_node` for an edit turn the LLM could not route.
+
+    `edit_item` is the conservative action of the four: it changes the one
+    item the request names and leaves the rest of the day alone, where
+    `rebuild_days` would regenerate whole days off a request that may only
+    have meant one stop. `plan_trip_edit` still owns "is this actually an
+    edit?" and answers `clarify`/`not_edit` in words when it is not.
+    """
+    task = {"action": "edit_item", "user_request": _last_human_message(state)}
+    return {**_delegate("itinerary_node", source, state), "task_description": json.dumps(task)}
+
+
 def supervisor(state: TravelGraphState) -> dict[str, Any]:
     """Delegation only. Completion is decided by `all_tasks_done` on the edge."""
     # A non-empty `rebuild_day_queue` means `itinerary_node` already started
@@ -294,6 +344,27 @@ def supervisor(state: TravelGraphState) -> dict[str, Any]:
             }
         return _delegate("qa_node", "read_only_intent", state)
 
+    # A pick goes to the node that can act on one, deterministically.
+    #
+    # A hotel pick is not an `ALLOWED_PATHS` trip fact, so "chọn khách sạn
+    # số 1" leaves `pending_tasks` empty and reaches the unconstrained LLM
+    # branch below. `qa_node` is a plausible-looking answer there -- it owns
+    # "questions about the hotels already shown" -- and it cannot select
+    # anything, so the pick would be narrated instead of made. `hotel_node`
+    # is the only node that turns a pick into `trip_data`, and it now
+    # resolves the card from the message itself (`_picked_from_chat`).
+    #
+    # Gated on cards actually being on screen: with no shortlist there is
+    # nothing to pick FROM, and `hotel_node` would only search -- which the
+    # existing paths already arrange, without claiming this turn was a pick.
+    if not workers and state.get("intent") == _SELECT_HOTEL_INTENT:
+        # Imported here, not at module scope, for the reason `routing.py`'s
+        # `can_list_nearby` states: `agents.tools` pulls in the service layer.
+        from src.agents.tools.shown_hotels import shown_hotel_options
+
+        if shown_hotel_options(state):
+            return _delegate("hotel_node", "select_hotel_intent", state)
+
     # Fast path: a first delegation, whatever its size -> no LLM needed.
     #
     # `WORKER_ORDER` already fixes the order, for a causal reason (the hotel
@@ -313,6 +384,8 @@ def supervisor(state: TravelGraphState) -> dict[str, Any]:
     if workers and not state.get("task_results"):
         return _delegate(workers[0], "impact_map", state)
 
+    edit_turn = _is_itinerary_edit_turn(state, workers)
+
     try:
         llm = get_fast_llm(temperature=0)
         manifest = build_manifest(state)
@@ -331,7 +404,14 @@ def supervisor(state: TravelGraphState) -> dict[str, Any]:
         # reachable — found during code review, reproduced empirically.
         if workers and decision.next_worker not in workers:
             raise ValueError(f"{decision.next_worker} is not in this turn's pending_tasks: {workers}")
+        # An edit turn may not be answered by the worker that cannot edit --
+        # see `_is_itinerary_edit_turn`. Raising routes it to the fallback
+        # below, which delegates the edit rather than narrating it.
+        if edit_turn and decision.next_worker == "qa_node":
+            raise ValueError("qa_node cannot serve an itinerary-edit turn")
         return _delegate(decision.next_worker, "supervisor", state, decision)
     except Exception:
         logger.exception("Supervisor LLM routing failed; falling back to IMPACT_MAP")
+        if edit_turn:
+            return _edit_item_delegation(state, "itinerary_edit_intent")
         return _delegate(workers[0] if workers else "respond", "impact_map_fallback", state)

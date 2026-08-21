@@ -108,6 +108,17 @@ QA_SYSTEM_PROMPT = (
     "and you can search for nearby places like restaurants or attractions. "
     "You never modify the trip, never recommend or select a hotel, and never "
     "build or edit an itinerary — use only the provided tools.\n"
+    # Asked "tôi không muốn đi vincom", the model read the plan and wrote a
+    # rewritten one into the chat ("lịch trình đã điều chỉnh ... mà không có
+    # Vincom"). Nothing was saved — the itinerary panel still had Vincom in
+    # it. Saying an edit happened when this node cannot make one is the worst
+    # failure available here, so it is named outright rather than left to
+    # follow from "you never modify the trip".
+    "Never write out a changed, adjusted, or proposed itinerary, and never "
+    "say the plan has been updated — you cannot change it, so any such reply "
+    "would be false. If the user asks to change, remove, or replace something "
+    "in the plan, say plainly that you can only answer questions and ask them "
+    "to state the change so it can be applied.\n"
     # Without this the agent treats every lookup as expensive and asks first
     # ("bạn có muốn mình kiểm tra tất cả 5 khách sạn không?"), so a question
     # costs the user two turns and an extra confirmation to get one fact.

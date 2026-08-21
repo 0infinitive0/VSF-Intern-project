@@ -658,3 +658,127 @@ class TestNeedsTripFirst:
 
         assert result["next_worker"] == "qa_node"
         assert result["routing_source"] != "needs_trip_first"
+
+
+# --- Empty-patch itinerary edit ----------------------------------------------
+#
+# Trace fdfad846-25d9-446b-8b88-ce4b7d015021: "ngày tôi không muốn đi vincom"
+# extracted as `update_itinerary` with an empty changes list (no ALLOWED_PATHS
+# entry fits "drop this place"), so `pending_tasks` was empty and the turn
+# reached the unconstrained LLM branch, which answered it with `qa_node`.
+# `qa_node` wrote a revised itinerary into the chat and saved nothing.
+
+
+def _edit_turn_state(message: str = "ngày tôi không muốn đi vincom", **overrides):
+    state = _state(
+        messages=[HumanMessage(content=message)],
+        intent="update_itinerary",
+        pending_tasks=[],
+        task_results=[],
+        trip_data={"itineraries": [{}]},
+        travel_state={"destination": {"presence": "set", "value": "Hà Nội"}},
+    )
+    state.update(overrides)
+    return state
+
+
+def test_edit_turn_rejects_qa_node_and_falls_back_to_edit_item(monkeypatch):
+    decision = SupervisorDecision(next_worker="qa_node", task_description="answer", reasoning="x")
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeLLM(decision))
+
+    message = "ngày tôi không muốn đi vincom"
+    result = supervisor(_edit_turn_state(message))
+
+    assert result["next_worker"] == "itinerary_node"
+    assert result["routing_source"] == "itinerary_edit_intent"
+    assert json.loads(result["task_description"]) == {"action": "edit_item", "user_request": message}
+
+
+def test_edit_turn_keeps_the_llms_own_itinerary_action(monkeypatch):
+    """The model still picks the action — only it can tell "lên lịch lại"
+    (redo every day) from "bỏ Vincom" (touch one item)."""
+    decision = SupervisorDecision(
+        next_worker="itinerary_node", task_description="bỏ Vincom", reasoning="x", action="edit_item"
+    )
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeLLM(decision))
+
+    result = supervisor(_edit_turn_state())
+
+    assert result["next_worker"] == "itinerary_node"
+    assert result["routing_source"] == "supervisor"
+    assert json.loads(result["task_description"]) == {"action": "edit_item", "user_request": "bỏ Vincom"}
+
+
+def test_read_only_turn_still_reaches_qa_node(monkeypatch):
+    """The guard is scoped to the edit intent: a question keeps its worker."""
+    decision = SupervisorDecision(next_worker="qa_node", task_description="answer", reasoning="x")
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeLLM(decision))
+
+    result = supervisor(_edit_turn_state(intent="hotel_search"))
+
+    assert result["next_worker"] == "qa_node"
+
+
+def test_edit_turn_without_trip_keeps_its_existing_paths(monkeypatch):
+    """No trip yet: `itinerary_node` is impossible, so the guard must not
+    fire and `qa_node` stays reachable."""
+    decision = SupervisorDecision(next_worker="qa_node", task_description="answer", reasoning="x")
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeLLM(decision))
+
+    result = supervisor(_edit_turn_state(trip_data={}))
+
+    assert result["next_worker"] == "qa_node"
+
+
+def test_edit_turn_does_not_reroute_after_itinerary_node_reported(monkeypatch):
+    """`itinerary_node` already spoke this turn — re-delegating would replan
+    the same request a second time."""
+    decision = SupervisorDecision(next_worker="qa_node", task_description="answer", reasoning="x")
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeLLM(decision))
+
+    result = supervisor(
+        _edit_turn_state(task_results=[{"worker": "itinerary_node", "status": "ok", "reply": "Đã xoá."}])
+    )
+
+    assert result["next_worker"] == "qa_node"
+
+
+# --- A hotel pick typed in chat ----------------------------------------------
+#
+# Same trace as `test_hotel_node.py`'s pick tests: `select_hotel` carries no
+# ALLOWED_PATHS change, so `pending_tasks` is empty and the turn reaches the
+# unconstrained LLM branch, where `qa_node` ("questions about the hotels
+# already shown") is a plausible-looking answer that cannot select anything.
+
+
+def test_select_hotel_intent_with_cards_on_screen_routes_to_hotel_node(monkeypatch):
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", _unreachable_llm_factory)
+
+    state = _state(
+        messages=[HumanMessage(content="chọn khách sạn số 1")],
+        intent="select_hotel",
+        pending_tasks=[],
+        task_results=[],
+        previous_hotel_options=[{"id": "h1", "name": "Horizon Hotel Apartment"}],
+    )
+    result = supervisor(state)
+
+    assert result["next_worker"] == "hotel_node"
+    assert result["routing_source"] == "select_hotel_intent"
+
+
+def test_select_hotel_intent_without_cards_keeps_the_existing_paths(monkeypatch):
+    """Nothing to pick FROM — the turn must not claim to be a pick."""
+    decision = SupervisorDecision(next_worker="qa_node", task_description="answer", reasoning="x")
+    monkeypatch.setattr(supervisor_module, "get_fast_llm", lambda **_kwargs: _FakeLLM(decision))
+
+    state = _state(
+        messages=[HumanMessage(content="chọn khách sạn số 1")],
+        intent="select_hotel",
+        pending_tasks=[],
+        task_results=[],
+        previous_hotel_options=[],
+    )
+    result = supervisor(state)
+
+    assert result["routing_source"] != "select_hotel_intent"

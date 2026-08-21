@@ -530,3 +530,105 @@ def test_a_genuinely_unsatisfiable_filter_still_reports_the_constraint(monkeypat
     result = hotel_node(_graph_state(_seeded_travel_state(hotel_preferences__amenities=["breakfast"])))
 
     assert result["task_results"][-1]["status"] == "no_results_amenities"
+
+
+# --- Picking a hotel by typing, not clicking ---------------------------------
+#
+# Trace 01a0235b-538f-75f3-a70d-5e5c5192c719: "chọn khách sạn đầu tiên"
+# extracted as `select_hotel` with an empty patch, `selected_hotel_id` stayed
+# None (only POST /hotels/select ever set it), and the turn fell through to
+# the search branch -- the user asked to pick and got "Mình tìm được 15 khách
+# sạn phù hợp", the same list again.
+#
+# `pick_shown_option` is stubbed here: which sentence maps to which card is
+# its own module's contract (`test_shortlist_pick.py`). What these lock is
+# what this node does with each answer it can give.
+
+
+_SHOWN = [
+    {"id": "h-horizon", "name": "Horizon Hotel Apartment"},
+    {"id": "h-hoabinh", "name": "Khách sạn Hòa Bình"},
+]
+
+
+def _pick_state(message: str, options: list[dict]) -> dict:
+    state = _graph_state(_seeded_travel_state(), message=message)
+    state["intent"] = "select_hotel"
+    state["previous_hotel_options"] = options
+    return state
+
+
+def _capturing_selection(captured: dict):
+    def _fake_selection(**kwargs):
+        captured.update(kwargs)
+        return {"hotel": {"id": kwargs["hotel_id"]}}, "Đã chọn khách sạn."
+
+    return _fake_selection
+
+
+def test_a_resolved_position_reaches_the_selection_branch(monkeypatch):
+    captured: dict = {}
+    monkeypatch.setattr(hotel_node_module, "_handle_hotel_selection", _capturing_selection(captured))
+    monkeypatch.setattr(hotel_node_module, "pick_shown_option", lambda _msg, _options: 1)
+
+    result = hotel_node(_pick_state("chọn khách sạn đầu tiên", _SHOWN))
+
+    assert captured["hotel_id"] == "h-horizon"
+    assert result["task_results"][-1]["status"] == "hotel_selected"
+    assert result["trip_data"] == {"hotel": {"id": "h-horizon"}}
+
+
+def test_the_position_maps_to_the_card_at_that_place_in_the_list(monkeypatch):
+    """Position, not `rank`: the cards are numbered by enumerating this list,
+    and it is merged across searches, so a card's own `rank` field can no
+    longer match the number printed on it."""
+    captured: dict = {}
+    monkeypatch.setattr(hotel_node_module, "_handle_hotel_selection", _capturing_selection(captured))
+    monkeypatch.setattr(hotel_node_module, "pick_shown_option", lambda _msg, _options: 2)
+
+    hotel_node(_pick_state("cho mình Hòa Bình", _SHOWN))
+
+    assert captured["hotel_id"] == "h-hoabinh"
+
+
+def test_an_unresolved_pick_asks_instead_of_searching_again(monkeypatch):
+    """The reported failure mode: answering a pick with a fresh search."""
+    monkeypatch.setattr(hotel_node_module, "_handle_hotel_selection", _unreachable_llm)
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _unreachable_llm)
+    monkeypatch.setattr(hotel_node_module, "pick_shown_option", lambda _msg, _options: None)
+
+    result = hotel_node(_pick_state("chọn khách sạn nào cũng được", _SHOWN))
+
+    assert result["task_results"][-1]["status"] == "selection_unresolved"
+    assert "số thứ tự" in result["task_results"][-1]["reply"]
+    assert "trip_data" not in result
+
+
+def test_select_intent_with_no_cards_yet_still_searches(monkeypatch):
+    """No shortlist means there is nothing to pick FROM — searching is the
+    right answer, and neither the picker nor the ask-which-one branch runs."""
+    calls: list = []
+
+    def _fake_search(*args, **kwargs):
+        calls.append(kwargs)
+        raise NoHotelsMatchRating(4)
+
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _fake_search)
+    monkeypatch.setattr(hotel_node_module, "pick_shown_option", _unreachable_llm)
+
+    result = hotel_node(_pick_state("chọn khách sạn số 1", []))
+
+    assert calls, "the search branch must still run"
+    assert result["task_results"][-1]["status"] != "selection_unresolved"
+
+
+def test_a_non_select_intent_never_consults_the_picker(monkeypatch):
+    """A search turn with cards already on screen must not be re-read as a
+    pick — the picker is gated on the extractor's own intent."""
+    monkeypatch.setattr(hotel_node_module, "pick_shown_option", _unreachable_llm)
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", lambda *a, **k: [])
+
+    state = _pick_state("tìm khách sạn rẻ hơn", _SHOWN)
+    state["intent"] = "hotel_search"
+
+    hotel_node(state)

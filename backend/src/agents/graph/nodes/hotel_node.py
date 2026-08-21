@@ -39,6 +39,7 @@ from typing import Any
 from langgraph.types import interrupt
 
 from src.agents.graph.state import TravelGraphState
+from src.agents.tools.shown_hotels import shown_hotel_options
 from src.api.streaming import emit_phase
 from src.domain.travel_state import Presence, TravelState, apply_patch
 from src.i18n import t
@@ -51,6 +52,7 @@ from src.services.hotel_selection import (
     rank_hotel_candidates,
     select_hotel_candidates,
 )
+from src.services.shortlist_pick import pick_shown_option
 from src.services.search_center import CenterResolution, extract_named_place, resolve_center
 from src.services.trip_planner import _get_destination_id, build_selected_hotel_trip
 from src.services.trip_scheduler import parse_coordinates
@@ -58,6 +60,12 @@ from src.services.trip_scheduler import parse_coordinates
 logger = logging.getLogger(__name__)
 
 _WORKER_NAME = "hotel_node"
+
+#: `extract_patch`'s label for "the user is picking one of the hotels
+#: already shown" (`prompts.py`). Chat text is the only way this reaches
+#: the node -- `POST /hotels/select` sets `selected_hotel_id` directly and
+#: never needs an intent.
+_SELECT_HOTEL_INTENT = "select_hotel"
 _HOTEL_OPTION_LIMIT = 10
 _HOTEL_DISPLAY_LIMIT = 5
 
@@ -212,6 +220,45 @@ def _handle_hotel_selection(
     return generated.trip_data, generated.reply
 
 
+def _last_human_message(state: TravelGraphState) -> str:
+    for message in reversed(state.get("messages") or []):
+        if getattr(message, "type", None) == "human":
+            return str(getattr(message, "content", ""))
+    return ""
+
+
+def _picked_from_chat(state: TravelGraphState) -> tuple[str | None, bool]:
+    """The hotel this turn's message picks out of the cards on screen.
+
+    Returns `(hotel_id, had_cards)`. `had_cards` separates the two ways
+    `hotel_id` can be None: no shortlist exists yet (fall through to a
+    search, which is what the user needs) versus a shortlist the message
+    failed to point at (ask which one, never search again silently).
+
+    Why this exists: `selected_hotel_id` -- the ONLY trigger for the
+    selection branch below -- was set exclusively by `POST /hotels/select`,
+    i.e. clicking a card. Typing "chọn khách sạn đầu tiên" or a hotel's name
+    produced `intent: "select_hotel"` with an empty patch (a pick is not an
+    `ALLOWED_PATHS` trip fact), so `selected_hotel_id` stayed None and the
+    turn fell straight through to the search branch: the user asked to pick
+    hotel 1 and got "Mình tìm được 15 khách sạn phù hợp" -- the same list,
+    again (trace 01a0235b-538f-75f3-a70d-5e5c5192c719).
+
+    `pick_shown_option` returns a POSITION in the list it was shown, never
+    an id, and the row lookup happens here -- see that module's docstring
+    for why the model is not allowed to name the record.
+    """
+    options = shown_hotel_options(state)
+    if not options:
+        return None, False
+    position = pick_shown_option(_last_human_message(state), options)
+    if position is None:
+        return None, True
+    picked = options[position - 1]
+    hotel_id = str(picked.get("id") or picked.get("hotel_id") or "")
+    return (hotel_id or None), True
+
+
 def hotel_node(state: TravelGraphState) -> dict[str, Any]:
     pending = [worker for worker in (state.get("pending_tasks") or []) if worker != _WORKER_NAME]
     language = state.get("language") or "vi"
@@ -263,6 +310,26 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
     end_slot = travel_state.get("dates.end")
     start_date = str(start_slot.value) if start_slot.presence is Presence.SET else None
     end_date = str(end_slot.value) if end_slot.presence is Presence.SET else None
+
+    # A pick typed in chat, resolved to the same `hotel_id` the card click
+    # would have sent -- see `_picked_from_chat`. Placed here so both entry
+    # points converge on one selection path below.
+    if not selected_hotel_id and state.get("intent") == _SELECT_HOTEL_INTENT:
+        selected_hotel_id, had_cards = _picked_from_chat(state)
+        if not selected_hotel_id and had_cards:
+            # Cards are on screen but the message pointed at none of them
+            # (or at two equally well). Searching again would answer a pick
+            # with a list, which is the bug this branch exists to close.
+            reply = t(
+                "Mình chưa rõ bạn muốn chọn khách sạn nào. Bạn cho mình biết số thứ tự "
+                "(ví dụ \"khách sạn số 1\") hoặc tên đầy đủ của khách sạn nhé.",
+                language,
+            )
+            task_results = [
+                *(state.get("task_results") or []),
+                {"worker": _WORKER_NAME, "status": "selection_unresolved", "reply": reply},
+            ]
+            return {"pending_tasks": pending, "task_results": task_results, "selected_hotel_id": None}
 
     if selected_hotel_id:
         trip_data, reply = _handle_hotel_selection(
