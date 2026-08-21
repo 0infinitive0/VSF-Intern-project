@@ -11,7 +11,7 @@ scope: VI-only — Layer 1 23 records (hotels+attractions), Layer 2 9 conversati
 ## Kết quả chính (llm_precision, llm_context_relevance)
 
 | Metric (vi) | Cuối phiên |
-|---|---|---|
+|---|---|
 | `llm_precision` |  0.862 |
 | `llm_context_relevance` | 0.833 |
 
