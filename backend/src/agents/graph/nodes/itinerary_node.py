@@ -643,9 +643,18 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
         except Exception as exc:
             logger.exception("itinerary_node: edit_item failed")
             return _err(f"Chỉnh sửa thất bại: {exc}")
-            
+
         trip_data = working
-        
+
+        # Same fix as hotel_node's change_hotel path (commit 811450d): every
+        # mutation of trip_data["itinerary_items"] must recompute real
+        # Mapbox routes itself, or route_to_next/route_from_hotel stay stale
+        # and the map falls back to drawing straight lines between stops.
+        # Nothing downstream of this node does that for edit_item.
+        from src.services.routing import recalculate_itinerary_routes
+
+        recalculate_itinerary_routes(trip_data)
+
         if suggest_ops:
             pending_suggest_ops = list(state.get("pending_suggest_operations") or [])
             from dataclasses import asdict
@@ -782,6 +791,15 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
     # (`rebuild_day_summaries`) so the user sees what changed, not just that
     # something did — the day-rebuild counterpart to `edit_item`'s
     # `adjustments` messages.
+    # Same fix as edit_item above, called once here rather than per queued
+    # day: the day-rebuild loop re-enters this node once per day via the
+    # `all_tasks_done` conditional edge, so recalculating inside the loop
+    # would mean O(n) redundant Mapbox calls for an n-day rebuild. This is
+    # the point where rebuild_day_queue is fully drained for the turn.
+    from src.services.routing import recalculate_itinerary_routes
+
+    recalculate_itinerary_routes(trip_data)
+
     change_lines = "\n".join(rebuild_day_summaries)
     completion = format_trip_summary_reply(trip_data, language)
     reply = f"{change_lines}\n{completion}" if change_lines else completion

@@ -453,3 +453,124 @@ class TestItemLevelEditAction:
 
 
 import json  # noqa: E402 — placed here to avoid circular import in fixtures above
+
+
+# ---------------------------------------------------------------------------
+# Route recalculation on itinerary change (regression)
+# ---------------------------------------------------------------------------
+#
+# Same bug class commit 811450d fixed for hotel changes
+# (`build_selected_hotel_trip`'s change_hotel branch mutated trip_data
+# without ever calling `recalculate_itinerary_routes`, so the map fell back
+# to drawing straight "as the crow flies" lines between stops): `edit_item`
+# and `rebuild_days` mutate `trip_data["itinerary_items"]` too, but nothing
+# in `itinerary_node.py` recalculated real Mapbox routes afterward, so every
+# itinerary edit or day rebuild left `route_to_next`/`route_from_hotel`
+# stale or unset.
+
+
+class TestRouteRecalculationOnItineraryChange:
+    def test_edit_item_recalculates_routes(self) -> None:
+        from src.agents.graph.nodes.itinerary_node import itinerary_node
+        from src.agents.graph.state import TravelGraphState
+        from src.services.trip_edit_planner import TripEditPlan
+
+        data = _make_trip_data(duration_days=2)
+
+        state = TravelGraphState(
+            session_id="test",
+            language="vi",
+            messages=[],
+            travel_state={},
+            trip_data=data,
+            patch=[],
+            intent="",
+            proposed_travel_state={},
+            applied_changes=[],
+            rejected_changes=[],
+            impacted_workflows=[],
+            unresolved_resume_text=None,
+            missing_slots=[],
+            next_question=None,
+            jailbreak_blocked=False,
+            supervisor_iterations=0,
+            pending_tasks=["itinerary_node"],
+            next_worker=None,
+            task_description=json.dumps({"action": "edit_item", "user_request": "Bỏ hoạt động ngày 2"}),
+            task_results=[],
+            routing_source="",
+            routing_reasoning="",
+            rebuild_day_queue=[],
+            rebuilt_days=[],
+            response={},
+        )
+
+        mock_plan = MagicMock(spec=TripEditPlan)
+        mock_plan.decision = "apply"
+        mock_plan.operations = []
+
+        with (
+            patch(
+                "src.agents.graph.nodes.itinerary_node.plan_trip_edit",
+                return_value=mock_plan,
+            ),
+            patch(
+                "src.agents.graph.nodes.itinerary_node.apply_trip_edit_plan",
+                return_value=["Đã bỏ hoạt động."],
+            ),
+            patch("src.services.routing.recalculate_itinerary_routes") as mock_recalc,
+        ):
+            result = itinerary_node(state)
+
+        mock_recalc.assert_called_once()
+        assert mock_recalc.call_args[0][0] is result["trip_data"]
+
+    def test_rebuild_days_recalculates_routes_exactly_once(self) -> None:
+        """A single-day rebuild (queue fully drains within this one call to
+        itinerary_node) must trigger recalculation exactly once -- not once
+        per queued day, which would cost O(n) redundant Mapbox calls for an
+        n-day rebuild."""
+        from src.agents.graph.nodes.itinerary_node import itinerary_node
+        from src.agents.graph.state import TravelGraphState
+
+        data = _make_trip_data(duration_days=1)
+
+        state = TravelGraphState(
+            session_id="test",
+            language="vi",
+            messages=[],
+            travel_state={},
+            trip_data=data,
+            patch=[],
+            intent="",
+            proposed_travel_state={},
+            applied_changes=[],
+            rejected_changes=[],
+            impacted_workflows=[],
+            unresolved_resume_text=None,
+            missing_slots=[],
+            next_question=None,
+            jailbreak_blocked=False,
+            supervisor_iterations=0,
+            pending_tasks=["itinerary_node"],
+            next_worker=None,
+            task_description=json_task("rebuild_days", [1]),
+            task_results=[],
+            routing_source="",
+            routing_reasoning="",
+            rebuild_day_queue=[],
+            rebuilt_days=[],
+            response={},
+        )
+
+        with (
+            patch(
+                "src.agents.graph.nodes.itinerary_node._invoke_rebuild_day",
+                side_effect=lambda *args, **kwargs: args[0],
+            ),
+            patch("src.services.routing.recalculate_itinerary_routes") as mock_recalc,
+        ):
+            result = itinerary_node(state)
+
+        mock_recalc.assert_called_once()
+        assert mock_recalc.call_args[0][0] is result["trip_data"]
