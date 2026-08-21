@@ -490,6 +490,8 @@
   "checkoutDoneCode": "Mã đặt phòng",
   "checkoutDoneRoomsLabel": "Phòng đã đặt",
   "checkoutDoneClose": "Đóng",
+  "checkoutDoneEmailNotice": "Mã đặt phòng và thông tin xác nhận đã được gửi đến email của bạn. Lịch trình chi tiết đã sẵn sàng!",
+  "checkoutDoneExploreItinerary": "Khám phá lịch trình chuyến đi →",
   "thinkingIntentUpdateTrip": "cập nhật chuyến đi",
   "thinkingIntentGeneralQuestion": "câu hỏi chung",
   "thinkingIntentRebuildDays": "dựng lại ngày",

@@ -293,8 +293,9 @@ export default function BookingModal({
     ] as const
   ).map(([key, label], i) => {
     const idx = i + 1
-    const completed = idx < currentStepN
-    const active = idx === currentStepN
+    const isDone = effectiveStep === 'done'
+    const completed = isDone || idx < currentStepN
+    const active = !isDone && idx === currentStepN
     return {
       key,
       label,
@@ -302,8 +303,8 @@ export default function BookingModal({
       bg: completed ? 'var(--ok)' : active ? 'var(--btn)' : 'var(--fill2)',
       fg: completed ? 'var(--on-acc)' : active ? 'var(--btn-fg)' : 'var(--t2)',
       ring: active ? '0 8px 20px -8px rgb(var(--shadow-rgb) / 0.55)' : 'none',
-      labelColor: active ? 'var(--t1)' : 'var(--t2)',
-      weight: active ? 590 : 500,
+      labelColor: completed || active ? 'var(--t1)' : 'var(--t2)',
+      weight: completed || active ? 590 : 500,
       lineBg: completed ? 'var(--ok)' : 'var(--stroke)',
     }
   })
@@ -767,6 +768,30 @@ export default function BookingModal({
                         </div>
                       </div>
                     )}
+
+                    {/* Email confirmation notice */}
+                    <div
+                      className="flex items-center gap-3 p-3.5 rounded-2xl border"
+                      style={{
+                        background: 'var(--ok-soft)',
+                        borderColor: 'rgba(42, 145, 135, 0.35)',
+                        color: 'var(--ok-ink)',
+                      }}
+                    >
+                      <span className="material-symbols-outlined text-[20px] text-ok flex-none">mark_email_read</span>
+                      <span className="text-[12.5px] font-[500] leading-snug">{t('checkoutDoneEmailNotice')}</span>
+                    </div>
+
+                    {/* Action Button */}
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={requestClose}
+                        className="w-full py-3.5 px-6 rounded-2xl text-[14px] font-[590] tracking-[-0.15px] text-center text-on-primary bg-gradient-to-r from-[#3A73DE] to-[#2C5FC9] hover:from-[#4B82EA] hover:to-[#336CD8] shadow-[0_12px_28px_-10px_rgba(44,95,201,0.65)] cursor-pointer transition-all duration-200 active:scale-[0.99]"
+                      >
+                        {t('checkoutDoneExploreItinerary')}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
