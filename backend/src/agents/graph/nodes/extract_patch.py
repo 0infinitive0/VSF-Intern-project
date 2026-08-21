@@ -83,7 +83,7 @@ from src.agents.graph.prompts import build_extract_patch_prompt
 from src.agents.graph.routing import _INCOMPLETE_EDIT_INTENTS
 from src.agents.graph.state import TravelGraphState
 from src.domain.slot_registry import pending_question_slots
-from src.domain.travel_state import Presence, TravelState, trip_duration_days
+from src.domain.travel_state import Presence, TravelState, parse_date_value, trip_duration_days
 from src.services.llm import get_reasoning_llm, response_text
 from src.services.trip_intake import (
     _COMPANION_LABELS,
@@ -179,6 +179,51 @@ def _last_human_message(state: TravelGraphState) -> str:
     return ""
 
 
+# How much dialogue `build_extract_patch_prompt` carries. Bounded on both axes
+# so prompt size stays flat no matter how long a session runs: a conversation
+# is unbounded, this window is not. Six turns covers the reference distance
+# actually observed (a correction points at the reply immediately before it,
+# occasionally the one before that); the per-message cap keeps one pasted
+# itinerary from crowding out five other turns.
+_TRANSCRIPT_TURNS = 10
+_TRANSCRIPT_CHARS = 240
+
+
+def _recent_transcript(state: TravelGraphState) -> tuple[tuple[str, str], ...]:
+    """`(role, text)` for the last few turns, oldest last-in-tuple order.
+
+    Excludes the turn being extracted -- it is already the prompt's own
+    `Message:` line, and showing it twice invites the model to treat the copy
+    as context rather than as the thing to extract from.
+
+    Assistant turns are included, and they are the point: `messages` has
+    carried them since `respond` began appending its own replies, so this is
+    the only channel that can tell the model what "cái đó" refers to. Text is
+    read through `response_text` for the same reason `respond` does -- a
+    Responses-API reply holds a block list, and `str(content)` would paste the
+    provider's raw repr into the prompt.
+    """
+    messages = list(state.get("messages") or [])
+    last_human = max(
+        (index for index, message in enumerate(messages) if getattr(message, "type", None) == "human"),
+        default=None,
+    )
+    history = messages if last_human is None else messages[:last_human]
+
+    turns: list[tuple[str, str]] = []
+    for message in history:
+        role = {"human": "user", "ai": "assistant"}.get(getattr(message, "type", "") or "")
+        if role is None:
+            continue
+        text = " ".join(response_text(message).split())
+        if not text:
+            continue
+        if len(text) > _TRANSCRIPT_CHARS:
+            text = f"{text[:_TRANSCRIPT_CHARS]}..."
+        turns.append((role, text))
+    return tuple(turns[-_TRANSCRIPT_TURNS:])
+
+
 def _pending_slots(travel_state: TravelState) -> tuple[str, ...]:
     """The slots the user is answering right now — the one piece of
     conversational context a short reply needs before it means anything.
@@ -202,11 +247,14 @@ def _pending_slots(travel_state: TravelState) -> tuple[str, ...]:
     patch, and the slot gate re-asks the same question forever. Measured,
     not assumed — the same message extracts correctly once anchored.
 
-    Passed as slot NAMES rather than as conversation history on purpose:
-    `messages` carries no assistant turns at all (`respond` writes only
-    `response`), it grows without bound, and replaying earlier turns
-    invites the model to re-emit already-confirmed facts as fresh changes.
-    `SLOT_REGISTRY` names are already patch paths, so no mapping is needed.
+    Still passed as slot NAMES rather than as dialogue even now that
+    `_recent_transcript` also ships a bounded window of turns: the anchor a
+    short reply needs is WHICH PATH it lands on, and `SLOT_REGISTRY` names
+    are already patch paths, so no mapping is needed. The transcript answers
+    a different question ("what does this refer back to?") and is explicitly
+    barred from being read as a fact source -- see `build_extract_patch_prompt`.
+    (The claim this docstring used to make, that `messages` holds no assistant
+    turns, stopped being true once `respond` started appending its own replies.)
     """
     return pending_question_slots(travel_state)
 
@@ -519,8 +567,17 @@ def _derive_end_date_from_duration(
             start_value = change.get("value")
             break
 
+    # `parse_date_value`, not `date.fromisoformat`: the extraction prompt
+    # deliberately hands back a bare numeric date exactly as the user typed it
+    # ("1/7"), leaving the day/month order for the one resolver that owns that
+    # decision -- which until now ran a node too late to help here. Parsing it
+    # with `fromisoformat` meant a stay length stated in the SAME message as
+    # the start date ("2 ngày từ ngày 1/7") hit the except branch and was
+    # dropped without a trace, so the turn asked for a checkout date the user
+    # had just supplied. `PatchValidationError` subclasses `ValueError`, so a
+    # genuinely unparseable value still falls through to the same bail-out.
     try:
-        start = date.fromisoformat(str(start_value))
+        start = parse_date_value(start_value, "dates.start")
     except (TypeError, ValueError):
         return changes
 
@@ -647,6 +704,7 @@ def _extract_with_llm(
     travel_state: TravelState,
     destination_names: Sequence[str | DestinationOption],
     *,
+    transcript: tuple[tuple[str, str], ...] = (),
     pending_slots: tuple[str, ...] = (),
     llm: Any | None = None,
 ) -> tuple[str, list[dict[str, Any]], str, bool, bool]:
@@ -683,6 +741,7 @@ def _extract_with_llm(
                 day_rhythm_labels=", ".join(_DAY_RHYTHM_LABELS),
                 pending_slots=pending_slots,
                 repair=str(last_error) if attempt else None,
+                transcript=transcript,
             )
             response = model.invoke(prompt)
             payload = json.loads(_strip_json_fence(response_text(response)))
@@ -713,7 +772,11 @@ def extract_patch(state: TravelGraphState) -> dict[str, Any]:
     destination_names = _get_destination_names()
 
     intent, raw_changes, reason, extraction_failed, asks_nearby_places = _extract_with_llm(
-        message, travel_state, destination_names, pending_slots=_pending_slots(travel_state)
+        message,
+        travel_state,
+        destination_names,
+        pending_slots=_pending_slots(travel_state),
+        transcript=_recent_transcript(state),
     )
 
     # This message's own day mention, falling back to the day

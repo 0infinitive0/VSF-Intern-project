@@ -22,12 +22,34 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 import src.agents.graph.nodes.extract_patch as extract_patch_module
-from src.agents.graph.nodes.extract_patch import PatchExtractionError, extract_patch
+from src.agents.graph.nodes.extract_patch import (
+    PatchExtractionError,
+    _derive_end_date_from_duration,
+    _recent_transcript,
+    extract_patch,
+)
 from src.agents.graph.state import TravelGraphState, initial_graph_state
 from src.domain.travel_state import TravelState
 from src.services.trip_intake import DestinationOption
 
 _DESTINATIONS = (DestinationOption("Đà Nẵng"), DestinationOption("Hội An", aliases=("HA",)))
+
+def _extract_prompt(**kwargs) -> str:
+    """`build_extract_patch_prompt` with every unrelated field held constant."""
+    from src.agents.graph.prompts import build_extract_patch_prompt
+
+    return build_extract_patch_prompt(
+        message="đổi cái đó đi",
+        known_facts="destination=Huế",
+        destination_choices="Huế",
+        today="2026-08-21",
+        preference_labels="",
+        companion_labels="",
+        pace_labels="",
+        day_rhythm_labels="",
+        **kwargs,
+    )
+
 
 # `next_question` walks real `TravelState` slots, so a state standing in for
 # "dates already answered" needs dates the date validators still accept.
@@ -1176,3 +1198,85 @@ def test_an_unrelated_amenity_is_never_dropped_by_the_rescue(monkeypatch):
         {"path": "hotel_preferences.amenities", "operation": "append", "value": "gym"},
         {"path": "hotel_preferences.amenities", "operation": "append", "value": "sea_view"},
     ]
+
+
+def test_derives_end_date_from_duration_with_raw_numeric_start():
+    """A stay length and a bare-numeric start date in the SAME message.
+
+    The extraction prompt hands `dates.start` back exactly as typed ("1/7"),
+    so this derivation has to use the same resolver `apply_patch` will --
+    parsing with `date.fromisoformat` dropped the stay length silently and
+    made the turn re-ask for a checkout date the user had just given.
+    """
+    changes = _derive_end_date_from_duration(
+        [{"path": "dates.start", "operation": "set", "value": "1/7"}],
+        "2 ngày từ ngày 1/7",
+        TravelState.from_dict({}),
+    )
+    year = date.today().year
+    assert changes == [
+        {"path": "dates.start", "operation": "set", "value": "1/7"},
+        # "2 ngày" is one night, so checkout is the day after check-in.
+        {"path": "dates.end", "operation": "set", "value": date(year, 7, 2).isoformat()},
+    ]
+
+
+def test_leaves_changes_alone_when_raw_start_is_not_a_real_date():
+    changes = [{"path": "dates.start", "operation": "set", "value": "99/99"}]
+    assert _derive_end_date_from_duration(list(changes), "2 ngày từ 99/99", TravelState.from_dict({})) == changes
+
+
+def _msg_state(*pairs: tuple[str, str]) -> TravelGraphState:
+    """Graph state whose transcript is `pairs` in order, role -> text."""
+    state = initial_graph_state("s-transcript")
+    state["messages"] = [
+        HumanMessage(content=text) if role == "human" else AIMessage(content=text) for role, text in pairs
+    ]
+    return state
+
+
+def test_recent_transcript_excludes_the_turn_being_extracted():
+    state = _msg_state(
+        ("human", "đi ha noi"),
+        ("ai", "Chuyến đi này có bao nhiêu người?"),
+        ("human", "2 nguoi"),
+    )
+    assert _recent_transcript(state) == (
+        ("user", "đi ha noi"),
+        ("assistant", "Chuyến đi này có bao nhiêu người?"),
+    )
+
+
+def test_recent_transcript_carries_assistant_turns():
+    """The whole point: `known_facts` says what is settled, never what was SAID."""
+    state = _msg_state(("ai", "Mình gợi ý quán Bún Chả Hương Liên."), ("human", "đổi quán đó đi"))
+    assert _recent_transcript(state) == (("assistant", "Mình gợi ý quán Bún Chả Hương Liên."),)
+
+
+def test_recent_transcript_is_bounded_on_both_axes():
+    pairs = [("human", f"turn {index}") for index in range(20)]
+    turns = _recent_transcript(_msg_state(*pairs, ("human", "newest")))
+    assert len(turns) == 6
+    assert turns[-1] == ("user", "turn 19")
+
+    long_turn = _recent_transcript(_msg_state(("ai", "x" * 500), ("human", "now")))
+    assert long_turn[0][1].endswith("...")
+    assert len(long_turn[0][1]) == 243
+
+
+def test_recent_transcript_empty_on_the_first_turn():
+    assert _recent_transcript(_msg_state(("human", "đi ha noi"))) == ()
+    assert _recent_transcript(initial_graph_state("s-empty")) == ()
+
+
+def test_prompt_omits_the_transcript_block_when_there_is_no_history():
+    prompt = _extract_prompt(transcript=())
+    assert "Recent conversation" not in prompt
+
+
+def test_prompt_renders_transcript_and_bars_it_as_a_fact_source():
+    prompt = _extract_prompt(transcript=(("user", "đi Huế"), ("assistant", "Mấy người?")))
+    assert "user: đi Huế" in prompt
+    assert "assistant: Mấy người?" in prompt
+    # The guard against re-extracting facts out of replayed turns.
+    assert "only authority on what is already known" in prompt

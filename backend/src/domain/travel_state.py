@@ -480,7 +480,7 @@ def _resolve_numeric_date(x: int, y: int, year: int) -> date | None:
     return _safe_date(year, x, y) if x != y else None
 
 
-def _parse_date_value(value: Any, path: str) -> date:
+def parse_date_value(value: Any, path: str) -> date:
     """Accepts either a clean ISO string (already unambiguous — a relative
     date like "ngày mai" that extract_patch resolved itself) or a raw numeric
     `D[-/.]M[-/.][Y]` fragment it deliberately left untouched. A missing year
@@ -518,14 +518,14 @@ def _validate_date_start(value: Any, path: str, state: TravelState) -> str:
 
     Deliberately does NOT reject a date already in the past, despite what
     earlier revisions of this docstring claimed. A bare `D-M` carrying no
-    year resolves against the CURRENT year (`_parse_date_value`), so through
+    year resolves against the CURRENT year (`parse_date_value`), so through
     the back half of any year that routinely lands on a date that has
     already passed — "3-1" answered in August resolves to 3 January of this
     year, and both readings of it are past. Rejecting here without also
     rolling such a date forward a year would turn a perfectly reasonable
     answer into a dead end, so the pair is left open as one decision rather
     than half-applied."""
-    start = _parse_date_value(value, path)
+    start = parse_date_value(value, path)
     end_slot = state.get("dates.end")
     if end_slot.presence is Presence.SET and start >= date.fromisoformat(str(end_slot.value)):
         raise PatchValidationError(f"{path}: start date must be before the trip's end date")
@@ -540,7 +540,7 @@ END_NOT_AFTER_START_REASON = "end date must be after the trip's start date"
 
 
 def _validate_date_end(value: Any, path: str, state: TravelState) -> str:
-    end = _parse_date_value(value, path)
+    end = parse_date_value(value, path)
     start_slot = state.get("dates.start")
     if start_slot.presence is Presence.SET and end <= date.fromisoformat(str(start_slot.value)):
         raise PatchValidationError(f"{path}: {END_NOT_AFTER_START_REASON}")

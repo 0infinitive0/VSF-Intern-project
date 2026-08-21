@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { EMPTY_INTAKE_FORM, mergeIntakeIntoForm } from './use-intake-form'
+import { EMPTY_INTAKE_FORM, deriveIntakeSnapshot, mergeIntakeIntoForm } from './use-intake-form'
+import { resyncField, serverAskedFieldFor } from '../lib/next-intake-field'
 import type { IntakeStatus } from '../types'
 import { intakeStatus } from '../test-fixtures'
 
@@ -121,5 +122,72 @@ describe('mergeIntakeIntoForm', () => {
     const once = mergeIntakeIntoForm(EMPTY_INTAKE_FORM, KNOWN_TRIP, null, null)
     const twice = mergeIntakeIntoForm(once, KNOWN_TRIP, KNOWN_TRIP, null)
     expect(twice).toEqual(once)
+  })
+})
+
+/**
+ * Replay of session 18646293's three real snapshots. This is the layer the
+ * duplicate-question bug hid in: the derivation used to live inside the hook's
+ * effect, which no test here can reach (no jsdom — see test-setup.ts).
+ */
+describe('deriveIntakeSnapshot', () => {
+  const BUDGET_OPTIONS = [
+    'Tiết kiệm (dưới 800,000 VND/đêm)',
+    'Tầm trung (800,000 - 2,500,000 VND/đêm)',
+    'Cao cấp (trên 2,500,000 VND/đêm)',
+    'Bỏ qua, không cần lọc theo giá',
+  ]
+  const base = {
+    available_destinations: ['Hà Nội'],
+    budget_options: BUDGET_OPTIONS,
+    budget_skipped: false,
+    day_rhythm: [],
+    destination: 'Hà Nội',
+    notes: '',
+    preferences: [],
+  }
+  const T1 = { ...base, missing: ['people', 'start_date', 'duration'] } as unknown as IntakeStatus
+  const T2 = { ...base, people: '2 người', missing: ['start_date', 'duration'] } as unknown as IntakeStatus
+  const T3 = {
+    ...base,
+    people: '2 người',
+    missing: [],
+    start_date: '2026-07-01',
+    end_date: '2026-07-03',
+    duration: '2 ngày',
+  } as unknown as IntakeStatus
+
+  function replay() {
+    let form = EMPTY_INTAKE_FORM
+    let previous: IntakeStatus | null = null
+    const asked: (string | null)[] = []
+    for (const snapshot of [T1, T2, T3]) {
+      const result = deriveIntakeSnapshot(form, snapshot, previous, null)
+      form = result.merged
+      previous = snapshot
+      asked.push(result.serverAskedField)
+    }
+    return { asked, form }
+  }
+
+  it('never leaves serverAskedField on a previous turn', () => {
+    // The bug: T3 kept 'dates', so ChatPanel's guard compared 'budget' to
+    // 'dates' and rendered intakeBudgetQuestion under the backend's own
+    // budget question.
+    expect(replay().asked).toEqual(['people', 'dates', 'budget'])
+  })
+
+  it('folds each snapshot into the form it hands back', () => {
+    const { form } = replay()
+    expect(form.destination).toBe('Hà Nội')
+    expect(form.guests).toBe(2)
+    expect(form.startDate).toBe('2026-07-01')
+    expect(form.endDate).toBe('2026-07-03')
+  })
+
+  it('derives merged, pin and serverAskedField from one and the same merge', () => {
+    const result = deriveIntakeSnapshot(EMPTY_INTAKE_FORM, T3, T2, null)
+    expect(result.serverAskedField).toBe(serverAskedFieldFor(T3, result.merged, null))
+    expect(result.pin).toBe(resyncField(T3, result.merged, null))
   })
 })

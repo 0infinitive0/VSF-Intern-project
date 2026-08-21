@@ -101,7 +101,7 @@ Allowed change paths, one change per fact actually stated (omit anything not men
 
 Already confirmed this conversation: {known_facts}
 Destinations this system supports, for reference only (do not invent one not on this list, but always copy what the user actually said into `destination` and let validation reject an unsupported one): {destination_choices}
-Today's date in the planning timezone is {today}.{pending_slots}{repair}
+Today's date in the planning timezone is {today}.{pending_slots}{repair}{transcript}
 
 Message: "{message}"
 """
@@ -119,6 +119,7 @@ def build_extract_patch_prompt(
     day_rhythm_labels: str,
     pending_slots: tuple[str, ...] = (),
     repair: str | None = None,
+    transcript: tuple[tuple[str, str], ...] = (),
 ) -> str:
     # The one piece of conversational context a short reply needs. Anchoring
     # the pending slots structurally -- rather than pasting the transcript --
@@ -153,6 +154,34 @@ def build_extract_patch_prompt(
                 f"`{pending_slots[0]}`."
             )
     repair_suffix = f"\nPrevious response was rejected: {repair}. Return corrected JSON only." if repair else ""
+
+    # Bounded recent dialogue, oldest first. `known_facts` says WHAT is
+    # already settled but not what either side SAID, so a message that points
+    # back at wording rather than at a slot -- "cái đó", "chỗ vừa rồi", "như
+    # bạn nói", a correction of something just proposed -- has nothing to
+    # resolve against without this.
+    #
+    # The paired instruction is the load-bearing half. Replaying earlier turns
+    # invites the model to re-extract facts it can now see stated, emitting
+    # them as fresh changes every turn; naming `known_facts` as the sole
+    # authority on what was ACCEPTED is what keeps this a reference resolver
+    # instead of a second, competing source of trip facts. `extract_patch`
+    # caps how much arrives (see `_recent_transcript`), so prompt size stays
+    # bounded no matter how long the conversation runs.
+    transcript_suffix = ""
+    if transcript:
+        lines = "\n".join(f"{role}: {text}" for role, text in transcript)
+        transcript_suffix = (
+            "\n\nRecent conversation, oldest first. The message below is the newest turn and is NOT "
+            f"repeated here:\n{lines}\n"
+            "Use this ONLY to resolve what the message below points back at -- a pronoun or an ellipsis "
+            '("cái đó", "chỗ vừa rồi", "như bạn nói"), a correction of something just proposed, or a short '
+            "reply whose subject is named only earlier. It is NOT a source of trip facts: `Already "
+            "confirmed this conversation` above is the only authority on what is already known, and a "
+            "value visible here but missing there was NOT accepted -- never emit a change just to "
+            "re-assert it. Emit changes only for what the newest message itself states."
+        )
+
     return _EXTRACT_PATCH_SYSTEM_PROMPT.format(
         preference_labels=preference_labels,
         companion_labels=companion_labels,
@@ -163,6 +192,7 @@ def build_extract_patch_prompt(
         today=today,
         pending_slots=pending_suffix,
         repair=repair_suffix,
+        transcript=transcript_suffix,
         message=message,
     )
 

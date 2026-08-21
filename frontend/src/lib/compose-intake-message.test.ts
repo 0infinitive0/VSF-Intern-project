@@ -133,4 +133,36 @@ describe('composeIntakeMessage', () => {
     expect(message).not.toContain('0 ngày')
     expect(message).toContain('Ngân sách khách sạn')
   })
+
+  // Session e773dff7 turn 5: the backend already held destination/dates/people
+  // (`intake.missing` empty) and the user typed a correction. Restating the
+  // stale destination alongside it produced a message that argued with itself
+  // and showed up verbatim as the user's own chat bubble.
+  it('omits the trip-facts sentence when the caller says the backend already has them', () => {
+    const form = fill({
+      destination: 'Hà Nội',
+      startDate: '2026-07-01',
+      endDate: '2026-07-02',
+      guests: 2,
+      notes: 'tôi muốn đổi lại đi nha trang',
+    })
+    expect(composeIntakeMessage(form, { includeTripFacts: false })).toBe(
+      'tôi muốn đổi lại đi nha trang',
+    )
+    // Default stays byte-identical to the frozen wire protocol.
+    expect(composeIntakeMessage(form)).toBe(
+      'Tôi muốn đi Hà Nội từ ngày 01/07/2026 đến ngày 02/07/2026 cho 2 người. tôi muốn đổi lại đi nha trang',
+    )
+  })
+
+  // Budget/preferences are never listed in `intake.missing`, so a locally
+  // collected budget must still travel with the typed text even when the
+  // trip facts are suppressed.
+  it('keeps budget and preference sentences when trip facts are suppressed', () => {
+    const message = composeIntakeMessage(
+      fill({ budgetSkipped: true, notes: 'cho tôi xem khách sạn' }),
+      { includeTripFacts: false },
+    )
+    expect(message).toBe('Ngân sách khách sạn: không giới hạn. cho tôi xem khách sạn')
+  })
 })

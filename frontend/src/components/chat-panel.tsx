@@ -190,17 +190,29 @@ export default function ChatPanel({
       return
     }
     const atPreferencesStep = activeIntakeField === 'preferences'
+    // Restate destination/dates/people only while the backend is still
+    // missing one of them. Once `intake.missing` is empty it already has all
+    // three, and prepending them to typed text turns a correction into a
+    // self-contradiction ("Tôi muốn đi Hà Nội ... tôi muốn đổi lại đi nha
+    // trang") that the user then sees as their own message. Budget and
+    // preferences sentences are unaffected: those are never gated by
+    // `missing`, so a locally-collected budget still has to travel with the
+    // typed text. See ComposeIntakeOptions.includeTripFacts.
+    const backendHasTripFacts = intake != null && (intake.missing?.length ?? 0) === 0
     onSend(
-      composeIntakeMessage({
-        ...intakeForm,
-        ...(atPreferencesStep
-          ? {
-              preferencesNotes: intakeForm.preferencesNotes
-                ? `${intakeForm.preferencesNotes} ${text}`
-                : text,
-            }
-          : { notes: intakeForm.notes ? `${intakeForm.notes} ${text}` : text }),
-      }),
+      composeIntakeMessage(
+        {
+          ...intakeForm,
+          ...(atPreferencesStep
+            ? {
+                preferencesNotes: intakeForm.preferencesNotes
+                  ? `${intakeForm.preferencesNotes} ${text}`
+                  : text,
+              }
+            : { notes: intakeForm.notes ? `${intakeForm.notes} ${text}` : text }),
+        },
+        { includeTripFacts: !backendHasTripFacts },
+      ),
     )
   }
 

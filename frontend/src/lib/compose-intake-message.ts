@@ -78,7 +78,30 @@ export function budgetRangePhrase(minVnd: number, maxVnd: number): string {
   return `từ ${million(minVnd)} đến ${million(maxVnd)} triệu`
 }
 
-export function composeIntakeMessage(form: IntakeFormState): string {
+export interface ComposeIntakeOptions {
+  /**
+   * Whether to open with the destination/dates/people sentence. Default true.
+   *
+   * That sentence exists to carry gated answers the widget rail collected
+   * LOCALLY to a backend that has never seen them. Once the backend reports
+   * `intake.missing` empty it already holds all three, and restating them is
+   * not merely redundant — it contradicts a correction typed in the same
+   * breath. "tôi muốn đổi lại đi nha trang" went out as "Tôi muốn đi Hà Nội
+   * ... tôi muốn đổi lại đi nha trang", leaving `extract_patch`'s model to
+   * adjudicate a conflict the composer invented, and echoing a sentence the
+   * user never wrote back into their own chat bubble.
+   *
+   * Only the free-text composer path passes false; the widget's own submit
+   * buttons and the duplicate-trip flow always state the facts in full,
+   * because those are exactly the turns that deliver them for the first time.
+   */
+  includeTripFacts?: boolean
+}
+
+export function composeIntakeMessage(
+  form: IntakeFormState,
+  { includeTripFacts = true }: ComposeIntakeOptions = {},
+): string {
   const sentences: string[] = []
 
   // States both dates explicitly ("từ ngày X đến ngày Y") rather than a day
@@ -96,7 +119,7 @@ export function composeIntakeMessage(form: IntakeFormState): string {
   // regardless of UI language, so the date inside it should read the same
   // way a person would type it here.
   const durationDays = durationDaysBetween(form.startDate, form.endDate)
-  if (form.destination && form.startDate && durationDays > 0 && form.guests > 0) {
+  if (includeTripFacts && form.destination && form.startDate && durationDays > 0 && form.guests > 0) {
     const startLabel = formatFullDate(form.startDate, 'vi') ?? form.startDate
     const endLabel = formatFullDate(form.endDate, 'vi') ?? form.endDate
     sentences.push(

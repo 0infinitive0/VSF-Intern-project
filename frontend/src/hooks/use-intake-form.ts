@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import {
   companionKeyFromWireValueVi,
   dayRhythmKeyFromWireValueVi,
@@ -128,6 +128,48 @@ export function mergeIntakeIntoForm(
   }
 }
 
+export interface IntakeSnapshotDerivation {
+  merged: IntakeFormState
+  /** Field to force the widget rail back to, or null. */
+  pin: IntakeField | null
+  /** Field this snapshot's real reply is (best-effort) about. */
+  serverAskedField: IntakeField | null
+}
+
+/**
+ * Everything one server snapshot decides, in one pure call.
+ *
+ * All three outputs have to be derived from the SAME merged form or they
+ * describe different turns — and `serverAskedField` disagreeing with the form
+ * ChatPanel renders from is exactly what puts a duplicate question in the
+ * thread. Returning them together is what makes that impossible to get wrong.
+ *
+ * Pure and exported for the same reason `mergeIntakeIntoForm` is: this project
+ * has no jsdom (see test-setup.ts), so logic left inside the hook's effect is
+ * logic no test can reach. That blind spot is where the bug this replaces
+ * lived — the effect used to recover `merged` as a side effect of `setForm`'s
+ * updater, which React only invokes synchronously as an unguaranteed
+ * "eager state" optimization it skips whenever an update is already pending on
+ * that hook. On those turns `merged` came back null, the effect returned
+ * early, and `serverAskedField` silently kept the PREVIOUS turn's field, so
+ * ChatPanel's duplicate guard compared two different turns and let the local
+ * question through next to the backend's own.
+ */
+export function deriveIntakeSnapshot(
+  prev: IntakeFormState,
+  intake: IntakeStatus,
+  previousIntake: IntakeStatus | null,
+  editingField: IntakeField | null,
+): IntakeSnapshotDerivation {
+  const merged = mergeIntakeIntoForm(prev, intake, previousIntake, editingField)
+  return {
+    merged,
+    pin: resyncField(intake, merged, editingField),
+    serverAskedField: serverAskedFieldFor(intake, merged, editingField),
+  }
+}
+
+
 /**
  * useIntakeForm — owns IntakeParametersForm's local state, lifted out so a
  * sibling (IntakeChecklist, via StageIntake) can read the same in-progress
@@ -176,29 +218,47 @@ export function useIntakeForm(intake: IntakeStatus | null) {
   // local question when its active field matches this.
   const [serverAskedField, setServerAskedField] = useState<IntakeField | null>(null)
 
-  useEffect(() => {
+  // Layout effect, not `useEffect`: `form` and `serverAskedField` are the two
+  // pieces of this snapshot ChatPanel compares AGAINST the same snapshot, and
+  // it derives its side of that comparison synchronously during render. A
+  // passive effect runs after paint, so the frame between "the new `intake`
+  // prop arrives" and "this effect commits" is painted with `serverAskedField`
+  // still holding the PREVIOUS turn's value — and ChatPanel's duplicate guard
+  // (`rawQuestionField === serverAskedField`) compares two different turns and
+  // lets the local question through.
+  //
+  // Observed on the first turn that resolves every gated slot at once: the
+  // backend's reply asks about budget in its own words while `serverAskedField`
+  // still says `dates`, so `intakeBudgetQuestion` renders one frame as a second
+  // bubble directly under it. Committing before paint is what makes the guard
+  // compare like for like; the work here is pure computation, nothing that
+  // blocking a paint on is expensive.
+  useLayoutEffect(() => {
     if (!intake) return
     const previousIntake = previousIntakeRef.current
     previousIntakeRef.current = intake
-    // `setForm`'s updater must stay pure (StrictMode double-invokes it to
-    // check that) — the merged result is captured into this ref instead of
-    // deciding the resync pin from inside the updater itself.
-    const mergedRef: { current: IntakeFormState | null } = { current: null }
-    setForm((prev) => {
-      mergedRef.current = mergeIntakeIntoForm(prev, intake, previousIntake, editingField)
-      return mergedRef.current
-    })
-    const merged = mergedRef.current
-    if (!merged) return
-    // Only ever evaluated here, once per NEW real backend turn (never on a
-    // local-only widget tap, which doesn't touch `intake`) — see
-    // resyncField's doc for why that's what makes this safe: a mismatch
-    // found here means THIS turn's real reply is a still-open question the
+    // `form` from this render's closure, not a `setForm` updater: the effect
+    // only re-runs when `intake` changes, so it already holds the committed
+    // value an updater's `prev` would receive — and reading it directly is
+    // what keeps the three outputs below unconditional. Recovering `merged`
+    // out of an updater made them depend on React invoking that updater
+    // synchronously, which it only does as an optimization it is free to skip
+    // (see deriveIntakeSnapshot).
+    //
+    // `pin` is evaluated once per NEW real backend turn (never on a local-only
+    // widget tap, which doesn't touch `intake`) — see resyncField's doc: a
+    // mismatch here means THIS turn's real reply is a still-open question the
     // widget rail has already answered-but-not-sent and walked past.
-    const pin = resyncField(intake, merged, editingField)
+    const { merged, pin, serverAskedField: askedField } = deriveIntakeSnapshot(
+      form,
+      intake,
+      previousIntake,
+      editingField,
+    )
+    setForm(merged)
     console.debug('useIntakeForm merge effect: pin', pin, 'editingField', editingField)
     if (pin) setEditingField(pin)
-    setServerAskedField(serverAskedFieldFor(intake, merged, editingField))
+    setServerAskedField(askedField)
     // `editingField` is deliberately not a dependency: it guards how THIS
     // snapshot merges, and re-running the merge when the user opens or closes
     // an edit would re-apply an already-folded-in snapshot against a stale
