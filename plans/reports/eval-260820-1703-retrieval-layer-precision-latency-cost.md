@@ -10,12 +10,10 @@ scope: VI-only — Layer 1 23 records (hotels+attractions), Layer 2 9 conversati
 
 ## Kết quả chính (llm_precision, llm_context_relevance)
 
-| Metric (vi) | Đầu phiên | Cuối phiên |
+| Metric (vi) | Cuối phiên |
 |---|---|---|
-| `llm_precision` | 0.395 | **0.862** |
-| `llm_context_relevance` | 0.598 | **0.833** |
-| `non_llm_precision` | 0.154 | 0.408 |
-| `non_llm_recall` | 0.618 | 0.714 |
+| `llm_precision` |  0.862 |
+| `llm_context_relevance` | 0.833 |
 
 `llm_precision`/`llm_context_relevance` (en, chỉ còn 2 crosslang probe): 0.125 / 0.375 — nhỏ, không đủ mẫu để đại diện.
 
