@@ -17,7 +17,7 @@ class SlidePresentation{
     this.setupButtons();
     this.setupIndexJump();
     this.appendixBackBtn.addEventListener('click', ()=>{
-      const arch = document.getElementById('s6');
+      const arch = document.getElementById('s5');
       const idx = this.slides.indexOf(arch);
       if(idx >= 0) this.showSlide(idx);
     });
