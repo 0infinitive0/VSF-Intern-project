@@ -259,6 +259,109 @@ def _picked_from_chat(state: TravelGraphState) -> tuple[str | None, bool]:
     return (hotel_id or None), True
 
 
+def _valid_hotel_options(value: object) -> list[dict[str, Any]]:
+    return [
+        option
+        for option in (value if isinstance(value, list) else [])
+        if isinstance(option, dict) and option.get("id")
+    ]
+
+
+def _expand_hotel_options(
+    state: TravelGraphState, pending: list[str], language: str
+) -> dict[str, Any]:
+    """Append the next five cards without changing travel_state or using an LLM.
+
+    The normal search saves its full ranked RPC batch separately from the
+    cards the user has seen. We consume that batch first, then repeat the
+    saved query only when it has no unseen entries left.
+    """
+    shown = _valid_hotel_options(state.get("previous_hotel_options"))
+    if not shown:
+        reply = t("Chưa có danh sách khách sạn để xem thêm.", language)
+        return {
+            "pending_tasks": pending,
+            "task_results": [
+                *(state.get("task_results") or []),
+                {"worker": _WORKER_NAME, "status": "no_active_hotel_search", "reply": reply},
+            ],
+            "expand_hotel_options": False,
+        }
+
+    shown_ids = {str(option["id"]) for option in shown}
+    pool = _valid_hotel_options(state.get("previous_hotel_candidate_pool"))
+    unseen = [option for option in pool if str(option["id"]) not in shown_ids]
+    query = state.get("previous_hotel_search_query") or {}
+    from_pool = bool(unseen)
+
+    if not unseen:
+        destination = query.get("destination")
+        destination_id = query.get("destination_id")
+        if not isinstance(destination, str) or not isinstance(destination_id, str):
+            reply = t("Chưa có danh sách khách sạn để xem thêm.", language)
+            return {
+                "pending_tasks": pending,
+                "task_results": [
+                    *(state.get("task_results") or []),
+                    {"worker": _WORKER_NAME, "status": "no_active_hotel_search", "reply": reply},
+                ],
+                "expand_hotel_options": False,
+            }
+        selection_kwargs = dict(query.get("selection_kwargs") or {})
+        selection_kwargs["exclude_hotel_ids"] = [str(option["id"]) for option in shown]
+        try:
+            fetched = select_hotel_candidates(
+                destination,
+                destination_id,
+                str(query.get("people") or ""),
+                **selection_kwargs,
+            )
+        except (NoHotelsMatchAmenities, NoHotelsMatchRating):
+            fetched = []
+        except Exception as exc:
+            logger.exception("hotel_node: hotel expansion failed")
+            reply = t("Tìm thêm khách sạn thất bại: {error}", language, error=str(exc))
+            return {
+                "pending_tasks": pending,
+                "task_results": [
+                    *(state.get("task_results") or []),
+                    {"worker": _WORKER_NAME, "status": "error", "reply": reply},
+                ],
+                "expand_hotel_options": False,
+            }
+        ranked = rank_hotel_candidates(
+            fetched,
+            target_price=query.get("target_price"),
+            amenity_prefs=list(query.get("amenity_prefs") or []),
+        )
+        pool = [data for data, _candidate in ranked if isinstance(data, dict) and data.get("id")]
+        unseen = [option for option in pool if str(option["id"]) not in shown_ids]
+
+    additions = unseen[:_HOTEL_DISPLAY_LIMIT]
+    hotel_options = [*shown, *additions]
+    if from_pool:
+        has_more = len(additions) == _HOTEL_DISPLAY_LIMIT
+    else:
+        batch_size = int((query.get("selection_kwargs") or {}).get("match_count") or _HOTEL_OPTION_LIMIT)
+        has_more = len(pool) >= batch_size
+    reply = t("Mình tìm được {count} khách sạn phù hợp.", language, count=len(hotel_options))
+    search_result = {
+        "options": hotel_options,
+        "has_more_hotel_options": has_more,
+    }
+    return {
+        "pending_tasks": pending,
+        "task_results": [
+            *(state.get("task_results") or []),
+            {"worker": _WORKER_NAME, "status": "ok", "reply": reply, "hotel_search_result": search_result},
+        ],
+        "previous_hotel_options": hotel_options,
+        "previous_hotel_candidate_pool": pool,
+        "previous_hotel_search_query": query,
+        "expand_hotel_options": False,
+    }
+
+
 def hotel_node(state: TravelGraphState) -> dict[str, Any]:
     pending = [worker for worker in (state.get("pending_tasks") or []) if worker != _WORKER_NAME]
     language = state.get("language") or "vi"
@@ -284,6 +387,9 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
         )
         task_results = [*(state.get("task_results") or []), {"worker": _WORKER_NAME, "status": "already_paid", "reply": reply}]
         return {"pending_tasks": pending, "task_results": task_results, "selected_hotel_id": None}
+
+    if state.get("expand_hotel_options"):
+        return _expand_hotel_options(state, pending, language)
 
     travel_state = TravelState.from_dict(state.get("travel_state"))
     selected_hotel_id = state.get("selected_hotel_id")
@@ -644,9 +750,27 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
             language,
             items=_amenity_labels(relaxed, labels_by_id),
         )
+    candidate_pool = [data for data, _candidate in ranked if isinstance(data, dict) and data.get("id")]
+    search_query = {
+        "destination": destination,
+        "destination_id": destination_id,
+        "people": people,
+        "target_price": target_price,
+        "amenity_prefs": preferred_amenities,
+        "selection_kwargs": {key: value for key, value in selection_kwargs.items() if key != "exclude_hotel_ids"},
+    }
     result = _result(
-        "ok", reply, {"options": hotel_options, "active_preferences": active_preferences}
+        "ok",
+        reply,
+        {
+            "options": hotel_options,
+            "active_preferences": active_preferences,
+            "has_more_hotel_options": len(candidate_pool) > _HOTEL_DISPLAY_LIMIT,
+        },
     )
     result["previous_hotel_options"] = hotel_options
     result["previous_hotel_search_context"] = current_search_context
+    result["previous_hotel_candidate_pool"] = candidate_pool
+    result["previous_hotel_search_query"] = search_query
+    result["expand_hotel_options"] = False
     return result

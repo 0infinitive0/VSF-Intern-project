@@ -445,3 +445,26 @@ describe('chatSessionReducer — one row per step', () => {
     expect(state.thinking[0].done).toBe(true)
   })
 })
+
+describe('chatSessionReducer — hotel list expansion', () => {
+  it('replaces the retained card payload and records whether another batch exists', () => {
+    const state = chatSessionReducer(
+      { ...INITIAL_STATE, hotelOptions: [{ index: 1, id: 'h1', name: 'Hotel 1' }] },
+      {
+        type: 'HOTELS_EXPAND_SUCCESS',
+        data: {
+          session_id: 's1', reply: 'Found more hotels.', suggestions: [], stage: 'hotel_options', trip_plan: null,
+          hotel_options: [
+            { index: 1, id: 'h1', name: 'Hotel 1' },
+            { index: 2, id: 'h2', name: 'Hotel 2' },
+          ],
+          has_more_hotel_options: true,
+        },
+      },
+    )
+
+    expect(state.hotelsLoading).toBe(false)
+    expect(state.hotelOptions.map((hotel) => hotel.id)).toEqual(['h1', 'h2'])
+    expect(state.hasMoreHotelOptions).toBe(true)
+  })
+})

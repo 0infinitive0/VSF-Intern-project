@@ -448,6 +448,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hotels/expand": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Expand Hotel Options
+         * @description Append the next hotel batch without a synthetic chat turn or an LLM.
+         */
+        post: operations["expand_hotel_options_api_v1_hotels_expand_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chat": {
         parameters: {
             query?: never;
@@ -1227,6 +1247,11 @@ export interface components {
             stage: "intake" | "hotel_options" | "planned" | "error";
             /** Hotel Options */
             hotel_options: components["schemas"]["HotelOption"][];
+            /**
+             * Has More Hotel Options
+             * @default false
+             */
+            has_more_hotel_options: boolean;
             /**
              * Hotel Amenities
              * @description Unique approved amenity catalog records for all returned hotel options
@@ -2133,6 +2158,41 @@ export interface operations {
         };
     };
     change_hotel_api_v1_hotels_change_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeHotelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlannerChatResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    expand_hotel_options_api_v1_hotels_expand_post: {
         parameters: {
             query?: never;
             header?: {

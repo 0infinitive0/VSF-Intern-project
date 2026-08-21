@@ -238,6 +238,8 @@
   "hotelFiltersAmenities": "Tiện nghi",
   "hotelFiltersPreferences": "Sở thích khách sạn",
   "hotelFiltersNoResults": "Không có khách sạn phù hợp bộ lọc này.",
+  "hotelLoadMore": "Xem thêm khách sạn",
+  "hotelLoadMoreLoading": "Đang tìm thêm khách sạn...",
   "hotelFiltersAppliedPreferences": "Sở thích đang áp dụng: {{preferences}}",
   "detailWhy": "Vì sao VP-OTA đề xuất khách sạn này",
   "detailRooms": "Danh sách phòng",

@@ -66,10 +66,13 @@ function nightsFrom(startIso?: string | null, endIso?: string | null): number | 
 export default function StageHotels({
   state,
   hotelOptions,
+  hasMoreHotelOptions,
+  hotelsLoading,
   hotelFilterData,
   selectedIndex,
   onSelectHotel,
   onConfirmHotel,
+  onExpandHotelOptions,
   focusMode,
   theme,
   roomHold,
@@ -77,10 +80,13 @@ export default function StageHotels({
 }: {
   state: ChatState
   hotelOptions: HotelOption[]
+  hasMoreHotelOptions: boolean
+  hotelsLoading: boolean
   hotelFilterData: HotelFilterData
   selectedIndex: number | null
   onSelectHotel: (index: number) => void
   onConfirmHotel: (hotel: HotelOption) => void
+  onExpandHotelOptions: () => void
   focusMode: FocusModeApi
   theme: Theme
   /** Owns the room cart + real hold — threaded into HotelDetailPanel below. */
@@ -169,6 +175,15 @@ export default function StageHotels({
 
   const listRef = useRef<HTMLDivElement>(null)
   const savedScroll = useRef(0)
+  // Appending a "show more" batch must leave the reader exactly where they
+  // were. `filteredHotels` changes for an append too, so the older selection
+  // auto-scroll effect needs an explicit guard rather than treating every
+  // list change as a reason to recenter the selected card.
+  const previousHotelCount = useRef(hotels.length)
+  const hotelListGrew = hotels.length > previousHotelCount.current
+  useEffect(() => {
+    previousHotelCount.current = hotels.length
+  }, [hotels.length])
 
   function openFocus(hotel: HotelOption) {
     if (!hotel.id) return
@@ -222,7 +237,7 @@ export default function StageHotels({
   // Auto-scroll smoothly to the selected hotel card on mount or when selection/filters change
   const autoScrolledId = useRef<string | null>(null)
   useEffect(() => {
-    if (focused) return
+    if (focused || hotelListGrew) return
     const container = listRef.current
     if (!container) return
 
@@ -255,7 +270,7 @@ export default function StageHotels({
       cancelAnimationFrame(rafId)
       if (timerId != null) clearTimeout(timerId)
     }
-  }, [selectedId, resolvedSelectedIndex, filteredHotels, focused])
+  }, [selectedId, resolvedSelectedIndex, filteredHotels, focused, hotelListGrew])
 
   const prevFocused = useRef(focused)
   useLayoutEffect(() => {
@@ -336,6 +351,19 @@ export default function StageHotels({
             hoveredId={mapSync.hoveredId}
             onHoverChange={mapSync.setHoveredId}
           />
+          {hasMoreHotelOptions && (
+            <div className="flex justify-center pb-1">
+              <button
+                type="button"
+                disabled={hotelsLoading}
+                onClick={onExpandHotelOptions}
+                className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary-soft px-4 py-2 text-[13px] font-[560] text-primary transition hover:bg-primary-soft/70 disabled:cursor-wait disabled:opacity-60"
+              >
+                <span className="material-symbols-outlined text-[18px]" aria-hidden="true">expand_more</span>
+                {hotelsLoading ? t('hotelLoadMoreLoading') : t('hotelLoadMore')}
+              </button>
+            </div>
+          )}
           {filteredHotels.length === 0 && (
             <p className="px-3 text-center text-[12px] text-on-surface-muted" role="status">
               {t('hotelFiltersNoResults')}

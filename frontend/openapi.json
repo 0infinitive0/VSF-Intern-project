@@ -1010,6 +1010,63 @@
         }
       }
     },
+    "/api/v1/hotels/expand": {
+      "post": {
+        "summary": "Expand Hotel Options",
+        "description": "Append the next hotel batch without a synthetic chat turn or an LLM.",
+        "operationId": "expand_hotel_options_api_v1_hotels_expand_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeHotelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlannerChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/chat": {
       "post": {
         "summary": "Planner Chat",
@@ -3233,6 +3290,11 @@
             "type": "array",
             "title": "Hotel Options"
           },
+          "has_more_hotel_options": {
+            "type": "boolean",
+            "title": "Has More Hotel Options",
+            "default": false
+          },
           "hotel_amenities": {
             "items": {
               "$ref": "#/components/schemas/AmenityCatalogPayload"
@@ -3317,6 +3379,7 @@
           "suggestions",
           "stage",
           "hotel_options",
+          "has_more_hotel_options",
           "hotel_amenities",
           "trip_plan",
           "intake",

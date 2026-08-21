@@ -729,7 +729,27 @@ def change_hotel(
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-def _rerun_hotel_search(session_id: str) -> PlannerChatResponse:
+@router.post("/hotels/expand", response_model=PlannerChatResponse)
+def expand_hotel_options(
+    request: ChangeHotelRequest, current_user: AuthenticatedUser | None = Depends(get_current_user)
+) -> PlannerChatResponse:
+    """Append the next hotel batch without a synthetic chat turn or an LLM."""
+    session_id = str(request.session_id)
+    registry.evict_expired()
+    session = _owned_session_or_404(session_id, current_user)
+
+    with session.lock:
+        state = _get_graph_v2().get_state({"configurable": {"thread_id": session_id}}).values or {}
+        if is_trip_finalized(state.get("trip_data")):
+            raise HTTPException(status_code=409, detail="Lịch trình đã hoàn tất và không thể chỉnh sửa.")
+        try:
+            return _rerun_hotel_search(session_id, expand_hotel_options=True)
+        except Exception as exc:
+            logger.exception("Hotel-expand error for session %s", session_id)
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+def _rerun_hotel_search(session_id: str, *, expand_hotel_options: bool = False) -> PlannerChatResponse:
     """Re-enter the graph directly at `hotel_node`.
 
     This endpoint carries no user text — "rebuild the hotel list" is the whole
@@ -757,9 +777,10 @@ def _rerun_hotel_search(session_id: str) -> PlannerChatResponse:
     config = {"configurable": {"thread_id": session_id}}
     snapshot = app.get_state(config)
 
-    result = app.invoke(
-        Command(goto="hotel_node", update=load_context(snapshot.values or {})), config=config
-    )
+    update = load_context(snapshot.values or {})
+    if expand_hotel_options:
+        update["expand_hotel_options"] = True
+    result = app.invoke(Command(goto="hotel_node", update=update), config=config)
 
     _persist_turn(session_id, app, config)
     return _response_from_result(session_id, result)

@@ -199,6 +199,8 @@ export interface ChatState {
   messages: ChatMessage[]
   suggestions: Suggestion[]
   hotelOptions: HotelOption[]
+  /** Whether the current retained hotel search can append another batch. */
+  hasMoreHotelOptions: boolean
   hotelFilterData: HotelFilterData
   // Set only on a turn whose worker wrote one — e.g. itinerary_node's
   // "list_nearby" search today, any future worker's own place suggestion

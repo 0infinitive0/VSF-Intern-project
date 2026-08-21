@@ -238,6 +238,8 @@
   "hotelFiltersAmenities": "Amenities",
   "hotelFiltersPreferences": "Hotel preferences",
   "hotelFiltersNoResults": "No hotels match these filters.",
+  "hotelLoadMore": "Show more hotels",
+  "hotelLoadMoreLoading": "Finding more hotels...",
   "hotelFiltersAppliedPreferences": "Applied preferences: {{preferences}}",
   "detailWhy": "Why VP-OTA recommends this hotel",
   "detailRooms": "Rooms",

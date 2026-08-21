@@ -144,3 +144,8 @@ export async function pingSession(sessionId: string): Promise<SessionPing> {
 export async function changeHotel(sessionId: string): Promise<PlannerChatResponse> {
   return request('POST', '/hotels/change', { session_id: sessionId })
 }
+
+/** Append the next retained hotel batch without sending a chat message or LLM turn. */
+export async function expandHotelOptions(sessionId: string): Promise<PlannerChatResponse> {
+  return request('POST', '/hotels/expand', { session_id: sessionId })
+}

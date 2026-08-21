@@ -48,6 +48,15 @@ def _hotel_task_results() -> list[dict[str, Any]]:
     ]
 
 
+def test_respond_exposes_whether_the_hotel_list_can_expand():
+    task_results = _hotel_task_results()
+    task_results[0]["hotel_search_result"]["has_more_hotel_options"] = True
+
+    response = respond(_state(task_results=task_results))["response"]
+
+    assert response["has_more_hotel_options"] is True
+
+
 def _seeded(changes: list[dict]) -> TravelState:
     return apply_patch(TravelState(), changes).state
 

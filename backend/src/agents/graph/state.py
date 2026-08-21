@@ -184,6 +184,17 @@ class TravelGraphState(TypedDict, total=False):
     # destination, stay dates, or party size changes.
     previous_hotel_options: list[dict[str, Any]]
     previous_hotel_search_context: dict[str, Any]
+    # The last search's full ranked batch. `previous_hotel_options` is kept
+    # deliberately limited to cards the guest has actually seen; this pool is
+    # what lets a dedicated "show more" action reveal the next five without
+    # repeating the hotel RPC.
+    previous_hotel_candidate_pool: list[dict[str, Any]]
+    # The immutable inputs needed to repeat the current search only after its
+    # retained ranked pool is exhausted. Kept out of travel_state because an
+    # expand is display-only and must not alter any committed preference.
+    previous_hotel_search_query: dict[str, Any]
+    # One-shot command set by POST /hotels/expand and consumed by hotel_node.
+    expand_hotel_options: bool
 
     # --- output -----------------------------------------------------------
     response: dict[str, Any]  # PlannerChatResponse field shape (Phase 5 non-functional freeze)

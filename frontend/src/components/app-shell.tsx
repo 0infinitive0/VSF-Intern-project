@@ -63,10 +63,13 @@ export default function AppShell({
   stage,
   onViewStage,
   hotelOptions,
+  hasMoreHotelOptions,
+  hotelsLoading,
   hotelFilterData,
   selectedHotelIndex,
   onSelectHotel,
   onConfirmHotel,
+  onExpandHotelOptions,
   chatWidth,
   onChatResizeStart,
   intakeForm,
@@ -103,12 +106,15 @@ export default function AppShell({
   stage: StageView
   onViewStage: (stage: StageView) => void
   hotelOptions: HotelOption[]
+  hasMoreHotelOptions: boolean
+  hotelsLoading: boolean
   /** Retained alongside hotelOptions (App.tsx) — see stage-hotels.tsx's doc
    * comment for why this can't just be read off `state` directly. */
   hotelFilterData: HotelFilterData
   selectedHotelIndex: number | null
   onSelectHotel: (index: number) => void
   onConfirmHotel: (hotel: HotelOption) => void
+  onExpandHotelOptions: () => void
   chatWidth: number
   onChatResizeStart: (e: MouseEvent) => void
   intakeForm: IntakeFormState
@@ -326,10 +332,13 @@ export default function AppShell({
             stage={stage}
             state={state}
             hotelOptions={hotelOptions}
+            hasMoreHotelOptions={hasMoreHotelOptions}
+            hotelsLoading={hotelsLoading}
             hotelFilterData={hotelFilterData}
             selectedHotelIndex={selectedHotelIndex}
             onSelectHotel={onSelectHotel}
             onConfirmHotel={onConfirmHotel}
+            onExpandHotelOptions={onExpandHotelOptions}
             focusMode={focusMode}
             intakeForm={intakeForm}
             onEditIntakeField={onEditIntakeField}

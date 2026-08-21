@@ -246,6 +246,15 @@ def _active_hotel_preference_ids(state: TravelGraphState) -> list[str]:
     return []
 
 
+def _has_more_hotel_options(state: TravelGraphState) -> bool:
+    """Whether the latest hotel-search result can append another batch."""
+    for result in reversed(state.get("task_results") or []):
+        search_result = result.get("hotel_search_result")
+        if isinstance(search_result, dict):
+            return bool(search_result.get("has_more_hotel_options"))
+    return False
+
+
 def _reply_from_messages(state: TravelGraphState) -> str | None:
     """The newest AI message, but only if it answers *this* turn.
 
@@ -385,6 +394,7 @@ def respond(state: TravelGraphState) -> dict[str, Any]:
         "suggestions": clarification_suggestions,
         "stage": stage,
         "hotel_options": hotel_options,
+        "has_more_hotel_options": _has_more_hotel_options(state),
         "hotel_amenities": hotel_amenities,
         "trip_plan": to_trip_plan_payload(state.get("trip_data")),
         "intake": intake_status_from_travel_state(travel_state),

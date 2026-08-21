@@ -557,6 +557,7 @@ class PlannerChatResponse(ResponsePayload):
     suggestions: list[SuggestionPayload] = Field(default_factory=list)
     stage: ChatStage
     hotel_options: list[HotelOption] = Field(default_factory=list)
+    has_more_hotel_options: bool = False
     hotel_amenities: list[AmenityCatalogPayload] = Field(
         default_factory=list,
         description="Unique approved amenity catalog records for all returned hotel options",

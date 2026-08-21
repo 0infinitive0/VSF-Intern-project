@@ -227,6 +227,90 @@ def test_preference_update_retains_prior_cards_and_appends_unseen_matches(monkey
     ]
 
 
+def _retained_search_query() -> dict:
+    return {
+        "destination": "Đà Nẵng",
+        "destination_id": "dest-1",
+        "people": "2",
+        "target_price": 1_000_000,
+        "amenity_prefs": [],
+        "selection_kwargs": {"match_count": 10},
+    }
+
+
+def test_expand_uses_the_retained_ranked_pool_without_another_search(monkeypatch):
+    state = _graph_state(_seeded_travel_state())
+    state["expand_hotel_options"] = True
+    state["previous_hotel_options"] = [_option(f"h{index}")[0] for index in range(1, 6)]
+    state["previous_hotel_candidate_pool"] = [_option(f"h{index}")[0] for index in range(1, 11)]
+    state["previous_hotel_search_query"] = _retained_search_query()
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _unreachable_llm)
+
+    result = hotel_node(state)
+
+    entry = result["task_results"][-1]
+    assert entry["status"] == "ok"
+    assert [option["id"] for option in entry["hotel_search_result"]["options"]] == [
+        f"h{index}" for index in range(1, 11)
+    ]
+    assert entry["hotel_search_result"]["has_more_hotel_options"] is True
+    assert [option["id"] for option in result["previous_hotel_options"]] == [
+        f"h{index}" for index in range(1, 11)
+    ]
+
+
+def test_expand_fetches_only_after_the_retained_pool_is_exhausted(monkeypatch):
+    captured: dict = {}
+
+    def _select(*_args, **kwargs):
+        captured.update(kwargs)
+        return [_option(f"h{index}") for index in range(11, 21)]
+
+    state = _graph_state(_seeded_travel_state())
+    state["expand_hotel_options"] = True
+    state["previous_hotel_options"] = [_option(f"h{index}")[0] for index in range(1, 11)]
+    state["previous_hotel_candidate_pool"] = [_option(f"h{index}")[0] for index in range(1, 11)]
+    state["previous_hotel_search_query"] = _retained_search_query()
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _select)
+    monkeypatch.setattr(hotel_node_module, "rank_hotel_candidates", lambda options, **_k: options)
+
+    result = hotel_node(state)
+
+    assert captured["exclude_hotel_ids"] == [f"h{index}" for index in range(1, 11)]
+    assert [option["id"] for option in result["task_results"][-1]["hotel_search_result"]["options"]] == [
+        f"h{index}" for index in range(1, 16)
+    ]
+    assert [option["id"] for option in result["previous_hotel_candidate_pool"]] == [
+        f"h{index}" for index in range(11, 21)
+    ]
+
+
+def test_expand_marks_the_list_exhausted_when_the_pool_has_fewer_than_five_left(monkeypatch):
+    state = _graph_state(_seeded_travel_state())
+    state["expand_hotel_options"] = True
+    state["previous_hotel_options"] = [_option(f"h{index}")[0] for index in range(1, 6)]
+    state["previous_hotel_candidate_pool"] = [_option(f"h{index}")[0] for index in range(1, 7)]
+    state["previous_hotel_search_query"] = _retained_search_query()
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _unreachable_llm)
+
+    result = hotel_node(state)
+
+    search_result = result["task_results"][-1]["hotel_search_result"]
+    assert [option["id"] for option in search_result["options"]] == [f"h{index}" for index in range(1, 7)]
+    assert search_result["has_more_hotel_options"] is False
+
+
+def test_expand_with_no_active_hotel_search_is_a_no_op(monkeypatch):
+    state = _graph_state(_seeded_travel_state())
+    state["expand_hotel_options"] = True
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _unreachable_llm)
+
+    result = hotel_node(state)
+
+    assert result["task_results"][-1]["status"] == "no_active_hotel_search"
+    assert "hotel_search_result" not in result["task_results"][-1]
+
+
 def test_hotel_search_uses_catalog_ids_for_chat_amenity_aliases(monkeypatch):
     captured: dict = {}
 
