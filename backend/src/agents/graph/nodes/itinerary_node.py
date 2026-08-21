@@ -71,11 +71,12 @@ import json
 import logging
 import re
 from copy import deepcopy
-from typing import Any
+from typing import Any, NamedTuple
 
 from langgraph.errors import GraphInterrupt
 
 from src.agents.graph.state import TravelGraphState
+from src.agents.tools.shown_hotels import hotel_option_at_ordinal, shown_hotel_options
 from src.agents.graph.subgraphs.rebuild_day import build_rebuild_day_subgraph
 from src.domain.travel_state import Presence, TravelState, trip_duration_days
 from src.i18n import t
@@ -83,6 +84,7 @@ from src.services.place_search import search_attraction_candidates
 from src.services.supabase_search import DEFAULT_NEARBY_SEARCH_RADIUS_KM
 from src.services.trip_formatter import format_trip_summary_reply
 from src.services.trip_planner import (
+    _get_destination_id,
     _get_locked_days,
     _itinerary_record,
     apply_trip_edit_plan,
@@ -249,20 +251,127 @@ def _format_radius(radius_km: float) -> str:
     return str(int(radius_km)) if radius_km == int(radius_km) else str(radius_km)
 
 
-def _format_nearby_reply(candidates: list[Any], radius_km: float, language: str) -> str:
+class _NearbyAnchor(NamedTuple):
+    """Where a `list_nearby` search is centered, or why it can't be.
+
+    `hotel_label` names the hotel in the reply and is None once a trip
+    exists: with one hotel booked, "quanh khách sạn" is unambiguous. Before
+    the pick it is the card's own number and name, because the shortlist has
+    several and the user needs to see which one was measured from.
+    """
+
+    coordinates: tuple[float, float] | None = None
+    destination_id: str | None = None
+    hotel_label: str | None = None
+    error: str | None = None
+
+
+def _resolve_nearby_anchor(
+    state: TravelGraphState,
+    travel_state: TravelState,
+    trip_data: dict[str, Any],
+    user_request: str,
+    language: str,
+) -> _NearbyAnchor:
+    """Pick the hotel a nearby search measures from.
+
+    Two stages produce one, and only the later has a trip:
+
+    1. After the pick — `trip_data.hotel` is where the user is staying.
+       Exactly one hotel exists, so nothing needs disambiguating.
+    2. Before it — the shortlist is on screen and numbered, and the user
+       points at a card by that number ("quanh khách sạn số 1 có gì?"). The
+       printed number is the ONLY handle available here: no trip exists yet
+       and the card the user is looking at is frontend-local state the graph
+       never sees. So with several cards up and no number given, this asks
+       instead of guessing — answering about hotel 1 when the user meant
+       hotel 6 is a wrong answer delivered with full confidence, and the
+       nearby list looks identical either way.
+
+    A single-card shortlist is the one case that needs no number: there is
+    nothing else the question could be about.
+    """
+    hotel = trip_data.get("hotel") or {}
+    if trip_data and hotel:
+        return _NearbyAnchor(
+            coordinates=parse_coordinates(hotel.get("coordinates")),
+            destination_id=hotel.get("destination_id"),
+        )
+
+    options = shown_hotel_options(state)
+    if not options:
+        return _NearbyAnchor(
+            error=t(
+                "Mình cần bạn chọn khách sạn trước — mình sẽ tìm địa điểm quanh vị trí đó.",
+                language,
+            )
+        )
+
+    option = hotel_option_at_ordinal(options, user_request)
+    if option is None:
+        if len(options) > 1:
+            return _NearbyAnchor(
+                error=t(
+                    "Bạn muốn xem quanh khách sạn số mấy? Mình đang có {count} lựa chọn trên màn hình.",
+                    language,
+                    count=len(options),
+                )
+            )
+        option = options[0]
+
+    destination_slot = travel_state.get("destination")
+    destination_id = (
+        _get_destination_id(str(destination_slot.value))
+        if destination_slot.presence is Presence.SET and destination_slot.value
+        else None
+    )
+    coordinates = parse_coordinates(option.get("coordinates"))
+    if not coordinates or not destination_id:
+        return _NearbyAnchor()  # caller emits the shared "no hotel location" reply
+    ordinal = options.index(option) + 1
+    name = str(option.get("name") or "").strip()
+    return _NearbyAnchor(
+        coordinates=coordinates,
+        destination_id=destination_id,
+        hotel_label=f"số {ordinal}{f' ({name})' if name else ''}",
+    )
+
+
+def _format_nearby_reply(
+    candidates: list[Any], radius_km: float, language: str, hotel_label: str | None = None
+) -> str:
+    # Each phrasing is a whole `t()` source string, never a f-string spliced
+    # into a key: `t()` matches on the full string, so a composed key would
+    # miss the translation table entirely. `{hotel}` carries the label.
+    radius = _format_radius(radius_km)
     if not candidates:
+        if hotel_label:
+            return t(
+                "Mình chưa tìm thấy địa điểm nổi bật nào trong bán kính {radius} km quanh khách sạn {hotel}.",
+                language,
+                radius=radius,
+                hotel=hotel_label,
+            )
         return t(
             "Mình chưa tìm thấy địa điểm nổi bật nào trong bán kính {radius} km quanh khách sạn.",
             language,
-            radius=_format_radius(radius_km),
+            radius=radius,
         )
-    lines = [
+    header = (
         t(
+            "Trong bán kính {radius} km quanh khách sạn {hotel}, có những địa điểm nổi bật sau:",
+            language,
+            radius=radius,
+            hotel=hotel_label,
+        )
+        if hotel_label
+        else t(
             "Trong bán kính {radius} km quanh khách sạn, có những địa điểm nổi bật sau:",
             language,
-            radius=_format_radius(radius_km),
+            radius=radius,
         )
-    ]
+    )
+    lines = [header]
     for idx, candidate in enumerate(candidates, 1):
         line = f"{idx}. {candidate.name}"
         if candidate.category:
@@ -473,19 +582,13 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
 
     # ── list_nearby (read-only) ─────────────────────────────────────────────
     if action == "list_nearby":
-        if not trip_data:
-            return _err(
-                t(
-                    "Mình cần bạn chọn khách sạn trước — mình sẽ tìm địa điểm quanh vị trí đó.",
-                    language,
-                )
-            )
-        hotel = trip_data.get("hotel") or {}
-        coordinates = parse_coordinates(hotel.get("coordinates"))
-        destination_id = hotel.get("destination_id")
+        user_request = str(task.get("user_request") or "địa điểm nổi bật")
+        anchor = _resolve_nearby_anchor(state, travel_state, trip_data, user_request, language)
+        if anchor.error:
+            return _err(anchor.error)
+        coordinates, destination_id = anchor.coordinates, anchor.destination_id
         if not coordinates or not destination_id:
             return _err(t("Mình chưa có vị trí khách sạn để tìm địa điểm gần đó.", language))
-        user_request = str(task.get("user_request") or "địa điểm nổi bật")
         radius_km = _resolve_radius_km(task, user_request)
         candidates = search_attraction_candidates(
             user_request,
@@ -496,7 +599,7 @@ def itinerary_node(state: TravelGraphState) -> dict[str, Any]:
             max_radius_km=radius_km,
         )
         return _ok(
-            _format_nearby_reply(candidates, radius_km, language),
+            _format_nearby_reply(candidates, radius_km, language, anchor.hotel_label),
             extra={"suggested_places": _suggested_places_payload(candidates)},
         )
 

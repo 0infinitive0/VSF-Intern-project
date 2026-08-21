@@ -28,7 +28,7 @@ from pydantic import BaseModel
 from src.agents.graph.contracts import CONTRACTS
 from src.agents.graph.nodes.extract_patch import _last_human_message
 from src.agents.graph.prompts import build_supervisor_prompt
-from src.agents.graph.routing import WORKER_ORDER, is_impossible, needs_trip_first
+from src.agents.graph.routing import WORKER_ORDER, can_list_nearby, is_impossible, needs_trip_first
 from src.agents.graph.state import TravelGraphState, build_manifest
 from src.i18n import t
 from src.services.llm import get_fast_llm
@@ -279,12 +279,14 @@ def supervisor(state: TravelGraphState) -> dict[str, Any]:
         # `rebuild_days` for a model to take by mistake. `radius_km` is left
         # out on purpose -- `itinerary_node._resolve_radius_km` re-reads it
         # from the user's own words deterministically when it is absent.
-        # `is_impossible` guards this the same as every other delegation:
-        # with no trip yet, `itinerary_node.list_nearby` can only hard-stop
-        # ("chọn khách sạn trước..."), where `qa_node` could at least
-        # attempt an answer -- so a nearby-places question asked before any
-        # hotel is picked still falls through to `qa_node`, unchanged.
-        if state.get("asks_nearby_places") and not is_impossible("itinerary_node", state):
+        # `can_list_nearby` (routing.py), NOT the blanket `is_impossible`
+        # this used to call: that guard's `requires_existing_trip` is about
+        # the node's three EDIT actions and wrongly excluded the hotel
+        # shortlist stage, where the cards are on screen, numbered, and
+        # "quanh khách sạn số 1 có gì?" is exactly the question being asked.
+        # A turn with neither trip nor shortlist still falls through to
+        # `qa_node`, unchanged.
+        if state.get("asks_nearby_places") and can_list_nearby(state):
             task = {"action": "list_nearby", "user_request": _last_human_message(state)}
             return {
                 **_delegate("itinerary_node", "read_only_intent_nearby", state),

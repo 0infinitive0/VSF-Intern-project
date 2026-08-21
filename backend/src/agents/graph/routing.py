@@ -74,6 +74,34 @@ def is_impossible(worker: str, state: TravelGraphState) -> bool:
     return _IMPOSSIBLE.get(worker, _never)(state)
 
 
+def can_list_nearby(state: TravelGraphState) -> bool:
+    """`list_nearby` is the one `itinerary_node` action `requires_existing_trip`
+    is too strict for.
+
+    That guard exists because the node's other three actions EDIT a trip and
+    so cannot run before one exists. `list_nearby` edits nothing — it needs
+    only a hotel to measure from, and the numbered shortlist on screen before
+    the pick is full of them. Gating it on `is_impossible` therefore blocked
+    the one stage where "quanh khách sạn số 1 có gì?" is the most useful
+    question a user can ask: while they are still deciding between the cards.
+
+    A destination is still required (`search_attraction_candidates` filters
+    by it), and so is at least one shown card — with neither trip nor
+    shortlist there is nothing to center a radius on, and the turn falls
+    through to `qa_node` exactly as it did before.
+    """
+    if _no_destination(state):
+        return False
+    if not requires_existing_trip(state):
+        return True
+    # Imported here, not at module scope: `agents.tools` pulls in the service
+    # layer (Supabase clients, the amenity catalog), and this module is
+    # imported by the graph builder itself.
+    from src.agents.tools.shown_hotels import shown_hotel_options
+
+    return bool(shown_hotel_options(state))
+
+
 def needs_trip_first(state: TravelGraphState) -> bool:
     """The turn asked for itinerary work before a trip exists.
 
