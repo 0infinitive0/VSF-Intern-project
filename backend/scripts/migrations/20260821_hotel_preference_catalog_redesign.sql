@@ -90,6 +90,7 @@ set amenities = (
     left join amenity_merge_map map on map.removed_id = value.id
     group by coalesce(map.canonical_id, value.id)
   ) item
+)
 where hotel.amenities && (select array_agg(removed_id) from amenity_merge_map);
 
 update public.rooms room
@@ -102,6 +103,7 @@ set room_facilities = (
     left join amenity_merge_map map on map.removed_id = value.id
     group by coalesce(map.canonical_id, value.id)
   ) item
+)
 where room.room_facilities && (select array_agg(removed_id) from amenity_merge_map);
 
 delete from public.amenity_catalog catalog
