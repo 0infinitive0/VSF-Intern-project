@@ -6,6 +6,8 @@ import { useTranslation } from 'react-i18next'
  * Disabled while pending. Auto-grows up to 140px.
  * Enter sends; Shift+Enter inserts a newline.
  */
+const MAX_HEIGHT = 140
+
 export default function Composer({
   onSend,
   disabled,
@@ -26,7 +28,7 @@ export default function Composer({
     if (!el || !text) return
     onSend(text)
     el.value = ''
-    el.style.height = 'auto'
+    resize(el)
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -36,11 +38,18 @@ export default function Composer({
     }
   }
 
+  // Grow with the content and only show the scrollbar once the max height is
+  // reached — otherwise a single line renders an empty scrollbar track.
+  function resize(el: HTMLTextAreaElement) {
+    el.style.height = 'auto'
+    const contentHeight = el.scrollHeight
+    el.style.height = Math.min(contentHeight, MAX_HEIGHT) + 'px'
+    el.style.overflowY = contentHeight > MAX_HEIGHT ? 'auto' : 'hidden'
+  }
+
   function handleInput() {
     const el = textareaRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = Math.min(el.scrollHeight, 140) + 'px'
+    if (el) resize(el)
   }
 
   return (
@@ -48,7 +57,7 @@ export default function Composer({
       <textarea
         ref={textareaRef}
         id="message-input"
-        className="composer-scrollbar flex-1 bg-transparent border-none rounded-none text-[13px] text-on-surface resize-none leading-normal focus:outline-none disabled:opacity-60 placeholder:text-on-surface-faint py-2"
+        className="composer-scrollbar flex-1 bg-transparent border-none rounded-none text-[13px] text-on-surface resize-none overflow-y-hidden leading-normal focus:outline-none disabled:opacity-60 placeholder:text-on-surface-faint py-2"
         placeholder={t('composerPlaceholder')}
         rows={1}
         disabled={disabled}
