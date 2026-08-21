@@ -277,6 +277,30 @@ def infer_trip_change(modification_request: str) -> TripChange | None:
     )
 
 
+# A calendar date is never an itinerary day number. Without masking these
+# out, the `ngay\s*(\d+)` scan below reads "ngày 03/07/2026" as trip day 3:
+# the opening intake message ("từ ngày 03/07/2026 đến ngày 05/07/2026") came
+# back as days (3, 5), which `extract_patch._rewrite_day_scope` then used to
+# turn a trip-wide `preferences.themes` answer into two day-scoped
+# `daily_preferences.<day>.theme` changes, leaving the trip-wide slot
+# unanswered and the question repeating. It bites hardest on the FIRST
+# message, where no real duration is known yet and the caller's generous
+# fallback bound accepts almost any number the scan invents.
+#
+# Masked before BOTH scans, so a date can neither supply a day number nor
+# wreck a genuine range (the range scan bails to None on a reversed pair,
+# which a date's own digits can easily produce).
+#
+# Slash dates and "3 tháng 7" only. A hyphen is deliberately NOT a date
+# separator here: "ngày 1-3" is a legitimate day RANGE the range scan must
+# keep seeing.
+_DATE_SPAN_RE = re.compile(
+    r"\d{4}\s*-\s*\d{1,2}\s*-\s*\d{1,2}"           # ISO: 2026-07-03
+    r"|\d{1,2}\s*/\s*\d{1,2}(?:\s*/\s*\d{2,4})?"   # 03/07/2026, 3/7
+    r"|\d{1,2}\s*thang\s*\d{1,2}"                  # 3 thang 7
+)
+
+
 def parse_day_scope(message: str, duration_days: int) -> tuple[int, ...] | None:
     """Resolve a clarification reply to explicit valid itinerary day numbers."""
     if duration_days < 1:
@@ -288,14 +312,18 @@ def parse_day_scope(message: str, duration_days: int) -> tuple[int, ...] | None:
     ):
         return tuple(range(1, duration_days + 1))
 
-    range_match = re.search(r"(?:ngay\s*)?(\d+)\s*(?:den|toi|-)\s*(\d+)", normalized)
+    # Dates removed first — see `_DATE_SPAN_RE`. The "all days" check above
+    # is phrase-based and needs no masking.
+    scannable = _DATE_SPAN_RE.sub(" ", normalized)
+
+    range_match = re.search(r"(?:ngay\s*)?(\d+)\s*(?:den|toi|-)\s*(\d+)", scannable)
     if range_match:
         start, end = (int(range_match.group(1)), int(range_match.group(2)))
         if 1 <= start <= end <= duration_days:
             return tuple(range(start, end + 1))
         return None
 
-    explicit = re.findall(r"(?:ngay|day)\s*(\d+)", normalized)
+    explicit = re.findall(r"(?:ngay|day)\s*(\d+)", scannable)
     if not explicit and re.fullmatch(r"[\d\s,;&]+", normalized):
         explicit = re.findall(r"\d+", normalized)
     days = tuple(dict.fromkeys(int(value) for value in explicit))

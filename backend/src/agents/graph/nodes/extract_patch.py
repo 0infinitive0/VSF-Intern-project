@@ -661,6 +661,28 @@ def _ground_changes(
             grounded.append({**change, "value": destination})
             continue
 
+        # `value: null` on a closed path is the explicit "no preference"
+        # answer, not a label that failed to ground -- grounding it as one is
+        # a category error, since null is precisely the absence of a label.
+        # `travel_state` turns a `set` with a null value into NOT_APPLICABLE,
+        # and `slot_registry._slot_satisfies` only counts that as answered for
+        # a `skippable` spec, so a stray null on a slot nothing can legitimately
+        # skip still cannot pass itself off as an answer.
+        #
+        # Without this, the opt-out the question itself offers ("không có gì
+        # đặc biệt") was rejected as unsupported, and `preferences.themes` --
+        # the one slot that is both skippable and closed-label -- became
+        # unanswerable: the opt-out came back as "Dữ liệu chưa hợp lệ" and the
+        # same question was asked again, with intake unable to advance.
+        # `budget.target` takes the identical null sentinel and never hit this
+        # because it is not a closed path at all.
+        #
+        # `append`/`remove` are deliberately NOT exempt: appending nothing is a
+        # malformed change, not an opt-out.
+        if value is None and operation == "set" and (path in _CLOSED_LIST_PATHS or path in _CLOSED_SCALAR_PATHS):
+            grounded.append(change)
+            continue
+
         if path in _CLOSED_LIST_PATHS:
             allowed = _CLOSED_LIST_PATHS[path]
             if operation == "set":

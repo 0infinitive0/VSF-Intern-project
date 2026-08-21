@@ -728,6 +728,51 @@ def test_companion_outside_the_closed_set_is_dropped(monkeypatch):
     assert result["patch"] == []
 
 
+def test_preferences_opt_out_survives_closed_label_grounding(monkeypatch):
+    """`value: null` is the opt-out sentinel, not an unsupported label.
+
+    It has to reach the patch layer intact: `travel_state` turns it into
+    NOT_APPLICABLE, which is the only thing that marks `preferences.themes`
+    answered and lets intake move past it. Grounding it as a label instead
+    rejected the exact opt-out the question offers, and the question repeated
+    forever."""
+    _patch(
+        monkeypatch,
+        _FakeLLM([_payload("update_trip", [{"path": "preferences.themes", "operation": "set", "value": None}])]),
+    )
+    result = extract_patch(_state("không có gì đặc biệt"))
+
+    assert result["patch"] == [{"path": "preferences.themes", "operation": "set", "value": None}]
+    assert result["rejected_changes"] == []
+
+
+def test_scalar_preference_opt_out_survives_closed_label_grounding(monkeypatch):
+    """Same sentinel, closed SCALAR path -- the exemption is a property of
+    null, not of one path's table."""
+    _patch(
+        monkeypatch,
+        _FakeLLM([_payload("update_trip", [{"path": "preferences.pace", "operation": "set", "value": None}])]),
+    )
+    result = extract_patch(_state("sao cũng được"))
+
+    assert result["patch"] == [{"path": "preferences.pace", "operation": "set", "value": None}]
+    assert result["rejected_changes"] == []
+
+
+def test_appending_a_null_theme_is_still_rejected(monkeypatch):
+    """Only `set` carries the opt-out meaning. Appending nothing to a label
+    list is a malformed change, and exempting it would let a null quietly
+    no-op instead of being reported."""
+    _patch(
+        monkeypatch,
+        _FakeLLM([_payload("update_trip", [{"path": "preferences.themes", "operation": "append", "value": None}])]),
+    )
+    result = extract_patch(_state("thêm gì đó"))
+
+    assert result["patch"] == []
+    assert [drop["path"] for drop in result["rejected_changes"]] == ["preferences.themes"]
+
+
 # --- Corrected slot: no first-non-null-wins trap ----------------------------
 
 
