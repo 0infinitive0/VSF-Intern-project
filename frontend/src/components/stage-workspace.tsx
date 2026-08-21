@@ -259,14 +259,20 @@ export default function StageWorkspace({
       })
     }
     if (showSuggested) {
-      for (const place of state.suggestedPlaces) {
+      // `label` is the number the chat reply printed next to this exact
+      // place: backend builds the numbered reply and the suggested_places
+      // payload from one `candidates` list in one order (itinerary_node's
+      // _format_nearby_reply / _suggested_places_payload), so index + 1 here
+      // is that same number — the pin and "3. La Capo Café" always agree.
+      state.suggestedPlaces.forEach((place, index) => {
         list.push({
           syncId: suggestedPlaceSyncId(place),
           coordinates: place.coordinates,
           kind: 'suggested',
+          label: index + 1,
           name: place.name,
         })
-      }
+      })
     }
     return list
   }, [resolvedTab, days, activeDay, tripPlan?.hotel, showSuggested, state.suggestedPlaces])

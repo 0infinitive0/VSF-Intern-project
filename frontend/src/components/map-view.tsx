@@ -227,6 +227,8 @@ export interface MapMarkerSpec {
   syncId: string
   coordinates?: string | null
   kind: 'hotel' | 'item' | 'suggested'
+  /** Number drawn inside the pin: an 'item' pin's stop order within its day,
+   * a 'suggested' pin's position in the chat reply's numbered list. */
   label?: number
   dayNumber?: number
   openId?: string
@@ -239,8 +241,8 @@ export interface MapMarkerSpec {
   hoverLabel?: string
   priceLabel?: string
   matchLabel?: string
-  /** 'suggested' only — shown as a native title tooltip; these pins have no
-   * itinerary row to display the name next to. */
+  /** 'suggested' only — revealed as a hover label on the pin; these pins have
+   * no itinerary row to display the name next to. */
   name?: string
 }
 
@@ -485,9 +487,12 @@ function createMarkerElement(marker: MapMarkerSpec): { root: HTMLDivElement; con
       content.appendChild(label)
     }
   } else if (marker.kind === 'suggested') {
-    // Neutral (never day-colored) circular pin with a place icon instead of
-    // a number — these are suggestions, not itinerary stops, so they must
-    // never be mistaken for one of the numbered day pins below.
+    // Carries the chat reply's own list number so "5. Xe 2 tầng Hà Nội" in
+    // the message can be found on the map at a glance. Still never
+    // day-colored: a neutral glass surface with --t1 ink is what separates a
+    // suggestion from the saturated, white-on-color numbered day pins below,
+    // so the number alone can't make the two read alike. Falls back to the
+    // place icon when a caller has no number to give.
     content.style.width = '24px'
     content.style.height = '24px'
     content.style.borderRadius = '50%'
@@ -495,14 +500,30 @@ function createMarkerElement(marker: MapMarkerSpec): { root: HTMLDivElement; con
     content.style.alignItems = 'center'
     content.style.justifyContent = 'center'
     content.style.background = 'var(--g3)'
+    content.style.color = 'var(--t1)'
     content.style.animation = 'vPinIn .6s cubic-bezier(.34,1.4,.64,1) backwards'
-    const icon = document.createElement('span')
-    icon.className = 'material-symbols-outlined'
-    icon.style.fontSize = '14px'
-    icon.style.color = 'var(--t1)'
-    icon.textContent = 'place'
-    content.appendChild(icon)
-    if (marker.name) root.title = marker.name
+    if (marker.label != null) {
+      content.style.font = "600 11px/1 'Be Vietnam Pro', sans-serif"
+      content.textContent = String(marker.label)
+    } else {
+      const icon = document.createElement('span')
+      icon.className = 'material-symbols-outlined'
+      icon.style.fontSize = '14px'
+      icon.textContent = 'place'
+      content.appendChild(icon)
+    }
+    // Name label lives on `root`, not `content`: content is what
+    // applyMarkerState scales to 1.45 on hover, and a scaled label would
+    // render its text blurry-large instead of at its own size.
+    if (marker.name) {
+      const label = document.createElement('div')
+      label.dataset.markerName = 'true'
+      // Number repeated here, not just on the pin: the pin's own digit is
+      // hidden under the cursor at the moment the label opens.
+      label.textContent = marker.label != null ? `${marker.label}. ${marker.name}` : marker.name
+      label.style.cssText = "position:absolute;left:50%;bottom:32px;transform:translate(-50%,4px);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:3px 9px;border-radius:99px;background:var(--g3);border:1px solid var(--edge);color:var(--t1);font:500 10.5px/1.4 'Be Vietnam Pro',sans-serif;box-shadow:0 6px 14px -6px rgb(var(--shadow-rgb) / .6);opacity:0;pointer-events:none;transition:opacity .16s ease,transform .16s ease"
+      root.appendChild(label)
+    }
   } else {
     content.style.width = '26px'
     content.style.height = '26px'
@@ -524,6 +545,17 @@ function applyMarkerState(content: HTMLElement, marker: MapMarkerSpec, hovered: 
   if (root) root.style.zIndex = hovered ? '1000' : selected ? '900' : '0'
   content.style.opacity = dimmed ? '.55' : '1'
   content.style.boxShadow = hovered || selected ? '0 8px 20px -4px rgb(var(--shadow-rgb) / .6), 0 0 0 6px var(--g2)' : '0 4px 12px -3px rgb(var(--shadow-rgb) / .45)'
+  if (marker.kind === 'suggested') {
+    // Suggested pins carry no itinerary row, so the name only ever appears
+    // here — revealed by hover or an active selection, same rule as the
+    // hotel pin's number label below.
+    const name = root?.querySelector<HTMLElement>('[data-marker-name]')
+    if (name) {
+      const shown = hovered || selected
+      name.style.opacity = shown ? '1' : '0'
+      name.style.transform = shown ? 'translate(-50%,0)' : 'translate(-50%,4px)'
+    }
+  }
   if (marker.kind === 'hotel') {
     content.style.background = selected ? 'var(--btn)' : 'var(--base-marker)'
     content.style.color = selected ? 'var(--btn-fg)' : 'var(--on-acc)'
