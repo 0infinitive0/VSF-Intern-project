@@ -50,6 +50,10 @@ class TravelGraphState(TypedDict, total=False):
     # question is already the acknowledgement.
     revised_slots: list[str]
     rejected_changes: list[dict[str, Any]]
+    # Phrases stated this turn that could not bind to an approved catalog ID.
+    # Turn-scoped: hotel_node surfaces them once; they never enter travel_state.
+    unresolved_amenities: list[str]
+    ambiguous_amenities: list[dict[str, Any]]
     impacted_workflows: list[str]  # Workflow labels from detect_impact()
     # Raw text of a `Command(resume=...)` reply that did NOT resolve the
     # ambiguity `interrupt()` paused on (Phase 7) -- `_run_turn_via_graph`
@@ -243,6 +247,8 @@ def initial_graph_state(session_id: str, *, language: str = "vi") -> TravelGraph
         applied_changes=[],
         revised_slots=[],
         rejected_changes=[],
+        unresolved_amenities=[],
+        ambiguous_amenities=[],
         impacted_workflows=[],
         unresolved_resume_text=None,
         missing_slots=[],

@@ -537,6 +537,10 @@ class PreferencePayload(BaseModel):
     label: str
 
 
+class ActivePreferencePayload(PreferencePayload):
+    polarity: Literal["require", "exclude", "prefer"] = "require"
+
+
 class AmenityCatalogPayload(ResponsePayload):
     """Approved hotel amenity exposed to the browser for filters and pills."""
 
@@ -563,7 +567,7 @@ class PlannerChatResponse(ResponsePayload):
     compound_min_price: float | None = None
     compound_max_price: float | None = None
     all_preferences: list[PreferencePayload] = Field(default_factory=list)
-    active_preferences: list[PreferencePayload] = Field(default_factory=list)
+    active_preferences: list[ActivePreferencePayload] = Field(default_factory=list)
     # Set only on a turn whose worker wrote one (see
     # `response_payload.suggested_places_from_task_results`); empty on every
     # other turn so a stale result never leaks onto a later, unrelated reply.

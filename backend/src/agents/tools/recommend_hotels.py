@@ -15,26 +15,21 @@ import logging
 from datetime import date, datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
-
 from langchain.tools import ToolRuntime, tool
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
+from pydantic import BaseModel, Field
 
 from src.agents.nodes.intake import validate_trip_basics
 from src.agents.state import TripState
 from src.i18n import t
-from src.services.amenity_catalog import discover_and_store_amenities
 from src.services.hotel_selection import (
     MIN_PLAUSIBLE_PRICE_VND,
-    clear_hotel_amenity_tag_cache,
     hotel_matches_amenity_tag,
     is_hotel_amenity_tag,
-    lookup_sea_view_hotel_ids,
     rank_hotel_candidates,
     select_hotel_candidates,
 )
-from src.services.trip_formatter import format_hotel_options
 from src.services.trip_planner import _get_destination_id
 
 logger = logging.getLogger(__name__)
@@ -205,8 +200,7 @@ def recommend_hotels(
         and preference.get("label")
         and is_hotel_amenity_tag(str(preference["id"]))
     ]
-    previous_active_ids = [str(preference["id"]) for preference in previous_active_preferences]
-    
+
     # A destination or stay-date change invalidates the source hotel set.  A
     # preference change does not: keep the complete original list so clients
     # can filter it, while the follow-up search adds any new matching hotels.
@@ -259,14 +253,7 @@ def recommend_hotels(
             people,
             **selection_kwargs,
         )
-        sea_view_hotel_ids = (
-            lookup_sea_view_hotel_ids([
-                *[data["id"] for data, _candidate in options],
-                *[option["id"] for option in existing_options if isinstance(option, dict) and option.get("id")],
-            ])
-            if "sea_view" in {*amenity_pref_set, *previous_active_ids}
-            else frozenset()
-        )
+        sea_view_hotel_ids: frozenset[str] = frozenset()
         options = rank_hotel_candidates(
             options,
             target_price=parsed_target_price,
@@ -325,36 +312,8 @@ def recommend_hotels(
 
     parsed_hotel_prefs = parse_prefs(hotel_preferences)
 
-    # A hotel-specific request may name an amenity the shared catalog has not
-    # learned yet (for example, "spa"). Only these hotel preference inputs are
-    # eligible for model classification; general trip preferences never become
-    # hotel filter pills.
-    unknown_amenity_candidates: list[dict[str, str]] = []
-    for preference in parsed_hotel_prefs:
-        preference_dict = (
-            preference.model_dump()
-            if hasattr(preference, "model_dump")
-            else preference
-            if isinstance(preference, dict)
-            else None
-        )
-        if (
-            preference_dict
-            and is_valid_pref(preference_dict)
-            and not is_hotel_amenity_tag(str(preference_dict["id"]))
-        ):
-            unknown_amenity_candidates.append(
-                {
-                    "id": str(preference_dict["id"]),
-                    "label": str(preference_dict["label"]),
-                }
-            )
-    if unknown_amenity_candidates and discover_and_store_amenities(unknown_amenity_candidates):
-        # `is_hotel_amenity_tag` may have cached this new ID as unknown while
-        # building the candidate list above. Clear only after a successful
-        # catalog write so it becomes usable in this same recommendation.
-        clear_hotel_amenity_tag_cache()
-    
+    # Unknown chat terms remain unresolved. Catalog discovery belongs only to
+    # the offline scraper/staging path and cannot create a row from chat.
     # Determine current preference objects
     # A follow-up request adds to the active filters. New search results must
     # therefore be checked against the previously active preference IDs too.

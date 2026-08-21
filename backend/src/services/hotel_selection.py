@@ -18,13 +18,13 @@ from supabase import Client, create_client
 
 from src.config import get_settings
 from src.domain.travel_state import Presence, Slot, TravelState, apply_patch
+from src.services.amenity_catalog import expand_amenity_descendants, query_approved_amenities
 from src.services.guided_question import (
     GuidedOption,
     GuidedQuestion,
     format_guided_question,
     resolve_guided_reply,
 )
-from src.services.amenity_catalog import query_approved_amenities
 from src.services.supabase_search import search_hotels_with_rooms
 from src.services.trip_scheduler import PlaceCandidate, detect_covered_hotel_meals
 
@@ -168,6 +168,12 @@ def _amenity_drop_counts(
     }
 
 
+def _matches_amenity_family(
+    data: Dict[str, Any], acceptable_ids: Collection[str], sea_view_hotel_ids: Collection[str]
+) -> bool:
+    return any(hotel_matches_amenity_tag(data, tag, sea_view_hotel_ids) for tag in acceptable_ids)
+
+
 def select_hotel_candidates(
     destination: str,
     destination_id: str,
@@ -184,6 +190,7 @@ def select_hotel_candidates(
     max_radius_km: float | None = None,
     *,
     required_amenities: Collection[str] = (),
+    excluded_amenities: Collection[str] = (),
     min_star_rating: float | None = None,
     min_review_score: float | None = None,
     min_guests: int | None = None,
@@ -226,7 +233,8 @@ def select_hotel_candidates(
     """
     query = hotel_query or f"Hotel in {destination} for {people} people"
     hard_filters_requested = (
-        bool(required_amenities) or min_star_rating is not None or min_review_score is not None
+        bool(required_amenities) or bool(excluded_amenities)
+        or min_star_rating is not None or min_review_score is not None
     )
     effective_match_count = (
         min(match_count * _HARD_FILTER_OVERFETCH_MULTIPLIER, _HARD_FILTER_MAX_FETCH)
@@ -313,22 +321,72 @@ def select_hotel_candidates(
         if pre_rating and not filtered:
             raise NoHotelsMatchRating(min_star_rating, min_review_score)
 
-    if required_amenities:
-        pre_amenity = filtered
-        sea_view_hotel_ids = (
-            lookup_sea_view_hotel_ids([data["id"] for data, _ in filtered])
-            if "sea_view" in required_amenities
-            else frozenset()
-        )
+    all_amenity_filters = tuple(dict.fromkeys((*required_amenities, *excluded_amenities)))
+    expanded_families = expand_amenity_descendants(all_amenity_filters) if all_amenity_filters else {}
+    # Canonical hotel.amenities is the sole facet source, including sea_view.
+    sea_view_hotel_ids: frozenset[str] = frozenset()
+
+    if excluded_amenities:
         filtered = [
             (data, cand)
             for data, cand in filtered
-            if all(hotel_matches_amenity_tag(data, tag, sea_view_hotel_ids) for tag in required_amenities)
+            if not any(
+                _matches_amenity_family(
+                    data, expanded_families.get(tag, frozenset({tag})), sea_view_hotel_ids
+                )
+                for tag in excluded_amenities
+            )
+        ]
+
+    if required_amenities:
+        pre_amenity = filtered
+        filtered = [
+            (data, cand)
+            for data, cand in filtered
+            if all(
+                _matches_amenity_family(
+                    data, expanded_families.get(tag, frozenset({tag})), sea_view_hotel_ids
+                )
+                for tag in required_amenities
+            )
         ]
         if pre_amenity and not filtered:
-            raise NoHotelsMatchAmenities(
-                _amenity_drop_counts(pre_amenity, required_amenities, sea_view_hotel_ids)
-            )
+            if len(required_amenities) == 1:
+                raise NoHotelsMatchAmenities(
+                    _amenity_drop_counts(pre_amenity, required_amenities, sea_view_hotel_ids)
+                )
+            scored_partial: list[tuple[int, Dict[str, Any], PlaceCandidate, list[str], list[str]]] = []
+            for data, candidate in pre_amenity:
+                matched = [
+                    tag for tag in required_amenities
+                    if _matches_amenity_family(
+                        data, expanded_families.get(tag, frozenset({tag})), sea_view_hotel_ids
+                    )
+                ]
+                missing = [tag for tag in required_amenities if tag not in matched]
+                scored_partial.append((len(matched), data, candidate, matched, missing))
+            best_count = max((item[0] for item in scored_partial), default=0)
+            if best_count <= 0:
+                raise NoHotelsMatchAmenities(
+                    _amenity_drop_counts(pre_amenity, required_amenities, sea_view_hotel_ids)
+                )
+            filtered = []
+            for count, data, candidate, matched, missing in scored_partial:
+                if count != best_count:
+                    continue
+                data["amenity_match"] = {
+                    "matched": matched,
+                    "missing": missing,
+                    "relaxed": missing,
+                }
+                filtered.append((data, candidate))
+        else:
+            for data, _candidate in filtered:
+                data["amenity_match"] = {
+                    "matched": list(required_amenities),
+                    "missing": [],
+                    "relaxed": [],
+                }
 
     return filtered[:match_count]
 
@@ -1052,24 +1110,19 @@ def hotel_matches_amenity_tag(
     tag: str,
     sea_view_hotel_ids: Collection[str] = frozenset(),
 ) -> bool:
-    """Pure predicate: does this hotel satisfy the given preference tag? Missing
-    data, an unrecognized tag, or simply no match all resolve to False — never
-    raises, and never penalizes (callers only ever add a bonus for True)."""
-    if tag == "sea_view":
-        hotel_id = data.get("id")
-        return hotel_id is not None and str(hotel_id) in sea_view_hotel_ids
-    if tag == "breakfast":
-        return "breakfast" in (data.get("covered_meals") or [])
-    # Backfilled rows store canonical amenity IDs. Keep the old keyword path
-    # below for pre-backfill rows and for partially migrated datasets.
-    if tag in {str(item).strip().lower() for item in (data.get("amenities") or [])}:
-        return True
-    keywords = _AMENITY_KEYWORD_TAGS.get(tag) or _catalog_match_keywords(tag)
-    if not keywords:
+    """Canonical-ID membership predicate.
+
+    The deployed hotel corpus is fully backfilled, so labels, substrings,
+    ``rooms.view`` and ``covered_meals`` are no longer competing sources of
+    truth. ``sea_view_hotel_ids`` remains as a compatibility parameter for
+    callers during this release and is intentionally ignored.
+    """
+    normalized_tag = str(tag).strip().lower()
+    if not normalized_tag:
         return False
-    amenities_text = " ".join(str(item) for item in (data.get("amenities") or []))
-    normalized = _normalize_for_match(amenities_text)
-    return any(keyword in normalized for keyword in keywords)
+    return normalized_tag in {
+        str(item).strip().lower() for item in (data.get("amenities") or [])
+    }
 
 
 def lookup_sea_view_hotel_ids(hotel_ids: List[str]) -> frozenset[str]:

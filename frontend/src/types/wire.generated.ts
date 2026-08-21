@@ -580,6 +580,19 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActivePreferencePayload */
+        ActivePreferencePayload: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /**
+             * Polarity
+             * @default require
+             * @enum {string}
+             */
+            polarity: "require" | "exclude" | "prefer";
+        };
         /**
          * AmenityCatalogPayload
          * @description Approved hotel amenity exposed to the browser for filters and pills.
@@ -1233,7 +1246,7 @@ export interface components {
             /** All Preferences */
             all_preferences: components["schemas"]["PreferencePayload"][];
             /** Active Preferences */
-            active_preferences: components["schemas"]["PreferencePayload"][];
+            active_preferences: components["schemas"]["ActivePreferencePayload"][];
             /** Suggested Places */
             suggested_places: components["schemas"]["SuggestedPlacePayload"][];
         };
@@ -1492,6 +1505,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
     };
     responses: never;

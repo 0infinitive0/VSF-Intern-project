@@ -53,7 +53,7 @@ describe('chatSessionReducer hotel filter API data', () => {
         hotel_options: [{ index: 1, id: 'hotel-1', name: 'Hotel A', average_nightly_price: 1_200_000 }],
         compound_min_price: 800_000, compound_max_price: 2_000_000,
         all_preferences: [{ id: 'pool', label: 'Pool' }],
-        active_preferences: [{ id: 'pool', label: 'Pool' }],
+        active_preferences: [{ id: 'pool', label: 'Pool', polarity: 'require' }],
       },
     })
 
@@ -61,7 +61,7 @@ describe('chatSessionReducer hotel filter API data', () => {
       minPrice: 800_000, maxPrice: 2_000_000,
       hotelAmenities: [],
       allPreferences: [{ id: 'pool', label: 'Pool' }],
-      activePreferences: [{ id: 'pool', label: 'Pool' }],
+      activePreferences: [{ id: 'pool', label: 'Pool', polarity: 'require' }],
     })
   })
 })

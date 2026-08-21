@@ -173,3 +173,20 @@ def test_trip_intake_state_to_travel_state_drops_out_of_range_people_instead_of_
     travel_state = intake.to_travel_state()
 
     assert travel_state.get("people").presence is Presence.UNKNOWN
+
+
+def test_live_session_amenity_strings_upgrade_to_bound_record_shape_on_read() -> None:
+    restored = TravelState.from_dict({
+        "hotel_preferences.amenities": {
+            "presence": "set",
+            "value": ["swimming_pool"],
+        }
+    })
+
+    assert restored.get("hotel_preferences.amenities").value == [{
+        "id": "swimming_pool",
+        "label": "swimming_pool",
+        "polarity": "require",
+        "source_phrase": "swimming_pool",
+        "confidence": 0.0,
+    }]

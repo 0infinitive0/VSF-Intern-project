@@ -153,7 +153,13 @@ export default function StageHotels({
   const selectedHotelRays = useMemo(() => hotelMapRays(selectedHotelDetail), [selectedHotelDetail])
 
   useEffect(() => {
-    setPreferenceIds(hotelFilterData.activePreferences.map(({ id }) => id))
+    // Server-side `prefer` is ranking-only and `exclude` is already enforced
+    // negatively. Only hard requirements may become positive local filters.
+    setPreferenceIds(
+      hotelFilterData.activePreferences
+        .filter(({ polarity }) => polarity === 'require')
+        .map(({ id }) => id),
+    )
   }, [hotels, hotelFilterData.activePreferences])
 
   const filterPreferences = useMemo(

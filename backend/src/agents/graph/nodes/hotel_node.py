@@ -358,17 +358,73 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
     target_price = float(target_price_slot.value) if target_price_slot.presence is Presence.SET else None
 
     amenities_slot = travel_state.get("hotel_preferences.amenities")
-    requested_amenities = (
-        [str(tag) for tag in amenities_slot.value] if amenities_slot.presence is Presence.SET else []
+    preference_records = (
+        [record for record in amenities_slot.value if isinstance(record, dict)]
+        if amenities_slot.presence is Presence.SET and isinstance(amenities_slot.value, list)
+        else []
     )
-    amenity_binding = resolve_hotel_amenity_ids(requested_amenities)
-    required_amenities = list(amenity_binding.ids)
+    required_amenities: list[str] = []
+    excluded_amenities: list[str] = []
+    preferred_amenities: list[str] = []
+    unresolved_amenities = list(state.get("unresolved_amenities") or [])
+    labels_by_id = _amenity_catalog_labels()
+    active_preferences: list[dict[str, str]] = []
+    updated_travel_state_dict: dict[str, Any] | None = None
+    rebound_records: list[dict[str, Any]] = []
+    upgraded_legacy_records = False
+    for record in preference_records:
+        amenity_id = str(record.get("id") or "")
+        source_phrase = str(record.get("source_phrase") or amenity_id)
+        polarity = str(record.get("polarity") or "require")
+        # Schema-v1 read-through records carry confidence 0 and may still hold
+        # the user's raw phrase as `id`; rebind those once for compatibility.
+        ids = [amenity_id]
+        if float(record.get("confidence") or 0.0) == 0.0:
+            upgraded_legacy_records = True
+            legacy_binding = resolve_hotel_amenity_ids([source_phrase])
+            ids = list(legacy_binding.ids)
+            for unresolved in legacy_binding.unresolved:
+                if unresolved not in unresolved_amenities:
+                    unresolved_amenities.append(unresolved)
+            if not ids and source_phrase not in unresolved_amenities:
+                unresolved_amenities.append(source_phrase)
+        for resolved_id in ids:
+            if not any(
+                item["id"] == resolved_id and item["polarity"] == polarity
+                for item in rebound_records
+            ):
+                rebound_records.append({
+                    "id": resolved_id,
+                    "label": labels_by_id.get(resolved_id, str(record.get("label") or resolved_id)),
+                    "polarity": polarity,
+                    "source_phrase": source_phrase,
+                    "confidence": 1.0,
+                })
+            target = {
+                "require": required_amenities,
+                "exclude": excluded_amenities,
+                "prefer": preferred_amenities,
+            }.get(polarity, required_amenities)
+            if resolved_id not in target:
+                target.append(resolved_id)
+            active_preferences.append({
+                "id": resolved_id,
+                "label": labels_by_id.get(resolved_id, str(record.get("label") or resolved_id)),
+                "polarity": polarity,
+            })
+    if upgraded_legacy_records:
+        upgraded = apply_patch(travel_state, [{
+            "path": "hotel_preferences.amenities",
+            "operation": "set",
+            "value": rebound_records,
+        }])
+        travel_state = upgraded.state
+        updated_travel_state_dict = travel_state.to_dict()
     # Surfaced rather than silently dropped (review finding): a term that
     # didn't resolve to a known amenity is a request the search never even
     # tried to honor -- the user deserves to know, not just get an
     # unexplained partial (or empty) result. `.unresolved` already carries
     # exactly the user's own words, never an internal ID.
-    unresolved_amenities = list(amenity_binding.unresolved)
     star_slot = travel_state.get("hotel_preferences.min_star_rating")
     min_star_rating = float(star_slot.value) if star_slot.presence is Presence.SET else None
     review_slot = travel_state.get("hotel_preferences.min_review_score")
@@ -379,8 +435,6 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
     root_latitude: float | None = None
     root_longitude: float | None = None
     max_radius_km: float | None = None
-    updated_travel_state_dict: dict[str, Any] | None = None
-
     if radius_slot.presence is Presence.SET:
         radius_km = float(radius_slot.value)
         coordinates, unresolved_resume_text = _resolve_center(
@@ -481,6 +535,7 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
             "root_longitude": root_longitude,
             "max_radius_km": max_radius_km,
             "required_amenities": required_amenities,
+            "excluded_amenities": excluded_amenities,
             "min_star_rating": min_star_rating,
             "min_review_score": min_review_score,
             "min_guests": people_count,
@@ -567,11 +622,9 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
                 )
         return _result("no_results", t("Không tìm thấy khách sạn phù hợp tại {dest}.", language, dest=destination))
 
-    ranked = rank_hotel_candidates(options, target_price=target_price)
-    amenity_catalog = _amenity_catalog_labels()
-    active_preferences = [
-        {"id": tag, "label": _amenity_label(tag, amenity_catalog)} for tag in required_amenities
-    ]
+    ranked = rank_hotel_candidates(
+        options, target_price=target_price, amenity_prefs=preferred_amenities
+    )
     hotel_options = [*previous_options]
     known_ids = set(previous_ids)
     for data, _candidate in ranked[:_HOTEL_DISPLAY_LIMIT]:
@@ -579,7 +632,18 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
         if hotel_id and hotel_id not in known_ids:
             known_ids.add(hotel_id)
             hotel_options.append(data)
+    relaxed = list(dict.fromkeys(
+        tag
+        for option in hotel_options
+        for tag in ((option.get("amenity_match") or {}).get("relaxed") or [])
+    ))
     reply = t("Mình tìm được {count} khách sạn phù hợp.", language, count=len(hotel_options))
+    if relaxed:
+        reply += " " + t(
+            "Các kết quả gần nhất còn thiếu: {items}.",
+            language,
+            items=_amenity_labels(relaxed, labels_by_id),
+        )
     result = _result(
         "ok", reply, {"options": hotel_options, "active_preferences": active_preferences}
     )

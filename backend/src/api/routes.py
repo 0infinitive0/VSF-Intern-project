@@ -888,6 +888,11 @@ def _suggestion_context(app, config: dict, response: PlannerChatResponse) -> Sug
     could have already advanced it past the state this `response` was built
     from.
     """
+    if response.suggestions:
+        # Deterministic binder clarification chips already answer the exact
+        # ambiguity. Do not replace them with speculative next-step chips.
+        return None
+
     state = app.get_state(config).values or {}
     last_worker = last_worker_from_task_results(state)
     if last_worker is None:

@@ -722,7 +722,20 @@ def _parse_extraction_payload(payload: object) -> tuple[str, list[dict[str, Any]
             raise PatchExtractionError("each change requires a non-empty string path")
         if operation not in _OPERATIONS:
             raise PatchExtractionError(f"each change's operation must be one of {sorted(_OPERATIONS)}")
-        changes.append({"path": path.strip(), "operation": operation, "value": item.get("value")})
+        normalized_path = path.strip()
+        value = item.get("value")
+        # Models commonly emit append/remove with a JSON list even though the
+        # patch layer intentionally accepts one item per operation. Normalize
+        # this harmless shape drift at the untrusted-output boundary instead
+        # of letting every item be rejected later as "expected string, got
+        # list". An empty list means there is simply no change to apply.
+        if operation in {"append", "remove"} and isinstance(value, list):
+            changes.extend(
+                {"path": normalized_path, "operation": operation, "value": entry}
+                for entry in value
+            )
+            continue
+        changes.append({"path": normalized_path, "operation": operation, "value": value})
 
     # Non-strict on purpose (module docstring): `isinstance` first so a
     # non-string value (a list, a number) never reaches `in` on a frozenset,

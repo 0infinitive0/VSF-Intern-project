@@ -143,10 +143,32 @@ def test_list_path_append_and_remove() -> None:
             {"path": "hotel_preferences.amenities", "operation": "append", "value": "wifi"},
         ],
     ).state
-    assert added.get("hotel_preferences.amenities").value == ["pool", "wifi"]
+    assert [item["id"] for item in added.get("hotel_preferences.amenities").value] == ["pool", "wifi"]
 
     removed = apply_patch(added, [{"path": "hotel_preferences.amenities", "operation": "remove", "value": "pool"}]).state
-    assert removed.get("hotel_preferences.amenities").value == ["wifi"]
+    assert [item["id"] for item in removed.get("hotel_preferences.amenities").value] == ["wifi"]
+
+
+def test_bound_amenity_remove_compares_canonical_ids() -> None:
+    pool = {
+        "id": "swimming_pool", "label": "Hồ bơi", "polarity": "require",
+        "source_phrase": "bể bơi", "confidence": 0.99,
+    }
+    state = apply_patch(
+        TravelState(),
+        [{"path": "hotel_preferences.amenities", "operation": "append", "value": pool}],
+    ).state
+
+    removed = apply_patch(
+        state,
+        [{
+            "path": "hotel_preferences.amenities",
+            "operation": "remove",
+            "value": {**pool, "label": "Bể bơi", "source_phrase": "hồ bơi"},
+        }],
+    ).state
+
+    assert removed.get("hotel_preferences.amenities").value == []
 
 
 def test_append_is_idempotent_for_a_duplicate_item() -> None:

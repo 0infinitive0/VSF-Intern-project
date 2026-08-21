@@ -1308,6 +1308,34 @@
   },
   "components": {
     "schemas": {
+      "ActivePreferencePayload": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "polarity": {
+            "type": "string",
+            "enum": [
+              "require",
+              "exclude",
+              "prefer"
+            ],
+            "title": "Polarity",
+            "default": "require"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "ActivePreferencePayload"
+      },
       "AmenityCatalogPayload": {
         "properties": {
           "id": {
@@ -3269,7 +3297,7 @@
           },
           "active_preferences": {
             "items": {
-              "$ref": "#/components/schemas/PreferencePayload"
+              "$ref": "#/components/schemas/ActivePreferencePayload"
             },
             "type": "array",
             "title": "Active Preferences"
@@ -4201,6 +4229,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",

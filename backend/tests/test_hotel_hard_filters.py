@@ -93,7 +93,7 @@ def _wire(monkeypatch, rows: list[dict], *, search_kwargs_capture: dict | None =
 
 
 def test_required_amenities_excludes_hotels_missing_the_tag(monkeypatch):
-    rows = [_hotel_row("has-pool", amenities=["Hồ bơi ngoài trời"]), _hotel_row("no-pool", amenities=["wifi"])]
+    rows = [_hotel_row("has-pool", amenities=["pool"]), _hotel_row("no-pool", amenities=["wifi"])]
     _wire(monkeypatch, rows)
 
     options = select_hotel_candidates("Đà Nẵng", "dest-1", "2 người", required_amenities=("pool",))
@@ -103,9 +103,9 @@ def test_required_amenities_excludes_hotels_missing_the_tag(monkeypatch):
 
 def test_required_amenities_and_semantics_requires_every_tag(monkeypatch):
     rows = [
-        _hotel_row("both", amenities=["phòng gym", "hồ bơi"]),
-        _hotel_row("gym-only", amenities=["phòng gym"]),
-        _hotel_row("pool-only", amenities=["hồ bơi"]),
+        _hotel_row("both", amenities=["gym", "pool"]),
+        _hotel_row("gym-only", amenities=["gym"]),
+        _hotel_row("pool-only", amenities=["pool"]),
     ]
     _wire(monkeypatch, rows)
 
@@ -114,21 +114,61 @@ def test_required_amenities_and_semantics_requires_every_tag(monkeypatch):
     assert [data["id"] for data, _ in options] == ["both"]
 
 
-def test_required_amenities_zero_results_names_binding_constraint(monkeypatch):
+def test_multiple_required_amenities_relax_to_best_partial_matches(monkeypatch):
     # No hotel has gym at all; two of three have pool. Dropping "gym" alone
     # would unlock 2 results; dropping "pool" alone unlocks 0 (still no
     # gym-having hotel exists) -- "gym" is the real binding constraint.
     rows = [
-        _hotel_row("pool-1", amenities=["hồ bơi"]),
-        _hotel_row("pool-2", amenities=["hồ bơi"]),
+        _hotel_row("pool-1", amenities=["pool"]),
+        _hotel_row("pool-2", amenities=["pool"]),
         _hotel_row("neither", amenities=["wifi"]),
     ]
     _wire(monkeypatch, rows)
 
-    with pytest.raises(NoHotelsMatchAmenities) as excinfo:
-        select_hotel_candidates("Đà Nẵng", "dest-1", "2 người", required_amenities=("gym", "pool"))
+    options = select_hotel_candidates(
+        "Đà Nẵng", "dest-1", "2 người", required_amenities=("gym", "pool")
+    )
 
-    assert excinfo.value.tag_drop_counts == {"gym": 2, "pool": 0}
+    assert [data["id"] for data, _ in options] == ["pool-1", "pool-2"]
+    assert all(data["amenity_match"]["missing"] == ["gym"] for data, _ in options)
+    assert all(data["amenity_match"]["relaxed"] == ["gym"] for data, _ in options)
+
+
+def test_single_required_amenity_with_zero_results_still_raises(monkeypatch):
+    _wire(monkeypatch, [_hotel_row("no-gym", amenities=["wifi"])])
+
+    with pytest.raises(NoHotelsMatchAmenities):
+        select_hotel_candidates("Đà Nẵng", "dest-1", "2 người", required_amenities=("gym",))
+
+
+def test_excluded_amenity_removes_matching_hotels(monkeypatch):
+    rows = [
+        _hotel_row("pool", amenities=["swimming_pool"]),
+        _hotel_row("quiet", amenities=["wifi"]),
+    ]
+    _wire(monkeypatch, rows)
+
+    options = select_hotel_candidates(
+        "Đà Nẵng", "dest-1", "2 người", excluded_amenities=("swimming_pool",)
+    )
+
+    assert [data["id"] for data, _ in options] == ["quiet"]
+
+
+def test_general_parent_matches_a_specific_descendant(monkeypatch):
+    rows = [_hotel_row("free", amenities=["free_parking"])]
+    _wire(monkeypatch, rows)
+    monkeypatch.setattr(
+        hotel_selection_module,
+        "expand_amenity_descendants",
+        lambda ids, scope="hotel": {"parking": frozenset({"parking", "free_parking"})},
+    )
+
+    options = select_hotel_candidates(
+        "Đà Nẵng", "dest-1", "2 người", required_amenities=("parking",)
+    )
+
+    assert [data["id"] for data, _ in options] == ["free"]
 
 
 def test_required_amenities_never_raised_for_callers_that_omit_it(monkeypatch):
@@ -146,9 +186,9 @@ def test_gym_spa_restaurant_resolve_from_builtin_taxonomy_without_discovery():
     for tag in ("gym", "spa", "restaurant"):
         assert is_hotel_amenity_tag(tag)
 
-    assert hotel_matches_amenity_tag({"amenities": ["Phòng Gym hiện đại"]}, "gym")
-    assert hotel_matches_amenity_tag({"amenities": ["Spa & massage"]}, "spa")
-    assert hotel_matches_amenity_tag({"amenities": ["Nhà hàng buffet"]}, "restaurant")
+    assert hotel_matches_amenity_tag({"amenities": ["gym"]}, "gym")
+    assert hotel_matches_amenity_tag({"amenities": ["spa"]}, "spa")
+    assert hotel_matches_amenity_tag({"amenities": ["restaurant"]}, "restaurant")
     assert not hotel_matches_amenity_tag({"amenities": ["wifi"]}, "gym")
 
 

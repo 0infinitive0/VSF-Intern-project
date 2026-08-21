@@ -26,6 +26,7 @@ type Schemas = components['schemas']
 export type Suggestion = Schemas['SuggestionPayload']
 export type HotelOption = Schemas['HotelOption']
 export type PreferencePayload = Schemas['PreferencePayload']
+export type ActivePreferencePayload = Schemas['ActivePreferencePayload']
 export type AmenityCatalogOption = Schemas['AmenityCatalogPayload']
 export type RouteInfo = Schemas['RouteInfoPayload']
 export type DayItem = Schemas['ItineraryItem']
@@ -184,7 +185,7 @@ export interface HotelFilterData {
   maxPrice: number | null
   hotelAmenities: AmenityCatalogOption[]
   allPreferences: PreferencePayload[]
-  activePreferences: PreferencePayload[]
+  activePreferences: ActivePreferencePayload[]
 }
 
 export interface ChatState {

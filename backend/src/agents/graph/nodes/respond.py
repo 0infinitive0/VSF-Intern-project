@@ -95,8 +95,6 @@ from typing import Any
 
 from langchain_core.messages import AIMessage
 
-from src.services.llm import response_text
-
 from src.agents.graph.response_payload import (
     budget_from_travel_state,
     derive_stage,
@@ -107,7 +105,8 @@ from src.agents.graph.response_payload import (
 from src.agents.graph.state import TravelGraphState
 from src.domain.travel_state import Presence, TravelState
 from src.models.schemas import AmenityCatalogPayload, hotel_amenities_from_hotel_options, to_trip_plan_payload
-from src.services.amenity_catalog import AmenityCatalogEntry, all_approved_amenities, resolve_hotel_amenity_ids
+from src.services.amenity_catalog import AmenityCatalogEntry, all_approved_amenities
+from src.services.llm import response_text
 
 logger = logging.getLogger(__name__)
 
@@ -202,11 +201,25 @@ def _catalog_preferences(ids: list[str], catalog: tuple[AmenityCatalogEntry, ...
 def _active_preferences_from_travel_state(
     travel_state: TravelState, catalog: tuple[AmenityCatalogEntry, ...]
 ) -> list[dict[str, str]]:
-    """Bind user hotel-amenity requests to approved canonical catalog IDs."""
+    """Project already-bound state records without recomputing a bind."""
     amenities_slot = travel_state.get("hotel_preferences.amenities")
     if amenities_slot.presence is not Presence.SET:
         return []
-    return _catalog_preferences(list(resolve_hotel_amenity_ids(amenities_slot.value).ids), catalog)
+    approved = {entry.id: entry for entry in catalog if entry.scope in {"hotel", "both"}}
+    projected: list[dict[str, str]] = []
+    for record in amenities_slot.value:
+        if not isinstance(record, dict):
+            continue
+        amenity_id = str(record.get("id") or "")
+        entry = approved.get(amenity_id)
+        if entry is None:
+            continue
+        projected.append({
+            "id": amenity_id,
+            "label": entry.label,
+            "polarity": str(record.get("polarity") or "require"),
+        })
+    return projected
 
 
 def _payload_preferences(ids: list[str], catalog: list[AmenityCatalogPayload]) -> list[dict[str, str]]:
@@ -301,6 +314,37 @@ def respond(state: TravelGraphState) -> dict[str, Any]:
         )
         reply = _ACK_EN if state.get("language") == "en" else _ACK_VI
 
+    language = state.get("language") or "vi"
+    unresolved = [str(item) for item in (state.get("unresolved_amenities") or []) if str(item)]
+    missing_from_reply = [item for item in unresolved if item not in reply]
+    if missing_from_reply:
+        suffix = (
+            f"I can't currently filter by: {', '.join(missing_from_reply)}."
+            if language == "en"
+            else f"Mình chưa hỗ trợ lọc theo: {', '.join(missing_from_reply)}."
+        )
+        reply = f"{reply} {suffix}"
+
+    clarification_suggestions: list[dict[str, str]] = []
+    for ambiguity in state.get("ambiguous_amenities") or []:
+        if not isinstance(ambiguity, dict):
+            continue
+        phrase = str(ambiguity.get("phrase") or "")
+        candidates = [item for item in (ambiguity.get("candidates") or []) if isinstance(item, dict)][:3]
+        labels = [str(item.get("label") or "") for item in candidates if item.get("label")]
+        if labels:
+            question = (
+                f'For "{phrase}", did you mean {", ".join(labels)}?'
+                if language == "en"
+                else f'Với "{phrase}", bạn muốn {", ".join(labels)}?'
+            )
+            reply = f"{reply} {question}"
+        for candidate in candidates:
+            label = str(candidate.get("label") or "")
+            if label:
+                value = f"I mean {label}" if language == "en" else f"Tôi muốn {label}"
+                clarification_suggestions.append({"label": label, "value": value})
+
     travel_state = TravelState.from_dict(state.get("travel_state"))
     hotel_options = hotel_options_from_task_results(state)
     stage = derive_stage(state, hotel_options, reply)
@@ -314,31 +358,21 @@ def respond(state: TravelGraphState) -> dict[str, Any]:
     # on any turn whose `stage` isn't literally "hotel_options" even though
     # hotel cards are still present in the same response.
     hotel_amenities = hotel_amenities_from_hotel_options(hotel_options) if hotel_options else []
+    catalog = all_approved_amenities() if amenity_slot.presence is Presence.SET else ()
+    active_preferences = _active_preferences_from_travel_state(travel_state, catalog)
     if hotel_options:
-        active_ids = _active_hotel_preference_ids(state)
-        if not active_ids and amenity_slot.presence is Presence.SET:
-            # A re-search/change-hotel turn can retain its cards while the
-            # latest worker result omits active_preferences.  The travel state
-            # is the session-wide source of the user's amenity request.
-            session_catalog = all_approved_amenities()
-            active_ids = [
-                preference["id"]
-                for preference in _active_preferences_from_travel_state(travel_state, session_catalog)
-            ]
+        active_ids = [preference["id"] for preference in active_preferences]
         # The filter choices are the user's accumulated amenity requests for
         # this session, not every facility on the cards.  Mapping through the
         # shared card catalog removes requests that no displayed hotel offers.
         all_preferences = _payload_preferences(active_ids, hotel_amenities)
-        active_preferences = _payload_preferences(active_ids, hotel_amenities)
     else:
-        catalog = all_approved_amenities() if amenity_slot.presence is Presence.SET else ()
-        active_preferences = _active_preferences_from_travel_state(travel_state, catalog)
         all_preferences = []
 
     response = {
         "session_id": state.get("session_id", ""),
         "reply": reply,
-        # Always empty here (Phase 17 rewrite, plan
+        # Normally empty here (Phase 17 rewrite, plan
         # 260819-1554-llm-grounded-chat-suggestions): suggestion chips are now
         # built by the SSE worker AFTER this node returns, from real turn
         # data this node has no reason to duplicate — see `routes.py`'s
@@ -346,7 +380,9 @@ def respond(state: TravelGraphState) -> dict[str, Any]:
         # A non-streaming caller (`POST /planner_chat`, `POST /hotels/select`,
         # `restore`) never runs that worker, so it
         # always gets `[]` here, by design (see `docs/chat_api_contract.md`).
-        "suggestions": [],
+        # Binder clarification is the exception: these deterministic top-k
+        # choices are part of correctness, not speculative next-step ideas.
+        "suggestions": clarification_suggestions,
         "stage": stage,
         "hotel_options": hotel_options,
         "hotel_amenities": hotel_amenities,
