@@ -38,15 +38,27 @@ describe('applyCartQty', () => {
     expect(next).toEqual({ 'hotel-a': { 'room-1': 3 } })
   })
 
-  it('clamps quantity to [0, MAX_QTY_PER_ROOM] and removes the room entry at 0', () => {
-    const next = applyCartQty({}, 'hotel-a', 'room-1', 0, null)
+  it('clamps quantity to [0, maxQty] and removes the room entry at 0', () => {
+    const next = applyCartQty({}, 'hotel-a', 'room-1', 0, null, 2)
     expect(next).toEqual({ 'hotel-a': {} })
 
-    const overMax = applyCartQty({}, 'hotel-a', 'room-1', 99, null)
-    expect(overMax).toEqual({ 'hotel-a': { 'room-1': 4 } })
+    // maxQty=2 (e.g. roomsNeededForParty(4, 2)) clamps to 2, not to some
+    // flat constant unrelated to party size.
+    const overMax = applyCartQty({}, 'hotel-a', 'room-1', 99, null, 2)
+    expect(overMax).toEqual({ 'hotel-a': { 'room-1': 2 } })
 
-    const negative = applyCartQty({}, 'hotel-a', 'room-1', -5, null)
+    const negative = applyCartQty({}, 'hotel-a', 'room-1', -5, null, 2)
     expect(negative).toEqual({ 'hotel-a': {} })
+  })
+
+  it('falls back to the absolute safety ceiling when no maxQty is supplied', () => {
+    const overMax = applyCartQty({}, 'hotel-a', 'room-1', 99, null)
+    expect(overMax).toEqual({ 'hotel-a': { 'room-1': 20 } })
+  })
+
+  it('never exceeds the absolute safety ceiling even if a caller passes a larger maxQty', () => {
+    const overMax = applyCartQty({}, 'hotel-a', 'room-1', 99, null, 500)
+    expect(overMax).toEqual({ 'hotel-a': { 'room-1': 20 } })
   })
 
   it('a heldHotelId matching the hotel being edited is not treated as "another" hotel to preserve', () => {

@@ -128,7 +128,12 @@ export interface RoomStay {
  * `roomPicks` already gave. */
 export type RoomCart = Record<string, number>
 
-const MAX_QTY_PER_ROOM = 4
+// The real per-room-type cap is computed by the caller from party size vs.
+// room.max_guests (room-capacity.ts's roomsNeededForParty, threaded in as
+// applyCartQty's maxQty param) — this is only the last-resort ceiling for
+// when no maxQty is supplied, matching the backend's own room_count bound
+// (BookingReservationRequest.room_count, schemas.py, ge=1 le=20).
+const ABSOLUTE_MAX_QTY_PER_ROOM = 20
 const DEFAULT_CHECK_IN_TIME = '14:00:00'
 const DEFAULT_CHECK_OUT_TIME = '12:00:00'
 
@@ -161,9 +166,16 @@ export function applyCartQty(
   roomId: string,
   qty: number,
   heldHotelId: string | null,
+  /** Caller-computed cap for THIS room type (hotel-detail-panel.tsx's
+   * roomsNeededForParty(partySize, room.max_guests), also what RoomCard's
+   * +/- buttons already respect) — defaults to the absolute safety ceiling
+   * when omitted, so this stays backward-compatible for any caller that
+   * doesn't have a party-size-derived cap to pass. */
+  maxQty?: number,
 ): Record<string, RoomCart> {
   const current = { ...(prev[hotelId] ?? {}) }
-  const clamped = Math.max(0, Math.min(MAX_QTY_PER_ROOM, qty))
+  const effectiveMax = Math.min(maxQty ?? ABSOLUTE_MAX_QTY_PER_ROOM, ABSOLUTE_MAX_QTY_PER_ROOM)
+  const clamped = Math.max(0, Math.min(effectiveMax, qty))
   if (clamped === 0) delete current[roomId]
   else current[roomId] = clamped
   const next: Record<string, RoomCart> = { [hotelId]: current }
@@ -245,8 +257,8 @@ export function useRoomHold(sessionId: string | null) {
 
   const cartFor = useCallback((hotelId: string): RoomCart => cartByHotel[hotelId] ?? {}, [cartByHotel])
 
-  const setQty = useCallback((hotelId: string, roomId: string, qty: number) => {
-    setCartByHotel((prev) => applyCartQty(prev, hotelId, roomId, qty, heldHotelId))
+  const setQty = useCallback((hotelId: string, roomId: string, qty: number, maxQty?: number) => {
+    setCartByHotel((prev) => applyCartQty(prev, hotelId, roomId, qty, heldHotelId, maxQty))
   }, [heldHotelId])
 
   const cartCount = useCallback(
