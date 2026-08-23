@@ -128,9 +128,9 @@ export interface RoomStay {
  * `roomPicks` already gave. */
 export type RoomCart = Record<string, number>
 
-// The real per-room-type cap is computed by the caller from party size vs.
-// room.max_guests (room-capacity.ts's roomsNeededForParty, threaded in as
-// applyCartQty's maxQty param) — this is only the last-resort ceiling for
+// The real per-room-type cap is computed by the caller from party size
+// (room-capacity.ts's maxRoomsForParty, threaded in as applyCartQty's
+// maxQty param) — this is only the last-resort ceiling for
 // when no maxQty is supplied, matching the backend's own room_count bound
 // (BookingReservationRequest.room_count, schemas.py, ge=1 le=20).
 const ABSOLUTE_MAX_QTY_PER_ROOM = 20
@@ -167,8 +167,8 @@ export function applyCartQty(
   qty: number,
   heldHotelId: string | null,
   /** Caller-computed cap for THIS room type (hotel-detail-panel.tsx's
-   * roomsNeededForParty(partySize, room.max_guests), also what RoomCard's
-   * +/- buttons already respect) — defaults to the absolute safety ceiling
+   * maxRoomsForParty(partySize), also what RoomCard's +/- buttons already
+   * respect) — defaults to the absolute safety ceiling
    * when omitted, so this stays backward-compatible for any caller that
    * doesn't have a party-size-derived cap to pass. */
   maxQty?: number,

@@ -149,7 +149,7 @@ export default function StageHotels({
   }, [hotels, selectedIndex, state.tripPlan?.hotel, roomHold.heldHotelId])
   const resolvedSelectedIndex = selectedHotel?.index ?? selectedIndex
   const nights = nightsFrom(state.intake?.start_date, state.intake?.end_date)
-  // Party size for room-quantity capping (HotelDetailPanel's roomsNeededForParty):
+  // Party size for room-quantity capping (HotelDetailPanel's maxRoomsForParty):
   // tripPlan.number_of_adults once the itinerary is built, falling back to
   // parsing intake.people ("2 người") since that's available earlier — same
   // "prefer the built trip, fall back to intake" reasoning as nights above.

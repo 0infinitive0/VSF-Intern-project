@@ -13,7 +13,7 @@ import { displayAmenityLabels } from '../lib/hotel-filters'
 import { formatHotelStars } from '../lib/format-stars'
 import { formatSourcePlatform } from '../lib/format-source-platform'
 import { cartMatchesHeldBookings } from '../lib/room-cart-diff'
-import { roomsNeededForParty } from '../lib/room-capacity'
+import { maxRoomsForParty } from '../lib/room-capacity'
 import type { AmenityCatalogOption, HotelOption, RoomDetail } from '../types'
 
 /** Nights from the trip's real intake dates — same rule as stage-hotels.tsx's
@@ -88,7 +88,7 @@ export default function HotelDetailPanel({
   /** ChatState.tripPlan.number_of_adults, falling back to parsing
    * ChatState.intake.people ("2 người") — same "null until known" rule as
    * checkInDate/checkOutDate above. Drives each room type's quantity cap
-   * (roomsNeededForParty in room-capacity.ts): unknown party size degrades
+   * (maxRoomsForParty in room-capacity.ts): unknown party size degrades
    * to a cap of 1 room, never an unrestricted one. */
   partySize: number | null
   /** Fires the EXISTING itinerary-build call once a hold succeeds — see
@@ -402,14 +402,15 @@ export default function HotelDetailPanel({
                   <div className="flex flex-col gap-2.5">
                     {detail.rooms.map((room, i) => {
                       const roomKey = room.id ?? room.name ?? String(i)
-                      // How many units of THIS room type the party actually
-                      // needs (party size vs. room.max_guests), capped by
-                      // real inventory — replaces the old flat cap of 4,
-                      // which had nothing to do with who's traveling.
-                      const roomsNeeded = roomsNeededForParty(partySize, room.max_guests)
+                      // At most one unit of this room type per traveler
+                      // (room-capacity.ts explains why capacity-based
+                      // division is the wrong cap here), capped by real
+                      // inventory — replaces the old flat cap of 4, which
+                      // had nothing to do with who's traveling.
+                      const roomsAllowed = maxRoomsForParty(partySize)
                       const maxQty = room.price?.sold_out
                         ? 0
-                        : Math.min(roomsNeeded, room.available_room_count ?? roomsNeeded)
+                        : Math.min(roomsAllowed, room.available_room_count ?? roomsAllowed)
                       return (
                         <RoomCard
                           key={roomKey}

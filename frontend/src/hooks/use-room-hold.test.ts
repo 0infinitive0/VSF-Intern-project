@@ -42,7 +42,7 @@ describe('applyCartQty', () => {
     const next = applyCartQty({}, 'hotel-a', 'room-1', 0, null, 2)
     expect(next).toEqual({ 'hotel-a': {} })
 
-    // maxQty=2 (e.g. roomsNeededForParty(4, 2)) clamps to 2, not to some
+    // maxQty=2 (e.g. maxRoomsForParty(2)) clamps to 2, not to some
     // flat constant unrelated to party size.
     const overMax = applyCartQty({}, 'hotel-a', 'room-1', 99, null, 2)
     expect(overMax).toEqual({ 'hotel-a': { 'room-1': 2 } })

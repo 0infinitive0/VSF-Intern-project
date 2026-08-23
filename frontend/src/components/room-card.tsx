@@ -19,9 +19,10 @@ import type { AmenityCatalogOption, RoomDetail } from '../types'
  * `qty`/`onQtyChange` replace the old display-only `selected`/`onPick`: a
  * hotel can now hold several different room TYPES at once (the design's
  * cart), each with its own count up to `maxQty` — the caller
- * (hotel-detail-panel.tsx) derives this from the trip's party size vs. this
- * room type's own `max_guests` (room-capacity.ts's roomsNeededForParty),
- * further capped by `available_room_count` when known. Still
+ * (hotel-detail-panel.tsx) derives this from the trip's party size alone
+ * (room-capacity.ts's maxRoomsForParty — deliberately NOT this room type's
+ * own `max_guests`, see that file's doc comment for why), further capped by
+ * `available_room_count` when known. Still
  * no cancellation/payment policy cells — the tables have no such columns,
  * and this app never invents policy text for real data it doesn't have.
  *
