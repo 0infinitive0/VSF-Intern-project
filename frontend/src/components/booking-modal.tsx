@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import AuthTextField from '../auth/auth-text-field'
+import { useAuth } from '../auth/auth-context'
 import { EMAIL_RE } from '../auth/email-pattern'
 import { isValidPhone } from '../auth/phone-pattern'
 import RemoteImage from './remote-image'
@@ -129,6 +130,7 @@ export default function BookingModal({
   paymentReturnOutcome?: 'failed' | 'cancelled' | 'pending' | null
 }) {
   const { t, i18n } = useTranslation()
+  const auth = useAuth()
   const { detail: hotelDetail } = useHotelDetail(roomHold.heldHotelId)
 
   const [render, setRender] = useState(open)
@@ -163,6 +165,27 @@ export default function BookingModal({
 
   const [creatingPayment, setCreatingPayment] = useState(false)
   const [paymentError, setPaymentError] = useState<string | null>(null)
+
+  // Pre-fill from the signed-in account — only into a field that's still
+  // EMPTY, never overwriting something the guest already typed or that was
+  // already restored from sessionStorage above. An anonymous session
+  // (auth.isAnonymous — every visitor has SOME Supabase session, see
+  // auth-context.tsx) has no real name/email/phone to offer, so this is a
+  // no-op for it. An effect, not a lazy useState initializer like
+  // profile-password-modal.tsx uses (it can assume `user` is already
+  // resolved) — this component mounts at app boot, before Supabase's own
+  // async session bootstrap resolves, and stays mounted across sign-in, so
+  // it needs to react whenever auth.user actually becomes available.
+  useEffect(() => {
+    if (auth.isAnonymous || !auth.user) return
+    const user = auth.user
+    const metadata = user.user_metadata ?? {}
+    const accountName = typeof metadata.full_name === 'string' ? metadata.full_name : ''
+    const accountPhone = typeof metadata.phone === 'string' ? metadata.phone : ''
+    if (accountName) setGuestName((prev) => prev || accountName)
+    if (user.email) setGuestEmail((prev) => prev || user.email!)
+    if (accountPhone) setGuestPhone((prev) => prev || accountPhone)
+  }, [auth.user, auth.isAnonymous])
 
   useEffect(() => {
     try {
