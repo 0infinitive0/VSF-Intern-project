@@ -99,13 +99,29 @@ for (const [i, id] of WALK_LAYER_IDS.entries()) {
     color: '#fff', // inert — line-gradient (pulse, below) replaces line-color
     opacityFn: mainOpacityExpr,
     widthFn: mainWidthExpr,
-    // Longer than the first pass (halfWidth 0.009 -> 0.016 — "dài ra 1
-    // chút") with a large capFraction (0.6, vs drive's crisp 0.18 default —
-    // "bo tròn các góc") so each mark is mostly rounded cap with just a
-    // short flat shaft — a pill, not a rectangle. Fewer of them (14 -> 9) so
-    // the longer marks don't run into each other, which reads calmer/
-    // smoother than a dense train of short marks.
-    pulse: { count: 9, halfWidth: 0.016, color: LEG_COLORS[i], capFraction: 0.6 },
+    // Longer than the first pass (halfWidth 0.009 -> 0.016 -> 0.04) with a
+    // large capFraction (0.6, vs drive's crisp 0.18 default — "bo tròn các
+    // góc") so each mark is mostly rounded cap with just a short flat
+    // shaft — a pill, not a rectangle. Fewer of them each time (14 -> 9 ->
+    // 6) so the longer marks don't run into each other.
+    //
+    // Second pass (0.016/9) still read as round DOTS rather than elongated
+    // pills on an actual walking leg: halfWidth is a fraction of THAT LEG's
+    // own length (line-progress is normalized per feature, not per screen
+    // pixel — see the module doc comment above on travelGradient's
+    // trade-offs), and walking legs are short by construction (routing.py's
+    // WALKING_THRESHOLD_KM only picks the "walking" profile under 1.2km) —
+    // so a mark's on-screen length ended up close to or shorter than
+    // line-width (4), reading as a circle instead of a capsule. This pass
+    // (0.04, ~2.5x longer) targets a mark clearly longer than it is wide
+    // (e.g. ~8px long x 4px wide on a ~100px-long leg on screen) regardless
+    // of the exact leg length — capFraction stays 0.6 (same rounded/flat
+    // proportions, just scaled up); count drops 9 -> 6 to keep a clear gap
+    // between the now-longer marks (ink/gap goes from ~29/71 to ~48/52,
+    // still visibly dashed, not a solid line). Engine limitation still
+    // applies: an unusually short or long leg can still under/overshoot
+    // this — there's no per-screen-pixel dash sizing available here.
+    pulse: { count: 6, halfWidth: 0.04, color: LEG_COLORS[i], capFraction: 0.6 },
   }
 }
 
