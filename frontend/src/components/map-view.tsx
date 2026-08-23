@@ -99,29 +99,27 @@ for (const [i, id] of WALK_LAYER_IDS.entries()) {
     color: '#fff', // inert — line-gradient (pulse, below) replaces line-color
     opacityFn: mainOpacityExpr,
     widthFn: mainWidthExpr,
-    // Longer than the first pass (halfWidth 0.009 -> 0.016 -> 0.04) with a
+    // Longer each pass (halfWidth 0.009 -> 0.016 -> 0.04 -> 0.07) with a
     // large capFraction (0.6, vs drive's crisp 0.18 default — "bo tròn các
     // góc") so each mark is mostly rounded cap with just a short flat
     // shaft — a pill, not a rectangle. Fewer of them each time (14 -> 9 ->
-    // 6) so the longer marks don't run into each other.
+    // 6 -> 4) so the longer marks don't run into each other.
     //
-    // Second pass (0.016/9) still read as round DOTS rather than elongated
-    // pills on an actual walking leg: halfWidth is a fraction of THAT LEG's
-    // own length (line-progress is normalized per feature, not per screen
-    // pixel — see the module doc comment above on travelGradient's
-    // trade-offs), and walking legs are short by construction (routing.py's
-    // WALKING_THRESHOLD_KM only picks the "walking" profile under 1.2km) —
-    // so a mark's on-screen length ended up close to or shorter than
-    // line-width (4), reading as a circle instead of a capsule. This pass
-    // (0.04, ~2.5x longer) targets a mark clearly longer than it is wide
-    // (e.g. ~8px long x 4px wide on a ~100px-long leg on screen) regardless
-    // of the exact leg length — capFraction stays 0.6 (same rounded/flat
-    // proportions, just scaled up); count drops 9 -> 6 to keep a clear gap
-    // between the now-longer marks (ink/gap goes from ~29/71 to ~48/52,
-    // still visibly dashed, not a solid line). Engine limitation still
-    // applies: an unusually short or long leg can still under/overshoot
-    // this — there's no per-screen-pixel dash sizing available here.
-    pulse: { count: 6, halfWidth: 0.04, color: LEG_COLORS[i], capFraction: 0.6 },
+    // halfWidth is a fraction of THAT LEG's own length (line-progress is
+    // normalized per feature, not per screen pixel — see the module doc
+    // comment above on travelGradient's trade-offs), and walking legs are
+    // short by construction (routing.py's WALKING_THRESHOLD_KM only picks
+    // the "walking" profile under 1.2km) — both the 0.016/9 and 0.04/6
+    // passes still confirmed (screenshot) as round DOTS on an actual leg,
+    // not elongated pills, so this pass pushes considerably further: 0.07
+    // (~4.4x the original) targets a mark unmistakably longer than it is
+    // wide regardless of leg length — capFraction stays 0.6 (same rounded/
+    // flat proportions, just scaled up); count drops to 4 to keep a clear
+    // gap between the now-longer marks (ink/gap ~56/44, still visibly
+    // dashed, not a solid line). Engine limitation still applies: there's
+    // no per-screen-pixel dash sizing available here, so an unusually
+    // short or long leg can still under/overshoot this.
+    pulse: { count: 4, halfWidth: 0.07, color: LEG_COLORS[i], capFraction: 0.6 },
   }
 }
 
@@ -154,8 +152,12 @@ for (const [i, id] of WALK_LAYER_IDS.entries()) {
  */
 /** Time for the drive dash train to advance by exactly one dash spacing (so the loop is seamless). */
 const DRIVE_FLOW_CYCLE_MS = 4_800
-/** Time for the walk dash train to advance by exactly one dash spacing. */
-const WALK_FLOW_CYCLE_MS = 1_600
+/** Time for the walk dash train to advance by exactly one dash spacing.
+ * Was 1_600 (noticeably faster than drive's 4_800) — reported as too fast
+ * once the marks themselves got bigger/pill-shaped (map-view.tsx's
+ * WALK_LAYER_IDS pulse config); slowed to a calmer pace, still faster than
+ * drive's own cycle but no longer hurried. */
+const WALK_FLOW_CYCLE_MS = 3_200
 
 /** Hex `#rrggbb` -> a function giving that color at any alpha, for a pure-alpha gradient fade (see travelGradient). */
 function alphaColorOf(hex: string): (alpha: number) => string {
