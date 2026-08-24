@@ -7,12 +7,14 @@ import { useAuth } from './auth/auth-context'
 import { consumeOAuthRedirectError, isIdentityAlreadyLinkedError } from './auth/oauth-redirect-error'
 import { translateAuthError } from './auth/translate-auth-error'
 import { useChatSession } from './hooks/use-chat-session'
+import { useHotelAmenityCatalog } from './hooks/use-hotel-amenity-catalog'
 import { EMPTY_INTAKE_FORM, mergeIntakeIntoForm, useIntakeForm } from './hooks/use-intake-form'
 import { usePanelResize } from './hooks/use-panel-resize'
 import { shouldReleaseHoldForDeletedSession, useRoomHold } from './hooks/use-room-hold'
 import { useSessionHistory } from './hooks/use-session-history'
 import { composeIntakeMessage } from './lib/compose-intake-message'
 import { deriveStageView, type StageView } from './lib/derive-stage'
+import { resolveAmenityCatalog } from './lib/hotel-filters'
 import { isFieldFilled } from './lib/next-intake-field'
 import { consumeVnpayReturn, isVnpayReturnPending } from './lib/vnpay-return'
 import type { HotelFilterData, HotelOption } from './types'
@@ -135,7 +137,8 @@ export default function App() {
 function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   const auth = useAuth()
   const { t } = useTranslation()
-  const { state, send, selectHotel: selectHotelDirect, startNew, restore, changeHotel } = useChatSession()
+  const { state, send, selectHotel: selectHotelDirect, startNew, restore, changeHotel, toggleHotelPreference } = useChatSession()
+  const amenityCatalog = useHotelAmenityCatalog()
   const {
     form: intakeForm,
     setForm: setIntakeForm,
@@ -168,6 +171,16 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   const retainedHotelOptions = state.sessionId ? (hotelOptionsBySession[state.sessionId] ?? []) : []
   const retainedHotelFilterData =
     (state.sessionId ? hotelFilterDataBySession[state.sessionId] : undefined) ?? state.hotelFilterData
+  // The root cache is the authoritative label source for cards, filters, and
+  // detail views. Keep the per-turn catalog only while it is loading or when
+  // its request fails, so existing rendering degrades exactly as before.
+  const resolvedHotelFilterData = useMemo(
+    () => ({
+      ...retainedHotelFilterData,
+      hotelAmenities: resolveAmenityCatalog(amenityCatalog, retainedHotelFilterData.hotelAmenities),
+    }),
+    [amenityCatalog, retainedHotelFilterData],
+  )
 
   // Declared above `stage` on purpose: the retained list is an INPUT to stage
   // derivation, not just a render prop — a turn that returns no hotel_options
@@ -690,10 +703,12 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
         stage={displayStage}
         onViewStage={handleSetViewOverride}
         hotelOptions={retainedHotelOptions}
-        hotelFilterData={retainedHotelFilterData}
+        hotelsLoading={state.hotelsLoading}
+        hotelFilterData={resolvedHotelFilterData}
         selectedHotelIndex={selectedHotelIndex}
         onSelectHotel={selectHotel}
         onConfirmHotel={handleHotelSelection}
+        onPreferenceToggle={toggleHotelPreference}
         chatWidth={chatWidth}
         onChatResizeStart={chatResize}
         intakeForm={intakeForm}

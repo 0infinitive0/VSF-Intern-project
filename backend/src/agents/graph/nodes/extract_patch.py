@@ -137,6 +137,12 @@ _SEA_VIEW_NEGATED_RE = re.compile(
 _EXPLICIT_DATE_RANGE_RE = re.compile(
     r"tu\s+ngay\s+(\d{1,2})/(\d{1,2})/(\d{4})\s+den\s+ngay\s+(\d{1,2})/(\d{1,2})/(\d{4})"
 )
+_BARE_MORE_HOTELS_RE = re.compile(
+    r"^(?:(?:cho|tim|hien|xem|liet\s+ke|goi\s+y)\s+)?(?:them|nhieu\s+hon|show\s+more|more)(?:\s+(?:khach\s+san|hotels?))?\s*[.!?]*$"
+)
+_EXPLICIT_HOTEL_RESULT_COUNT_RE = re.compile(
+    r"\b(?:tang|giam)\s+so\s+lua\s+chon\s+(?:len|xuong)\s+(?P<count>\d{1,2})\b"
+)
 
 _CLOSED_LIST_PATHS: dict[str, tuple[str, ...]] = {
     "preferences.themes": _PREFERENCE_LABELS,
@@ -179,13 +185,44 @@ def _last_human_message(state: TravelGraphState) -> str:
     return ""
 
 
+def _increment_bare_hotel_result_count(
+    changes: list[dict[str, Any]], message: str, travel_state: TravelState
+) -> list[dict[str, Any]]:
+    """Turn an otherwise-unspecified request for more hotels into +5 cards.
+
+    An explicit Vietnamese "tăng/giảm số lựa chọn lên/xuống N" takes
+    precedence over model output. Otherwise this guard handles a bare request
+    such as "xem thêm khách sạn" so it cannot be misread as a new amenity or
+    generic question. The persisted count has the same 20-card ceiling as its
+    travel-state validator.
+    """
+    normalized_message = _normalize(message).strip()
+    explicit_count = _EXPLICIT_HOTEL_RESULT_COUNT_RE.search(normalized_message)
+    if explicit_count:
+        return [
+            change for change in changes if change.get("path") != "hotel_preferences.result_count"
+        ] + [{
+            "path": "hotel_preferences.result_count",
+            "operation": "set",
+            "value": int(explicit_count.group("count")),
+        }]
+    if not _BARE_MORE_HOTELS_RE.fullmatch(normalized_message):
+        return changes
+    current = travel_state.get("hotel_preferences.result_count")
+    current_count = int(current.value) if current.presence is Presence.SET else 5
+    next_count = min(current_count + 5, 20)
+    return [
+        change for change in changes if change.get("path") != "hotel_preferences.result_count"
+    ] + [{"path": "hotel_preferences.result_count", "operation": "set", "value": next_count}]
+
+
 # How much dialogue `build_extract_patch_prompt` carries. Bounded on both axes
 # so prompt size stays flat no matter how long a session runs: a conversation
 # is unbounded, this window is not. Six turns covers the reference distance
 # actually observed (a correction points at the reply immediately before it,
 # occasionally the one before that); the per-message cap keeps one pasted
 # itinerary from crowding out five other turns.
-_TRANSCRIPT_TURNS = 10
+_TRANSCRIPT_TURNS = 6
 _TRANSCRIPT_CHARS = 240
 
 
@@ -744,7 +781,20 @@ def _parse_extraction_payload(payload: object) -> tuple[str, list[dict[str, Any]
             raise PatchExtractionError("each change requires a non-empty string path")
         if operation not in _OPERATIONS:
             raise PatchExtractionError(f"each change's operation must be one of {sorted(_OPERATIONS)}")
-        changes.append({"path": path.strip(), "operation": operation, "value": item.get("value")})
+        normalized_path = path.strip()
+        value = item.get("value")
+        # Models commonly emit append/remove with a JSON list even though the
+        # patch layer intentionally accepts one item per operation. Normalize
+        # this harmless shape drift at the untrusted-output boundary instead
+        # of letting every item be rejected later as "expected string, got
+        # list". An empty list means there is simply no change to apply.
+        if operation in {"append", "remove"} and isinstance(value, list):
+            changes.extend(
+                {"path": normalized_path, "operation": operation, "value": entry}
+                for entry in value
+            )
+            continue
+        changes.append({"path": normalized_path, "operation": operation, "value": value})
 
     # Non-strict on purpose (module docstring): `isinstance` first so a
     # non-string value (a list, a number) never reaches `in` on a frozenset,
@@ -863,6 +913,7 @@ def extract_patch(state: TravelGraphState) -> dict[str, Any]:
     changes = _derive_end_date_from_duration(
         changes, message, travel_state, _earlier_human_messages(state)
     )
+    changes = _increment_bare_hotel_result_count(changes, message, travel_state)
 
     # Persist the day THIS message itself named -- never the carried-over
     # one, or a later turn that also happens to be empty/missing_value but

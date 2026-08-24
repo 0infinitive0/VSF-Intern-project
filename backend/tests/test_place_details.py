@@ -247,7 +247,7 @@ async def test_detail_routes_found_not_found_invalid_id_and_service_error(client
 
 
 @pytest.mark.asyncio
-async def test_hotel_amenity_catalog_route_returns_only_approved_hotel_entries(client, monkeypatch):
+async def test_hotel_amenity_catalog_route_returns_all_approved_entries(client, monkeypatch):
     from src.services.amenity_catalog import AmenityCatalogEntry
 
     monkeypatch.setattr(
@@ -269,5 +269,12 @@ async def test_hotel_amenity_catalog_route_returns_only_approved_hotel_entries(c
             "label_en": "Wi-Fi",
             "category": "connectivity",
             "icon_key": "wifi",
-        }
+        },
+        {
+            "id": "tv",
+            "label_vi": "TV",
+            "label_en": "TV",
+            "category": "room_comfort",
+            "icon_key": None,
+        },
     ]

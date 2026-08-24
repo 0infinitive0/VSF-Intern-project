@@ -9,7 +9,7 @@
     "/api/v1/hotel-amenities": {
       "get": {
         "summary": "Hotel Amenity Catalog",
-        "description": "Return approved hotel-scoped catalog entries for client-side filtering.",
+        "description": "Return every approved amenity catalog entry for client-side labels.",
         "operationId": "hotel_amenity_catalog_api_v1_hotel_amenities_get",
         "responses": {
           "200": {
@@ -1010,6 +1010,120 @@
         }
       }
     },
+    "/api/v1/hotels/expand": {
+      "post": {
+        "summary": "Expand Hotel Options",
+        "description": "Append the next hotel batch without a synthetic chat turn or an LLM.",
+        "operationId": "expand_hotel_options_api_v1_hotels_expand_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeHotelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlannerChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/hotels/preferences": {
+      "post": {
+        "summary": "Toggle Hotel Preference",
+        "description": "Apply a reversible amenity-pill toggle and re-enter hotel_node without an LLM.",
+        "operationId": "toggle_hotel_preference_api_v1_hotels_preferences_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HotelPreferenceToggleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlannerChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/chat": {
       "post": {
         "summary": "Planner Chat",
@@ -1308,6 +1422,39 @@
   },
   "components": {
     "schemas": {
+      "ActivePreferencePayload": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "polarity": {
+            "type": "string",
+            "enum": [
+              "require",
+              "exclude",
+              "prefer"
+            ],
+            "title": "Polarity",
+            "default": "require"
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "ActivePreferencePayload"
+      },
       "AmenityCatalogPayload": {
         "properties": {
           "id": {
@@ -2630,6 +2777,33 @@
         "title": "HotelOption",
         "description": "One hotel in the pending selection list sent to the React UI.\n\nindex is the 1-based ordinal that must equal suggestions[i].value (as int)\nfor the same turn — they are two views of one list and must not disagree."
       },
+      "HotelPreferenceToggleRequest": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "amenity_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-z0-9_]+$",
+            "title": "Amenity Id"
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "amenity_id",
+          "active"
+        ],
+        "title": "HotelPreferenceToggleRequest"
+      },
       "IntakeStatus": {
         "properties": {
           "destination": {
@@ -3205,6 +3379,11 @@
             "type": "array",
             "title": "Hotel Options"
           },
+          "has_more_hotel_options": {
+            "type": "boolean",
+            "title": "Has More Hotel Options",
+            "default": false
+          },
           "hotel_amenities": {
             "items": {
               "$ref": "#/components/schemas/AmenityCatalogPayload"
@@ -3269,7 +3448,7 @@
           },
           "active_preferences": {
             "items": {
-              "$ref": "#/components/schemas/PreferencePayload"
+              "$ref": "#/components/schemas/ActivePreferencePayload"
             },
             "type": "array",
             "title": "Active Preferences"
@@ -3289,6 +3468,7 @@
           "suggestions",
           "stage",
           "hotel_options",
+          "has_more_hotel_options",
           "hotel_amenities",
           "trip_plan",
           "intake",
@@ -4201,6 +4381,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",

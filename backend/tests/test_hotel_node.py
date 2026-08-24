@@ -189,23 +189,45 @@ def test_successful_search_populates_hotel_search_result_for_respond(monkeypatch
     entry = result["task_results"][-1]
     assert entry["status"] == "ok"
     assert [option["id"] for option in entry["hotel_search_result"]["options"]] == ["h1", "h2", "h3", "h4", "h5"]
-    assert captured["match_count"] == 10
+    assert captured["match_count"] == 5
     assert result["pending_tasks"] == []
 
 
-def test_preference_update_retains_prior_cards_and_appends_unseen_matches(monkeypatch):
+def test_hotel_search_uses_the_requested_result_count(monkeypatch):
     captured: dict = {}
 
     def _select(*_args, **kwargs):
         captured.update(kwargs)
-        return [_option("h6"), _option("h7")]
+        return [_option(f"h{index}") for index in range(1, 21)]
 
     monkeypatch.setattr(hotel_node_module, "_get_destination_id", lambda _d: "dest-1")
     monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _select)
     monkeypatch.setattr(hotel_node_module, "rank_hotel_candidates", lambda options, **_k: options)
 
-    state = _graph_state(_seeded_travel_state(hotel_preferences__amenities=["swimming_pool"]))
-    state["previous_hotel_options"] = [_option(f"h{index}")[0] for index in range(1, 6)]
+    result = hotel_node(_graph_state(_seeded_travel_state(hotel_preferences__result_count=12)))
+
+    options = result["task_results"][-1]["hotel_search_result"]["options"]
+    assert captured["match_count"] == 12
+    assert [option["id"] for option in options] == [f"h{index}" for index in range(1, 13)]
+    assert result["previous_hotel_search_context"]["result_count"] == 12
+
+
+def test_preference_update_replaces_retained_cards_with_a_fresh_five(monkeypatch):
+    captured: dict = {}
+
+    def _select(*_args, **kwargs):
+        captured.update(kwargs)
+        return [_option(f"h{index}") for index in range(1, 6)]
+
+    monkeypatch.setattr(hotel_node_module, "_get_destination_id", lambda _d: "dest-1")
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _select)
+    monkeypatch.setattr(hotel_node_module, "rank_hotel_candidates", lambda options, **_k: options)
+
+    state = _graph_state(_seeded_travel_state(hotel_preferences__amenities=["spa"]))
+    state["previous_hotel_options"] = [
+        {**_option(f"old-{index}")[0], "match_score": 0.1, "amenity_match": {"required": ["swimming_pool"]}}
+        for index in range(1, 6)
+    ]
     state["previous_hotel_search_context"] = {
         "destination_id": "dest-1",
         "start_date": "2099-01-01",
@@ -215,16 +237,98 @@ def test_preference_update_retains_prior_cards_and_appends_unseen_matches(monkey
 
     result = hotel_node(state)
 
-    assert captured["exclude_hotel_ids"] == ["h1", "h2", "h3", "h4", "h5"]
+    assert "exclude_hotel_ids" not in captured
     assert [option["id"] for option in result["task_results"][-1]["hotel_search_result"]["options"]] == [
         "h1",
         "h2",
         "h3",
         "h4",
         "h5",
-        "h6",
-        "h7",
     ]
+
+
+def _retained_search_query() -> dict:
+    return {
+        "destination": "Đà Nẵng",
+        "destination_id": "dest-1",
+        "people": "2",
+        "target_price": 1_000_000,
+        "amenity_prefs": [],
+        "selection_kwargs": {"match_count": 10},
+    }
+
+
+def test_expand_uses_the_retained_ranked_pool_without_another_search(monkeypatch):
+    state = _graph_state(_seeded_travel_state())
+    state["expand_hotel_options"] = True
+    state["previous_hotel_options"] = [_option(f"h{index}")[0] for index in range(1, 6)]
+    state["previous_hotel_candidate_pool"] = [_option(f"h{index}")[0] for index in range(1, 11)]
+    state["previous_hotel_search_query"] = _retained_search_query()
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _unreachable_llm)
+
+    result = hotel_node(state)
+
+    entry = result["task_results"][-1]
+    assert entry["status"] == "ok"
+    assert [option["id"] for option in entry["hotel_search_result"]["options"]] == [
+        f"h{index}" for index in range(1, 11)
+    ]
+    assert entry["hotel_search_result"]["has_more_hotel_options"] is True
+    assert [option["id"] for option in result["previous_hotel_options"]] == [
+        f"h{index}" for index in range(1, 11)
+    ]
+
+
+def test_expand_fetches_only_after_the_retained_pool_is_exhausted(monkeypatch):
+    captured: dict = {}
+
+    def _select(*_args, **kwargs):
+        captured.update(kwargs)
+        return [_option(f"h{index}") for index in range(11, 21)]
+
+    state = _graph_state(_seeded_travel_state())
+    state["expand_hotel_options"] = True
+    state["previous_hotel_options"] = [_option(f"h{index}")[0] for index in range(1, 11)]
+    state["previous_hotel_candidate_pool"] = [_option(f"h{index}")[0] for index in range(1, 11)]
+    state["previous_hotel_search_query"] = _retained_search_query()
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _select)
+    monkeypatch.setattr(hotel_node_module, "rank_hotel_candidates", lambda options, **_k: options)
+
+    result = hotel_node(state)
+
+    assert captured["exclude_hotel_ids"] == [f"h{index}" for index in range(1, 11)]
+    assert [option["id"] for option in result["task_results"][-1]["hotel_search_result"]["options"]] == [
+        f"h{index}" for index in range(1, 16)
+    ]
+    assert [option["id"] for option in result["previous_hotel_candidate_pool"]] == [
+        f"h{index}" for index in range(11, 21)
+    ]
+
+
+def test_expand_marks_the_list_exhausted_when_the_pool_has_fewer_than_five_left(monkeypatch):
+    state = _graph_state(_seeded_travel_state())
+    state["expand_hotel_options"] = True
+    state["previous_hotel_options"] = [_option(f"h{index}")[0] for index in range(1, 6)]
+    state["previous_hotel_candidate_pool"] = [_option(f"h{index}")[0] for index in range(1, 7)]
+    state["previous_hotel_search_query"] = _retained_search_query()
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _unreachable_llm)
+
+    result = hotel_node(state)
+
+    search_result = result["task_results"][-1]["hotel_search_result"]
+    assert [option["id"] for option in search_result["options"]] == [f"h{index}" for index in range(1, 7)]
+    assert search_result["has_more_hotel_options"] is False
+
+
+def test_expand_with_no_active_hotel_search_is_a_no_op(monkeypatch):
+    state = _graph_state(_seeded_travel_state())
+    state["expand_hotel_options"] = True
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _unreachable_llm)
+
+    result = hotel_node(state)
+
+    assert result["task_results"][-1]["status"] == "no_active_hotel_search"
+    assert "hotel_search_result" not in result["task_results"][-1]
 
 
 def test_hotel_search_uses_catalog_ids_for_chat_amenity_aliases(monkeypatch):
@@ -251,13 +355,47 @@ def test_hotel_search_uses_catalog_ids_for_chat_amenity_aliases(monkeypatch):
     result = hotel_node(_graph_state(_seeded_travel_state(hotel_preferences__amenities=["pool", "unknown amenity"])))
 
     assert captured["required_amenities"] == ["swimming_pool"]
+    upgraded_records = result["travel_state"]["hotel_preferences.amenities"]["value"]
+    assert upgraded_records == [{
+        "id": "swimming_pool", "label": "Hồ bơi", "polarity": "require",
+        "source_phrase": "pool", "confidence": 1.0, "active": True,
+    }]
     # Catalog-resolved Vietnamese label, not the raw internal ID (bug fix:
     # active_preferences used to leak "swimming_pool" straight to the user).
     assert result["task_results"][-1]["hotel_search_result"]["active_preferences"] == [
-        {"id": "swimming_pool", "label": "Hồ bơi"}
+        {"id": "swimming_pool", "label": "Hồ bơi", "polarity": "require", "active": True}
     ]
     # The unresolved term is surfaced to the user, not silently dropped.
     assert "unknown amenity" in result["task_results"][-1]["reply"]
+
+
+def test_required_amenities_are_passed_to_ranking_for_score_explanations(monkeypatch):
+    captured: dict = {}
+
+    def _rank(options, **kwargs):
+        captured.update(kwargs)
+        return options
+
+    monkeypatch.setattr(hotel_node_module, "_get_destination_id", lambda _d: "dest-1")
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", lambda *_args, **_kwargs: [_option("h1")])
+    monkeypatch.setattr(
+        hotel_node_module,
+        "expand_amenity_descendants",
+        lambda amenity_ids: {amenity_id: frozenset({amenity_id}) for amenity_id in amenity_ids},
+    )
+    monkeypatch.setattr(hotel_node_module, "rank_hotel_candidates", _rank)
+
+    result = hotel_node(_graph_state(_seeded_travel_state(hotel_preferences__amenities=[
+        {"id": "swimming_pool", "label": "Hồ bơi", "polarity": "require", "source_phrase": "hồ bơi", "confidence": 1.0, "active": True},
+        {"id": "spa", "label": "Spa", "polarity": "require", "source_phrase": "spa", "confidence": 1.0, "active": True},
+    ])))
+
+    assert captured["amenity_prefs"] == ["swimming_pool", "spa"]
+    assert captured["amenity_families"] == {
+        "swimming_pool": frozenset({"swimming_pool"}),
+        "spa": frozenset({"spa"}),
+    }
+    assert result["task_results"][-1]["status"] == "ok"
 
 
 def test_zero_results_is_a_generic_no_results_status(monkeypatch):
@@ -484,7 +622,7 @@ def test_radius_resumed_with_an_unrelated_reply_is_replayed_as_a_fresh_turn(monk
 # ---------------------------------------------------------------------------
 
 
-def test_a_filter_satisfied_only_by_already_shown_hotels_is_not_reported_impossible(monkeypatch):
+def test_non_expand_searches_do_not_exclude_existing_hotels(monkeypatch):
     calls: list[dict] = []
 
     def _select(*_args, **kwargs):
@@ -498,8 +636,8 @@ def test_a_filter_satisfied_only_by_already_shown_hotels_is_not_reported_impossi
 
     state = _graph_state(_seeded_travel_state(hotel_preferences__amenities=["breakfast"]))
     state["previous_hotel_options"] = [{"id": "h1", "name": "Hotel h1", "rank": 1}]
-    # Must match hotel_node's own current_search_context exactly, or the
-    # cards are treated as belonging to a different search and dropped.
+    # A normal fresh search must rank the full candidate set.  Only the explicit
+    # expand path is allowed to exclude cards already displayed.
     state["previous_hotel_search_context"] = {
         "destination_id": "dest-1",
         "start_date": "2099-01-01",
@@ -511,11 +649,9 @@ def test_a_filter_satisfied_only_by_already_shown_hotels_is_not_reported_impossi
 
     entry = result["task_results"][-1]
     assert entry["status"] == "ok", f"still reported a binding constraint: {entry}"
-    # Retried once, and the retry dropped the exclusion rather than the filter.
-    assert len(calls) == 2
-    assert "exclude_hotel_ids" in calls[0]
-    assert "exclude_hotel_ids" not in calls[1]
-    assert calls[1]["required_amenities"] == ["breakfast"]
+    assert len(calls) == 1
+    assert "exclude_hotel_ids" not in calls[0]
+    assert calls[0]["required_amenities"] == ["breakfast"]
 
 
 def test_a_genuinely_unsatisfiable_filter_still_reports_the_constraint(monkeypatch):

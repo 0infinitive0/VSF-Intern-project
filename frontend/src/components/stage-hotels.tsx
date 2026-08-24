@@ -67,10 +67,12 @@ function nightsFrom(startIso?: string | null, endIso?: string | null): number | 
 export default function StageHotels({
   state,
   hotelOptions,
+  hotelsLoading,
   hotelFilterData,
   selectedIndex,
   onSelectHotel,
   onConfirmHotel,
+  onPreferenceToggle,
   focusMode,
   theme,
   roomHold,
@@ -78,10 +80,12 @@ export default function StageHotels({
 }: {
   state: ChatState
   hotelOptions: HotelOption[]
+  hotelsLoading: boolean
   hotelFilterData: HotelFilterData
   selectedIndex: number | null
   onSelectHotel: (index: number) => void
   onConfirmHotel: (hotel: HotelOption) => void
+  onPreferenceToggle: (id: string, active: boolean) => void
   focusMode: FocusModeApi
   theme: Theme
   /** Owns the room cart + real hold — threaded into HotelDetailPanel below. */
@@ -97,11 +101,10 @@ export default function StageHotels({
   const [minPrice, setMinPrice] = useState<number | null>(null)
   const [maxPrice, setMaxPrice] = useState<number | null>(null)
   const [minStars, setMinStars] = useState<number | null>(null)
-  const [preferenceIds, setPreferenceIds] = useState<string[]>([])
   const [sortOrder, setSortOrder] = useState<HotelSortOrder>('match')
   const filteredHotels = useMemo(
-    () => filterAndSortHotels(hotels, { minPrice, maxPrice, minStars, preferenceIds, sortOrder }),
-    [hotels, maxPrice, minPrice, minStars, preferenceIds, sortOrder],
+    () => filterAndSortHotels(hotels, { minPrice, maxPrice, minStars, sortOrder }),
+    [hotels, maxPrice, minPrice, minStars, sortOrder],
   )
   const mapSync = useMapSync()
 
@@ -158,17 +161,22 @@ export default function StageHotels({
   const { detail: selectedHotelDetail } = useHotelDetail(selectedHotel?.id ?? null)
   const selectedHotelRays = useMemo(() => hotelMapRays(selectedHotelDetail), [selectedHotelDetail])
 
-  useEffect(() => {
-    setPreferenceIds(hotelFilterData.activePreferences.map(({ id }) => id))
-  }, [hotels, hotelFilterData.activePreferences])
-
   const filterPreferences = useMemo(
-    () => activeAmenityPills(hotelFilterData.allPreferences, amenityCatalog, i18n.language),
-    [amenityCatalog, i18n.language, hotelFilterData.allPreferences],
+    () => activeAmenityPills(hotelFilterData.activePreferences, amenityCatalog, i18n.language),
+    [amenityCatalog, i18n.language, hotelFilterData.activePreferences],
   )
 
   const listRef = useRef<HTMLDivElement>(null)
   const savedScroll = useRef(0)
+  // Appending a "show more" batch must leave the reader exactly where they
+  // were. `filteredHotels` changes for an append too, so the older selection
+  // auto-scroll effect needs an explicit guard rather than treating every
+  // list change as a reason to recenter the selected card.
+  const previousHotelCount = useRef(hotels.length)
+  const hotelListGrew = hotels.length > previousHotelCount.current
+  useEffect(() => {
+    previousHotelCount.current = hotels.length
+  }, [hotels.length])
 
   function openFocus(hotel: HotelOption) {
     if (!hotel.id) return
@@ -222,7 +230,7 @@ export default function StageHotels({
   // Auto-scroll smoothly to the selected hotel card on mount or when selection/filters change
   const autoScrolledId = useRef<string | null>(null)
   useEffect(() => {
-    if (focused) return
+    if (focused || hotelListGrew) return
     const container = listRef.current
     if (!container) return
 
@@ -255,7 +263,7 @@ export default function StageHotels({
       cancelAnimationFrame(rafId)
       if (timerId != null) clearTimeout(timerId)
     }
-  }, [selectedId, resolvedSelectedIndex, filteredHotels, focused])
+  }, [selectedId, resolvedSelectedIndex, filteredHotels, focused, hotelListGrew])
 
   const prevFocused = useRef(focused)
   useLayoutEffect(() => {
@@ -311,18 +319,17 @@ export default function StageHotels({
             minPrice={minPrice}
             maxPrice={maxPrice}
             minStars={minStars}
-            preferenceIds={preferenceIds}
+            preferenceLoading={hotelsLoading}
             sortOrder={sortOrder}
             onMinPriceChange={setMinPrice}
             onMaxPriceChange={setMaxPrice}
             onMinStarsChange={setMinStars}
-            onPreferenceIdsChange={setPreferenceIds}
+            onPreferenceToggle={onPreferenceToggle}
             onSortOrderChange={setSortOrder}
             onClear={() => {
               setMinPrice(null)
               setMaxPrice(null)
               setMinStars(null)
-              setPreferenceIds([])
               setSortOrder('match')
             }}
           />
@@ -401,7 +408,7 @@ export default function StageHotels({
             hotelId={lastFocusedId}
             option={hotels.find((h) => h.id === lastFocusedId)}
             hotelAmenities={amenityCatalog}
-            selectedAmenityIds={preferenceIds}
+            selectedAmenityIds={hotelFilterData.activePreferences.filter(({ active, polarity }) => active && polarity === 'require').map(({ id }) => id)}
             onClose={focusMode.closeFocus}
             roomHold={roomHold}
             checkInDate={state.intake?.start_date ?? null}

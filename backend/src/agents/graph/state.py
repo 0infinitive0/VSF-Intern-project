@@ -50,6 +50,10 @@ class TravelGraphState(TypedDict, total=False):
     # question is already the acknowledgement.
     revised_slots: list[str]
     rejected_changes: list[dict[str, Any]]
+    # Phrases stated this turn that could not bind to an approved catalog ID.
+    # Turn-scoped: hotel_node surfaces them once; they never enter travel_state.
+    unresolved_amenities: list[str]
+    ambiguous_amenities: list[dict[str, Any]]
     impacted_workflows: list[str]  # Workflow labels from detect_impact()
     # Raw text of a `Command(resume=...)` reply that did NOT resolve the
     # ambiguity `interrupt()` paused on (Phase 7) -- `_run_turn_via_graph`
@@ -180,6 +184,17 @@ class TravelGraphState(TypedDict, total=False):
     # destination, stay dates, or party size changes.
     previous_hotel_options: list[dict[str, Any]]
     previous_hotel_search_context: dict[str, Any]
+    # The last search's full ranked batch. `previous_hotel_options` is kept
+    # deliberately limited to cards the guest has actually seen; this pool is
+    # what lets a dedicated "show more" action reveal the next five without
+    # repeating the hotel RPC.
+    previous_hotel_candidate_pool: list[dict[str, Any]]
+    # The immutable inputs needed to repeat the current search only after its
+    # retained ranked pool is exhausted. Kept out of travel_state because an
+    # expand is display-only and must not alter any committed preference.
+    previous_hotel_search_query: dict[str, Any]
+    # One-shot command set by POST /hotels/expand and consumed by hotel_node.
+    expand_hotel_options: bool
 
     # --- output -----------------------------------------------------------
     response: dict[str, Any]  # PlannerChatResponse field shape (Phase 5 non-functional freeze)
@@ -243,6 +258,8 @@ def initial_graph_state(session_id: str, *, language: str = "vi") -> TravelGraph
         applied_changes=[],
         revised_slots=[],
         rejected_changes=[],
+        unresolved_amenities=[],
+        ambiguous_amenities=[],
         impacted_workflows=[],
         unresolved_resume_text=None,
         missing_slots=[],

@@ -128,6 +128,36 @@ def test_rank_hotel_candidates_keeps_a_bounded_match_score_and_machine_reasons()
     assert all(set(reason) == {"code", "value"} for reason in result["match_reasons"])
 
 
+def test_rank_hotel_candidates_counts_a_wifi_descendant_as_the_wifi_preference():
+    data, candidate = _option(
+        "wifi-child",
+        "Wi-Fi Child Hotel",
+        similarity=0.5,
+        star_rating=4,
+        review_score=8.7,
+    )
+    data["amenities"] = ["swimming_pool", "free_wi_fi_in_all_rooms"]
+
+    ranked = rank_hotel_candidates(
+        [(data, candidate)],
+        amenity_prefs=("swimming_pool", "wifi"),
+        amenity_families={
+            "swimming_pool": frozenset({"swimming_pool"}),
+            "wifi": frozenset({"wifi", "free_wi_fi_in_all_rooms"}),
+        },
+    )
+
+    result = ranked[0][0]
+    assert result["match_score"] == 0.9763
+    assert {reason["code"] for reason in result["match_reasons"]} >= {"amenity_match"}
+    amenity_reason = next(
+        reason["value"]
+        for reason in result["match_reasons"]
+        if reason["code"] == "amenity_match"
+    )
+    assert amenity_reason == "swimming_pool,wifi"
+
+
 def test_select_hotel_candidates_preserves_images_and_city_from_hydration(monkeypatch):
     canonical = [{**_CANONICAL_ROWS[0], "images": ["https://example.com/1.jpg"], "city": "Đà Nẵng"}]
 
@@ -637,7 +667,7 @@ def test_is_hotel_amenity_tag_accepts_only_approved_catalog_entries(monkeypatch)
     assert is_hotel_amenity_tag("electric_vehicle_charging") is True
     assert is_hotel_amenity_tag("electric_vehicle_charging") is True
     assert hotel_matches_amenity_tag(
-        {"amenities": ["EV charging station in the parking area"]},
+        {"amenities": ["electric_vehicle_charging"]},
         "electric_vehicle_charging",
     ) is True
     assert is_hotel_amenity_tag("history") is False
@@ -645,43 +675,36 @@ def test_is_hotel_amenity_tag_accepts_only_approved_catalog_entries(monkeypatch)
 
 
 def test_hotel_matches_amenity_tag_non_smoking_requires_negation():
-    smoking_area_only = {"amenities": ["Khu vực hút thuốc"]}
-    non_smoking = {"amenities": ["Phòng không hút thuốc"]}
+    smoking_area_only = {"amenities": ["smoking_area"]}
+    non_smoking = {"amenities": ["non_smoking"]}
 
     assert hotel_matches_amenity_tag(smoking_area_only, "non_smoking") is False
     assert hotel_matches_amenity_tag(non_smoking, "non_smoking") is True
 
 
 def test_hotel_matches_amenity_tag_pool_and_family():
-    assert hotel_matches_amenity_tag({"amenities": ["Hồ bơi ngoài trời"]}, "pool") is True
-    assert hotel_matches_amenity_tag({"amenities": ["Hồ bơi ngoài trời"]}, "swimming_pool") is True
-    assert hotel_matches_amenity_tag({"amenities": ["Phòng gia đình"]}, "family") is True
-    assert hotel_matches_amenity_tag({"amenities": ["Wi-Fi miễn phí"]}, "wifi") is True
-    assert hotel_matches_amenity_tag({"amenities": ["Bãi đỗ xe miễn phí"]}, "parking") is True
-    assert hotel_matches_amenity_tag({"amenities": ["Wifi"]}, "pool") is False
+    assert hotel_matches_amenity_tag({"amenities": ["pool"]}, "pool") is True
+    assert hotel_matches_amenity_tag({"amenities": ["swimming_pool"]}, "swimming_pool") is True
+    assert hotel_matches_amenity_tag({"amenities": ["family"]}, "family") is True
+    assert hotel_matches_amenity_tag({"amenities": ["wifi"]}, "wifi") is True
+    assert hotel_matches_amenity_tag({"amenities": ["parking"]}, "parking") is True
+    assert hotel_matches_amenity_tag({"amenities": ["wifi"]}, "pool") is False
 
 
-def test_hotel_matches_amenity_tag_breakfast_reads_covered_meals_not_amenities():
-    # amenities text mentions breakfast-like words, but covered_meals doesn't list it —
-    # must NOT independently re-derive from amenities text.
-    data = {"amenities": ["Nhà hàng phục vụ bữa sáng"], "covered_meals": []}
-    assert hotel_matches_amenity_tag(data, "breakfast") is False
-
-    data_covered = {"amenities": [], "covered_meals": ["breakfast"]}
-    assert hotel_matches_amenity_tag(data_covered, "breakfast") is True
+def test_hotel_matches_amenity_tag_breakfast_uses_canonical_amenities_only():
+    assert hotel_matches_amenity_tag({"amenities": ["breakfast"], "covered_meals": []}, "breakfast") is True
+    assert hotel_matches_amenity_tag({"amenities": [], "covered_meals": ["breakfast"]}, "breakfast") is False
 
 
-def test_hotel_matches_amenity_tag_sea_view_uses_only_the_passed_id_set():
-    data = {"id": "hotel-1", "amenities": ["Nhìn ra biển tuyệt đẹp"]}
-
-    # amenities text mentions "biển" but id isn't in the resolved set -> no match
-    assert hotel_matches_amenity_tag(data, "sea_view", frozenset()) is False
-    assert hotel_matches_amenity_tag(data, "sea_view", frozenset({"hotel-1"})) is True
+def test_hotel_matches_amenity_tag_sea_view_uses_canonical_amenities_only():
+    data = {"id": "hotel-1", "amenities": ["sea_view"]}
+    assert hotel_matches_amenity_tag(data, "sea_view", frozenset()) is True
+    assert hotel_matches_amenity_tag({"id": "hotel-1", "amenities": []}, "sea_view", frozenset({"hotel-1"})) is False
 
 
 def test_hotel_matches_amenity_tag_missing_data_and_unknown_tag_return_false():
     assert hotel_matches_amenity_tag({}, "pool") is False
-    assert hotel_matches_amenity_tag({"amenities": ["Hồ bơi"]}, "not_a_real_tag") is False
+    assert hotel_matches_amenity_tag({"amenities": ["swimming_pool"]}, "not_a_real_tag") is False
 
 
 # ---- lookup_sea_view_hotel_ids (mocked Supabase, reusing the existing fake) --------------
@@ -756,7 +779,7 @@ def test_rank_hotel_candidates_budget_bonus_flips_a_near_tie():
 
 def test_rank_hotel_candidates_amenity_bonus_flips_a_near_tie():
     matches_amenity = _option("a", "A", similarity=0.55)
-    matches_amenity[0]["amenities"] = ["Phòng không hút thuốc"]
+    matches_amenity[0]["amenities"] = ["non_smoking"]
     no_match = _option("b", "B", similarity=0.58)
     no_match[0]["amenities"] = []
 
@@ -782,7 +805,7 @@ def test_rank_hotel_candidates_never_penalizes_missing_data():
 
 def test_rank_hotel_candidates_amenity_bonus_scales_with_match_count():
     two_tags = _option("two", "Two", similarity=0.5)
-    two_tags[0]["amenities"] = ["Hồ bơi", "Phòng gia đình"]
+    two_tags[0]["amenities"] = ["pool", "family"]
     zero_tags = _option("zero", "Zero", similarity=0.5)
     zero_tags[0]["amenities"] = []
 

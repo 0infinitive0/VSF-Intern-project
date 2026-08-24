@@ -143,10 +143,93 @@ def test_list_path_append_and_remove() -> None:
             {"path": "hotel_preferences.amenities", "operation": "append", "value": "wifi"},
         ],
     ).state
-    assert added.get("hotel_preferences.amenities").value == ["pool", "wifi"]
+    assert [item["id"] for item in added.get("hotel_preferences.amenities").value] == ["pool", "wifi"]
 
     removed = apply_patch(added, [{"path": "hotel_preferences.amenities", "operation": "remove", "value": "pool"}]).state
-    assert removed.get("hotel_preferences.amenities").value == ["wifi"]
+    assert removed.get("hotel_preferences.amenities").value == [
+        {"id": "pool", "label": "pool", "polarity": "require", "source_phrase": "pool", "confidence": 0.0, "active": False},
+        {"id": "wifi", "label": "wifi", "polarity": "require", "source_phrase": "wifi", "confidence": 0.0, "active": True},
+    ]
+
+
+def test_bound_amenity_remove_compares_canonical_ids() -> None:
+    pool = {
+        "id": "swimming_pool", "label": "Hồ bơi", "polarity": "require",
+        "source_phrase": "bể bơi", "confidence": 0.99,
+    }
+    state = apply_patch(
+        TravelState(),
+        [{"path": "hotel_preferences.amenities", "operation": "append", "value": pool}],
+    ).state
+
+    removed = apply_patch(
+        state,
+        [{
+            "path": "hotel_preferences.amenities",
+            "operation": "remove",
+            "value": {**pool, "label": "Bể bơi", "source_phrase": "hồ bơi"},
+        }],
+    ).state
+
+    assert removed.get("hotel_preferences.amenities").value == [{**pool, "active": False}]
+
+
+def test_readding_a_dropped_amenity_reactivates_its_existing_record() -> None:
+    spa = {
+        "id": "spa", "label": "Spa", "polarity": "require",
+        "source_phrase": "spa", "confidence": 1.0,
+    }
+    state = apply_patch(
+        TravelState(),
+        [{"path": "hotel_preferences.amenities", "operation": "append", "value": spa}],
+    ).state
+
+    dropped = apply_patch(
+        state,
+        [{"path": "hotel_preferences.amenities", "operation": "remove", "value": spa}],
+    ).state
+    restored = apply_patch(
+        dropped,
+        [{"path": "hotel_preferences.amenities", "operation": "append", "value": spa}],
+    ).state
+
+    assert restored.get("hotel_preferences.amenities").value == [{**spa, "active": True}]
+
+
+def test_clearing_amenities_marks_each_existing_record_inactive() -> None:
+    amenities = [
+        {"id": "spa", "label": "Spa", "polarity": "require", "source_phrase": "spa", "confidence": 1.0},
+        {"id": "gym", "label": "Gym", "polarity": "exclude", "source_phrase": "gym", "confidence": 1.0},
+    ]
+    state = apply_patch(
+        TravelState(),
+        [{"path": "hotel_preferences.amenities", "operation": "set", "value": amenities}],
+    ).state
+
+    cleared = apply_patch(
+        state,
+        [{"path": "hotel_preferences.amenities", "operation": "set", "value": []}],
+    ).state
+
+    assert cleared.get("hotel_preferences.amenities").value == [
+        {**amenities[0], "active": False},
+        {**amenities[1], "active": False},
+    ]
+
+
+def test_amenity_active_defaults_on_restore_and_rejects_non_boolean_values() -> None:
+    record = {"id": "spa", "label": "Spa", "polarity": "require", "source_phrase": "spa", "confidence": 1.0}
+    restored = TravelState.from_dict({
+        "hotel_preferences.amenities": {"presence": "set", "value": [record]},
+    })
+    invalid = apply_patch(
+        TravelState(),
+        [{"path": "hotel_preferences.amenities", "operation": "append", "value": {**record, "active": "yes"}}],
+    )
+
+    assert restored.get("hotel_preferences.amenities").value == [{**record, "active": True}]
+    assert invalid.applied == ()
+    assert "active must be a boolean" in invalid.rejected[0].reason
 
 
 def test_append_is_idempotent_for_a_duplicate_item() -> None:
@@ -176,6 +259,23 @@ def test_every_allowed_path_has_an_impact_map_entry() -> None:
 
 def test_every_allowed_path_has_a_validator() -> None:
     assert set(_VALIDATORS.keys()) == ALLOWED_PATHS
+
+
+def test_hotel_result_count_accepts_only_two_through_twenty() -> None:
+    accepted = apply_patch(
+        TravelState(),
+        [{"path": "hotel_preferences.result_count", "operation": "set", "value": 12}],
+    )
+    assert accepted.state.get("hotel_preferences.result_count").value == 12
+
+    rejected = apply_patch(
+        TravelState(),
+        [
+            {"path": "hotel_preferences.result_count", "operation": "set", "value": 1},
+            {"path": "hotel_preferences.result_count", "operation": "set", "value": 21},
+        ],
+    )
+    assert len(rejected.rejected) == 2
 
 
 def test_detect_impact_returns_itinerary_day_not_itinerary_for_daily_theme_change() -> None:

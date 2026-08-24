@@ -53,7 +53,7 @@ describe('chatSessionReducer hotel filter API data', () => {
         hotel_options: [{ index: 1, id: 'hotel-1', name: 'Hotel A', average_nightly_price: 1_200_000 }],
         compound_min_price: 800_000, compound_max_price: 2_000_000,
         all_preferences: [{ id: 'pool', label: 'Pool' }],
-        active_preferences: [{ id: 'pool', label: 'Pool' }],
+        active_preferences: [{ id: 'pool', label: 'Pool', polarity: 'require' }],
       },
     })
 
@@ -61,7 +61,7 @@ describe('chatSessionReducer hotel filter API data', () => {
       minPrice: 800_000, maxPrice: 2_000_000,
       hotelAmenities: [],
       allPreferences: [{ id: 'pool', label: 'Pool' }],
-      activePreferences: [{ id: 'pool', label: 'Pool' }],
+      activePreferences: [{ id: 'pool', label: 'Pool', polarity: 'require' }],
     })
   })
 })
@@ -443,5 +443,28 @@ describe('chatSessionReducer — one row per step', () => {
     expect(state.thinking).toHaveLength(1)
     expect(state.thinking[0].lines.length).toBeGreaterThan(0)
     expect(state.thinking[0].done).toBe(true)
+  })
+})
+
+describe('chatSessionReducer — hotel list expansion', () => {
+  it('replaces the retained card payload and records whether another batch exists', () => {
+    const state = chatSessionReducer(
+      { ...INITIAL_STATE, hotelOptions: [{ index: 1, id: 'h1', name: 'Hotel 1' }] },
+      {
+        type: 'HOTELS_EXPAND_SUCCESS',
+        data: {
+          session_id: 's1', reply: 'Found more hotels.', suggestions: [], stage: 'hotel_options', trip_plan: null,
+          hotel_options: [
+            { index: 1, id: 'h1', name: 'Hotel 1' },
+            { index: 2, id: 'h2', name: 'Hotel 2' },
+          ],
+          has_more_hotel_options: true,
+        },
+      },
+    )
+
+    expect(state.hotelsLoading).toBe(false)
+    expect(state.hotelOptions.map((hotel) => hotel.id)).toEqual(['h1', 'h2'])
+    expect(state.hasMoreHotelOptions).toBe(true)
   })
 })

@@ -44,7 +44,11 @@ from src.api.streaming import emit_phase
 from src.domain.travel_state import Presence, TravelState, apply_patch
 from src.i18n import t
 from src.services import session_store
-from src.services.amenity_catalog import all_approved_amenities, resolve_hotel_amenity_ids
+from src.services.amenity_catalog import (
+    all_approved_amenities,
+    expand_amenity_descendants,
+    resolve_hotel_amenity_ids,
+)
 from src.services.hotel_selection import (
     NoHotelsMatchAmenities,
     NoHotelsMatchRating,
@@ -66,6 +70,7 @@ _WORKER_NAME = "hotel_node"
 #: the node -- `POST /hotels/select` sets `selected_hotel_id` directly and
 #: never needs an intent.
 _SELECT_HOTEL_INTENT = "select_hotel"
+_DEFAULT_HOTEL_RESULT_COUNT = 5
 _HOTEL_OPTION_LIMIT = 10
 _HOTEL_DISPLAY_LIMIT = 5
 
@@ -259,6 +264,111 @@ def _picked_from_chat(state: TravelGraphState) -> tuple[str | None, bool]:
     return (hotel_id or None), True
 
 
+def _valid_hotel_options(value: object) -> list[dict[str, Any]]:
+    return [
+        option
+        for option in (value if isinstance(value, list) else [])
+        if isinstance(option, dict) and option.get("id")
+    ]
+
+
+def _expand_hotel_options(
+    state: TravelGraphState, pending: list[str], language: str
+) -> dict[str, Any]:
+    """Append the next five cards without changing travel_state or using an LLM.
+
+    The normal search saves its full ranked RPC batch separately from the
+    cards the user has seen. We consume that batch first, then repeat the
+    saved query only when it has no unseen entries left.
+    """
+    shown = _valid_hotel_options(state.get("previous_hotel_options"))
+    if not shown:
+        reply = t("Chưa có danh sách khách sạn để xem thêm.", language)
+        return {
+            "pending_tasks": pending,
+            "task_results": [
+                *(state.get("task_results") or []),
+                {"worker": _WORKER_NAME, "status": "no_active_hotel_search", "reply": reply},
+            ],
+            "expand_hotel_options": False,
+        }
+
+    shown_ids = {str(option["id"]) for option in shown}
+    pool = _valid_hotel_options(state.get("previous_hotel_candidate_pool"))
+    unseen = [option for option in pool if str(option["id"]) not in shown_ids]
+    query = state.get("previous_hotel_search_query") or {}
+    from_pool = bool(unseen)
+
+    if not unseen:
+        destination = query.get("destination")
+        destination_id = query.get("destination_id")
+        if not isinstance(destination, str) or not isinstance(destination_id, str):
+            reply = t("Chưa có danh sách khách sạn để xem thêm.", language)
+            return {
+                "pending_tasks": pending,
+                "task_results": [
+                    *(state.get("task_results") or []),
+                    {"worker": _WORKER_NAME, "status": "no_active_hotel_search", "reply": reply},
+                ],
+                "expand_hotel_options": False,
+            }
+        selection_kwargs = dict(query.get("selection_kwargs") or {})
+        selection_kwargs["exclude_hotel_ids"] = [str(option["id"]) for option in shown]
+        try:
+            fetched = select_hotel_candidates(
+                destination,
+                destination_id,
+                str(query.get("people") or ""),
+                **selection_kwargs,
+            )
+        except (NoHotelsMatchAmenities, NoHotelsMatchRating):
+            fetched = []
+        except Exception as exc:
+            logger.exception("hotel_node: hotel expansion failed")
+            reply = t("Tìm thêm khách sạn thất bại: {error}", language, error=str(exc))
+            return {
+                "pending_tasks": pending,
+                "task_results": [
+                    *(state.get("task_results") or []),
+                    {"worker": _WORKER_NAME, "status": "error", "reply": reply},
+                ],
+                "expand_hotel_options": False,
+            }
+        amenity_prefs = list(query.get("amenity_prefs") or [])
+        ranked = rank_hotel_candidates(
+            fetched,
+            target_price=query.get("target_price"),
+            amenity_prefs=amenity_prefs,
+            amenity_families=expand_amenity_descendants(amenity_prefs),
+        )
+        pool = [data for data, _candidate in ranked if isinstance(data, dict) and data.get("id")]
+        unseen = [option for option in pool if str(option["id"]) not in shown_ids]
+
+    additions = unseen[:_HOTEL_DISPLAY_LIMIT]
+    hotel_options = [*shown, *additions]
+    if from_pool:
+        has_more = len(additions) == _HOTEL_DISPLAY_LIMIT
+    else:
+        batch_size = int((query.get("selection_kwargs") or {}).get("match_count") or _HOTEL_OPTION_LIMIT)
+        has_more = len(pool) >= batch_size
+    reply = t("Mình tìm được {count} khách sạn phù hợp.", language, count=len(hotel_options))
+    search_result = {
+        "options": hotel_options,
+        "has_more_hotel_options": has_more,
+    }
+    return {
+        "pending_tasks": pending,
+        "task_results": [
+            *(state.get("task_results") or []),
+            {"worker": _WORKER_NAME, "status": "ok", "reply": reply, "hotel_search_result": search_result},
+        ],
+        "previous_hotel_options": hotel_options,
+        "previous_hotel_candidate_pool": pool,
+        "previous_hotel_search_query": query,
+        "expand_hotel_options": False,
+    }
+
+
 def hotel_node(state: TravelGraphState) -> dict[str, Any]:
     pending = [worker for worker in (state.get("pending_tasks") or []) if worker != _WORKER_NAME]
     language = state.get("language") or "vi"
@@ -284,6 +394,9 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
         )
         task_results = [*(state.get("task_results") or []), {"worker": _WORKER_NAME, "status": "already_paid", "reply": reply}]
         return {"pending_tasks": pending, "task_results": task_results, "selected_hotel_id": None}
+
+    if state.get("expand_hotel_options"):
+        return _expand_hotel_options(state, pending, language)
 
     travel_state = TravelState.from_dict(state.get("travel_state"))
     selected_hotel_id = state.get("selected_hotel_id")
@@ -356,19 +469,90 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
     max_price = float(max_price_slot.value) if max_price_slot.presence is Presence.SET else None
     target_price_slot = travel_state.get("budget.target")
     target_price = float(target_price_slot.value) if target_price_slot.presence is Presence.SET else None
+    result_count_slot = travel_state.get("hotel_preferences.result_count")
+    result_count = (
+        int(result_count_slot.value)
+        if result_count_slot.presence is Presence.SET
+        else _DEFAULT_HOTEL_RESULT_COUNT
+    )
 
     amenities_slot = travel_state.get("hotel_preferences.amenities")
-    requested_amenities = (
-        [str(tag) for tag in amenities_slot.value] if amenities_slot.presence is Presence.SET else []
+    preference_records = (
+        [record for record in amenities_slot.value if isinstance(record, dict)]
+        if amenities_slot.presence is Presence.SET and isinstance(amenities_slot.value, list)
+        else []
     )
-    amenity_binding = resolve_hotel_amenity_ids(requested_amenities)
-    required_amenities = list(amenity_binding.ids)
+    required_amenities: list[str] = []
+    excluded_amenities: list[str] = []
+    preferred_amenities: list[str] = []
+    unresolved_amenities = list(state.get("unresolved_amenities") or [])
+    labels_by_id = _amenity_catalog_labels()
+    # Despite the wire name, this is the complete pill history for the current
+    # hotel search.  Each record's `active` flag decides whether it affects the
+    # search; inactive records stay here so the client can offer re-activation.
+    active_preferences: list[dict[str, Any]] = []
+    updated_travel_state_dict: dict[str, Any] | None = None
+    rebound_records: list[dict[str, Any]] = []
+    upgraded_legacy_records = False
+    for record in preference_records:
+        amenity_id = str(record.get("id") or "")
+        source_phrase = str(record.get("source_phrase") or amenity_id)
+        polarity = str(record.get("polarity") or "require")
+        active = record.get("active", True) is True
+        # Schema-v1 read-through records carry confidence 0 and may still hold
+        # the user's raw phrase as `id`; rebind those once for compatibility.
+        ids = [amenity_id]
+        if float(record.get("confidence") or 0.0) == 0.0:
+            upgraded_legacy_records = True
+            legacy_binding = resolve_hotel_amenity_ids([source_phrase])
+            ids = list(legacy_binding.ids)
+            for unresolved in legacy_binding.unresolved:
+                if unresolved not in unresolved_amenities:
+                    unresolved_amenities.append(unresolved)
+            if not ids and source_phrase not in unresolved_amenities:
+                unresolved_amenities.append(source_phrase)
+        for resolved_id in ids:
+            if not any(
+                item["id"] == resolved_id and item["polarity"] == polarity
+                for item in rebound_records
+            ):
+                rebound_records.append({
+                    "id": resolved_id,
+                    "label": labels_by_id.get(resolved_id, str(record.get("label") or resolved_id)),
+                    "polarity": polarity,
+                    "source_phrase": source_phrase,
+                    "confidence": 1.0,
+                    "active": active,
+                })
+            if active:
+                target = {
+                    "require": required_amenities,
+                    "exclude": excluded_amenities,
+                    "prefer": preferred_amenities,
+                }.get(polarity, required_amenities)
+                if resolved_id not in target:
+                    target.append(resolved_id)
+            active_preferences.append({
+                "id": resolved_id,
+                "label": labels_by_id.get(resolved_id, str(record.get("label") or resolved_id)),
+                "polarity": polarity,
+                "active": active,
+            })
+    if upgraded_legacy_records:
+        # This is a one-time schema-v1 migration, not the user's "replace my
+        # preferences" intent.  Clear the raw legacy records first so the
+        # non-destructive set semantics do not retain them as inactive pills.
+        upgraded = apply_patch(travel_state, [
+            {"path": "hotel_preferences.amenities", "operation": "unset"},
+            {"path": "hotel_preferences.amenities", "operation": "set", "value": rebound_records},
+        ])
+        travel_state = upgraded.state
+        updated_travel_state_dict = travel_state.to_dict()
     # Surfaced rather than silently dropped (review finding): a term that
     # didn't resolve to a known amenity is a request the search never even
     # tried to honor -- the user deserves to know, not just get an
     # unexplained partial (or empty) result. `.unresolved` already carries
     # exactly the user's own words, never an internal ID.
-    unresolved_amenities = list(amenity_binding.unresolved)
     star_slot = travel_state.get("hotel_preferences.min_star_rating")
     min_star_rating = float(star_slot.value) if star_slot.presence is Presence.SET else None
     review_slot = travel_state.get("hotel_preferences.min_review_score")
@@ -379,8 +563,6 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
     root_latitude: float | None = None
     root_longitude: float | None = None
     max_radius_km: float | None = None
-    updated_travel_state_dict: dict[str, Any] | None = None
-
     if radius_slot.presence is Presence.SET:
         radius_km = float(radius_slot.value)
         coordinates, unresolved_resume_text = _resolve_center(
@@ -460,6 +642,21 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
         "start_date": start_date,
         "end_date": end_date,
         "people": people,
+        # Retaining cards is only correct when every constraint and every
+        # ranking input is identical.  The old four-field context missed hotel
+        # preferences, so a changed amenity appended newly-ranked cards to a
+        # stale list and made the display grow 5 -> 10 -> 15 without Expand.
+        "required_amenities": sorted(required_amenities),
+        "excluded_amenities": sorted(excluded_amenities),
+        "preferred_amenities": sorted(preferred_amenities),
+        "min_star_rating": min_star_rating,
+        "min_review_score": min_review_score,
+        "radius_km": max_radius_km,
+        "center": str(center_slot.value) if center_slot.presence is Presence.SET else None,
+        "budget_min": min_price,
+        "budget_max": max_price,
+        "budget_target": target_price,
+        "result_count": result_count,
     }
     previous_context = state.get("previous_hotel_search_context") or {}
     previous_options = state.get("previous_hotel_options") or []
@@ -472,7 +669,7 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
 
     try:
         selection_kwargs: dict[str, Any] = {
-            "match_count": _HOTEL_OPTION_LIMIT,
+            "match_count": result_count,
             "min_price": min_price,
             "max_price": max_price,
             "start_date": start_date,
@@ -481,11 +678,15 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
             "root_longitude": root_longitude,
             "max_radius_km": max_radius_km,
             "required_amenities": required_amenities,
+            "excluded_amenities": excluded_amenities,
             "min_star_rating": min_star_rating,
             "min_review_score": min_review_score,
             "min_guests": people_count,
         }
-        if previous_ids:
+        # Existing cards are excluded only by the explicit append path.  A
+        # changed requirement must rank the entire candidate set again: a card
+        # that matched the former preference can be the best match now too.
+        if previous_ids and state.get("expand_hotel_options"):
             selection_kwargs["exclude_hotel_ids"] = previous_ids
         try:
             options = select_hotel_candidates(
@@ -567,22 +768,54 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
                 )
         return _result("no_results", t("Không tìm thấy khách sạn phù hợp tại {dest}.", language, dest=destination))
 
-    ranked = rank_hotel_candidates(options, target_price=target_price)
-    amenity_catalog = _amenity_catalog_labels()
-    active_preferences = [
-        {"id": tag, "label": _amenity_label(tag, amenity_catalog)} for tag in required_amenities
-    ]
+    ranking_amenities = list(dict.fromkeys([*required_amenities, *preferred_amenities]))
+    ranking_amenity_families = expand_amenity_descendants(ranking_amenities)
+    ranked = rank_hotel_candidates(
+        options,
+        target_price=target_price,
+        amenity_prefs=ranking_amenities,
+        amenity_families=ranking_amenity_families,
+    )
     hotel_options = [*previous_options]
     known_ids = set(previous_ids)
-    for data, _candidate in ranked[:_HOTEL_DISPLAY_LIMIT]:
+    for data, _candidate in ranked[:result_count]:
         hotel_id = str(data.get("id") or "")
         if hotel_id and hotel_id not in known_ids:
             known_ids.add(hotel_id)
             hotel_options.append(data)
+    relaxed = list(dict.fromkeys(
+        tag
+        for option in hotel_options
+        for tag in ((option.get("amenity_match") or {}).get("relaxed") or [])
+    ))
     reply = t("Mình tìm được {count} khách sạn phù hợp.", language, count=len(hotel_options))
+    if relaxed:
+        reply += " " + t(
+            "Các kết quả gần nhất còn thiếu: {items}.",
+            language,
+            items=_amenity_labels(relaxed, labels_by_id),
+        )
+    candidate_pool = [data for data, _candidate in ranked if isinstance(data, dict) and data.get("id")]
+    search_query = {
+        "destination": destination,
+        "destination_id": destination_id,
+        "people": people,
+        "target_price": target_price,
+        "amenity_prefs": ranking_amenities,
+        "selection_kwargs": {key: value for key, value in selection_kwargs.items() if key != "exclude_hotel_ids"},
+    }
     result = _result(
-        "ok", reply, {"options": hotel_options, "active_preferences": active_preferences}
+        "ok",
+        reply,
+        {
+            "options": hotel_options,
+            "active_preferences": active_preferences,
+            "has_more_hotel_options": len(candidate_pool) > result_count,
+        },
     )
     result["previous_hotel_options"] = hotel_options
     result["previous_hotel_search_context"] = current_search_context
+    result["previous_hotel_candidate_pool"] = candidate_pool
+    result["previous_hotel_search_query"] = search_query
+    result["expand_hotel_options"] = False
     return result

@@ -16,11 +16,100 @@ it), just not needed here anymore.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict
 from typing import Any
 
 from src.agents.graph.state import TravelGraphState
 from src.domain.travel_state import Presence, TravelState, apply_patch, detect_impact, trip_duration_days
+from src.services.amenity_catalog import all_approved_amenities, resolve_hotel_amenity_ids
+
+logger = logging.getLogger(__name__)
+
+
+def _bind_amenity_patch(
+    changes: list[dict[str, Any]], travel_state: TravelState
+) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
+    """Resolve raw amenity phrases once, before they enter TravelState."""
+    catalog = {entry.id: entry for entry in all_approved_amenities()}
+    bound: list[dict[str, Any]] = []
+    unresolved: list[str] = []
+    ambiguities: list[dict[str, Any]] = []
+
+    for change in changes:
+        if change.get("path") != "hotel_preferences.amenities":
+            bound.append(change)
+            continue
+        operation = change.get("operation")
+        raw_value = change.get("value")
+        # Be defensive even when callers bypass extract_patch: list-valued
+        # append/remove means one operation per item, never one stringified
+        # Python list that disappears as an unresolved phrase.
+        raw_items = raw_value if isinstance(raw_value, list) else [raw_value]
+        bound_items: list[dict[str, Any]] = []
+        for raw_item in raw_items:
+            if isinstance(raw_item, dict) and "id" in raw_item:
+                bound_items.append(raw_item)
+                continue
+            phrase = (
+                str(raw_item.get("phrase") or "").strip()
+                if isinstance(raw_item, dict)
+                else str(raw_item or "").strip()
+            )
+            polarity = (
+                str(raw_item.get("polarity") or "require")
+                if isinstance(raw_item, dict)
+                else "require"
+            )
+            if not phrase:
+                continue
+            resolution = resolve_hotel_amenity_ids([phrase])
+            for ambiguity in resolution.ambiguities:
+                ambiguities.append({
+                    "phrase": ambiguity.phrase,
+                    "candidates": [
+                        {"id": candidate.id, "label": candidate.label}
+                        for candidate in ambiguity.candidates
+                    ],
+                })
+            if not resolution.ids:
+                if not resolution.ambiguities and phrase not in unresolved:
+                    unresolved.append(phrase)
+                continue
+            for amenity_id in resolution.ids:
+                entry = catalog.get(amenity_id)
+                if entry is None:
+                    continue
+                bound_items.append({
+                    "id": amenity_id,
+                    "label": entry.label,
+                    "polarity": polarity,
+                    "source_phrase": phrase,
+                    "confidence": 1.0,
+                })
+
+        if operation == "set":
+            if bound_items:
+                bound.append({**change, "value": bound_items})
+            elif raw_value == []:
+                bound.append({**change, "value": []})
+        else:
+            existing = travel_state.get("hotel_preferences.amenities").value or []
+            existing_by_id = {
+                str(item.get("id")): item for item in existing if isinstance(item, dict) and item.get("id")
+            }
+            for item in bound_items:
+                amenity_id = str(item["id"])
+                current = existing_by_id.get(amenity_id)
+                if operation == "remove" and current is None:
+                    # A negative statement against an empty slot is a durable
+                    # exclusion, not an invalid removal from nothing.
+                    bound.append({"path": change["path"], "operation": "append", "value": {**item, "polarity": "exclude"}})
+                    continue
+                if operation == "append" and current is not None and current.get("polarity") != item.get("polarity"):
+                    bound.append({"path": change["path"], "operation": "remove", "value": current})
+                bound.append({**change, "value": item})
+    return bound, unresolved, ambiguities
 
 # A "khoảng X" / "tầm X" answer only ever sets budget.target (a single
 # preferred price, prompts.py's per-field contract) -- it never touches
@@ -132,6 +221,7 @@ def _derive_budget_range_from_trip_total(
 def validate_patch(state: TravelGraphState) -> dict[str, Any]:
     travel_state = TravelState.from_dict(state.get("travel_state"))
     patch = list(state.get("patch") or [])
+    patch, unresolved_amenities, ambiguous_amenities = _bind_amenity_patch(patch, travel_state)
     patch += _derive_budget_range_from_target(patch, travel_state)
 
     # A trip_total -> per-night conversion needs this turn's own dates (if
@@ -144,6 +234,15 @@ def validate_patch(state: TravelGraphState) -> dict[str, Any]:
     patch += _derive_budget_range_from_trip_total(patch, travel_state, prospective)
 
     result = apply_patch(travel_state, patch)
+    for rejection in result.rejected:
+        logger.warning(
+            "travel_state_patch_rejected",
+            extra={
+                "patch_path": rejection.path,
+                "patch_operation": rejection.operation,
+                "patch_reason": rejection.reason,
+            },
+        )
     impacted = sorted(detect_impact(result.applied))
 
     return {
@@ -159,5 +258,7 @@ def validate_patch(state: TravelGraphState) -> dict[str, Any]:
             *(state.get("rejected_changes") or []),
             *(asdict(rejection) for rejection in result.rejected),
         ],
+        "unresolved_amenities": unresolved_amenities,
+        "ambiguous_amenities": ambiguous_amenities,
         "impacted_workflows": impacted,
     }

@@ -1,3 +1,4 @@
+import logging
 from types import SimpleNamespace
 
 from src.services import amenity_catalog
@@ -117,7 +118,7 @@ def test_query_all_approved_amenities_by_ids_batches_without_truncating(monkeypa
     assert calls[-1][-1] == "amenity_204"
 
 
-def test_discover_and_store_amenities_inserts_only_fast_model_approved_candidates(monkeypatch):
+def test_discover_and_store_amenities_stages_only_fast_model_candidates(monkeypatch):
     inserted_rows = []
     captured_messages = []
 
@@ -172,7 +173,7 @@ def test_discover_and_store_amenities_inserts_only_fast_model_approved_candidate
             "category": "wellness",
             "icon_key": "spa",
             "match_keywords": ["wellness", "phòng spa"],
-            "is_approved": True,
+                "is_approved": False,
         }
     ]
     assert "unknown scraped hotel amenities" in captured_messages[0].content
@@ -509,7 +510,13 @@ def test_bind_amenity_rows_deduplicates_unknown_values_across_a_page(monkeypatch
         {"id": "unknown_b", "label": "Unknown B"},
         {"id": "unknown_c", "label": "Unknown C"},
     ]]
-    assert [result.ids for result in results] == [("unknown_a", "unknown_b"), ("unknown_b", "unknown_c")]
+    assert [result.ids for result in results] == [(), ()]
+    assert [result.unresolved for result in results] == [
+        ("Unknown A", "Unknown B"), ("Unknown B", "Unknown C")
+    ]
+    assert [[entry.id for entry in result.proposals] for result in results] == [
+        ["unknown_a", "unknown_b"], ["unknown_b", "unknown_c"]
+    ]
 
 
 def test_bind_amenities_resolves_known_aliases_without_calling_the_model(monkeypatch):
@@ -578,6 +585,38 @@ def test_resolve_hotel_amenity_ids_uses_only_approved_hotel_catalog_entries(monk
 
     assert result.ids == ("swimming_pool",)
     assert result.unresolved == ("tv", "unknown amenity")
+
+
+def test_resolve_hotel_amenity_ids_never_selects_a_zero_coverage_entry(monkeypatch):
+    entries = (
+        amenity_catalog.AmenityCatalogEntry(
+            id="wifi",
+            label="Wi-Fi",
+            label_en="Wi-Fi",
+            scope="hotel",
+            category="connectivity",
+            match_keywords=("wifi",),
+        ),
+        amenity_catalog.AmenityCatalogEntry(
+            id="public_wi_fi",
+            label="Wi-Fi ở nơi công cộng",
+            label_en="Public Wi-Fi",
+            scope="hotel",
+            category="connectivity",
+            match_keywords=("wifi", "wi-fi"),
+        ),
+    )
+    monkeypatch.setattr(amenity_catalog, "all_approved_amenities", lambda: entries)
+    monkeypatch.setattr(
+        amenity_catalog,
+        "hotel_amenity_coverage",
+        lambda: {"wifi": 0, "public_wi_fi": 476},
+    )
+
+    result = amenity_catalog.resolve_hotel_amenity_ids(["wifi"])
+
+    assert result.ids == ("public_wi_fi",)
+    assert "wifi" not in result.ids
 
 
 def test_bind_amenities_reuses_a_hotel_catalog_item_for_a_room_value(monkeypatch):
@@ -729,7 +768,7 @@ def test_discovery_promotes_existing_hotel_item_when_classifying_room_alias(monk
     )]
 
 
-def test_bind_amenities_batches_unique_unknown_values_and_creates_compatible_catalog_entries(monkeypatch):
+def test_bind_amenities_batches_unknown_values_as_unapproved_proposals(monkeypatch):
     captured_candidates = []
     monkeypatch.setattr(amenity_catalog, "query_approved_amenities", lambda: [])
 
@@ -754,8 +793,8 @@ def test_bind_amenities_batches_unique_unknown_values_and_creates_compatible_cat
     result = amenity_catalog.bind_amenities(values, scope="room")
 
     assert [len(batch) for batch, _ in captured_candidates] == [8, 1]
-    assert result.ids == tuple(f"unknown_{index}" for index in range(9))
-    assert result.unresolved == ()
+    assert result.ids == ()
+    assert result.unresolved == tuple(f"Unknown {index}" for index in range(9))
     assert result.created == 9
     assert [entry.id for entry in result.proposals] == [f"unknown_{index}" for index in range(9)]
 
@@ -827,6 +866,69 @@ def test_unrelated_phrase_sharing_one_syllable_does_not_bind(monkeypatch):
     result = _resolve_one(monkeypatch, "view đẹp")
     assert result.ids == ()
     assert result.unresolved == ("view đẹp",)
+
+
+def test_ambiguous_resolution_preserves_top_k_for_clarification(monkeypatch):
+    candidates = (
+        amenity_catalog.AmenityCandidate("wifi", "Wi-Fi", 0.8, 0.8, 700),
+        amenity_catalog.AmenityCandidate("wireless_internet_access", "Internet không dây", 0.78, 0.8, 300),
+    )
+    ambiguity = amenity_catalog.AmenityResolution(
+        phrase="wireless internet", status="ambiguous", candidates=candidates
+    )
+    monkeypatch.setattr(amenity_catalog, "all_approved_amenities", lambda: ())
+    monkeypatch.setattr(amenity_catalog, "hotel_amenity_coverage", lambda: {})
+    monkeypatch.setattr(amenity_catalog, "resolve_hotel_amenity", lambda *_a, **_k: ambiguity)
+    monkeypatch.setattr(amenity_catalog, "_choose_ambiguous_candidate", lambda value: value)
+
+    result = amenity_catalog.resolve_hotel_amenity_ids(["wireless internet"])
+
+    assert result.ids == ()
+    assert result.unresolved == ("wireless internet",)
+    assert result.ambiguities == (ambiguity,)
+
+
+def test_semantic_scores_embed_large_catalog_in_bounded_batches(monkeypatch):
+    class BatchLimitedEmbeddings:
+        def __init__(self):
+            self.batch_sizes = []
+
+        def embed_documents(self, documents):
+            self.batch_sizes.append(len(documents))
+            if len(documents) > 50:
+                raise RuntimeError("embedding request exceeds provider token limit")
+            return [[1.0, 0.0] for _ in documents]
+
+        def embed_query(self, _phrase):
+            return [1.0, 0.0]
+
+    embeddings = BatchLimitedEmbeddings()
+    entries = tuple(_entry(f"amenity_{index}", f"Amenity {index}") for index in range(453))
+    monkeypatch.setattr(amenity_catalog, "get_embeddings", lambda: embeddings)
+    monkeypatch.setattr(amenity_catalog, "_catalog_embedding_cache", None)
+
+    scores = amenity_catalog._semantic_scores("bãi đỗ xe", entries)
+
+    assert scores == (1.0,) * 453
+    assert embeddings.batch_sizes == [48] * 9 + [21]
+
+
+def test_semantic_embedding_failure_is_visible_at_warning(monkeypatch, caplog):
+    class BrokenEmbeddings:
+        def embed_documents(self, _documents):
+            raise RuntimeError("embedding service unavailable")
+
+        def embed_query(self, _phrase):
+            return [1.0]
+
+    monkeypatch.setattr(amenity_catalog, "get_embeddings", lambda: BrokenEmbeddings())
+    monkeypatch.setattr(amenity_catalog, "_catalog_embedding_cache", None)
+
+    with caplog.at_level(logging.WARNING, logger=amenity_catalog.__name__):
+        scores = amenity_catalog._semantic_scores("wifi miễn phí", (_entry("wifi", "Wi-Fi"),))
+
+    assert scores == ()
+    assert any("Amenity semantic candidates unavailable" in record.message for record in caplog.records)
 
 
 def test_price_phrase_does_not_bind_to_a_spice_amenity(monkeypatch):

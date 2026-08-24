@@ -8,11 +8,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Iterable
 
-from langchain_core.messages import AIMessage, HumanMessage, messages_from_dict, messages_to_dict
+from langchain_core.messages import AIMessage, HumanMessage, messages_from_dict
 from postgrest.exceptions import APIError
 from supabase import Client, create_client
 
 from src.config import get_settings
+from src.domain.travel_state import TRAVEL_STATE_SCHEMA_VERSION
 from src.services.llm import response_text
 
 if TYPE_CHECKING:
@@ -177,6 +178,7 @@ def _v3_context(state: dict[str, Any]) -> dict[str, Any]:
     }
     return {
         "schema_version": _CONTEXT_SCHEMA_VERSION_V3,
+        "travel_state_schema_version": TRAVEL_STATE_SCHEMA_VERSION,
         "travel_state": state.get("travel_state") or {},
         "trip": trip,
         "ui_summary": _ui_summary(ui_view, trip),

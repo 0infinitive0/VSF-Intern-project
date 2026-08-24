@@ -55,6 +55,8 @@ def load_context(state: TravelGraphState) -> dict[str, Any]:
         "applied_changes": [],
         "revised_slots": [],
         "rejected_changes": [],
+        "unresolved_amenities": [],
+        "ambiguous_amenities": [],
         "impacted_workflows": [],
         "unresolved_resume_text": None,
         "next_question": None,

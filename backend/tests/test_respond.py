@@ -48,6 +48,15 @@ def _hotel_task_results() -> list[dict[str, Any]]:
     ]
 
 
+def test_respond_exposes_whether_the_hotel_list_can_expand():
+    task_results = _hotel_task_results()
+    task_results[0]["hotel_search_result"]["has_more_hotel_options"] = True
+
+    response = respond(_state(task_results=task_results))["response"]
+
+    assert response["has_more_hotel_options"] is True
+
+
 def _seeded(changes: list[dict]) -> TravelState:
     return apply_patch(TravelState(), changes).state
 
@@ -202,12 +211,7 @@ class TestRespondActivePreferences:
         response = respond(_state())["response"]
         assert response["active_preferences"] == []
 
-    def test_binds_hotel_preferences_to_approved_amenity_ids(self, monkeypatch):
-        monkeypatch.setattr(
-            respond_module,
-            "resolve_hotel_amenity_ids",
-            lambda _values: AmenityBindingResult(ids=("gym", "swimming_pool"), unresolved=("unknown",)),
-        )
+    def test_projects_bound_hotel_preferences_from_state(self, monkeypatch):
         monkeypatch.setattr(
             respond_module,
             "all_approved_amenities",
@@ -217,12 +221,33 @@ class TestRespondActivePreferences:
             ),
         )
         travel_state = _seeded(
-            [{"path": "hotel_preferences.amenities", "operation": "set", "value": ["gym", "pool", "unknown"]}]
+            [{"path": "hotel_preferences.amenities", "operation": "set", "value": [
+                {"id": "gym", "label": "Phòng gym", "polarity": "require", "source_phrase": "gym", "confidence": 1.0},
+                {"id": "swimming_pool", "label": "Hồ bơi", "polarity": "prefer", "source_phrase": "pool", "confidence": 1.0},
+            ]}]
         )
         response = respond(_state(travel_state=travel_state.to_dict()))["response"]
         assert response["active_preferences"] == [
-            {"id": "gym", "label": "Phòng gym"},
-            {"id": "swimming_pool", "label": "Hồ bơi"},
+            {"id": "gym", "label": "Phòng gym", "polarity": "require", "active": True},
+            {"id": "swimming_pool", "label": "Hồ bơi", "polarity": "prefer", "active": True},
+        ]
+
+    def test_keeps_dropped_preferences_in_the_payload_as_inactive(self, monkeypatch):
+        monkeypatch.setattr(
+            respond_module,
+            "all_approved_amenities",
+            lambda: (AmenityCatalogEntry("spa", "Spa", ("spa",), "Spa", "hotel", "wellness", "spa"),),
+        )
+        travel_state = _seeded(
+            [{"path": "hotel_preferences.amenities", "operation": "set", "value": [
+                {"id": "spa", "label": "Spa", "polarity": "require", "source_phrase": "spa", "confidence": 1.0, "active": False},
+            ]}]
+        )
+
+        response = respond(_state(travel_state=travel_state.to_dict()))["response"]
+
+        assert response["active_preferences"] == [
+            {"id": "spa", "label": "Spa", "polarity": "require", "active": False},
         ]
 
 
@@ -260,13 +285,10 @@ class TestRespondAllPreferences:
                 ),
             ],
         )
-        monkeypatch.setattr(
-            respond_module,
-            "resolve_hotel_amenity_ids",
-            lambda _values: AmenityBindingResult(ids=("swimming_pool",), unresolved=()),
-        )
         travel_state = _seeded(
-            [{"path": "hotel_preferences.amenities", "operation": "set", "value": ["pool"]}]
+            [{"path": "hotel_preferences.amenities", "operation": "set", "value": [
+                {"id": "swimming_pool", "label": "Hồ bơi", "polarity": "require", "source_phrase": "pool", "confidence": 1.0}
+            ]}]
         )
         task_results = [
             {
@@ -283,7 +305,7 @@ class TestRespondAllPreferences:
         response = respond(_state(task_results=task_results, travel_state=travel_state.to_dict()))["response"]
 
         assert response["all_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi"}]
-        assert response["active_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi"}]
+        assert response["active_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi", "polarity": "require", "active": True}]
         assert [amenity.id for amenity in response["hotel_amenities"]] == ["swimming_pool", "wifi"]
 
     def test_hotel_filters_fall_back_to_the_session_amenity_request(self, monkeypatch):
@@ -291,11 +313,6 @@ class TestRespondAllPreferences:
             AmenityCatalogEntry("swimming_pool", "Hồ bơi", ("pool",), "Swimming pool", "both", "wellness", "pool"),
         )
         monkeypatch.setattr(respond_module, "all_approved_amenities", lambda: catalog)
-        monkeypatch.setattr(
-            respond_module,
-            "resolve_hotel_amenity_ids",
-            lambda _values: AmenityBindingResult(ids=("swimming_pool",), unresolved=()),
-        )
         monkeypatch.setattr(
             respond_module,
             "hotel_amenities_from_hotel_options",
@@ -310,7 +327,9 @@ class TestRespondAllPreferences:
             ],
         )
         travel_state = _seeded(
-            [{"path": "hotel_preferences.amenities", "operation": "set", "value": ["bể bơi"]}]
+            [{"path": "hotel_preferences.amenities", "operation": "set", "value": [
+                {"id": "swimming_pool", "label": "Hồ bơi", "polarity": "require", "source_phrase": "bể bơi", "confidence": 1.0}
+            ]}]
         )
         task_results = [
             {
@@ -327,7 +346,7 @@ class TestRespondAllPreferences:
         response = respond(_state(task_results=task_results, travel_state=travel_state.to_dict()))["response"]
 
         assert response["all_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi"}]
-        assert response["active_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi"}]
+        assert response["active_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi", "polarity": "require", "active": True}]
 
     def test_fresh_hotel_options_still_get_labels_when_stage_is_planned(self, monkeypatch):
         """Bug fix: a re-search after a trip already exists (e.g. "đổi khách
@@ -342,11 +361,6 @@ class TestRespondAllPreferences:
         monkeypatch.setattr(respond_module, "all_approved_amenities", lambda: catalog)
         monkeypatch.setattr(
             respond_module,
-            "resolve_hotel_amenity_ids",
-            lambda _values: AmenityBindingResult(ids=("swimming_pool",), unresolved=()),
-        )
-        monkeypatch.setattr(
-            respond_module,
             "hotel_amenities_from_hotel_options",
             lambda _hotels: [
                 schemas.AmenityCatalogPayload(
@@ -356,7 +370,9 @@ class TestRespondAllPreferences:
             ],
         )
         travel_state = _seeded(
-            [{"path": "hotel_preferences.amenities", "operation": "set", "value": ["pool"]}]
+            [{"path": "hotel_preferences.amenities", "operation": "set", "value": [
+                {"id": "swimming_pool", "label": "Hồ bơi", "polarity": "require", "source_phrase": "pool", "confidence": 1.0}
+            ]}]
         )
         task_results = [
             {
@@ -382,7 +398,28 @@ class TestRespondAllPreferences:
         assert response["hotel_options"] != []
         assert [amenity.id for amenity in response["hotel_amenities"]] == ["swimming_pool"]
         assert response["all_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi"}]
-        assert response["active_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi"}]
+        assert response["active_preferences"] == [
+            {"id": "swimming_pool", "label": "Hồ bơi", "polarity": "require", "active": True}
+        ]
+
+    def test_ambiguity_is_visible_with_deterministic_clarification_chips(self):
+        response = respond(_state(
+            unresolved_amenities=["bồn tắm trên mây"],
+            ambiguous_amenities=[{
+                "phrase": "wireless internet",
+                "candidates": [
+                    {"id": "wifi", "label": "Wi-Fi"},
+                    {"id": "wireless_internet_access", "label": "Internet không dây"},
+                ],
+            }],
+        ))["response"]
+
+        assert "bồn tắm trên mây" in response["reply"]
+        assert "wireless internet" in response["reply"]
+        assert response["suggestions"] == [
+            {"label": "Wi-Fi", "value": "Tôi muốn Wi-Fi"},
+            {"label": "Internet không dây", "value": "Tôi muốn Internet không dây"},
+        ]
 
 
 class TestRespondNeverSpeaksForASilentWorker:

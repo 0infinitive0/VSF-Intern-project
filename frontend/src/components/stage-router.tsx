@@ -39,10 +39,12 @@ export default function StageRouter({
   stage,
   state,
   hotelOptions,
+  hotelsLoading,
   hotelFilterData,
   selectedHotelIndex,
   onSelectHotel,
   onConfirmHotel,
+  onPreferenceToggle,
   focusMode,
   intakeForm,
   onEditIntakeField,
@@ -62,10 +64,12 @@ export default function StageRouter({
   stage: StageView
   state: ChatState
   hotelOptions: HotelOption[]
+  hotelsLoading: boolean
   hotelFilterData: HotelFilterData
   selectedHotelIndex: number | null
   onSelectHotel: (index: number) => void
   onConfirmHotel: (hotel: HotelOption) => void
+  onPreferenceToggle: (id: string, active: boolean) => void
   focusMode: FocusModeApi
   intakeForm: IntakeFormState
   onEditIntakeField?: (key: IntakeChecklistRowKey) => void
@@ -110,10 +114,12 @@ export default function StageRouter({
       <StageHotels
         state={state}
         hotelOptions={hotelOptions}
+        hotelsLoading={hotelsLoading}
         hotelFilterData={hotelFilterData}
         selectedIndex={selectedHotelIndex}
         onSelectHotel={onSelectHotel}
         onConfirmHotel={onConfirmHotel}
+        onPreferenceToggle={onPreferenceToggle}
         focusMode={focusMode}
         theme={theme}
         roomHold={roomHold}

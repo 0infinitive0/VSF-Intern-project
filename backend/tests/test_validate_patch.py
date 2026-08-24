@@ -9,8 +9,12 @@ plans/reports/ for the budget.target-vs-range design discussion this pins.
 
 from __future__ import annotations
 
+import logging
+
+import src.agents.graph.nodes.validate_patch as validate_patch_module
 from src.agents.graph.nodes.validate_patch import validate_patch
 from src.agents.graph.state import TravelGraphState, initial_graph_state
+from src.services.amenity_catalog import AmenityBindingResult, AmenityCatalogEntry
 
 
 def _state(patch: list[dict], travel_state: dict | None = None) -> TravelGraphState:
@@ -27,6 +31,116 @@ def test_bare_target_derives_a_percentage_band() -> None:
     assert proposed["budget.target"]["value"] == 1_000_000
     assert proposed["budget.min"]["value"] == 800_000
     assert proposed["budget.max"]["value"] == 1_200_000
+
+
+def test_each_rejected_change_is_logged_once_at_warning(caplog, monkeypatch) -> None:
+    caplog.set_level(logging.WARNING, logger="src.agents.graph.nodes.validate_patch")
+    monkeypatch.setattr(validate_patch_module, "all_approved_amenities", lambda: ())
+    monkeypatch.setattr(
+        validate_patch_module,
+        "resolve_hotel_amenity_ids",
+        lambda values: AmenityBindingResult(ids=(), unresolved=tuple(str(value) for value in values)),
+    )
+
+    result = validate_patch(
+        _state([
+            {"path": "hotel_preferences.amenities", "operation": "append", "value": ["hồ bơi"]},
+            {"path": "not.allowed", "operation": "set", "value": "x"},
+        ])
+    )
+
+    assert len(result["rejected_changes"]) == 1
+    assert result["unresolved_amenities"] == ["hồ bơi"]
+    records = [record for record in caplog.records if record.message == "travel_state_patch_rejected"]
+    assert len(records) == 1
+    assert {(record.patch_path, record.patch_operation) for record in records} == {
+        ("not.allowed", "set"),
+    }
+    assert all(record.patch_reason for record in records)
+
+
+def test_amenities_are_bound_to_records_before_the_state_commit(monkeypatch) -> None:
+    entry = AmenityCatalogEntry(
+        id="swimming_pool",
+        label="Hồ bơi",
+        label_en="Swimming pool",
+        scope="both",
+        category="wellness",
+        match_keywords=("hồ bơi", "bể bơi"),
+    )
+    monkeypatch.setattr(validate_patch_module, "all_approved_amenities", lambda: (entry,))
+    monkeypatch.setattr(
+        validate_patch_module,
+        "resolve_hotel_amenity_ids",
+        lambda values: AmenityBindingResult(ids=("swimming_pool",), unresolved=()),
+    )
+
+    result = validate_patch(
+        _state([{"path": "hotel_preferences.amenities", "operation": "append", "value": "bể bơi"}])
+    )
+
+    assert result["proposed_travel_state"]["hotel_preferences.amenities"]["value"] == [{
+        "id": "swimming_pool",
+        "label": "Hồ bơi",
+        "polarity": "require",
+        "source_phrase": "bể bơi",
+        "confidence": 1.0,
+    }]
+    assert result["unresolved_amenities"] == []
+
+
+def test_unresolved_amenity_is_reported_for_this_turn_and_not_committed(monkeypatch) -> None:
+    monkeypatch.setattr(validate_patch_module, "all_approved_amenities", lambda: ())
+    monkeypatch.setattr(
+        validate_patch_module,
+        "resolve_hotel_amenity_ids",
+        lambda values: AmenityBindingResult(ids=(), unresolved=(str(values[0]),)),
+    )
+
+    result = validate_patch(
+        _state([{"path": "hotel_preferences.amenities", "operation": "append", "value": "bể bơi vô cực"}])
+    )
+
+    assert "hotel_preferences.amenities" not in result["proposed_travel_state"]
+    assert result["unresolved_amenities"] == ["bể bơi vô cực"]
+
+
+def test_remove_on_empty_amenity_slot_becomes_an_exclusion(monkeypatch) -> None:
+    entry = AmenityCatalogEntry(id="swimming_pool", label="Hồ bơi", match_keywords=("hồ bơi",))
+    monkeypatch.setattr(validate_patch_module, "all_approved_amenities", lambda: (entry,))
+    monkeypatch.setattr(
+        validate_patch_module,
+        "resolve_hotel_amenity_ids",
+        lambda _values: AmenityBindingResult(ids=("swimming_pool",), unresolved=()),
+    )
+
+    result = validate_patch(_state([{
+        "path": "hotel_preferences.amenities",
+        "operation": "remove",
+        "value": {"phrase": "không cần hồ bơi", "polarity": "exclude"},
+    }]))
+
+    records = result["proposed_travel_state"]["hotel_preferences.amenities"]["value"]
+    assert records[0]["id"] == "swimming_pool"
+    assert records[0]["polarity"] == "exclude"
+    assert result["rejected_changes"] == []
+
+
+def test_clear_all_amenities_commits_an_empty_list(monkeypatch) -> None:
+    monkeypatch.setattr(validate_patch_module, "all_approved_amenities", lambda: ())
+    result = validate_patch(_state(
+        [{"path": "hotel_preferences.amenities", "operation": "set", "value": []}],
+        travel_state={
+            "hotel_preferences.amenities": {
+                "presence": "set",
+                "value": [{
+                    "id": "gym", "label": "Gym", "polarity": "require",
+                    "source_phrase": "gym", "confidence": 1.0,
+                }],
+            }
+        },
+    ))
+    assert result["proposed_travel_state"]["hotel_preferences.amenities"]["value"] == []
 
 
 def test_low_target_uses_the_floor_tolerance_and_clamps_at_zero() -> None:

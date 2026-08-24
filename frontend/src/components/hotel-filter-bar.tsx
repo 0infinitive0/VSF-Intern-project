@@ -2,25 +2,25 @@ import { useMemo, useRef, useState, type CSSProperties, type PointerEvent } from
 import { useTranslation } from 'react-i18next'
 import { formatCurrency } from '../lib/format-currency'
 import { hotelPriceBounds, PRICE_SLIDER_STEP, roundedPriceSliderBounds, type HotelSortOrder } from '../lib/hotel-filters'
-import type { HotelOption, PreferencePayload } from '../types'
+import type { ActivePreferencePayload, HotelOption } from '../types'
 
 export default function HotelFilterBar({
-  hotels, apiPriceMin, apiPriceMax, amenityOptions, minPrice, maxPrice, minStars, preferenceIds, sortOrder,
-  onMinPriceChange, onMaxPriceChange, onMinStarsChange, onPreferenceIdsChange, onSortOrderChange, onClear,
+  hotels, apiPriceMin, apiPriceMax, amenityOptions, minPrice, maxPrice, minStars, preferenceLoading, sortOrder,
+  onMinPriceChange, onMaxPriceChange, onMinStarsChange, onPreferenceToggle, onSortOrderChange, onClear,
 }: {
   hotels: HotelOption[]
   apiPriceMin: number | null
   apiPriceMax: number | null
-  amenityOptions: PreferencePayload[]
+  amenityOptions: ActivePreferencePayload[]
   minPrice: number | null
   maxPrice: number | null
   minStars: number | null
-  preferenceIds: string[]
+  preferenceLoading: boolean
   sortOrder: HotelSortOrder
   onMinPriceChange: (value: number | null) => void
   onMaxPriceChange: (value: number | null) => void
   onMinStarsChange: (value: number | null) => void
-  onPreferenceIdsChange: (value: string[]) => void
+  onPreferenceToggle: (id: string, active: boolean) => void
   onSortOrderChange: (value: HotelSortOrder) => void
   onClear: () => void
 }) {
@@ -31,7 +31,7 @@ export default function HotelFilterBar({
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false)
   const priceBounds = useMemo(() => hotelPriceBounds(hotels, apiPriceMin, apiPriceMax), [apiPriceMax, apiPriceMin, hotels])
   const sliderBounds = priceBounds ? roundedPriceSliderBounds(priceBounds) : null
-  const filtersActive = minPrice != null || maxPrice != null || minStars != null || preferenceIds.length > 0 || sortOrder !== 'match'
+  const filtersActive = minPrice != null || maxPrice != null || minStars != null || sortOrder !== 'match'
   const selectedMinPrice = sliderBounds ? minPrice ?? sliderBounds.min : null
   const selectedMaxPrice = sliderBounds ? maxPrice ?? sliderBounds.max : null
   const priceRangeStyle = sliderBounds
@@ -40,10 +40,6 @@ export default function HotelFilterBar({
         '--range-high': `${((selectedMaxPrice! - sliderBounds.min) / (sliderBounds.max - sliderBounds.min || 1)) * 100}%`,
       } as CSSProperties
     : undefined
-
-  function togglePreference(preferenceId: string) {
-    onPreferenceIdsChange(preferenceIds.includes(preferenceId) ? preferenceIds.filter((id) => id !== preferenceId) : [...preferenceIds, preferenceId])
-  }
 
   function startPreferenceDrag(event: PointerEvent<HTMLDivElement>) {
     didDragRef.current = false
@@ -233,9 +229,10 @@ export default function HotelFilterBar({
           didDragRef.current = false
         }}
       >
-        {amenityOptions.map(({ id, label }) => {
-          const active = preferenceIds.includes(id)
-          return <button key={id} type="button" aria-pressed={active} onClick={() => togglePreference(id)} className={`shrink-0 rounded-full border px-3 py-2 text-[12px] transition-colors ${active ? 'border-primary bg-primary text-on-primary shadow-sm' : 'border-fill2 bg-glass-2 text-on-surface-variant hover:text-on-surface'}`}>{label}</button>
+        {amenityOptions.map(({ id, label, active, polarity }) => {
+          const stateText = active ? 'Đang áp dụng, nhấn để tắt' : 'Đã tắt, nhấn để áp dụng lại'
+          const exclusion = polarity === 'exclude'
+          return <button key={`${id}-${polarity}`} type="button" disabled={preferenceLoading} aria-pressed={active} aria-label={`${label}: ${stateText}`} onClick={() => onPreferenceToggle(id, !active)} className={`shrink-0 rounded-full border px-3 py-2 text-[12px] transition-colors disabled:cursor-wait disabled:opacity-60 ${!active ? 'border-dashed border-fill2 bg-glass-2 text-on-surface-muted' : exclusion ? 'border-danger/50 bg-danger/10 text-danger' : 'border-primary bg-primary text-on-primary shadow-sm'}`}>{exclusion ? '− ' : !active ? '○ ' : ''}{label}</button>
         })}
       </div>}
     </section>

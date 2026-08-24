@@ -69,6 +69,10 @@ Schema:
   "asks_nearby_places": true | false
 }}
 
+Patch value contract (follow this exactly): set on a list path requires a list;
+append/remove require one scalar item, never a list. Emit
+multiple `append`/`remove` changes when several items are stated.
+
 intent meanings:
 - hotel_search: the user wants hotels found/searched/filtered.
 - update_itinerary: the user is changing a day's theme/plan or itinerary-only preferences.
@@ -93,9 +97,18 @@ Allowed change paths, one change per fact actually stated (omit anything not men
 - preferences.pace (string, ONLY from: {pace_labels}): how packed the schedule should be.
 - preferences.day_rhythm (list of strings, ONLY from: {day_rhythm_labels}): early/late daily rhythm.
 - preferences.notes (string): free-text requests that don't fit any other path.
-- hotel_preferences.amenities (list of strings): amenities the user wants (e.g. "gym", "hồ bơi", "bãi biển riêng").
+- hotel_preferences.amenities: emit amenity MENTIONS, not bare strings. Each value is
+  `{{"phrase":"the user's exact words","polarity":"require|exclude|prefer"}}`.
+  Use `require` for must-have, `prefer` for soft wording such as "ưu tiên", and
+  `exclude` for a negative constraint. Add a mention with `append`. When the user
+  says an existing preference is no longer needed ("bỏ", "không cần ... nữa"),
+  use `remove`; use `set` with `[]` only to clear every amenity preference.
+  Common reviewed vocabulary includes: parking/bãi đỗ xe, wifi/internet/Wi-Fi,
+  swimming pool/hồ bơi/bể bơi, gym/phòng tập, spa, breakfast/bữa sáng,
+  sea view/view biển, private beach/bãi biển riêng, airport shuttle/đưa đón sân bay.
 - hotel_preferences.radius_km (number, 0 < n <= 50): search radius in km.
 - hotel_preferences.min_star_rating (number 1-5) / hotel_preferences.min_review_score (number 0-10): two DIFFERENT rating scales -- do not confuse them.
+- hotel_preferences.result_count (integer 2-20): the total number of hotel cards to return. For example, "hiển thị 12 khách sạn" or "show 12 hotels" emits `{{"path":"hotel_preferences.result_count","operation":"set","value":12}}`.
 - daily_preferences.<day_number>.theme (string): a SPECIFIC day's theme/plan, when you can tell which day number. Use this instead of preferences.themes whenever the request is scoped to one day (e.g. "ngày 1 thiên nhiên"); when the day is named by a word instead of a number ("ngày đầu", "hôm đầu", "ngày cuối"), still emit this path with your best guess at the day number -- a deterministic pass corrects it afterward if you guess wrong.
 - locked_days (integer day number, operation "append" or "remove"): the user wants a specific day left untouched during future edits (e.g. "giữ nguyên ngày 2").
 

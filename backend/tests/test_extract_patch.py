@@ -128,6 +128,83 @@ def test_valid_response_makes_exactly_one_llm_call(monkeypatch):
     assert result["patch_reason"] == ""
 
 
+def test_bare_more_hotels_increases_the_current_result_count_by_five(monkeypatch):
+    llm = _patch(monkeypatch, _FakeLLM([_payload("general_question", [])]))
+    state = _state(
+        "xem thêm khách sạn",
+        travel_state={"hotel_preferences.result_count": {"presence": "set", "value": 10}},
+    )
+
+    result = extract_patch(state)
+
+    assert result["patch"] == [
+        {"path": "hotel_preferences.result_count", "operation": "set", "value": 15},
+    ]
+    assert llm.call_count == 1
+
+
+def test_explicit_hotel_result_count_is_preserved_for_the_patch_layer(monkeypatch):
+    llm = _patch(
+        monkeypatch,
+        _FakeLLM([
+            _payload(
+                "hotel_search",
+                [{"path": "hotel_preferences.result_count", "operation": "set", "value": 2}],
+            )
+        ]),
+    )
+
+    result = extract_patch(_state("chỉ hiển thị 2 khách sạn"))
+
+    assert result["patch"] == [
+        {"path": "hotel_preferences.result_count", "operation": "set", "value": 2},
+    ]
+
+
+def test_vietnamese_increase_choices_phrase_sets_the_requested_result_count(monkeypatch):
+    llm = _patch(monkeypatch, _FakeLLM([_payload("general_question", [])]))
+
+    result = extract_patch(_state("tăng số lựa chọn lên 10 cho tôi"))
+
+    assert result["patch"] == [
+        {"path": "hotel_preferences.result_count", "operation": "set", "value": 10},
+    ]
+
+
+def test_list_valued_amenity_append_is_normalized_into_one_change_per_item(monkeypatch):
+    llm = _patch(
+        monkeypatch,
+        _FakeLLM([
+            _payload(
+                "hotel_search",
+                [{
+                    "path": "hotel_preferences.amenities",
+                    "operation": "append",
+                    "value": ["hồ bơi", "phòng gym"],
+                }],
+            )
+        ]),
+    )
+
+    result = extract_patch(_state("Khách sạn có hồ bơi và phòng gym"))
+
+    assert llm.call_count == 1
+    assert result["patch"] == [
+        {"path": "hotel_preferences.amenities", "operation": "append", "value": "hồ bơi"},
+        {"path": "hotel_preferences.amenities", "operation": "append", "value": "phòng gym"},
+    ]
+
+
+def test_extract_prompt_states_the_operation_value_contract(monkeypatch):
+    llm = _patch(monkeypatch, _FakeLLM([_payload("general_question", [])]))
+
+    extract_patch(_state("xin chào"))
+
+    prompt = llm.prompts[0]
+    assert "append/remove require one scalar item" in prompt
+    assert "set on a list path requires a list" in prompt
+
+
 def test_invalid_json_retries_once_then_falls_back_without_raising(monkeypatch):
     llm = _patch(monkeypatch, _FakeLLM(["not json", "still not json"]))
     result = extract_patch(_state("asdkjasd"))

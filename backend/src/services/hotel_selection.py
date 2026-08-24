@@ -12,19 +12,19 @@ import re
 import time
 import unicodedata
 from dataclasses import dataclass, replace
-from typing import Any, Collection, Dict, Iterable, List, Literal, Tuple
+from typing import Any, Collection, Dict, Iterable, List, Literal, Mapping, Tuple
 
 from supabase import Client, create_client
 
 from src.config import get_settings
 from src.domain.travel_state import Presence, Slot, TravelState, apply_patch
+from src.services.amenity_catalog import expand_amenity_descendants, query_approved_amenities
 from src.services.guided_question import (
     GuidedOption,
     GuidedQuestion,
     format_guided_question,
     resolve_guided_reply,
 )
-from src.services.amenity_catalog import query_approved_amenities
 from src.services.supabase_search import search_hotels_with_rooms
 from src.services.trip_scheduler import PlaceCandidate, detect_covered_hotel_meals
 
@@ -168,6 +168,12 @@ def _amenity_drop_counts(
     }
 
 
+def _matches_amenity_family(
+    data: Dict[str, Any], acceptable_ids: Collection[str], sea_view_hotel_ids: Collection[str]
+) -> bool:
+    return any(hotel_matches_amenity_tag(data, tag, sea_view_hotel_ids) for tag in acceptable_ids)
+
+
 def select_hotel_candidates(
     destination: str,
     destination_id: str,
@@ -184,6 +190,7 @@ def select_hotel_candidates(
     max_radius_km: float | None = None,
     *,
     required_amenities: Collection[str] = (),
+    excluded_amenities: Collection[str] = (),
     min_star_rating: float | None = None,
     min_review_score: float | None = None,
     min_guests: int | None = None,
@@ -226,7 +233,8 @@ def select_hotel_candidates(
     """
     query = hotel_query or f"Hotel in {destination} for {people} people"
     hard_filters_requested = (
-        bool(required_amenities) or min_star_rating is not None or min_review_score is not None
+        bool(required_amenities) or bool(excluded_amenities)
+        or min_star_rating is not None or min_review_score is not None
     )
     effective_match_count = (
         min(match_count * _HARD_FILTER_OVERFETCH_MULTIPLIER, _HARD_FILTER_MAX_FETCH)
@@ -313,22 +321,72 @@ def select_hotel_candidates(
         if pre_rating and not filtered:
             raise NoHotelsMatchRating(min_star_rating, min_review_score)
 
-    if required_amenities:
-        pre_amenity = filtered
-        sea_view_hotel_ids = (
-            lookup_sea_view_hotel_ids([data["id"] for data, _ in filtered])
-            if "sea_view" in required_amenities
-            else frozenset()
-        )
+    all_amenity_filters = tuple(dict.fromkeys((*required_amenities, *excluded_amenities)))
+    expanded_families = expand_amenity_descendants(all_amenity_filters) if all_amenity_filters else {}
+    # Canonical hotel.amenities is the sole facet source, including sea_view.
+    sea_view_hotel_ids: frozenset[str] = frozenset()
+
+    if excluded_amenities:
         filtered = [
             (data, cand)
             for data, cand in filtered
-            if all(hotel_matches_amenity_tag(data, tag, sea_view_hotel_ids) for tag in required_amenities)
+            if not any(
+                _matches_amenity_family(
+                    data, expanded_families.get(tag, frozenset({tag})), sea_view_hotel_ids
+                )
+                for tag in excluded_amenities
+            )
+        ]
+
+    if required_amenities:
+        pre_amenity = filtered
+        filtered = [
+            (data, cand)
+            for data, cand in filtered
+            if all(
+                _matches_amenity_family(
+                    data, expanded_families.get(tag, frozenset({tag})), sea_view_hotel_ids
+                )
+                for tag in required_amenities
+            )
         ]
         if pre_amenity and not filtered:
-            raise NoHotelsMatchAmenities(
-                _amenity_drop_counts(pre_amenity, required_amenities, sea_view_hotel_ids)
-            )
+            if len(required_amenities) == 1:
+                raise NoHotelsMatchAmenities(
+                    _amenity_drop_counts(pre_amenity, required_amenities, sea_view_hotel_ids)
+                )
+            scored_partial: list[tuple[int, Dict[str, Any], PlaceCandidate, list[str], list[str]]] = []
+            for data, candidate in pre_amenity:
+                matched = [
+                    tag for tag in required_amenities
+                    if _matches_amenity_family(
+                        data, expanded_families.get(tag, frozenset({tag})), sea_view_hotel_ids
+                    )
+                ]
+                missing = [tag for tag in required_amenities if tag not in matched]
+                scored_partial.append((len(matched), data, candidate, matched, missing))
+            best_count = max((item[0] for item in scored_partial), default=0)
+            if best_count <= 0:
+                raise NoHotelsMatchAmenities(
+                    _amenity_drop_counts(pre_amenity, required_amenities, sea_view_hotel_ids)
+                )
+            filtered = []
+            for count, data, candidate, matched, missing in scored_partial:
+                if count != best_count:
+                    continue
+                data["amenity_match"] = {
+                    "matched": matched,
+                    "missing": missing,
+                    "relaxed": missing,
+                }
+                filtered.append((data, candidate))
+        else:
+            for data, _candidate in filtered:
+                data["amenity_match"] = {
+                    "matched": list(required_amenities),
+                    "missing": [],
+                    "relaxed": [],
+                }
 
     return filtered[:match_count]
 
@@ -367,12 +425,30 @@ def _budget_bonus(data: Dict[str, Any], target_price: float | None) -> float:
 def _amenity_bonus(
     data: Dict[str, Any],
     amenity_prefs: Iterable[str],
+    amenity_families: Mapping[str, Collection[str]],
     sea_view_hotel_ids: Collection[str],
 ) -> float:
-    matched = sum(
-        1 for tag in amenity_prefs if hotel_matches_amenity_tag(data, tag, sea_view_hotel_ids)
+    return _AMENITY_MATCH_BONUS * len(
+        _matched_preference_amenities(
+            data, amenity_prefs, amenity_families, sea_view_hotel_ids
+        )
     )
-    return _AMENITY_MATCH_BONUS * matched
+
+
+def _matched_preference_amenities(
+    data: Dict[str, Any],
+    amenity_prefs: Iterable[str],
+    amenity_families: Mapping[str, Collection[str]],
+    sea_view_hotel_ids: Collection[str],
+) -> list[str]:
+    """Return requested parent IDs matched by the hotel's canonical amenity IDs."""
+    return [
+        tag
+        for tag in amenity_prefs
+        if _matches_amenity_family(
+            data, amenity_families.get(tag, (tag,)), sea_view_hotel_ids
+        )
+    ]
 
 
 def _match_reasons(
@@ -380,6 +456,7 @@ def _match_reasons(
     candidate: PlaceCandidate,
     target_price: float | None,
     amenity_prefs: Iterable[str],
+    amenity_families: Mapping[str, Collection[str]],
     sea_view_hotel_ids: Collection[str],
 ) -> list[dict[str, float | str]]:
     """Return raw ranking evidence for the UI; display text remains frontend-owned."""
@@ -391,11 +468,9 @@ def _match_reasons(
         reasons.append({"code": "high_rating", "value": float(review_score)})
     if (star_rating := data.get("star_rating")) is not None and float(star_rating) >= 4.0:
         reasons.append({"code": "star_rating", "value": float(star_rating)})
-    matched_amenities = [
-        tag
-        for tag in amenity_prefs
-        if hotel_matches_amenity_tag(data, tag, sea_view_hotel_ids)
-    ]
+    matched_amenities = _matched_preference_amenities(
+        data, amenity_prefs, amenity_families, sea_view_hotel_ids
+    )
     if matched_amenities:
         reasons.append({"code": "amenity_match", "value": ",".join(matched_amenities)})
     similarity = float(data.get("similarity") or candidate.similarity or 0.0)
@@ -413,6 +488,7 @@ def rank_hotel_candidates(
     *,
     target_price: float | None = None,
     amenity_prefs: Iterable[str] = (),
+    amenity_families: Mapping[str, Collection[str]] | None = None,
     sea_view_hotel_ids: Collection[str] = frozenset(),
 ) -> List[Tuple[Dict[str, Any], PlaceCandidate]]:
     """Sort search results by a weighted blend of similarity, rating, review score, price,
@@ -425,11 +501,15 @@ def rank_hotel_candidates(
     better semantic match. When target_price/amenity_prefs/sea_view_hotel_ids are all
     left at their defaults, every bonus is exactly 0.0 and results are identical to
     calling this function with no preferences at all — soft-boost only, never a penalty.
+
+    `amenity_families` maps each requested parent ID to itself and its approved
+    descendants. Omitting it preserves direct canonical-ID matching for legacy callers.
     """
     if not options:
         return []
 
     amenity_prefs = tuple(amenity_prefs)
+    amenity_families = amenity_families or {}
 
     prices = [
         float(data.get("average_nightly_price", data.get("lowest_price")))
@@ -451,7 +531,7 @@ def rank_hotel_candidates(
         return (
             base
             + _budget_bonus(data, target_price)
-            + _amenity_bonus(data, amenity_prefs, sea_view_hotel_ids)
+            + _amenity_bonus(data, amenity_prefs, amenity_families, sea_view_hotel_ids)
         )
 
     def _realistic_match_score(hotel_data: Dict[str, Any], cand: PlaceCandidate) -> float:
@@ -471,8 +551,10 @@ def rank_hotel_candidates(
                 
         prefs_list = list(amenity_prefs)
         if prefs_list:
-            matched = sum(1 for tag in prefs_list if hotel_matches_amenity_tag(hotel_data, tag, sea_view_hotel_ids))
-            components.append(matched / len(prefs_list))
+            matched = _matched_preference_amenities(
+                hotel_data, prefs_list, amenity_families, sea_view_hotel_ids
+            )
+            components.append(len(matched) / len(prefs_list))
             
         if not components:
             similarity = float(hotel_data.get("similarity") or cand.similarity or 0.0)
@@ -499,7 +581,12 @@ def rank_hotel_candidates(
         data["match_score"] = round(_clamp(display_score), 4)
         
         data["match_reasons"] = _match_reasons(
-            data, _candidate, target_price, amenity_prefs, sea_view_hotel_ids
+            data,
+            _candidate,
+            target_price,
+            amenity_prefs,
+            amenity_families,
+            sea_view_hotel_ids,
         )
     return ranked
 
@@ -1052,24 +1139,19 @@ def hotel_matches_amenity_tag(
     tag: str,
     sea_view_hotel_ids: Collection[str] = frozenset(),
 ) -> bool:
-    """Pure predicate: does this hotel satisfy the given preference tag? Missing
-    data, an unrecognized tag, or simply no match all resolve to False — never
-    raises, and never penalizes (callers only ever add a bonus for True)."""
-    if tag == "sea_view":
-        hotel_id = data.get("id")
-        return hotel_id is not None and str(hotel_id) in sea_view_hotel_ids
-    if tag == "breakfast":
-        return "breakfast" in (data.get("covered_meals") or [])
-    # Backfilled rows store canonical amenity IDs. Keep the old keyword path
-    # below for pre-backfill rows and for partially migrated datasets.
-    if tag in {str(item).strip().lower() for item in (data.get("amenities") or [])}:
-        return True
-    keywords = _AMENITY_KEYWORD_TAGS.get(tag) or _catalog_match_keywords(tag)
-    if not keywords:
+    """Canonical-ID membership predicate.
+
+    The deployed hotel corpus is fully backfilled, so labels, substrings,
+    ``rooms.view`` and ``covered_meals`` are no longer competing sources of
+    truth. ``sea_view_hotel_ids`` remains as a compatibility parameter for
+    callers during this release and is intentionally ignored.
+    """
+    normalized_tag = str(tag).strip().lower()
+    if not normalized_tag:
         return False
-    amenities_text = " ".join(str(item) for item in (data.get("amenities") or []))
-    normalized = _normalize_for_match(amenities_text)
-    return any(keyword in normalized for keyword in keywords)
+    return normalized_tag in {
+        str(item).strip().lower() for item in (data.get("amenities") or [])
+    }
 
 
 def lookup_sea_view_hotel_ids(hotel_ids: List[str]) -> frozenset[str]:

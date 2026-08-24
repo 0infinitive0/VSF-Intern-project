@@ -418,6 +418,12 @@ class ChangeHotelRequest(BaseModel):
     session_id: UUID
 
 
+class HotelPreferenceToggleRequest(BaseModel):
+    session_id: UUID
+    amenity_id: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9_]+$")
+    active: bool
+
+
 class BookingReservationRequest(BaseModel):
     room_id: UUID
     temporary_user_ref: str = Field(min_length=1, max_length=128)
@@ -537,6 +543,11 @@ class PreferencePayload(BaseModel):
     label: str
 
 
+class ActivePreferencePayload(PreferencePayload):
+    polarity: Literal["require", "exclude", "prefer"] = "require"
+    active: bool = True
+
+
 class AmenityCatalogPayload(ResponsePayload):
     """Approved hotel amenity exposed to the browser for filters and pills."""
 
@@ -553,6 +564,7 @@ class PlannerChatResponse(ResponsePayload):
     suggestions: list[SuggestionPayload] = Field(default_factory=list)
     stage: ChatStage
     hotel_options: list[HotelOption] = Field(default_factory=list)
+    has_more_hotel_options: bool = False
     hotel_amenities: list[AmenityCatalogPayload] = Field(
         default_factory=list,
         description="Unique approved amenity catalog records for all returned hotel options",
@@ -563,7 +575,7 @@ class PlannerChatResponse(ResponsePayload):
     compound_min_price: float | None = None
     compound_max_price: float | None = None
     all_preferences: list[PreferencePayload] = Field(default_factory=list)
-    active_preferences: list[PreferencePayload] = Field(default_factory=list)
+    active_preferences: list[ActivePreferencePayload] = Field(default_factory=list)
     # Set only on a turn whose worker wrote one (see
     # `response_payload.suggested_places_from_task_results`); empty on every
     # other turn so a stale result never leaks onto a later, unrelated reply.
@@ -784,6 +796,8 @@ def _preference_intents(active_preferences: Any) -> list[str]:
     seen: set[str] = set()
     for preference in active_preferences or []:
         if isinstance(preference, dict):
+            if preference.get("active", True) is not True:
+                continue
             values = (preference.get("id"), preference.get("label"))
         else:
             values = (preference,)

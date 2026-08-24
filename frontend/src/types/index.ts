@@ -26,6 +26,7 @@ type Schemas = components['schemas']
 export type Suggestion = Schemas['SuggestionPayload']
 export type HotelOption = Schemas['HotelOption']
 export type PreferencePayload = Schemas['PreferencePayload']
+export type ActivePreferencePayload = Schemas['ActivePreferencePayload']
 export type AmenityCatalogOption = Schemas['AmenityCatalogPayload']
 export type RouteInfo = Schemas['RouteInfoPayload']
 export type DayItem = Schemas['ItineraryItem']
@@ -184,7 +185,7 @@ export interface HotelFilterData {
   maxPrice: number | null
   hotelAmenities: AmenityCatalogOption[]
   allPreferences: PreferencePayload[]
-  activePreferences: PreferencePayload[]
+  activePreferences: ActivePreferencePayload[]
 }
 
 export interface ChatState {
@@ -198,6 +199,8 @@ export interface ChatState {
   messages: ChatMessage[]
   suggestions: Suggestion[]
   hotelOptions: HotelOption[]
+  /** Whether the current retained hotel search can append another batch. */
+  hasMoreHotelOptions: boolean
   hotelFilterData: HotelFilterData
   // Set only on a turn whose worker wrote one — e.g. itinerary_node's
   // "list_nearby" search today, any future worker's own place suggestion

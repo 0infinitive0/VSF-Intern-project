@@ -26,6 +26,13 @@ describe('buildMatchReasonLines', () => {
     ])
   })
 
+  it('uses the catalog label for each amenity in an amenity-match reason', () => {
+    expect(buildMatchReasonLines(
+      [{ code: 'amenity_match', value: 'swimming_pool,spa' }],
+      (id) => ({ swimming_pool: 'Hồ bơi', spa: 'Spa' })[id] ?? id,
+    )).toEqual([{ code: 'amenity_match', value: 'Hồ bơi, Spa' }])
+  })
+
   it('silently skips unknown codes so newer backends cannot leak raw strings', () => {
     const reasons: MatchReason[] = [
       { code: 'brand_new_code', value: 'whatever' },
