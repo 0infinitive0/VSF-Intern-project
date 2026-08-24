@@ -670,6 +670,9 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
     try:
         selection_kwargs: dict[str, Any] = {
             "match_count": result_count,
+            # Every constraint below comes from committed TravelState, so the
+            # synthetic semantic query must not trigger a second LLM parser.
+            "use_llm_filter": False,
             "min_price": min_price,
             "max_price": max_price,
             "start_date": start_date,

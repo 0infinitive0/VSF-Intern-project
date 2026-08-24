@@ -190,7 +190,24 @@ def test_successful_search_populates_hotel_search_result_for_respond(monkeypatch
     assert entry["status"] == "ok"
     assert [option["id"] for option in entry["hotel_search_result"]["options"]] == ["h1", "h2", "h3", "h4", "h5"]
     assert captured["match_count"] == 5
+    assert captured["use_llm_filter"] is False
     assert result["pending_tasks"] == []
+
+
+def test_capacity_diagnostic_search_keeps_llm_filter_disabled(monkeypatch):
+    calls: list[dict] = []
+
+    def _select(*_args, **kwargs):
+        calls.append(kwargs)
+        return [] if len(calls) == 1 else [_option("h1")]
+
+    monkeypatch.setattr(hotel_node_module, "_get_destination_id", lambda _d: "dest-1")
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _select)
+
+    result = hotel_node(_graph_state(_seeded_travel_state()))
+
+    assert result["task_results"][-1]["status"] == "no_results_capacity"
+    assert [call["use_llm_filter"] for call in calls] == [False, False]
 
 
 def test_hotel_search_uses_the_requested_result_count(monkeypatch):

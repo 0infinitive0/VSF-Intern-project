@@ -189,6 +189,7 @@ def select_hotel_candidates(
     root_longitude: float | None = None,
     max_radius_km: float | None = None,
     *,
+    use_llm_filter: bool = True,
     required_amenities: Collection[str] = (),
     excluded_amenities: Collection[str] = (),
     min_star_rating: float | None = None,
@@ -230,6 +231,10 @@ def select_hotel_candidates(
     reused as `min_guests` automatically: it's an un-parsed display string (e.g.
     "2 người"). Callers that want the hard filter pass the parsed party size
     explicitly.
+
+    `use_llm_filter` preserves the legacy free-text query parser by default.
+    State-driven callers that already provide structured filters can disable it
+    to avoid re-parsing their synthetic semantic query.
     """
     query = hotel_query or f"Hotel in {destination} for {people} people"
     hard_filters_requested = (
@@ -248,6 +253,10 @@ def select_hotel_candidates(
         "min_price": min_price,
         "max_price": max_price,
     }
+    if not use_llm_filter:
+        # Preserve the established call shape for legacy callers; the search
+        # function already defaults this option to True.
+        kwargs["use_llm_filter"] = False
     if start_date is not None or end_date is not None:
         kwargs["start_date"] = start_date
         kwargs["end_date"] = end_date
