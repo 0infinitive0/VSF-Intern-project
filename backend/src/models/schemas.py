@@ -265,6 +265,10 @@ class HotelOption(ResponsePayload):
     review_count: int | None = None
     match_score: float | None = Field(default=None, ge=0.0, le=1.0)
     match_reasons: list[MatchReasonPayload] = Field(default_factory=list)
+    relaxed_amenities: list[str] = Field(
+        default_factory=list,
+        description="Tiện ích bắt buộc mà khách sạn này chưa đáp ứng khi dùng kết quả gần đúng",
+    )
     city: str | None = None
 
 
@@ -930,6 +934,12 @@ def to_hotel_options_payload(pending: dict[str, Any] | None) -> list[HotelOption
             if isinstance(raw_amenities, (list, tuple))
             else []
         )
+        raw_relaxed_amenities = (option.get("amenity_match") or {}).get("relaxed") or []
+        relaxed_amenities = (
+            [item for item in raw_relaxed_amenities if isinstance(item, str)]
+            if isinstance(raw_relaxed_amenities, (list, tuple))
+            else []
+        )
         options.append(
             HotelOption(
                 index=index,
@@ -952,6 +962,7 @@ def to_hotel_options_payload(pending: dict[str, Any] | None) -> list[HotelOption
                 review_count=option.get("review_count"),
                 match_score=option.get("match_score"),
                 match_reasons=list(option.get("match_reasons") or []),
+                relaxed_amenities=relaxed_amenities,
                 city=option.get("city"),
             )
         )

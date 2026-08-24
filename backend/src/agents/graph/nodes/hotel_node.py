@@ -793,9 +793,13 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
     ))
     reply = t("Mình tìm được {count} khách sạn phù hợp.", language, count=len(hotel_options))
     if relaxed:
-        reply += " " + t(
-            "Các kết quả gần nhất còn thiếu: {items}.",
+        reply = t(
+            "Không có khách sạn nào đáp ứng đủ tất cả tiện ích bạn chọn.",
             language,
+        ) + " " + t(
+            "Mình hiển thị {count} kết quả gần nhất; từng khách sạn sẽ cho biết tiện ích còn thiếu: {items}.",
+            language,
+            count=len(hotel_options),
             items=_amenity_labels(relaxed, labels_by_id),
         )
     candidate_pool = [data for data, _candidate in ranked if isinstance(data, dict) and data.get("id")]

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import RemoteImage from './remote-image'
+import { amenityPresentationItems } from '../lib/amenity-presentation'
 import { formatCurrency } from '../lib/format-currency'
-import { displayAmenityLabels } from '../lib/hotel-filters'
 import type { AmenityCatalogOption, RoomDetail } from '../types'
 
 /**
@@ -40,6 +40,7 @@ export default function RoomCard({
   maxQty,
   onQtyChange,
   amenityDetails,
+  selectedAmenityIds,
   sessionBookedFromBackend,
   onAttemptAddRoom,
 }: {
@@ -52,6 +53,8 @@ export default function RoomCard({
   onQtyChange: (nextQty: number) => void
   /** Shared room/both catalog data from the surrounding hotel-detail response. */
   amenityDetails: AmenityCatalogOption[]
+  /** Required hotel amenities currently active in the list, highlighted when this room has them. */
+  selectedAmenityIds: string[]
   sessionBookedFromBackend?: boolean
   onAttemptAddRoom?: () => void
 }) {
@@ -107,10 +110,11 @@ export default function RoomCard({
   // null check must come first, without coercion.)
   const hasPriceAmount =
     price?.amount != null && Number.isFinite(price.amount) && price.amount > 0
-  const roomFacilityLabels = displayAmenityLabels(
+  const roomFacilityItems = amenityPresentationItems(
     room.room_facilities ?? [],
     amenityDetails,
     i18n.language,
+    selectedAmenityIds,
   )
   const selected = qty > 0
   const canAdd = maxQty > 0 && qty < maxQty
@@ -205,14 +209,22 @@ export default function RoomCard({
                 ))}
               </div>
             )}
-            {roomFacilityLabels.length > 0 && (
+            {roomFacilityItems.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
-                {roomFacilityLabels.map((facility) => (
+                {roomFacilityItems.map((facility) => (
                   <span
-                    key={facility}
-                    className="text-[11px] font-[450] px-2.5 py-1 rounded-full bg-fill text-on-surface-variant"
+                    key={facility.id}
+                    className={`text-[11px] font-[450] px-2.5 py-1 rounded-full ${
+                      facility.matchesPreference
+                        ? 'bg-primary text-on-primary font-[590]'
+                        : 'bg-fill text-on-surface-variant'
+                    }`}
+                    aria-label={facility.matchesPreference
+                      ? t('roomAmenityMatchesPreference', { amenity: facility.label })
+                      : undefined}
                   >
-                    {facility}
+                    {facility.matchesPreference && <span aria-hidden="true">✓ </span>}
+                    {facility.label}
                   </span>
                 ))}
               </div>

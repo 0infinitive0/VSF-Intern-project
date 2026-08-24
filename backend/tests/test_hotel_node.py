@@ -194,22 +194,32 @@ def test_successful_search_populates_hotel_search_result_for_respond(monkeypatch
     assert result["pending_tasks"] == []
 
 
-def test_capacity_diagnostic_search_keeps_llm_filter_disabled(monkeypatch):
-    calls: list[dict] = []
-
-    def _select(*_args, **kwargs):
-        calls.append(kwargs)
-        return [] if len(calls) == 1 else [_option("h1")]
+def test_partial_amenity_fallback_says_no_exact_match_and_preserves_missing_amenity(monkeypatch):
+    option, candidate = _option("near-match")
+    option["amenity_match"] = {
+        "matched": ["wifi"],
+        "missing": ["swimming_pool"],
+        "relaxed": ["swimming_pool"],
+    }
 
     monkeypatch.setattr(hotel_node_module, "_get_destination_id", lambda _d: "dest-1")
-    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _select)
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", lambda *_a, **_k: [(option, candidate)])
+    monkeypatch.setattr(hotel_node_module, "rank_hotel_candidates", lambda options, **_k: options)
+    monkeypatch.setattr(
+        hotel_node_module,
+        "all_approved_amenities",
+        lambda: (
+            AmenityCatalogEntry(id="wifi", label="Wi-Fi", match_keywords=()),
+            AmenityCatalogEntry(id="swimming_pool", label="Hồ bơi", match_keywords=()),
+        ),
+    )
 
-    result = hotel_node(_graph_state(_seeded_travel_state()))
+    result = hotel_node(_graph_state(_seeded_travel_state(hotel_preferences__amenities=["wifi", "swimming_pool"])))
 
-    assert result["task_results"][-1]["status"] == "no_results_capacity"
-    assert [call["use_llm_filter"] for call in calls] == [False, False]
-
-
+    entry = result["task_results"][-1]
+    assert "Không có khách sạn nào đáp ứng đủ" in entry["reply"]
+    assert "Hồ bơi" in entry["reply"]
+    assert entry["hotel_search_result"]["options"][0]["amenity_match"]["relaxed"] == ["swimming_pool"]
 def test_hotel_search_uses_the_requested_result_count(monkeypatch):
     captured: dict = {}
 

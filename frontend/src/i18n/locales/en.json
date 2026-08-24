@@ -217,6 +217,8 @@
   "hotelReviewCount": "{{count}} reviews",
   "matchWord": "match",
   "matchScoreAria": "Match score {{pct}} percent",
+  "hotelAmenityFallbackCard": "Closest match — this hotel does not have: {{amenities}}.",
+  "roomAmenityMatchesPreference": "{{amenity}} matches an amenity you requested",
   "matchReason": {
     "budget_fit": "Fits {{value}}% of your hotel budget",
     "high_rating": "Rated {{value}}/10 by past guests",

@@ -4660,6 +4660,14 @@
             "type": "array",
             "title": "Match Reasons"
           },
+          "relaxed_amenities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Relaxed Amenities",
+            "description": "Tiện ích bắt buộc mà khách sạn này chưa đáp ứng khi dùng kết quả gần đúng"
+          },
           "city": {
             "anyOf": [
               {
@@ -4694,6 +4702,7 @@
           "review_count",
           "match_score",
           "match_reasons",
+          "relaxed_amenities",
           "city"
         ],
         "title": "HotelOption",
@@ -6992,6 +7001,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",
