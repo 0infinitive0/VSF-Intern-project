@@ -220,6 +220,22 @@ def test_select_hotel_candidates_logs_all_rpc_input_parameters(monkeypatch, capl
     )
 
 
+def test_select_hotel_candidates_forwards_llm_filter_option(monkeypatch):
+    calls: list[dict] = []
+
+    def fake_search_hotels_with_rooms(**kwargs):
+        calls.append(kwargs)
+        return []
+
+    monkeypatch.setattr(hotel_selection_module, "search_hotels_with_rooms", fake_search_hotels_with_rooms)
+
+    select_hotel_candidates("Da Nang", "dest-1", "2 people")
+    select_hotel_candidates("Da Nang", "dest-1", "2 people", use_llm_filter=False)
+
+    assert "use_llm_filter" not in calls[0]
+    assert calls[1]["use_llm_filter"] is False
+
+
 def test_rank_hotel_candidates_assigns_sequential_rank():
     options = [_option("a", "A", similarity=0.3), _option("b", "B", similarity=0.8), _option("c", "C", similarity=0.5)]
 
