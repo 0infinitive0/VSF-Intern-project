@@ -195,6 +195,12 @@ class TravelGraphState(TypedDict, total=False):
     previous_hotel_search_query: dict[str, Any]
     # One-shot command set by POST /hotels/expand and consumed by hotel_node.
     expand_hotel_options: bool
+    # One-shot display-refresh command set only by POST /hotels/preferences.
+    # The amenity pill already updates hotel cards in place, so its generated
+    # reply must not become a chat-history turn. `respond` copies this into
+    # the sent message metadata and `load_context` resets it for every normal
+    # graph entry.
+    hide_response_from_transcript: bool
 
     # --- output -----------------------------------------------------------
     response: dict[str, Any]  # PlannerChatResponse field shape (Phase 5 non-functional freeze)

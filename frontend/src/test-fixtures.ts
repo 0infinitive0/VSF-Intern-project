@@ -45,6 +45,7 @@ export function hotelOption(overrides: Partial<HotelOption> = {}): HotelOption {
     review_count: null,
     match_score: null,
     match_reasons: [],
+    relaxed_amenities: [],
     city: null,
     ...overrides,
   }

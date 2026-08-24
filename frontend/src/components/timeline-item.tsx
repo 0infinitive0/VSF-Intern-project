@@ -21,46 +21,54 @@ const THUMB_ICONS: Record<string, string> = {
   hotel: 'hotel',
 }
 
+function getKindStyle(kind?: string | null) {
+  switch (kind) {
+    case 'breakfast':
+    case 'lunch':
+    case 'dinner':
+      return 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25'
+    case 'attraction':
+      return 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/25'
+    case 'coffee':
+      return 'bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-500/25'
+    case 'hotel':
+      return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25'
+    case 'transport':
+      return 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/25'
+    default:
+      return 'bg-fill text-on-surface-variant border-stroke'
+  }
+}
+
+function getVehicleIcon(profile?: string | null): string {
+  switch (profile) {
+    case 'foot-walking':
+    case 'walking':
+      return 'directions_walk'
+    case 'driving-car':
+    case 'driving':
+    case 'car':
+      return 'directions_car'
+    case 'cycling-regular':
+    case 'cycling':
+      return 'two_wheeler'
+    default:
+      return 'route'
+  }
+}
+
+function isNoteRedundant(activity?: string | null, placeName?: string | null): boolean {
+  if (!activity || !placeName) return true
+  const cleanAct = activity
+    .toLowerCase()
+    .replace(/^(ăn sáng|ăn trưa|ăn tối|tham quan|thưởng thức|uống cà phê|nghỉ ngơi|check-in|nhận phòng)\s+(tại|ở)\s+/i, '')
+    .trim()
+  return cleanAct === placeName.toLowerCase().trim()
+}
+
 /**
  * TimelineItem — one itinerary row plus the leg pill that follows it
- * (TimelineItem.dc.html). The left 44px column shows the start time (hidden
- * when null — the numbered dot stays, per phase-09: never invent an hour),
- * stripped of the backend's always-":00" seconds, and a 24px numbered dot
- * tinted with the day color; the 52×52 thumb is the item's real photo
- * (item.image_url, already on the wire — trip_formatter.py:335) via the
- * shared RemoteImage fallback chain, keyed by kind for the icon shown while
- * loading/missing.
- *
- * Content is three lines, matching the design's name/note/meta split:
- *   - name: the place's own name (activity-name.ts strips the backend's
- *     "Ăn trưa tại "-style lead-in off `item.activity`) + kind badge.
- *   - note (design's `it.note` — dropped pre-phase-09 for lack of a backend
- *     field, see plan.md "Phần chưa làm" #24): the full original `item.activity`
- *     sentence, e.g. "Ăn trưa tại NHÀ HÀNG NGON". Real data, just re-slotted —
- *     shown only when it actually adds something beyond the bare name.
- *   - meta: a duration ("1 tiếng"), computed from the real start/end fields,
- *     replacing a literal "start – end" range.
- *
- * Click affordance is gated on the real contract: only items with
- * reference_type 'Attraction' or 'Hotel' AND a non-empty reference_id open
- * Place Detail Focus Mode / Hotel Detail Focus Mode (stage-workspace.tsx
- * picks the panel by reference_type). Everything else renders with the
- * default cursor and no hover elevation, so the UI never invites a click
- * that opens nothing (phase-09 §Phi chức năng). The focused highlight
- * (accent ring) tracks the id the detail panel is showing.
- *
- * The pill is the four-state legBetween() semantics: real route
- * (vehicle · km · ~mins), identical coordinates ("cùng địa điểm" — never
- * "0 km · 0 phút"), straight-line fallback (km only, no vehicle/duration), or
- * omitted entirely when coordinates are missing.
- *
- * Row body click -> onOpen (Place Detail Focus Mode directly). Phase 10.5
- * briefly routed this through a preview step with a trailing chevron button;
- * the UI-fix pass removed that button entirely per explicit spec ("Xóa nút
- * Xem chi tiết dạng Chevron") — the row itself is the only interactive
- * affordance again, matching HotelOptionCard's own explicit "Xem chi tiết"
- * button's philosophy of a single, direct click target (that button lives
- * one level up in HotelOptionCard and is untouched by this change).
+ * (TimelineItem.dc.html).
  */
 export default function TimelineItem({
   item,
@@ -105,20 +113,14 @@ export default function TimelineItem({
     : ''
 
   const placeName = placeNameFromActivity(item.activity)
-  // Only worth its own line when it says more than the bare name already does.
   const activityNote = placeName !== item.activity ? item.activity : ''
 
-  // Real metadata only: a duration computed from the item's own start/end
-  // window. Nothing is invented — null (missing/unparseable/non-positive
-  // window) renders nothing rather than a guess.
   const durationMinutes = minutesBetween(item.start_time, item.end_time)
   const meta = durationMinutes != null ? formatItemDuration(durationMinutes, t) : ''
 
   function legLabel(): string {
     switch (leg.kind) {
       case 'route': {
-        // Unknown profile → drop the vehicle label but keep km + duration
-        // (phase-09: never render a raw profile code).
         const vehicle = leg.profile ? t(`routeProfile.${leg.profile}`, { defaultValue: '' }) : ''
         const parts: string[] = []
         if (vehicle) parts.push(vehicle)
@@ -136,15 +138,14 @@ export default function TimelineItem({
   }
 
   // A real <button> when openable (keyboard focus + Enter/Space, screen
-  // readers announce it as interactive) — plain <div> otherwise, so a row
-  // that opens nothing is never in the tab order (review finding M5).
+  // readers announce it as interactive) — plain <div> otherwise.
   const Row = canOpen ? 'button' : 'div'
 
   return (
-    <div style={{ animation: `vIn .55s ${index * 65}ms cubic-bezier(.22,1,.36,1) both` }}>
+    <div className="flex flex-col" style={{ animation: `vIn .55s ${index * 65}ms cubic-bezier(.22,1,.36,1) both` }}>
       <Row
         type={canOpen ? 'button' : undefined}
-        className="timeline-item rounded-[20px] border flex gap-3 p-[13px] w-full text-left"
+        className="timeline-item rounded-[20px] border flex items-center gap-3.5 p-3.5 w-full text-left transition-all duration-200 group"
         data-clickable={canOpen ? 'true' : undefined}
         data-focused={focused ? 'true' : undefined}
         data-hovered={isHovered ? 'true' : undefined}
@@ -154,59 +155,81 @@ export default function TimelineItem({
         onMouseLeave={() => onHoverChange?.(null)}
         style={{ cursor: canOpen ? 'pointer' : 'default' }}
       >
-        <div className="flex flex-col items-center gap-[6px] flex-none w-[44px]">
-          {item.start_time != null && (
-            <div className="text-[11.5px] font-[530] text-on-surface-variant tabular-nums">
+        {/* Left column: Time & Order Node */}
+        <div className="flex flex-col items-center justify-center gap-1.5 flex-none w-[44px]">
+          {item.start_time != null ? (
+            <div className="text-[12px] font-[600] text-on-surface tabular-nums leading-none">
               {stripSeconds(item.start_time)}
+            </div>
+          ) : (
+            <div className="text-[11px] font-[500] text-on-surface-muted tabular-nums leading-none">
+              --:--
             </div>
           )}
           <div
-            className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-[590] text-on-primary"
-            style={{ background: dotBg, boxShadow: `0 4px 10px -4px ${dotBg}` }}
+            className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-[700] text-white shadow-xs"
+            style={{
+              background: dotBg,
+              boxShadow: `0 2px 8px -1px ${dotBg}88`,
+            }}
           >
             {index + 1}
           </div>
         </div>
+
+        {/* Thumbnail Image */}
         <RemoteImage
           src={item.image_url}
           alt={t('placeImgAlt', { name: item.activity })}
-          className="w-[52px] h-[52px] flex-none rounded-[14px]"
+          className="w-[52px] h-[52px] flex-none rounded-[14px] object-cover border border-edge/40 shadow-xs"
           icon={thumbIcon}
         />
+
+        {/* Content Body */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-[7px]">
-            <div className="text-[14px] font-[590] tracking-[-0.2px] text-on-surface truncate">
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <div className="text-[14px] font-[590] tracking-[-0.2px] text-on-surface truncate group-hover:text-primary transition-colors">
               {placeName}
             </div>
             {kindLabel && (
-              <div className="text-[9.5px] px-[7px] py-[2px] rounded-full bg-fill text-on-surface-variant whitespace-nowrap">
+              <div className="text-[10px] font-[500] px-2 py-0.5 rounded-full bg-fill border border-stroke text-on-surface-variant flex-none leading-tight whitespace-nowrap">
                 {kindLabel}
               </div>
             )}
           </div>
+
           {activityNote && (
-            <div className="text-[11.5px] text-on-surface-muted font-normal leading-[1.45] text-pretty mt-[3px]">
+            <div className="text-[12px] text-on-surface-muted font-normal leading-[1.45] line-clamp-2 mt-[3px]">
               {activityNote}
             </div>
           )}
-          {meta && <div className="text-[11px] text-on-surface-muted mt-[5px]">{meta}</div>}
+
+          {meta && (
+            <div className="text-[11.5px] text-on-surface-muted font-normal mt-[3px]">
+              {meta}
+            </div>
+          )}
         </div>
       </Row>
+
+      {/* Transit Leg Connector */}
       {hasLeg && (
-        <div className="flex items-center gap-[9px] py-[6px] pl-[52px]">
+        <div className="flex items-center gap-2.5 py-1.5 pl-[34px]">
           <div
-            className="w-[2px] h-[22px] rounded-[2px]"
+            className="w-[2px] h-[24px] rounded-[2px] flex-none"
             style={{ background: `repeating-linear-gradient(to bottom, ${pillColor} 0 4px, transparent 4px 8px)` }}
           />
           <div
-            className="flex items-center gap-[7px] py-[3px] pr-[10px] pl-[8px] rounded-full bg-glass-1"
-            style={{ border: `1px solid ${pillColor}44` }}
+            className="flex items-center gap-2 py-1 pr-3 pl-2.5 rounded-full bg-glass-1 border text-[11px] text-on-surface-muted shadow-xs"
+            style={{ borderColor: `${pillColor}44` }}
           >
-            <div className="w-[7px] h-[7px] rounded-full" style={{ background: pillColor }} />
-            <div className="text-[10.5px] font-[530] text-on-surface-muted tabular-nums">
+            <div className="w-1.5 h-1.5 rounded-full flex-none" style={{ background: pillColor }} />
+            <div className="font-[600] text-on-surface tabular-nums">
               {index + 1} → {index + 2}
             </div>
-            <div className="text-[11px] text-on-surface-muted font-normal">{legLabel()}</div>
+            <div className="font-normal text-on-surface-muted">
+              {legLabel()}
+            </div>
           </div>
         </div>
       )}

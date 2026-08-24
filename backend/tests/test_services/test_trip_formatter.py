@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from src.models.schemas import to_hotel_options_payload as to_response_hotel_options_payload
 from src.services.trip_formatter import (
     format_hotel_options,
     format_trip_response_from_json,
@@ -311,6 +312,23 @@ def test_to_hotel_options_payload_skips_non_dict_options():
 
     assert len(payload) == 1
     assert payload[0]["id"] == "ok"
+
+
+def test_to_hotel_options_payload_keeps_the_amenities_relaxed_for_a_partial_match():
+    payload = to_response_hotel_options_payload(
+        {
+            "options": [
+                {
+                    "id": "near-match",
+                    "name": "Near Match Hotel",
+                    "amenity_match": {"matched": ["wifi"], "relaxed": ["swimming_pool"]},
+                }
+            ]
+        }
+    )
+
+    assert payload[0].relaxed_amenities == ["swimming_pool"]
+    assert payload[0].model_dump()["relaxed_amenities"] == ["swimming_pool"]
 
 
 def test_parse_duration_to_days_matches_the_original_behaviour():

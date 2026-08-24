@@ -21,8 +21,10 @@ class _FakeGraph:
     def __init__(self, state: dict | None = None) -> None:
         self.command: Command | None = None
         self.state = state or {"travel_state": {}}
+        self.get_state_calls = 0
 
     def get_state(self, _config):
+        self.get_state_calls += 1
         return SimpleNamespace(values=self.state)
 
     def invoke(self, command: Command, *, config):
@@ -33,7 +35,7 @@ class _FakeGraph:
 def test_expand_reenters_hotel_node_with_only_the_display_command(monkeypatch):
     app = _FakeGraph()
     monkeypatch.setattr(routes, "_get_graph_v2", lambda: app)
-    monkeypatch.setattr(routes, "_persist_turn", lambda *_args: None)
+    monkeypatch.setattr(routes, "_persist_turn", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(routes, "_response_from_result", lambda _session_id, result: result["response"])
 
     response = routes._rerun_hotel_search("expand-session", expand_hotel_options=True)
@@ -42,6 +44,7 @@ def test_expand_reenters_hotel_node_with_only_the_display_command(monkeypatch):
     assert app.command is not None
     assert app.command.goto == "hotel_node"
     assert app.command.update["expand_hotel_options"] is True
+    assert app.command.update["hide_response_from_transcript"] is False
     assert app.command.update["task_results"] == []
 
 
@@ -64,7 +67,7 @@ def test_preference_toggle_reenters_hotel_node_with_the_patched_state(monkeypatc
     monkeypatch.setattr(routes.registry, "evict_expired", lambda: None)
     monkeypatch.setattr(routes, "_owned_session_or_404", lambda *_args: session)
     monkeypatch.setattr(routes, "_get_graph_v2", lambda: app)
-    monkeypatch.setattr(routes, "_persist_turn", lambda *_args: None)
+    monkeypatch.setattr(routes, "_persist_turn", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(routes, "_response_from_result", lambda _session_id, result: result["response"])
 
     response = routes.toggle_hotel_preference(
@@ -75,6 +78,7 @@ def test_preference_toggle_reenters_hotel_node_with_the_patched_state(monkeypatc
     assert response["session_id"]
     assert app.command is not None
     assert app.command.goto == "hotel_node"
+    assert app.command.update["hide_response_from_transcript"] is True
     assert app.command.update["travel_state"]["hotel_preferences.amenities"]["value"] == [
         {**amenity, "active": False},
     ]
@@ -130,7 +134,7 @@ def test_preference_toggle_refreshes_payload_without_filter_extraction(monkeypat
     monkeypatch.setattr(routes.registry, "evict_expired", lambda: None)
     monkeypatch.setattr(routes, "_owned_session_or_404", lambda *_args: session)
     monkeypatch.setattr(routes, "_get_graph_v2", lambda: app)
-    monkeypatch.setattr(routes, "_persist_turn", lambda *_args: None)
+    monkeypatch.setattr(routes, "_persist_turn", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(routes, "_response_from_result", lambda _session_id, result: result["response"])
     monkeypatch.setattr(hotel_node_module, "_get_destination_id", lambda _destination: "dest-1")
     monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _select)
@@ -145,3 +149,41 @@ def test_preference_toggle_refreshes_payload_without_filter_extraction(monkeypat
 
     assert [option["id"] for option in response["hotel_options"]] == ["h1"]
     assert [kwargs["use_llm_filter"] for kwargs in selected_kwargs] == [False]
+
+
+def test_rerun_reuses_snapshot_and_defers_persistence(monkeypatch):
+    app = _FakeGraph({"travel_state": {}})
+    deferred: list[tuple] = []
+    persisted: list[tuple] = []
+
+    class _BackgroundTasks:
+        def add_task(self, func, *args, **kwargs):
+            deferred.append((func, args, kwargs))
+
+    monkeypatch.setattr(routes, "_get_graph_v2", lambda: app)
+    monkeypatch.setattr(routes, "_persist_turn", lambda *args, **kwargs: persisted.append((args, kwargs)))
+    monkeypatch.setattr(routes, "_response_from_result", lambda _session_id, result: result["response"])
+
+    response = routes._rerun_hotel_search(
+        "preference-session",
+        snapshot_values=app.state,
+        background_tasks=_BackgroundTasks(),
+    )
+
+    assert response == {"session_id": "preference-session"}
+    assert app.get_state_calls == 0
+    assert persisted == []
+    func, args, kwargs = deferred.pop()
+    func(*args, **kwargs)
+    assert persisted[0][0][0] == "preference-session"
+    assert persisted[0][1] == {}
+
+
+def test_deferred_persistence_skips_a_superseded_session_write(monkeypatch):
+    session = SimpleNamespace(lock=nullcontext(), _persistence_generation=2)
+    persisted: list[bool] = []
+    monkeypatch.setattr(routes.registry, "get", lambda _session_id: session)
+
+    routes._run_deferred_persist("preference-session", 1, lambda: persisted.append(True))
+
+    assert persisted == []

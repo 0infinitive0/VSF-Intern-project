@@ -172,6 +172,27 @@ class TestTranscript:
             ("assistant", "Bạn đi mấy người?"),
         ]
 
+    def test_excludes_a_preference_refresh_reply_from_the_durable_transcript(
+        self, fake_supabase: _FakeSupabase
+    ):
+        state = _graph_state(
+            messages=[
+                HumanMessage(content="tìm khách sạn có hồ bơi"),
+                AIMessage(content="Mình tìm được 2 khách sạn phù hợp.", additional_kwargs={"emitted_by": "respond"}),
+                AIMessage(
+                    content="Mình tìm được 5 khách sạn phù hợp.",
+                    additional_kwargs={"emitted_by": "respond", "omit_from_transcript": True},
+                ),
+            ]
+        )
+
+        session_store.persist_graph_session(_session(), state)
+
+        assert [(m["sender_type"], m["message_content"]) for m in fake_supabase.messages] == [
+            ("user", "tìm khách sạn có hồ bơi"),
+            ("assistant", "Mình tìm được 2 khách sạn phù hợp."),
+        ]
+
     def test_excludes_the_react_agent_internals_qa_node_leaves_behind(
         self, fake_supabase: _FakeSupabase
     ):

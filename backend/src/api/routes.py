@@ -35,7 +35,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from langgraph.types import Command
 
@@ -701,7 +701,9 @@ def delete_session(
 @router.post("/chat/select_hotel", response_model=PlannerChatResponse)
 @router.post("/hotels/select", response_model=PlannerChatResponse)
 def select_hotel(
-    request: SelectHotelRequest, current_user: AuthenticatedUser | None = Depends(get_current_user)
+    request: SelectHotelRequest,
+    current_user: AuthenticatedUser | None = Depends(get_current_user),
+    background_tasks: BackgroundTasks = None,
 ) -> PlannerChatResponse:
     session_id = str(request.session_id)
     registry.evict_expired()
@@ -717,7 +719,11 @@ def select_hotel(
             # happens, only what the saved conversation reads like.
             message = request.selection_message or f"Tôi chọn khách sạn ID {request.hotel_id}"
             return _run_turn_via_graph(
-                session_id, message, session.language, extra_state={"selected_hotel_id": str(request.hotel_id)}
+                session_id,
+                message,
+                session.language,
+                extra_state={"selected_hotel_id": str(request.hotel_id)},
+                background_tasks=background_tasks,
             )
         except Exception as exc:
             logger.exception("Chat error for session %s", session_id)
@@ -726,7 +732,9 @@ def select_hotel(
 
 @router.post("/hotels/change", response_model=PlannerChatResponse)
 def change_hotel(
-    request: ChangeHotelRequest, current_user: AuthenticatedUser | None = Depends(get_current_user)
+    request: ChangeHotelRequest,
+    current_user: AuthenticatedUser | None = Depends(get_current_user),
+    background_tasks: BackgroundTasks = None,
 ) -> PlannerChatResponse:
     session_id = str(request.session_id)
     registry.evict_expired()
@@ -743,7 +751,7 @@ def change_hotel(
         if is_trip_finalized(state.get("trip_data")):
             raise HTTPException(status_code=409, detail="Lịch trình đã hoàn tất và không thể chỉnh sửa.")
         try:
-            return _rerun_hotel_search(session_id)
+            return _rerun_hotel_search(session_id, snapshot_values=state, background_tasks=background_tasks)
         except Exception as exc:
             logger.exception("Hotel-change error for session %s", session_id)
             raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -751,7 +759,9 @@ def change_hotel(
 
 @router.post("/hotels/expand", response_model=PlannerChatResponse)
 def expand_hotel_options(
-    request: ChangeHotelRequest, current_user: AuthenticatedUser | None = Depends(get_current_user)
+    request: ChangeHotelRequest,
+    current_user: AuthenticatedUser | None = Depends(get_current_user),
+    background_tasks: BackgroundTasks = None,
 ) -> PlannerChatResponse:
     """Append the next hotel batch without a synthetic chat turn or an LLM."""
     session_id = str(request.session_id)
@@ -763,7 +773,12 @@ def expand_hotel_options(
         if is_trip_finalized(state.get("trip_data")):
             raise HTTPException(status_code=409, detail="Lịch trình đã hoàn tất và không thể chỉnh sửa.")
         try:
-            return _rerun_hotel_search(session_id, expand_hotel_options=True)
+            return _rerun_hotel_search(
+                session_id,
+                expand_hotel_options=True,
+                snapshot_values=state,
+                background_tasks=background_tasks,
+            )
         except Exception as exc:
             logger.exception("Hotel-expand error for session %s", session_id)
             raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -778,7 +793,9 @@ def _snapshot_hotel_response(session_id: str, state: dict[str, Any]) -> PlannerC
 
 @router.post("/hotels/preferences", response_model=PlannerChatResponse)
 def toggle_hotel_preference(
-    request: HotelPreferenceToggleRequest, current_user: AuthenticatedUser | None = Depends(get_current_user)
+    request: HotelPreferenceToggleRequest,
+    current_user: AuthenticatedUser | None = Depends(get_current_user),
+    background_tasks: BackgroundTasks = None,
 ) -> PlannerChatResponse:
     """Apply a reversible amenity-pill toggle and re-enter hotel_node without an LLM."""
     session_id = str(request.session_id)
@@ -812,14 +829,26 @@ def toggle_hotel_preference(
         if patched.rejected:
             return _snapshot_hotel_response(session_id, state)
         try:
-            return _rerun_hotel_search(session_id, travel_state=patched.state.to_dict())
+            return _rerun_hotel_search(
+                session_id,
+                travel_state=patched.state.to_dict(),
+                snapshot_values=state,
+                background_tasks=background_tasks,
+                hide_response_from_transcript=True,
+            )
         except Exception as exc:
             logger.exception("Hotel-preference toggle error for session %s", session_id)
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 def _rerun_hotel_search(
-    session_id: str, *, expand_hotel_options: bool = False, travel_state: dict[str, Any] | None = None
+    session_id: str,
+    *,
+    expand_hotel_options: bool = False,
+    hide_response_from_transcript: bool = False,
+    travel_state: dict[str, Any] | None = None,
+    snapshot_values: dict[str, Any] | None = None,
+    background_tasks: BackgroundTasks | None = None,
 ) -> PlannerChatResponse:
     """Re-enter the graph directly at `hotel_node`.
 
@@ -846,17 +875,26 @@ def _rerun_hotel_search(
     """
     app = _get_graph_v2()
     config = {"configurable": {"thread_id": session_id}}
-    snapshot = app.get_state(config)
-
-    update = load_context(snapshot.values or {})
+    state = snapshot_values if snapshot_values is not None else app.get_state(config).values or {}
+    update = load_context(state)
     if travel_state is not None:
         update["travel_state"] = travel_state
     if expand_hotel_options:
         update["expand_hotel_options"] = True
+    if hide_response_from_transcript:
+        update["hide_response_from_transcript"] = True
     result = app.invoke(Command(goto="hotel_node", update=update), config=config)
 
-    _persist_turn(session_id, app, config)
-    return _response_from_result(session_id, result)
+    response = _response_from_result(session_id, result)
+    if background_tasks is None:
+        _persist_turn(session_id, app, config)
+    else:
+        _defer_session_persist(
+            session_id,
+            background_tasks,
+            lambda: _persist_turn(session_id, app, config),
+        )
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -888,7 +926,10 @@ def _get_graph_v2():
 
 
 def _persist_policy(
-    session_id: str, app, config: dict, thinking_trace: list[dict[str, Any]] | None = None
+    session_id: str,
+    app,
+    config: dict,
+    thinking_trace: list[dict[str, Any]] | None = None,
 ) -> None:
     """The HTTP layer's persistence policy, injected into `turn_runner`.
 
@@ -910,7 +951,10 @@ def _persist_policy(
 
 
 def _persist_turn(
-    session_id: str, app, config: dict, thinking_trace: list[dict[str, Any]] | None = None
+    session_id: str,
+    app,
+    config: dict,
+    thinking_trace: list[dict[str, Any]] | None = None,
 ) -> None:
     """Thin wrapper over `turn_runner._persist_turn`, binding today's policy.
 
@@ -921,6 +965,33 @@ def _persist_turn(
     _persist_turn_impl(session_id, app, config, _persist_policy, thinking_trace)
 
 
+def _defer_session_persist(session_id: str, background_tasks: BackgroundTasks, persist_job) -> None:
+    """Run best-effort persistence after the response without stale writes.
+
+    A second request can complete before this task starts.  Tagging the job
+    while its request still holds the session lock lets a newer request
+    supersede an older pending write instead of allowing its stale transcript
+    to overwrite the newer one.
+    """
+    session = registry.get(session_id)
+    if session is None:
+        background_tasks.add_task(persist_job)
+        return
+    generation = getattr(session, "_persistence_generation", 0) + 1
+    setattr(session, "_persistence_generation", generation)
+    background_tasks.add_task(_run_deferred_persist, session_id, generation, persist_job)
+
+
+def _run_deferred_persist(session_id: str, generation: int, persist_job) -> None:
+    session = registry.get(session_id)
+    if session is None:
+        return
+    with session.lock:
+        if getattr(session, "_persistence_generation", 0) != generation:
+            return
+        persist_job()
+
+
 def _run_turn_via_graph(
     session_id: str,
     message: str,
@@ -928,6 +999,7 @@ def _run_turn_via_graph(
     extra_state: dict | None = None,
     *,
     stream: bool = False,
+    background_tasks: BackgroundTasks | None = None,
 ) -> PlannerChatResponse:
     """Thin wrapper over `turn_runner.run_turn`, binding this process's
     compiled graph app and persistence policy. See `turn_runner.run_turn`
@@ -935,7 +1007,18 @@ def _run_turn_via_graph(
     `emit_phase("received")` first-frame fix) — it moved with the function.
     """
     return _run_turn(
-        _get_graph_v2(), session_id, message, language, extra_state, stream=stream, persist=_persist_policy
+        _get_graph_v2(),
+        session_id,
+        message,
+        language,
+        extra_state,
+        stream=stream,
+        persist=_persist_policy,
+        defer_persist=(
+            (lambda persist_job: _defer_session_persist(session_id, background_tasks, persist_job))
+            if background_tasks is not None
+            else None
+        ),
     )
 
 
@@ -1025,7 +1108,9 @@ def _suggestion_context(app, config: dict, response: PlannerChatResponse) -> Sug
 @router.post("/planner_chat", response_model=PlannerChatResponse)
 @router.post("/chat", response_model=PlannerChatResponse)
 def planner_chat(
-    request: PlannerChatRequest, current_user: AuthenticatedUser | None = Depends(get_current_user)
+    request: PlannerChatRequest,
+    current_user: AuthenticatedUser | None = Depends(get_current_user),
+    background_tasks: BackgroundTasks = None,
 ) -> PlannerChatResponse:
     session_id = str(request.session_id)
     registry.evict_expired()
@@ -1033,7 +1118,12 @@ def planner_chat(
 
     with session.lock:
         try:
-            return _run_turn_via_graph(session_id, request.message, request.language)
+            return _run_turn_via_graph(
+                session_id,
+                request.message,
+                request.language,
+                background_tasks=background_tasks,
+            )
         except Exception:
             logger.exception("Unexpected error in planner_chat for session %s", session_id)
             raise HTTPException(status_code=500, detail="Đã xảy ra lỗi máy chủ. Vui lòng thử lại.")

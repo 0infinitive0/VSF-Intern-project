@@ -383,6 +383,7 @@ export default function StageHotels({
             focusedId={focusedId}
             nights={nights}
             hotelAmenities={amenityCatalog}
+            activePreferences={filterPreferences}
             onOpen={openFocus}
             hoveredId={mapSync.hoveredId}
             onHoverChange={mapSync.setHoveredId}

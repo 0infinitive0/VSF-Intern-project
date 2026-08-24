@@ -440,6 +440,7 @@ export default function HotelDetailPanel({
                             }
                           }}
                           amenityDetails={detail.room_amenities ?? []}
+                          selectedAmenityIds={selectedAmenityIds}
                           sessionBookedFromBackend={sessionBookedFromBackend}
                           onAttemptAddRoom={triggerNoticeShake}
                         />

@@ -3,10 +3,11 @@ import MatchScoreRing from './match-score-ring'
 import MatchReasons from './match-reasons'
 import RemoteImage from './remote-image'
 import { formatCurrency } from '../lib/format-currency'
+import { amenityPresentationItems } from '../lib/amenity-presentation'
 import { formatHotelStars } from '../lib/format-stars'
 import { displayAmenityLabels } from '../lib/hotel-filters'
 import { hotelOptionSyncId } from '../lib/map-sync-id'
-import type { AmenityCatalogOption, HotelOption } from '../types'
+import type { ActivePreferencePayload, AmenityCatalogOption, HotelOption } from '../types'
 
 const PRICE_LOCALE = (lang: string) => (lang === 'vi' ? 'vi-VN' : 'en-US')
 
@@ -33,6 +34,7 @@ function HotelOptionCard({
   delay,
   nights,
   hotelAmenities,
+  activePreferences,
   onOpen,
   hovered,
   onHoverChange,
@@ -45,6 +47,8 @@ function HotelOptionCard({
   delay: string
   nights: number | null
   hotelAmenities: AmenityCatalogOption[]
+  /** Active preference labels remain available even when no returned hotel has a missing amenity. */
+  activePreferences: ActivePreferencePayload[]
   onOpen: (hotel: HotelOption) => void
   /** Phase 10 map hover sync — optional so this component still works standalone. */
   hovered?: boolean
@@ -57,6 +61,11 @@ function HotelOptionCard({
   const canOpen = Boolean(hotel.id)
   const syncId = hotelOptionSyncId(hotel)
   const displayAmenities = displayAmenityLabels(hotel.display_amenities, hotelAmenities, i18n.language)
+  const relaxedAmenityLabels = amenityPresentationItems(
+    hotel.relaxed_amenities,
+    hotelAmenities,
+    i18n.language,
+  ).map((amenity) => activePreferences.find((preference) => preference.id === amenity.id)?.label ?? amenity.label)
 
   // null/undefined and 0 all mean "no price known" — hide the price block
   // instead of rendering "0 ₫" (Number() coercion turns null into 0, so the
@@ -166,6 +175,18 @@ function HotelOptionCard({
         </div>
       </div>
 
+      {relaxedAmenityLabels.length > 0 && (
+        <div
+          className="mt-3 flex items-start gap-2 rounded-[14px] border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11.5px] leading-[1.45] text-on-surface-variant"
+          role="status"
+        >
+          <span className="material-symbols-outlined mt-px text-[15px] text-amber-700 dark:text-amber-300" aria-hidden="true">
+            info
+          </span>
+          <span>{t('hotelAmenityFallbackCard', { amenities: relaxedAmenityLabels.join(', ') })}</span>
+        </div>
+      )}
+
       {(hotel.match_score != null || (hotel.match_reasons?.length ?? 0) > 0) && (
         <div className="flex gap-3.5 items-start mt-3.5 pt-3.5 border-t border-line">
           <MatchScoreRing score={hotel.match_score} />
@@ -226,6 +247,7 @@ export default function HotelOptionCards({
   focusedId,
   nights,
   hotelAmenities,
+  activePreferences,
   onOpen,
   hoveredId,
   onHoverChange,
@@ -237,6 +259,7 @@ export default function HotelOptionCards({
   focusedId?: string | null
   nights: number | null
   hotelAmenities: AmenityCatalogOption[]
+  activePreferences: ActivePreferencePayload[]
   onOpen: (hotel: HotelOption) => void
   /** Phase 10 map hover sync (lib/map-sync-id.ts ids) — optional so this component still works standalone. */
   hoveredId?: string | null
@@ -257,6 +280,7 @@ export default function HotelOptionCards({
           delay={`${i * 90}ms`}
           nights={nights}
           hotelAmenities={hotelAmenities}
+          activePreferences={activePreferences}
           onOpen={onOpen}
           hovered={hoveredId != null && hoveredId === hotelOptionSyncId(hotel)}
           onHoverChange={onHoverChange}

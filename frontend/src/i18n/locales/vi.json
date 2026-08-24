@@ -217,6 +217,8 @@
   "hotelReviewCount": "{{count}} đánh giá",
   "matchWord": "PHÙ HỢP",
   "matchScoreAria": "Điểm khớp {{pct}} phần trăm",
+  "hotelAmenityFallbackCard": "Kết quả gần đúng — khách sạn này chưa có: {{amenities}}.",
+  "roomAmenityMatchesPreference": "{{amenity}} đáp ứng tiện ích bạn yêu cầu",
   "matchReason": {
     "budget_fit": "Vừa đúng {{value}}% ngân sách dành cho khách sạn",
     "high_rating": "Điểm đánh giá {{value}}/10 từ khách đã ở",

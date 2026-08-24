@@ -1575,6 +1575,11 @@ export interface components {
             match_score: number | null;
             /** Match Reasons */
             match_reasons: components["schemas"]["MatchReasonPayload"][];
+            /**
+             * Relaxed Amenities
+             * @description Tiện ích bắt buộc mà khách sạn này chưa đáp ứng khi dùng kết quả gần đúng
+             */
+            relaxed_amenities: string[];
             /** City */
             city: string | null;
         };
@@ -2273,6 +2278,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
     };
     responses: never;

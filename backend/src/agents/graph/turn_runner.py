@@ -49,6 +49,7 @@ logger = logging.getLogger(__name__)
 #: only if not `None`. `None` means "eval mode": there is no code path from
 #: `run_turn` to any session store.
 PersistCallable = Callable[[str, Any, dict, list[dict[str, Any]] | None], None]
+PersistScheduler = Callable[[Callable[[], None]], None]
 
 
 def _fresh_turn_input(session_id: str, message: str, language: str, extra_state: dict | None = None) -> dict:
@@ -282,6 +283,7 @@ def run_turn(
     *,
     stream: bool = False,
     persist: PersistCallable | None = None,
+    defer_persist: PersistScheduler | None = None,
 ) -> PlannerChatResponse:
     """Phase 7: a thread can be PAUSED at `interrupt()` (an ambiguous date --
     see `nodes/validate_patch.py`) from the previous turn. `get_state(...)
@@ -364,7 +366,13 @@ def run_turn(
     # Before the interrupt branch below, so a turn that pauses waiting on a
     # clarification is persisted too — that exchange happened and must survive
     # a reload like any other.
-    _persist_turn(session_id, app, config, persist, trace)
+    def persist_job() -> None:
+        _persist_turn(session_id, app, config, persist, trace)
+
+    if defer_persist is None:
+        persist_job()
+    else:
+        defer_persist(persist_job)
 
     return response_from_result(session_id, result)
 
