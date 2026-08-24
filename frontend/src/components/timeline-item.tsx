@@ -114,20 +114,38 @@ export default function TimelineItem({
 
   const placeName = placeNameFromActivity(item.activity)
   const activityNote = placeName !== item.activity ? item.activity : ''
-  const noteRedundant = isNoteRedundant(item.activity, placeName)
 
   const durationMinutes = minutesBetween(item.start_time, item.end_time)
   const meta = durationMinutes != null ? formatItemDuration(durationMinutes, t) : ''
+
+  function legLabel(): string {
+    switch (leg.kind) {
+      case 'route': {
+        const vehicle = leg.profile ? t(`routeProfile.${leg.profile}`, { defaultValue: '' }) : ''
+        const parts: string[] = []
+        if (vehicle) parts.push(vehicle)
+        parts.push(t('legDistanceKm', { km: numFmt.format(leg.distanceKm) }))
+        parts.push(t('legDurationMins', { mins: numFmt.format(leg.durationMins) }))
+        return parts.join(' · ')
+      }
+      case 'same-place':
+        return t('legSamePlace')
+      case 'crow-fly':
+        return t('legCrowFly', { km: numFmt.format(leg.distanceKm) })
+      case 'none':
+        return ''
+    }
+  }
 
   // A real <button> when openable (keyboard focus + Enter/Space, screen
   // readers announce it as interactive) — plain <div> otherwise.
   const Row = canOpen ? 'button' : 'div'
 
   return (
-    <div className="relative flex flex-col" style={{ animation: `vIn .55s ${index * 65}ms cubic-bezier(.22,1,.36,1) both` }}>
+    <div className="flex flex-col" style={{ animation: `vIn .55s ${index * 65}ms cubic-bezier(.22,1,.36,1) both` }}>
       <Row
         type={canOpen ? 'button' : undefined}
-        className="timeline-item rounded-[22px] border flex items-center gap-3 p-3 sm:p-3.5 w-full text-left transition-all duration-200 group"
+        className="timeline-item rounded-[20px] border flex items-center gap-3.5 p-3.5 w-full text-left transition-all duration-200 group"
         data-clickable={canOpen ? 'true' : undefined}
         data-focused={focused ? 'true' : undefined}
         data-hovered={isHovered ? 'true' : undefined}
@@ -140,7 +158,7 @@ export default function TimelineItem({
         {/* Left column: Time & Order Node */}
         <div className="flex flex-col items-center justify-center gap-1.5 flex-none w-[44px]">
           {item.start_time != null ? (
-            <div className="text-[12px] font-[650] text-on-surface tabular-nums leading-none">
+            <div className="text-[12px] font-[600] text-on-surface tabular-nums leading-none">
               {stripSeconds(item.start_time)}
             </div>
           ) : (
@@ -149,9 +167,9 @@ export default function TimelineItem({
             </div>
           )}
           <div
-            className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-[700] text-white shadow-xs transition-transform duration-200 group-hover:scale-110"
+            className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-[700] text-white shadow-xs"
             style={{
-              background: `linear-gradient(135deg, ${dotBg}, ${dotBg}dd)`,
+              background: dotBg,
               boxShadow: `0 2px 8px -1px ${dotBg}88`,
             }}
           >
@@ -169,63 +187,49 @@ export default function TimelineItem({
 
         {/* Content Body */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[14px] font-[600] tracking-[-0.2px] text-on-surface truncate group-hover:text-primary transition-colors">
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <div className="text-[14px] font-[590] tracking-[-0.2px] text-on-surface truncate group-hover:text-primary transition-colors">
               {placeName}
-            </span>
+            </div>
             {kindLabel && (
-              <span className={`text-[10px] font-[600] px-2 py-0.5 rounded-full border leading-tight ${getKindStyle(item.kind)}`}>
+              <div className="text-[10px] font-[500] px-2 py-0.5 rounded-full bg-fill border border-stroke text-on-surface-variant flex-none leading-tight whitespace-nowrap">
                 {kindLabel}
-              </span>
+              </div>
             )}
           </div>
 
-          {!noteRedundant && activityNote && (
-            <div className="text-[12px] text-on-surface-muted font-normal leading-relaxed mt-1 line-clamp-2">
+          {activityNote && (
+            <div className="text-[12px] text-on-surface-muted font-normal leading-[1.45] line-clamp-2 mt-[3px]">
               {activityNote}
             </div>
           )}
 
           {meta && (
-            <div className="inline-flex items-center gap-1 text-[11px] font-[500] text-on-surface-muted mt-1 px-2 py-0.5 rounded-md bg-fill/60 border border-edge/40 leading-none">
-              <span className="material-symbols-outlined text-[13px] text-amber-500/80 leading-none">
-                schedule
-              </span>
-              <span>{meta}</span>
+            <div className="text-[11.5px] text-on-surface-muted font-normal mt-[3px]">
+              {meta}
             </div>
           )}
         </div>
-
-        {/* Right arrow if openable */}
-        {canOpen && (
-          <div className="w-7 h-7 rounded-full border border-stroke flex items-center justify-center text-on-surface-variant flex-none opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all duration-200">
-            <span className="material-symbols-outlined text-[16px]">chevron_right</span>
-          </div>
-        )}
       </Row>
 
       {/* Transit Leg Connector */}
       {hasLeg && (
-        <div className="flex items-center gap-2 my-2 ml-[22px] py-0.5 pl-3.5 border-l-2 border-dashed border-edge/80">
+        <div className="flex items-center gap-2.5 py-1.5 pl-[34px]">
           <div
-            className="flex items-center gap-2 py-1 px-3 rounded-full bg-glass-1 border text-[11px] text-on-surface-muted shadow-xs transition-all hover:bg-glass-2"
-            style={{ borderColor: `${pillColor}33` }}
+            className="w-[2px] h-[24px] rounded-[2px] flex-none"
+            style={{ background: `repeating-linear-gradient(to bottom, ${pillColor} 0 4px, transparent 4px 8px)` }}
+          />
+          <div
+            className="flex items-center gap-2 py-1 pr-3 pl-2.5 rounded-full bg-glass-1 border text-[11px] text-on-surface-muted shadow-xs"
+            style={{ borderColor: `${pillColor}44` }}
           >
-            <span className="material-symbols-outlined text-[13px] text-primary flex-none leading-none">
-              {getVehicleIcon(leg.profile)}
-            </span>
-            <span className="font-semibold text-on-surface/90">
-              {leg.profile ? `${t(`routeProfile.${leg.profile}`, { defaultValue: '' })} · ` : ''}
-              {numFmt.format(leg.distanceKm)} km
-            </span>
-            {leg.durationMins > 0 && (
-              <>
-                <span className="opacity-40">·</span>
-                <span className="font-medium text-on-surface-muted">
-                  ~{leg.durationMins < 60 ? `${Math.round(leg.durationMins)} phút` : `${Math.floor(leg.durationMins / 60)}h ${Math.round(leg.durationMins % 60)}p`}
-                </span>
-              </>
-            )}
+            <div className="w-1.5 h-1.5 rounded-full flex-none" style={{ background: pillColor }} />
+            <div className="font-[600] text-on-surface tabular-nums">
+              {index + 1} → {index + 2}
+            </div>
+            <div className="font-normal text-on-surface-muted">
+              {legLabel()}
+            </div>
           </div>
         </div>
       )}
