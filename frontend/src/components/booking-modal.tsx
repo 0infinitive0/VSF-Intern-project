@@ -401,8 +401,20 @@ export default function BookingModal({
               V‑OTA
             </span>
             {effectiveStep === 'done' ? (
-              <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-600 dark:text-amber-400 font-[550] flex-none leading-none h-[21px]">
-                <span className="material-symbols-outlined text-[13px] leading-none flex-none">lock</span>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-600 dark:text-amber-400 font-[550] flex-none h-[22px]">
+                <svg
+                  className="w-3 h-3 flex-none text-amber-600 dark:text-amber-400"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
                 <span className="leading-none">{t('paidHotelLockedHeader', { defaultValue: 'Khách sạn đã được thanh toán cố định' })}</span>
               </div>
             ) : (
