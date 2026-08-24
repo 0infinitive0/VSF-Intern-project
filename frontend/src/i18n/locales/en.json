@@ -470,6 +470,8 @@
   "bookingReceiptNotFound": "No booking found for this conversation.",
   "bookingReceiptClose": "Close",
   "checkoutTitle": "Secure checkout",
+  "checkoutDoneHeaderStatus": "Booking completed",
+  "checkoutDoneImageBadge": "Itinerary locked",
   "checkoutCloseAria": "Back to itinerary",
   "checkoutStepGuest": "Guest details",
   "checkoutStepPay": "Payment",

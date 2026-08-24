@@ -468,6 +468,8 @@
   "bookingReceiptNotFound": "Không tìm thấy thông tin đặt phòng cho đoạn chat này.",
   "bookingReceiptClose": "Đóng",
   "checkoutTitle": "Thanh toán an toàn",
+  "checkoutDoneHeaderStatus": "Đặt phòng hoàn tất",
+  "checkoutDoneImageBadge": "Đã cố định lịch trình",
   "checkoutCloseAria": "Về lịch trình",
   "checkoutStepGuest": "Thông tin",
   "checkoutStepPay": "Thanh toán",

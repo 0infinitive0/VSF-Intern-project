@@ -396,8 +396,17 @@ export default function BookingModal({
           V
         </div>
         <div className="min-w-0 flex flex-col gap-0.5">
-          <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted whitespace-nowrap">
-            V‑OTA · {t('checkoutTitle')}
+          <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted whitespace-nowrap flex items-center gap-1.5">
+            {effectiveStep === 'done' ? (
+              <>
+                <span>V‑OTA · {t('checkoutDoneHeaderStatus')}</span>
+                <span className="material-symbols-outlined text-[12px] text-amber-500 leading-none" aria-hidden="true">
+                  lock
+                </span>
+              </>
+            ) : (
+              <>V‑OTA · {t('checkoutTitle')}</>
+            )}
           </div>
           <div className="text-[14px] font-[590] tracking-[-0.25px] text-on-surface truncate">{hotelName}</div>
         </div>
@@ -660,6 +669,22 @@ export default function BookingModal({
                         style={{ background: 'linear-gradient(to top, var(--g1), transparent)' }}
                         aria-hidden="true"
                       />
+                      <div
+                        className="absolute top-3 right-3 px-3 py-1.5 rounded-full flex items-center gap-1.5 text-[11px] font-[600] tracking-wide"
+                        style={{
+                          background: 'rgba(0, 0, 0, 0.48)',
+                          backdropFilter: 'blur(16px)',
+                          WebkitBackdropFilter: 'blur(16px)',
+                          border: '1px solid rgba(245, 158, 11, 0.45)',
+                          color: '#FDE68A',
+                          boxShadow: '0 4px 14px rgba(0, 0, 0, 0.35)',
+                        }}
+                      >
+                        <span className="material-symbols-outlined text-[13px] text-amber-400 leading-none" aria-hidden="true">
+                          lock
+                        </span>
+                        <span>{t('checkoutDoneImageBadge')}</span>
+                      </div>
                     </div>
 
                     <div className="relative z-10 px-6 pb-6 -mt-[30px] flex flex-col items-center flex-1 w-full justify-center gap-4">
@@ -814,17 +839,9 @@ export default function BookingModal({
                     >
                       <span className="material-symbols-outlined text-[17px]">mark_email_read</span>
                     </div>
-                    <div className="flex flex-col gap-0.5 min-w-0">
-                      <div className="text-[12.5px] font-[590] text-on-surface leading-tight">
-                        {t('checkoutDoneEmailNotice')}
-                      </div>
-                      <div className="flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 font-normal leading-tight">
-                        <span className="material-symbols-outlined text-[12px] flex-none" aria-hidden="true">
-                          lock
-                        </span>
-                        <span>{t('checkoutDoneHotelLockedNotice')}</span>
-                      </div>
-                    </div>
+                    <span className="text-[12.5px] font-[550] text-on-surface leading-snug">
+                      {t('checkoutDoneEmailNotice')}
+                    </span>
                   </div>
 
                   <button
