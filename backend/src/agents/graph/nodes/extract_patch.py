@@ -140,6 +140,9 @@ _EXPLICIT_DATE_RANGE_RE = re.compile(
 _BARE_MORE_HOTELS_RE = re.compile(
     r"^(?:(?:cho|tim|hien|xem|liet\s+ke|goi\s+y)\s+)?(?:them|nhieu\s+hon|show\s+more|more)(?:\s+(?:khach\s+san|hotels?))?\s*[.!?]*$"
 )
+_EXPLICIT_HOTEL_RESULT_COUNT_RE = re.compile(
+    r"\b(?:tang|giam)\s+so\s+lua\s+chon\s+(?:len|xuong)\s+(?P<count>\d{1,2})\b"
+)
 
 _CLOSED_LIST_PATHS: dict[str, tuple[str, ...]] = {
     "preferences.themes": _PREFERENCE_LABELS,
@@ -187,12 +190,23 @@ def _increment_bare_hotel_result_count(
 ) -> list[dict[str, Any]]:
     """Turn an otherwise-unspecified request for more hotels into +5 cards.
 
-    Explicit counts remain the extractor's job; this guard only handles a
-    bare request such as "xem thêm khách sạn" so it cannot be misread as a
-    new amenity or generic question. The persisted count has the same 20-card
-    ceiling as its travel-state validator.
+    An explicit Vietnamese "tăng/giảm số lựa chọn lên/xuống N" takes
+    precedence over model output. Otherwise this guard handles a bare request
+    such as "xem thêm khách sạn" so it cannot be misread as a new amenity or
+    generic question. The persisted count has the same 20-card ceiling as its
+    travel-state validator.
     """
-    if not _BARE_MORE_HOTELS_RE.fullmatch(_normalize(message).strip()):
+    normalized_message = _normalize(message).strip()
+    explicit_count = _EXPLICIT_HOTEL_RESULT_COUNT_RE.search(normalized_message)
+    if explicit_count:
+        return [
+            change for change in changes if change.get("path") != "hotel_preferences.result_count"
+        ] + [{
+            "path": "hotel_preferences.result_count",
+            "operation": "set",
+            "value": int(explicit_count.group("count")),
+        }]
+    if not _BARE_MORE_HOTELS_RE.fullmatch(normalized_message):
         return changes
     current = travel_state.get("hotel_preferences.result_count")
     current_count = int(current.value) if current.presence is Presence.SET else 5

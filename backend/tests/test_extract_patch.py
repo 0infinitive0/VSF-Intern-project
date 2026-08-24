@@ -161,6 +161,16 @@ def test_explicit_hotel_result_count_is_preserved_for_the_patch_layer(monkeypatc
     ]
 
 
+def test_vietnamese_increase_choices_phrase_sets_the_requested_result_count(monkeypatch):
+    llm = _patch(monkeypatch, _FakeLLM([_payload("general_question", [])]))
+
+    result = extract_patch(_state("tăng số lựa chọn lên 10 cho tôi"))
+
+    assert result["patch"] == [
+        {"path": "hotel_preferences.result_count", "operation": "set", "value": 10},
+    ]
+
+
 def test_list_valued_amenity_append_is_normalized_into_one_change_per_item(monkeypatch):
     llm = _patch(
         monkeypatch,
