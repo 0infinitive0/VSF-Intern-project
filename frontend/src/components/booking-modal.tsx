@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import AuthTextField from '../auth/auth-text-field'
+import { useAuth } from '../auth/auth-context'
 import { EMAIL_RE } from '../auth/email-pattern'
 import { isValidPhone } from '../auth/phone-pattern'
 import RemoteImage from './remote-image'
@@ -129,6 +130,7 @@ export default function BookingModal({
   paymentReturnOutcome?: 'failed' | 'cancelled' | 'pending' | null
 }) {
   const { t, i18n } = useTranslation()
+  const auth = useAuth()
   const { detail: hotelDetail } = useHotelDetail(roomHold.heldHotelId)
 
   const [render, setRender] = useState(open)
@@ -163,6 +165,27 @@ export default function BookingModal({
 
   const [creatingPayment, setCreatingPayment] = useState(false)
   const [paymentError, setPaymentError] = useState<string | null>(null)
+
+  // Pre-fill from the signed-in account — only into a field that's still
+  // EMPTY, never overwriting something the guest already typed or that was
+  // already restored from sessionStorage above. An anonymous session
+  // (auth.isAnonymous — every visitor has SOME Supabase session, see
+  // auth-context.tsx) has no real name/email/phone to offer, so this is a
+  // no-op for it. An effect, not a lazy useState initializer like
+  // profile-password-modal.tsx uses (it can assume `user` is already
+  // resolved) — this component mounts at app boot, before Supabase's own
+  // async session bootstrap resolves, and stays mounted across sign-in, so
+  // it needs to react whenever auth.user actually becomes available.
+  useEffect(() => {
+    if (auth.isAnonymous || !auth.user) return
+    const user = auth.user
+    const metadata = user.user_metadata ?? {}
+    const accountName = typeof metadata.full_name === 'string' ? metadata.full_name : ''
+    const accountPhone = typeof metadata.phone === 'string' ? metadata.phone : ''
+    if (accountName) setGuestName((prev) => prev || accountName)
+    if (user.email) setGuestEmail((prev) => prev || user.email!)
+    if (accountPhone) setGuestPhone((prev) => prev || accountPhone)
+  }, [auth.user, auth.isAnonymous])
 
   useEffect(() => {
     try {
@@ -293,8 +316,9 @@ export default function BookingModal({
     ] as const
   ).map(([key, label], i) => {
     const idx = i + 1
-    const completed = idx < currentStepN
-    const active = idx === currentStepN
+    const isDone = effectiveStep === 'done'
+    const completed = isDone || idx < currentStepN
+    const active = !isDone && idx === currentStepN
     return {
       key,
       label,
@@ -302,8 +326,8 @@ export default function BookingModal({
       bg: completed ? 'var(--ok)' : active ? 'var(--btn)' : 'var(--fill2)',
       fg: completed ? 'var(--on-acc)' : active ? 'var(--btn-fg)' : 'var(--t2)',
       ring: active ? '0 8px 20px -8px rgb(var(--shadow-rgb) / 0.55)' : 'none',
-      labelColor: active ? 'var(--t1)' : 'var(--t2)',
-      weight: active ? 590 : 500,
+      labelColor: completed || active ? 'var(--t1)' : 'var(--t2)',
+      weight: completed || active ? 590 : 500,
       lineBg: completed ? 'var(--ok)' : 'var(--stroke)',
     }
   })
@@ -609,165 +633,204 @@ export default function BookingModal({
 
             {effectiveStep === 'done' && (
               <div
-                className="flex flex-col lg:flex-row items-stretch gap-4 w-full"
+                className="flex flex-col gap-4 w-full"
                 style={{
                   animation: 'vRise .55s cubic-bezier(.22,1,.36,1) both',
                 }}
               >
-                {/* Left Card: Hotel Photo + Checkmark Badge + Hotel info & Success Status + Close button */}
-                <div
-                  className="w-full lg:w-[330px] flex-none rounded-[26px] overflow-hidden flex flex-col items-center text-center border border-edge"
-                  style={{
-                    background: 'var(--g1)',
-                    boxShadow: '0 24px 56px -32px rgb(var(--shadow-rgb) / 0.38), inset 0 1px 0 var(--gloss)',
-                    backdropFilter: 'blur(28px) saturate(1.7)',
-                    WebkitBackdropFilter: 'blur(28px) saturate(1.7)',
-                  }}
-                >
-                  <div className="relative w-full h-[180px] flex-none overflow-hidden">
-                    <RemoteImage
-                      src={hotelDetail?.image_url ?? hotelDetail?.images?.[0]}
-                      alt={t('hotelImgAlt', { name: hotelName })}
-                      className="absolute inset-0"
-                    />
-                    <div
-                      className="absolute inset-x-0 bottom-0 h-[80px] pointer-events-none"
-                      style={{ background: 'linear-gradient(to top, var(--g1), transparent)' }}
-                      aria-hidden="true"
-                    />
+                <div className="flex flex-col lg:flex-row items-stretch gap-4 w-full">
+                  {/* Left Card: Hotel Photo + Checkmark Badge + Hotel info & Success Status */}
+                  <div
+                    className="w-full lg:w-[330px] flex-none rounded-[26px] overflow-hidden flex flex-col items-center text-center border border-edge"
+                    style={{
+                      background: 'var(--g1)',
+                      boxShadow: '0 24px 56px -32px rgb(var(--shadow-rgb) / 0.38), inset 0 1px 0 var(--gloss)',
+                      backdropFilter: 'blur(28px) saturate(1.7)',
+                      WebkitBackdropFilter: 'blur(28px) saturate(1.7)',
+                    }}
+                  >
+                    <div className="relative w-full h-[180px] flex-none overflow-hidden">
+                      <RemoteImage
+                        src={hotelDetail?.image_url ?? hotelDetail?.images?.[0]}
+                        alt={t('hotelImgAlt', { name: hotelName })}
+                        className="absolute inset-0"
+                      />
+                      <div
+                        className="absolute inset-x-0 bottom-0 h-[80px] pointer-events-none"
+                        style={{ background: 'linear-gradient(to top, var(--g1), transparent)' }}
+                        aria-hidden="true"
+                      />
+                    </div>
+
+                    <div className="relative z-10 px-6 pb-6 -mt-[30px] flex flex-col items-center flex-1 w-full justify-center gap-4">
+                      <div className="flex flex-col items-center gap-3 w-full">
+                        <div
+                          className="relative z-10 w-[60px] h-[60px] rounded-full flex items-center justify-center text-[26px] flex-none"
+                          style={{
+                            background: 'linear-gradient(145deg,#4FB3A5,#2A9187)',
+                            color: '#FCFDFE',
+                            boxShadow: '0 16px 34px -14px rgba(42,145,135,.7)',
+                            border: '4px solid var(--g1)',
+                            animation: 'vPop .6s .1s cubic-bezier(.34,1.5,.64,1) both',
+                          }}
+                          aria-hidden="true"
+                        >
+                          ✓
+                        </div>
+                        <div className="w-full">
+                          <div className="text-[17px] font-[590] tracking-[-0.3px] text-on-surface">
+                            {t('checkoutDoneTitle')}
+                          </div>
+                          <div className="text-[13.5px] font-[530] text-on-surface-variant mt-1.5 line-clamp-2">
+                            {hotelName}
+                          </div>
+                          <div className="text-[12px] text-on-surface-muted mt-1 leading-relaxed">
+                            {t('checkoutDoneSub')}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="relative z-10 px-6 pb-6 -mt-[30px] flex flex-col items-center flex-1 w-full justify-center gap-4">
-                    <div className="flex flex-col items-center gap-3 w-full">
+                  {/* Right Card: Code & Total + Dates + Rooms List */}
+                  <div
+                    className="flex-1 min-w-[280px] p-6 sm:p-7 rounded-[26px] border border-edge flex flex-col gap-4 text-left justify-between"
+                    style={{
+                      background: 'var(--g1)',
+                      boxShadow: '0 24px 56px -32px rgb(var(--shadow-rgb) / 0.38), inset 0 1px 0 var(--gloss)',
+                      backdropFilter: 'blur(28px) saturate(1.7)',
+                      WebkitBackdropFilter: 'blur(28px) saturate(1.7)',
+                    }}
+                  >
+                    <div className="flex flex-col gap-4">
+                      {/* Booking code & total */}
                       <div
-                        className="relative z-10 w-[60px] h-[60px] rounded-full flex items-center justify-center text-[26px] flex-none"
-                        style={{
-                          background: 'linear-gradient(145deg,#4FB3A5,#2A9187)',
-                          color: '#FCFDFE',
-                          boxShadow: '0 16px 34px -14px rgba(42,145,135,.7)',
-                          border: '4px solid var(--g1)',
-                          animation: 'vPop .6s .1s cubic-bezier(.34,1.5,.64,1) both',
-                        }}
-                        aria-hidden="true"
+                        className="flex w-full rounded-2xl overflow-hidden border border-edge"
+                        style={{ background: 'var(--g2)' }}
                       >
-                        ✓
+                        <div className="flex-1 px-5 py-3.5 text-center border-r border-line">
+                          <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
+                            {t('checkoutDoneCode')}
+                          </div>
+                          <div className="text-[16px] font-[590] tracking-[0.4px] tabular-nums mt-0.5 text-on-surface">
+                            {bookedCode}
+                          </div>
+                        </div>
+                        <div className="flex-1 px-5 py-3.5 text-center">
+                          <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
+                            {t('holdTotal')}
+                          </div>
+                          <div className="text-[16px] font-[590] tracking-[-0.2px] tabular-nums mt-0.5" style={{ color: 'var(--acc)' }}>
+                            {hasAnyTotal ? formatCurrency(grandTotal, i18n.language) : '—'}
+                          </div>
+                        </div>
                       </div>
-                      <div className="w-full">
-                        <div className="text-[17px] font-[590] tracking-[-0.3px] text-on-surface">
-                          {t('checkoutDoneTitle')}
-                        </div>
-                        <div className="text-[13.5px] font-[530] text-on-surface-variant mt-1.5 line-clamp-2">
-                          {hotelName}
-                        </div>
-                        <div className="text-[12px] text-on-surface-muted mt-1 leading-relaxed">
-                          {t('checkoutDoneSub')}
+
+                      {/* Dates & Guests */}
+                      <div className="w-full rounded-2xl border border-edge px-5 py-4" style={{ background: 'var(--g2)' }}>
+                        <div className="flex items-center gap-3">
+                          <div className="text-center">
+                            <div className="text-[20px] font-[590] tracking-[-0.5px] leading-none text-on-surface">
+                              {ci?.day ?? '—'}
+                            </div>
+                            <div className="text-[9px] font-[590] tracking-[0.09em] text-on-surface-muted mt-[3px]">
+                              {ci?.month ?? ''}
+                            </div>
+                          </div>
+                          <div className="flex-1 flex flex-col items-center gap-1">
+                            <div className="text-[10px] font-[450] text-on-surface-muted whitespace-nowrap">
+                              {nights} {t('nightsWord')}
+                            </div>
+                            <div className="w-full h-px" style={{ background: 'var(--stroke)' }} />
+                          </div>
+                          <div className="text-center">
+                            <div className="text-[20px] font-[590] tracking-[-0.5px] leading-none text-on-surface">
+                              {co?.day ?? '—'}
+                            </div>
+                            <div className="text-[9px] font-[590] tracking-[0.09em] text-on-surface-muted mt-[3px]">
+                              {co?.month ?? ''}
+                            </div>
+                          </div>
+                          {guestsLabel && (
+                            <div className="flex-none flex items-center gap-1.5 pl-4 ml-1 border-l border-line">
+                              <span className="material-symbols-outlined text-[14px] text-on-surface-muted leading-none" aria-hidden="true">
+                                group
+                              </span>
+                              <span className="text-[11.5px] font-[450] text-on-surface-variant whitespace-nowrap">{guestsLabel}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
+
+                      {/* Rooms booked */}
+                      {rows.length > 0 && (
+                        <div className="w-full flex flex-col gap-2">
+                          <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted px-1">
+                            {t('checkoutDoneRoomsLabel')}
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            {rows.map((row) => (
+                              <div
+                                key={row.id}
+                                className="flex items-center gap-3 p-3 rounded-2xl bg-glass-2 border border-edge"
+                                style={{ boxShadow: '0 10px 24px -18px rgb(var(--shadow-rgb) / 0.5)' }}
+                              >
+                                <RemoteImage
+                                  src={row.image}
+                                  alt={row.name}
+                                  className="w-[52px] h-[52px] rounded-xl flex-none"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-[12.5px] font-[590] text-on-surface truncate">{row.name}</div>
+                                  <div className="text-[11px] text-on-surface-muted">{t('roomQtyLabel', { count: row.qty })}</div>
+                                </div>
+                                <div className="flex-none text-[12.5px] font-[590] tabular-nums text-on-surface">
+                                  {row.total != null ? formatCurrency(row.total, i18n.language) : t('roomPriceOnRequest')}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                {/* Right Card: Code & Total + Dates + Rooms List */}
+                {/* Bottom Unified Glass Bar: Email Notice + Explore CTA Button */}
                 <div
-                  className="flex-1 min-w-[280px] p-6 sm:p-7 rounded-[26px] border border-edge flex flex-col gap-4 text-left justify-between"
+                  className="w-full p-4 sm:p-4.5 rounded-[22px] border border-edge flex flex-col sm:flex-row items-center justify-between gap-4"
                   style={{
                     background: 'var(--g1)',
-                    boxShadow: '0 24px 56px -32px rgb(var(--shadow-rgb) / 0.38), inset 0 1px 0 var(--gloss)',
+                    boxShadow: '0 20px 48px -28px rgb(var(--shadow-rgb) / 0.35), inset 0 1px 0 var(--gloss)',
                     backdropFilter: 'blur(28px) saturate(1.7)',
                     WebkitBackdropFilter: 'blur(28px) saturate(1.7)',
                   }}
                 >
-                  <div className="flex flex-col gap-4">
-                    {/* Booking code & total */}
+                  <div className="flex items-center gap-3 w-full sm:w-auto">
                     <div
-                      className="flex w-full rounded-2xl overflow-hidden border border-edge"
-                      style={{ background: 'var(--g2)' }}
+                      className="w-8 h-8 rounded-full flex items-center justify-center flex-none"
+                      style={{ background: 'var(--ok-soft)', color: 'var(--ok-ink)' }}
                     >
-                      <div className="flex-1 px-5 py-3.5 text-center border-r border-line">
-                        <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
-                          {t('checkoutDoneCode')}
-                        </div>
-                        <div className="text-[16px] font-[590] tracking-[0.4px] tabular-nums mt-0.5 text-on-surface">
-                          {bookedCode}
-                        </div>
-                      </div>
-                      <div className="flex-1 px-5 py-3.5 text-center">
-                        <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
-                          {t('holdTotal')}
-                        </div>
-                        <div className="text-[16px] font-[590] tracking-[-0.2px] tabular-nums mt-0.5" style={{ color: 'var(--acc)' }}>
-                          {hasAnyTotal ? formatCurrency(grandTotal, i18n.language) : '—'}
-                        </div>
-                      </div>
+                      <span className="material-symbols-outlined text-[18px]">mark_email_read</span>
                     </div>
-
-                    {/* Dates & Guests */}
-                    <div className="w-full rounded-2xl border border-edge px-5 py-4" style={{ background: 'var(--g2)' }}>
-                      <div className="flex items-center gap-3">
-                        <div className="text-center">
-                          <div className="text-[20px] font-[590] tracking-[-0.5px] leading-none text-on-surface">
-                            {ci?.day ?? '—'}
-                          </div>
-                          <div className="text-[9px] font-[590] tracking-[0.09em] text-on-surface-muted mt-[3px]">
-                            {ci?.month ?? ''}
-                          </div>
-                        </div>
-                        <div className="flex-1 flex flex-col items-center gap-1">
-                          <div className="text-[10px] font-[450] text-on-surface-muted whitespace-nowrap">
-                            {nights} {t('nightsWord')}
-                          </div>
-                          <div className="w-full h-px" style={{ background: 'var(--stroke)' }} />
-                        </div>
-                        <div className="text-center">
-                          <div className="text-[20px] font-[590] tracking-[-0.5px] leading-none text-on-surface">
-                            {co?.day ?? '—'}
-                          </div>
-                          <div className="text-[9px] font-[590] tracking-[0.09em] text-on-surface-muted mt-[3px]">
-                            {co?.month ?? ''}
-                          </div>
-                        </div>
-                        {guestsLabel && (
-                          <div className="flex-none flex items-center gap-1.5 pl-4 ml-1 border-l border-line">
-                            <span className="material-symbols-outlined text-[14px] text-on-surface-muted leading-none" aria-hidden="true">
-                              group
-                            </span>
-                            <span className="text-[11.5px] font-[450] text-on-surface-variant whitespace-nowrap">{guestsLabel}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Rooms booked */}
-                    {rows.length > 0 && (
-                      <div className="w-full flex flex-col gap-2">
-                        <div className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted px-1">
-                          {t('checkoutDoneRoomsLabel')}
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                          {rows.map((row) => (
-                            <div
-                              key={row.id}
-                              className="flex items-center gap-3 p-3 rounded-2xl bg-glass-2 border border-edge"
-                              style={{ boxShadow: '0 10px 24px -18px rgb(var(--shadow-rgb) / 0.5)' }}
-                            >
-                              <RemoteImage
-                                src={row.image}
-                                alt={row.name}
-                                className="w-[52px] h-[52px] rounded-xl flex-none"
-                              />
-                              <div className="flex-1 min-w-0">
-                                <div className="text-[12.5px] font-[590] text-on-surface truncate">{row.name}</div>
-                                <div className="text-[11px] text-on-surface-muted">{t('roomQtyLabel', { count: row.qty })}</div>
-                              </div>
-                              <div className="flex-none text-[12.5px] font-[590] tabular-nums text-on-surface">
-                                {row.total != null ? formatCurrency(row.total, i18n.language) : t('roomPriceOnRequest')}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    <span className="text-[12.5px] font-[480] text-on-surface-variant leading-snug">
+                      {t('checkoutDoneEmailNotice')}
+                    </span>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={requestClose}
+                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 rounded-full border-none text-[13.5px] font-[590] tracking-[-0.1px] cursor-pointer transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] flex-none text-center"
+                    style={{
+                      background: 'var(--btn)',
+                      color: 'var(--btn-fg)',
+                      boxShadow: '0 10px 24px -10px rgb(var(--shadow-rgb) / 0.55)',
+                    }}
+                  >
+                    <span className="material-symbols-outlined text-[17px] text-ok">explore</span>
+                    <span>{t('checkoutDoneExploreItinerary')}</span>
+                  </button>
                 </div>
               </div>
             )}

@@ -13,6 +13,7 @@ import { displayAmenityLabels } from '../lib/hotel-filters'
 import { formatHotelStars } from '../lib/format-stars'
 import { formatSourcePlatform } from '../lib/format-source-platform'
 import { cartMatchesHeldBookings } from '../lib/room-cart-diff'
+import { maxRoomsForParty } from '../lib/room-capacity'
 import type { AmenityCatalogOption, HotelOption, RoomDetail } from '../types'
 
 /** Nights from the trip's real intake dates — same rule as stage-hotels.tsx's
@@ -60,6 +61,7 @@ export default function HotelDetailPanel({
   roomHold,
   checkInDate,
   checkOutDate,
+  partySize,
   onConfirmHotel,
   onSelectHotel,
   heldElsewhereHotelName,
@@ -83,6 +85,12 @@ export default function HotelDetailPanel({
    * which gates the "Giữ phòng" button (never reserves with invented dates). */
   checkInDate: string | null
   checkOutDate: string | null
+  /** ChatState.tripPlan.number_of_adults, falling back to parsing
+   * ChatState.intake.people ("2 người") — same "null until known" rule as
+   * checkInDate/checkOutDate above. Drives each room type's quantity cap
+   * (maxRoomsForParty in room-capacity.ts): unknown party size degrades
+   * to a cap of 1 room, never an unrestricted one. */
+  partySize: number | null
   /** Fires the EXISTING itinerary-build call once a hold succeeds — see
    * use-room-hold.ts's module doc comment on why room selection now gates it. */
   onConfirmHotel: (hotel: HotelOption) => void
@@ -394,9 +402,15 @@ export default function HotelDetailPanel({
                   <div className="flex flex-col gap-2.5">
                     {detail.rooms.map((room, i) => {
                       const roomKey = room.id ?? room.name ?? String(i)
+                      // At most one unit of this room type per traveler
+                      // (room-capacity.ts explains why capacity-based
+                      // division is the wrong cap here), capped by real
+                      // inventory — replaces the old flat cap of 4, which
+                      // had nothing to do with who's traveling.
+                      const roomsAllowed = maxRoomsForParty(partySize)
                       const maxQty = room.price?.sold_out
                         ? 0
-                        : Math.min(4, room.available_room_count ?? 4)
+                        : Math.min(roomsAllowed, room.available_room_count ?? roomsAllowed)
                       return (
                         <RoomCard
                           key={roomKey}
@@ -406,7 +420,7 @@ export default function HotelDetailPanel({
                           maxQty={maxQty}
                           onQtyChange={(next) => {
                             if (!room.id) return
-                            roomHold.setQty(hotelId, room.id, next)
+                            roomHold.setQty(hotelId, room.id, next, maxQty)
                             if (next > 0 && option != null && onSelectHotel) {
                               onSelectHotel(option.index)
                             }

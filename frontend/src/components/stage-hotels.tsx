@@ -8,6 +8,7 @@ import { useMapSync } from '../hooks/use-map-sync'
 import { hotelOptionSyncId, suggestedPlaceSyncId } from '../lib/map-sync-id'
 import { hotelMapFields, hotelMapRays } from '../lib/map-presentation'
 import { useHotelDetail } from '../hooks/use-hotel-detail'
+import { parseLeadingCount } from '../hooks/use-intake-form'
 import { activeAmenityPills, filterAndSortHotels, type HotelSortOrder } from '../lib/hotel-filters'
 import type { useFocusMode } from '../hooks/use-focus-mode'
 import type { RoomHoldApi } from '../hooks/use-room-hold'
@@ -148,6 +149,11 @@ export default function StageHotels({
   }, [hotels, selectedIndex, state.tripPlan?.hotel, roomHold.heldHotelId])
   const resolvedSelectedIndex = selectedHotel?.index ?? selectedIndex
   const nights = nightsFrom(state.intake?.start_date, state.intake?.end_date)
+  // Party size for room-quantity capping (HotelDetailPanel's maxRoomsForParty):
+  // tripPlan.number_of_adults once the itinerary is built, falling back to
+  // parsing intake.people ("2 người") since that's available earlier — same
+  // "prefer the built trip, fall back to intake" reasoning as nights above.
+  const partySize = state.tripPlan?.number_of_adults ?? parseLeadingCount(state.intake?.people)
   const selectedId = selectedHotel ? hotelOptionSyncId(selectedHotel) : null
   const { detail: selectedHotelDetail } = useHotelDetail(selectedHotel?.id ?? null)
   const selectedHotelRays = useMemo(() => hotelMapRays(selectedHotelDetail), [selectedHotelDetail])
@@ -400,6 +406,7 @@ export default function StageHotels({
             roomHold={roomHold}
             checkInDate={state.intake?.start_date ?? null}
             checkOutDate={state.intake?.end_date ?? null}
+            partySize={partySize}
             onConfirmHotel={onConfirmHotel}
             onSelectHotel={onSelectHotel}
             heldElsewhereHotelName={hotels.find((h) => h.id === roomHold.heldHotelId)?.name ?? null}
