@@ -134,6 +134,7 @@ export default function StageRouter({
       focusMode={focusMode}
       theme={theme}
       roomHold={roomHold}
+      hotelAmenities={hotelFilterData.hotelAmenities}
       holdBelongsToSession={holdBelongsToSession}
       sessionBookedFromBackend={sessionBookedFromBackend}
       onOpenBooking={onOpenBooking}

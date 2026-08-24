@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import DayTimeline from './day-timeline'
 import HoldBanner from './hold-banner'
+import HotelStayPanel from './hotel-stay-panel'
 import MapView, { type MapMarkerSpec } from './map-view'
 import PlaceDetailPanel from './place-detail-panel'
 import TripOverviewTab from './trip-overview-tab'
@@ -14,7 +15,7 @@ import { buildDaySegments, buildTripSegments } from '../lib/route-segments'
 import type { useFocusMode } from '../hooks/use-focus-mode'
 import type { RoomHoldApi } from '../hooks/use-room-hold'
 import type { Theme } from '../hooks/use-theme'
-import type { ChatState, Day, DayItem } from '../types'
+import type { AmenityCatalogOption, ChatState, Day, DayItem } from '../types'
 
 type FocusModeApi = ReturnType<typeof useFocusMode>
 export type TabKey = 'overview' | number
@@ -77,6 +78,7 @@ export default function StageWorkspace({
   focusMode,
   theme,
   roomHold,
+  hotelAmenities,
   holdBelongsToSession,
   sessionBookedFromBackend,
   onOpenBooking,
@@ -91,12 +93,17 @@ export default function StageWorkspace({
   state: ChatState
   focusMode: FocusModeApi
   theme: Theme
-  /** Real room hold (use-room-hold.ts) — drives the header's hold banner. */
+  /** Real room hold (use-room-hold.ts) — drives the header's hold banner AND
+   * (read-only) HotelStayPanel's "Phòng đã đặt" section. */
   roomHold: RoomHoldApi
+  /** Amenity catalog for HotelStayPanel's displayAmenityLabels — StageRouter's
+   * hotelFilterData, same catalog the hotel search flow already uses. */
+  hotelAmenities: AmenityCatalogOption[]
   /** Whether roomHold's current hold actually belongs to THIS workspace's
    * session — see app-shell.tsx's doc comment on the same prop. Passed
    * straight through to HoldBanner, which is the one place that decides
-   * whether to render anything hold-related at all. */
+   * whether to render anything hold-related at all, and to HotelStayPanel's
+   * useBookedRooms. */
   holdBelongsToSession: boolean
   /** See app-shell.tsx's doc comment on the same prop. */
   sessionBookedFromBackend: boolean
@@ -136,7 +143,11 @@ export default function StageWorkspace({
   const resolvedTab: TabKey =
     typeof activeTab === 'number' && !days.some((d) => d.day_number === activeTab) ? 'overview' : activeTab
 
-  const focusedId = focusMode.focus?.kind === 'place' ? focusMode.focus.id : null
+  const placeFocusedId = focusMode.focus?.kind === 'place' ? focusMode.focus.id : null
+  const hotelFocusedId = focusMode.focus?.kind === 'hotel' ? focusMode.focus.id : null
+  // Still fed to TimelineItem/DayTimeline/MapView unchanged — either kind of
+  // focus draws the same accent ring on its own row/pin.
+  const focusedId = placeFocusedId ?? hotelFocusedId
 
   // The focused item's timeline context — day number, start time, kind and the
   // leg INTO it (previous item's route_to_next). First-of-day → no leg.
@@ -145,35 +156,45 @@ export default function StageWorkspace({
   // while a place is focused, and if that item is gone, `focused` must not
   // stay true with nothing to show (review finding H3). useMemo (not a plain
   // `let`) so its object identity is stable across renders when nothing it
-  // depends on changed — required for the lastContext effect below, which
+  // depends on changed — required for the lastFocus effect below, which
   // would otherwise re-fire (and re-render) every render on a "new" object
   // that's actually the same context.
   const context = useMemo<{ day: Day; item: DayItem; index: number; routeLeg: Leg } | null>(() => {
-    if (!focusedId) return null
+    if (!placeFocusedId) return null
     for (const day of days) {
       for (let i = 0; i < day.items.length; i++) {
         const item = day.items[i]
-        if (item.reference_type === 'Attraction' && item.reference_id === focusedId) {
+        if (item.reference_type === 'Attraction' && item.reference_id === placeFocusedId) {
           return { day, item, index: i, routeLeg: i === 0 ? { kind: 'none' } : legBetween(day.items[i - 1], item) }
         }
       }
     }
     return null
-  }, [days, focusedId])
-  const focused = focusedId != null && context != null
+  }, [days, placeFocusedId])
+  // Mirrors context's own "don't stay open if the thing focused no longer
+  // exists" guard — a chat turn could replace tripPlan.hotel entirely while
+  // hotel focus is open.
+  const hotelFocused = hotelFocusedId != null && tripPlan?.hotel?.id === hotelFocusedId
+  const focused = (placeFocusedId != null && context != null) || hotelFocused
 
-  // PlaceDetailPanel is always mounted now (never conditionally rendered) so
-  // it can animate its own close, not just its open — see the map/detail
-  // wrapper styles below. That means its CONTENT must outlive `context`
-  // going back to null the instant focus closes, or the close transition
-  // would fade out an already-blank panel. `lastContext` is the sticky "last
-  // place actually viewed" value fed to PlaceDetailPanel; `focused` itself
-  // still drives every visual open/closed state, same pattern as
-  // stage-hotels.tsx's lastFocusedId.
-  const [lastContext, setLastContext] = useState(context)
+  // The detail panels (PlaceDetailPanel/HotelStayPanel) are always mounted
+  // now (never conditionally rendered) so they can animate their own close,
+  // not just their open — see the map/detail wrapper styles below. That
+  // means their CONTENT must outlive `context`/`hotelFocused` going back to
+  // null the instant focus closes, or the close transition would fade out an
+  // already-blank panel. `lastFocus` is the sticky "last thing actually
+  // viewed" value (place context OR hotel id) fed to whichever panel is
+  // showing; `focused` itself still drives every visual open/closed state,
+  // same pattern as stage-hotels.tsx's lastFocusedId.
+  type LastFocus =
+    | { kind: 'place'; context: { day: Day; item: DayItem; index: number; routeLeg: Leg } }
+    | { kind: 'hotel'; hotelId: string }
+    | null
+  const [lastFocus, setLastFocus] = useState<LastFocus>(null)
   useEffect(() => {
-    if (context != null) setLastContext(context)
-  }, [context])
+    if (placeFocusedId != null && context != null) setLastFocus({ kind: 'place', context })
+    else if (hotelFocused) setLastFocus({ kind: 'hotel', hotelId: hotelFocusedId! })
+  }, [context, hotelFocused, hotelFocusedId, placeFocusedId])
 
   const itinRef = useRef<HTMLDivElement>(null)
   const savedScroll = useRef(0)
@@ -188,19 +209,31 @@ export default function StageWorkspace({
   }
 
   function openFocus(item: DayItem) {
-    if (!(item.reference_type === 'Attraction' && item.reference_id)) return
+    if (!item.reference_id) return
+    if (item.reference_type !== 'Attraction' && item.reference_type !== 'Hotel') return
     savedScroll.current = itinRef.current?.scrollTop ?? 0
-    focusMode.openFocus({ kind: 'place', id: item.reference_id })
+    focusMode.openFocus(
+      item.reference_type === 'Attraction'
+        ? { kind: 'place', id: item.reference_id }
+        : { kind: 'hotel', id: item.reference_id },
+    )
   }
 
   function handleOpenDetail(marker: MapMarkerSpec) {
     if (!marker.openId) return
     for (const day of days) {
-      const item = day.items.find((it) => it.reference_type === 'Attraction' && it.reference_id === marker.openId)
+      const item = day.items.find(
+        (it) => (it.reference_type === 'Attraction' || it.reference_type === 'Hotel') && it.reference_id === marker.openId,
+      )
       if (item) {
         openFocus(item)
         return
       }
+    }
+    // The map's hotel anchor marker has no matching `day.items` row of its
+    // own — it's a separate pin built straight from tripPlan.hotel below.
+    if (tripPlan?.hotel?.id && tripPlan.hotel.id === marker.openId) {
+      focusMode.openFocus({ kind: 'hotel', id: marker.openId })
     }
   }
 
@@ -236,6 +269,7 @@ export default function StageWorkspace({
         syncId: TRIP_HOTEL_SYNC_KEY,
         coordinates: tripPlan.hotel.coordinates,
         kind: 'hotel',
+        openId: tripPlan.hotel.id ?? undefined,
         hoverLabel: hotelItemNumbers.join(' · ') || undefined,
         // The hotel is every day's actual start AND end point (each day's
         // route runs hotel -> ... -> hotel), not the day's first/last
@@ -254,7 +288,10 @@ export default function StageWorkspace({
           kind: 'item',
           label: index + 1,
           dayNumber: day.day_number,
-          openId: item.reference_type === 'Attraction' && item.reference_id ? item.reference_id : undefined,
+          openId:
+            (item.reference_type === 'Attraction' || item.reference_type === 'Hotel') && item.reference_id
+              ? item.reference_id
+              : undefined,
         })
       })
     }
@@ -383,13 +420,24 @@ export default function StageWorkspace({
 
           <div ref={itinRef} className="flex-1 overflow-y-auto custom-scrollbar p-4 min-h-0">
             {resolvedTab === 'overview' ? (
-              <TripOverviewTab tripPlan={tripPlan} onPickDay={(n) => pickTab(n)} />
+              <TripOverviewTab
+                tripPlan={tripPlan}
+                onPickDay={(n) => pickTab(n)}
+                onOpenHotel={(hotelId) => {
+                  savedScroll.current = itinRef.current?.scrollTop ?? 0
+                  focusMode.openFocus({ kind: 'hotel', id: hotelId })
+                }}
+              />
             ) : activeDay ? (
               <DayTimeline
                 day={activeDay}
                 hotel={tripPlan.hotel}
                 focusedId={focusedId}
                 onOpen={openFocus}
+                onOpenHotel={(hotelId) => {
+                  savedScroll.current = itinRef.current?.scrollTop ?? 0
+                  focusMode.openFocus({ kind: 'hotel', id: hotelId })
+                }}
                 hoveredId={mapSync.hoveredId}
                 onHoverChange={mapSync.setHoveredId}
               />
@@ -437,9 +485,10 @@ export default function StageWorkspace({
         {/* Always mounted (never conditionally rendered) so it can animate its
             own open AND close via flex/opacity/scale/blur, per design's det*
             tokens — same fix already applied to stage-hotels.tsx's detail
-            column. Content comes from the sticky lastContext (see its own
-            comment above), not the live context, so it doesn't go blank the
-            instant focus closes. */}
+            column. Content comes from the sticky lastFocus (see its own
+            comment above), not the live context/hotelFocused, so it doesn't
+            go blank the instant focus closes. Which panel renders — place or
+            hotel — follows lastFocus.kind. */}
         <div
           className="min-w-0 overflow-hidden rounded-[26px]"
           aria-hidden={!focused}
@@ -455,15 +504,27 @@ export default function StageWorkspace({
             transition: 'flex .62s cubic-bezier(.22,1,.36,1), opacity .36s ease, transform .55s cubic-bezier(.22,1,.36,1)',
           }}
         >
-          <PlaceDetailPanel
-            placeId={lastContext?.item.reference_id ?? null}
-            name={lastContext ? placeNameFromActivity(lastContext.item.activity) : ''}
-            kind={lastContext?.item.kind}
-            dayNumber={lastContext?.day.day_number ?? 1}
-            startTime={lastContext?.item.start_time ?? null}
-            routeLeg={lastContext?.routeLeg ?? { kind: 'none' }}
-            onClose={focusMode.closeFocus}
-          />
+          {lastFocus?.kind === 'hotel' ? (
+            <HotelStayPanel
+              hotelId={lastFocus.hotelId}
+              hotel={tripPlan.hotel}
+              hotelAmenities={hotelAmenities}
+              sessionId={state.sessionId}
+              roomHold={roomHold}
+              holdBelongsToSession={holdBelongsToSession}
+              onClose={focusMode.closeFocus}
+            />
+          ) : (
+            <PlaceDetailPanel
+              placeId={lastFocus?.kind === 'place' ? lastFocus.context.item.reference_id : null}
+              name={lastFocus?.kind === 'place' ? placeNameFromActivity(lastFocus.context.item.activity) : ''}
+              kind={lastFocus?.kind === 'place' ? lastFocus.context.item.kind : undefined}
+              dayNumber={lastFocus?.kind === 'place' ? lastFocus.context.day.day_number : 1}
+              startTime={lastFocus?.kind === 'place' ? lastFocus.context.item.start_time : null}
+              routeLeg={lastFocus?.kind === 'place' ? lastFocus.context.routeLeg : { kind: 'none' }}
+              onClose={focusMode.closeFocus}
+            />
+          )}
         </div>
       </div>
     </div>

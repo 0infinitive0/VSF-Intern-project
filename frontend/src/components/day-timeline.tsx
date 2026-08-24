@@ -23,13 +23,15 @@ export default function DayTimeline({
   hotel,
   focusedId,
   onOpen,
+  onOpenHotel,
   hoveredId,
   onHoverChange,
 }: {
   day: Day
-  hotel: { name?: string | null } | null | undefined
+  hotel: { id?: string | null; name?: string | null } | null | undefined
   focusedId: string | null
   onOpen: (item: DayItem) => void
+  onOpenHotel?: (hotelId: string) => void
   /** Phase 10 map hover sync — optional so this component still works standalone. */
   hoveredId?: string | null
   onHoverChange?: (id: string | null) => void
@@ -60,10 +62,30 @@ export default function DayTimeline({
       <div className="flex flex-col">
         {startPoint && (
           <div
-            className="flex items-center gap-3 py-2 px-[13px] rounded-[16px] bg-glass-2 border border-edge text-[12px] text-on-surface-muted"
+            role={onOpenHotel && hotel?.id ? 'button' : undefined}
+            tabIndex={onOpenHotel && hotel?.id ? 0 : undefined}
+            onClick={() => {
+              if (onOpenHotel && hotel?.id) onOpenHotel(hotel.id)
+            }}
+            onKeyDown={(e) => {
+              if ((e.key === 'Enter' || e.key === ' ') && onOpenHotel && hotel?.id) {
+                e.preventDefault()
+                onOpenHotel(hotel.id)
+              }
+            }}
+            className={`flex items-center gap-3 py-2 px-[13px] rounded-[16px] bg-glass-2 border border-edge text-[12px] text-on-surface-muted transition-all duration-200 ${
+              onOpenHotel && hotel?.id
+                ? 'cursor-pointer hover:bg-glass-3 hover:border-primary/40 hover:text-on-surface'
+                : ''
+            }`}
           >
             <span className="material-symbols-outlined text-[18px] text-primary" aria-hidden="true">hotel</span>
-            <span>{t('dayStartAtHotel', { hotel: startPoint.hotelName })}</span>
+            <span className="flex-1">{t('dayStartAtHotel', { hotel: startPoint.hotelName })}</span>
+            {onOpenHotel && hotel?.id && (
+              <span className="material-symbols-outlined text-[16px] text-on-surface-variant opacity-70" aria-hidden="true">
+                chevron_right
+              </span>
+            )}
           </div>
         )}
         {day.items.map((item, i) => (
@@ -81,10 +103,30 @@ export default function DayTimeline({
         ))}
         {endPoint && (
           <div
-            className="flex items-center gap-3 py-2 px-[13px] rounded-[16px] bg-glass-2 border border-edge text-[12px] text-on-surface-muted"
+            role={onOpenHotel && hotel?.id ? 'button' : undefined}
+            tabIndex={onOpenHotel && hotel?.id ? 0 : undefined}
+            onClick={() => {
+              if (onOpenHotel && hotel?.id) onOpenHotel(hotel.id)
+            }}
+            onKeyDown={(e) => {
+              if ((e.key === 'Enter' || e.key === ' ') && onOpenHotel && hotel?.id) {
+                e.preventDefault()
+                onOpenHotel(hotel.id)
+              }
+            }}
+            className={`flex items-center gap-3 py-2 px-[13px] rounded-[16px] bg-glass-2 border border-edge text-[12px] text-on-surface-muted transition-all duration-200 ${
+              onOpenHotel && hotel?.id
+                ? 'cursor-pointer hover:bg-glass-3 hover:border-primary/40 hover:text-on-surface'
+                : ''
+            }`}
           >
             <span className="material-symbols-outlined text-[18px] text-primary" aria-hidden="true">hotel</span>
-            <span>{t('dayEndAtHotel', { hotel: endPoint.hotelName })}</span>
+            <span className="flex-1">{t('dayEndAtHotel', { hotel: endPoint.hotelName })}</span>
+            {onOpenHotel && hotel?.id && (
+              <span className="material-symbols-outlined text-[16px] text-on-surface-variant opacity-70" aria-hidden="true">
+                chevron_right
+              </span>
+            )}
           </div>
         )}
       </div>
