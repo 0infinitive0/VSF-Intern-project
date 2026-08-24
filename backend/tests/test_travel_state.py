@@ -261,6 +261,23 @@ def test_every_allowed_path_has_a_validator() -> None:
     assert set(_VALIDATORS.keys()) == ALLOWED_PATHS
 
 
+def test_hotel_result_count_accepts_only_two_through_twenty() -> None:
+    accepted = apply_patch(
+        TravelState(),
+        [{"path": "hotel_preferences.result_count", "operation": "set", "value": 12}],
+    )
+    assert accepted.state.get("hotel_preferences.result_count").value == 12
+
+    rejected = apply_patch(
+        TravelState(),
+        [
+            {"path": "hotel_preferences.result_count", "operation": "set", "value": 1},
+            {"path": "hotel_preferences.result_count", "operation": "set", "value": 21},
+        ],
+    )
+    assert len(rejected.rejected) == 2
+
+
 def test_detect_impact_returns_itinerary_day_not_itinerary_for_daily_theme_change() -> None:
     applied = (PatchChange(path="daily_preferences.1.theme", operation="set", value="biển"),)
 

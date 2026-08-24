@@ -66,6 +66,7 @@ _WORKER_NAME = "hotel_node"
 #: the node -- `POST /hotels/select` sets `selected_hotel_id` directly and
 #: never needs an intent.
 _SELECT_HOTEL_INTENT = "select_hotel"
+_DEFAULT_HOTEL_RESULT_COUNT = 5
 _HOTEL_OPTION_LIMIT = 10
 _HOTEL_DISPLAY_LIMIT = 5
 
@@ -462,6 +463,12 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
     max_price = float(max_price_slot.value) if max_price_slot.presence is Presence.SET else None
     target_price_slot = travel_state.get("budget.target")
     target_price = float(target_price_slot.value) if target_price_slot.presence is Presence.SET else None
+    result_count_slot = travel_state.get("hotel_preferences.result_count")
+    result_count = (
+        int(result_count_slot.value)
+        if result_count_slot.presence is Presence.SET
+        else _DEFAULT_HOTEL_RESULT_COUNT
+    )
 
     amenities_slot = travel_state.get("hotel_preferences.amenities")
     preference_records = (
@@ -643,6 +650,7 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
         "budget_min": min_price,
         "budget_max": max_price,
         "budget_target": target_price,
+        "result_count": result_count,
     }
     previous_context = state.get("previous_hotel_search_context") or {}
     previous_options = state.get("previous_hotel_options") or []
@@ -655,7 +663,7 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
 
     try:
         selection_kwargs: dict[str, Any] = {
-            "match_count": _HOTEL_OPTION_LIMIT,
+            "match_count": result_count,
             "min_price": min_price,
             "max_price": max_price,
             "start_date": start_date,
@@ -759,7 +767,7 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
     )
     hotel_options = [*previous_options]
     known_ids = set(previous_ids)
-    for data, _candidate in ranked[:_HOTEL_DISPLAY_LIMIT]:
+    for data, _candidate in ranked[:result_count]:
         hotel_id = str(data.get("id") or "")
         if hotel_id and hotel_id not in known_ids:
             known_ids.add(hotel_id)
@@ -791,7 +799,7 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
         {
             "options": hotel_options,
             "active_preferences": active_preferences,
-            "has_more_hotel_options": len(candidate_pool) > _HOTEL_DISPLAY_LIMIT,
+            "has_more_hotel_options": len(candidate_pool) > result_count,
         },
     )
     result["previous_hotel_options"] = hotel_options

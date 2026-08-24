@@ -137,6 +137,9 @@ _SEA_VIEW_NEGATED_RE = re.compile(
 _EXPLICIT_DATE_RANGE_RE = re.compile(
     r"tu\s+ngay\s+(\d{1,2})/(\d{1,2})/(\d{4})\s+den\s+ngay\s+(\d{1,2})/(\d{1,2})/(\d{4})"
 )
+_BARE_MORE_HOTELS_RE = re.compile(
+    r"^(?:(?:cho|tim|hien|xem|liet\s+ke|goi\s+y)\s+)?(?:them|nhieu\s+hon|show\s+more|more)(?:\s+(?:khach\s+san|hotels?))?\s*[.!?]*$"
+)
 
 _CLOSED_LIST_PATHS: dict[str, tuple[str, ...]] = {
     "preferences.themes": _PREFERENCE_LABELS,
@@ -177,6 +180,26 @@ def _last_human_message(state: TravelGraphState) -> str:
         if getattr(message, "type", None) == "human":
             return str(getattr(message, "content", "") or "")
     return ""
+
+
+def _increment_bare_hotel_result_count(
+    changes: list[dict[str, Any]], message: str, travel_state: TravelState
+) -> list[dict[str, Any]]:
+    """Turn an otherwise-unspecified request for more hotels into +5 cards.
+
+    Explicit counts remain the extractor's job; this guard only handles a
+    bare request such as "xem thêm khách sạn" so it cannot be misread as a
+    new amenity or generic question. The persisted count has the same 20-card
+    ceiling as its travel-state validator.
+    """
+    if not _BARE_MORE_HOTELS_RE.fullmatch(_normalize(message).strip()):
+        return changes
+    current = travel_state.get("hotel_preferences.result_count")
+    current_count = int(current.value) if current.presence is Presence.SET else 5
+    next_count = min(current_count + 5, 20)
+    return [
+        change for change in changes if change.get("path") != "hotel_preferences.result_count"
+    ] + [{"path": "hotel_preferences.result_count", "operation": "set", "value": next_count}]
 
 
 # How much dialogue `build_extract_patch_prompt` carries. Bounded on both axes
@@ -876,6 +899,7 @@ def extract_patch(state: TravelGraphState) -> dict[str, Any]:
     changes = _derive_end_date_from_duration(
         changes, message, travel_state, _earlier_human_messages(state)
     )
+    changes = _increment_bare_hotel_result_count(changes, message, travel_state)
 
     # Persist the day THIS message itself named -- never the carried-over
     # one, or a later turn that also happens to be empty/missing_value but

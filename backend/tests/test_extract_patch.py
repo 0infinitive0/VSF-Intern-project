@@ -128,6 +128,39 @@ def test_valid_response_makes_exactly_one_llm_call(monkeypatch):
     assert result["patch_reason"] == ""
 
 
+def test_bare_more_hotels_increases_the_current_result_count_by_five(monkeypatch):
+    llm = _patch(monkeypatch, _FakeLLM([_payload("general_question", [])]))
+    state = _state(
+        "xem thêm khách sạn",
+        travel_state={"hotel_preferences.result_count": {"presence": "set", "value": 10}},
+    )
+
+    result = extract_patch(state)
+
+    assert result["patch"] == [
+        {"path": "hotel_preferences.result_count", "operation": "set", "value": 15},
+    ]
+    assert llm.call_count == 1
+
+
+def test_explicit_hotel_result_count_is_preserved_for_the_patch_layer(monkeypatch):
+    llm = _patch(
+        monkeypatch,
+        _FakeLLM([
+            _payload(
+                "hotel_search",
+                [{"path": "hotel_preferences.result_count", "operation": "set", "value": 2}],
+            )
+        ]),
+    )
+
+    result = extract_patch(_state("chỉ hiển thị 2 khách sạn"))
+
+    assert result["patch"] == [
+        {"path": "hotel_preferences.result_count", "operation": "set", "value": 2},
+    ]
+
+
 def test_list_valued_amenity_append_is_normalized_into_one_change_per_item(monkeypatch):
     llm = _patch(
         monkeypatch,

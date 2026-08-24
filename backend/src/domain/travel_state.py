@@ -70,6 +70,7 @@ ALLOWED_PATHS: frozenset[str] = frozenset(
         "hotel_preferences.center",
         "hotel_preferences.min_star_rating",  # 1-5 stars (Phase 8)
         "hotel_preferences.min_review_score",  # 0-10 score — a DIFFERENT column
+        "hotel_preferences.result_count",  # 2-20 cards returned by the next hotel search
         "constraints.max_items_per_day",  # Phase 12
         "constraints.max_item_distance_km",  # Phase 12
         "constraints.max_items_by_day.*",  # Phase 12
@@ -101,6 +102,7 @@ IMPACT_MAP: dict[str, tuple[Workflow, ...]] = {
     "hotel_preferences.center": ("hotel",),
     "hotel_preferences.min_star_rating": ("hotel",),
     "hotel_preferences.min_review_score": ("hotel",),
+    "hotel_preferences.result_count": ("hotel",),
     "constraints.max_items_per_day": ("itinerary",),
     "constraints.max_item_distance_km": ("itinerary",),
     "constraints.max_items_by_day.*": ("itinerary_day",),
@@ -724,6 +726,7 @@ _VALIDATORS: dict[str, _Validator] = {
     "hotel_preferences.center": _coordinate_string,
     "hotel_preferences.min_star_rating": _number_range(1, 5),
     "hotel_preferences.min_review_score": _number_range(0, 10),
+    "hotel_preferences.result_count": _int_range(2, 20),
     "constraints.max_items_per_day": _int_range(1, 20),
     "constraints.max_item_distance_km": _number_range(0, 50, inclusive_min=False),
     "constraints.max_items_by_day.*": _validate_daily_max_items,

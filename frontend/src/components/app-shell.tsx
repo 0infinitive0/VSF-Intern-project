@@ -63,13 +63,11 @@ export default function AppShell({
   stage,
   onViewStage,
   hotelOptions,
-  hasMoreHotelOptions,
   hotelsLoading,
   hotelFilterData,
   selectedHotelIndex,
   onSelectHotel,
   onConfirmHotel,
-  onExpandHotelOptions,
   onPreferenceToggle,
   chatWidth,
   onChatResizeStart,
@@ -107,7 +105,6 @@ export default function AppShell({
   stage: StageView
   onViewStage: (stage: StageView) => void
   hotelOptions: HotelOption[]
-  hasMoreHotelOptions: boolean
   hotelsLoading: boolean
   /** Retained alongside hotelOptions (App.tsx) — see stage-hotels.tsx's doc
    * comment for why this can't just be read off `state` directly. */
@@ -115,7 +112,6 @@ export default function AppShell({
   selectedHotelIndex: number | null
   onSelectHotel: (index: number) => void
   onConfirmHotel: (hotel: HotelOption) => void
-  onExpandHotelOptions: () => void
   onPreferenceToggle: (id: string, active: boolean) => void
   chatWidth: number
   onChatResizeStart: (e: MouseEvent) => void
@@ -334,13 +330,11 @@ export default function AppShell({
             stage={stage}
             state={state}
             hotelOptions={hotelOptions}
-            hasMoreHotelOptions={hasMoreHotelOptions}
             hotelsLoading={hotelsLoading}
             hotelFilterData={hotelFilterData}
             selectedHotelIndex={selectedHotelIndex}
             onSelectHotel={onSelectHotel}
             onConfirmHotel={onConfirmHotel}
-            onExpandHotelOptions={onExpandHotelOptions}
             onPreferenceToggle={onPreferenceToggle}
             focusMode={focusMode}
             intakeForm={intakeForm}

@@ -108,6 +108,7 @@ Allowed change paths, one change per fact actually stated (omit anything not men
   sea view/view biển, private beach/bãi biển riêng, airport shuttle/đưa đón sân bay.
 - hotel_preferences.radius_km (number, 0 < n <= 50): search radius in km.
 - hotel_preferences.min_star_rating (number 1-5) / hotel_preferences.min_review_score (number 0-10): two DIFFERENT rating scales -- do not confuse them.
+- hotel_preferences.result_count (integer 2-20): the total number of hotel cards to return. For example, "hiển thị 12 khách sạn" or "show 12 hotels" emits `{{"path":"hotel_preferences.result_count","operation":"set","value":12}}`.
 - daily_preferences.<day_number>.theme (string): a SPECIFIC day's theme/plan, when you can tell which day number. Use this instead of preferences.themes whenever the request is scoped to one day (e.g. "ngày 1 thiên nhiên"); when the day is named by a word instead of a number ("ngày đầu", "hôm đầu", "ngày cuối"), still emit this path with your best guess at the day number -- a deterministic pass corrects it afterward if you guess wrong.
 - locked_days (integer day number, operation "append" or "remove"): the user wants a specific day left untouched during future edits (e.g. "giữ nguyên ngày 2").
 

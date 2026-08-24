@@ -137,7 +137,7 @@ export default function App() {
 function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   const auth = useAuth()
   const { t } = useTranslation()
-  const { state, send, selectHotel: selectHotelDirect, startNew, restore, changeHotel, expandHotelOptions, toggleHotelPreference } = useChatSession()
+  const { state, send, selectHotel: selectHotelDirect, startNew, restore, changeHotel, toggleHotelPreference } = useChatSession()
   const amenityCatalog = useHotelAmenityCatalog()
   const {
     form: intakeForm,
@@ -158,7 +158,6 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
     isFieldFilled(intakeForm, 'people') &&
     isFieldFilled(intakeForm, 'dates')
   const [hotelOptionsBySession, setHotelOptionsBySession] = useState<Record<string, HotelOption[]>>({})
-  const [hotelHasMoreBySession, setHotelHasMoreBySession] = useState<Record<string, boolean>>({})
   // Retained alongside hotelOptions, same lifetime, same trigger (bug fix):
   // a turn that doesn't re-run the hotel search (selecting a hotel, building
   // the itinerary, a qa_node answer) comes back with an empty
@@ -170,7 +169,6 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   const [selectedHotelIndexBySession, setSelectedHotelIndexBySession] = useState<Record<string, number | null>>({})
   const [workspaceTabBySession, setWorkspaceTabBySession] = useState<Record<string, TabKey>>({})
   const retainedHotelOptions = state.sessionId ? (hotelOptionsBySession[state.sessionId] ?? []) : []
-  const retainedHotelHasMore = state.sessionId ? (hotelHasMoreBySession[state.sessionId] ?? false) : false
   const retainedHotelFilterData =
     (state.sessionId ? hotelFilterDataBySession[state.sessionId] : undefined) ?? state.hotelFilterData
   // The root cache is the authoritative label source for cards, filters, and
@@ -435,10 +433,9 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   useEffect(() => {
     if (!state.sessionId || state.hotelOptions.length === 0) return
     setHotelOptionsBySession((current) => ({ ...current, [state.sessionId!]: state.hotelOptions }))
-    setHotelHasMoreBySession((current) => ({ ...current, [state.sessionId!]: state.hasMoreHotelOptions }))
     setHotelFilterDataBySession((current) => ({ ...current, [state.sessionId!]: state.hotelFilterData }))
     setSelectedHotelIndexBySession((current) => ({ ...current, [state.sessionId!]: null }))
-  }, [state.sessionId, state.hotelOptions, state.hotelFilterData, state.hasMoreHotelOptions])
+  }, [state.sessionId, state.hotelOptions, state.hotelFilterData])
 
   function selectHotel(index: number) {
     if (!state.sessionId) return
@@ -706,13 +703,11 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
         stage={displayStage}
         onViewStage={handleSetViewOverride}
         hotelOptions={retainedHotelOptions}
-        hasMoreHotelOptions={retainedHotelHasMore}
         hotelsLoading={state.hotelsLoading}
         hotelFilterData={resolvedHotelFilterData}
         selectedHotelIndex={selectedHotelIndex}
         onSelectHotel={selectHotel}
         onConfirmHotel={handleHotelSelection}
-        onExpandHotelOptions={expandHotelOptions}
         onPreferenceToggle={toggleHotelPreference}
         chatWidth={chatWidth}
         onChatResizeStart={chatResize}

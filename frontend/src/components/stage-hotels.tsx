@@ -67,13 +67,12 @@ function nightsFrom(startIso?: string | null, endIso?: string | null): number | 
 export default function StageHotels({
   state,
   hotelOptions,
-  hasMoreHotelOptions,
   hotelsLoading,
   hotelFilterData,
   selectedIndex,
   onSelectHotel,
   onConfirmHotel,
-  onExpandHotelOptions, onPreferenceToggle,
+  onPreferenceToggle,
   focusMode,
   theme,
   roomHold,
@@ -81,13 +80,11 @@ export default function StageHotels({
 }: {
   state: ChatState
   hotelOptions: HotelOption[]
-  hasMoreHotelOptions: boolean
   hotelsLoading: boolean
   hotelFilterData: HotelFilterData
   selectedIndex: number | null
   onSelectHotel: (index: number) => void
   onConfirmHotel: (hotel: HotelOption) => void
-  onExpandHotelOptions: () => void
   onPreferenceToggle: (id: string, active: boolean) => void
   focusMode: FocusModeApi
   theme: Theme
@@ -346,19 +343,6 @@ export default function StageHotels({
             hoveredId={mapSync.hoveredId}
             onHoverChange={mapSync.setHoveredId}
           />
-          {hasMoreHotelOptions && (
-            <div className="flex justify-center pb-1">
-              <button
-                type="button"
-                disabled={hotelsLoading}
-                onClick={onExpandHotelOptions}
-                className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary-soft px-4 py-2 text-[13px] font-[560] text-primary transition hover:bg-primary-soft/70 disabled:cursor-wait disabled:opacity-60"
-              >
-                <span className="material-symbols-outlined text-[18px]" aria-hidden="true">expand_more</span>
-                {hotelsLoading ? t('hotelLoadMoreLoading') : t('hotelLoadMore')}
-              </button>
-            </div>
-          )}
           {filteredHotels.length === 0 && (
             <p className="px-3 text-center text-[12px] text-on-surface-muted" role="status">
               {t('hotelFiltersNoResults')}

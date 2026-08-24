@@ -189,8 +189,27 @@ def test_successful_search_populates_hotel_search_result_for_respond(monkeypatch
     entry = result["task_results"][-1]
     assert entry["status"] == "ok"
     assert [option["id"] for option in entry["hotel_search_result"]["options"]] == ["h1", "h2", "h3", "h4", "h5"]
-    assert captured["match_count"] == 10
+    assert captured["match_count"] == 5
     assert result["pending_tasks"] == []
+
+
+def test_hotel_search_uses_the_requested_result_count(monkeypatch):
+    captured: dict = {}
+
+    def _select(*_args, **kwargs):
+        captured.update(kwargs)
+        return [_option(f"h{index}") for index in range(1, 21)]
+
+    monkeypatch.setattr(hotel_node_module, "_get_destination_id", lambda _d: "dest-1")
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _select)
+    monkeypatch.setattr(hotel_node_module, "rank_hotel_candidates", lambda options, **_k: options)
+
+    result = hotel_node(_graph_state(_seeded_travel_state(hotel_preferences__result_count=12)))
+
+    options = result["task_results"][-1]["hotel_search_result"]["options"]
+    assert captured["match_count"] == 12
+    assert [option["id"] for option in options] == [f"h{index}" for index in range(1, 13)]
+    assert result["previous_hotel_search_context"]["result_count"] == 12
 
 
 def test_preference_update_replaces_retained_cards_with_a_fresh_five(monkeypatch):
