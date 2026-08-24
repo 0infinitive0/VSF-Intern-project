@@ -99,13 +99,16 @@ for (const [i, id] of WALK_LAYER_IDS.entries()) {
     color: '#fff', // inert — line-gradient (pulse, below) replaces line-color
     opacityFn: mainOpacityExpr,
     widthFn: mainWidthExpr,
-    // Longer than the first pass (halfWidth 0.009 -> 0.016 — "dài ra 1
-    // chút") with a large capFraction (0.6, vs drive's crisp 0.18 default —
-    // "bo tròn các góc") so each mark is mostly rounded cap with just a
-    // short flat shaft — a pill, not a rectangle. Fewer of them (14 -> 9) so
-    // the longer marks don't run into each other, which reads calmer/
-    // smoother than a dense train of short marks.
-    pulse: { count: 9, halfWidth: 0.016, color: LEG_COLORS[i], capFraction: 0.6 },
+    // Matches the design reference: separate rounded-rectangle "capsule/pill"
+    // marks with a clearly visible flat body AND clearly visible rounded
+    // ends — not a soft blurred dot (capFraction 0.6's mistake: nearly the
+    // whole mark was alpha-fade, no flat core) and not a flat bar with only
+    // a faint nub (0.2's mistake: rounding too subtle to read as a pill).
+    // capFraction 0.38 leaves a clear flat shaft (~62% of the mark) flanked
+    // by two visibly curved ends. halfWidth 0.032 with 9 marks keeps a real
+    // gap between capsules (dash:gap ≈ 1.35:1) so they read as distinct
+    // pills in a row, not a continuous dashed line.
+    pulse: { count: 9, halfWidth: 0.032, color: LEG_COLORS[i], capFraction: 0.38 },
   }
 }
 
