@@ -620,6 +620,20 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
         "start_date": start_date,
         "end_date": end_date,
         "people": people,
+        # Retaining cards is only correct when every constraint and every
+        # ranking input is identical.  The old four-field context missed hotel
+        # preferences, so a changed amenity appended newly-ranked cards to a
+        # stale list and made the display grow 5 -> 10 -> 15 without Expand.
+        "required_amenities": sorted(required_amenities),
+        "excluded_amenities": sorted(excluded_amenities),
+        "preferred_amenities": sorted(preferred_amenities),
+        "min_star_rating": min_star_rating,
+        "min_review_score": min_review_score,
+        "radius_km": max_radius_km,
+        "center": str(center_slot.value) if center_slot.presence is Presence.SET else None,
+        "budget_min": min_price,
+        "budget_max": max_price,
+        "budget_target": target_price,
     }
     previous_context = state.get("previous_hotel_search_context") or {}
     previous_options = state.get("previous_hotel_options") or []
@@ -646,7 +660,10 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
             "min_review_score": min_review_score,
             "min_guests": people_count,
         }
-        if previous_ids:
+        # Existing cards are excluded only by the explicit append path.  A
+        # changed requirement must rank the entire candidate set again: a card
+        # that matched the former preference can be the best match now too.
+        if previous_ids and state.get("expand_hotel_options"):
             selection_kwargs["exclude_hotel_ids"] = previous_ids
         try:
             options = select_hotel_candidates(

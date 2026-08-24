@@ -193,19 +193,22 @@ def test_successful_search_populates_hotel_search_result_for_respond(monkeypatch
     assert result["pending_tasks"] == []
 
 
-def test_preference_update_retains_prior_cards_and_appends_unseen_matches(monkeypatch):
+def test_preference_update_replaces_retained_cards_with_a_fresh_five(monkeypatch):
     captured: dict = {}
 
     def _select(*_args, **kwargs):
         captured.update(kwargs)
-        return [_option("h6"), _option("h7")]
+        return [_option(f"h{index}") for index in range(1, 6)]
 
     monkeypatch.setattr(hotel_node_module, "_get_destination_id", lambda _d: "dest-1")
     monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _select)
     monkeypatch.setattr(hotel_node_module, "rank_hotel_candidates", lambda options, **_k: options)
 
-    state = _graph_state(_seeded_travel_state(hotel_preferences__amenities=["swimming_pool"]))
-    state["previous_hotel_options"] = [_option(f"h{index}")[0] for index in range(1, 6)]
+    state = _graph_state(_seeded_travel_state(hotel_preferences__amenities=["spa"]))
+    state["previous_hotel_options"] = [
+        {**_option(f"old-{index}")[0], "match_score": 0.1, "amenity_match": {"required": ["swimming_pool"]}}
+        for index in range(1, 6)
+    ]
     state["previous_hotel_search_context"] = {
         "destination_id": "dest-1",
         "start_date": "2099-01-01",
@@ -215,15 +218,13 @@ def test_preference_update_retains_prior_cards_and_appends_unseen_matches(monkey
 
     result = hotel_node(state)
 
-    assert captured["exclude_hotel_ids"] == ["h1", "h2", "h3", "h4", "h5"]
+    assert "exclude_hotel_ids" not in captured
     assert [option["id"] for option in result["task_results"][-1]["hotel_search_result"]["options"]] == [
         "h1",
         "h2",
         "h3",
         "h4",
         "h5",
-        "h6",
-        "h7",
     ]
 
 
@@ -573,7 +574,7 @@ def test_radius_resumed_with_an_unrelated_reply_is_replayed_as_a_fresh_turn(monk
 # ---------------------------------------------------------------------------
 
 
-def test_a_filter_satisfied_only_by_already_shown_hotels_is_not_reported_impossible(monkeypatch):
+def test_non_expand_searches_do_not_exclude_existing_hotels(monkeypatch):
     calls: list[dict] = []
 
     def _select(*_args, **kwargs):
@@ -587,8 +588,8 @@ def test_a_filter_satisfied_only_by_already_shown_hotels_is_not_reported_impossi
 
     state = _graph_state(_seeded_travel_state(hotel_preferences__amenities=["breakfast"]))
     state["previous_hotel_options"] = [{"id": "h1", "name": "Hotel h1", "rank": 1}]
-    # Must match hotel_node's own current_search_context exactly, or the
-    # cards are treated as belonging to a different search and dropped.
+    # A normal fresh search must rank the full candidate set.  Only the explicit
+    # expand path is allowed to exclude cards already displayed.
     state["previous_hotel_search_context"] = {
         "destination_id": "dest-1",
         "start_date": "2099-01-01",
@@ -600,11 +601,9 @@ def test_a_filter_satisfied_only_by_already_shown_hotels_is_not_reported_impossi
 
     entry = result["task_results"][-1]
     assert entry["status"] == "ok", f"still reported a binding constraint: {entry}"
-    # Retried once, and the retry dropped the exclusion rather than the filter.
-    assert len(calls) == 2
-    assert "exclude_hotel_ids" in calls[0]
-    assert "exclude_hotel_ids" not in calls[1]
-    assert calls[1]["required_amenities"] == ["breakfast"]
+    assert len(calls) == 1
+    assert "exclude_hotel_ids" not in calls[0]
+    assert calls[0]["required_amenities"] == ["breakfast"]
 
 
 def test_a_genuinely_unsatisfiable_filter_still_reports_the_constraint(monkeypatch):
