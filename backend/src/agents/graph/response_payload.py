@@ -119,6 +119,32 @@ def durable_hotel_options(state: TravelGraphState) -> list[dict[str, Any]]:
     return hotel_options_from_task_results(state)
 
 
+def hotel_options_from_trip_data(trip_data: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Minimal single-entry hotel_options built from a hydrated trip_data's
+    own hotel row — the durable-DB fallback for a session whose graph
+    checkpoint was TTL-evicted (`SessionRegistry.evict_expired`,
+    `agents/session.py`; `ItineraryStore.load_session_trip_data_by_session`,
+    `services/itinerary_store.py`), used by `routes.py`'s `restore_session`
+    and `turn_runner.py`'s `run_turn` once they've recovered `trip_data`
+    that way. `durable_hotel_options` above has nothing to fall back on in
+    that case: `previous_hotel_options`/`task_results` live in the SAME
+    pruned checkpoint, not the durable DB row this reads instead.
+
+    Not a real search result (no match_score/match_reasons/pricing-at-
+    these-dates) — the goal here is only to satisfy the frontend's
+    hotelOptionsAvailable/hotelPicked gates (`phase-navigation.ts`) so the
+    Hotels/Itinerary step-navigator tabs unlock again, same reasoning
+    `durable_hotel_options`'s own doc comment gives for never trying to
+    resurrect the actual stale search list. Reuses `to_hotel_options_payload`
+    so the shape (index numbering, computed `display_amenities`) matches
+    every other hotel_options source exactly.
+    """
+    hotel = (trip_data or {}).get("hotel")
+    if not isinstance(hotel, dict) or not hotel.get("id") or not hotel.get("name"):
+        return []
+    return [option.model_dump() for option in to_hotel_options_payload({"options": [hotel]})]
+
+
 def last_worker_from_task_results(state: TravelGraphState) -> tuple[str, str] | None:
     """`(worker, status)` of this turn's last recorded action, or `None`.
 

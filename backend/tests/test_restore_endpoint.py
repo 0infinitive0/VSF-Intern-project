@@ -195,6 +195,111 @@ class TestSharedWithRespond:
         assert payload.intake.missing == live["intake"].missing
 
 
+class _FakeItineraryStore:
+    """Stands in for `ItineraryStore.from_default()` — avoids constructing a
+    real Supabase client/embeddings model in a unit test. `calls` records
+    every `session_id` the fallback actually asked for, so a test can assert
+    the durable lookup was (or was NOT) attempted."""
+
+    def __init__(self, trip_data: dict[str, Any] | None = None, error: Exception | None = None) -> None:
+        self._trip_data = trip_data
+        self._error = error
+        self.calls: list[str] = []
+
+    def load_session_trip_data_by_session(self, session_id: str) -> dict[str, Any] | None:
+        self.calls.append(session_id)
+        if self._error is not None:
+            raise self._error
+        return self._trip_data
+
+
+_RECOVERED_TRIP_DATA = {
+    "hotel": {"id": "hotel-1", "name": "Vinpearl Resort", "coordinates": "16.05,108.20"},
+    "itineraries": [{"id": "it-1", "destination_id": "d-1", "duration_days": 3, "status": "Draft"}],
+    "itinerary_items": [],
+}
+
+
+class TestCheckpointEvictedFallback:
+    """`SessionRegistry.evict_expired()` (session.py) deletes the LangGraph
+    checkpoint for any session idle past SESSION_TTL_SECONDS (default 2h) —
+    `app.get_state(...)` then comes back with `values={}` even though the
+    session's itinerary/hotel are still sitting in Supabase, untouched (no
+    TTL on `itineraries`/`itinerary_items`/`hotels`). Before this fix,
+    `restore_session` had no fallback for that case at all and silently
+    returned `trip_plan: null` / `hotel_options: []`, which locks the
+    Hotels/Itinerary step-navigator tabs on the frontend
+    (phase-navigation.ts's navigationTarget) with no error anywhere."""
+
+    def test_recovers_trip_plan_and_hotel_options_from_the_durable_itinerary(
+        self, restored, monkeypatch: pytest.MonkeyPatch
+    ):
+        fake_store = _FakeItineraryStore(trip_data=_RECOVERED_TRIP_DATA)
+        monkeypatch.setattr(
+            "src.services.itinerary_store.ItineraryStore.from_default",
+            classmethod(lambda cls: fake_store),
+        )
+
+        payload = restored(state={})  # empty values -- checkpoint gone
+
+        assert fake_store.calls == ["s1"]
+        assert payload.trip_plan is not None
+        assert [o.name for o in payload.hotel_options] == ["Vinpearl Resort"]
+        assert payload.stage == "planned"
+
+    def test_a_session_that_genuinely_never_built_a_trip_still_restores_empty(
+        self, restored, monkeypatch: pytest.MonkeyPatch
+    ):
+        """The fallback lookup itself finding nothing (no itinerary row for
+        this session) must degrade to the pre-fix behavior, not error."""
+        fake_store = _FakeItineraryStore(trip_data=None)
+        monkeypatch.setattr(
+            "src.services.itinerary_store.ItineraryStore.from_default",
+            classmethod(lambda cls: fake_store),
+        )
+
+        payload = restored(state={})
+
+        assert fake_store.calls == ["s1"]
+        assert payload.trip_plan is None
+        assert payload.hotel_options == []
+
+    def test_a_durable_lookup_failure_does_not_fail_the_whole_restore(
+        self, restored, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Same best-effort contract as the transcript's own Supabase-outage
+        fallback above — losing the recovery attempt costs the recovery,
+        never the whole panel."""
+        from src.services.itinerary_store import ItineraryStoreError
+
+        fake_store = _FakeItineraryStore(error=ItineraryStoreError("supabase unreachable"))
+        monkeypatch.setattr(
+            "src.services.itinerary_store.ItineraryStore.from_default",
+            classmethod(lambda cls: fake_store),
+        )
+
+        payload = restored(state={})
+
+        assert payload.trip_plan is None
+        assert payload.session_id == "s1"
+
+    def test_an_intact_checkpoint_never_triggers_the_durable_lookup(
+        self, restored, monkeypatch: pytest.MonkeyPatch
+    ):
+        """The common case (checkpoint still alive) must not pay for an
+        extra Supabase round trip it doesn't need."""
+        fake_store = _FakeItineraryStore(trip_data=_RECOVERED_TRIP_DATA)
+        monkeypatch.setattr(
+            "src.services.itinerary_store.ItineraryStore.from_default",
+            classmethod(lambda cls: fake_store),
+        )
+
+        payload = restored(state={"travel_state": _travel_state(), "trip_data": {"destination": "Đà Nẵng"}})
+
+        assert fake_store.calls == []
+        assert payload.stage == "planned"
+
+
 class TestHotelListSurvivesAReload:
     """The actual bug: `task_results[-1]` is whatever the session's LAST
     action happened to be, and for anyone past the search step that is an

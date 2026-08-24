@@ -43,6 +43,7 @@ from src.agents.graph.nodes.load_context import load_context
 from src.agents.graph.response_payload import (
     derive_stage,
     durable_hotel_options,
+    hotel_options_from_trip_data,
     intake_status_from_travel_state,
     last_worker_from_task_results,
 )
@@ -607,8 +608,27 @@ def restore_session(
 
     app = _get_graph_v2()
     state = app.get_state({"configurable": {"thread_id": session_id}}).values or {}
+    if not state.get("trip_data"):
+        # Checkpoint TTL-evicted (SessionRegistry.evict_expired, session.py,
+        # default 2h idle) -- the itinerary/hotel a guest already built are
+        # still durable in Supabase (itineraries.session_id has no TTL),
+        # only the graph checkpoint holding trip_data is gone. Without this,
+        # a session idle past SESSION_TTL_SECONDS restores with
+        # trip_plan: null / hotel_options: [] and no error anywhere, which
+        # silently locks the guest out of the Hotels/Itinerary
+        # step-navigator tabs (phase-navigation.ts's navigationTarget) even
+        # though their chat transcript below is still fully intact.
+        from src.services.itinerary_store import ItineraryStore, ItineraryStoreError
+
+        try:
+            recovered = ItineraryStore.from_default().load_session_trip_data_by_session(session_id)
+        except ItineraryStoreError:
+            logger.exception("Session trip_data recovery failed for %s", session_id)
+            recovered = None
+        if recovered:
+            state = {**state, "trip_data": recovered}
     travel_state = TravelState.from_dict(state.get("travel_state"))
-    hotel_options = durable_hotel_options(state)
+    hotel_options = durable_hotel_options(state) or hotel_options_from_trip_data(state.get("trip_data"))
 
     return SessionRestorePayload(
         session_id=session_id,

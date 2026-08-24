@@ -252,6 +252,44 @@ class ItineraryStore:
             hydrated_items.append(hydrated)
         return {"hotel": hotel, "itineraries": [itinerary], "itinerary_items": hydrated_items}
 
+    def load_session_trip_data_by_session(self, session_id: str) -> dict[str, Any] | None:
+        """Durable fallback for a session whose LangGraph checkpoint is gone.
+
+        `SessionRegistry.evict_expired()` (agents/session.py) deletes a
+        session's checkpoint thread after `SESSION_TTL_SECONDS` (default 2h)
+        idle -- the graph plane's ONLY copy of `trip_data` with the current
+        (v3) schema. `itineraries.session_id` (`database_schema.sql`) has no
+        TTL of its own, so the itinerary a guest already built survives that
+        prune untouched; this just finds it and hands off to
+        `load_session_trip_data`, the same hydration `session.py`'s legacy
+        rehydration path already uses -- callers (routes.py's
+        `restore_session`, turn_runner.py's `run_turn`) are the current-
+        schema equivalent that path's own comment says was deliberately left
+        without one ("nothing on the HTTP path reads and nothing keeps
+        current" was true for `TripSession.state`, never for a pruned
+        checkpoint with no state at all to disagree with).
+
+        Picks the most recently updated itinerary for the session if more
+        than one exists (e.g. a duplicated trip) -- returns None when the
+        session genuinely never built one, same as `load_session_trip_data`
+        does for an unknown id.
+        """
+        try:
+            response = (
+                self._client.table("itineraries")
+                .select("id")
+                .eq("session_id", session_id)
+                .order("updated_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            row = _first(getattr(response, "data", None))
+        except Exception as exc:
+            raise ItineraryStoreError(f"Session itinerary lookup failed: {exc}") from exc
+        if not row or not row.get("id"):
+            return None
+        return self.load_session_trip_data(str(row["id"]))
+
     @staticmethod
     def _itinerary_record(trip_data: Mapping[str, Any]) -> dict[str, Any]:
         itineraries = trip_data.get("itineraries") or []

@@ -324,6 +324,31 @@ def run_turn(
 
     with collecting_trace() as trace:
         snapshot = app.get_state(config)
+        if not snapshot.values:
+            # Checkpoint TTL-evicted (SessionRegistry.evict_expired,
+            # agents/session.py, default 2h idle) -- this thread's ONLY copy
+            # of trip_data with the current (v3) schema. The itinerary/hotel
+            # a guest already built are still durable in Supabase
+            # (itineraries.session_id has no TTL), so recover it the same
+            # way routes.py's restore_session does, rather than letting this
+            # turn run as if the guest never built a trip at all (every tool
+            # that reads trip_data from state -- modify_trip_plan included --
+            # would otherwise report "Chưa có kế hoạch chuyến đi" for a trip
+            # that, from the guest's chat transcript, plainly still exists).
+            # extra_state is the existing "merge into this turn's input"
+            # channel (selected_hotel_id from POST /hotels/select uses the
+            # same one) -- reused here rather than adding a second path.
+            # snapshot.interrupts is necessarily empty too when values is
+            # empty, so this can't affect the resume branch below.
+            from src.services.itinerary_store import ItineraryStore, ItineraryStoreError
+
+            try:
+                recovered = ItineraryStore.from_default().load_session_trip_data_by_session(session_id)
+            except ItineraryStoreError:
+                logger.exception("Session trip_data recovery failed for %s", session_id)
+                recovered = None
+            if recovered:
+                extra_state = {**(extra_state or {}), "trip_data": recovered}
         if snapshot.interrupts:
             result = _drive_turn(app, config, Command(resume=message), stream=stream)
             unresolved = result.get("unresolved_resume_text")
