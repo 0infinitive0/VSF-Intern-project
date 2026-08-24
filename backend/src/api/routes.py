@@ -64,7 +64,7 @@ from src.api.streaming import (
 )
 from src.auth import AuthenticatedUser, get_current_user
 from src.config import get_settings
-from src.domain.travel_state import TravelState
+from src.domain.travel_state import TravelState, apply_patch
 from src.models.schemas import (
     AmenityCatalogPayload,
     AttractionDetailPayload,
@@ -77,6 +77,7 @@ from src.models.schemas import (
     CreateVnpayPaymentResponse,
     FinalizeTripPayload,
     HotelDetailPayload,
+    HotelPreferenceToggleRequest,
     hotel_amenities_from_hotel_options,
     PaymentPayload,
     PlannerChatRequest,
@@ -748,7 +749,58 @@ def expand_hotel_options(
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-def _rerun_hotel_search(session_id: str, *, expand_hotel_options: bool = False) -> PlannerChatResponse:
+def _snapshot_hotel_response(session_id: str, state: dict[str, Any]) -> PlannerChatResponse:
+    response = state.get("response")
+    if isinstance(response, dict):
+        return PlannerChatResponse(**response)
+    return PlannerChatResponse(session_id=session_id, reply="", stage="intake")
+
+
+@router.post("/hotels/preferences", response_model=PlannerChatResponse)
+def toggle_hotel_preference(
+    request: HotelPreferenceToggleRequest, current_user: AuthenticatedUser | None = Depends(get_current_user)
+) -> PlannerChatResponse:
+    """Apply a reversible amenity-pill toggle and re-enter hotel_node without an LLM."""
+    session_id = str(request.session_id)
+    registry.evict_expired()
+    session = _owned_session_or_404(session_id, current_user)
+
+    with session.lock:
+        app = _get_graph_v2()
+        snapshot = app.get_state({"configurable": {"thread_id": session_id}})
+        state = snapshot.values or {}
+        if is_trip_finalized(state.get("trip_data")):
+            raise HTTPException(status_code=409, detail="Lịch trình đã hoàn tất và không thể chỉnh sửa.")
+        if not isinstance(state.get("previous_hotel_search_context"), dict):
+            return _snapshot_hotel_response(session_id, state)
+
+        travel_state = TravelState.from_dict(state.get("travel_state"))
+        amenities = travel_state.get("hotel_preferences.amenities")
+        if not isinstance(amenities.value, list):
+            return _snapshot_hotel_response(session_id, state)
+        updated = [
+            {**record, "active": request.active}
+            if isinstance(record, dict) and record.get("id") == request.amenity_id
+            else record
+            for record in amenities.value
+        ]
+        if updated == amenities.value:
+            return _snapshot_hotel_response(session_id, state)
+        patched = apply_patch(travel_state, [{
+            "path": "hotel_preferences.amenities", "operation": "set", "value": updated,
+        }])
+        if patched.rejected:
+            return _snapshot_hotel_response(session_id, state)
+        try:
+            return _rerun_hotel_search(session_id, travel_state=patched.state.to_dict())
+        except Exception as exc:
+            logger.exception("Hotel-preference toggle error for session %s", session_id)
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+def _rerun_hotel_search(
+    session_id: str, *, expand_hotel_options: bool = False, travel_state: dict[str, Any] | None = None
+) -> PlannerChatResponse:
     """Re-enter the graph directly at `hotel_node`.
 
     This endpoint carries no user text — "rebuild the hotel list" is the whole
@@ -777,6 +829,8 @@ def _rerun_hotel_search(session_id: str, *, expand_hotel_options: bool = False) 
     snapshot = app.get_state(config)
 
     update = load_context(snapshot.values or {})
+    if travel_state is not None:
+        update["travel_state"] = travel_state
     if expand_hotel_options:
         update["expand_hotel_options"] = True
     result = app.invoke(Command(goto="hotel_node", update=update), config=config)

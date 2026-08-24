@@ -474,7 +474,10 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
     preferred_amenities: list[str] = []
     unresolved_amenities = list(state.get("unresolved_amenities") or [])
     labels_by_id = _amenity_catalog_labels()
-    active_preferences: list[dict[str, str]] = []
+    # Despite the wire name, this is the complete pill history for the current
+    # hotel search.  Each record's `active` flag decides whether it affects the
+    # search; inactive records stay here so the client can offer re-activation.
+    active_preferences: list[dict[str, Any]] = []
     updated_travel_state_dict: dict[str, Any] | None = None
     rebound_records: list[dict[str, Any]] = []
     upgraded_legacy_records = False
@@ -482,6 +485,7 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
         amenity_id = str(record.get("id") or "")
         source_phrase = str(record.get("source_phrase") or amenity_id)
         polarity = str(record.get("polarity") or "require")
+        active = record.get("active", True) is True
         # Schema-v1 read-through records carry confidence 0 and may still hold
         # the user's raw phrase as `id`; rebind those once for compatibility.
         ids = [amenity_id]
@@ -505,25 +509,30 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
                     "polarity": polarity,
                     "source_phrase": source_phrase,
                     "confidence": 1.0,
+                    "active": active,
                 })
-            target = {
-                "require": required_amenities,
-                "exclude": excluded_amenities,
-                "prefer": preferred_amenities,
-            }.get(polarity, required_amenities)
-            if resolved_id not in target:
-                target.append(resolved_id)
+            if active:
+                target = {
+                    "require": required_amenities,
+                    "exclude": excluded_amenities,
+                    "prefer": preferred_amenities,
+                }.get(polarity, required_amenities)
+                if resolved_id not in target:
+                    target.append(resolved_id)
             active_preferences.append({
                 "id": resolved_id,
                 "label": labels_by_id.get(resolved_id, str(record.get("label") or resolved_id)),
                 "polarity": polarity,
+                "active": active,
             })
     if upgraded_legacy_records:
-        upgraded = apply_patch(travel_state, [{
-            "path": "hotel_preferences.amenities",
-            "operation": "set",
-            "value": rebound_records,
-        }])
+        # This is a one-time schema-v1 migration, not the user's "replace my
+        # preferences" intent.  Clear the raw legacy records first so the
+        # non-destructive set semantics do not retain them as inactive pills.
+        upgraded = apply_patch(travel_state, [
+            {"path": "hotel_preferences.amenities", "operation": "unset"},
+            {"path": "hotel_preferences.amenities", "operation": "set", "value": rebound_records},
+        ])
         travel_state = upgraded.state
         updated_travel_state_dict = travel_state.to_dict()
     # Surfaced rather than silently dropped (review finding): a term that

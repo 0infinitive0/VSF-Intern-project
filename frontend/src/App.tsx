@@ -137,7 +137,7 @@ export default function App() {
 function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   const auth = useAuth()
   const { t } = useTranslation()
-  const { state, send, selectHotel: selectHotelDirect, startNew, restore, changeHotel, expandHotelOptions } = useChatSession()
+  const { state, send, selectHotel: selectHotelDirect, startNew, restore, changeHotel, expandHotelOptions, toggleHotelPreference } = useChatSession()
   const amenityCatalog = useHotelAmenityCatalog()
   const {
     form: intakeForm,
@@ -713,6 +713,7 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
         onSelectHotel={selectHotel}
         onConfirmHotel={handleHotelSelection}
         onExpandHotelOptions={expandHotelOptions}
+        onPreferenceToggle={toggleHotelPreference}
         chatWidth={chatWidth}
         onChatResizeStart={chatResize}
         intakeForm={intakeForm}

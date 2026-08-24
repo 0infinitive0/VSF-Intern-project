@@ -149,3 +149,9 @@ export async function changeHotel(sessionId: string): Promise<PlannerChatRespons
 export async function expandHotelOptions(sessionId: string): Promise<PlannerChatResponse> {
   return request('POST', '/hotels/expand', { session_id: sessionId })
 }
+
+export async function toggleHotelPreference(
+  sessionId: string, amenityId: string, active: boolean,
+): Promise<PlannerChatResponse> {
+  return request('POST', '/hotels/preferences', { session_id: sessionId, amenity_id: amenityId, active })
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { activeAmenityPills, displayAmenityLabels, filterAndSortHotels, hotelPriceBounds, resolveAmenityCatalog, roundedPriceSliderBounds, sortAmenityLabels, type HotelFilterState } from './hotel-filters'
-import type { AmenityCatalogOption, HotelOption, PreferencePayload } from '../types'
+import type { ActivePreferencePayload, AmenityCatalogOption, HotelOption } from '../types'
 import { hotelOption } from '../test-fixtures'
 
 const HOTELS: HotelOption[] = [
@@ -13,7 +13,6 @@ const DEFAULT_FILTERS: HotelFilterState = {
   minPrice: null,
   maxPrice: null,
   minStars: null,
-  preferenceIds: [],
   sortOrder: 'match',
 }
 
@@ -22,30 +21,29 @@ describe('filterAndSortHotels', () => {
     expect(filterAndSortHotels(HOTELS, DEFAULT_FILTERS).map((hotel) => hotel.index)).toEqual([1, 2, 3])
   })
 
-  it('applies price, minimum-star, and API preference filters without excluding unknown prices', () => {
+  it('applies price and minimum-star filters without excluding unknown prices', () => {
     const result = filterAndSortHotels(HOTELS, {
       ...DEFAULT_FILTERS,
       maxPrice: 1_000_000,
       minStars: 3,
-      preferenceIds: ['breakfast'],
     })
 
-    expect(result.map((hotel) => hotel.index)).toEqual([3])
+    expect(result.map((hotel) => hotel.index)).toEqual([2, 3])
   })
 
-  it('filters by canonical amenity IDs', () => {
+  it('keeps server-returned amenities visible without client-side re-filtering', () => {
     const result = filterAndSortHotels(
       [hotelOption({ index: 4, name: 'Catalog-only wifi', amenities: ['wifi'] })],
-      { ...DEFAULT_FILTERS, preferenceIds: ['wifi'] },
+      DEFAULT_FILTERS,
     )
 
     expect(result.map((hotel) => hotel.index)).toEqual([4])
   })
 
-  it('does not use the removed legacy preferences field as an amenity source', () => {
+  it('does not inspect the removed legacy preferences field', () => {
     const legacyOnlyHotel = Object.assign(hotelOption({ index: 5, amenities: [] }), { preferences: ['wifi'] })
 
-    expect(filterAndSortHotels([legacyOnlyHotel], { ...DEFAULT_FILTERS, preferenceIds: ['wifi'] })).toEqual([])
+    expect(filterAndSortHotels([legacyOnlyHotel], DEFAULT_FILTERS)).toEqual([legacyOnlyHotel])
   })
 
   it('applies both ends of the price range', () => {
@@ -71,9 +69,9 @@ describe('filterAndSortHotels', () => {
 })
 
 describe('activeAmenityPills', () => {
-  const active: PreferencePayload[] = [
-    { id: 'swimming_pool', label: 'generated pool label' },
-    { id: 'breakfast', label: 'generated breakfast label' },
+  const active: ActivePreferencePayload[] = [
+    { id: 'swimming_pool', label: 'generated pool label', polarity: 'require', active: true },
+    { id: 'breakfast', label: 'generated breakfast label', polarity: 'require', active: false },
   ]
   const catalog: AmenityCatalogOption[] = [
     { id: 'swimming_pool', label_vi: 'Hồ bơi', label_en: 'Swimming pool', category: 'wellness', icon_key: 'pool' },
@@ -83,8 +81,8 @@ describe('activeAmenityPills', () => {
 
   it('shows only user-requested hotel amenities and resolves their labels from the catalog', () => {
     expect(activeAmenityPills(active, catalog, 'vi')).toEqual([
-      { id: 'swimming_pool', label: 'Hồ bơi' },
-      { id: 'breakfast', label: 'Bao gồm bữa sáng' },
+      { id: 'swimming_pool', label: 'Hồ bơi', polarity: 'require', active: true },
+      { id: 'breakfast', label: 'Bao gồm bữa sáng', polarity: 'require', active: false },
     ])
   })
 

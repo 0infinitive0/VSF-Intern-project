@@ -13,7 +13,7 @@ export interface paths {
         };
         /**
          * Hotel Amenity Catalog
-         * @description Return approved hotel-scoped catalog entries for client-side filtering.
+         * @description Return every approved amenity catalog entry for client-side labels.
          */
         get: operations["hotel_amenity_catalog_api_v1_hotel_amenities_get"];
         put?: never;
@@ -468,6 +468,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hotels/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Toggle Hotel Preference
+         * @description Apply a reversible amenity-pill toggle and re-enter hotel_node without an LLM.
+         */
+        post: operations["toggle_hotel_preference_api_v1_hotels_preferences_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chat": {
         parameters: {
             query?: never;
@@ -612,6 +632,11 @@ export interface components {
              * @enum {string}
              */
             polarity: "require" | "exclude" | "prefer";
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
         };
         /**
          * AmenityCatalogPayload
@@ -1036,6 +1061,18 @@ export interface components {
             match_reasons: components["schemas"]["MatchReasonPayload"][];
             /** City */
             city: string | null;
+        };
+        /** HotelPreferenceToggleRequest */
+        HotelPreferenceToggleRequest: {
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+            /** Amenity Id */
+            amenity_id: string;
+            /** Active */
+            active: boolean;
         };
         /**
          * IntakeStatus
@@ -2204,6 +2241,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ChangeHotelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlannerChatResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    toggle_hotel_preference_api_v1_hotels_preferences_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HotelPreferenceToggleRequest"];
             };
         };
         responses: {

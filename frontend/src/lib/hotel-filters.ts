@@ -1,4 +1,4 @@
-import type { AmenityCatalogOption, HotelOption, PreferencePayload } from '../types'
+import type { ActivePreferencePayload, AmenityCatalogOption, HotelOption } from '../types'
 
 export type HotelSortOrder = 'match' | 'priceAsc' | 'priceDesc'
 
@@ -8,16 +8,15 @@ export interface HotelFilterState {
   minPrice: number | null
   maxPrice: number | null
   minStars: number | null
-  preferenceIds: string[]
   sortOrder: HotelSortOrder
 }
 
 /** Resolve the user's active hotel-amenity IDs through the approved catalog. */
 export function activeAmenityPills(
-  activePreferences: PreferencePayload[],
+  activePreferences: ActivePreferencePayload[],
   catalog: AmenityCatalogOption[] | null,
   language: string,
-): PreferencePayload[] {
+): ActivePreferencePayload[] {
   const byId = new Map(catalog?.map((amenity) => [amenity.id, amenity]))
   return activePreferences.map((preference) => {
     const amenity = byId.get(preference.id)
@@ -25,6 +24,8 @@ export function activeAmenityPills(
     return {
       id: preference.id,
       label: language.startsWith('en') ? amenity.label_en || amenity.label_vi : amenity.label_vi || amenity.label_en,
+      polarity: preference.polarity,
+      active: preference.active,
     }
   })
 }
@@ -81,10 +82,6 @@ export function roundedPriceSliderBounds(bounds: { min: number; max: number }): 
   }
 }
 
-function hasPreference(hotel: HotelOption, preferenceId: string): boolean {
-  return (hotel.amenities ?? []).includes(preferenceId)
-}
-
 function priceForSort(hotel: HotelOption, direction: HotelSortOrder): number {
   if (hotel.average_nightly_price != null && hotel.average_nightly_price > 0) {
     return hotel.average_nightly_price
@@ -99,9 +96,7 @@ export function filterAndSortHotels(hotels: HotelOption[], filters: HotelFilterS
       ((filters.minPrice == null || hotel.average_nightly_price >= filters.minPrice) &&
         (filters.maxPrice == null || hotel.average_nightly_price <= filters.maxPrice))
     const starsMatch = filters.minStars == null || (hotel.star_rating ?? 0) >= filters.minStars
-    const preferencesMatch = filters.preferenceIds.every((preferenceId) => hasPreference(hotel, preferenceId))
-
-    return priceMatches && starsMatch && preferencesMatch
+    return priceMatches && starsMatch
   })
 
   if (filters.sortOrder === 'match') return filtered

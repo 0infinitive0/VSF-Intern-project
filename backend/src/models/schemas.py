@@ -418,6 +418,12 @@ class ChangeHotelRequest(BaseModel):
     session_id: UUID
 
 
+class HotelPreferenceToggleRequest(BaseModel):
+    session_id: UUID
+    amenity_id: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9_]+$")
+    active: bool
+
+
 class BookingReservationRequest(BaseModel):
     room_id: UUID
     temporary_user_ref: str = Field(min_length=1, max_length=128)
@@ -539,6 +545,7 @@ class PreferencePayload(BaseModel):
 
 class ActivePreferencePayload(PreferencePayload):
     polarity: Literal["require", "exclude", "prefer"] = "require"
+    active: bool = True
 
 
 class AmenityCatalogPayload(ResponsePayload):
@@ -789,6 +796,8 @@ def _preference_intents(active_preferences: Any) -> list[str]:
     seen: set[str] = set()
     for preference in active_preferences or []:
         if isinstance(preference, dict):
+            if preference.get("active", True) is not True:
+                continue
             values = (preference.get("id"), preference.get("label"))
         else:
             values = (preference,)

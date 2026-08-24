@@ -339,12 +339,12 @@ def test_hotel_search_uses_catalog_ids_for_chat_amenity_aliases(monkeypatch):
     upgraded_records = result["travel_state"]["hotel_preferences.amenities"]["value"]
     assert upgraded_records == [{
         "id": "swimming_pool", "label": "Hồ bơi", "polarity": "require",
-        "source_phrase": "pool", "confidence": 1.0,
+        "source_phrase": "pool", "confidence": 1.0, "active": True,
     }]
     # Catalog-resolved Vietnamese label, not the raw internal ID (bug fix:
     # active_preferences used to leak "swimming_pool" straight to the user).
     assert result["task_results"][-1]["hotel_search_result"]["active_preferences"] == [
-        {"id": "swimming_pool", "label": "Hồ bơi", "polarity": "require"}
+        {"id": "swimming_pool", "label": "Hồ bơi", "polarity": "require", "active": True}
     ]
     # The unresolved term is surfaced to the user, not silently dropped.
     assert "unknown amenity" in result["task_results"][-1]["reply"]

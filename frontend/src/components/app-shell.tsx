@@ -70,6 +70,7 @@ export default function AppShell({
   onSelectHotel,
   onConfirmHotel,
   onExpandHotelOptions,
+  onPreferenceToggle,
   chatWidth,
   onChatResizeStart,
   intakeForm,
@@ -115,6 +116,7 @@ export default function AppShell({
   onSelectHotel: (index: number) => void
   onConfirmHotel: (hotel: HotelOption) => void
   onExpandHotelOptions: () => void
+  onPreferenceToggle: (id: string, active: boolean) => void
   chatWidth: number
   onChatResizeStart: (e: MouseEvent) => void
   intakeForm: IntakeFormState
@@ -339,6 +341,7 @@ export default function AppShell({
             onSelectHotel={onSelectHotel}
             onConfirmHotel={onConfirmHotel}
             onExpandHotelOptions={onExpandHotelOptions}
+            onPreferenceToggle={onPreferenceToggle}
             focusMode={focusMode}
             intakeForm={intakeForm}
             onEditIntakeField={onEditIntakeField}

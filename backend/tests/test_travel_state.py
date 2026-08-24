@@ -146,7 +146,10 @@ def test_list_path_append_and_remove() -> None:
     assert [item["id"] for item in added.get("hotel_preferences.amenities").value] == ["pool", "wifi"]
 
     removed = apply_patch(added, [{"path": "hotel_preferences.amenities", "operation": "remove", "value": "pool"}]).state
-    assert [item["id"] for item in removed.get("hotel_preferences.amenities").value] == ["wifi"]
+    assert removed.get("hotel_preferences.amenities").value == [
+        {"id": "pool", "label": "pool", "polarity": "require", "source_phrase": "pool", "confidence": 0.0, "active": False},
+        {"id": "wifi", "label": "wifi", "polarity": "require", "source_phrase": "wifi", "confidence": 0.0, "active": True},
+    ]
 
 
 def test_bound_amenity_remove_compares_canonical_ids() -> None:
@@ -168,7 +171,65 @@ def test_bound_amenity_remove_compares_canonical_ids() -> None:
         }],
     ).state
 
-    assert removed.get("hotel_preferences.amenities").value == []
+    assert removed.get("hotel_preferences.amenities").value == [{**pool, "active": False}]
+
+
+def test_readding_a_dropped_amenity_reactivates_its_existing_record() -> None:
+    spa = {
+        "id": "spa", "label": "Spa", "polarity": "require",
+        "source_phrase": "spa", "confidence": 1.0,
+    }
+    state = apply_patch(
+        TravelState(),
+        [{"path": "hotel_preferences.amenities", "operation": "append", "value": spa}],
+    ).state
+
+    dropped = apply_patch(
+        state,
+        [{"path": "hotel_preferences.amenities", "operation": "remove", "value": spa}],
+    ).state
+    restored = apply_patch(
+        dropped,
+        [{"path": "hotel_preferences.amenities", "operation": "append", "value": spa}],
+    ).state
+
+    assert restored.get("hotel_preferences.amenities").value == [{**spa, "active": True}]
+
+
+def test_clearing_amenities_marks_each_existing_record_inactive() -> None:
+    amenities = [
+        {"id": "spa", "label": "Spa", "polarity": "require", "source_phrase": "spa", "confidence": 1.0},
+        {"id": "gym", "label": "Gym", "polarity": "exclude", "source_phrase": "gym", "confidence": 1.0},
+    ]
+    state = apply_patch(
+        TravelState(),
+        [{"path": "hotel_preferences.amenities", "operation": "set", "value": amenities}],
+    ).state
+
+    cleared = apply_patch(
+        state,
+        [{"path": "hotel_preferences.amenities", "operation": "set", "value": []}],
+    ).state
+
+    assert cleared.get("hotel_preferences.amenities").value == [
+        {**amenities[0], "active": False},
+        {**amenities[1], "active": False},
+    ]
+
+
+def test_amenity_active_defaults_on_restore_and_rejects_non_boolean_values() -> None:
+    record = {"id": "spa", "label": "Spa", "polarity": "require", "source_phrase": "spa", "confidence": 1.0}
+    restored = TravelState.from_dict({
+        "hotel_preferences.amenities": {"presence": "set", "value": [record]},
+    })
+    invalid = apply_patch(
+        TravelState(),
+        [{"path": "hotel_preferences.amenities", "operation": "append", "value": {**record, "active": "yes"}}],
+    )
+
+    assert restored.get("hotel_preferences.amenities").value == [{**record, "active": True}]
+    assert invalid.applied == ()
+    assert "active must be a boolean" in invalid.rejected[0].reason
 
 
 def test_append_is_idempotent_for_a_duplicate_item() -> None:

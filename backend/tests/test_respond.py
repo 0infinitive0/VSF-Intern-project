@@ -228,8 +228,26 @@ class TestRespondActivePreferences:
         )
         response = respond(_state(travel_state=travel_state.to_dict()))["response"]
         assert response["active_preferences"] == [
-            {"id": "gym", "label": "Phòng gym", "polarity": "require"},
-            {"id": "swimming_pool", "label": "Hồ bơi", "polarity": "prefer"},
+            {"id": "gym", "label": "Phòng gym", "polarity": "require", "active": True},
+            {"id": "swimming_pool", "label": "Hồ bơi", "polarity": "prefer", "active": True},
+        ]
+
+    def test_keeps_dropped_preferences_in_the_payload_as_inactive(self, monkeypatch):
+        monkeypatch.setattr(
+            respond_module,
+            "all_approved_amenities",
+            lambda: (AmenityCatalogEntry("spa", "Spa", ("spa",), "Spa", "hotel", "wellness", "spa"),),
+        )
+        travel_state = _seeded(
+            [{"path": "hotel_preferences.amenities", "operation": "set", "value": [
+                {"id": "spa", "label": "Spa", "polarity": "require", "source_phrase": "spa", "confidence": 1.0, "active": False},
+            ]}]
+        )
+
+        response = respond(_state(travel_state=travel_state.to_dict()))["response"]
+
+        assert response["active_preferences"] == [
+            {"id": "spa", "label": "Spa", "polarity": "require", "active": False},
         ]
 
 
@@ -287,7 +305,7 @@ class TestRespondAllPreferences:
         response = respond(_state(task_results=task_results, travel_state=travel_state.to_dict()))["response"]
 
         assert response["all_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi"}]
-        assert response["active_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi", "polarity": "require"}]
+        assert response["active_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi", "polarity": "require", "active": True}]
         assert [amenity.id for amenity in response["hotel_amenities"]] == ["swimming_pool", "wifi"]
 
     def test_hotel_filters_fall_back_to_the_session_amenity_request(self, monkeypatch):
@@ -328,7 +346,7 @@ class TestRespondAllPreferences:
         response = respond(_state(task_results=task_results, travel_state=travel_state.to_dict()))["response"]
 
         assert response["all_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi"}]
-        assert response["active_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi", "polarity": "require"}]
+        assert response["active_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi", "polarity": "require", "active": True}]
 
     def test_fresh_hotel_options_still_get_labels_when_stage_is_planned(self, monkeypatch):
         """Bug fix: a re-search after a trip already exists (e.g. "đổi khách
@@ -381,7 +399,7 @@ class TestRespondAllPreferences:
         assert [amenity.id for amenity in response["hotel_amenities"]] == ["swimming_pool"]
         assert response["all_preferences"] == [{"id": "swimming_pool", "label": "Hồ bơi"}]
         assert response["active_preferences"] == [
-            {"id": "swimming_pool", "label": "Hồ bơi", "polarity": "require"}
+            {"id": "swimming_pool", "label": "Hồ bơi", "polarity": "require", "active": True}
         ]
 
     def test_ambiguity_is_visible_with_deterministic_clarification_chips(self):

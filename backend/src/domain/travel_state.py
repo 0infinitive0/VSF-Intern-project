@@ -31,7 +31,7 @@ _OPERATIONS: frozenset[str] = frozenset({"set", "unset", "append", "remove"})
 _MAX_DAY_NUMBER_FALLBACK = 90
 _AMENITY_ID_PATTERN = re.compile(r"^[a-z0-9_]{1,64}$")
 _AMENITY_POLARITIES = frozenset({"require", "exclude", "prefer"})
-TRAVEL_STATE_SCHEMA_VERSION = 2
+TRAVEL_STATE_SCHEMA_VERSION = 3
 
 
 class Presence(StrEnum):
@@ -319,6 +319,29 @@ def _apply_single(pattern: str, change: PatchChange, current: Slot, working_stat
             if not isinstance(change.value, list):
                 raise PatchValidationError(f"{change.path}: 'set' on a list path requires a list value")
             normalized = [validator(item, change.path, working_state) for item in change.value]
+            if pattern == "hotel_preferences.amenities":
+                existing = list(current.value) if current.presence is Presence.SET and isinstance(current.value, list) else []
+                if not normalized:
+                    # A user clearing amenities removes them from the active
+                    # search without erasing their reversible pill history.
+                    return Slot(
+                        presence=Presence.SET,
+                        value=[{**entry, "active": False} if isinstance(entry, Mapping) else entry for entry in existing],
+                    )
+                incoming_by_key = {
+                    (item["id"], item["polarity"]): item
+                    for item in normalized
+                    if isinstance(item, Mapping)
+                }
+                merged: list[Any] = []
+                for entry in existing:
+                    if not isinstance(entry, Mapping):
+                        continue
+                    key = (entry.get("id"), entry.get("polarity"))
+                    replacement = incoming_by_key.pop(key, None)
+                    merged.append(replacement if replacement is not None else {**entry, "active": False})
+                merged.extend(incoming_by_key.values())
+                return Slot(presence=Presence.SET, value=merged)
             return Slot(presence=Presence.SET, value=normalized)
         return Slot(presence=Presence.SET, value=validator(change.value, change.path, working_state))
 
@@ -336,13 +359,22 @@ def _apply_single(pattern: str, change: PatchChange, current: Slot, working_stat
             if pattern == "hotel_preferences.amenities" and isinstance(item, Mapping):
                 item_id = item.get("id")
                 existing = [
-                    entry for entry in current.value
-                    if not isinstance(entry, Mapping) or entry.get("id") != item_id
+                    {**entry, "active": False}
+                    if isinstance(entry, Mapping) and entry.get("id") == item_id
+                    else entry
+                    for entry in current.value
                 ]
             else:
                 existing = [entry for entry in current.value if entry != item]
             return Slot(presence=Presence.SET, value=existing)
         existing = list(current.value) if current.presence is Presence.SET and isinstance(current.value, list) else []
+        if pattern == "hotel_preferences.amenities" and isinstance(item, Mapping):
+            item = {**item, "active": True}
+            item_key = (item["id"], item["polarity"])
+            for index, entry in enumerate(existing):
+                if isinstance(entry, Mapping) and (entry.get("id"), entry.get("polarity")) == item_key:
+                    existing[index] = item
+                    return Slot(presence=Presence.SET, value=existing)
         if item not in existing:
             existing.append(item)
         return Slot(presence=Presence.SET, value=existing)
@@ -457,6 +489,7 @@ def _validate_amenity_preference(value: Any, path: str, _state: TravelState) -> 
             "polarity": "require",
             "source_phrase": raw,
             "confidence": 0.0,
+            "active": True,
         }
     if not isinstance(value, Mapping):
         raise PatchValidationError(f"{path}: expected a bound amenity record")
@@ -466,6 +499,7 @@ def _validate_amenity_preference(value: Any, path: str, _state: TravelState) -> 
     polarity = value.get("polarity")
     source_phrase = value.get("source_phrase")
     confidence = value.get("confidence")
+    active = value.get("active", True)
     if not isinstance(amenity_id, str) or not _AMENITY_ID_PATTERN.fullmatch(amenity_id):
         raise PatchValidationError(f"{path}: amenity id must be a canonical catalog ID")
     if not isinstance(label, str) or not label.strip() or len(label.strip()) > 100:
@@ -476,12 +510,15 @@ def _validate_amenity_preference(value: Any, path: str, _state: TravelState) -> 
         raise PatchValidationError(f"{path}: amenity source_phrase must be non-empty up to 100 characters")
     if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not 0 <= float(confidence) <= 1:
         raise PatchValidationError(f"{path}: amenity confidence must be between 0 and 1")
+    if not isinstance(active, bool):
+        raise PatchValidationError(f"{path}: amenity active must be a boolean")
     return {
         "id": amenity_id,
         "label": label.strip(),
         "polarity": polarity,
         "source_phrase": source_phrase.strip(),
         "confidence": float(confidence),
+        "active": active,
     }
 
 

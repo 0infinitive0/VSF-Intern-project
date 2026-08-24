@@ -200,13 +200,13 @@ def _catalog_preferences(ids: list[str], catalog: tuple[AmenityCatalogEntry, ...
 
 def _active_preferences_from_travel_state(
     travel_state: TravelState, catalog: tuple[AmenityCatalogEntry, ...]
-) -> list[dict[str, str]]:
-    """Project already-bound state records without recomputing a bind."""
+) -> list[dict[str, Any]]:
+    """Project the complete bound preference history without recomputing a bind."""
     amenities_slot = travel_state.get("hotel_preferences.amenities")
     if amenities_slot.presence is not Presence.SET:
         return []
     approved = {entry.id: entry for entry in catalog if entry.scope in {"hotel", "both"}}
-    projected: list[dict[str, str]] = []
+    projected: list[dict[str, Any]] = []
     for record in amenities_slot.value:
         if not isinstance(record, dict):
             continue
@@ -218,6 +218,7 @@ def _active_preferences_from_travel_state(
             "id": amenity_id,
             "label": entry.label,
             "polarity": str(record.get("polarity") or "require"),
+            "active": record.get("active", True) is True,
         })
     return projected
 
@@ -241,7 +242,9 @@ def _active_hotel_preference_ids(state: TravelGraphState) -> list[str]:
         return [
             preference["id"]
             for preference in preferences
-            if isinstance(preference, dict) and isinstance(preference.get("id"), str)
+            if isinstance(preference, dict)
+            and preference.get("active", True) is True
+            and isinstance(preference.get("id"), str)
         ]
     return []
 
@@ -370,7 +373,7 @@ def respond(state: TravelGraphState) -> dict[str, Any]:
     catalog = all_approved_amenities() if amenity_slot.presence is Presence.SET else ()
     active_preferences = _active_preferences_from_travel_state(travel_state, catalog)
     if hotel_options:
-        active_ids = [preference["id"] for preference in active_preferences]
+        active_ids = [preference["id"] for preference in active_preferences if preference["active"]]
         # The filter choices are the user's accumulated amenity requests for
         # this session, not every facility on the cards.  Mapping through the
         # shared card catalog removes requests that no displayed hotel offers.

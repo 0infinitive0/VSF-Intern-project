@@ -46,6 +46,7 @@ export default function StageRouter({
   onSelectHotel,
   onConfirmHotel,
   onExpandHotelOptions,
+  onPreferenceToggle,
   focusMode,
   intakeForm,
   onEditIntakeField,
@@ -72,6 +73,7 @@ export default function StageRouter({
   onSelectHotel: (index: number) => void
   onConfirmHotel: (hotel: HotelOption) => void
   onExpandHotelOptions: () => void
+  onPreferenceToggle: (id: string, active: boolean) => void
   focusMode: FocusModeApi
   intakeForm: IntakeFormState
   onEditIntakeField?: (key: IntakeChecklistRowKey) => void
@@ -123,6 +125,7 @@ export default function StageRouter({
         onSelectHotel={onSelectHotel}
         onConfirmHotel={onConfirmHotel}
         onExpandHotelOptions={onExpandHotelOptions}
+        onPreferenceToggle={onPreferenceToggle}
         focusMode={focusMode}
         theme={theme}
         roomHold={roomHold}

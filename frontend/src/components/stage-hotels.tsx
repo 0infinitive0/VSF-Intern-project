@@ -73,7 +73,7 @@ export default function StageHotels({
   selectedIndex,
   onSelectHotel,
   onConfirmHotel,
-  onExpandHotelOptions,
+  onExpandHotelOptions, onPreferenceToggle,
   focusMode,
   theme,
   roomHold,
@@ -88,6 +88,7 @@ export default function StageHotels({
   onSelectHotel: (index: number) => void
   onConfirmHotel: (hotel: HotelOption) => void
   onExpandHotelOptions: () => void
+  onPreferenceToggle: (id: string, active: boolean) => void
   focusMode: FocusModeApi
   theme: Theme
   /** Owns the room cart + real hold — threaded into HotelDetailPanel below. */
@@ -103,11 +104,10 @@ export default function StageHotels({
   const [minPrice, setMinPrice] = useState<number | null>(null)
   const [maxPrice, setMaxPrice] = useState<number | null>(null)
   const [minStars, setMinStars] = useState<number | null>(null)
-  const [preferenceIds, setPreferenceIds] = useState<string[]>([])
   const [sortOrder, setSortOrder] = useState<HotelSortOrder>('match')
   const filteredHotels = useMemo(
-    () => filterAndSortHotels(hotels, { minPrice, maxPrice, minStars, preferenceIds, sortOrder }),
-    [hotels, maxPrice, minPrice, minStars, preferenceIds, sortOrder],
+    () => filterAndSortHotels(hotels, { minPrice, maxPrice, minStars, sortOrder }),
+    [hotels, maxPrice, minPrice, minStars, sortOrder],
   )
   const mapSync = useMapSync()
 
@@ -164,19 +164,9 @@ export default function StageHotels({
   const { detail: selectedHotelDetail } = useHotelDetail(selectedHotel?.id ?? null)
   const selectedHotelRays = useMemo(() => hotelMapRays(selectedHotelDetail), [selectedHotelDetail])
 
-  useEffect(() => {
-    // Server-side `prefer` is ranking-only and `exclude` is already enforced
-    // negatively. Only hard requirements may become positive local filters.
-    setPreferenceIds(
-      hotelFilterData.activePreferences
-        .filter(({ polarity }) => polarity === 'require')
-        .map(({ id }) => id),
-    )
-  }, [hotels, hotelFilterData.activePreferences])
-
   const filterPreferences = useMemo(
-    () => activeAmenityPills(hotelFilterData.allPreferences, amenityCatalog, i18n.language),
-    [amenityCatalog, i18n.language, hotelFilterData.allPreferences],
+    () => activeAmenityPills(hotelFilterData.activePreferences, amenityCatalog, i18n.language),
+    [amenityCatalog, i18n.language, hotelFilterData.activePreferences],
   )
 
   const listRef = useRef<HTMLDivElement>(null)
@@ -332,18 +322,17 @@ export default function StageHotels({
             minPrice={minPrice}
             maxPrice={maxPrice}
             minStars={minStars}
-            preferenceIds={preferenceIds}
+            preferenceLoading={hotelsLoading}
             sortOrder={sortOrder}
             onMinPriceChange={setMinPrice}
             onMaxPriceChange={setMaxPrice}
             onMinStarsChange={setMinStars}
-            onPreferenceIdsChange={setPreferenceIds}
+            onPreferenceToggle={onPreferenceToggle}
             onSortOrderChange={setSortOrder}
             onClear={() => {
               setMinPrice(null)
               setMaxPrice(null)
               setMinStars(null)
-              setPreferenceIds([])
               setSortOrder('match')
             }}
           />
@@ -435,7 +424,7 @@ export default function StageHotels({
             hotelId={lastFocusedId}
             option={hotels.find((h) => h.id === lastFocusedId)}
             hotelAmenities={amenityCatalog}
-            selectedAmenityIds={preferenceIds}
+            selectedAmenityIds={hotelFilterData.activePreferences.filter(({ active, polarity }) => active && polarity === 'require').map(({ id }) => id)}
             onClose={focusMode.closeFocus}
             roomHold={roomHold}
             checkInDate={state.intake?.start_date ?? null}

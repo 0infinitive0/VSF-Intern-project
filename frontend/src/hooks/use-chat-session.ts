@@ -21,6 +21,7 @@ import {
   pingSession,
   selectHotel as selectHotelRequest,
   sendMessage,
+  toggleHotelPreference as toggleHotelPreferenceRequest,
 } from '../api/chat-client'
 import type { CreateSessionResponse, SessionPing } from '../api/chat-client'
 import { restoreSession } from '../api/session-client'
@@ -114,6 +115,9 @@ export type Action =
   | { type: 'HOTELS_EXPAND_START' }
   | { type: 'HOTELS_EXPAND_SUCCESS'; data: PlannerChatResponse }
   | { type: 'HOTELS_EXPAND_ERROR'; error: string }
+  | { type: 'HOTELS_PREFERENCE_START' }
+  | { type: 'HOTELS_PREFERENCE_SUCCESS'; data: PlannerChatResponse }
+  | { type: 'HOTELS_PREFERENCE_ERROR'; error: string }
 
 function applyPlannerResponse(state: ChatState, data: PlannerChatResponse, message?: ChatMessage): ChatState {
   return {
@@ -354,10 +358,12 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
 
     case 'HOTELS_CHANGE_START':
     case 'HOTELS_EXPAND_START':
+    case 'HOTELS_PREFERENCE_START':
       return { ...state, hotelsLoading: true, error: null }
 
     case 'HOTELS_CHANGE_SUCCESS':
-    case 'HOTELS_EXPAND_SUCCESS': {
+    case 'HOTELS_EXPAND_SUCCESS':
+    case 'HOTELS_PREFERENCE_SUCCESS': {
       const { data } = action
       return {
         ...state,
@@ -378,6 +384,7 @@ export function chatSessionReducer(state: ChatState, action: Action): ChatState 
 
     case 'HOTELS_CHANGE_ERROR':
     case 'HOTELS_EXPAND_ERROR':
+    case 'HOTELS_PREFERENCE_ERROR':
       return { ...state, hotelsLoading: false, error: action.error }
 
     default:
@@ -646,6 +653,17 @@ export function useChatSession() {
       })
     }
   }, [state.hotelsLoading, state.sessionId])
+
+  const toggleHotelPreference = useCallback(async (amenityId: string, active: boolean) => {
+    if (state.hotelsLoading || !state.sessionId) return
+    dispatch({ type: 'HOTELS_PREFERENCE_START' })
+    try {
+      const data = await toggleHotelPreferenceRequest(state.sessionId, amenityId, active)
+      dispatch({ type: 'HOTELS_PREFERENCE_SUCCESS', data })
+    } catch (err) {
+      dispatch({ type: 'HOTELS_PREFERENCE_ERROR', error: i18n.t('errorNetwork', { msg: err instanceof Error ? err.message : String(err) }) })
+    }
+  }, [state.hotelsLoading, state.sessionId])
   const selectHotel = useCallback(
     async (hotelId: string | number, selectionMessage: string) => {
       if (state.pending || !state.sessionId) return
@@ -710,5 +728,5 @@ export function useChatSession() {
     }
   }, [])
 
-  return { state, send, selectHotel, startNew, restore, changeHotel, expandHotelOptions }
+  return { state, send, selectHotel, startNew, restore, changeHotel, expandHotelOptions, toggleHotelPreference }
 }
