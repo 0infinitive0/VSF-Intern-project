@@ -1,0 +1,17 @@
+"""Admin API package. Every route below requires an authenticated admin
+caller -- enforced once at the router level (not per-handler) so a future
+sub-router can never forget to add the check itself."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends
+
+from src.api.admin.schemas import AdminMeResponse
+from src.auth import AdminUser, require_admin
+
+admin_router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
+
+
+@admin_router.get("/me", response_model=AdminMeResponse)
+def get_me(admin: AdminUser = Depends(require_admin)) -> AdminMeResponse:
+    return AdminMeResponse(id=admin.id, email=admin.email)

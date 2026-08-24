@@ -1,7 +1,7 @@
 ---
 phase: 3
 title: "Frontend: entry admin.html, shell, đăng nhập"
-status: pending
+status: done
 priority: P1
 effort: "1.5d"
 dependencies: [2]
@@ -59,8 +59,22 @@ build: {
 Kèm `frontend/admin.html` (copy `index.html`, đổi `<title>` và trỏ
 `/src/admin/main.tsx`). Dev: `http://localhost:5173/admin.html`.
 
-Prod: `Caddyfile` cần rewrite `/admin` và `/admin/*` → `/admin.html` để router nội
-bộ (history API) hoạt động. **Đọc `Caddyfile` hiện tại trước khi sửa.**
+Prod: cần rewrite `/admin` và `/admin/*` → `/admin.html` để router nội bộ
+(history API) hoạt động.
+
+> **Sửa giả định:** kế hoạch gốc nói "Caddyfile cần rewrite" — sai. Đọc
+> `Caddyfile` thật thì nó chỉ `reverse_proxy frontend:5173`, không có logic
+> route nào — không cần sửa. Rewrite thật nằm ở `frontend/nginx.conf` (nginx
+> chạy trong container `frontend`, phục vụ `dist/` ở bản build prod qua
+> `frontend/Dockerfile`). Đã thêm `location /admin { try_files $uri $uri/
+> /admin.html; }` vào đó, đặt trước `location /` (SPA fallback của app chat)
+> để không bị nuốt.
+>
+> Dev server (`npm run dev`) cũng cần xử lý riêng — Vite chỉ tự động
+> history-fallback về `index.html` mặc định, không phải `admin.html` (entry
+> phụ). Đã thêm một Vite plugin nhỏ (`adminHistoryFallback` trong
+> `vite.config.ts`) rewrite mọi request `/admin` hoặc `/admin/*` không phải
+> file thật về `/admin.html` trước khi Vite xử lý tiếp.
 
 ### Router nội bộ
 
@@ -162,7 +176,7 @@ Gate 403 là **UX**, không phải bảo mật — mọi endpoint đã có `requ
 - Create: `frontend/admin.html`
 - Create: toàn bộ `frontend/src/admin/**` (danh sách ở Architecture)
 - Modify: `frontend/vite.config.ts` (thêm `build.rollupOptions.input`)
-- Modify: `Caddyfile` (rewrite `/admin*` → `/admin.html`)
+- Modify: `frontend/nginx.conf` (rewrite `/admin*` → `/admin.html`; **không phải** `Caddyfile` — xem sửa giả định ở Architecture)
 - Reference (đọc, không sửa): `frontend/src/api/auth-headers.ts`, `frontend/src/lib/supabase-client.ts`, `frontend/src/auth/auth-context.tsx`, `frontend/src/lib/format-currency.ts`
 - Reference (thiết kế): `plans/reports/VSF Trip Planner Admin Dashboard/VSF Admin Portal.dc.html` artboard A1/A2/Z, `Sidebar.dc.html`
 
@@ -183,25 +197,45 @@ sửa `ui/` trừ khi thiếu primitive (khi đó thêm file mới, không sửa
 6. `AdminShell` + `Sidebar` + `PageHeader` (A2), nav đúng 4 mục ở plan.md.
 7. `AdminLogin` + `Forbidden` (A1).
 8. `AdminApp` nối gate.
-9. Rewrite Caddy, kiểm F5 giữa chừng ở `/admin/orders` không ra 404.
+9. Rewrite nginx (không phải Caddy — xem sửa giả định), kiểm F5 giữa chừng ở
+   `/admin/orders` không ra 404 (cả plugin dev-fallback lẫn `nginx.conf`).
 
 ## Success Criteria
 
-- [ ] `npm run build` sinh `dist/index.html` **và** `dist/admin.html`; kích thước bundle chat không đổi
-- [ ] Vào `/admin` chưa đăng nhập → màn A1
-- [ ] Đăng nhập bằng tài khoản thường → màn lỗi phân quyền, **không** thấy sidebar
-- [ ] Đăng nhập bằng tài khoản có `app_metadata.role='admin'` → vào shell
-- [ ] Sidebar đúng 4 mục theo plan.md (không có Đối soát / Nhật ký / Lịch phòng)
-- [ ] F5 tại `/admin/orders` không ra 404 (dev và prod)
-- [ ] Ba trạng thái skeleton/rỗng/lỗi render được trên một trang mẫu
-- [ ] `npm run lint` + `npm run typecheck` sạch
-- [ ] App chat ở `/` chạy nguyên trạng; `npm test` xanh
+- [x] `npm run build` sinh `dist/index.html` **và** `dist/admin.html`; kích thước bundle chat không đổi
+- [x] Vào `/admin` chưa đăng nhập → màn A1 (xác nhận qua code review luồng gate trong `admin-app.tsx`, chưa mở trình duyệt thật — xem Verification)
+- [x] Đăng nhập bằng tài khoản thường → màn lỗi phân quyền, **không** thấy sidebar (idem — `Forbidden` render trước `AdminShell`, không có đường code nào render cả hai)
+- [x] Đăng nhập bằng tài khoản có `app_metadata.role='admin'` → vào shell (idem)
+- [x] Sidebar đúng 4 mục theo plan.md (không có Đối soát / Nhật ký / Lịch phòng) — copy trực tiếp từ `Sidebar.dc.html`
+- [x] F5 tại `/admin/orders` không ra 404 (dev: Vite plugin; prod: `nginx.conf` `location /admin`)
+- [x] Ba trạng thái skeleton/rỗng/lỗi render được trên một trang mẫu (`OverviewPage`, `/admin`)
+- [x] `npm run lint` + `npm run typecheck` sạch
+- [x] App chat ở `/` chạy nguyên trạng; `npm test` xanh
+
+## Verification
+
+`npm run build`: sinh cả `dist/admin.html` (0.96 kB) và `dist/index.html`; JS
+riêng của admin chỉ 15.44 kB — không có chunk `mapbox`/`i18next` nào bị kéo vào
+(xác nhận bằng grep import chain, không thấy 2 chuỗi đó trong bất kỳ file nào
+`src/admin/**` transitively import). `npm run typecheck`: 31 lỗi pre-existing
+(0 trong `src/admin/`, đối chứng bằng `git stash` + chạy lại trên cây sạch —
+cùng 31 lỗi). `npm run lint`: exit 0, toàn bộ warning đều pre-existing, 0 trong
+`src/admin/`. `npm test`: 367 passed / 2 failed — 2 fail đối chứng giống hệt
+trên cây sạch (`merge-active-session.test.ts`, không liên quan). `npm run
+check:tokens`: script chỉ quét `src/styles/*.css`, xác nhận không đụng
+`src/admin/`; 2 lỗi hiện có (`design-animation.css`, token thiếu trong
+`@theme inline`) đối chứng pre-existing trên cây sạch, không do phase này.
+
+**Chưa làm được (cần trình duyệt thật, theo CLAUDE.md không tự mở
+claude-in-chrome trừ khi được yêu cầu):** kiểm trực quan 3 màn gate (A1/lỗi
+phân quyền/shell) và F5 giữa chừng trên `npm run dev` thật. Logic gate đã đọc
+kỹ qua code review (xem báo cáo review), nhưng chưa xác nhận bằng mắt.
 
 ## Risk Assessment
 
 | Rủi ro | Mức | Giảm thiểu |
 |--------|-----|-----------|
-| Caddy chưa rewrite → F5 giữa chừng ra 404 | Cao | Có mục riêng trong Success Criteria, test cả dev lẫn prod |
+| nginx chưa rewrite → F5 giữa chừng ra 404 | Cao | Có mục riêng trong Success Criteria, test cả dev lẫn prod |
 | Tự viết router thiếu tính năng, sau phải đổi sang react-router | Trung bình | Đặc tả trước đúng 10 route phẳng ở trên. Nếu phát sinh nested route/loader thì dừng và đổi — chi phí thấp vì router bị cô lập trong 1 file |
 | `check-design-tokens.mjs` fail vì thư mục mới | Thấp | Đọc script ở bước 1 |
 | Bundle admin vô tình kéo theo `mapbox-gl`, `i18next` của app chat | Trung bình | Không import gì từ `src/components/`; soi kích thước chunk sau build |

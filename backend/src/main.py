@@ -9,6 +9,7 @@ from psycopg import Connection
 from psycopg.rows import DictRow, dict_row
 from psycopg_pool import ConnectionPool
 
+from src.api.admin import admin_router
 from src.api.routes import registry, router
 from src.config import Settings, get_settings
 from src.observability import install_api_error_logging
@@ -128,6 +129,7 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api/v1")
+app.include_router(admin_router, prefix="/api/v1")
 install_api_error_logging(app)
 
 

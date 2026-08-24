@@ -141,8 +141,8 @@ xem Phase 17.
 | # | Phase | Màn | Status |
 |---|-------|-----|--------|
 | 1 | [Migration nền dữ liệu](./phase-01-migrations.md) | — | Done |
-| 2 | [Backend: role admin, require_admin, khung router](./phase-02-admin-auth-backend.md) | — | Pending |
-| 3 | [Frontend: entry admin.html, shell, đăng nhập](./phase-03-admin-shell-frontend.md) | A1, A2, Z | Pending |
+| 2 | [Backend: role admin, require_admin, khung router](./phase-02-admin-auth-backend.md) | — | Done |
+| 3 | [Frontend: entry admin.html, shell, đăng nhập](./phase-03-admin-shell-frontend.md) | A1, A2, Z | Done |
 | 4 | [Danh sách đơn hàng](./phase-04-orders-list.md) | D1 | Pending |
 | 5 | [Chi tiết đơn hàng](./phase-05-order-detail.md) | D2 | Pending |
 | 6 | [Xác nhận / Huỷ đơn](./phase-06-order-actions.md) | D3 | Pending |
@@ -168,6 +168,16 @@ không kiểm tra `is_active`. Một khách đang giữ link chat cũ / itinerar
 thể đặt được khách sạn đã ngừng bán. Quyết định (2026-08-24): để việc này lại cho một
 phase sau (không mở rộng phạm vi Phase 1) — cần chốt trước khi phase 07-09 launch nút
 "Ngừng bán" cho người dùng thật.
+
+## Known gap — `log_api_io` middleware ghi cả body request/response admin ra stdout
+
+`backend/src/main.py`'s `log_api_io` middleware in log toàn bộ response body (tới
+2000 ký tự) ra stdout cho mọi path `/api/`, không phân biệt — đã có từ trước Phase
+2, vô hại với `/admin/me`. Nhưng prefix `/api/v1/admin` mà Phase 2 mở ra là nơi
+Phase 4-6 (đơn hàng) sẽ đặt danh sách đơn, chi tiết khách, thông tin thanh toán —
+dữ liệu nhạy cảm nhất hệ thống, log nguyên văn không che. Quyết định (2026-08-24):
+để việc định biên redaction lại cho Phase 4 (không mở rộng phạm vi Phase 2) — cần
+chốt **trước khi** Phase 4 log request/response chứa dữ liệu khách thật.
 
 ## Phụ thuộc giữa các phase
 

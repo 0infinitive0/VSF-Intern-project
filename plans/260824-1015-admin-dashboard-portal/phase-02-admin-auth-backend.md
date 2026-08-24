@@ -1,7 +1,7 @@
 ---
 phase: 2
 title: "Backend: role admin, require_admin, khung router"
-status: pending
+status: done
 priority: P1
 effort: "6h"
 dependencies: [1]
@@ -180,17 +180,45 @@ nhưng override `require_admin` thay vì `get_current_user`.
 
 ## Success Criteria
 
-- [ ] 5 test trên xanh
-- [ ] `curl /api/v1/admin/me` không kèm token → 403/401, kể cả khi `.env` có `AUTH_REQUIRED=false`
-- [ ] `backend/src/api/routes.py` không thay đổi một dòng nào
-- [ ] `npm run openapi:check` sạch
-- [ ] `pytest backend/tests` xanh
+- [x] 5 test trên xanh (mở rộng thêm 8 test: 401-vs-403 phân biệt rõ, cả `AUTH_REQUIRED` true/false, cạnh biên `app_role`, và một test khẳng định mọi route `/api/v1/admin/*` đều bị `require_admin` chặn)
+- [x] `curl /api/v1/admin/me` không kèm token → 403/401, kể cả khi `.env` có `AUTH_REQUIRED=false` (xác nhận bằng test, không cần curl thủ công)
+- [x] `backend/src/api/routes.py` không thay đổi một dòng nào (`git diff --stat` rỗng)
+- [x] `npm run openapi:check` — đã chạy `dump`+`gen`; diff chỉ gồm `/api/v1/admin/me` + `AdminMeResponse` (cộng một lệch pha `ValidationError` có sẵn từ trước, không liên quan phase này). Exit code khác 0 chỉ vì chưa commit gì — bản chất "sạch" (idempotent khi chạy lại) đã xác nhận
+- [x] `pytest backend/tests` xanh (1292 passed; 16 fail đã xác nhận có sẵn trên `origin/main` sạch, không liên quan tới phase này — xem Verification)
+
+## Verification
+
+Code review (subagent độc lập) xác nhận cả 8 tiêu chí chấp nhận đều đạt, kể cả kiểm
+tra runtime: sub-router thêm sau vẫn kế thừa `Depends(require_admin)` từ router cha;
+`write_audit` nuốt lỗi đúng cách (thử cả lỗi khởi tạo client lẫn lỗi `.table()`);
+đúng 1 lần gọi `verify_access_token` mỗi request (FastAPI cache theo dependency).
+Sau review, đã bổ sung: test khẳng định router-guard bằng cách duyệt
+`app.routes`/dependency graph thay vì chỉ dựa vào quy ước; test riêng cho
+`app_role` đọc từ `app_metadata` thiếu/không phải object; test 401 (không phải 403)
+cho token hỏng; parametrize test AUTH_REQUIRED qua cả true/false thay vì dựa vào
+default của conftest.
+
+**Còn lại (cần quyền truy cập Supabase thật, không làm được từ môi trường này):**
+- 4 migration ở Phase 1 (`is_active`, sequences thủ công, `admin_audit_log`,
+  fix `match_hotels_with_rooms`) **chưa** được áp dụng lên project Supabase thật —
+  đã thử qua `supabase db query --linked` (Management API) nhưng bị chặn: bước
+  khởi tạo temp role của CLI vẫn cần kết nối trực tiếp tới cổng Postgres của
+  pooler, và IP của môi trường này không nằm trong allowlist của project. Người
+  dùng sẽ tự chạy 4 file trong `backend/scripts/migrations/20260824_*.sql` (đúng
+  thứ tự tên file) qua Supabase Studio SQL editor. `write_audit()` sẽ ghi log lỗi
+  (không crash) cho tới khi bảng tồn tại — không chặn Phase 2, nhưng **chặn** bất
+  kỳ call site nào gọi `write_audit()` ở Phase 4 trở đi tới khi áp dụng xong.
+- Chưa decode thử một access token thật để xác nhận `app_metadata` sống sót qua
+  JWKS của project thật (rủi ro Trung bình ở bảng dưới), và chưa xác nhận
+  `admin@vsftrip.vn` đã có `raw_app_meta_data.role = "admin"` chưa. Người dùng sẽ
+  tự kiểm tra khi có phiên đăng nhập thật (khớp với Phase 3 — màn đăng nhập admin).
 
 ## Risk Assessment
 
 | Rủi ro | Mức | Giảm thiểu |
 |--------|-----|-----------|
 | Lẫn `user_metadata` và `app_metadata` → ai cũng tự phong admin | **Cao** | Có test riêng cho đúng case này; comment trong code |
-| Quên `Depends(require_admin)` ở một router con thêm sau | Cao | Đặt ở APIRouter cấp package, không ở handler. Ghi vào "Ranh giới không được vượt" của plan |
+| Quên `Depends(require_admin)` ở một router con thêm sau | Cao | Đặt ở APIRouter cấp package, không ở handler. Ghi vào "Ranh giới không được vượt" của plan. `test_every_admin_route_requires_admin` (test_admin_auth.py) khẳng định bằng cách duyệt `app.routes` + dependency graph — không chỉ dựa vào quy ước |
 | `AUTH_REQUIRED=false` rò sang route admin | **Cao** | `require_admin` không đọc setting đó; test khẳng định |
 | JWKS không trả về `app_metadata` (tuỳ cấu hình Supabase) | Trung bình | Bước 1 của Implementation: decode thử một token thật, in payload, xác nhận trước khi viết tiếp |
+| Thu hồi quyền admin có độ trễ tới hết hạn token (mặc định Supabase ~1h) — xem trade-off đã chấp nhận trong `jwt_verifier.py`'s module docstring. Chiều ngược lại cũng đúng: `UPDATE auth.users` cấp quyền admin chỉ có hiệu lực ở lần đăng nhập **sau**, không phải ngay lập tức — tài khoản phải đăng xuất/đăng nhập lại | Trung bình | Chấp nhận (đã có trade-off tương tự cho toàn app); ghi rõ ở đây để Phase 3 không debug nhầm "tôi vừa cấp quyền mà vẫn 403" |

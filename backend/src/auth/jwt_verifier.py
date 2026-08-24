@@ -73,6 +73,12 @@ class SupabaseClaims:
     user_id: str
     email: str | None
     is_anonymous: bool
+    # From payload["app_metadata"]["role"] -- NEVER "user_metadata": that
+    # object is writable by the end user themselves via
+    # supabase.auth.updateUser(), so reading role from it would let any
+    # caller self-grant admin. app_metadata is only settable with a
+    # service-role key, from outside the end user's own session.
+    app_role: str | None
 
 
 def _expected_issuer() -> str | None:
@@ -155,6 +161,8 @@ def verify_access_token(token: str) -> SupabaseClaims:
     user_id = payload.get("sub")
     if not user_id:
         raise TokenVerificationError("Invalid session token.")
+    app_metadata = payload.get("app_metadata")
+    app_role = app_metadata.get("role") if isinstance(app_metadata, dict) else None
     return SupabaseClaims(
         user_id=user_id,
         email=payload.get("email"),
@@ -162,4 +170,5 @@ def verify_access_token(token: str) -> SupabaseClaims:
         # (https://supabase.com/docs/guides/auth/auth-anonymous); absent
         # entirely on permanent accounts, hence the explicit bool() default.
         is_anonymous=bool(payload.get("is_anonymous", False)),
+        app_role=str(app_role) if app_role is not None else None,
     )

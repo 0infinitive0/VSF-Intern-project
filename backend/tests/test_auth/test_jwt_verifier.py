@@ -112,6 +112,38 @@ def test_jwks_path_reads_the_anonymous_claim(monkeypatch):
     assert claims.is_anonymous is True
 
 
+def test_jwks_path_reads_app_metadata_role(monkeypatch):
+    private_key, public_key = _make_es256_keypair()
+    _use_fake_jwks(monkeypatch, public_key)
+    token = _make_es256_token(private_key, app_metadata={"role": "admin"})
+
+    claims = verify_access_token(token)
+
+    assert claims.app_role == "admin"
+
+
+def test_jwks_path_app_role_is_none_when_app_metadata_absent(monkeypatch):
+    private_key, public_key = _make_es256_keypair()
+    _use_fake_jwks(monkeypatch, public_key)
+    token = _make_es256_token(private_key)
+
+    claims = verify_access_token(token)
+
+    assert claims.app_role is None
+
+
+def test_jwks_path_app_role_is_none_when_app_metadata_is_not_a_dict(monkeypatch):
+    """Defensive: a malformed/legacy token whose app_metadata isn't an object
+    must not crash claim extraction -- it must simply carry no role."""
+    private_key, public_key = _make_es256_keypair()
+    _use_fake_jwks(monkeypatch, public_key)
+    token = _make_es256_token(private_key, app_metadata="not-an-object")
+
+    claims = verify_access_token(token)
+
+    assert claims.app_role is None
+
+
 def test_jwks_path_tolerates_a_token_issued_slightly_in_the_future(monkeypatch):
     """Regression test for a bug caught live (2026-08-14): a session created
     immediately after minting a real Supabase token failed with

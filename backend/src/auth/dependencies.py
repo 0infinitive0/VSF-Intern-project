@@ -41,7 +41,7 @@ class AuthenticatedUser:
     is_anonymous: bool
 
 
-def _extract_bearer_token(authorization: str | None) -> str | None:
+def extract_bearer_token(authorization: str | None) -> str | None:
     if not authorization:
         return None
     scheme, _, token = authorization.partition(" ")
@@ -51,7 +51,7 @@ def _extract_bearer_token(authorization: str | None) -> str | None:
 
 
 def get_current_user(authorization: str | None = Header(default=None)) -> AuthenticatedUser | None:
-    token = _extract_bearer_token(authorization)
+    token = extract_bearer_token(authorization)
     try:
         if not token:
             raise TokenVerificationError("Missing session token.")

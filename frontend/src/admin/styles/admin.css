@@ -1,0 +1,497 @@
+/**
+ * admin.css — design tokens + shared primitive styles for the admin portal.
+ *
+ * Token values copied verbatim from the design source (`:root` block in
+ * "plans/reports/VSF Trip Planner Admin Dashboard/VSF Admin Portal.dc.html").
+ * Light mode only (decision #12) -- no dark-mode variant, no @media query.
+ * Desktop-first 1440px -- no responsive breakpoints.
+ */
+
+:root {
+  --t1: #15181C;
+  --t2: rgba(21, 24, 28, .66);
+  --t3: rgba(21, 24, 28, .60);
+  --t4: rgba(21, 24, 28, .44);
+  --acc: #3A73DE;
+  --acc-soft: rgba(58, 115, 222, .12);
+  --ok: #2A9187;
+  --ok-soft: rgba(42, 145, 135, .14);
+  --ok-ink: #1F6F67;
+  --warn: #C8802F;
+  --warn-soft: rgba(200, 128, 47, .16);
+  --warn-ink: #8A5A21;
+  --err: #C05E70;
+  --err-soft: rgba(192, 94, 112, .14);
+  --on-acc: #FCFDFE;
+  --btn: #1B1F24;
+  --btn-fg: #FBFCFD;
+  --g0: rgba(255, 255, 255, .44);
+  --g1: rgba(255, 255, 255, .60);
+  --g2: rgba(255, 255, 255, .76);
+  --g3: rgba(255, 255, 255, .92);
+  --line: rgba(21, 24, 28, .07);
+  --stroke: rgba(21, 24, 28, .11);
+  --fill: rgba(21, 24, 28, .05);
+  --fill2: rgba(21, 24, 28, .085);
+  --page: linear-gradient(165deg, #EAF0F9 0%, #F5F2EE 48%, #E8EFF6 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 1440px;
+  font-family: 'Be Vietnam Pro', system-ui, sans-serif;
+  color: var(--t1);
+  background: var(--page);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--acc);
+  text-decoration: none;
+}
+
+a:hover {
+  color: #2B5CB8;
+  text-decoration: underline;
+}
+
+button {
+  font-family: inherit;
+}
+
+@keyframes shimmer {
+  0% { opacity: .45; }
+  50% { opacity: .9; }
+  100% { opacity: .45; }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Button (Z)                                                              */
+/* ---------------------------------------------------------------------- */
+
+.btn {
+  height: 42px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
+.btn--sm {
+  height: 34px;
+  padding: 0 14px;
+  font-size: 12.5px;
+}
+
+.btn--primary {
+  background: var(--btn);
+  color: var(--btn-fg);
+}
+
+.btn--secondary {
+  background: var(--g3);
+  border-color: var(--stroke);
+  color: var(--t2);
+}
+
+.btn--danger {
+  background: var(--err);
+  color: var(--on-acc);
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--t2);
+}
+
+.btn--ghost:hover:not(:disabled) {
+  background: var(--fill);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Input / Select (Z)                                                      */
+/* ---------------------------------------------------------------------- */
+
+.field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t2);
+}
+
+.input,
+.select {
+  height: 40px;
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--stroke);
+  background: #fff;
+  padding: 0 12px;
+  font-size: 13.5px;
+  color: var(--t1);
+  font-family: inherit;
+}
+
+.input::placeholder {
+  color: var(--t4);
+}
+
+.input:focus,
+.select:focus {
+  outline: none;
+  border-color: var(--acc);
+  box-shadow: 0 0 0 3px var(--acc-soft);
+}
+
+.input:disabled,
+.select:disabled {
+  background: var(--fill);
+  color: var(--t4);
+  cursor: not-allowed;
+}
+
+/* ---------------------------------------------------------------------- */
+/* StatusChip (Z) — luôn kèm nhãn chữ, không chỉ dựa vào màu               */
+/* ---------------------------------------------------------------------- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.chip--pending {
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+}
+
+.chip--held {
+  background: var(--acc-soft);
+  color: var(--acc);
+}
+
+.chip--ok {
+  background: var(--ok-soft);
+  color: var(--ok-ink);
+}
+
+.chip--closed {
+  background: var(--fill);
+  color: var(--t3);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Switch (Z)                                                              */
+/* ---------------------------------------------------------------------- */
+
+.switch {
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--fill2);
+  border: none;
+  position: relative;
+  cursor: pointer;
+  padding: 0;
+  flex: none;
+}
+
+.switch[data-on='true'] {
+  background: var(--acc);
+}
+
+.switch__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #fff;
+  transition: transform .15s ease;
+}
+
+.switch[data-on='true'] .switch__thumb {
+  transform: translateX(16px);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Tabs (Z)                                                                */
+/* ---------------------------------------------------------------------- */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--stroke);
+}
+
+.tab {
+  height: 38px;
+  padding: 0 4px;
+  margin-bottom: -1px;
+  border: none;
+  background: transparent;
+  border-bottom: 2px solid transparent;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--t3);
+  cursor: pointer;
+}
+
+.tab[aria-selected='true'] {
+  color: var(--t1);
+  border-bottom-color: var(--acc);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Banner (Z)                                                              */
+/* ---------------------------------------------------------------------- */
+
+.banner {
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.banner--warn {
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+}
+
+.banner--err {
+  background: var(--err-soft);
+  border: 1px solid rgba(192, 94, 112, .34);
+  color: var(--t1);
+}
+
+.banner--ok {
+  background: var(--ok-soft);
+  color: var(--ok-ink);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Card / table surface                                                    */
+/* ---------------------------------------------------------------------- */
+
+.card {
+  background: var(--g3);
+  border: 1px solid var(--stroke);
+  border-radius: 16px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* DataTable (Z)                                                           */
+/* ---------------------------------------------------------------------- */
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.data-table th {
+  padding: 9px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .07em;
+  color: var(--t4);
+  text-align: left;
+  border-bottom: 1px solid var(--stroke);
+  white-space: nowrap;
+}
+
+.data-table th[data-align='right'] {
+  text-align: right;
+}
+
+.data-table td {
+  padding: 0 14px;
+  height: 46px;
+  font-size: 13.5px;
+  border-bottom: 1px solid var(--line);
+}
+
+.data-table td[data-align='right'] {
+  text-align: right;
+}
+
+.data-table tbody tr:hover {
+  background: var(--fill);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Pagination (Z)                                                          */
+/* ---------------------------------------------------------------------- */
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--stroke);
+  font-size: 12.5px;
+  color: var(--t3);
+}
+
+.pagination__btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--stroke);
+  background: #fff;
+  color: var(--t2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.pagination__btn:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+/* ---------------------------------------------------------------------- */
+/* SkeletonTable / EmptyState / ErrorState (Z)                             */
+/* ---------------------------------------------------------------------- */
+
+.skeleton-bar {
+  border-radius: 4px;
+  background: var(--fill);
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.state-block {
+  min-height: 340px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px;
+  text-align: center;
+}
+
+.state-block__icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex: none;
+}
+
+.state-block__icon--empty {
+  border: 1px dashed var(--stroke);
+  background: var(--fill);
+  color: var(--t4);
+}
+
+.state-block__icon--error {
+  background: var(--err-soft);
+  color: var(--err);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.state-block__title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.state-block__desc {
+  font-size: 12.5px;
+  color: var(--t3);
+  max-width: 360px;
+  text-wrap: pretty;
+}
+
+.state-block__meta {
+  font-size: 11px;
+  color: var(--t4);
+  font-family: ui-monospace, monospace;
+  background: var(--fill);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Drawer / Modal (Z)                                                      */
+/* ---------------------------------------------------------------------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(21, 24, 28, .32);
+  display: flex;
+  z-index: 100;
+}
+
+.modal {
+  margin: auto;
+  width: 480px;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  background: var(--g3);
+  border: 1px solid var(--stroke);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(21, 24, 28, .18);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.drawer {
+  margin-left: auto;
+  height: 100%;
+  width: 480px;
+  max-width: calc(100vw - 48px);
+  overflow: auto;
+  background: var(--g3);
+  border-left: 1px solid var(--stroke);
+  box-shadow: -24px 0 60px rgba(21, 24, 28, .12);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}

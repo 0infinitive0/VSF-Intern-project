@@ -64,8 +64,14 @@ CREATE TABLE hotels (
     scraped_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    -- Soft delete cho admin "Ngừng bán" — không xoá dòng vì rooms có
+    -- ON DELETE RESTRICT/CASCADE trên booking data. Xem
+    -- scripts/migrations/20260824_add_hotel_is_active.sql.
+    is_active BOOLEAN NOT NULL DEFAULT true,
     UNIQUE(source_platform, source_hotel_id) -- Khóa UPSERT khi crawl lại đúng khách sạn/đúng OTA
 );
+
+CREATE INDEX hotels_is_active_idx ON hotels (is_active) WHERE is_active = false;
 
 -- Bảng 3: Thông tin Loại Phòng (Rooms) — theo đúng 1 OTA của khách sạn đó
 CREATE TABLE rooms (
@@ -354,6 +360,38 @@ ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE payments FROM anon, authenticated, PUBLIC;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE payments TO service_role;
 
+-- Audit trail for admin-side writes against live, paying-guest data — see
+-- scripts/migrations/20260824_add_admin_audit_log.sql for full comments.
+CREATE TABLE admin_audit_log (
+    id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    actor_id     UUID NOT NULL,
+    actor_email  TEXT,
+    action       TEXT NOT NULL,
+    entity_type  TEXT NOT NULL,
+    entity_id    TEXT NOT NULL,
+    before       JSONB,
+    after        JSONB,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX admin_audit_log_created_idx ON admin_audit_log (created_at DESC);
+CREATE INDEX admin_audit_log_entity_idx  ON admin_audit_log (entity_type, entity_id);
+
+ALTER TABLE admin_audit_log ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE admin_audit_log FROM anon, authenticated, PUBLIC;
+GRANT SELECT, INSERT ON TABLE admin_audit_log TO service_role;
+
+-- Sequences backing hotels.source_hotel_id / rooms.source_room_id for
+-- admin-entered (non-OTA) rows — see
+-- scripts/migrations/20260824_add_manual_source_id_sequences.sql.
+CREATE SEQUENCE manual_hotel_source_id_seq START 1;
+CREATE SEQUENCE manual_room_source_id_seq START 9000000000;
+
+REVOKE ALL ON SEQUENCE manual_hotel_source_id_seq FROM anon, authenticated, PUBLIC;
+REVOKE ALL ON SEQUENCE manual_room_source_id_seq FROM anon, authenticated, PUBLIC;
+GRANT USAGE, SELECT ON SEQUENCE manual_hotel_source_id_seq TO service_role;
+GRANT USAGE, SELECT ON SEQUENCE manual_room_source_id_seq TO service_role;
+
 -- The result is the minimum remaining count across every requested night.
 CREATE FUNCTION public.get_room_availability(
     p_room_id UUID,
@@ -514,6 +552,7 @@ AS $$
       NULL::text AS room_name
     FROM public.hotels AS h
     WHERE h.embedding IS NOT NULL
+      AND h.is_active
       AND (filter_destination_id IS NULL OR h.destination_id = filter_destination_id)
       AND (
         filter_start_date IS NULL OR filter_end_date IS NULL
@@ -522,7 +561,7 @@ AS $$
           FROM public.rooms AS r
           WHERE r.hotel_id = h.id
             AND (
-              SELECT count(*)
+              SELECT count(DISTINCT rp.check_in_date)
               FROM public.room_prices AS rp
               WHERE rp.room_id = r.id
                 AND rp.check_in_date >= filter_start_date
@@ -543,11 +582,12 @@ AS $$
     FROM public.rooms AS r
     JOIN public.hotels AS h ON h.id = r.hotel_id
     WHERE r.embedding IS NOT NULL
+      AND h.is_active
       AND (filter_destination_id IS NULL OR h.destination_id = filter_destination_id)
       AND (
         filter_start_date IS NULL OR filter_end_date IS NULL
         OR (
-          SELECT count(*)
+          SELECT count(DISTINCT rp.check_in_date)
           FROM public.room_prices AS rp
           WHERE rp.room_id = r.id
             AND rp.check_in_date >= filter_start_date
@@ -636,6 +676,11 @@ AS $$
   ORDER BY a.max_sim DESC
   LIMIT match_count;
 $$;
+
+ALTER FUNCTION public.match_hotels_with_rooms(
+    UUID[], public.vector, DOUBLE PRECISION, INTEGER, UUID, NUMERIC, NUMERIC,
+    DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, DATE, DATE, INTEGER
+) OWNER TO "postgres";
 
 GRANT EXECUTE ON FUNCTION public.match_hotels_with_rooms(
     UUID[],
