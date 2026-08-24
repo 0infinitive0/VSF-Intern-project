@@ -269,7 +269,7 @@ export default function TripOverviewTab({
           <div className="text-[10px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted mb-[9px]">
             {t('routeByDay')}
           </div>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2.5">
             {days.map((day, i) => (
               <DayCard
                 key={day.day_number}
@@ -283,17 +283,47 @@ export default function TripOverviewTab({
       )}
 
       {adjustments.length > 0 && (
-        <div className="p-[15px] rounded-[20px] bg-glass-2 border border-edge">
-          <div className="text-[10px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted mb-[12px]">
-            {t('adjustmentsApplied')}
+        <div
+          className="p-4 rounded-[22px] bg-glass-2 border border-edge flex flex-col gap-3"
+          style={{
+            boxShadow: '0 8px 24px -16px rgb(var(--shadow-rgb) / 0.3)',
+          }}
+        >
+          <div className="flex items-center gap-1.5 text-[10.5px] font-[600] tracking-[0.08em] uppercase text-primary">
+            <span className="material-symbols-outlined text-[15px]">auto_awesome</span>
+            <span>{t('adjustmentsApplied')}</span>
           </div>
-          <ul className="flex flex-col gap-[9px]">
-            {adjustments.map((adj, i) => (
-              <li key={i} className="text-[12.5px] font-normal text-on-surface">
-                {adj}
-              </li>
-            ))}
-          </ul>
+          <div className="flex flex-col gap-2">
+            {adjustments.map((adj, i) => {
+              const match = adj.match(/^(Ngày\s*\d+|Day\s*\d+)\s*:\s*(.+)$/i)
+              return (
+                <div
+                  key={i}
+                  className="flex items-start gap-2.5 p-2.5 px-3 rounded-[14px] bg-glass-1 border border-edge/60 text-[12.5px] font-normal text-on-surface"
+                >
+                  {match ? (
+                    <>
+                      <span className="px-2 py-0.5 rounded-md text-[10.5px] font-[600] uppercase tracking-wide bg-primary/10 text-primary border border-primary/20 flex-none mt-0.5">
+                        {match[1]}
+                      </span>
+                      <span className="flex-1 min-w-0 leading-relaxed text-on-surface/90">
+                        {match[2]}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-[16px] text-emerald-500 flex-none mt-0.5" aria-hidden="true">
+                        check_circle
+                      </span>
+                      <span className="flex-1 min-w-0 leading-relaxed text-on-surface/90">
+                        {adj}
+                      </span>
+                    </>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
     </div>
@@ -309,29 +339,81 @@ function DayCard({ day, index, onPick }: { day: Day; index: number; onPick: () =
 
   const color = dayColor(day.day_number)
   const m = dayRouteMetrics(day.items)
-  const kmPart = `${m.approximate ? '≈ ' : ''}${t('legDistanceKm', { km: numFmt.format(m.distanceKm) })}`
-  const routePart =
-    m.durationMins > 0 ? `${kmPart} · ${t('legDurationMins', { mins: numFmt.format(m.durationMins) })}` : kmPart
-  const sub = m.distanceKm > 0 || m.durationMins > 0 ? routePart : ''
+  const itemCount = day.items.length
+  const kmPart = m.distanceKm > 0 ? `${m.approximate ? '≈ ' : ''}${numFmt.format(m.distanceKm)} km` : null
+  const durationPart =
+    m.durationMins > 0
+      ? m.durationMins < 60
+        ? `~${Math.round(m.durationMins)} phút`
+        : `~${Math.floor(m.durationMins / 60)}h ${Math.round(m.durationMins % 60)}p`
+      : null
 
   return (
     <button
       type="button"
       onClick={onPick}
-      className="day-card text-left flex items-center gap-3 rounded-[18px] p-[12px_14px] cursor-pointer border"
-      style={{ animation: `vFade .5s ${120 + index * 70}ms ease both` }}
+      className="group w-full text-left flex items-center gap-3.5 rounded-[20px] p-3.5 sm:p-4 cursor-pointer border border-edge bg-glass-2 transition-all duration-200 hover:bg-glass-3 hover:border-primary/40 hover:shadow-md active:scale-[0.99]"
+      style={{
+        animation: `vFade .5s ${120 + index * 70}ms ease both`,
+        boxShadow: '0 4px 18px -12px rgb(var(--shadow-rgb) / 0.25)',
+      }}
     >
-      <span className="w-[9px] h-[9px] rounded-full flex-none" style={{ background: color, boxShadow: `0 0 0 4px ${color}2e` }} />
-      <span className="flex-1 min-w-0">
-        <span className="block text-[13.5px] font-[590] tracking-[-0.16px] text-on-surface truncate">
-          {t('dayWord')} {day.day_number}
-          {day.theme ? ` · ${capitalizeFirst(day.theme)}` : ''}
+      {/* Day Badge */}
+      <div
+        className="w-11 h-11 rounded-[14px] flex flex-col items-center justify-center flex-none shadow-sm transition-transform duration-200 group-hover:scale-105"
+        style={{
+          background: `linear-gradient(135deg, ${color}, ${color}dd)`,
+          color: '#fff',
+          boxShadow: `0 4px 12px -3px ${color}66`,
+        }}
+      >
+        <span className="text-[9px] font-[600] uppercase tracking-wider opacity-90 leading-none">
+          {t('dayWord', { defaultValue: 'Ngày' })}
         </span>
-        {sub && <span className="block text-[11.5px] text-on-surface-muted font-normal mt-[1px] truncate">{sub}</span>}
-      </span>
-      <span className="text-[12px] text-on-surface-faint" aria-hidden="true">
-        →
-      </span>
+        <span className="text-[16px] font-[700] leading-none mt-0.5">
+          {day.day_number}
+        </span>
+      </div>
+
+      {/* Main Info */}
+      <div className="flex-1 min-w-0">
+        <div className="text-[14px] font-[590] tracking-[-0.2px] text-on-surface truncate group-hover:text-primary transition-colors">
+          {day.theme ? capitalizeFirst(day.theme) : `${t('dayWord', { defaultValue: 'Ngày' })} ${day.day_number}`}
+        </div>
+        <div className="flex items-center gap-2 text-[11.5px] text-on-surface-muted font-normal mt-1 flex-wrap">
+          {itemCount > 0 && (
+            <span className="inline-flex items-center gap-1">
+              <span className="material-symbols-outlined text-[13px] text-rose-500/80">place</span>
+              <span>{itemCount} {t('statPlacesUnit', { defaultValue: 'điểm' })}</span>
+            </span>
+          )}
+          {kmPart && (
+            <>
+              <span className="opacity-40">·</span>
+              <span className="inline-flex items-center gap-1">
+                <span className="material-symbols-outlined text-[13px] text-emerald-500/80">route</span>
+                <span>{kmPart}</span>
+              </span>
+            </>
+          )}
+          {durationPart && (
+            <>
+              <span className="opacity-40">·</span>
+              <span className="inline-flex items-center gap-1">
+                <span className="material-symbols-outlined text-[13px] text-amber-500/80">schedule</span>
+                <span>{durationPart}</span>
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Right chevron button */}
+      <div className="w-8 h-8 rounded-full border border-stroke flex items-center justify-center text-on-surface-variant flex-none transition-all duration-200 group-hover:border-primary/40 group-hover:text-primary group-hover:translate-x-1 group-hover:bg-glass-3">
+        <span className="material-symbols-outlined text-[18px]" aria-hidden="true">
+          chevron_right
+        </span>
+      </div>
     </button>
   )
 }
