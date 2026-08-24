@@ -725,6 +725,22 @@ function HoldFooter({
             </div>
           )}
 
+          {sessionBookedFromBackend && (
+            <div
+              role="status"
+              className="flex items-center gap-2 p-2.5 rounded-xl border text-[11.5px] font-medium leading-snug"
+              style={{
+                background: 'rgba(234, 179, 8, 0.08)',
+                borderColor: 'rgba(234, 179, 8, 0.25)',
+                color: 'var(--t1)',
+              }}
+            >
+              <span className="material-symbols-outlined text-[16px] text-amber-500 flex-none" aria-hidden="true">
+                lock
+              </span>
+              <span>{t('paidHotelLockedDetailNotice')}</span>
+            </div>
+          )}
           {roomHold.status === 'ERROR' && roomHold.error && (
             <div role="alert" className="text-[11.5px] font-medium" style={{ color: 'var(--err)' }}>
               {t(bookingErrorKey(roomHold.error))}
@@ -751,34 +767,49 @@ function HoldFooter({
         </div>
       ) : (
         <div className="animate-[vRise_0.3s_cubic-bezier(0.22,1,0.36,1)_both]">
-          {roomHold.status === 'ERROR' && roomHold.error && (
-            <div role="alert" className="text-[11.5px] font-medium mb-2" style={{ color: 'var(--err)' }}>
-              {t(bookingErrorKey(roomHold.error))}
+          {sessionBookedFromBackend ? (
+            <div
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-full border text-center text-[12.5px] font-[550] text-amber-600 dark:text-amber-400"
+              style={{
+                background: 'rgba(234, 179, 8, 0.08)',
+                borderColor: 'rgba(234, 179, 8, 0.25)',
+              }}
+            >
+              <span className="material-symbols-outlined text-[17px] text-amber-500" aria-hidden="true">lock</span>
+              <span>{t('paidHotelLockedDetailNotice')}</span>
             </div>
+          ) : (
+            <>
+              {roomHold.status === 'ERROR' && roomHold.error && (
+                <div role="alert" className="text-[11.5px] font-medium mb-2" style={{ color: 'var(--err)' }}>
+                  {t(bookingErrorKey(roomHold.error))}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  const el = document.getElementById('detail-rooms-section')
+                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }}
+                className="group w-full flex items-center justify-between gap-3 px-4 py-3 rounded-full border cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.99]"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(58, 115, 222, 0.12), rgba(44, 95, 201, 0.05))',
+                  borderColor: 'rgba(58, 115, 222, 0.35)',
+                  boxShadow: '0 8px 24px -10px rgba(44, 95, 201, 0.25)',
+                }}
+              >
+                <div className="w-7 h-7 rounded-full bg-[#3A73DE]/15 flex items-center justify-center flex-none text-primary">
+                  <span className="material-symbols-outlined text-[17px]">king_bed</span>
+                </div>
+                <span className="flex-1 text-center text-[13px] font-[590] tracking-[-0.1px] text-on-surface">
+                  {t('holdCartEmptyHint')}
+                </span>
+                <div className="w-7 h-7 rounded-full bg-[#3A73DE]/10 flex items-center justify-center flex-none text-primary group-hover:-translate-y-0.5 transition-transform">
+                  <span className="material-symbols-outlined text-[17px]">arrow_upward</span>
+                </div>
+              </button>
+            </>
           )}
-          <button
-            type="button"
-            onClick={() => {
-              const el = document.getElementById('detail-rooms-section')
-              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-            }}
-            className="group w-full flex items-center justify-between gap-3 px-4 py-3 rounded-full border cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.99]"
-            style={{
-              background: 'linear-gradient(135deg, rgba(58, 115, 222, 0.12), rgba(44, 95, 201, 0.05))',
-              borderColor: 'rgba(58, 115, 222, 0.35)',
-              boxShadow: '0 8px 24px -10px rgba(44, 95, 201, 0.25)',
-            }}
-          >
-            <div className="w-7 h-7 rounded-full bg-[#3A73DE]/15 flex items-center justify-center flex-none text-primary">
-              <span className="material-symbols-outlined text-[17px]">king_bed</span>
-            </div>
-            <span className="flex-1 text-center text-[13px] font-[590] tracking-[-0.1px] text-on-surface">
-              {t('holdCartEmptyHint')}
-            </span>
-            <div className="w-7 h-7 rounded-full bg-[#3A73DE]/10 flex items-center justify-center flex-none text-primary group-hover:-translate-y-0.5 transition-transform">
-              <span className="material-symbols-outlined text-[17px]">arrow_upward</span>
-            </div>
-          </button>
         </div>
       )}
     </div>

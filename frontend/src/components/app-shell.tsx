@@ -293,6 +293,7 @@ export default function AppShell({
             editingIntakeField={editingIntakeField}
             onDoneEditingIntakeField={onDoneEditingIntakeField}
             serverAskedField={serverAskedField}
+            sessionBookedFromBackend={sessionBookedFromBackend}
           />
         </div>
 

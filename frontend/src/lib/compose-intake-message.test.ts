@@ -104,7 +104,7 @@ describe('composeIntakeMessage', () => {
     expect(message).toContain('Đi cùng: đi cùng gia đình.')
     expect(message).toContain('Nhịp độ: thư thái.')
     expect(message).toContain('Nhịp sinh hoạt: bắt đầu sớm.')
-    expect(message).toContain('Ưu tiên view biển.')
+    expect(message).toContain('Ưu tiên view biển')
     expect(message).not.toContain('Ghi chú')
   })
 

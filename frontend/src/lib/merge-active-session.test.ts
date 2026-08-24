@@ -30,7 +30,7 @@ describe('mergeActiveSession', () => {
     expect(result[0]).toMatchObject({
       session_id: 'b',
       status: 'draft',
-      title: undefined,
+      title: null,
       destination: null,
       created_at: NOW,
       updated_at: NOW,

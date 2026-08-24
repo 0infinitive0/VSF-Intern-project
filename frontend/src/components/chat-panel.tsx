@@ -57,6 +57,7 @@ export default function ChatPanel({
   editingIntakeField,
   onDoneEditingIntakeField,
   serverAskedField,
+  sessionBookedFromBackend,
 }: {
   state: ChatState
   onSend: (text: string) => void
@@ -80,6 +81,7 @@ export default function ChatPanel({
    * the backend's own ask_slot.py flow asks about budget in its own words
    * right after dates/people resolve, independent of this widget rail). */
   serverAskedField: IntakeField | null
+  sessionBookedFromBackend?: boolean
 }) {
   const { messages, suggestions, hotelOptions, tripPlan, intake, pending, hotelsLoading, streamingText, thinking } = state
   const { t, i18n } = useTranslation()
@@ -257,8 +259,9 @@ export default function ChatPanel({
         // (routes.py::change_hotel) — no-op here too, so the click doesn't
         // even round-trip to discover that (plan 260819-finalize-itinerary,
         // "never offer an action the graph guard will refuse").
-        onChangeHotel={isTripFinalized(tripPlan) ? () => {} : onChangeHotel}
+        onChangeHotel={isTripFinalized(tripPlan) || sessionBookedFromBackend ? () => {} : onChangeHotel}
         onViewStage={onViewStage}
+        sessionBookedFromBackend={sessionBookedFromBackend}
       />
 
       <MessageList

@@ -806,16 +806,24 @@ export default function BookingModal({
                     WebkitBackdropFilter: 'blur(28px) saturate(1.7)',
                   }}
                 >
-                  <div className="flex items-center gap-3 w-full sm:w-auto">
-                    <div
-                      className="w-8 h-8 rounded-full flex items-center justify-center flex-none"
-                      style={{ background: 'var(--ok-soft)', color: 'var(--ok-ink)' }}
-                    >
-                      <span className="material-symbols-outlined text-[18px]">mark_email_read</span>
+                  <div className="flex flex-col gap-1 w-full sm:w-auto">
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className="w-7 h-7 rounded-full flex items-center justify-center flex-none"
+                        style={{ background: 'var(--ok-soft)', color: 'var(--ok-ink)' }}
+                      >
+                        <span className="material-symbols-outlined text-[16px]">mark_email_read</span>
+                      </div>
+                      <span className="text-[12.5px] font-[530] text-on-surface leading-snug">
+                        {t('checkoutDoneEmailNotice')}
+                      </span>
                     </div>
-                    <span className="text-[12.5px] font-[480] text-on-surface-variant leading-snug">
-                      {t('checkoutDoneEmailNotice')}
-                    </span>
+                    <div className="flex items-center gap-1.5 text-[11px] text-on-surface-muted pl-9">
+                      <span className="material-symbols-outlined text-[13px] text-amber-500 flex-none" aria-hidden="true">
+                        lock
+                      </span>
+                      <span>{t('checkoutDoneHotelLockedNotice')}</span>
+                    </div>
                   </div>
 
                   <button

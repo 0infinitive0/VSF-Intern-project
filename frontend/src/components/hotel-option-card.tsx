@@ -36,6 +36,8 @@ function HotelOptionCard({
   onOpen,
   hovered,
   onHoverChange,
+  sessionBookedFromBackend,
+  isPaidHotel,
 }: {
   hotel: HotelOption
   selected: boolean
@@ -47,6 +49,8 @@ function HotelOptionCard({
   /** Phase 10 map hover sync — optional so this component still works standalone. */
   hovered?: boolean
   onHoverChange?: (id: string | null) => void
+  sessionBookedFromBackend?: boolean
+  isPaidHotel?: boolean
 }) {
   const { t, i18n } = useTranslation()
   const numFmt = new Intl.NumberFormat(PRICE_LOCALE(i18n.language))
@@ -172,14 +176,42 @@ function HotelOptionCard({
       )}
 
       <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-line/60 text-[11.5px]">
-        <span className="text-on-surface-muted flex items-center gap-1">
-          <span className="material-symbols-outlined text-[14px] text-primary" aria-hidden="true">touch_app</span>
-          <span>{t('hotelCardActionHint')}</span>
-        </span>
-        <span className="font-[590] text-primary flex items-center gap-0.5">
-          <span>{t('hotelCardSelectRooms')}</span>
-          <span className="material-symbols-outlined text-[14px]" aria-hidden="true">arrow_forward</span>
-        </span>
+        {sessionBookedFromBackend ? (
+          isPaidHotel ? (
+            <>
+              <span className="font-[590] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                <span className="material-symbols-outlined text-[15px]" aria-hidden="true">check_circle</span>
+                <span>{t('paidHotelLockedCardBadge')}</span>
+              </span>
+              <span className="text-on-surface-muted flex items-center gap-0.5">
+                <span>{t('hotelCardActionHint')}</span>
+                <span className="material-symbols-outlined text-[14px]" aria-hidden="true">arrow_forward</span>
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="text-on-surface-muted flex items-center gap-1">
+                <span className="material-symbols-outlined text-[14px] text-primary" aria-hidden="true">touch_app</span>
+                <span>{t('hotelCardActionHint')}</span>
+              </span>
+              <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1 font-medium">
+                <span className="material-symbols-outlined text-[13px]" aria-hidden="true">lock</span>
+                <span>{t('paidHotelLockedCardHint')}</span>
+              </span>
+            </>
+          )
+        ) : (
+          <>
+            <span className="text-on-surface-muted flex items-center gap-1">
+              <span className="material-symbols-outlined text-[14px] text-primary" aria-hidden="true">touch_app</span>
+              <span>{t('hotelCardActionHint')}</span>
+            </span>
+            <span className="font-[590] text-primary flex items-center gap-0.5">
+              <span>{t('hotelCardSelectRooms')}</span>
+              <span className="material-symbols-outlined text-[14px]" aria-hidden="true">arrow_forward</span>
+            </span>
+          </>
+        )}
       </div>
     </div>
   )
@@ -197,6 +229,8 @@ export default function HotelOptionCards({
   onOpen,
   hoveredId,
   onHoverChange,
+  sessionBookedFromBackend,
+  paidHotelId,
 }: {
   hotels: HotelOption[]
   selectedIndex: number | null
@@ -207,6 +241,8 @@ export default function HotelOptionCards({
   /** Phase 10 map hover sync (lib/map-sync-id.ts ids) — optional so this component still works standalone. */
   hoveredId?: string | null
   onHoverChange?: (id: string | null) => void
+  sessionBookedFromBackend?: boolean
+  paidHotelId?: string | null
 }) {
   if (!hotels || hotels.length === 0) return null
 
@@ -224,6 +260,8 @@ export default function HotelOptionCards({
           onOpen={onOpen}
           hovered={hoveredId != null && hoveredId === hotelOptionSyncId(hotel)}
           onHoverChange={onHoverChange}
+          sessionBookedFromBackend={sessionBookedFromBackend}
+          isPaidHotel={sessionBookedFromBackend && paidHotelId ? hotel.id === paidHotelId : false}
         />
       ))}
     </>

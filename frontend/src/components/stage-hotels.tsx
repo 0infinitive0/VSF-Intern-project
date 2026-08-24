@@ -292,10 +292,17 @@ export default function StageHotels({
             <div className="text-[11.5px] text-on-surface-muted font-normal">{t('hotelHeadSub')}</div>
           </div>
         </div>
-        <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary-soft/80 border border-primary/20 text-[12px] text-primary font-[550] flex-none">
-          <span className="material-symbols-outlined text-[16px]">tips_and_updates</span>
-          <span>{t('step2GuideTip')}</span>
-        </div>
+        {sessionBookedFromBackend ? (
+          <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-[12px] text-amber-600 dark:text-amber-400 font-[550] flex-none">
+            <span className="material-symbols-outlined text-[16px]">lock</span>
+            <span>{t('paidHotelLockedBannerTitle')}</span>
+          </div>
+        ) : (
+          <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary-soft/80 border border-primary/20 text-[12px] text-primary font-[550] flex-none">
+            <span className="material-symbols-outlined text-[16px]">tips_and_updates</span>
+            <span>{t('step2GuideTip')}</span>
+          </div>
+        )}
       </div>
 
       {/* Three flex siblings: list | map | detail. The list never unmounts and
@@ -311,6 +318,29 @@ export default function StageHotels({
             transition: 'flex-basis .62s cubic-bezier(.22,1,.36,1)',
           }}
         >
+          {sessionBookedFromBackend && (
+            <div
+              className="p-3.5 px-4 rounded-[22px] border flex items-start gap-3 animate-[vRise_0.4s_ease-out_both] mb-1"
+              style={{
+                background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.08), rgba(202, 138, 4, 0.03))',
+                borderColor: 'rgba(234, 179, 8, 0.3)',
+              }}
+            >
+              <span className="material-symbols-outlined text-[20px] text-amber-500 flex-none mt-0.5" aria-hidden="true">
+                lock
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-[590] text-on-surface">
+                  {t('paidHotelLockedBannerTitle')}
+                </div>
+                <div className="text-[12px] text-on-surface-muted font-normal mt-0.5 leading-relaxed">
+                  {t('paidHotelLockedBannerMsg', {
+                    hotel: state.tripPlan?.hotel?.name || t('yourSelectedHotel'),
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
           <HotelFilterBar
             hotels={hotels}
             apiPriceMin={hotelFilterData.minPrice}
@@ -342,6 +372,8 @@ export default function StageHotels({
             onOpen={openFocus}
             hoveredId={mapSync.hoveredId}
             onHoverChange={mapSync.setHoveredId}
+            sessionBookedFromBackend={sessionBookedFromBackend}
+            paidHotelId={state.tripPlan?.hotel?.id}
           />
           {filteredHotels.length === 0 && (
             <p className="px-3 text-center text-[12px] text-on-surface-muted" role="status">

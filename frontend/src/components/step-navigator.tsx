@@ -33,6 +33,7 @@ export default function StepNavigator({
   hotelsLoading,
   onChangeHotel,
   onViewStage,
+  sessionBookedFromBackend,
 }: {
   stage: StageView
   intakeComplete: boolean
@@ -41,12 +42,13 @@ export default function StepNavigator({
   hotelsLoading: boolean
   onChangeHotel: () => void
   onViewStage: (stage: StageView) => void
+  sessionBookedFromBackend?: boolean
 }) {
   const { t } = useTranslation()
   const current = stepFromStage(stage, hotelOptionsAvailable)
-  const steps: { key: StepKey; n: string; label: string }[] = [
+  const steps: { key: StepKey; n: string; label: string; locked?: boolean }[] = [
     { key: 'intake', n: '1', label: t('stepDetails') },
-    { key: 'hotels', n: '2', label: t('stepHotel') },
+    { key: 'hotels', n: '2', label: t('stepHotel'), locked: sessionBookedFromBackend },
     { key: 'workspace', n: '3', label: t('stepItinerary') },
   ]
 
@@ -55,7 +57,8 @@ export default function StepNavigator({
       {steps.map((step) => {
         const isCurrent = current === step.key
         const target = navigationTarget(step.key, { intakeComplete, hotelOptionsAvailable, hotelPicked })
-        const canChangeHotel = step.key === 'hotels' && intakeComplete && !hotelOptionsAvailable && !hotelsLoading
+        const canChangeHotel =
+          step.key === 'hotels' && intakeComplete && !hotelOptionsAvailable && !hotelsLoading && !sessionBookedFromBackend
         const clickable = !isCurrent && (target !== null || canChangeHotel)
         const busy = step.key === 'hotels' && hotelsLoading
 
@@ -80,7 +83,12 @@ export default function StepNavigator({
             }`}
           >
             <span className="text-[9.5px] opacity-60">{step.n}</span>
-            {step.label}
+            <span>{step.label}</span>
+            {step.locked && (
+              <span className="material-symbols-outlined text-[12px] opacity-70" aria-hidden="true">
+                lock
+              </span>
+            )}
             {busy && <span aria-hidden="true" className="w-3 h-3 rounded-full border-[1.5px] border-current border-t-transparent animate-spin opacity-70" />}
           </button>
         )
