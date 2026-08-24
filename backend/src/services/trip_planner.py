@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import time
 import uuid
 from collections.abc import Callable, Collection
 from copy import deepcopy
@@ -90,18 +91,41 @@ def get_supabase_client() -> Client:
     return create_client(url, key)
 
 
+_DESTINATION_ID_CACHE_SECONDS = 60
+_destination_id_cache: dict[str, tuple[str | None, float]] = {}
+
+
+def _normalized_destination_name(destination_name: str) -> str:
+    return unicodedata.normalize(
+        "NFC", destination_name.lower().replace("đi ", "").replace("du lịch ", "").strip()
+    )
+
+
+def clear_destination_id_cache() -> None:
+    """Clear the short-lived destination lookup cache (primarily for tests)."""
+    _destination_id_cache.clear()
+
+
 def _get_destination_id(destination_name: str) -> str | None:
+    clean_name = _normalized_destination_name(destination_name)
+    now = time.monotonic()
+    cached = _destination_id_cache.get(clean_name)
+    if cached is not None and now - cached[1] < _DESTINATION_ID_CACHE_SECONDS:
+        return cached[0]
+
+    destination_id: str | None = None
     try:
         supabase = get_supabase_client()
-        clean_name = destination_name.lower().replace("đi ", "").replace("du lịch ", "").strip()
-        clean_name = unicodedata.normalize('NFC', clean_name)
         response = supabase.table("destinations").select("id").ilike("name", f"%{clean_name}%").limit(1).execute()
         data = response.data
         if data:
-            return data[0]["id"]
+            destination_id = data[0]["id"]
     except Exception as e:
         logger.error(f"Error fetching destination ID for {destination_name}: {e}")
-    return None
+        return None
+
+    _destination_id_cache[clean_name] = (destination_id, now)
+    return destination_id
 
 
 @lru_cache
