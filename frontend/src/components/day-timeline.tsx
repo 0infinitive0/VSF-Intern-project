@@ -53,11 +53,34 @@ export default function DayTimeline({
 
   return (
     <div style={{ animation: 'vRise .45s cubic-bezier(.22,1,.36,1) both' }}>
-      <div className="flex items-baseline gap-[10px] mb-[14px]">
-        <div className="text-[22px] font-[590] tracking-[-0.7px] leading-[1.15] text-on-surface">
-          {t('dayWord')} {day.day_number}
+      <div className="flex items-center justify-between gap-3 mb-3.5 flex-wrap">
+        <div className="flex items-baseline gap-2">
+          <div className="text-[22px] font-[650] tracking-[-0.7px] leading-[1.15] text-on-surface">
+            {t('dayWord')} {day.day_number}
+          </div>
+          {day.theme && (
+            <div className="text-[13.5px] font-[550] text-primary">
+              · {capitalizeFirst(day.theme)}
+            </div>
+          )}
         </div>
-        {daySub && <div className="text-[12px] text-on-surface-muted font-normal">{daySub}</div>}
+        {hasRoute && (
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-glass-1 border border-edge text-[11.5px] text-on-surface-muted shadow-2xs">
+            <span className="inline-flex items-center gap-1">
+              <span className="material-symbols-outlined text-[13px] text-emerald-500">route</span>
+              <span>{kmPart}</span>
+            </span>
+            {m.durationMins > 0 && (
+              <>
+                <span className="opacity-40">·</span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[13px] text-amber-500">schedule</span>
+                  <span>{t('legDurationMins', { mins: numFmt.format(m.durationMins) })}</span>
+                </span>
+              </>
+            )}
+          </div>
+        )}
       </div>
       <div className="flex flex-col">
         {startPoint && (
@@ -73,16 +96,18 @@ export default function DayTimeline({
                 onOpenHotel(hotel.id)
               }
             }}
-            className={`flex items-center gap-3 py-2 px-[13px] rounded-[16px] bg-glass-2 border border-edge text-[12px] text-on-surface-muted transition-all duration-200 ${
+            className={`flex items-center gap-3 py-2.5 px-3.5 rounded-[18px] bg-glass-2 border border-edge text-[12.5px] text-on-surface transition-all duration-200 mb-2.5 ${
               onOpenHotel && hotel?.id
-                ? 'cursor-pointer hover:bg-glass-3 hover:border-primary/40 hover:text-on-surface'
+                ? 'cursor-pointer hover:bg-glass-3 hover:border-primary/40 hover:shadow-xs group'
                 : ''
             }`}
           >
-            <span className="material-symbols-outlined text-[18px] text-primary" aria-hidden="true">hotel</span>
-            <span className="flex-1">{t('dayStartAtHotel', { hotel: startPoint.hotelName })}</span>
+            <div className="w-7 h-7 rounded-[10px] bg-primary/10 border border-primary/20 flex items-center justify-center text-primary flex-none">
+              <span className="material-symbols-outlined text-[16px]" aria-hidden="true">hotel</span>
+            </div>
+            <span className="flex-1 font-medium truncate">{t('dayStartAtHotel', { hotel: startPoint.hotelName })}</span>
             {onOpenHotel && hotel?.id && (
-              <span className="material-symbols-outlined text-[16px] text-on-surface-variant opacity-70" aria-hidden="true">
+              <span className="material-symbols-outlined text-[16px] text-on-surface-variant opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" aria-hidden="true">
                 chevron_right
               </span>
             )}
@@ -114,16 +139,18 @@ export default function DayTimeline({
                 onOpenHotel(hotel.id)
               }
             }}
-            className={`flex items-center gap-3 py-2 px-[13px] rounded-[16px] bg-glass-2 border border-edge text-[12px] text-on-surface-muted transition-all duration-200 ${
+            className={`flex items-center gap-3 py-2.5 px-3.5 rounded-[18px] bg-glass-2 border border-edge text-[12.5px] text-on-surface transition-all duration-200 mt-2.5 ${
               onOpenHotel && hotel?.id
-                ? 'cursor-pointer hover:bg-glass-3 hover:border-primary/40 hover:text-on-surface'
+                ? 'cursor-pointer hover:bg-glass-3 hover:border-primary/40 hover:shadow-xs group'
                 : ''
             }`}
           >
-            <span className="material-symbols-outlined text-[18px] text-primary" aria-hidden="true">hotel</span>
-            <span className="flex-1">{t('dayEndAtHotel', { hotel: endPoint.hotelName })}</span>
+            <div className="w-7 h-7 rounded-[10px] bg-primary/10 border border-primary/20 flex items-center justify-center text-primary flex-none">
+              <span className="material-symbols-outlined text-[16px]" aria-hidden="true">hotel</span>
+            </div>
+            <span className="flex-1 font-medium truncate">{t('dayEndAtHotel', { hotel: endPoint.hotelName })}</span>
             {onOpenHotel && hotel?.id && (
-              <span className="material-symbols-outlined text-[16px] text-on-surface-variant opacity-70" aria-hidden="true">
+              <span className="material-symbols-outlined text-[16px] text-on-surface-variant opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" aria-hidden="true">
                 chevron_right
               </span>
             )}
