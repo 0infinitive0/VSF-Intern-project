@@ -54,27 +54,80 @@ export default function TripOverviewTab({
   const placeCount = days.reduce((n, d) => n + d.items.length, 0)
   const nights = nightsFrom(start_date, end_date, duration_days)
 
-  const stats: { value: string; label: string; key: string }[] = []
+  interface StatItem {
+    key: string
+    value: string
+    unit?: string
+    label: string
+    icon: string
+    iconBg: string
+    iconColor: string
+    iconBorder: string
+  }
+
+  const stats: StatItem[] = []
   if (duration_days != null && duration_days > 0) {
     stats.push({
       key: 'days',
       value: String(duration_days),
-      label: nights != null ? `${t('statDays')} · ${nights} ${t('statNights')}` : t('statDays'),
+      unit: t('statDaysUnit', { defaultValue: 'ngày' }),
+      label: nights != null ? t('statNightsWord', { count: nights, defaultValue: `${nights} đêm nghỉ` }) : t('statDays'),
+      icon: 'calendar_month',
+      iconBg: 'rgba(59, 130, 246, 0.12)',
+      iconColor: '#2563EB',
+      iconBorder: 'rgba(59, 130, 246, 0.25)',
     })
   }
-  if (placeCount > 0) stats.push({ key: 'places', value: String(placeCount), label: t('statPlaces') })
+  if (placeCount > 0) {
+    stats.push({
+      key: 'places',
+      value: String(placeCount),
+      unit: t('statPlacesUnit', { defaultValue: 'điểm' }),
+      label: t('statPlacesLabel', { defaultValue: 'Điểm tham quan' }),
+      icon: 'location_on',
+      iconBg: 'rgba(244, 63, 94, 0.12)',
+      iconColor: '#E11D48',
+      iconBorder: 'rgba(244, 63, 94, 0.25)',
+    })
+  }
   if (m.distanceKm > 0) {
     stats.push({
       key: 'km',
       value: `${m.approximate ? '≈ ' : ''}${numFmt.format(m.distanceKm)}`,
-      label: t('statKm'),
+      unit: t('statKmUnit', { defaultValue: 'km' }),
+      label: t('statKmLabel', { defaultValue: 'Quãng đường' }),
+      icon: 'route',
+      iconBg: 'rgba(16, 185, 129, 0.12)',
+      iconColor: '#059669',
+      iconBorder: 'rgba(16, 185, 129, 0.25)',
     })
   }
   if (m.durationMins > 0) {
+    let durVal = ''
+    let durUnit = ''
+    if (m.durationMins < 60) {
+      durVal = `~${Math.round(m.durationMins)}`
+      durUnit = t('statMinsUnit', { defaultValue: 'phút' })
+    } else {
+      const hours = Math.floor(m.durationMins / 60)
+      const mins = Math.round(m.durationMins % 60)
+      if (mins === 0) {
+        durVal = `~${hours}`
+        durUnit = t('statHoursUnit', { defaultValue: 'giờ' })
+      } else {
+        durVal = `~${hours}h ${mins}p`
+        durUnit = ''
+      }
+    }
     stats.push({
       key: 'duration',
-      value: `~${numFmt.format(m.durationMins)}`,
-      label: t('statTravelTime'),
+      value: durVal,
+      unit: durUnit,
+      label: t('statTravelTimeLabel', { defaultValue: 'Di chuyển' }),
+      icon: 'schedule',
+      iconBg: 'rgba(245, 158, 11, 0.12)',
+      iconColor: '#D97706',
+      iconBorder: 'rgba(245, 158, 11, 0.25)',
     })
   }
 
@@ -84,21 +137,51 @@ export default function TripOverviewTab({
       style={{ animation: 'vRise .5s cubic-bezier(.22,1,.36,1) both' }}
     >
       {stats.length > 0 && (
-        <div className="grid grid-cols-4 gap-[10px]">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           {stats.map((s, i) => (
             <div
               key={s.key}
-              className="p-[13px_12px] rounded-[18px]"
+              className="p-3 sm:p-3.5 rounded-[20px] flex flex-col justify-between transition-all duration-200 hover:shadow-md hover:scale-[1.01]"
               style={{
-                background: 'var(--g2)',
+                background: 'var(--g1)',
                 border: '1px solid var(--edge)',
-                boxShadow: '0 8px 20px -16px rgba(var(--sh),.5)',
+                boxShadow: '0 8px 24px -16px rgb(var(--shadow-rgb) / 0.35), inset 0 1px 0 var(--gloss)',
+                backdropFilter: 'blur(20px)',
+                WebkitBackdropFilter: 'blur(20px)',
                 animation: `vFade .5s ${60 + i * 55}ms cubic-bezier(.22,1,.36,1) both`,
               }}
             >
-              <div className="text-[20px] font-normal tracking-[-0.7px] text-on-surface">{s.value}</div>
-              <div className="text-[10.5px] font-[450] tracking-[0.01em] text-on-surface-muted mt-[2px]">
-                {s.label}
+              <div className="flex items-center justify-between mb-2">
+                <div
+                  className="w-7 h-7 rounded-[9px] flex items-center justify-center flex-none"
+                  style={{
+                    background: s.iconBg,
+                    color: s.iconColor,
+                    border: `1px solid ${s.iconBorder}`,
+                  }}
+                >
+                  <span className="material-symbols-outlined text-[15px]" aria-hidden="true">
+                    {s.icon}
+                  </span>
+                </div>
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-baseline gap-1 flex-wrap">
+                  <span className="text-[19px] font-[650] tracking-[-0.4px] text-on-surface tabular-nums leading-tight">
+                    {s.value}
+                  </span>
+                  {s.unit && (
+                    <span className="text-[11.5px] font-[550] text-on-surface-variant leading-tight">
+                      {s.unit}
+                    </span>
+                  )}
+                </div>
+                <div
+                  className="text-[11px] font-[450] text-on-surface-muted truncate mt-0.5"
+                  title={s.label}
+                >
+                  {s.label}
+                </div>
               </div>
             </div>
           ))}
