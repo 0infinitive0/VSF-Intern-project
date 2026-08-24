@@ -420,13 +420,24 @@ export default function StageWorkspace({
 
           <div ref={itinRef} className="flex-1 overflow-y-auto custom-scrollbar p-4 min-h-0">
             {resolvedTab === 'overview' ? (
-              <TripOverviewTab tripPlan={tripPlan} onPickDay={(n) => pickTab(n)} />
+              <TripOverviewTab
+                tripPlan={tripPlan}
+                onPickDay={(n) => pickTab(n)}
+                onOpenHotel={(hotelId) => {
+                  savedScroll.current = itinRef.current?.scrollTop ?? 0
+                  focusMode.openFocus({ kind: 'hotel', id: hotelId })
+                }}
+              />
             ) : activeDay ? (
               <DayTimeline
                 day={activeDay}
                 hotel={tripPlan.hotel}
                 focusedId={focusedId}
                 onOpen={openFocus}
+                onOpenHotel={(hotelId) => {
+                  savedScroll.current = itinRef.current?.scrollTop ?? 0
+                  focusMode.openFocus({ kind: 'hotel', id: hotelId })
+                }}
                 hoveredId={mapSync.hoveredId}
                 onHoverChange={mapSync.setHoveredId}
               />

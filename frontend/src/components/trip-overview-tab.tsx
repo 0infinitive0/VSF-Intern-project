@@ -39,9 +39,11 @@ function nightsFrom(start?: string | null, end?: string | null, fallbackDays?: n
 export default function TripOverviewTab({
   tripPlan,
   onPickDay,
+  onOpenHotel,
 }: {
   tripPlan: TripPlan
   onPickDay: (dayNumber: number) => void
+  onOpenHotel?: (hotelId: string) => void
 }) {
   const { t, i18n } = useTranslation()
   const numFmt = new Intl.NumberFormat(NUM_LOCALE(i18n.language), { maximumFractionDigits: 1 })
@@ -104,7 +106,26 @@ export default function TripOverviewTab({
       )}
 
       {hotel && hotel.name && (
-        <div className="p-[14px] rounded-[20px] bg-glass-2 border border-edge flex gap-[13px] items-center">
+        <div
+          role={onOpenHotel && hotel.id ? 'button' : undefined}
+          tabIndex={onOpenHotel && hotel.id ? 0 : undefined}
+          onClick={() => {
+            if (onOpenHotel && hotel.id) {
+              onOpenHotel(hotel.id)
+            }
+          }}
+          onKeyDown={(e) => {
+            if ((e.key === 'Enter' || e.key === ' ') && onOpenHotel && hotel.id) {
+              e.preventDefault()
+              onOpenHotel(hotel.id)
+            }
+          }}
+          className={`p-[14px] rounded-[20px] bg-glass-2 border border-edge flex gap-[13px] items-center transition-all duration-200 ${
+            onOpenHotel && hotel.id
+              ? 'cursor-pointer hover:bg-glass-3 hover:border-primary/40 hover:shadow-md active:scale-[0.99] group'
+              : ''
+          }`}
+        >
           <RemoteImage
             src={hotel.image_url}
             alt={t('hotelImgAlt', { name: hotel.name })}
@@ -115,7 +136,7 @@ export default function TripOverviewTab({
             <div className="text-[10px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted">
               {t('stayLabel')}
             </div>
-            <div className="text-[15px] font-[590] tracking-[-0.3px] text-on-surface mt-[2px] truncate">
+            <div className="text-[15px] font-[590] tracking-[-0.3px] text-on-surface mt-[2px] truncate group-hover:text-primary transition-colors">
               {hotel.name}
             </div>
             {hotel.star_rating != null && (
@@ -129,20 +150,34 @@ export default function TripOverviewTab({
               </div>
             )}
           </div>
-          {hotel.source_url && hotel.source_platform && (
-            <a
-              href={hotel.source_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={t('detailHandoff', { platform: formatSourcePlatform(hotel.source_platform) })}
-              aria-label={t('detailHandoff', { platform: formatSourcePlatform(hotel.source_platform) })}
-              className="flex-none w-[34px] h-[34px] rounded-full border border-stroke flex items-center justify-center text-on-surface-variant transition-colors hover:bg-glass-3"
-            >
-              <span className="material-symbols-outlined text-[17px]" aria-hidden="true">
-                open_in_new
-              </span>
-            </a>
-          )}
+          <div className="flex items-center gap-1.5 flex-none">
+            {hotel.source_url && hotel.source_platform && (
+              <a
+                href={hotel.source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                title={t('detailHandoff', { platform: formatSourcePlatform(hotel.source_platform) })}
+                aria-label={t('detailHandoff', { platform: formatSourcePlatform(hotel.source_platform) })}
+                className="w-[34px] h-[34px] rounded-full border border-stroke flex items-center justify-center text-on-surface-variant transition-colors hover:bg-glass-3"
+              >
+                <span className="material-symbols-outlined text-[17px]" aria-hidden="true">
+                  open_in_new
+                </span>
+              </a>
+            )}
+            {onOpenHotel && hotel.id && (
+              <div
+                className="w-[34px] h-[34px] rounded-full border border-stroke flex items-center justify-center text-on-surface-variant transition-all duration-200 group-hover:border-primary/40 group-hover:text-primary group-hover:translate-x-0.5"
+                title={t('detailTitle')}
+                aria-label={t('detailTitle')}
+              >
+                <span className="material-symbols-outlined text-[18px]" aria-hidden="true">
+                  chevron_right
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
