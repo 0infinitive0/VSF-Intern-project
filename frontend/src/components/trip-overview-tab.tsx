@@ -112,12 +112,11 @@ export default function TripOverviewTab({
       const hours = Math.floor(m.durationMins / 60)
       const mins = Math.round(m.durationMins % 60)
       if (mins === 0) {
-        durVal = `~${hours}`
-        durUnit = t('statHoursUnit', { defaultValue: 'giờ' })
+        durVal = `~${hours}h`
       } else {
-        durVal = `~${hours}h ${mins}p`
-        durUnit = ''
+        durVal = `~${hours}h${mins < 10 ? '0' : ''}${mins}`
       }
+      durUnit = ''
     }
     stats.push({
       key: 'duration',
@@ -141,7 +140,7 @@ export default function TripOverviewTab({
           {stats.map((s, i) => (
             <div
               key={s.key}
-              className="p-3 sm:p-3.5 rounded-[20px] flex flex-col justify-between transition-all duration-200 hover:shadow-md hover:scale-[1.01]"
+              className="px-2.5 py-3 sm:px-3 sm:py-3.5 rounded-[20px] flex flex-col justify-between transition-all duration-200 hover:shadow-md hover:scale-[1.01]"
               style={{
                 background: 'var(--g1)',
                 border: '1px solid var(--edge)',
@@ -166,12 +165,12 @@ export default function TripOverviewTab({
                 </div>
               </div>
               <div className="min-w-0">
-                <div className="flex items-baseline gap-1 flex-wrap">
-                  <span className="text-[19px] font-[650] tracking-[-0.4px] text-on-surface tabular-nums leading-tight">
+                <div className="flex items-baseline gap-0.5 whitespace-nowrap">
+                  <span className="text-[17.5px] sm:text-[18.5px] font-[650] tracking-[-0.4px] text-on-surface tabular-nums leading-tight whitespace-nowrap">
                     {s.value}
                   </span>
                   {s.unit && (
-                    <span className="text-[11.5px] font-[550] text-on-surface-variant leading-tight">
+                    <span className="text-[11px] sm:text-[11.5px] font-[550] text-on-surface-variant leading-tight flex-none ml-0.5 whitespace-nowrap">
                       {s.unit}
                     </span>
                   )}
