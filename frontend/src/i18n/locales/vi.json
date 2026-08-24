@@ -500,6 +500,7 @@
   "checkoutDoneRoomsLabel": "Phòng đã đặt",
   "checkoutDoneClose": "Đóng",
   "paidHotelLockedTag": "Khách sạn đã cố định",
+  "paidHotelLockedModalHeaderMsg": "Khách sạn đã được cố định để đảm bảo toàn bộ lịch trình chuyến đi và quyền lợi đặt phòng của bạn",
   "checkoutDoneEmailNotice": "Mã đặt phòng và thông tin xác nhận đã được gửi đến email của bạn. Lịch trình chi tiết đã sẵn sàng!",
   "checkoutDoneExploreItinerary": "Khám phá lịch trình chuyến đi",
   "thinkingIntentUpdateTrip": "cập nhật chuyến đi",

@@ -502,6 +502,7 @@
   "checkoutDoneRoomsLabel": "Rooms booked",
   "checkoutDoneClose": "Close",
   "paidHotelLockedTag": "Hotel fixed",
+  "paidHotelLockedModalHeaderMsg": "Hotel is fixed to guarantee your full itinerary and booking benefits",
   "checkoutDoneEmailNotice": "Booking confirmation details have been sent to your email. Your itinerary is ready!",
   "checkoutDoneExploreItinerary": "Explore trip itinerary",
   "thinkingIntentUpdateTrip": "trip update",

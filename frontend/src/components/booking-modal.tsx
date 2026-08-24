@@ -395,27 +395,35 @@ export default function BookingModal({
         >
           V
         </div>
-        <div className="min-w-0 flex flex-col gap-0.5">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted whitespace-nowrap">
+        <div className="min-w-0 flex flex-col gap-0.5 flex-1 pr-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-[600] tracking-[0.1em] uppercase text-on-surface-muted whitespace-nowrap">
               V‑OTA
             </span>
             {effectiveStep === 'done' ? (
               <span
-                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-[600] tracking-tight border shadow-sm animate-[vPop_.4s_cubic-bezier(.34,1.4,.64,1)_both]"
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] sm:text-[11.5px] font-[550] border shadow-sm animate-[vPop_.4s_cubic-bezier(.34,1.4,.64,1)_both]"
                 style={{
-                  background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(217, 119, 6, 0.1))',
-                  borderColor: 'rgba(245, 158, 11, 0.4)',
-                  color: 'rgb(217, 119, 6)',
-                  boxShadow: '0 2px 8px -2px rgba(245, 158, 11, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.3)',
-                  backdropFilter: 'blur(12px)',
-                  WebkitBackdropFilter: 'blur(12px)',
+                  background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.16) 0%, rgba(217, 119, 6, 0.08) 100%)',
+                  borderColor: 'rgba(245, 158, 11, 0.5)',
+                  color: 'var(--t1)',
+                  boxShadow: '0 4px 14px -3px rgba(245, 158, 11, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.4)',
+                  backdropFilter: 'blur(16px)',
+                  WebkitBackdropFilter: 'blur(16px)',
                 }}
               >
-                <span className="material-symbols-outlined text-[11px] leading-none text-amber-500" aria-hidden="true">
+                <span
+                  className="material-symbols-outlined text-[13px] leading-none text-amber-600 dark:text-amber-400 flex-none"
+                  aria-hidden="true"
+                >
                   lock
                 </span>
-                <span>{t('paidHotelLockedTag', { defaultValue: 'Khách sạn đã cố định' })}</span>
+                <span className="text-amber-950 dark:text-amber-100 font-medium leading-snug">
+                  {t('paidHotelLockedModalHeaderMsg', {
+                    defaultValue:
+                      'Khách sạn đã được cố định để đảm bảo toàn bộ lịch trình chuyến đi và quyền lợi đặt phòng của bạn',
+                  })}
+                </span>
               </span>
             ) : (
               <span className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted whitespace-nowrap">
