@@ -378,6 +378,11 @@ def test_required_amenities_are_passed_to_ranking_for_score_explanations(monkeyp
 
     monkeypatch.setattr(hotel_node_module, "_get_destination_id", lambda _d: "dest-1")
     monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", lambda *_args, **_kwargs: [_option("h1")])
+    monkeypatch.setattr(
+        hotel_node_module,
+        "expand_amenity_descendants",
+        lambda amenity_ids: {amenity_id: frozenset({amenity_id}) for amenity_id in amenity_ids},
+    )
     monkeypatch.setattr(hotel_node_module, "rank_hotel_candidates", _rank)
 
     result = hotel_node(_graph_state(_seeded_travel_state(hotel_preferences__amenities=[
@@ -386,6 +391,10 @@ def test_required_amenities_are_passed_to_ranking_for_score_explanations(monkeyp
     ])))
 
     assert captured["amenity_prefs"] == ["swimming_pool", "spa"]
+    assert captured["amenity_families"] == {
+        "swimming_pool": frozenset({"swimming_pool"}),
+        "spa": frozenset({"spa"}),
+    }
     assert result["task_results"][-1]["status"] == "ok"
 
 

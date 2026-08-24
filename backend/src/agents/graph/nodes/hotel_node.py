@@ -44,7 +44,11 @@ from src.api.streaming import emit_phase
 from src.domain.travel_state import Presence, TravelState, apply_patch
 from src.i18n import t
 from src.services import session_store
-from src.services.amenity_catalog import all_approved_amenities, resolve_hotel_amenity_ids
+from src.services.amenity_catalog import (
+    all_approved_amenities,
+    expand_amenity_descendants,
+    resolve_hotel_amenity_ids,
+)
 from src.services.hotel_selection import (
     NoHotelsMatchAmenities,
     NoHotelsMatchRating,
@@ -330,10 +334,12 @@ def _expand_hotel_options(
                 ],
                 "expand_hotel_options": False,
             }
+        amenity_prefs = list(query.get("amenity_prefs") or [])
         ranked = rank_hotel_candidates(
             fetched,
             target_price=query.get("target_price"),
-            amenity_prefs=list(query.get("amenity_prefs") or []),
+            amenity_prefs=amenity_prefs,
+            amenity_families=expand_amenity_descendants(amenity_prefs),
         )
         pool = [data for data, _candidate in ranked if isinstance(data, dict) and data.get("id")]
         unseen = [option for option in pool if str(option["id"]) not in shown_ids]
@@ -763,8 +769,12 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
         return _result("no_results", t("Không tìm thấy khách sạn phù hợp tại {dest}.", language, dest=destination))
 
     ranking_amenities = list(dict.fromkeys([*required_amenities, *preferred_amenities]))
+    ranking_amenity_families = expand_amenity_descendants(ranking_amenities)
     ranked = rank_hotel_candidates(
-        options, target_price=target_price, amenity_prefs=ranking_amenities
+        options,
+        target_price=target_price,
+        amenity_prefs=ranking_amenities,
+        amenity_families=ranking_amenity_families,
     )
     hotel_options = [*previous_options]
     known_ids = set(previous_ids)

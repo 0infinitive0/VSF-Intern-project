@@ -128,6 +128,36 @@ def test_rank_hotel_candidates_keeps_a_bounded_match_score_and_machine_reasons()
     assert all(set(reason) == {"code", "value"} for reason in result["match_reasons"])
 
 
+def test_rank_hotel_candidates_counts_a_wifi_descendant_as_the_wifi_preference():
+    data, candidate = _option(
+        "wifi-child",
+        "Wi-Fi Child Hotel",
+        similarity=0.5,
+        star_rating=4,
+        review_score=8.7,
+    )
+    data["amenities"] = ["swimming_pool", "free_wi_fi_in_all_rooms"]
+
+    ranked = rank_hotel_candidates(
+        [(data, candidate)],
+        amenity_prefs=("swimming_pool", "wifi"),
+        amenity_families={
+            "swimming_pool": frozenset({"swimming_pool"}),
+            "wifi": frozenset({"wifi", "free_wi_fi_in_all_rooms"}),
+        },
+    )
+
+    result = ranked[0][0]
+    assert result["match_score"] == 0.9763
+    assert {reason["code"] for reason in result["match_reasons"]} >= {"amenity_match"}
+    amenity_reason = next(
+        reason["value"]
+        for reason in result["match_reasons"]
+        if reason["code"] == "amenity_match"
+    )
+    assert amenity_reason == "swimming_pool,wifi"
+
+
 def test_select_hotel_candidates_preserves_images_and_city_from_hydration(monkeypatch):
     canonical = [{**_CANONICAL_ROWS[0], "images": ["https://example.com/1.jpg"], "city": "Đà Nẵng"}]
 

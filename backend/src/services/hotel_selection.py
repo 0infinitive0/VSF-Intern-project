@@ -12,7 +12,7 @@ import re
 import time
 import unicodedata
 from dataclasses import dataclass, replace
-from typing import Any, Collection, Dict, Iterable, List, Literal, Tuple
+from typing import Any, Collection, Dict, Iterable, List, Literal, Mapping, Tuple
 
 from supabase import Client, create_client
 
@@ -425,12 +425,30 @@ def _budget_bonus(data: Dict[str, Any], target_price: float | None) -> float:
 def _amenity_bonus(
     data: Dict[str, Any],
     amenity_prefs: Iterable[str],
+    amenity_families: Mapping[str, Collection[str]],
     sea_view_hotel_ids: Collection[str],
 ) -> float:
-    matched = sum(
-        1 for tag in amenity_prefs if hotel_matches_amenity_tag(data, tag, sea_view_hotel_ids)
+    return _AMENITY_MATCH_BONUS * len(
+        _matched_preference_amenities(
+            data, amenity_prefs, amenity_families, sea_view_hotel_ids
+        )
     )
-    return _AMENITY_MATCH_BONUS * matched
+
+
+def _matched_preference_amenities(
+    data: Dict[str, Any],
+    amenity_prefs: Iterable[str],
+    amenity_families: Mapping[str, Collection[str]],
+    sea_view_hotel_ids: Collection[str],
+) -> list[str]:
+    """Return requested parent IDs matched by the hotel's canonical amenity IDs."""
+    return [
+        tag
+        for tag in amenity_prefs
+        if _matches_amenity_family(
+            data, amenity_families.get(tag, (tag,)), sea_view_hotel_ids
+        )
+    ]
 
 
 def _match_reasons(
@@ -438,6 +456,7 @@ def _match_reasons(
     candidate: PlaceCandidate,
     target_price: float | None,
     amenity_prefs: Iterable[str],
+    amenity_families: Mapping[str, Collection[str]],
     sea_view_hotel_ids: Collection[str],
 ) -> list[dict[str, float | str]]:
     """Return raw ranking evidence for the UI; display text remains frontend-owned."""
@@ -449,11 +468,9 @@ def _match_reasons(
         reasons.append({"code": "high_rating", "value": float(review_score)})
     if (star_rating := data.get("star_rating")) is not None and float(star_rating) >= 4.0:
         reasons.append({"code": "star_rating", "value": float(star_rating)})
-    matched_amenities = [
-        tag
-        for tag in amenity_prefs
-        if hotel_matches_amenity_tag(data, tag, sea_view_hotel_ids)
-    ]
+    matched_amenities = _matched_preference_amenities(
+        data, amenity_prefs, amenity_families, sea_view_hotel_ids
+    )
     if matched_amenities:
         reasons.append({"code": "amenity_match", "value": ",".join(matched_amenities)})
     similarity = float(data.get("similarity") or candidate.similarity or 0.0)
@@ -471,6 +488,7 @@ def rank_hotel_candidates(
     *,
     target_price: float | None = None,
     amenity_prefs: Iterable[str] = (),
+    amenity_families: Mapping[str, Collection[str]] | None = None,
     sea_view_hotel_ids: Collection[str] = frozenset(),
 ) -> List[Tuple[Dict[str, Any], PlaceCandidate]]:
     """Sort search results by a weighted blend of similarity, rating, review score, price,
@@ -483,11 +501,15 @@ def rank_hotel_candidates(
     better semantic match. When target_price/amenity_prefs/sea_view_hotel_ids are all
     left at their defaults, every bonus is exactly 0.0 and results are identical to
     calling this function with no preferences at all — soft-boost only, never a penalty.
+
+    `amenity_families` maps each requested parent ID to itself and its approved
+    descendants. Omitting it preserves direct canonical-ID matching for legacy callers.
     """
     if not options:
         return []
 
     amenity_prefs = tuple(amenity_prefs)
+    amenity_families = amenity_families or {}
 
     prices = [
         float(data.get("average_nightly_price", data.get("lowest_price")))
@@ -509,7 +531,7 @@ def rank_hotel_candidates(
         return (
             base
             + _budget_bonus(data, target_price)
-            + _amenity_bonus(data, amenity_prefs, sea_view_hotel_ids)
+            + _amenity_bonus(data, amenity_prefs, amenity_families, sea_view_hotel_ids)
         )
 
     def _realistic_match_score(hotel_data: Dict[str, Any], cand: PlaceCandidate) -> float:
@@ -529,8 +551,10 @@ def rank_hotel_candidates(
                 
         prefs_list = list(amenity_prefs)
         if prefs_list:
-            matched = sum(1 for tag in prefs_list if hotel_matches_amenity_tag(hotel_data, tag, sea_view_hotel_ids))
-            components.append(matched / len(prefs_list))
+            matched = _matched_preference_amenities(
+                hotel_data, prefs_list, amenity_families, sea_view_hotel_ids
+            )
+            components.append(len(matched) / len(prefs_list))
             
         if not components:
             similarity = float(hotel_data.get("similarity") or cand.similarity or 0.0)
@@ -557,7 +581,12 @@ def rank_hotel_candidates(
         data["match_score"] = round(_clamp(display_score), 4)
         
         data["match_reasons"] = _match_reasons(
-            data, _candidate, target_price, amenity_prefs, sea_view_hotel_ids
+            data,
+            _candidate,
+            target_price,
+            amenity_prefs,
+            amenity_families,
+            sea_view_hotel_ids,
         )
     return ranked
 
