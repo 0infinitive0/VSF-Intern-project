@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+:root{--t1:#15181C;--t2:rgba(21,24,28,.66);--t3:rgba(21,24,28,.60);--t4:rgba(21,24,28,.44);--acc:#3A73DE;--acc-soft:rgba(58,115,222,.12);--ok:#2A9187;--ok-soft:rgba(42,145,135,.14);--ok-ink:#1F6F67;--warn:#C8802F;--warn-soft:rgba(200,128,47,.16);--warn-ink:#8A5A21;--err:#C05E70;--on-acc:#FCFDFE;--btn:#1B1F24;--btn-fg:#FBFCFD;--g0:rgba(255,255,255,.44);--g1:rgba(255,255,255,.60);--g2:rgba(255,255,255,.76);--g3:rgba(255,255,255,.92);--line:rgba(21,24,28,.07);--stroke:rgba(21,24,28,.11);--fill:rgba(21,24,28,.05);--fill2:rgba(21,24,28,.085);--page:linear-gradient(165deg,#EAF0F9 0%,#F5F2EE 48%,#E8EFF6 100%)}
+body{margin:0;font-family:'Be Vietnam Pro',system-ui,sans-serif;color:var(--t1)}
+</style>
+</helmet>
+<div style="width:240px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;background:var(--g2);backdrop-filter:blur(22px);border-right:1px solid var(--stroke)">
+  <div style="display:flex;align-items:center;gap:10px;padding:18px 16px 14px">
+    <div style="width:30px;height:30px;border-radius:9px;background:var(--btn);color:var(--btn-fg);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;letter-spacing:.02em">VSF</div>
+    <div style="display:flex;flex-direction:column;gap:1px">
+      <div style="font-size:13px;font-weight:600;line-height:1.1">Trip Planner</div>
+      <div style="font-size:11px;color:var(--t4);line-height:1.1">Bảng quản trị</div>
+    </div>
+  </div>
+  <div style="flex:1;min-height:0;padding:4px 12px;display:flex;flex-direction:column;gap:16px">
+    <sc-for list="{{ groups }}" as="g" hint-placeholder-count="5">
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <sc-if value="{{ g.label }}" hint-placeholder-val="{{ true }}">
+          <div style="font-size:10.5px;font-weight:600;letter-spacing:.09em;color:var(--t4);padding:8px 10px 4px">{{ g.label }}</div>
+        </sc-if>
+        <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="2">
+          <div style="{{ it.style }}">
+            <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.n }}</span>
+            <sc-if value="{{ it.badge }}" hint-placeholder-val="{{ false }}">
+              <span style="{{ it.badgeStyle }}">{{ it.badge }}</span>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </sc-for>
+  </div>
+  <div style="border-top:1px solid var(--line);padding:12px;display:flex;align-items:center;gap:10px">
+    <div style="width:30px;height:30px;border-radius:999px;background:var(--acc-soft);color:var(--acc);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700">VH</div>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px">
+      <div style="font-size:12.5px;font-weight:600;line-height:1.2">Vận hành</div>
+      <div style="font-size:11px;color:var(--t4);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">admin@vsftrip.vn</div>
+    </div>
+    <div title="Đăng xuất" style="width:28px;height:28px;border-radius:8px;border:1px solid var(--stroke);display:flex;align-items:center;justify-content:center;color:var(--t3);font-size:13px;cursor:pointer">⏻</div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:240,&quot;height&quot;:760},&quot;active&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Tổng quan&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const active = this.props.active || 'Tổng quan';
+    const raw = [
+      { label: null, items: [['Tổng quan']] },
+      { label: 'KHÁCH SẠN', items: [['Danh sách khách sạn'], ['Trạng thái embedding']] },
+      { label: 'DỮ LIỆU BOT', items: [['Pipeline'], ['Độ phủ embedding']] },
+      { label: 'ĐƠN HÀNG', items: [['Danh sách đơn', '7']] },
+    ];
+    const base = 'display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;border-radius:10px;font-size:13px;cursor:pointer;';
+    return {
+      groups: raw.map(g => ({
+        label: g.label,
+        items: g.items.map(([n, badge]) => {
+          const on = n === active;
+          return {
+            n, badge,
+            style: base + (on
+              ? 'background:var(--acc-soft);color:var(--acc);font-weight:600;box-shadow:inset 2px 0 0 var(--acc)'
+              : 'color:var(--t2);font-weight:500'),
+            badgeStyle: 'min-width:18px;height:18px;padding:0 5px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:700;font-variant-numeric:tabular-nums;'
+              + (badge === '3' ? 'background:var(--warn-soft);color:var(--warn-ink)' : 'background:var(--fill2);color:var(--t3)'),
+          };
+        }),
+      })),
+    };
+  }
+}
+
+</script>
+</body>
+</html>
