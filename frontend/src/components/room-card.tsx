@@ -40,6 +40,8 @@ export default function RoomCard({
   maxQty,
   onQtyChange,
   amenityDetails,
+  sessionBookedFromBackend,
+  onAttemptAddRoom,
 }: {
   room: RoomDetail
   delay: string
@@ -50,6 +52,8 @@ export default function RoomCard({
   onQtyChange: (nextQty: number) => void
   /** Shared room/both catalog data from the surrounding hotel-detail response. */
   amenityDetails: AmenityCatalogOption[]
+  sessionBookedFromBackend?: boolean
+  onAttemptAddRoom?: () => void
 }) {
   const { t, i18n } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -222,7 +226,22 @@ export default function RoomCard({
         )}
 
         <div className="flex gap-2 mt-3 items-center">
-          {selected ? (
+          {sessionBookedFromBackend ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onAttemptAddRoom?.()
+              }}
+              className="flex-1 p-2.5 rounded-[14px] border border-amber-500/20 text-[12.5px] font-[590] tracking-[-0.1px] cursor-not-allowed transition-all duration-200 opacity-70 flex items-center justify-center gap-1.5 active:scale-95"
+              style={{ background: 'rgba(234, 179, 8, 0.08)', color: 'var(--t2)' }}
+            >
+              <span className="material-symbols-outlined text-[14px] text-amber-500" aria-hidden="true">
+                lock
+              </span>
+              <span>{t('roomAddBtn')}</span>
+            </button>
+          ) : selected ? (
             <div
               className="flex-1 flex items-center gap-1 h-11 p-1 rounded-[14px]"
               style={{ background: 'var(--acc-soft)', border: '1px solid var(--acc)' }}

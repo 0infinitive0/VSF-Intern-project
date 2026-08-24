@@ -74,7 +74,7 @@ export default function StepNavigator({
             aria-current={isCurrent ? 'step' : undefined}
             aria-busy={busy || undefined}
             style={{ transition: 'all .3s var(--ease-spring)' }}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-1.5 py-[7px] rounded-[12px] text-[11.5px] whitespace-nowrap disabled:cursor-default active:scale-[0.97] ${
+            className={`flex-1 h-[32px] flex items-center justify-center gap-1.5 px-1.5 rounded-[12px] text-[11.5px] leading-none whitespace-nowrap disabled:cursor-default active:scale-[0.97] box-border ${
               isCurrent
                 ? 'bg-button text-on-button font-semibold border border-button'
                 : clickable
@@ -85,7 +85,7 @@ export default function StepNavigator({
             <span className="text-[9.5px] opacity-60">{step.n}</span>
             <span>{step.label}</span>
             {step.locked && (
-              <span className="material-symbols-outlined text-[12px] opacity-70" aria-hidden="true">
+              <span className="material-symbols-outlined text-[12px] leading-none flex-none opacity-70 w-3 h-3 flex items-center justify-center" aria-hidden="true">
                 lock
               </span>
             )}

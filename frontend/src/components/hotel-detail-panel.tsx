@@ -119,6 +119,16 @@ export default function HotelDetailPanel({
   const { t, i18n } = useTranslation()
   const { detail, status } = useHotelDetail(hotelId)
   const [expandedAmenitiesHotelId, setExpandedAmenitiesHotelId] = useState<string | null>(null)
+  const [shakeNotice, setShakeNotice] = useState(false)
+
+  const triggerNoticeShake = () => {
+    setShakeNotice(false)
+    requestAnimationFrame(() => {
+      setShakeNotice(true)
+    })
+    const el = document.getElementById('hold-footer-notice')
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }
 
   if (hotelId == null) return <div className="flex-1 min-w-0" />
   const numFmt = new Intl.NumberFormat(NUM_LOCALE(i18n.language))
@@ -419,6 +429,10 @@ export default function HotelDetailPanel({
                           qty={room.id ? (roomHold.cartFor(hotelId)[room.id] ?? 0) : 0}
                           maxQty={maxQty}
                           onQtyChange={(next) => {
+                            if (sessionBookedFromBackend) {
+                              triggerNoticeShake()
+                              return
+                            }
                             if (!room.id) return
                             roomHold.setQty(hotelId, room.id, next, maxQty)
                             if (next > 0 && option != null && onSelectHotel) {
@@ -426,6 +440,8 @@ export default function HotelDetailPanel({
                             }
                           }}
                           amenityDetails={detail.room_amenities ?? []}
+                          sessionBookedFromBackend={sessionBookedFromBackend}
+                          onAttemptAddRoom={triggerNoticeShake}
                         />
                       )
                     })}
@@ -532,6 +548,8 @@ export default function HotelDetailPanel({
                 option={option}
                 heldElsewhereHotelName={heldElsewhereHotelName ?? null}
                 sessionBookedFromBackend={sessionBookedFromBackend}
+                shakeNotice={shakeNotice}
+                onNoticeAnimationEnd={() => setShakeNotice(false)}
               />
             )}
           </>
@@ -554,6 +572,8 @@ function HoldFooter({
   option,
   heldElsewhereHotelName,
   sessionBookedFromBackend,
+  shakeNotice,
+  onNoticeAnimationEnd,
 }: {
   hotelId: string
   rooms: RoomDetail[]
@@ -564,6 +584,8 @@ function HoldFooter({
   option?: HotelOption
   heldElsewhereHotelName?: string | null
   sessionBookedFromBackend: boolean
+  shakeNotice?: boolean
+  onNoticeAnimationEnd?: () => void
 }) {
   const { t, i18n } = useTranslation()
   const [confirmSwitchOpen, setConfirmSwitchOpen] = useState(false)
@@ -727,18 +749,30 @@ function HoldFooter({
 
           {sessionBookedFromBackend && (
             <div
+              id="hold-footer-notice"
               role="status"
-              className="flex items-center gap-2 p-2.5 rounded-xl border text-[11.5px] font-medium leading-snug"
+              onAnimationEnd={onNoticeAnimationEnd}
+              className={`flex items-center gap-2.5 p-3 rounded-2xl border text-[12px] font-medium leading-snug transition-all duration-300 ${
+                shakeNotice
+                  ? 'notice-shake-anim ring-4 ring-amber-500/40 border-amber-500 shadow-lg'
+                  : ''
+              }`}
               style={{
-                background: 'rgba(234, 179, 8, 0.08)',
-                borderColor: 'rgba(234, 179, 8, 0.25)',
+                background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(217, 119, 6, 0.08))',
+                borderColor: shakeNotice ? 'rgb(245, 158, 11)' : 'rgba(245, 158, 11, 0.35)',
                 color: 'var(--t1)',
+                boxShadow: shakeNotice ? '0 0 20px rgba(245, 158, 11, 0.35)' : undefined,
               }}
             >
-              <span className="material-symbols-outlined text-[16px] text-amber-500 flex-none" aria-hidden="true">
-                lock
-              </span>
-              <span>{t('paidHotelLockedDetailNotice')}</span>
+              <div
+                className="w-7 h-7 rounded-xl flex items-center justify-center flex-none text-white shadow-sm"
+                style={{ background: 'linear-gradient(135deg, #F59E0B, #D97706)' }}
+              >
+                <span className="material-symbols-outlined text-[15px]" aria-hidden="true">
+                  lock
+                </span>
+              </div>
+              <span className="flex-1">{t('paidHotelLockedDetailNotice')}</span>
             </div>
           )}
           {roomHold.status === 'ERROR' && roomHold.error && (
@@ -769,13 +803,23 @@ function HoldFooter({
         <div className="animate-[vRise_0.3s_cubic-bezier(0.22,1,0.36,1)_both]">
           {sessionBookedFromBackend ? (
             <div
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-full border text-center text-[12.5px] font-[550] text-amber-600 dark:text-amber-400"
+              id="hold-footer-notice"
+              role="status"
+              onAnimationEnd={onNoticeAnimationEnd}
+              className={`w-full flex items-center justify-center gap-2.5 px-4 py-3 rounded-full border text-center text-[12.5px] font-[550] text-amber-700 dark:text-amber-300 transition-all duration-300 ${
+                shakeNotice
+                  ? 'notice-shake-anim ring-4 ring-amber-500/40 border-amber-500 shadow-lg'
+                  : ''
+              }`}
               style={{
-                background: 'rgba(234, 179, 8, 0.08)',
-                borderColor: 'rgba(234, 179, 8, 0.25)',
+                background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(217, 119, 6, 0.08))',
+                borderColor: shakeNotice ? 'rgb(245, 158, 11)' : 'rgba(245, 158, 11, 0.35)',
+                boxShadow: shakeNotice ? '0 0 20px rgba(245, 158, 11, 0.35)' : undefined,
               }}
             >
-              <span className="material-symbols-outlined text-[17px] text-amber-500" aria-hidden="true">lock</span>
+              <span className="material-symbols-outlined text-[17px] text-amber-500 flex-none" aria-hidden="true">
+                lock
+              </span>
               <span>{t('paidHotelLockedDetailNotice')}</span>
             </div>
           ) : (

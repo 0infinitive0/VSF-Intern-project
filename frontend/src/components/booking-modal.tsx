@@ -684,9 +684,6 @@ export default function BookingModal({
                           <div className="text-[13.5px] font-[530] text-on-surface-variant mt-1.5 line-clamp-2">
                             {hotelName}
                           </div>
-                          <div className="text-[12px] text-on-surface-muted mt-1 leading-relaxed">
-                            {t('checkoutDoneSub')}
-                          </div>
                         </div>
                       </div>
                     </div>
@@ -798,7 +795,7 @@ export default function BookingModal({
 
                 {/* Bottom Unified Glass Bar: Email Notice + Explore CTA Button */}
                 <div
-                  className="w-full p-4 sm:p-4.5 rounded-[22px] border border-edge flex flex-col sm:flex-row items-center justify-between gap-4"
+                  className="w-full p-3.5 sm:p-4 rounded-[22px] border border-edge flex flex-col sm:flex-row items-center justify-between gap-3.5"
                   style={{
                     background: 'var(--g1)',
                     boxShadow: '0 20px 48px -28px rgb(var(--shadow-rgb) / 0.35), inset 0 1px 0 var(--gloss)',
@@ -806,23 +803,27 @@ export default function BookingModal({
                     WebkitBackdropFilter: 'blur(28px) saturate(1.7)',
                   }}
                 >
-                  <div className="flex flex-col gap-1 w-full sm:w-auto">
-                    <div className="flex items-center gap-2.5">
-                      <div
-                        className="w-7 h-7 rounded-full flex items-center justify-center flex-none"
-                        style={{ background: 'var(--ok-soft)', color: 'var(--ok-ink)' }}
-                      >
-                        <span className="material-symbols-outlined text-[16px]">mark_email_read</span>
-                      </div>
-                      <span className="text-[12.5px] font-[530] text-on-surface leading-snug">
-                        {t('checkoutDoneEmailNotice')}
-                      </span>
+                  <div className="flex items-center gap-3 w-full sm:w-auto min-w-0">
+                    <div
+                      className="w-8 h-8 rounded-[12px] flex items-center justify-center flex-none"
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(42, 145, 135, 0.18), rgba(42, 145, 135, 0.08))',
+                        border: '1px solid rgba(42, 145, 135, 0.28)',
+                        color: 'var(--ok-ink)',
+                      }}
+                    >
+                      <span className="material-symbols-outlined text-[17px]">mark_email_read</span>
                     </div>
-                    <div className="flex items-center gap-1.5 text-[11px] text-on-surface-muted pl-9">
-                      <span className="material-symbols-outlined text-[13px] text-amber-500 flex-none" aria-hidden="true">
-                        lock
-                      </span>
-                      <span>{t('checkoutDoneHotelLockedNotice')}</span>
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                      <div className="text-[12.5px] font-[590] text-on-surface leading-tight">
+                        {t('checkoutDoneEmailNotice')}
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 font-normal leading-tight">
+                        <span className="material-symbols-outlined text-[12px] flex-none" aria-hidden="true">
+                          lock
+                        </span>
+                        <span>{t('checkoutDoneHotelLockedNotice')}</span>
+                      </div>
                     </div>
                   </div>
 

@@ -320,20 +320,36 @@ export default function StageHotels({
         >
           {sessionBookedFromBackend && (
             <div
-              className="p-3.5 px-4 rounded-[22px] border flex items-start gap-3 animate-[vRise_0.4s_ease-out_both] mb-1"
+              className="p-4 rounded-[22px] border flex items-start gap-3.5 animate-[vRise_0.4s_ease-out_both] mb-1.5 shadow-md"
               style={{
-                background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.08), rgba(202, 138, 4, 0.03))',
-                borderColor: 'rgba(234, 179, 8, 0.3)',
+                background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.16) 0%, rgba(217, 119, 6, 0.08) 100%)',
+                borderColor: 'rgba(245, 158, 11, 0.45)',
+                boxShadow: '0 10px 28px -10px rgba(245, 158, 11, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.25)',
+                backdropFilter: 'blur(20px)',
+                WebkitBackdropFilter: 'blur(20px)',
               }}
             >
-              <span className="material-symbols-outlined text-[20px] text-amber-500 flex-none mt-0.5" aria-hidden="true">
-                lock
-              </span>
+              <div
+                className="w-9 h-9 rounded-[14px] flex items-center justify-center flex-none text-white shadow-sm"
+                style={{
+                  background: 'linear-gradient(135deg, #F59E0B, #D97706)',
+                  boxShadow: '0 4px 14px -2px rgba(245, 158, 11, 0.55)',
+                }}
+              >
+                <span className="material-symbols-outlined text-[19px]" aria-hidden="true">
+                  lock
+                </span>
+              </div>
               <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-[590] text-on-surface">
-                  {t('paidHotelLockedBannerTitle')}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[13.5px] font-[650] tracking-[-0.2px] text-amber-950 dark:text-amber-200">
+                    {t('paidHotelLockedBannerTitle')}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-[600] tracking-wide uppercase bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30">
+                    {t('paidHotelLockedTag', { defaultValue: 'Cố định' })}
+                  </span>
                 </div>
-                <div className="text-[12px] text-on-surface-muted font-normal mt-0.5 leading-relaxed">
+                <div className="text-[12.5px] text-on-surface/90 dark:text-on-surface-variant font-normal mt-1 leading-relaxed">
                   {t('paidHotelLockedBannerMsg', {
                     hotel: state.tripPlan?.hotel?.name || t('yourSelectedHotel'),
                   })}
