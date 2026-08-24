@@ -320,7 +320,7 @@ export default function StageHotels({
         >
           {sessionBookedFromBackend && (
             <div
-              className="p-4 rounded-[22px] border flex items-start gap-3.5 animate-[vRise_0.4s_ease-out_both] mb-1.5 shadow-md"
+              className="p-4 rounded-[22px] border flex items-center gap-3.5 animate-[vRise_0.4s_ease-out_both] mb-1.5 shadow-md"
               style={{
                 background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.16) 0%, rgba(217, 119, 6, 0.08) 100%)',
                 borderColor: 'rgba(245, 158, 11, 0.45)',
@@ -350,9 +350,7 @@ export default function StageHotels({
                   </span>
                 </div>
                 <div className="text-[12.5px] text-on-surface/90 dark:text-on-surface-variant font-normal mt-1 leading-relaxed">
-                  {t('paidHotelLockedBannerMsg', {
-                    hotel: state.tripPlan?.hotel?.name || t('yourSelectedHotel'),
-                  })}
+                  {t('paidHotelLockedBannerMsg')}
                 </div>
               </div>
             </div>

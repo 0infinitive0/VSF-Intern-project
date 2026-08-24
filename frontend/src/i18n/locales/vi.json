@@ -427,7 +427,7 @@
   "holdCtaSwitchHere": "Giữ phòng ở khách sạn này",
   "step2GuideTip": "Chọn khách sạn ➔ Chọn phòng ➔ AI tạo lịch trình",
   "paidHotelLockedBannerTitle": "Khách sạn đã được thanh toán cố định",
-  "paidHotelLockedBannerMsg": "Bạn đã hoàn tất thanh toán cho khách sạn \"{{hotel}}\". Khách sạn đã được cố định để đảm bảo toàn bộ lịch trình chuyến đi và quyền lợi đặt phòng của bạn.",
+  "paidHotelLockedBannerMsg": "Toàn bộ lịch trình chi tiết và lộ trình di chuyển đã được tối ưu theo vị trí khách sạn bạn đã thanh toán. Việc thay đổi khách sạn sẽ làm mất toàn bộ lịch trình hiện tại và ảnh hưởng đến quyền lợi đặt phòng của bạn.",
   "paidHotelLockedCardBadge": "✓ Đã thanh toán & Cố định",
   "paidHotelLockedCardHint": "Không thể đổi khách sạn",
   "paidHotelLockedDetailNotice": "Chuyến đi này đã hoàn tất thanh toán khách sạn. Hệ thống không cho phép đổi sang khách sạn khác để bảo toàn lịch trình.",
