@@ -227,11 +227,6 @@ export default function TripOverviewTab({
                 {formatHotelStars(hotel.star_rating)}
               </div>
             )}
-            {hotel.description && (
-              <div className="text-[12px] text-on-surface-muted font-normal mt-[2px] line-clamp-2">
-                {hotel.description}
-              </div>
-            )}
           </div>
           <div className="flex items-center gap-1.5 flex-none">
             {hotel.source_url && hotel.source_platform && (
@@ -299,11 +294,11 @@ export default function TripOverviewTab({
               return (
                 <div
                   key={i}
-                  className="flex items-start gap-2.5 p-2.5 px-3 rounded-[14px] bg-glass-1 border border-edge/60 text-[12.5px] font-normal text-on-surface"
+                  className="flex items-center gap-2.5 p-2.5 px-3 rounded-[14px] bg-glass-1 border border-edge/60 text-[12.5px] font-normal text-on-surface"
                 >
                   {match ? (
                     <>
-                      <span className="px-2 py-0.5 rounded-md text-[10.5px] font-[600] uppercase tracking-wide bg-primary/10 text-primary border border-primary/20 flex-none mt-0.5">
+                      <span className="px-2 py-0.5 rounded-md text-[10.5px] font-[600] uppercase tracking-wide bg-primary/10 text-primary border border-primary/20 flex-none leading-none">
                         {match[1]}
                       </span>
                       <span className="flex-1 min-w-0 leading-relaxed text-on-surface/90">
@@ -312,7 +307,7 @@ export default function TripOverviewTab({
                     </>
                   ) : (
                     <>
-                      <span className="material-symbols-outlined text-[16px] text-emerald-500 flex-none mt-0.5" aria-hidden="true">
+                      <span className="material-symbols-outlined text-[16px] text-emerald-500 flex-none leading-none" aria-hidden="true">
                         check_circle
                       </span>
                       <span className="flex-1 min-w-0 leading-relaxed text-on-surface/90">
