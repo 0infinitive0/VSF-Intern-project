@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import mapboxgl from 'mapbox-gl'
 import { useTranslation } from 'react-i18next'
 import { useMapboxMap } from '../hooks/use-mapbox-map'
-import { boundsOf, parseCoordinates, toLngLat } from '../lib/geo'
+import { boundsOf, parseCoordinates, pointsAlongPolyline, toLngLat } from '../lib/geo'
 import { LEG_COLORS, dayColor, legColor } from '../lib/map-colors'
 import type { HotelMapRay } from '../lib/map-presentation'
 import { highlightedRouteKeys } from '../lib/map-presentation'
@@ -84,29 +84,105 @@ const LAYER_STYLE: Record<
   [DRIVE_FLOW_LAYER]: { width: 3, opacity: 0.95, color: '#fff', opacityFn: accentOpacityExpr, pulse: { count: 2, halfWidth: 0.028, color: '#ffffff' } },
 }
 
-// Walk: the marching-dot gradient itself IS the whole visual — no solid/
-// colored base line underneath it, no separate "flow" layer on top of one.
-// mainOpacityExpr/mainWidthExpr still apply on top of the gradient
-// (line-opacity/line-width aren't replaced by line-gradient, only
-// line-color is), so hover still brightens+widens the dots and dimming
-// still fades them, exactly like a normal main line would. One entry per
-// WALK_LAYER_IDS color (see its own comment above) — each identical except
-// for which color its dots render in.
+// Walk (background glow only now — see WALK_PILL_* below for the actual
+// pill shapes): three tuning passes (halfWidth 0.009 -> 0.016 -> 0.04 ->
+// 0.07, count 14 -> 9 -> 6 -> 4) all still confirmed by screenshot as
+// blurred/faded ends, never a true geometric round cap — a `line-gradient`
+// can only vary a line's ALPHA along its length, it cannot narrow the
+// line's WIDTH the way an actual line-cap does, so no amount of
+// halfWidth/capFraction tuning was ever going to produce a real pill, only
+// a softer or harder fade (this file's own earlier doc comment on
+// travelGradient already flagged this trade-off: "a curved alpha taper
+// reads as rounded... not a true geometric round line-cap"). Kept at low
+// opacity as a soft color-motion glow underneath the real pill icons
+// (WALK_PILL_LAYER) rather than removed outright — mainOpacityExpr/
+// mainWidthExpr still apply on top of the gradient, so hover still
+// brightens it a little, dimming still fades it, same as before.
 for (const [i, id] of WALK_LAYER_IDS.entries()) {
   LAYER_STYLE[id] = {
     width: 4,
-    opacity: 0.85,
+    opacity: 0.3,
     color: '#fff', // inert — line-gradient (pulse, below) replaces line-color
     opacityFn: mainOpacityExpr,
     widthFn: mainWidthExpr,
-    // Longer than the first pass (halfWidth 0.009 -> 0.016 — "dài ra 1
-    // chút") with a large capFraction (0.6, vs drive's crisp 0.18 default —
-    // "bo tròn các góc") so each mark is mostly rounded cap with just a
-    // short flat shaft — a pill, not a rectangle. Fewer of them (14 -> 9) so
-    // the longer marks don't run into each other, which reads calmer/
-    // smoother than a dense train of short marks.
-    pulse: { count: 9, halfWidth: 0.016, color: LEG_COLORS[i], capFraction: 0.6 },
+    pulse: { count: 4, halfWidth: 0.07, color: LEG_COLORS[i], capFraction: 0.6 },
   }
+}
+
+// ---------------------------------------------------------------------------
+// Walk pills — real geometry this time. A small filled stadium/capsule
+// shape baked to a bitmap per leg color (drawPillPath below — actual
+// rounded ends via canvas arcs, not a color fade), registered as a Mapbox
+// icon and repeated along each walking leg via a symbol layer. Positions
+// are computed by US (pointsAlongPolyline, geo.ts) rather than Mapbox's own
+// `symbol-placement: 'line'`, specifically so spacing can be derived from
+// the CURRENT ZOOM (desired screen-pixel spacing x meters-per-pixel at that
+// zoom) instead of line-progress's per-feature-length fraction — the exact
+// thing that made the gradient approach unreliable on short walking legs.
+// See the animation effect below (WALK_PILL_SOURCE) for how phase/zoom
+// feed into this each tick.
+const WALK_PILL_SOURCE = 'walk-pills'
+const WALK_PILL_LAYER = 'walk-pills-layer'
+const WALK_PILL_ICON_IDS = LEG_COLORS.map((_, i) => `walk-pill-icon-${i}`)
+// Baked bitmap size in device pixels (before Mapbox's own icon-size scales
+// it back down) — width notably greater than height so it reads as an
+// oblong capsule, not a circle, even before any rounding is considered.
+// Supersampled (SCALE) so the arc's edge survives the eventual downscale
+// smoothly instead of looking jagged.
+const WALK_PILL_ICON_SCALE = 4
+const WALK_PILL_ICON_W = 22
+const WALK_PILL_ICON_H = 9
+// Real-world spacing target, expressed as desired ON-SCREEN pixel spacing
+// between pill centers — converted to meters at animation time using the
+// current zoom (see metersPerPixelAt below), so the visual density stays
+// roughly constant whether zoomed in on one street or viewing the whole
+// trip.
+const WALK_PILL_SPACING_PX = 30
+/** How often (ms) the pill positions actually get recomputed + pushed to
+ * the source — the motion itself is meant to be slow (WALK_FLOW_CYCLE_MS),
+ * so there's no need to redo the polyline resampling at full display rate;
+ * throttling this independently of the outer requestAnimationFrame loop
+ * keeps CPU cost low without capping the frame rate of anything else. */
+const WALK_PILL_UPDATE_INTERVAL_MS = 90
+
+/** Traces a stadium/capsule outline (a rect with two semicircle ends) into
+ * the current path — real arcs, so `line-cap`-style rounding here is
+ * actual geometry, unlike travelGradient's alpha taper above. */
+function drawPillPath(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  const r = h / 2
+  ctx.beginPath()
+  ctx.moveTo(r, 0)
+  ctx.lineTo(w - r, 0)
+  ctx.arc(w - r, r, r, -Math.PI / 2, Math.PI / 2)
+  ctx.lineTo(r, h)
+  ctx.arc(r, r, r, Math.PI / 2, (3 * Math.PI) / 2)
+  ctx.closePath()
+}
+
+function buildPillIcon(hexColor: string): ImageData {
+  const w = WALK_PILL_ICON_W * WALK_PILL_ICON_SCALE
+  const h = WALK_PILL_ICON_H * WALK_PILL_ICON_SCALE
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')!
+  ctx.fillStyle = hexColor
+  drawPillPath(ctx, w, h)
+  ctx.fill()
+  return ctx.getImageData(0, 0, w, h)
+}
+
+/** Earth's Web Mercator meters-per-pixel at `zoom`/`lat` — used to convert
+ * WALK_PILL_SPACING_PX (a screen-space target) into the real-world
+ * `spacingMeters` pointsAlongPolyline actually needs. Standard constant:
+ * circumference of Earth (m) / 256 (Mapbox's base tile size in px). */
+function metersPerPixelAt(lat: number, zoom: number): number {
+  return (156543.03392 * Math.cos((lat * Math.PI) / 180)) / 2 ** zoom
+}
+
+function iconIdForColor(hexColor: string): string {
+  const index = LEG_COLORS.indexOf(hexColor as (typeof LEG_COLORS)[number])
+  return WALK_PILL_ICON_IDS[index < 0 ? 0 : index]
 }
 
 /**
@@ -138,8 +214,12 @@ for (const [i, id] of WALK_LAYER_IDS.entries()) {
  */
 /** Time for the drive dash train to advance by exactly one dash spacing (so the loop is seamless). */
 const DRIVE_FLOW_CYCLE_MS = 4_800
-/** Time for the walk dash train to advance by exactly one dash spacing. */
-const WALK_FLOW_CYCLE_MS = 1_600
+/** Time for the walk dash train to advance by exactly one dash spacing.
+ * Was 1_600 (noticeably faster than drive's 4_800) — reported as too fast
+ * once the marks themselves got bigger/pill-shaped (map-view.tsx's
+ * WALK_LAYER_IDS pulse config); slowed to a calmer pace, still faster than
+ * drive's own cycle but no longer hurried. */
+const WALK_FLOW_CYCLE_MS = 3_200
 
 /** Hex `#rrggbb` -> a function giving that color at any alpha, for a pure-alpha gradient fade (see travelGradient). */
 function alphaColorOf(hex: string): (alpha: number) => string {
@@ -359,6 +439,41 @@ function addRouteLayers(map: mapboxgl.Map) {
       },
     } as mapboxgl.LineLayerSpecification)
   }
+
+  // Walk pills — added last so they paint on top of the (now-dim) gradient
+  // glow above. One icon per LEG_COLORS entry, all sharing one symbol
+  // layer/source (icon-image picked per-feature via `iconId`) rather than
+  // WALK_LAYER_IDS's one-layer-per-color split — a symbol layer's
+  // icon-image (unlike line-gradient) IS data-driven per feature, so there
+  // was no engine reason to split this one.
+  for (const [i, iconId] of WALK_PILL_ICON_IDS.entries()) {
+    if (!map.hasImage(iconId)) map.addImage(iconId, buildPillIcon(LEG_COLORS[i]), { pixelRatio: WALK_PILL_ICON_SCALE })
+  }
+  map.addSource(WALK_PILL_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+  map.addLayer({
+    id: WALK_PILL_LAYER,
+    type: 'symbol',
+    source: WALK_PILL_SOURCE,
+    layout: {
+      'icon-image': ['get', 'iconId'],
+      'icon-size': 1 / WALK_PILL_ICON_SCALE,
+      // bearingDeg is compass bearing (0 = north, drawPillPath's own
+      // convention). The baked icon's long axis is drawn lying flat along
+      // the bitmap's own X axis (rotate=0 already reads as east-west), so
+      // a bearing of 90 (due east) needs icon-rotate=0, not 90 -- feeding
+      // bearingDeg straight into icon-rotate left every pill rotated 90°
+      // off from the road it sits on (confirmed by a zoomed-in screenshot:
+      // pills read as near-vertical blobs on a near-horizontal road).
+      'icon-rotate': ['-', ['get', 'bearingDeg'], 90],
+      'icon-rotation-alignment': 'map',
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+    },
+    paint: {
+      ...fadeIn,
+      'icon-opacity': mainOpacityExpr(0.95),
+    },
+  })
 }
 
 // Entrance draw-in (map_line_animation_effects.md §1: "kéo rút dây" — the
@@ -720,6 +835,59 @@ export default function MapView({ variant, theme, markers, segments, hoveredId, 
     frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
   }, [status, styleVersion, variant, mapRef, activeFlowLayers])
+
+  // Walk pills: real lng/lat points recomputed periodically
+  // (pointsAlongPolyline, geo.ts), unlike the paint-property-only loop
+  // above — a symbol layer's positions live in the SOURCE, not a paint
+  // expression, so animating them means re-deriving the point list and
+  // calling setData. Throttled to WALK_PILL_UPDATE_INTERVAL_MS (the motion
+  // itself is slow — WALK_FLOW_CYCLE_MS — so resampling every display
+  // frame would be wasted work) rather than tied to the flow-layers loop,
+  // which only ever touches a single paint property.
+  //
+  // Always renders at least once at phase 0 (even with no walking legs, or
+  // with prefers-reduced-motion) so the source is never left holding stale
+  // points from a previous segments/day selection, and reduced-motion
+  // guests still see static pills instead of none.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || status !== 'ready' || variant !== 'workspace') return
+    const walkSegments = segments.filter((segment) => !segment.isFallback && segment.profile === 'walking' && segment.points.length >= 2)
+    const render = (phase: number) => {
+      const source = map.getSource(WALK_PILL_SOURCE) as mapboxgl.GeoJSONSource | undefined
+      if (!source) return
+      const zoom = map.getZoom()
+      const features = walkSegments.flatMap((segment) => {
+        const iconId = iconIdForColor(colorByDay ? dayColor(segment.dayNumber) : legColor(segment.legIndex))
+        // Any point on the leg is a fine reference latitude for its
+        // meters-per-pixel — walking legs are short (<1.2km, see
+        // WALKING_THRESHOLD_KM), so the scale barely varies end to end.
+        const refLat = segment.points[Math.floor(segment.points.length / 2)].lat
+        const spacingMeters = WALK_PILL_SPACING_PX * metersPerPixelAt(refLat, zoom)
+        return pointsAlongPolyline(segment.points, spacingMeters, phase).map((point) => ({
+          type: 'Feature' as const,
+          properties: { iconId, bearingDeg: point.bearingDeg },
+          geometry: { type: 'Point' as const, coordinates: toLngLat(point) },
+        }))
+      })
+      source.setData({ type: 'FeatureCollection', features })
+    }
+    render(0)
+    if (walkSegments.length === 0 || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    let frame = 0
+    let start = 0
+    let lastUpdate = -Infinity
+    const tick = (time: number) => {
+      if (!start) start = time
+      if (time - lastUpdate >= WALK_PILL_UPDATE_INTERVAL_MS) {
+        lastUpdate = time
+        render(((time - start) % WALK_FLOW_CYCLE_MS) / WALK_FLOW_CYCLE_MS)
+      }
+      frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
+  }, [segments, status, styleVersion, variant, colorByDay, mapRef])
 
   useEffect(() => {
     const map = mapRef.current

@@ -12,8 +12,10 @@ import { resyncField, serverAskedFieldFor, type IntakeField } from '../lib/next-
 import type { IntakeStatus } from '../types'
 
 // intake.people is a formatted string like "2 người" (trip_intake.py), not a
-// bare number — pull the leading count back out.
-function parseLeadingCount(value: string | null | undefined): number | null {
+// bare number — pull the leading count back out. Exported for reuse by
+// stage-hotels.tsx, which needs the same party-size number to cap room
+// quantity by guest capacity (room-capacity.ts).
+export function parseLeadingCount(value: string | null | undefined): number | null {
   if (!value) return null
   const match = /^\d+/.exec(value)
   return match ? Number(match[0]) : null

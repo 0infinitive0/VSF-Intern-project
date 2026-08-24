@@ -17,6 +17,7 @@ from src.services.trip_scheduler import (
     haversine_distance_km,
     infer_trip_change,
     normalize_day_themes,
+    parse_day_scope,
     serialize_day_themes,
     validate_or_repair_day,
 )
@@ -910,3 +911,38 @@ def test_latest_outing_cutoff_removes_only_non_hotel_starts_at_or_after_cutoff()
     assert [item["id"] for item in repaired] == ["a", "c", "d"]
     assert removed == ("b",)
     assert [item["order_index"] for item in repaired if item["day_number"] == 1] == [1, 2]
+
+
+def test_calendar_dates_are_not_read_as_day_numbers() -> None:
+    """The opening intake sentence carries dates, not a day scope.
+
+    "ngày 03/07/2026" is a date; reading its 3 as trip day 3 made
+    `extract_patch` rewrite a trip-wide preferences answer into day-scoped
+    ones, so the trip-wide slot stayed unanswered and its question repeated.
+    The generous bound is the real-world one: on the first message no trip
+    duration is known yet, so nothing else rejects an invented day number.
+    """
+    message = (
+        "Tôi muốn đi Hồ Chí Minh từ ngày 03/07/2026 đến ngày 05/07/2026 cho 2 người. "
+        "Ngân sách khách sạn: không giới hạn. Sở thích: không có gì đặc biệt."
+    )
+
+    assert parse_day_scope(message, 90) is None
+
+
+def test_short_and_iso_dates_are_not_read_as_day_numbers() -> None:
+    assert parse_day_scope("từ ngày 3/7 đến ngày 5/7", 90) is None
+    assert parse_day_scope("ngày 3 tháng 7", 90) is None
+    assert parse_day_scope("từ 2026-07-03 đến 2026-07-05", 90) is None
+
+
+def test_real_day_scopes_still_parse_alongside_date_masking() -> None:
+    """Masking dates must not cost the day scopes this function exists for.
+    The hyphen case is the one at risk: "ngày 1-3" is a day RANGE, which is
+    why a hyphen is deliberately not treated as a date separator."""
+    assert parse_day_scope("ngày 1 thiên nhiên", 5) == (1,)
+    assert parse_day_scope("ngày 1-3", 5) == (1, 2, 3)
+    assert parse_day_scope("ngày 2 và ngày 4", 5) == (2, 4)
+    assert parse_day_scope("đổi lịch ngày 3", 5) == (3,)
+    assert parse_day_scope("tất cả các ngày", 3) == (1, 2, 3)
+    assert parse_day_scope("2", 5) == (2,)
