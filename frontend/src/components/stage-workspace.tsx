@@ -354,52 +354,17 @@ export default function StageWorkspace({
       {/* Trip header — glass panel. No "Tạo lại"/"Chia sẻ" buttons. */}
       <div className="glass-panel flex-none flex items-center gap-3.5 mx-3.5 mt-3.5 px-[18px] py-[13px] rounded-[26px]">
         <div
-          className="w-9 h-9 rounded-[13px] bg-gradient-to-br from-[#3B82F6] to-[#1D4ED8] flex items-center justify-center text-white font-[600] text-[15px] flex-none shadow-sm"
-          style={{ boxShadow: '0 6px 18px -4px rgba(37,99,235,0.45)' }}
+          className="w-[30px] h-[30px] rounded-[10px] bg-gradient-to-br from-[#5C93EE] to-[#2C5FC9] flex items-center justify-center text-on-primary font-[590] text-[14px]"
+          style={{ boxShadow: '0 6px 16px -5px rgba(44,95,201,.6)' }}
           aria-hidden="true"
         >
-          <span className="material-symbols-outlined text-[20px] leading-none">
-            travel_explore
-          </span>
+          V
         </div>
         <div className="flex flex-col min-w-0">
-          <div className="text-[16px] font-[650] tracking-[-0.3px] text-on-surface truncate">
+          <div className="text-[15px] font-[590] tracking-[-0.3px] text-on-surface truncate">
             {tripPlan.destination ?? t('workspaceTitle')}
           </div>
-          {(dateRange || daysPart || peoplePart) && (
-            <div className="flex items-center gap-2 text-[11.5px] text-on-surface-muted font-normal truncate mt-0.5 flex-wrap">
-              {dateRange && (
-                <span className="inline-flex items-center gap-1">
-                  <span className="material-symbols-outlined text-[13px] text-blue-500/80 flex-none leading-none">
-                    calendar_today
-                  </span>
-                  <span>{dateRange}</span>
-                </span>
-              )}
-              {daysPart && (
-                <>
-                  {dateRange && <span className="opacity-30">·</span>}
-                  <span className="inline-flex items-center gap-1">
-                    <span className="material-symbols-outlined text-[13px] text-emerald-500/80 flex-none leading-none">
-                      schedule
-                    </span>
-                    <span>{daysPart}</span>
-                  </span>
-                </>
-              )}
-              {peoplePart && (
-                <>
-                  {(dateRange || daysPart) && <span className="opacity-30">·</span>}
-                  <span className="inline-flex items-center gap-1">
-                    <span className="material-symbols-outlined text-[13px] text-amber-500/80 flex-none leading-none">
-                      group
-                    </span>
-                    <span>{peoplePart}</span>
-                  </span>
-                </>
-              )}
-            </div>
-          )}
+          {meta && <div className="text-[11.5px] text-on-surface-muted font-normal truncate">{meta}</div>}
         </div>
         <div className="flex-1" />
         <HoldBanner
