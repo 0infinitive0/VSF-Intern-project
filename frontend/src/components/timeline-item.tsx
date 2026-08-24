@@ -42,11 +42,12 @@ const THUMB_ICONS: Record<string, string> = {
  *     replacing a literal "start – end" range.
  *
  * Click affordance is gated on the real contract: only items with
- * reference_type 'Attraction' AND a non-empty reference_id open Place Detail
- * Focus Mode. Everything else renders with the default cursor and no hover
- * elevation, so the UI never invites a click that opens nothing (phase-09
- * §Phi chức năng). The focused highlight (accent ring) tracks the id the
- * detail panel is showing.
+ * reference_type 'Attraction' or 'Hotel' AND a non-empty reference_id open
+ * Place Detail Focus Mode / Hotel Detail Focus Mode (stage-workspace.tsx
+ * picks the panel by reference_type). Everything else renders with the
+ * default cursor and no hover elevation, so the UI never invites a click
+ * that opens nothing (phase-09 §Phi chức năng). The focused highlight
+ * (accent ring) tracks the id the detail panel is showing.
  *
  * The pill is the four-state legBetween() semantics: real route
  * (vehicle · km · ~mins), identical coordinates ("cùng địa điểm" — never
@@ -85,7 +86,7 @@ export default function TimelineItem({
   const numFmt = new Intl.NumberFormat(NUM_LOCALE(i18n.language), { maximumFractionDigits: 1 })
 
   const canOpen =
-    item.reference_type === 'Attraction' &&
+    (item.reference_type === 'Attraction' || item.reference_type === 'Hotel') &&
     typeof item.reference_id === 'string' &&
     item.reference_id.length > 0
   const focused = canOpen && focusedId != null && item.reference_id === focusedId
