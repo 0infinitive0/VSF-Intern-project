@@ -73,5 +73,6 @@ def load_context(state: TravelGraphState) -> dict[str, Any]:
         "task_results": [],
         "routing_source": "",
         "routing_reasoning": "",
+        "hide_response_from_transcript": False,
         "response": {},
     }

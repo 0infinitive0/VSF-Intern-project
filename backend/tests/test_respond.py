@@ -57,6 +57,13 @@ def test_respond_exposes_whether_the_hotel_list_can_expand():
     assert response["has_more_hotel_options"] is True
 
 
+def test_respond_marks_a_preference_refresh_reply_as_hidden_from_the_transcript():
+    result = respond(_state(hide_response_from_transcript=True, task_results=_hotel_task_results()))
+
+    sent = result["messages"][0]
+    assert sent.additional_kwargs["omit_from_transcript"] is True
+
+
 def _seeded(changes: list[dict]) -> TravelState:
     return apply_patch(TravelState(), changes).state
 

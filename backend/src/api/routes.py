@@ -834,6 +834,7 @@ def toggle_hotel_preference(
                 travel_state=patched.state.to_dict(),
                 snapshot_values=state,
                 background_tasks=background_tasks,
+                hide_response_from_transcript=True,
             )
         except Exception as exc:
             logger.exception("Hotel-preference toggle error for session %s", session_id)
@@ -844,6 +845,7 @@ def _rerun_hotel_search(
     session_id: str,
     *,
     expand_hotel_options: bool = False,
+    hide_response_from_transcript: bool = False,
     travel_state: dict[str, Any] | None = None,
     snapshot_values: dict[str, Any] | None = None,
     background_tasks: BackgroundTasks | None = None,
@@ -879,6 +881,8 @@ def _rerun_hotel_search(
         update["travel_state"] = travel_state
     if expand_hotel_options:
         update["expand_hotel_options"] = True
+    if hide_response_from_transcript:
+        update["hide_response_from_transcript"] = True
     result = app.invoke(Command(goto="hotel_node", update=update), config=config)
 
     response = _response_from_result(session_id, result)

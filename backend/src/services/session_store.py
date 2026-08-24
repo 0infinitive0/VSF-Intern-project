@@ -203,6 +203,8 @@ def _graph_message_records(
         if message_type == "ai":
             if metadata.get("emitted_by") != _EMITTED_BY_RESPOND:
                 continue
+            if metadata.get("omit_from_transcript"):
+                continue
             sender = "assistant"
         elif message_type == "human":
             sender = "user"

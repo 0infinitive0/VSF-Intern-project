@@ -419,6 +419,9 @@ def respond(state: TravelGraphState) -> dict[str, Any]:
         additional_kwargs={
             "emitted_by": _EMITTED_BY_RESPOND,
             "asked_slot": asked_slot,
+            # Preference pills refresh the cards directly and must not crowd
+            # the durable conversational transcript with synthetic replies.
+            "omit_from_transcript": bool(state.get("hide_response_from_transcript")),
             # When this reply was sent. The persistence writer re-sends the
             # whole transcript on every turn (session_store.py's
             # `_graph_message_records`), so a message that doesn't carry its

@@ -44,6 +44,7 @@ def test_expand_reenters_hotel_node_with_only_the_display_command(monkeypatch):
     assert app.command is not None
     assert app.command.goto == "hotel_node"
     assert app.command.update["expand_hotel_options"] is True
+    assert app.command.update["hide_response_from_transcript"] is False
     assert app.command.update["task_results"] == []
 
 
@@ -77,6 +78,7 @@ def test_preference_toggle_reenters_hotel_node_with_the_patched_state(monkeypatc
     assert response["session_id"]
     assert app.command is not None
     assert app.command.goto == "hotel_node"
+    assert app.command.update["hide_response_from_transcript"] is True
     assert app.command.update["travel_state"]["hotel_preferences.amenities"]["value"] == [
         {**amenity, "active": False},
     ]
