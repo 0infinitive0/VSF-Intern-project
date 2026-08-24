@@ -106,15 +106,15 @@ export default function TripOverviewTab({
     let durVal = ''
     let durUnit = ''
     if (m.durationMins < 60) {
-      durVal = `~${Math.round(m.durationMins)}`
-      durUnit = t('statMinsUnit', { defaultValue: 'phút' })
+      durVal = `~${Math.round(m.durationMins)}p`
+      durUnit = ''
     } else {
       const hours = Math.floor(m.durationMins / 60)
       const mins = Math.round(m.durationMins % 60)
       if (mins === 0) {
         durVal = `~${hours}h`
       } else {
-        durVal = `~${hours}h${mins < 10 ? '0' : ''}${mins}`
+        durVal = `~${hours}h${mins < 10 ? '0' : ''}${mins}p`
       }
       durUnit = ''
     }
@@ -166,7 +166,15 @@ export default function TripOverviewTab({
               </div>
               <div className="min-w-0">
                 <div className="flex items-baseline gap-0.5 whitespace-nowrap">
-                  <span className="text-[17.5px] sm:text-[18.5px] font-[650] tracking-[-0.4px] text-on-surface tabular-nums leading-tight whitespace-nowrap">
+                  <span
+                    className={`${
+                      s.value.length >= 7
+                        ? 'text-[15px] sm:text-[16.5px]'
+                        : s.value.length >= 5
+                          ? 'text-[17px] sm:text-[18px]'
+                          : 'text-[18px] sm:text-[19px]'
+                    } font-[650] tracking-[-0.4px] text-on-surface tabular-nums leading-tight whitespace-nowrap`}
+                  >
                     {s.value}
                   </span>
                   {s.unit && (
