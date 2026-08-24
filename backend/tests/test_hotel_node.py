@@ -225,8 +225,25 @@ def test_hotel_search_uses_the_requested_result_count(monkeypatch):
 
     options = result["task_results"][-1]["hotel_search_result"]["options"]
     assert captured["match_count"] == 12
+    assert captured["use_llm_filter"] is False
     assert [option["id"] for option in options] == [f"h{index}" for index in range(1, 13)]
     assert result["previous_hotel_search_context"]["result_count"] == 12
+
+
+def test_capacity_diagnostic_search_keeps_llm_filter_disabled(monkeypatch):
+    calls: list[dict] = []
+
+    def _select(*_args, **kwargs):
+        calls.append(kwargs)
+        return [] if len(calls) == 1 else [_option("h1")]
+
+    monkeypatch.setattr(hotel_node_module, "_get_destination_id", lambda _d: "dest-1")
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", _select)
+
+    result = hotel_node(_graph_state(_seeded_travel_state()))
+
+    assert result["task_results"][-1]["status"] == "no_results_capacity"
+    assert [call["use_llm_filter"] for call in calls] == [False, False]
 
 
 def test_preference_update_replaces_retained_cards_with_a_fresh_five(monkeypatch):
