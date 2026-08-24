@@ -599,6 +599,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/hotels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Hotels */
+        get: operations["list_hotels_api_v1_admin_hotels_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/hotels/{hotel_id}/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set Hotel Active */
+        patch: operations["set_hotel_active_api_v1_admin_hotels__hotel_id__active_patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/hotels/bulk-active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bulk Set Hotel Active */
+        post: operations["bulk_set_hotel_active_api_v1_admin_hotels_bulk_active_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/me": {
         parameters: {
             query?: never;
@@ -856,6 +907,27 @@ export interface components {
             /** Session Id */
             session_id?: string | null;
         };
+        /** BulkActiveRequest */
+        BulkActiveRequest: {
+            /** Hotel Ids */
+            hotel_ids: string[];
+            /** Is Active */
+            is_active: boolean;
+        };
+        /** BulkActiveResponse */
+        BulkActiveResponse: {
+            /** Updated */
+            updated: number;
+            /** Blocked */
+            blocked: components["schemas"]["BulkBlockedHotel"][];
+        };
+        /** BulkBlockedHotel */
+        BulkBlockedHotel: {
+            /** Hotel Id */
+            hotel_id: string;
+            /** Count */
+            count: number;
+        };
         /** ChangeHotelRequest */
         ChangeHotelRequest: {
             /**
@@ -923,6 +995,13 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HotelActiveResponse */
+        HotelActiveResponse: {
+            /** Id */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
         };
         /** HotelDetailPayload */
         HotelDetailPayload: {
@@ -998,6 +1077,17 @@ export interface components {
             source_platform: string | null;
             /** Source Url */
             source_url: string | null;
+        };
+        /** HotelListResponse */
+        HotelListResponse: {
+            /** Items */
+            items: components["schemas"]["HotelRow"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
         };
         /**
          * HotelOption
@@ -1097,6 +1187,38 @@ export interface components {
             amenity_id: string;
             /** Active */
             active: boolean;
+        };
+        /** HotelRow */
+        HotelRow: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Address */
+            address?: string | null;
+            /** City */
+            city?: string | null;
+            /** Star Rating */
+            star_rating?: number | null;
+            /** Source Platform */
+            source_platform: string;
+            /** Is Manual */
+            is_manual: boolean;
+            /** Is Active */
+            is_active: boolean;
+            /** Room Count */
+            room_count: number;
+            /** Hotel Embedded */
+            hotel_embedded: boolean;
+            /** Rooms Missing Embedding */
+            rooms_missing_embedding: number;
+            /**
+             * Embedding State
+             * @enum {string}
+             */
+            embedding_state: "embedded" | "partial" | "missing";
+            /** Image Url */
+            image_url?: string | null;
         };
         /**
          * IntakeStatus
@@ -1474,6 +1596,11 @@ export interface components {
             updated_at: string | null;
             /** Thumbnail Url */
             thumbnail_url: string | null;
+        };
+        /** SetActiveRequest */
+        SetActiveRequest: {
+            /** Is Active */
+            is_active: boolean;
         };
         /**
          * SuggestedPlacePayload
@@ -2495,6 +2622,117 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_hotels_api_v1_admin_hotels_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                source?: "manual" | "pipeline" | "all";
+                is_active?: boolean | null;
+                embedding?: "embedded" | "missing" | "all";
+                page?: number;
+                page_size?: number;
+                format?: "json" | "csv";
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HotelListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_hotel_active_api_v1_admin_hotels__hotel_id__active_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                hotel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetActiveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HotelActiveResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_set_hotel_active_api_v1_admin_hotels_bulk_active_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkActiveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkActiveResponse"];
                 };
             };
             /** @description Validation Error */

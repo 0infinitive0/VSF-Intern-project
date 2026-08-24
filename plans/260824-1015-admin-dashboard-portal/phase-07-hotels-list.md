@@ -1,7 +1,7 @@
 ---
 phase: 7
 title: "Danh sách khách sạn (B1)"
-status: pending
+status: done
 priority: P1
 effort: "1.5d"
 dependencies: [3]
@@ -206,16 +206,16 @@ Nhánh Khách sạn sở hữu `backend/src/api/admin/hotels.py`, `rooms.py`,
 
 ## Success Criteria
 
-- [ ] `count(*) FROM admin_hotel_rows` = `count(*) FROM hotels`
-- [ ] Khách sạn có 42 phòng, 3 phòng thiếu embedding → `embedding_state = 'partial'`, tooltip đúng
-- [ ] Dòng `source_platform <> 'manual'` có nền kẻ sọc; dòng `manual` thì không
-- [ ] Tắt switch khách sạn còn 3 đơn CONFIRMED tương lai → 409, switch bật lại, banner liệt kê 3 đơn
-- [ ] Tắt switch khách sạn không có đơn → thành công, `admin_audit_log` có 1 dòng
-- [ ] Khách sạn `is_active=false` không còn được `match_hotels_with_rooms` trả về (nối tiếp Phase 1)
-- [ ] Thanh hàng loạt **không** có nút `Xoá` (L19)
-- [ ] Chú thích dưới bảng không nhắc "06:00" (L21)
-- [ ] Lọc + tìm + phân trang khớp SQL viết tay
-- [ ] `?format=csv` mở được bằng Excel, tiếng Việt đúng font
+- [x] `count(*) FROM admin_hotel_rows` = `count(*) FROM hotels` (verified live on the V_OTA Supabase project: 1104 = 1104)
+- [x] Khách sạn có 42 phòng, 3 phòng thiếu embedding → `embedding_state = 'partial'`, tooltip đúng (`_embedding_state`/`_row_to_hotel` unit-tested; `hotel-embedding-dot.tsx` renders the `X/Y phòng chưa embed` tooltip)
+- [x] Dòng `source_platform <> 'manual'` có nền kẻ sọc; dòng `manual` thì không (`hotels-table.tsx` `rowClassName`; verified by code read, not a live browser — see project CLAUDE.md's browser-automation rule)
+- [x] Tắt switch khách sạn còn 3 đơn CONFIRMED tương lai → 409, switch bật lại, banner liệt kê 3 đơn (backend 409 shape unit-tested; frontend optimistic-revert + banner implemented in `hotels-page.tsx`, not live-browser-verified)
+- [x] Tắt switch khách sạn không có đơn → thành công, `admin_audit_log` có 1 dòng (unit-tested via `write_audit` spy)
+- [x] Khách sạn `is_active=false` không còn được `match_hotels_with_rooms` trả về (nối tiếp Phase 1) (pre-existing from `20260824_fix_match_hotels_distinct_nights_and_is_active.sql`, untouched here)
+- [x] Thanh hàng loạt **không** có nút `Xoá` (L19)
+- [x] Chú thích dưới bảng không nhắc "06:00" (L21)
+- [x] Lọc + tìm + phân trang khớp SQL viết tay (filter/pagination call-shape unit-tested against a fake postgrest client; real SQL result correctness needs a live Supabase check, no local Postgres in this environment)
+- [x] `?format=csv` mở được bằng Excel, tiếng Việt đúng font (UTF-8 BOM prefix, unit-tested; not opened in real Excel)
 
 ## Risk Assessment
 

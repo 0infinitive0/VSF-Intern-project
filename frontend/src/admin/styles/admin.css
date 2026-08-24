@@ -495,3 +495,125 @@ button {
   flex-direction: column;
   gap: 16px;
 }
+
+/* ---------------------------------------------------------------------- */
+/* Row checkbox (B1) -- 16px, bo 5px (phase-07-hotels-list.md checklist)   */
+/* ---------------------------------------------------------------------- */
+
+.row-checkbox {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  border: 1px solid var(--stroke);
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  flex: none;
+  font-size: 10px;
+  line-height: 1;
+  color: transparent;
+}
+
+.row-checkbox[data-checked='true'] {
+  background: var(--acc);
+  border-color: var(--acc);
+  color: var(--on-acc);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Hotel avatar -- KHÁCH SẠN column initials square (B1)                   */
+/* ---------------------------------------------------------------------- */
+
+.hotel-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--fill2);
+  color: var(--t2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex: none;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Source chip -- NGUỒN column (B1)                                        */
+/* ---------------------------------------------------------------------- */
+
+.source-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.source-chip--manual {
+  background: var(--acc-soft);
+  color: var(--acc);
+}
+
+.source-chip--pipeline {
+  background: var(--fill2);
+  color: var(--t2);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Embedding dot -- EMBEDDING column, 3 states (B1, plan's L23 mitigation) */
+/* ---------------------------------------------------------------------- */
+
+.embedding-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.embedding-dot__mark {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: none;
+}
+
+.embedding-dot__mark--ok {
+  background: var(--ok);
+}
+
+.embedding-dot__mark--warn {
+  background: var(--warn);
+}
+
+.embedding-dot__label--ok {
+  font-size: 12.5px;
+  color: var(--t2);
+  font-weight: 500;
+}
+
+.embedding-dot__label--warn {
+  font-size: 12.5px;
+  color: var(--warn-ink);
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Striped / selected rows (B1) -- semantic signal, not decoration: a      */
+/* striped row is pipeline-owned and will be overwritten on the next ETL   */
+/* run. Selected wins when both apply (declared after, same specificity). */
+/* ---------------------------------------------------------------------- */
+
+.data-table tbody tr.row--striped {
+  background: repeating-linear-gradient(135deg, rgba(21, 24, 28, .030) 0 6px, rgba(21, 24, 28, 0) 6px 12px);
+}
+
+.data-table tbody tr.row--selected {
+  background: var(--acc-soft);
+}

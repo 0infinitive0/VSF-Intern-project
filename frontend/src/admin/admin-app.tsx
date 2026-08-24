@@ -5,16 +5,17 @@ import { AdminLogin } from './auth/admin-login'
 import { Forbidden } from './auth/forbidden'
 import { AdminShell } from './layout/admin-shell'
 import { OverviewPage } from './pages/overview-page'
+import { HotelsPage } from './pages/hotels/hotels-page'
 import { RouteStub } from './pages/route-stub'
 import { useAdminRoute } from './router'
 
 type MeState = { status: 'checking' } | { status: 'forbidden' } | { status: 'error'; detail: string } | { status: 'ok'; me: AdminMe }
 
-function resolvePage(path: string) {
+function resolvePage(path: string, navigate: (to: string) => void) {
   if (path === '/admin') return <OverviewPage />
   if (path === '/admin/hotels/new') return <RouteStub title="Tạo khách sạn mới" phase={8} />
   if (path.startsWith('/admin/hotels/')) return <RouteStub title="Chi tiết khách sạn" phase={9} />
-  if (path === '/admin/hotels') return <RouteStub title="Danh sách khách sạn" phase={7} />
+  if (path === '/admin/hotels') return <HotelsPage navigate={navigate} />
   if (path === '/admin/embedding') return <RouteStub title="Trạng thái embedding" phase={12} />
   if (path === '/admin/pipelines/do-phu-embedding') return <RouteStub title="Độ phủ embedding" phase={12} />
   if (path.startsWith('/admin/pipelines/runs/')) return <RouteStub title="Chi tiết lần chạy" phase={16} />
@@ -81,7 +82,7 @@ export function AdminApp() {
 
   return (
     <AdminShell path={path} navigate={navigate}>
-      {resolvePage(path)}
+      {resolvePage(path, navigate)}
     </AdminShell>
   )
 }

@@ -6,10 +6,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
+from src.api.admin.hotels import hotels_router
 from src.api.admin.schemas import AdminMeResponse
 from src.auth import AdminUser, require_admin
 
 admin_router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
+admin_router.include_router(hotels_router)
 
 
 @admin_router.get("/me", response_model=AdminMeResponse)

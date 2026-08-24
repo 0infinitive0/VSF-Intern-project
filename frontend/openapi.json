@@ -1403,6 +1403,281 @@
         }
       }
     },
+    "/api/v1/admin/hotels": {
+      "get": {
+        "tags": [
+          "admin-hotels"
+        ],
+        "summary": "List Hotels",
+        "operationId": "list_hotels_api_v1_admin_hotels_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "manual",
+                "pipeline",
+                "all"
+              ],
+              "type": "string",
+              "default": "all",
+              "title": "Source"
+            }
+          },
+          {
+            "name": "is_active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Active"
+            }
+          },
+          {
+            "name": "embedding",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "embedded",
+                "missing",
+                "all"
+              ],
+              "type": "string",
+              "default": "all",
+              "title": "Embedding"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "type": "string",
+              "default": "json",
+              "title": "Format"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HotelListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/hotels/{hotel_id}/active": {
+      "patch": {
+        "tags": [
+          "admin-hotels"
+        ],
+        "summary": "Set Hotel Active",
+        "operationId": "set_hotel_active_api_v1_admin_hotels__hotel_id__active_patch",
+        "parameters": [
+          {
+            "name": "hotel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Hotel Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetActiveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HotelActiveResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/hotels/bulk-active": {
+      "post": {
+        "tags": [
+          "admin-hotels"
+        ],
+        "summary": "Bulk Set Hotel Active",
+        "operationId": "bulk_set_hotel_active_api_v1_admin_hotels_bulk_active_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkActiveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkActiveResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/me": {
       "get": {
         "summary": "Get Me",
@@ -2080,6 +2355,66 @@
         ],
         "title": "BookingReservationRequest"
       },
+      "BulkActiveRequest": {
+        "properties": {
+          "hotel_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Hotel Ids"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "hotel_ids",
+          "is_active"
+        ],
+        "title": "BulkActiveRequest"
+      },
+      "BulkActiveResponse": {
+        "properties": {
+          "updated": {
+            "type": "integer",
+            "title": "Updated"
+          },
+          "blocked": {
+            "items": {
+              "$ref": "#/components/schemas/BulkBlockedHotel"
+            },
+            "type": "array",
+            "title": "Blocked"
+          }
+        },
+        "type": "object",
+        "required": [
+          "updated",
+          "blocked"
+        ],
+        "title": "BulkActiveResponse"
+      },
+      "BulkBlockedHotel": {
+        "properties": {
+          "hotel_id": {
+            "type": "string",
+            "title": "Hotel Id"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "hotel_id",
+          "count"
+        ],
+        "title": "BulkBlockedHotel"
+      },
       "ChangeHotelRequest": {
         "properties": {
           "session_id": {
@@ -2233,6 +2568,24 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HotelActiveResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "is_active"
+        ],
+        "title": "HotelActiveResponse"
       },
       "HotelDetailPayload": {
         "properties": {
@@ -2610,6 +2963,37 @@
         ],
         "title": "HotelDetailPayload"
       },
+      "HotelListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HotelRow"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "HotelListResponse"
+      },
       "HotelOption": {
         "properties": {
           "index": {
@@ -2874,6 +3258,108 @@
           "active"
         ],
         "title": "HotelPreferenceToggleRequest"
+      },
+      "HotelRow": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "star_rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Star Rating"
+          },
+          "source_platform": {
+            "type": "string",
+            "title": "Source Platform"
+          },
+          "is_manual": {
+            "type": "boolean",
+            "title": "Is Manual"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "room_count": {
+            "type": "integer",
+            "title": "Room Count"
+          },
+          "hotel_embedded": {
+            "type": "boolean",
+            "title": "Hotel Embedded"
+          },
+          "rooms_missing_embedding": {
+            "type": "integer",
+            "title": "Rooms Missing Embedding"
+          },
+          "embedding_state": {
+            "type": "string",
+            "enum": [
+              "embedded",
+              "partial",
+              "missing"
+            ],
+            "title": "Embedding State"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "source_platform",
+          "is_manual",
+          "is_active",
+          "room_count",
+          "hotel_embedded",
+          "rooms_missing_embedding",
+          "embedding_state"
+        ],
+        "title": "HotelRow"
       },
       "IntakeStatus": {
         "properties": {
@@ -4098,6 +4584,19 @@
           "thumbnail_url"
         ],
         "title": "SessionSummaryPayload"
+      },
+      "SetActiveRequest": {
+        "properties": {
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "is_active"
+        ],
+        "title": "SetActiveRequest"
       },
       "SuggestedPlacePayload": {
         "properties": {

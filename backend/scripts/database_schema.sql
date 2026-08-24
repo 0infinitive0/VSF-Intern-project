@@ -698,6 +698,26 @@ GRANT EXECUTE ON FUNCTION public.match_hotels_with_rooms(
     INTEGER
 ) TO anon, authenticated, service_role;
 
+-- Admin B1 (Danh sách khách sạn) read model (20260824_add_admin_hotel_view.sql).
+-- One row per hotel with room_count and per-hotel/per-room embedding coverage
+-- pre-aggregated so the admin API issues one query instead of N+1 per hotel.
+-- Locked to service_role only -- same posture as room_night_occupancy above.
+CREATE OR REPLACE VIEW public.admin_hotel_rows AS
+SELECT
+  h.id, h.name, h.address, h.city, h.star_rating,
+  h.source_platform, h.is_active, h.image_url,
+  (h.source_platform = 'manual')                    AS is_manual,
+  (h.embedding IS NOT NULL)                         AS hotel_embedded,
+  count(r.id)                                       AS room_count,
+  count(r.id) FILTER (WHERE r.embedding IS NULL)    AS rooms_missing_embedding,
+  h.updated_at
+FROM public.hotels h
+LEFT JOIN public.rooms r ON r.hotel_id = h.id
+GROUP BY h.id;
+
+REVOKE ALL ON public.admin_hotel_rows FROM anon, authenticated, PUBLIC;
+GRANT  SELECT ON public.admin_hotel_rows TO service_role;
+
 /*
 =========================================================
 QDRANT VECTOR DATABASE SCHEMA (Mô phỏng Metadata Payload)
