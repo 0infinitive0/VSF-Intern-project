@@ -762,8 +762,9 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
                 )
         return _result("no_results", t("Không tìm thấy khách sạn phù hợp tại {dest}.", language, dest=destination))
 
+    ranking_amenities = list(dict.fromkeys([*required_amenities, *preferred_amenities]))
     ranked = rank_hotel_candidates(
-        options, target_price=target_price, amenity_prefs=preferred_amenities
+        options, target_price=target_price, amenity_prefs=ranking_amenities
     )
     hotel_options = [*previous_options]
     known_ids = set(previous_ids)
@@ -790,7 +791,7 @@ def hotel_node(state: TravelGraphState) -> dict[str, Any]:
         "destination_id": destination_id,
         "people": people,
         "target_price": target_price,
-        "amenity_prefs": preferred_amenities,
+        "amenity_prefs": ranking_amenities,
         "selection_kwargs": {key: value for key, value in selection_kwargs.items() if key != "exclude_hotel_ids"},
     }
     result = _result(

@@ -25,7 +25,10 @@ const KNOWN_CODES = new Set([
   'near_center',
 ])
 
-export function buildMatchReasonLines(reasons?: MatchReason[] | null): MatchReasonLine[] {
+export function buildMatchReasonLines(
+  reasons?: MatchReason[] | null,
+  amenityLabel: (amenityId: string) => string = (amenityId) => amenityId,
+): MatchReasonLine[] {
   if (!reasons) return []
   const lines: MatchReasonLine[] = []
   for (const reason of reasons) {
@@ -33,6 +36,12 @@ export function buildMatchReasonLines(reasons?: MatchReason[] | null): MatchReas
     if (reason.code === 'budget_fit' && typeof reason.value === 'number') {
       const fraction = reason.value <= 1 ? reason.value : reason.value / 100
       lines.push({ code: reason.code, value: Math.round(fraction * 100) })
+    } else if (reason.code === 'amenity_match' && typeof reason.value === 'string') {
+      const labels = reason.value
+        .split(',')
+        .map((amenityId) => amenityLabel(amenityId.trim()))
+        .filter(Boolean)
+      lines.push({ code: reason.code, value: labels.join(', ') })
     } else {
       lines.push({ code: reason.code, value: reason.value })
     }

@@ -166,7 +166,7 @@ function HotelOptionCard({
         <div className="flex gap-3.5 items-start mt-3.5 pt-3.5 border-t border-line">
           <MatchScoreRing score={hotel.match_score} />
           <div className="flex-1 min-w-0">
-            <MatchReasons reasons={hotel.match_reasons} />
+            <MatchReasons reasons={hotel.match_reasons} amenityOptions={hotelAmenities} />
           </div>
         </div>
       )}

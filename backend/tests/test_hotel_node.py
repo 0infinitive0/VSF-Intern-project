@@ -369,6 +369,26 @@ def test_hotel_search_uses_catalog_ids_for_chat_amenity_aliases(monkeypatch):
     assert "unknown amenity" in result["task_results"][-1]["reply"]
 
 
+def test_required_amenities_are_passed_to_ranking_for_score_explanations(monkeypatch):
+    captured: dict = {}
+
+    def _rank(options, **kwargs):
+        captured.update(kwargs)
+        return options
+
+    monkeypatch.setattr(hotel_node_module, "_get_destination_id", lambda _d: "dest-1")
+    monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", lambda *_args, **_kwargs: [_option("h1")])
+    monkeypatch.setattr(hotel_node_module, "rank_hotel_candidates", _rank)
+
+    result = hotel_node(_graph_state(_seeded_travel_state(hotel_preferences__amenities=[
+        {"id": "swimming_pool", "label": "Hồ bơi", "polarity": "require", "source_phrase": "hồ bơi", "confidence": 1.0, "active": True},
+        {"id": "spa", "label": "Spa", "polarity": "require", "source_phrase": "spa", "confidence": 1.0, "active": True},
+    ])))
+
+    assert captured["amenity_prefs"] == ["swimming_pool", "spa"]
+    assert result["task_results"][-1]["status"] == "ok"
+
+
 def test_zero_results_is_a_generic_no_results_status(monkeypatch):
     monkeypatch.setattr(hotel_node_module, "_get_destination_id", lambda _d: "dest-1")
     monkeypatch.setattr(hotel_node_module, "select_hotel_candidates", lambda *_a, **_k: [])

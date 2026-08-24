@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { buildMatchReasonLines } from '../lib/match-reason-lines'
-import type { MatchReason } from '../types'
+import { displayAmenityLabels } from '../lib/hotel-filters'
+import type { AmenityCatalogOption, MatchReason } from '../types'
 
 /**
  * MatchReasons — the "AI đề xuất vì..." bullet list, built from the backend's
@@ -11,13 +12,18 @@ import type { MatchReason } from '../types'
  */
 export default function MatchReasons({
   reasons,
+  amenityOptions = [],
   variant = 'card',
 }: {
   reasons?: MatchReason[] | null
+  amenityOptions?: AmenityCatalogOption[]
   variant?: 'card' | 'panel'
 }) {
   const { t, i18n } = useTranslation()
-  const lines = buildMatchReasonLines(reasons)
+  const lines = buildMatchReasonLines(
+    reasons,
+    (amenityId) => displayAmenityLabels([amenityId], amenityOptions, i18n.language)[0] ?? amenityId,
+  )
   if (lines.length === 0) return null
 
   // Numeric values (ratings, star counts) honour the UI locale too — "9,2/10"

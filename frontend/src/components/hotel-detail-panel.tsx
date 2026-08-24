@@ -385,7 +385,7 @@ export default function HotelDetailPanel({
                       {t('detailWhy')}
                     </div>
                   </div>
-                  <MatchReasons reasons={option.match_reasons} variant="panel" />
+                  <MatchReasons reasons={option.match_reasons} amenityOptions={hotelAmenities} variant="panel" />
                 </div>
               )}
 
