@@ -395,15 +395,15 @@ export default function BookingModal({
         >
           V
         </div>
-        <div className="min-w-0 flex flex-col gap-0.5 flex-1 pr-2">
+        <div className="min-w-0 flex-1 flex flex-col gap-0.5 pr-2">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[10px] font-[600] tracking-[0.1em] uppercase text-on-surface-muted whitespace-nowrap">
               V‑OTA
             </span>
             {effectiveStep === 'done' ? (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-[12px] text-amber-600 dark:text-amber-400 font-[550] flex-none">
-                <span className="material-symbols-outlined text-[16px]">lock</span>
-                <span>{t('paidHotelLockedHeader', { defaultValue: 'Khách sạn đã được thanh toán cố định' })}</span>
+              <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-600 dark:text-amber-400 font-[550] flex-none leading-none h-[21px]">
+                <span className="material-symbols-outlined text-[13px] leading-none flex-none">lock</span>
+                <span className="leading-none">{t('paidHotelLockedHeader', { defaultValue: 'Khách sạn đã được thanh toán cố định' })}</span>
               </div>
             ) : (
               <span className="text-[9.5px] font-[590] tracking-[0.1em] uppercase text-on-surface-muted whitespace-nowrap">
@@ -411,9 +411,10 @@ export default function BookingModal({
               </span>
             )}
           </div>
-          <div className="text-[14px] font-[590] tracking-[-0.25px] text-on-surface truncate">{hotelName}</div>
+          <div className="text-[14px] font-[590] tracking-[-0.25px] text-on-surface truncate" title={hotelName}>
+            {hotelName}
+          </div>
         </div>
-        <div className="flex-1" />
         {effectiveStep !== 'done' && roomHold.status === 'HELD' && (
           <div
             className="hidden sm:flex flex-none items-center gap-2 px-3.5 py-[7px] rounded-xl border border-stroke whitespace-nowrap"
