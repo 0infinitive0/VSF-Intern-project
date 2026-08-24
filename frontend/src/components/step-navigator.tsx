@@ -82,13 +82,17 @@ export default function StepNavigator({
                   : 'bg-transparent text-on-surface-faint border border-line font-normal'
             }`}
           >
-            <span className="text-[9.5px] opacity-60">{step.n}</span>
-            <span>{step.label}</span>
-            {step.locked && (
-              <span className="material-symbols-outlined text-[12px] leading-none flex-none opacity-70 w-3 h-3 flex items-center justify-center" aria-hidden="true">
+            {step.locked ? (
+              <span
+                className="material-symbols-outlined text-[12px] leading-none flex-none text-amber-500 opacity-90"
+                aria-hidden="true"
+              >
                 lock
               </span>
+            ) : (
+              <span className="text-[9.5px] opacity-60">{step.n}</span>
             )}
+            <span>{step.label}</span>
             {busy && <span aria-hidden="true" className="w-3 h-3 rounded-full border-[1.5px] border-current border-t-transparent animate-spin opacity-70" />}
           </button>
         )
