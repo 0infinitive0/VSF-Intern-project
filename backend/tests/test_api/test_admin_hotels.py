@@ -9,9 +9,15 @@ booking check joins across them.
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
 
 from src.api.admin import hotels as hotels_module
+
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
 from src.auth import AdminUser, require_admin
 from src.main import app
 
@@ -60,6 +66,10 @@ class _FakeQuery:
         self._start, self._end = start, end
         return self
 
+    def limit(self, n):
+        self._start, self._end = 0, n - 1
+        return self
+
     def update(self, payload):
         self.update_payload = payload
         return self
@@ -85,6 +95,11 @@ class _FakeQuery:
     def execute(self):
         if self._inserted is not None:
             return _Response(self._inserted, count=len(self._inserted))
+        if self.update_payload is not None:
+            matched = [row for row in self._rows if self._matches(row)]
+            for row in matched:
+                row.update(self.update_payload)
+            return _Response(matched, count=len(matched))
         rows = [row for row in self._rows if self._matches(row)]
         total = len(rows)
         if self._start is not None:
@@ -100,6 +115,26 @@ class _FakeRpc:
         return self._response
 
 
+class _FakeStorageBucket:
+    def __init__(self):
+        self.uploaded: list[tuple[str, bytes, dict]] = []
+
+    def upload(self, path, data, options):
+        self.uploaded.append((path, data, options))
+        return {"path": path}
+
+    def get_public_url(self, path):
+        return f"https://fake.supabase.co/storage/v1/object/public/hotel-images/{path}"
+
+
+class _FakeStorage:
+    def __init__(self):
+        self.buckets: dict[str, _FakeStorageBucket] = {}
+
+    def from_(self, bucket_name):
+        return self.buckets.setdefault(bucket_name, _FakeStorageBucket())
+
+
 class _FakeClient:
     def __init__(self, tables: dict[str, list[dict]], rpc_results: dict[str, object] | None = None):
         self._tables = tables
@@ -107,6 +142,7 @@ class _FakeClient:
         self.queries: dict[str, list[_FakeQuery]] = {}
         self._rpc_results = rpc_results or {}
         self.rpc_calls: list[tuple[str, dict]] = []
+        self.storage = _FakeStorage()
 
     def table(self, name):
         self.table_calls.append(name)
@@ -553,3 +589,478 @@ def test_csv_safe_escapes_leading_formula_characters():
     for dangerous in ("=cmd()", "+1+1", "-1-1", "@SUM(A1)"):
         assert hotels_module._csv_safe(dangerous).startswith("\t")
     assert hotels_module._csv_safe("Khách sạn Ngô Quyền") == "Khách sạn Ngô Quyền"
+
+
+# ---------------------------------------------------------------------------
+# GET / PATCH /api/v1/admin/hotels/{id}, POST .../reembed (B3 -- phase-09-hotel-edit.md)
+# ---------------------------------------------------------------------------
+
+
+def _hotel_detail_row(**overrides) -> dict:
+    row = {
+        "id": "hotel-1",
+        "name": "Mường Thanh Grand Đà Nẵng",
+        "accommodation_type": "hotel",
+        "description": "Mô tả gốc.",
+        "star_rating": 4,
+        "address": "962 Ngô Quyền, Sơn Trà",
+        "city": "Đà Nẵng",
+        "area_name": "Sơn Trà",
+        "location_highlight": "Cách bãi biển 350 mét",
+        "destination_id": "44f1bfd4-f8a9-4d49-a0fb-932d69d705c9",
+        "coordinates": "16.06, 108.24",
+        "check_in_time": "14:00",
+        "check_in_until": None,
+        "check_out_time": "12:00",
+        "amenities": ["swimming_pool", "wifi"],
+        "amenity_groups": None,
+        "images": ["https://example.com/1.jpg"],
+        "image_url": "https://example.com/1.jpg",
+        "nearby_attractions": None,
+        "nearby_essentials": None,
+        "source_platform": "booking",
+        "is_active": True,
+    }
+    row.update(overrides)
+    return row
+
+
+def _admin_aggregates_row(**overrides) -> dict:
+    row = {
+        "id": "hotel-1",
+        "is_manual": False,
+        "hotel_embedded": True,
+        "rooms_missing_embedding": 0,
+        "room_count": 128,
+    }
+    row.update(overrides)
+    return row
+
+
+def _fake_client_for_hotel(hotel_row: dict, aggregates_row: dict, **extra_tables) -> _FakeClient:
+    return _FakeClient({"hotels": [hotel_row], "admin_hotel_rows": [aggregates_row], **extra_tables})
+
+
+@pytest.mark.asyncio
+async def test_get_hotel_manual_hotel_has_no_pipeline_managed_fields(client, admin_override, monkeypatch):
+    hotel = _hotel_detail_row(source_platform="manual")
+    aggregates = _admin_aggregates_row(is_manual=True)
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: _fake_client_for_hotel(hotel, aggregates))
+
+    response = await client.get("/api/v1/admin/hotels/hotel-1")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["is_manual"] is True
+    assert body["pipeline_managed_fields"] == []
+    assert body["rag_fields"] == list(hotels_module.EMBEDDING_FIELDS)
+    assert body["latitude"] == 16.06 and body["longitude"] == 108.24
+
+
+@pytest.mark.asyncio
+async def test_get_hotel_etl_hotel_has_pipeline_managed_fields(client, admin_override, monkeypatch):
+    hotel = _hotel_detail_row()
+    aggregates = _admin_aggregates_row()
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: _fake_client_for_hotel(hotel, aggregates))
+
+    response = await client.get("/api/v1/admin/hotels/hotel-1")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["is_manual"] is False
+    assert set(body["pipeline_managed_fields"]) == set(hotels_module.PIPELINE_MANAGED_FIELDS_HOTEL)
+    assert body["room_count"] == 128
+
+
+@pytest.mark.asyncio
+async def test_get_hotel_not_found_returns_404(client, admin_override, monkeypatch):
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: _FakeClient({"hotels": [], "admin_hotel_rows": []}))
+
+    response = await client.get("/api/v1/admin/hotels/missing")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_hotel_description_clears_embedding_and_flags_rag_changed(client, admin_override, no_audit, monkeypatch):
+    hotel = _hotel_detail_row()
+    aggregates = _admin_aggregates_row()
+    fake_client = _fake_client_for_hotel(hotel, aggregates)
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.patch("/api/v1/admin/hotels/hotel-1", json={"description": "Mô tả mới."})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["changed_fields"] == ["description"]
+    assert body["rag_fields_changed"] == ["description"]
+    assert body["embedding_cleared"] is True
+    assert body["embedding_state"] == "missing"
+    hotels_update = fake_client.queries["hotels"][1]  # [0] was the current-row read
+    assert hotels_update.update_payload["description"] == "Mô tả mới."
+    assert hotels_update.update_payload["embedding"] is None
+    assert no_audit[0]["action"] == "hotel.update"
+    assert "embedding" not in no_audit[0]["after"]
+
+
+@pytest.mark.asyncio
+async def test_update_hotel_star_rating_only_does_not_clear_embedding(client, admin_override, no_audit, monkeypatch):
+    hotel = _hotel_detail_row()
+    aggregates = _admin_aggregates_row()
+    fake_client = _fake_client_for_hotel(hotel, aggregates)
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.patch("/api/v1/admin/hotels/hotel-1", json={"star_rating": 5})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["changed_fields"] == ["star_rating"]
+    assert body["rag_fields_changed"] == []
+    assert body["embedding_cleared"] is False
+    assert body["embedding_state"] == "embedded"
+    hotels_update = fake_client.queries["hotels"][1]
+    assert "embedding" not in hotels_update.update_payload
+
+
+@pytest.mark.asyncio
+async def test_update_hotel_mixed_rag_and_non_rag_only_rag_reported_as_changed(client, admin_override, no_audit, monkeypatch):
+    hotel = _hotel_detail_row()
+    aggregates = _admin_aggregates_row()
+    fake_client = _fake_client_for_hotel(hotel, aggregates)
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.patch(
+        "/api/v1/admin/hotels/hotel-1", json={"check_in_time": "15:00", "description": "Mô tả mới."}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body["changed_fields"]) == {"check_in_time", "description"}
+    assert body["rag_fields_changed"] == ["description"]
+
+
+@pytest.mark.asyncio
+async def test_update_hotel_ignores_source_platform_in_body(client, admin_override, no_audit, monkeypatch):
+    hotel = _hotel_detail_row()
+    aggregates = _admin_aggregates_row()
+    fake_client = _fake_client_for_hotel(hotel, aggregates)
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.patch(
+        "/api/v1/admin/hotels/hotel-1", json={"source_platform": "manual", "star_rating": 3}
+    )
+
+    assert response.status_code == 200
+    hotels_update = fake_client.queries["hotels"][1]
+    assert "source_platform" not in hotels_update.update_payload
+
+
+@pytest.mark.asyncio
+async def test_update_hotel_invalid_amenity_id_returns_422_and_no_write(client, admin_override, no_audit, monkeypatch):
+    hotel = _hotel_detail_row()
+    aggregates = _admin_aggregates_row()
+    fake_client = _fake_client_for_hotel(hotel, aggregates)
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
+    monkeypatch.setattr(hotels_module, "query_all_approved_amenities_by_ids", lambda ids: [])
+
+    response = await client.patch("/api/v1/admin/hotels/hotel-1", json={"amenities": ["not_a_real_id"]})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Tiện ích không hợp lệ: not_a_real_id"
+    assert len(fake_client.queries["hotels"]) == 1  # only the current-row read, no update query issued
+    assert no_audit == []
+
+
+@pytest.mark.asyncio
+async def test_update_hotel_amenities_accepts_approved_hotel_scoped_ids(client, admin_override, no_audit, monkeypatch):
+    hotel = _hotel_detail_row(amenities=["wifi"])
+    aggregates = _admin_aggregates_row()
+    fake_client = _fake_client_for_hotel(hotel, aggregates)
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
+    catalog = [SimpleNamespace(id="swimming_pool", scope="hotel"), SimpleNamespace(id="wifi", scope="both")]
+    monkeypatch.setattr(
+        hotels_module, "query_all_approved_amenities_by_ids", lambda ids: [e for e in catalog if e.id in ids]
+    )
+
+    response = await client.patch("/api/v1/admin/hotels/hotel-1", json={"amenities": ["swimming_pool", "wifi"]})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["changed_fields"] == ["amenities"]
+    assert body["rag_fields_changed"] == ["amenities"]
+
+
+@pytest.mark.asyncio
+async def test_update_hotel_amenities_reorder_only_is_not_a_change(client, admin_override, no_audit, monkeypatch):
+    """Same set, different order -- must not report a change, clear
+    `embedding`, or write anything. A toggle-on-then-off in
+    hotel-tab-amenities.tsx produces exactly this."""
+    hotel = _hotel_detail_row(amenities=["wifi", "swimming_pool"])
+    aggregates = _admin_aggregates_row()
+    fake_client = _fake_client_for_hotel(hotel, aggregates)
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.patch("/api/v1/admin/hotels/hotel-1", json={"amenities": ["swimming_pool", "wifi"]})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["changed_fields"] == []
+    assert body["embedding_cleared"] is False
+    assert len(fake_client.queries["hotels"]) == 1  # only the current-row read, no write
+    assert no_audit == []
+
+
+@pytest.mark.asyncio
+async def test_update_hotel_amenities_only_validates_newly_added_ids(client, admin_override, no_audit, monkeypatch):
+    """A pre-existing id that's since fallen out of the catalog (e.g.
+    unapproved) must not block saving unrelated changes to this row."""
+    hotel = _hotel_detail_row(amenities=["legacy_unapproved_id"])
+    aggregates = _admin_aggregates_row()
+    fake_client = _fake_client_for_hotel(hotel, aggregates)
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
+    lookups: list[list[str]] = []
+
+    def fake_lookup(ids):
+        lookups.append(list(ids))
+        return [SimpleNamespace(id="wifi", scope="both")]
+
+    monkeypatch.setattr(hotels_module, "query_all_approved_amenities_by_ids", fake_lookup)
+
+    response = await client.patch(
+        "/api/v1/admin/hotels/hotel-1", json={"amenities": ["legacy_unapproved_id", "wifi"]}
+    )
+
+    assert response.status_code == 200
+    assert lookups == [["wifi"]]  # only the newly-added id was checked
+
+
+@pytest.mark.asyncio
+async def test_update_hotel_no_changes_writes_nothing(client, admin_override, no_audit, monkeypatch):
+    hotel = _hotel_detail_row()
+    aggregates = _admin_aggregates_row()
+    fake_client = _fake_client_for_hotel(hotel, aggregates)
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.patch("/api/v1/admin/hotels/hotel-1", json={"star_rating": hotel["star_rating"]})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["changed_fields"] == []
+    assert body["embedding_cleared"] is False
+    assert len(fake_client.queries["hotels"]) == 1  # only the current-row read
+    assert no_audit == []
+
+
+@pytest.mark.asyncio
+async def test_update_hotel_not_found_returns_404(client, admin_override, monkeypatch):
+    monkeypatch.setattr(
+        hotels_module, "get_supabase_client", lambda: _FakeClient({"hotels": [], "admin_hotel_rows": []})
+    )
+
+    response = await client.patch("/api/v1/admin/hotels/missing", json={"star_rating": 4})
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_hotel_latitude_only_recombines_with_existing_longitude(client, admin_override, no_audit, monkeypatch):
+    hotel = _hotel_detail_row(coordinates="16.06, 108.24")
+    aggregates = _admin_aggregates_row()
+    fake_client = _fake_client_for_hotel(hotel, aggregates)
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.patch("/api/v1/admin/hotels/hotel-1", json={"latitude": 10.5})
+
+    assert response.status_code == 200
+    hotels_update = fake_client.queries["hotels"][1]
+    assert hotels_update.update_payload["coordinates"] == "10.5, 108.24"
+
+
+@pytest.mark.asyncio
+async def test_update_hotel_both_coordinates_present_one_null_returns_422(client, admin_override, monkeypatch):
+    """Sending both keys with only one null would otherwise wipe
+    `coordinates` entirely (update_hotel's recombination can't tell "the
+    other one was explicitly cleared" from "the other one was never
+    touched")."""
+    fake_client = _fake_client_for_hotel(_hotel_detail_row(coordinates="16.06, 108.24"), _admin_aggregates_row())
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.patch("/api/v1/admin/hotels/hotel-1", json={"latitude": None, "longitude": 108.24})
+
+    assert response.status_code == 422
+    assert "hotels" not in fake_client.queries
+
+
+@pytest.mark.asyncio
+async def test_update_hotel_explicit_null_clears_nullable_field(client, admin_override, no_audit, monkeypatch):
+    hotel = _hotel_detail_row(star_rating=4)
+    aggregates = _admin_aggregates_row()
+    fake_client = _fake_client_for_hotel(hotel, aggregates)
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.patch("/api/v1/admin/hotels/hotel-1", json={"star_rating": None})
+
+    assert response.status_code == 200
+    assert response.json()["changed_fields"] == ["star_rating"]
+    hotels_update = fake_client.queries["hotels"][1]
+    assert hotels_update.update_payload["star_rating"] is None
+
+
+@pytest.mark.asyncio
+async def test_update_hotel_rejects_non_http_image_url(client, admin_override, monkeypatch):
+    fake_client = _fake_client_for_hotel(_hotel_detail_row(), _admin_aggregates_row())
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.patch("/api/v1/admin/hotels/hotel-1", json={"images": ["javascript:alert(1)"]})
+
+    assert response.status_code == 422
+    assert "hotels" not in fake_client.queries
+
+
+@pytest.mark.asyncio
+async def test_update_hotel_bumps_updated_at_but_excludes_it_from_audit(client, admin_override, no_audit, monkeypatch):
+    hotel = _hotel_detail_row()
+    aggregates = _admin_aggregates_row()
+    fake_client = _fake_client_for_hotel(hotel, aggregates)
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.patch("/api/v1/admin/hotels/hotel-1", json={"star_rating": 5})
+
+    assert response.status_code == 200
+    hotels_update = fake_client.queries["hotels"][1]
+    assert "updated_at" in hotels_update.update_payload
+    assert "updated_at" not in no_audit[0]["after"]
+    assert "updated_at" not in response.json()["changed_fields"]
+
+
+@pytest.mark.asyncio
+async def test_reembed_hotel_returns_503_airflow_unavailable(client, admin_override):
+    response = await client.post("/api/v1/admin/hotels/hotel-1/reembed")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "airflow_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_update_hotel_images_changed_but_not_rag_relevant(client, admin_override, no_audit, monkeypatch):
+    hotel = _hotel_detail_row(images=["https://example.com/1.jpg"])
+    aggregates = _admin_aggregates_row()
+    fake_client = _fake_client_for_hotel(hotel, aggregates)
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.patch(
+        "/api/v1/admin/hotels/hotel-1", json={"images": ["https://example.com/1.jpg", "https://example.com/2.jpg"]}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["changed_fields"] == ["images"]
+    assert body["rag_fields_changed"] == []
+    assert body["embedding_cleared"] is False
+
+
+# ---------------------------------------------------------------------------
+# embedding_fields.py's two constants vs. their actual DAG source (drift guard)
+#
+# Asserting `EMBEDDING_FIELDS`/`PIPELINE_MANAGED_FIELDS_HOTEL` against
+# themselves (elsewhere in this file) only proves the response wiring reads
+# them -- it says nothing about whether the copies are still correct. These
+# two parse the literal DAG source (airflow isn't importable from this
+# venv -- see test_rpc_call_sites_known.py's docstring for the same
+# constraint) so a DAG column-list edit that isn't mirrored here fails a
+# test instead of silently drifting.
+# ---------------------------------------------------------------------------
+
+
+def _dag_hotel_table_columns() -> list[str]:
+    path = _BACKEND_ROOT / "src" / "airflow" / "dags" / "data_pipeline" / "embed_supabase_dag.py"
+    match = re.search(r'"hotels":\s*"([^"]+)"', path.read_text(encoding="utf-8"))
+    assert match, "TABLE_COLUMNS['hotels'] not found in embed_supabase_dag.py"
+    columns = match.group(1).split(",")
+    columns.remove("id")
+    return columns
+
+
+def _pipeline_hotel_update_columns() -> list[str]:
+    path = _BACKEND_ROOT / "src" / "airflow" / "dags" / "data_pipeline" / "hotel_pipeline.py"
+    match = re.search(r"_HOTEL_COLUMNS = \[(.*?)\]", path.read_text(encoding="utf-8"), re.DOTALL)
+    assert match, "_HOTEL_COLUMNS not found in hotel_pipeline.py"
+    columns = re.findall(r'"([a-z_]+)"', match.group(1))
+    return [c for c in columns if c not in ("source_platform", "source_hotel_id")]
+
+
+def test_embedding_fields_matches_embed_supabase_dag_table_columns():
+    assert list(hotels_module.EMBEDDING_FIELDS) == _dag_hotel_table_columns()
+
+
+def test_pipeline_managed_fields_matches_hotel_pipeline_update_columns():
+    assert list(hotels_module.PIPELINE_MANAGED_FIELDS_HOTEL) == _pipeline_hotel_update_columns()
+
+
+def test_invalid_amenity_ids_helper_filters_room_only_scope(monkeypatch):
+    monkeypatch.setattr(
+        hotels_module,
+        "query_all_approved_amenities_by_ids",
+        lambda ids: [SimpleNamespace(id="room_service", scope="room")],
+    )
+    assert hotels_module._invalid_amenity_ids(["room_service"]) == ["room_service"]
+    assert hotels_module._invalid_amenity_ids([]) == []
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/admin/hotels/{id}/images/upload (B3 -- Hình ảnh tab, L38)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_upload_hotel_image_succeeds_and_returns_public_url(client, admin_override, monkeypatch):
+    fake_client = _FakeClient({})
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.post(
+        "/api/v1/admin/hotels/hotel-1/images/upload",
+        files={"file": ("photo.jpg", b"\xff\xd8\xff\xe0fakejpegbytes", "image/jpeg")},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["url"].startswith("https://fake.supabase.co/storage/v1/object/public/hotel-images/hotel-1/")
+    assert body["url"].endswith(".jpg")
+
+    bucket = fake_client.storage.buckets["hotel-images"]
+    assert len(bucket.uploaded) == 1
+    uploaded_path, uploaded_bytes, options = bucket.uploaded[0]
+    assert uploaded_path.startswith("hotel-1/")
+    assert uploaded_bytes == b"\xff\xd8\xff\xe0fakejpegbytes"
+    assert options["content-type"] == "image/jpeg"
+
+
+@pytest.mark.asyncio
+async def test_upload_hotel_image_rejects_unsupported_type(client, admin_override, monkeypatch):
+    fake_client = _FakeClient({})
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.post(
+        "/api/v1/admin/hotels/hotel-1/images/upload",
+        files={"file": ("doc.pdf", b"%PDF-1.4", "application/pdf")},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "unsupported_image_type"
+    assert fake_client.storage.buckets == {}
+
+
+@pytest.mark.asyncio
+async def test_upload_hotel_image_rejects_oversized_file(client, admin_override, monkeypatch):
+    fake_client = _FakeClient({})
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
+    monkeypatch.setattr(hotels_module, "_MAX_UPLOAD_BYTES", 10)
+
+    response = await client.post(
+        "/api/v1/admin/hotels/hotel-1/images/upload",
+        files={"file": ("photo.jpg", b"x" * 100, "image/jpeg")},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "image_too_large"
+    assert fake_client.storage.buckets == {}

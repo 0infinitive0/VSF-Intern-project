@@ -11,6 +11,11 @@ python-dotenv>=1.0.0
 # happened to pull it in transitively; a clean container build (staging/
 # prod) does not have that guarantee.
 email-validator>=2.0.0
+# fastapi.UploadFile/File (admin hotel image upload,
+# src/api/admin/hotels.py::upload_hotel_image) needs this to parse
+# multipart/form-data bodies -- same "worked locally via a transitive
+# dependency, missing in a clean container" gap as email-validator above.
+python-multipart>=0.0.9
 
 # AI / LangChain
 langchain>=1.3.0,<2.0.0

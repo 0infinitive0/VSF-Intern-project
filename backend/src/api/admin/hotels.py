@@ -21,23 +21,43 @@ The row's `embedding` starts NULL, same as every other write path: nothing
 here ever sets it, so a manually created hotel is invisible to
 `match_hotels_with_rooms` until the embedding DAG runs (the plan's mandatory
 banner, not a bug).
+
+Admin B3 -- Chi tiết / Sửa khách sạn (phase-09-hotel-edit.md): `get_hotel`,
+`update_hotel`, `reembed_hotel`. Decision #7 (R1, phương án iii) means an
+ETL-sourced hotel is still fully editable here -- `pipeline_managed_fields`
+(from `embedding_fields.PIPELINE_MANAGED_FIELDS_HOTEL`) only drives a UI
+warning, never a server-side write block. `update_hotel` diffs the request
+body against the current row itself (`model_fields_set`, not a client-sent
+flag) and clears `embedding` whenever a touched column intersects
+`embedding_fields.EMBEDDING_FIELDS` -- the same "backend decides, not the
+client" posture as B2's `source_platform`.
+
+`upload_hotel_image` (B3's Hình ảnh tab, L38) uploads to the `hotel-images`
+Storage bucket (scripts/migrations/20260824_add_hotel_images_storage_bucket.sql)
+via the service-role client and hands back a public URL -- it does not touch
+`hotels.images` itself. The frontend adds that URL to the array locally and
+saves it through the ordinary `PATCH /{hotel_id}` (`images` field), so one
+write path handles both a pasted URL and an uploaded file.
 """
 
 from __future__ import annotations
 
 import csv
 import io
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from src.api.admin.audit import write_audit
+from src.api.admin.embedding_fields import EMBEDDING_FIELDS, PIPELINE_MANAGED_FIELDS_HOTEL
 from src.auth import AdminUser, require_admin
 from src.clients.supabase_client import get_supabase_client
+from src.services.amenity_catalog import query_all_approved_amenities_by_ids
+from src.services.routing import parse_coordinates
 
 hotels_router = APIRouter(prefix="/hotels", tags=["admin-hotels"])
 
@@ -54,7 +74,30 @@ _MAX_BLOCKING_BOOKINGS_LISTED = 5
 # live table's ~1100 rows.
 _ACCOMMODATION_TYPES_SCAN_LIMIT = 5000
 _DESCRIPTION_MAX_LENGTH = 1000
+_LOCATION_HIGHLIGHT_MAX_LENGTH = 255
 _TIME_PATTERN = r"^([01]\d|2[0-3]):[0-5]\d$"
+# Explicit column list for the B3 detail read -- excludes `embedding`
+# (a 1024-float pgvector column: fetching it for a page that never displays
+# it would be a large, pointless payload) and a handful of ETL-only columns
+# B3 doesn't render this phase (awards, warnings, review_score, ...).
+_HOTEL_DETAIL_COLUMNS = (
+    "id,name,accommodation_type,description,star_rating,address,city,area_name,"
+    "location_highlight,destination_id,coordinates,check_in_time,check_in_until,"
+    "check_out_time,amenities,amenity_groups,images,image_url,nearby_attractions,"
+    "nearby_essentials,source_platform,is_active"
+)
+_AMENITY_HOTEL_SCOPES = frozenset({"hotel", "both"})
+# B3's Hình ảnh tab (L38) manages `images` as a flat URL list -- this is the
+# guard against an unbounded array (a URL can also be pasted directly,
+# bypassing upload_hotel_image's own per-file bucket limits below).
+_MAX_IMAGES = 50
+_HOTEL_IMAGES_BUCKET = "hotel-images"
+_MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+# Mirrors the bucket's own `allowed_mime_types`
+# (20260824_add_hotel_images_storage_bucket.sql) -- checked here too so a
+# rejected upload 422s with a clear reason instead of surfacing whatever
+# error shape the Storage API happens to return.
+_ALLOWED_IMAGE_TYPES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
 
 
 class HotelRow(BaseModel):
@@ -149,6 +192,118 @@ class CreateHotelResponse(BaseModel):
     source_hotel_id: int
     embedding_state: Literal["missing"]
     is_active: bool
+
+
+class HotelDetailResponse(BaseModel):
+    """B3 (phase-09-hotel-edit.md). `pipeline_managed_fields`/`rag_fields`
+    are computed server-side (see module docstring) so the frontend never
+    has to reimplement -- and risk drifting from -- either source of truth."""
+
+    id: str
+    name: str
+    accommodation_type: str | None = None
+    description: str | None = None
+    star_rating: float | None = None
+    address: str | None = None
+    city: str | None = None
+    area_name: str | None = None
+    location_highlight: str | None = None
+    destination_id: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    check_in_time: str | None = None
+    check_in_until: str | None = None
+    check_out_time: str | None = None
+    amenities: list[str]
+    amenity_groups: dict[str, Any] | None = None
+    images: list[str]
+    image_url: str | None = None
+    nearby_attractions: Any | None = None
+    nearby_essentials: Any | None = None
+    source_platform: str
+    is_manual: bool
+    is_active: bool
+    room_count: int
+    embedding_state: Literal["embedded", "partial", "missing"]
+    rooms_missing_embedding: int
+    pipeline_managed_fields: list[str]
+    rag_fields: list[str]
+
+
+class UpdateHotelRequest(BaseModel):
+    """B3 partial update -- every field optional, and only the ones actually
+    present in the request body (`model_fields_set`, not "not None") are
+    considered for the changed-columns diff in `update_hotel`. Same
+    `max_length`s as CreateHotelRequest; `star_rating`/`description`/etc. can
+    be explicitly nulled (e.g. clearing "Hạng sao" back to "Chưa chọn"),
+    which is exactly why the diff logic keys off presence-in-body rather than
+    non-None."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    accommodation_type: str | None = Field(default=None, max_length=50)
+    description: str | None = Field(default=None, max_length=_DESCRIPTION_MAX_LENGTH)
+    location_highlight: str | None = Field(default=None, max_length=_LOCATION_HIGHLIGHT_MAX_LENGTH)
+    star_rating: float | None = Field(default=None, ge=0, le=5, multiple_of=0.5)
+    address: str | None = Field(default=None, max_length=500)
+    destination_id: UUID | None = None
+    city: str | None = Field(default=None, max_length=100)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    check_in_time: str | None = Field(default=None, pattern=_TIME_PATTERN)
+    check_out_time: str | None = Field(default=None, pattern=_TIME_PATTERN)
+    amenities: list[str] | None = None
+    images: list[str] | None = Field(default=None, max_length=_MAX_IMAGES)
+
+    @field_validator("name")
+    @classmethod
+    def _name_not_blank_if_provided(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("name must not be blank")
+        return stripped
+
+    @field_validator("images")
+    @classmethod
+    def _images_are_http_urls(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return value
+        for url in value:
+            if len(url) > 2048 or not (url.startswith("http://") or url.startswith("https://")):
+                raise ValueError(f"invalid image url: {url[:80]!r}")
+        return value
+
+    @model_validator(mode="after")
+    def _coordinates_not_split_null(self) -> "UpdateHotelRequest":
+        """Only enforced when BOTH keys are in the body -- a request that
+        supplies just one of the two is a legitimate partial update
+        (`update_hotel` recombines it with whichever value is already
+        stored). But if both are present, one null + one set would silently
+        wipe `coordinates` entirely (`update_hotel`'s recombination treats
+        "no latitude" the same whether it's absent or explicitly null)."""
+        fields = self.model_fields_set
+        if "latitude" in fields and "longitude" in fields and (self.latitude is None) != (self.longitude is None):
+            raise ValueError("latitude and longitude must both be set or both be null when both are provided")
+        return self
+
+
+class UpdateHotelResponse(BaseModel):
+    id: str
+    changed_fields: list[str]
+    rag_fields_changed: list[str]
+    embedding_cleared: bool
+    embedding_state: Literal["embedded", "partial", "missing"]
+
+
+class ReembedResponse(BaseModel):
+    queued: bool
+    dag_run_id: str | None = None
+    scope: str
+
+
+class UploadImageResponse(BaseModel):
+    url: str
 
 
 def _embedding_state(hotel_embedded: bool, rooms_missing_embedding: int) -> Literal["embedded", "partial", "missing"]:
@@ -420,3 +575,237 @@ def bulk_set_hotel_active(body: BulkActiveRequest, admin: AdminUser = Depends(re
         )
         updated += 1
     return BulkActiveResponse(updated=updated, blocked=blocked)
+
+
+# ---------------------------------------------------------------------------
+# B3 -- Chi tiết / Sửa khách sạn (phase-09-hotel-edit.md)
+# ---------------------------------------------------------------------------
+
+
+def _fetch_hotel_row(hotel_id: str) -> dict[str, Any] | None:
+    rows = get_supabase_client().table("hotels").select(_HOTEL_DETAIL_COLUMNS).eq("id", hotel_id).limit(1).execute().data
+    return rows[0] if rows else None
+
+
+def _fetch_hotel_admin_aggregates(hotel_id: str) -> dict[str, Any] | None:
+    """`room_count`/`hotel_embedded`/`rooms_missing_embedding` -- the same
+    per-hotel aggregates B1 lists, read from `admin_hotel_rows` (see module
+    docstring) instead of recomputed here."""
+    rows = (
+        get_supabase_client()
+        .table(_VIEW)
+        .select("is_manual,hotel_embedded,rooms_missing_embedding,room_count")
+        .eq("id", hotel_id)
+        .limit(1)
+        .execute()
+        .data
+    )
+    return rows[0] if rows else None
+
+
+def _hotel_row_to_detail(row: dict[str, Any], aggregates: dict[str, Any]) -> HotelDetailResponse:
+    is_manual = bool(aggregates["is_manual"])
+    coords = parse_coordinates(row.get("coordinates"))
+    rooms_missing = aggregates.get("rooms_missing_embedding") or 0
+    return HotelDetailResponse(
+        id=row["id"],
+        name=row["name"],
+        accommodation_type=row.get("accommodation_type"),
+        description=row.get("description"),
+        star_rating=row.get("star_rating"),
+        address=row.get("address"),
+        city=row.get("city"),
+        area_name=row.get("area_name"),
+        location_highlight=row.get("location_highlight"),
+        destination_id=row.get("destination_id"),
+        latitude=coords[0] if coords else None,
+        longitude=coords[1] if coords else None,
+        check_in_time=row.get("check_in_time"),
+        check_in_until=row.get("check_in_until"),
+        check_out_time=row.get("check_out_time"),
+        amenities=row.get("amenities") or [],
+        amenity_groups=row.get("amenity_groups"),
+        images=row.get("images") or [],
+        image_url=row.get("image_url"),
+        nearby_attractions=row.get("nearby_attractions"),
+        nearby_essentials=row.get("nearby_essentials"),
+        source_platform=row["source_platform"],
+        is_manual=is_manual,
+        is_active=row["is_active"],
+        room_count=aggregates.get("room_count") or 0,
+        embedding_state=_embedding_state(aggregates["hotel_embedded"], rooms_missing),
+        rooms_missing_embedding=rooms_missing,
+        pipeline_managed_fields=[] if is_manual else list(PIPELINE_MANAGED_FIELDS_HOTEL),
+        rag_fields=list(EMBEDDING_FIELDS),
+    )
+
+
+@hotels_router.get("/{hotel_id}", response_model=HotelDetailResponse)
+def get_hotel(hotel_id: str) -> HotelDetailResponse | JSONResponse:
+    row = _fetch_hotel_row(hotel_id)
+    aggregates = _fetch_hotel_admin_aggregates(hotel_id)
+    if row is None or aggregates is None:
+        return JSONResponse(status_code=404, content={"detail": "hotel_not_found"})
+    return _hotel_row_to_detail(row, aggregates)
+
+
+def _invalid_amenity_ids(amenity_ids: list[str]) -> list[str]:
+    """IDs the client sent that are not an approved, hotel-eligible catalog
+    entry. Uses `query_all_approved_amenities_by_ids` (an exact-ID,
+    non-fuzzy, un-capped lookup) -- not `query_approved_amenities`, whose
+    100-ID cap is meant for general callers and would silently mark every id
+    past #100 as "invalid" (196 of ~1100 hotels have 100+ amenities in prod);
+    and not `resolve_hotel_amenity_ids`/`bind_amenities`, which exist for
+    free-text phrases from chat/ETL input and can invoke LLM-based discovery
+    for anything unresolved -- the wrong tool (and an unwanted cost) for a
+    chip-toggle UI that only ever sends exact catalog IDs already handed to
+    it by GET /admin/amenities."""
+    if not amenity_ids:
+        return []
+    entries = query_all_approved_amenities_by_ids(amenity_ids)
+    valid_ids = {entry.id for entry in entries if entry.scope in _AMENITY_HOTEL_SCOPES}
+    return [aid for aid in amenity_ids if aid not in valid_ids]
+
+
+_DIRECT_UPDATE_FIELDS = (
+    "name",
+    "accommodation_type",
+    "description",
+    "location_highlight",
+    "star_rating",
+    "address",
+    "city",
+    "check_in_time",
+    "check_out_time",
+)
+
+
+@hotels_router.patch("/{hotel_id}", response_model=UpdateHotelResponse)
+def update_hotel(
+    hotel_id: str, body: UpdateHotelRequest, admin: AdminUser = Depends(require_admin)
+) -> UpdateHotelResponse | JSONResponse:
+    current = _fetch_hotel_row(hotel_id)
+    if current is None:
+        return JSONResponse(status_code=404, content={"detail": "hotel_not_found"})
+
+    provided = body.model_fields_set
+    changed: dict[str, Any] = {}
+
+    for field in _DIRECT_UPDATE_FIELDS:
+        if field in provided:
+            new_value = getattr(body, field)
+            if new_value != current.get(field):
+                changed[field] = new_value
+
+    if "destination_id" in provided:
+        new_value = str(body.destination_id) if body.destination_id else None
+        if new_value != current.get("destination_id"):
+            changed["destination_id"] = new_value
+
+    if "latitude" in provided or "longitude" in provided:
+        current_coords = parse_coordinates(current.get("coordinates"))
+        current_lat, current_lng = current_coords if current_coords else (None, None)
+        new_lat = body.latitude if "latitude" in provided else current_lat
+        new_lng = body.longitude if "longitude" in provided else current_lng
+        new_coords = f"{new_lat}, {new_lng}" if new_lat is not None and new_lng is not None else None
+        if new_coords != current.get("coordinates"):
+            changed["coordinates"] = new_coords
+
+    if "amenities" in provided:
+        new_amenities = body.amenities or []
+        current_amenities = current.get("amenities") or []
+        new_ids, current_ids = set(new_amenities), set(current_amenities)
+        # Validate only the newly-added ids: a pre-existing id that's since
+        # fallen out of the approved/hotel-eligible catalog stays on the row
+        # untouched rather than blocking every future save of this hotel.
+        invalid = _invalid_amenity_ids(sorted(new_ids - current_ids))
+        if invalid:
+            raise HTTPException(status_code=422, detail=f"Tiện ích không hợp lệ: {', '.join(invalid)}")
+        # Compared as sets, not lists: hotel-tab-amenities.tsx only ever
+        # adds/removes one id per toggle and otherwise preserves the
+        # existing array's order, but a stray reorder must not read as
+        # "changed" -- amenities is RAG-relevant (EMBEDDING_FIELDS), and
+        # clearing embedding + a paid re-embed for a same-set reorder is
+        # exactly the "quá tay" cost the plan's risk table warns against.
+        if new_ids != current_ids:
+            changed["amenities"] = new_amenities
+
+    if "images" in provided:
+        new_images = body.images or []
+        if new_images != (current.get("images") or []):
+            changed["images"] = new_images
+
+    rag_changed = sorted(set(changed) & set(EMBEDDING_FIELDS))
+    if not changed:
+        aggregates = _fetch_hotel_admin_aggregates(hotel_id)
+        state = _embedding_state(aggregates["hotel_embedded"], aggregates.get("rooms_missing_embedding") or 0) if aggregates else "missing"
+        return UpdateHotelResponse(id=hotel_id, changed_fields=[], rag_fields_changed=[], embedding_cleared=False, embedding_state=state)
+
+    write_payload = dict(changed)
+    if rag_changed:
+        # Bot keeps answering from the pre-edit vector until the next
+        # only-null embedding DAG run re-embeds this row -- same contract as
+        # B2's create path (module docstring), decided server-side only.
+        write_payload["embedding"] = None
+    # No DB trigger bumps `updated_at` on a postgrest write (only ETL's raw
+    # SQL path sets it explicitly) -- B1 orders by `updated_at desc`, so an
+    # edited hotel needs this set here or it stays stranded wherever it last
+    # sorted.
+    write_payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    get_supabase_client().table("hotels").update(write_payload).eq("id", hotel_id).execute()
+    write_audit(
+        admin,
+        action="hotel.update",
+        entity_type="hotel",
+        entity_id=hotel_id,
+        before={field: current.get(field) for field in changed},
+        after=changed,
+    )
+
+    aggregates = _fetch_hotel_admin_aggregates(hotel_id)
+    hotel_embedded = not rag_changed and aggregates is not None and aggregates["hotel_embedded"]
+    rooms_missing = aggregates.get("rooms_missing_embedding") or 0 if aggregates else 0
+    return UpdateHotelResponse(
+        id=hotel_id,
+        changed_fields=sorted(changed),
+        rag_fields_changed=rag_changed,
+        embedding_cleared=bool(rag_changed),
+        embedding_state=_embedding_state(hotel_embedded, rooms_missing),
+    )
+
+
+@hotels_router.post("/{hotel_id}/reembed", response_model=ReembedResponse)
+def reembed_hotel(hotel_id: str, admin: AdminUser = Depends(require_admin)) -> ReembedResponse | JSONResponse:
+    """Always 503 until Phase 13 (Airflow client) exists -- there is no DAG
+    trigger to call yet. `update_hotel` already does the part that matters
+    (`embedding = NULL`) without this endpoint; the reembed dialog's "Chạy
+    ngay" is a convenience this phase intentionally leaves unimplemented
+    rather than fake."""
+    del hotel_id, admin
+    return JSONResponse(status_code=503, content={"detail": "airflow_unavailable"})
+
+
+@hotels_router.post("/{hotel_id}/images/upload", response_model=UploadImageResponse, status_code=201)
+async def upload_hotel_image(
+    hotel_id: str, file: UploadFile = File(...), admin: AdminUser = Depends(require_admin)
+) -> UploadImageResponse:
+    """Uploads one file to the `hotel-images` bucket and returns its public
+    URL -- does not touch `hotels.images` (see module docstring). `hotel_id`
+    only namespaces the storage path; this intentionally does not 404 on an
+    unknown id, since an orphaned object under a bad id is harmless and the
+    only caller is this hotel's own edit page, which already has a real id
+    from `GET /{hotel_id}`."""
+    del admin
+    extension = _ALLOWED_IMAGE_TYPES.get(file.content_type or "")
+    if extension is None:
+        raise HTTPException(status_code=422, detail="unsupported_image_type")
+
+    data = await file.read()
+    if len(data) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=422, detail="image_too_large")
+
+    path = f"{hotel_id}/{uuid4()}.{extension}"
+    bucket = get_supabase_client().storage.from_(_HOTEL_IMAGES_BUCKET)
+    bucket.upload(path, data, {"content-type": file.content_type})
+    return UploadImageResponse(url=bucket.get_public_url(path))

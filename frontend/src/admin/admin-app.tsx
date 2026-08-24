@@ -6,6 +6,7 @@ import { Forbidden } from './auth/forbidden'
 import { AdminShell } from './layout/admin-shell'
 import { OverviewPage } from './pages/overview-page'
 import { HotelCreatePage } from './pages/hotels/hotel-create-page'
+import { HotelDetailPage } from './pages/hotels/hotel-detail-page'
 import { HotelsPage } from './pages/hotels/hotels-page'
 import { RouteStub } from './pages/route-stub'
 import { useAdminRoute } from './router'
@@ -15,7 +16,14 @@ type MeState = { status: 'checking' } | { status: 'forbidden' } | { status: 'err
 function resolvePage(path: string, navigate: (to: string) => void) {
   if (path === '/admin') return <OverviewPage />
   if (path === '/admin/hotels/new') return <HotelCreatePage navigate={navigate} />
-  if (path.startsWith('/admin/hotels/')) return <RouteStub title="Chi tiết khách sạn" phase={9} />
+  if (path.startsWith('/admin/hotels/')) {
+    const hotelId = decodeURIComponent(path.slice('/admin/hotels/'.length).split('/')[0] ?? '')
+    // A trailing slash ("/admin/hotels/") yields an empty id -- treat it as
+    // the list page rather than firing GET /hotels/ (which 404s/307s and
+    // leaves HotelDetailPage rendering against no hotel).
+    if (!hotelId) return <HotelsPage navigate={navigate} />
+    return <HotelDetailPage hotelId={hotelId} navigate={navigate} />
+  }
   if (path === '/admin/hotels') return <HotelsPage navigate={navigate} />
   if (path === '/admin/embedding') return <RouteStub title="Trạng thái embedding" phase={12} />
   if (path === '/admin/pipelines/do-phu-embedding') return <RouteStub title="Độ phủ embedding" phase={12} />

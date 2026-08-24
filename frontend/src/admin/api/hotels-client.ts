@@ -19,6 +19,12 @@ export type BulkActiveResponse = components['schemas']['BulkActiveResponse']
 export type CreateHotelRequest = components['schemas']['CreateHotelRequest']
 export type CreateHotelResponse = components['schemas']['CreateHotelResponse']
 export type DestinationOption = components['schemas']['DestinationOption']
+export type HotelDetailResponse = components['schemas']['HotelDetailResponse']
+export type UpdateHotelRequest = components['schemas']['UpdateHotelRequest']
+export type UpdateHotelResponse = components['schemas']['UpdateHotelResponse']
+export type ReembedResponse = components['schemas']['ReembedResponse']
+export type AmenityOption = components['schemas']['AmenityOption']
+export type UploadImageResponse = components['schemas']['UploadImageResponse']
 
 export type SourceFilter = 'all' | 'manual' | 'pipeline'
 export type EmbeddingFilter = 'all' | 'embedded' | 'missing'
@@ -111,6 +117,39 @@ export function listDestinations(): Promise<AdminApiResult<DestinationOption[]>>
 
 export function listAccommodationTypes(): Promise<AdminApiResult<string[]>> {
   return adminFetch<string[]>('/hotels/accommodation-types')
+}
+
+export function getHotel(hotelId: string): Promise<AdminApiResult<HotelDetailResponse>> {
+  return adminFetch<HotelDetailResponse>(`/hotels/${hotelId}`)
+}
+
+export function updateHotel(hotelId: string, body: UpdateHotelRequest): Promise<AdminApiResult<UpdateHotelResponse>> {
+  return adminFetch<UpdateHotelResponse>(`/hotels/${hotelId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+/** 503 (`airflow_unavailable`) is an expected outcome until Phase 13 (Airflow
+ * client) exists, not a failure to alarm about -- reembed-dialog.tsx treats
+ * it as "queue this for later" rather than an error banner. */
+export function reembedHotel(hotelId: string): Promise<AdminApiResult<ReembedResponse>> {
+  return adminFetch<ReembedResponse>(`/hotels/${hotelId}/reembed`, { method: 'POST' })
+}
+
+export function listAmenities(): Promise<AdminApiResult<AmenityOption[]>> {
+  return adminFetch<AmenityOption[]>('/amenities?scope=hotel')
+}
+
+/** No `Content-Type` header set here on purpose -- `fetch` derives the
+ * `multipart/form-data; boundary=...` header itself from the FormData body,
+ * and overriding it (the way every other write in this file explicitly
+ * sets `application/json`) would drop the boundary and break the upload. */
+export function uploadHotelImage(hotelId: string, file: File): Promise<AdminApiResult<UploadImageResponse>> {
+  const form = new FormData()
+  form.append('file', file)
+  return adminFetch<UploadImageResponse>(`/hotels/${hotelId}/images/upload`, { method: 'POST', body: form })
 }
 
 export async function exportHotelsCsv(params: HotelListParams): Promise<{ ok: true } | { ok: false; detail: string }> {

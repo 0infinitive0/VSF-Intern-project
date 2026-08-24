@@ -28,7 +28,13 @@ interface HotelCreatePageProps {
  * presentational and are reused as-is by B3 (Phase 9) via their
  * `lockedFields` prop. */
 export function HotelCreatePage({ navigate }: HotelCreatePageProps) {
-  const [basic, setBasic] = useState<HotelBasicFieldsValue>({ name: '', accommodationType: '', starRating: null, description: '' })
+  const [basic, setBasic] = useState<HotelBasicFieldsValue>({
+    name: '',
+    accommodationType: '',
+    starRating: null,
+    description: '',
+    locationHighlight: '',
+  })
   const [location, setLocation] = useState<HotelLocationFieldsValue>({ address: '', city: '', latitude: null, longitude: null })
   const [checkInTime, setCheckInTime] = useState(DEFAULT_CHECK_IN_TIME)
   const [checkOutTime, setCheckOutTime] = useState(DEFAULT_CHECK_OUT_TIME)
@@ -123,10 +129,9 @@ export function HotelCreatePage({ navigate }: HotelCreatePageProps) {
       setSubmitError(result.detail)
       return
     }
-    // Phase 10 (quản lý phòng) và Phase 9 (chi tiết khách sạn) chưa xong --
-    // /admin/hotels/:id hiện chỉ là RouteStub, không xác nhận được gì. Về
-    // danh sách B1, nơi khách sạn mới đã hiện với embedding_state='missing'.
-    navigate('/admin/hotels')
+    // Phase 10 (quản lý phòng) chưa xong -- về trang chi tiết (Phase 9, đã
+    // xây), không kèm ?tab=rooms vì tab Phòng ở đó vẫn là chỗ giữ trống.
+    navigate(`/admin/hotels/${result.data.id}`)
   }
 
   return (
@@ -160,13 +165,20 @@ export function HotelCreatePage({ navigate }: HotelCreatePageProps) {
               onChange={setBasic}
               accommodationTypeOptions={accommodationTypes}
               lockedFields={[]}
+              changedFields={[]}
               descriptionMaxLength={DESCRIPTION_MAX_LENGTH}
             />
           </div>
 
           <div className="card" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ fontSize: 15, fontWeight: 700 }}>Vị trí</div>
-            <HotelLocationFields value={location} onChange={setLocation} destinations={destinations} lockedFields={[]} />
+            <HotelLocationFields
+              value={location}
+              onChange={setLocation}
+              destinations={destinations}
+              lockedFields={[]}
+              changedFields={[]}
+            />
           </div>
 
           <div className="card" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>

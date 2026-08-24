@@ -148,7 +148,7 @@ xem Phase 17.
 | 6 | [Xác nhận / Huỷ đơn](./phase-06-order-actions.md) | D3 | Pending |
 | 7 | [Danh sách khách sạn](./phase-07-hotels-list.md) | B1 | Done |
 | 8 | [Tạo khách sạn mới](./phase-08-hotel-create.md) | B2 | Done |
-| 9 | [Chi tiết / Sửa khách sạn](./phase-09-hotel-edit.md) | B3 | Pending |
+| 9 | [Chi tiết / Sửa khách sạn](./phase-09-hotel-edit.md) | B3 | Done |
 | 10 | [Quản lý phòng](./phase-10-rooms.md) | B5 | Pending |
 | 11 | [Quản lý giá phòng theo đêm](./phase-11-room-prices.md) | B6 | Pending |
 | 12 | [Trạng thái & độ phủ embedding](./phase-12-embedding-status.md) | B7, C4 | Pending |

@@ -673,6 +673,73 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/hotels/{hotel_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Hotel */
+        get: operations["get_hotel_api_v1_admin_hotels__hotel_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Hotel */
+        patch: operations["update_hotel_api_v1_admin_hotels__hotel_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/hotels/{hotel_id}/reembed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reembed Hotel
+         * @description Always 503 until Phase 13 (Airflow client) exists -- there is no DAG
+         *     trigger to call yet. `update_hotel` already does the part that matters
+         *     (`embedding = NULL`) without this endpoint; the reembed dialog's "Chạy
+         *     ngay" is a convenience this phase intentionally leaves unimplemented
+         *     rather than fake.
+         */
+        post: operations["reembed_hotel_api_v1_admin_hotels__hotel_id__reembed_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/hotels/{hotel_id}/images/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Hotel Image
+         * @description Uploads one file to the `hotel-images` bucket and returns its public
+         *     URL -- does not touch `hotels.images` (see module docstring). `hotel_id`
+         *     only namespaces the storage path; this intentionally does not 404 on an
+         *     unknown id, since an orphaned object under a bad id is harmless and the
+         *     only caller is this hotel's own edit page, which already has a real id
+         *     from `GET /{hotel_id}`.
+         */
+        post: operations["upload_hotel_image_api_v1_admin_hotels__hotel_id__images_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/destinations": {
         parameters: {
             query?: never;
@@ -682,6 +749,23 @@ export interface paths {
         };
         /** List Destinations */
         get: operations["list_destinations_api_v1_admin_destinations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/amenities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Amenities */
+        get: operations["list_amenities_api_v1_admin_amenities_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -769,6 +853,17 @@ export interface components {
             /** Icon Key */
             icon_key: string | null;
         };
+        /** AmenityOption */
+        AmenityOption: {
+            /** Id */
+            id: string;
+            /** Label Vi */
+            label_vi: string;
+            /** Label En */
+            label_en: string;
+            /** Category */
+            category: string;
+        };
         /** AttractionDetailPayload */
         AttractionDetailPayload: {
             /** Id */
@@ -799,6 +894,14 @@ export interface components {
             coordinates: string | null;
             /** Images */
             images: string[] | null;
+        };
+        /** Body_upload_hotel_image_api_v1_admin_hotels__hotel_id__images_upload_post */
+        Body_upload_hotel_image_api_v1_admin_hotels__hotel_id__images_upload_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
         };
         /** BookingOwnershipRequest */
         BookingOwnershipRequest: {
@@ -1177,6 +1280,77 @@ export interface components {
             source_platform: string | null;
             /** Source Url */
             source_url: string | null;
+        };
+        /**
+         * HotelDetailResponse
+         * @description B3 (phase-09-hotel-edit.md). `pipeline_managed_fields`/`rag_fields`
+         *     are computed server-side (see module docstring) so the frontend never
+         *     has to reimplement -- and risk drifting from -- either source of truth.
+         */
+        HotelDetailResponse: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Accommodation Type */
+            accommodation_type?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Star Rating */
+            star_rating?: number | null;
+            /** Address */
+            address?: string | null;
+            /** City */
+            city?: string | null;
+            /** Area Name */
+            area_name?: string | null;
+            /** Location Highlight */
+            location_highlight?: string | null;
+            /** Destination Id */
+            destination_id?: string | null;
+            /** Latitude */
+            latitude?: number | null;
+            /** Longitude */
+            longitude?: number | null;
+            /** Check In Time */
+            check_in_time?: string | null;
+            /** Check In Until */
+            check_in_until?: string | null;
+            /** Check Out Time */
+            check_out_time?: string | null;
+            /** Amenities */
+            amenities: string[];
+            /** Amenity Groups */
+            amenity_groups?: {
+                [key: string]: unknown;
+            } | null;
+            /** Images */
+            images: string[];
+            /** Image Url */
+            image_url?: string | null;
+            /** Nearby Attractions */
+            nearby_attractions?: unknown | null;
+            /** Nearby Essentials */
+            nearby_essentials?: unknown | null;
+            /** Source Platform */
+            source_platform: string;
+            /** Is Manual */
+            is_manual: boolean;
+            /** Is Active */
+            is_active: boolean;
+            /** Room Count */
+            room_count: number;
+            /**
+             * Embedding State
+             * @enum {string}
+             */
+            embedding_state: "embedded" | "partial" | "missing";
+            /** Rooms Missing Embedding */
+            rooms_missing_embedding: number;
+            /** Pipeline Managed Fields */
+            pipeline_managed_fields: string[];
+            /** Rag Fields */
+            rag_fields: string[];
         };
         /** HotelListResponse */
         HotelListResponse: {
@@ -1565,6 +1739,15 @@ export interface components {
             /** Label */
             label: string;
         };
+        /** ReembedResponse */
+        ReembedResponse: {
+            /** Queued */
+            queued: boolean;
+            /** Dag Run Id */
+            dag_run_id?: string | null;
+            /** Scope */
+            scope: string;
+        };
         /** RestoredMessagePayload */
         RestoredMessagePayload: {
             /**
@@ -1809,6 +1992,67 @@ export interface components {
             days: components["schemas"]["DayPlan"][];
             /** Adjustments */
             adjustments: string[];
+        };
+        /**
+         * UpdateHotelRequest
+         * @description B3 partial update -- every field optional, and only the ones actually
+         *     present in the request body (`model_fields_set`, not "not None") are
+         *     considered for the changed-columns diff in `update_hotel`. Same
+         *     `max_length`s as CreateHotelRequest; `star_rating`/`description`/etc. can
+         *     be explicitly nulled (e.g. clearing "Hạng sao" back to "Chưa chọn"),
+         *     which is exactly why the diff logic keys off presence-in-body rather than
+         *     non-None.
+         */
+        UpdateHotelRequest: {
+            /** Name */
+            name?: string | null;
+            /** Accommodation Type */
+            accommodation_type?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Location Highlight */
+            location_highlight?: string | null;
+            /** Star Rating */
+            star_rating?: number | null;
+            /** Address */
+            address?: string | null;
+            /** Destination Id */
+            destination_id?: string | null;
+            /** City */
+            city?: string | null;
+            /** Latitude */
+            latitude?: number | null;
+            /** Longitude */
+            longitude?: number | null;
+            /** Check In Time */
+            check_in_time?: string | null;
+            /** Check Out Time */
+            check_out_time?: string | null;
+            /** Amenities */
+            amenities?: string[] | null;
+            /** Images */
+            images?: string[] | null;
+        };
+        /** UpdateHotelResponse */
+        UpdateHotelResponse: {
+            /** Id */
+            id: string;
+            /** Changed Fields */
+            changed_fields: string[];
+            /** Rag Fields Changed */
+            rag_fields_changed: string[];
+            /** Embedding Cleared */
+            embedding_cleared: boolean;
+            /**
+             * Embedding State
+             * @enum {string}
+             */
+            embedding_state: "embedded" | "partial" | "missing";
+        };
+        /** UploadImageResponse */
+        UploadImageResponse: {
+            /** Url */
+            url: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -2912,6 +3156,146 @@ export interface operations {
             };
         };
     };
+    get_hotel_api_v1_admin_hotels__hotel_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                hotel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HotelDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_hotel_api_v1_admin_hotels__hotel_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                hotel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateHotelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateHotelResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reembed_hotel_api_v1_admin_hotels__hotel_id__reembed_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                hotel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReembedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_hotel_image_api_v1_admin_hotels__hotel_id__images_upload_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                hotel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_hotel_image_api_v1_admin_hotels__hotel_id__images_upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadImageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_destinations_api_v1_admin_destinations_get: {
         parameters: {
             query?: never;
@@ -2930,6 +3314,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DestinationOption"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_amenities_api_v1_admin_amenities_get: {
+        parameters: {
+            query?: {
+                scope?: "hotel";
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AmenityOption"][];
                 };
             };
             /** @description Validation Error */

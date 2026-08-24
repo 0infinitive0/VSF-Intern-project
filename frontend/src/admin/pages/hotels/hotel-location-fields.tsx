@@ -2,6 +2,7 @@ import { useId } from 'react'
 import type { DestinationOption } from '../../api/hotels-client'
 import { Input } from '../../ui/input'
 import { MapStaticPreview } from './map-static-preview'
+import { PipelineFieldBadge } from './pipeline-field-badge'
 import { RagFieldLabel } from './rag-field-label'
 
 export interface HotelLocationFieldsValue {
@@ -15,15 +16,24 @@ interface HotelLocationFieldsProps {
   value: HotelLocationFieldsValue
   onChange: (next: HotelLocationFieldsValue) => void
   destinations: DestinationOption[]
-  /** DB column names this hotel's row got from the ETL pipeline -- disabled
-   * here so B3 can't edit a pipeline-owned field. B2 always passes []. */
+  /** DB column names this hotel's row got from the ETL pipeline. Renders the
+   * 🔒 warning badge next to the field's label -- decision #7
+   * (phase-09-hotel-edit.md) means the field stays fully editable
+   * regardless; this is a warning, never a `disabled`. B2 always passes []. */
   lockedFields: string[]
+  /** Field names changed from the loaded value but not yet saved -- renders
+   * the "đã sửa" badge next to that field's label. B2 always passes []. */
+  changedFields: string[]
 }
 
 function toNumberOrNull(raw: string): number | null {
   if (raw.trim() === '') return null
   const n = Number(raw)
   return Number.isFinite(n) ? n : null
+}
+
+function ChangedBadge() {
+  return <span style={{ fontSize: 11, color: 'var(--acc)', fontWeight: 600 }}>đã sửa</span>
 }
 
 /** hotel-location-fields.tsx -- "Vị trí" group, shared by B2
@@ -34,8 +44,9 @@ function toNumberOrNull(raw: string): number | null {
  * loaded by then), not here on every keystroke -- doing it here would race
  * the destinations fetch and could silently drop a match typed before the
  * list arrived. */
-export function HotelLocationFields({ value, onChange, destinations, lockedFields }: HotelLocationFieldsProps) {
+export function HotelLocationFields({ value, onChange, destinations, lockedFields, changedFields }: HotelLocationFieldsProps) {
   const locked = (field: string) => lockedFields.includes(field)
+  const changed = (field: string) => changedFields.includes(field)
   // Unique per mounted instance -- B3 (Phase 9) is expected to render this
   // component alongside other field groups, and a literal id would collide
   // across two instances.
@@ -54,28 +65,32 @@ export function HotelLocationFields({ value, onChange, destinations, lockedField
             Địa chỉ
           </label>
           <RagFieldLabel />
+          {locked('address') && <PipelineFieldBadge />}
+          {changed('address') && <ChangedBadge />}
         </div>
         <Input
           id={addressId}
           maxLength={500}
           placeholder="42 Nguyễn Phúc Chu, phường Minh An"
           value={value.address}
-          disabled={locked('address')}
           onChange={(e) => onChange({ ...value, address: e.target.value })}
         />
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <label htmlFor={cityId} className="field-label">
-          Thành phố / Tỉnh
-        </label>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <label htmlFor={cityId} className="field-label">
+            Thành phố / Tỉnh
+          </label>
+          {locked('city') && <PipelineFieldBadge />}
+          {changed('city') && <ChangedBadge />}
+        </div>
         <Input
           id={cityId}
           list={cityListId}
           maxLength={100}
           placeholder="Quảng Nam"
           value={value.city}
-          disabled={locked('city')}
           onChange={(e) => onChange({ ...value, city: e.target.value })}
         />
         <datalist id={cityListId}>
@@ -86,16 +101,23 @@ export function HotelLocationFields({ value, onChange, destinations, lockedField
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <Input
-          id={latitudeId}
-          label="Vĩ độ"
-          type="number"
-          step="any"
-          placeholder="15.87721"
-          value={value.latitude ?? ''}
-          disabled={locked('coordinates')}
-          onChange={(e) => onChange({ ...value, latitude: toNumberOrNull(e.target.value) })}
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <label htmlFor={latitudeId} className="field-label">
+              Vĩ độ
+            </label>
+            {locked('coordinates') && <PipelineFieldBadge />}
+            {changed('coordinates') && <ChangedBadge />}
+          </div>
+          <Input
+            id={latitudeId}
+            type="number"
+            step="any"
+            placeholder="15.87721"
+            value={value.latitude ?? ''}
+            onChange={(e) => onChange({ ...value, latitude: toNumberOrNull(e.target.value) })}
+          />
+        </div>
         <Input
           id={longitudeId}
           label="Kinh độ"
@@ -103,7 +125,6 @@ export function HotelLocationFields({ value, onChange, destinations, lockedField
           step="any"
           placeholder="108.32694"
           value={value.longitude ?? ''}
-          disabled={locked('coordinates')}
           onChange={(e) => onChange({ ...value, longitude: toNumberOrNull(e.target.value) })}
         />
       </div>

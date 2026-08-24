@@ -1,7 +1,7 @@
 ---
 phase: 9
 title: "Chi tiết / Sửa khách sạn (B3)"
-status: pending
+status: done
 priority: P1
 effort: "2.5d"
 dependencies: [8]
@@ -218,18 +218,34 @@ src/admin/lib/amenity-groups.ts  L33
 
 ## Success Criteria
 
-- [ ] Sửa `description` → `hotels.embedding` thành NULL, `embedding_state='missing'`, hộp thoại re-embed bật lên
-- [ ] Sửa `star_rating` → `embedding` **giữ nguyên**, **không** có hộp thoại re-embed
-- [ ] Sửa `check_in_time` + `description` cùng lúc → chỉ `description` nằm trong `rag_fields_changed`
-- [ ] Gửi `"source_platform": "manual"` trong PATCH của khách sạn ETL → bị bỏ qua
-- [ ] Gửi amenity id không có trong catalog → 422, `amenities` không đổi
-- [ ] Khách sạn `manual` → `pipeline_managed_fields` rỗng, **không** có banner khoá, **không** có 🔒
-- [ ] Khách sạn ETL → banner khoá hiện, các ô có 🔒 vẫn **sửa được** (không disabled)
-- [ ] Thanh dính đáy liệt kê đúng tên ô đã đổi, đánh dấu ô nào ảnh hưởng RAG
-- [ ] Mọi tiện ích trong `amenity_catalog` rơi vào đúng một nhóm ở tab Tiện ích (test tự động)
-- [ ] Chip embedding **không** hiện mốc thời gian (L34)
-- [ ] `admin_audit_log` ghi `before`/`after` chỉ chứa cột đã đổi
-- [ ] Airflow chưa nối → `POST /reembed` trả 503, nhưng `embedding` vẫn đã NULL và UI hướng dẫn đúng
+- [x] Sửa `description` → `hotels.embedding` thành NULL, `embedding_state='missing'`, hộp thoại re-embed bật lên
+- [x] Sửa `star_rating` → `embedding` **giữ nguyên**, **không** có hộp thoại re-embed
+- [x] Sửa `check_in_time` + `description` cùng lúc → chỉ `description` nằm trong `rag_fields_changed`
+- [x] Gửi `"source_platform": "manual"` trong PATCH của khách sạn ETL → bị bỏ qua
+- [x] Gửi amenity id không có trong catalog → 422, `amenities` không đổi
+- [x] Khách sạn `manual` → `pipeline_managed_fields` rỗng, **không** có banner khoá, **không** có 🔒
+- [x] Khách sạn ETL → banner khoá hiện, các ô có 🔒 vẫn **sửa được** (không disabled)
+- [x] Thanh dính đáy liệt kê đúng tên ô đã đổi, đánh dấu ô nào ảnh hưởng RAG (đánh dấu `*` từng ô, không phải câu chung chung cho cả dòng)
+- [x] Mọi tiện ích trong `amenity_catalog` rơi vào đúng một nhóm ở tab Tiện ích (test tự động — khẳng định tường minh cả 14 category, không chỉ "nằm trong danh sách nhóm")
+- [x] Chip embedding **không** hiện mốc thời gian (L34)
+- [x] `admin_audit_log` ghi `before`/`after` chỉ chứa cột đã đổi
+- [x] Airflow chưa nối → `POST /reembed` trả 503, nhưng `embedding` vẫn đã NULL và UI hướng dẫn đúng
+
+## Bổ sung ngoài phạm vi gốc: tải ảnh lên trực tiếp (Supabase Storage)
+
+Sau khi Phase 9 xong, user yêu cầu bổ sung upload file thật cho tab Hình ảnh (thay vì chỉ dán URL — giới hạn L38 gốc). Đã làm:
+
+- Bucket `hotel-images` (public, giới hạn 5MB, chỉ `image/jpeg|png|webp`) —
+  `scripts/migrations/20260824_add_hotel_images_storage_bucket.sql`, đã apply lên project sống.
+- `POST /api/v1/admin/hotels/{id}/images/upload` (multipart, `require_admin`) — dùng service-role client
+  upload lên bucket, trả về public URL. Không tự ghi vào `hotels.images` — frontend thêm URL vào mảng cục bộ
+  rồi lưu qua `PATCH /{id}` như thường (amenities-style write path, một chỗ ghi cho cả URL dán tay lẫn URL upload).
+- Không cần Storage RLS: writer duy nhất là backend service-role (bypass RLS), giống mọi bảng khác trong schema.
+- Frontend: `hotel-tab-images.tsx` có nút "Tải ảnh lên" (input file ẩn) cạnh ô dán URL; cả hai đường đều
+  validate http(s)-only + cap 50 ảnh trước khi thêm vào mảng.
+- Verify thật: upload/get_public_url/remove chạy qua Supabase Python client sống, `curl` xác nhận URL public
+  trả 200 không cần auth, và một request multipart thật qua `httpx.ASGITransport` (không mock) chạy hết đường
+  từ `UploadFile` → Storage → public URL.
 
 ## Risk Assessment
 
@@ -241,3 +257,18 @@ src/admin/lib/amenity-groups.ts  L33
 | Ánh xạ 14 category sót một cái → tiện ích biến mất khỏi UI | Trung bình | Test tự động: mọi entry trong catalog phải có nhóm |
 | `amenity_groups` JSONB (cấu trúc khác nhau 2 nguồn) bị ghi đè bằng cấu trúc mới | Trung bình | Phase này **không** ghi `amenity_groups`, chỉ ghi mảng `amenities`. Ghi rõ trong code |
 | Admin sửa khách sạn ETL rồi mất trắng ở lần chạy pipeline | Trung bình | Đây là hệ quả **đã chấp nhận** của quyết định #7. Banner + 🔒 + tooltip là biện pháp; audit log giữ lại giá trị đã nhập |
+
+## Implementation Notes (post-review)
+
+Triển khai xong + review bởi `code-reviewer` subagent (2 lượt), đã sửa các phát hiện quan trọng:
+
+- **`destination_id` bị null ngầm khi sửa `city`**: trước đây mọi lần sửa `city` không khớp tên destination nào sẽ set `destination_id = null`, âm thầm loại khách sạn khỏi mọi tìm kiếm theo điểm đến (`match_hotels_with_rooms` lọc theo `destination_id`, không phải `city`). Giờ chỉ gửi `destination_id` khi khớp được — không bao giờ null ngầm một liên kết đang có.
+- **Tiện ích so sánh theo list thay vì set**: toggle bật-rồi-tắt một chip trước đây vẫn báo "đã đổi" và clear `embedding` (tốn tiền re-embed vô ích — đúng rủi ro Cao ở bảng trên). Giờ so theo tập hợp (set), và `hotel-tab-amenities.tsx` chỉ thêm/bớt đúng 1 id khi toggle thay vì dựng lại toàn mảng theo thứ tự catalog — tránh làm rớt id cũ không còn nằm trong catalog hiện tại (196/1104 khách sạn có >100 tiện ích, id hợp lệ nhưng có thể đã đổi scope).
+- **`_invalid_amenity_ids` bị cắt ở 100 id**: `query_approved_amenities` giới hạn 100 id/lần — 196 khách sạn trong DB thật có >100 tiện ích, mọi id thứ 101 trở đi bị báo "không hợp lệ" một cách sai. Đổi sang `query_all_approved_amenities_by_ids` (không giới hạn) và chỉ validate id **mới thêm**, không validate lại toàn bộ mảng mỗi lần lưu.
+- **Toạ độ**: thêm validator "cả hai hoặc không cái nào" cho `UpdateHotelRequest` khi cả `latitude`/`longitude` cùng có trong body — trước đó gửi một cái `null` một cái có giá trị sẽ xoá sạch cột `coordinates`.
+- **Thanh dính đáy gắn nhãn RAG sai chỗ**: trước đây thêm "— ảnh hưởng tìm kiếm của bot" vào cuối cả dòng bất cứ khi nào có ít nhất 1 ô RAG đổi, dù các ô khác cùng đổi không phải RAG. Giờ đánh dấu `*` đúng từng ô RAG-relevant.
+- **State `hotel` cũ sau khi lưu**: trước đây chỉ ghi đè `embedding_state` vào state cũ, tên/mô tả mới lưu không hiện lại ở header cho tới khi tải lại trang. Giờ gọi lại `GET` sau khi lưu thành công, giữ nguyên `is_active` hiện tại (tránh việc gọi lại ghi đè một thao tác bật/tắt "Đang bán" đang chạy song song).
+- **`updated_at` không tự cập nhật**: PATCH giờ set `updated_at` tường minh (không có trigger DB) để khách sạn vừa sửa không kẹt cuối danh sách B1 (sắp theo `updated_at desc`).
+- **URL ảnh không kiểm định dạng**: thêm validator http(s)-only + giới hạn độ dài cho `images`, cả hai phía backend và `hotel-tab-images.tsx`.
+- **Test tautology**: `EMBEDDING_FIELDS`/`PIPELINE_MANAGED_FIELDS_HOTEL` giờ có test đối chiếu trực tiếp với source thật (`embed_supabase_dag.py`, `hotel_pipeline.py`) bằng regex-parse (không import được `airflow` từ venv backend), thay vì chỉ so với chính nó. `amenity-groups.test.ts` giờ khẳng định tường minh cả 14 category thay vì chỉ kiểm tra "nằm trong danh sách nhóm" (vốn luôn đúng nhờ fallback).
+- Thêm `lookupError` cho 3 API lookup phụ (destinations/accommodation-types/amenities) — trước đó lỗi tải bị nuốt im lặng.
