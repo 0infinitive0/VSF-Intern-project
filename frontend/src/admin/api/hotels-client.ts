@@ -16,6 +16,9 @@ export type HotelRow = components['schemas']['HotelRow']
 export type HotelListResponse = components['schemas']['HotelListResponse']
 export type HotelActiveResponse = components['schemas']['HotelActiveResponse']
 export type BulkActiveResponse = components['schemas']['BulkActiveResponse']
+export type CreateHotelRequest = components['schemas']['CreateHotelRequest']
+export type CreateHotelResponse = components['schemas']['CreateHotelResponse']
+export type DestinationOption = components['schemas']['DestinationOption']
 
 export type SourceFilter = 'all' | 'manual' | 'pipeline'
 export type EmbeddingFilter = 'all' | 'embedded' | 'missing'
@@ -92,6 +95,22 @@ export function bulkSetHotelActive(hotelIds: string[], isActive: boolean): Promi
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ hotel_ids: hotelIds, is_active: isActive }),
   })
+}
+
+export function createHotel(body: CreateHotelRequest): Promise<AdminApiResult<CreateHotelResponse>> {
+  return adminFetch<CreateHotelResponse>('/hotels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export function listDestinations(): Promise<AdminApiResult<DestinationOption[]>> {
+  return adminFetch<DestinationOption[]>('/destinations')
+}
+
+export function listAccommodationTypes(): Promise<AdminApiResult<string[]>> {
+  return adminFetch<string[]>('/hotels/accommodation-types')
 }
 
 export async function exportHotelsCsv(params: HotelListParams): Promise<{ ok: true } | { ok: false; detail: string }> {

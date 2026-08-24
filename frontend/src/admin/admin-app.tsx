@@ -5,6 +5,7 @@ import { AdminLogin } from './auth/admin-login'
 import { Forbidden } from './auth/forbidden'
 import { AdminShell } from './layout/admin-shell'
 import { OverviewPage } from './pages/overview-page'
+import { HotelCreatePage } from './pages/hotels/hotel-create-page'
 import { HotelsPage } from './pages/hotels/hotels-page'
 import { RouteStub } from './pages/route-stub'
 import { useAdminRoute } from './router'
@@ -13,7 +14,7 @@ type MeState = { status: 'checking' } | { status: 'forbidden' } | { status: 'err
 
 function resolvePage(path: string, navigate: (to: string) => void) {
   if (path === '/admin') return <OverviewPage />
-  if (path === '/admin/hotels/new') return <RouteStub title="Tạo khách sạn mới" phase={8} />
+  if (path === '/admin/hotels/new') return <HotelCreatePage navigate={navigate} />
   if (path.startsWith('/admin/hotels/')) return <RouteStub title="Chi tiết khách sạn" phase={9} />
   if (path === '/admin/hotels') return <HotelsPage navigate={navigate} />
   if (path === '/admin/embedding') return <RouteStub title="Trạng thái embedding" phase={12} />

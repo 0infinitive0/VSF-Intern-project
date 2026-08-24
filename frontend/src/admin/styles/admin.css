@@ -145,7 +145,8 @@ button {
 }
 
 .input,
-.select {
+.select,
+.textarea {
   height: 40px;
   width: 100%;
   border-radius: 10px;
@@ -157,19 +158,30 @@ button {
   font-family: inherit;
 }
 
-.input::placeholder {
+.textarea {
+  height: auto;
+  min-height: 96px;
+  padding: 10px 12px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.input::placeholder,
+.textarea::placeholder {
   color: var(--t4);
 }
 
 .input:focus,
-.select:focus {
+.select:focus,
+.textarea:focus {
   outline: none;
   border-color: var(--acc);
   box-shadow: 0 0 0 3px var(--acc-soft);
 }
 
 .input:disabled,
-.select:disabled {
+.select:disabled,
+.textarea:disabled {
   background: var(--fill);
   color: var(--t4);
   cursor: not-allowed;
@@ -286,6 +298,11 @@ button {
   display: flex;
   gap: 8px;
   align-items: flex-start;
+}
+
+.banner--info {
+  background: var(--acc-soft);
+  color: var(--t2);
 }
 
 .banner--warn {

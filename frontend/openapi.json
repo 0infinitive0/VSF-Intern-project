@@ -1403,7 +1403,118 @@
         }
       }
     },
+    "/api/v1/admin/hotels/accommodation-types": {
+      "get": {
+        "tags": [
+          "admin-hotels"
+        ],
+        "summary": "List Accommodation Types",
+        "description": "Distinct `accommodation_type` values already in the table, as\nsuggestions for B2's combobox (L27) -- ETL free-text from Agoda/Booking,\nso this is not a fixed enum on either side.",
+        "operationId": "list_accommodation_types_api_v1_admin_hotels_accommodation_types_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response List Accommodation Types Api V1 Admin Hotels Accommodation Types Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/hotels": {
+      "post": {
+        "tags": [
+          "admin-hotels"
+        ],
+        "summary": "Create Hotel",
+        "operationId": "create_hotel_api_v1_admin_hotels_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateHotelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateHotelResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "tags": [
           "admin-hotels"
@@ -1661,6 +1772,59 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BulkActiveResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/destinations": {
+      "get": {
+        "tags": [
+          "admin-destinations"
+        ],
+        "summary": "List Destinations",
+        "operationId": "list_destinations_api_v1_admin_destinations_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DestinationOption"
+                  },
+                  "title": "Response List Destinations Api V1 Admin Destinations Get"
                 }
               }
             }
@@ -2429,6 +2593,180 @@
         ],
         "title": "ChangeHotelRequest"
       },
+      "CreateHotelRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "accommodation_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accommodation Type"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "star_rating": {
+            "anyOf": [
+              {
+                "type": "number",
+                "multipleOf": 0.5,
+                "maximum": 5.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Star Rating"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "destination_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Id"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 90.0,
+                "minimum": -90.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 180.0,
+                "minimum": -180.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "check_in_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check In Time"
+          },
+          "check_out_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check Out Time"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "CreateHotelRequest",
+        "description": "B2 (phase-08-hotel-create.md). `source_platform` is deliberately not a\nfield here -- accepting it from the client would let a caller claim an\nOTA origin for a hand-entered row, letting fake data into the ETL\nnamespace the pipeline trusts (see module docstring). It is always\n'manual', set server-side in `create_hotel`.\n\n`max_length`s below mirror the `hotels` column widths in\ndatabase_schema.sql (accommodation_type VARCHAR(50), address VARCHAR(500),\ncity VARCHAR(100)) so an over-long value 422s here instead of reaching\nPostgres as an unhandled `22001` (string too long)."
+      },
+      "CreateHotelResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "source_platform": {
+            "type": "string",
+            "title": "Source Platform"
+          },
+          "source_hotel_id": {
+            "type": "integer",
+            "title": "Source Hotel Id"
+          },
+          "embedding_state": {
+            "type": "string",
+            "const": "missing",
+            "title": "Embedding State"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source_platform",
+          "source_hotel_id",
+          "embedding_state",
+          "is_active"
+        ],
+        "title": "CreateHotelResponse"
+      },
       "CreateVnpayPaymentRequest": {
         "properties": {
           "booking_ids": {
@@ -2525,6 +2863,24 @@
           "items"
         ],
         "title": "DayPlan"
+      },
+      "DestinationOption": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "DestinationOption"
       },
       "FinalizeTripPayload": {
         "properties": {

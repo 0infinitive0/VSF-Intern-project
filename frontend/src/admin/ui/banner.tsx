@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
 interface BannerProps {
-  tone: 'warn' | 'err' | 'ok'
+  tone: 'info' | 'warn' | 'err' | 'ok'
   children: ReactNode
 }
 

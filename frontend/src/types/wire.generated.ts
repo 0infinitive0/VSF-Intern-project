@@ -599,6 +599,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/hotels/accommodation-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Accommodation Types
+         * @description Distinct `accommodation_type` values already in the table, as
+         *     suggestions for B2's combobox (L27) -- ETL free-text from Agoda/Booking,
+         *     so this is not a fixed enum on either side.
+         */
+        get: operations["list_accommodation_types_api_v1_admin_hotels_accommodation_types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/hotels": {
         parameters: {
             query?: never;
@@ -609,7 +631,8 @@ export interface paths {
         /** List Hotels */
         get: operations["list_hotels_api_v1_admin_hotels_get"];
         put?: never;
-        post?: never;
+        /** Create Hotel */
+        post: operations["create_hotel_api_v1_admin_hotels_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -644,6 +667,23 @@ export interface paths {
         put?: never;
         /** Bulk Set Hotel Active */
         post: operations["bulk_set_hotel_active_api_v1_admin_hotels_bulk_active_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/destinations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Destinations */
+        get: operations["list_destinations_api_v1_admin_destinations_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -937,6 +977,59 @@ export interface components {
             session_id: string;
         };
         /**
+         * CreateHotelRequest
+         * @description B2 (phase-08-hotel-create.md). `source_platform` is deliberately not a
+         *     field here -- accepting it from the client would let a caller claim an
+         *     OTA origin for a hand-entered row, letting fake data into the ETL
+         *     namespace the pipeline trusts (see module docstring). It is always
+         *     'manual', set server-side in `create_hotel`.
+         *
+         *     `max_length`s below mirror the `hotels` column widths in
+         *     database_schema.sql (accommodation_type VARCHAR(50), address VARCHAR(500),
+         *     city VARCHAR(100)) so an over-long value 422s here instead of reaching
+         *     Postgres as an unhandled `22001` (string too long).
+         */
+        CreateHotelRequest: {
+            /** Name */
+            name: string;
+            /** Accommodation Type */
+            accommodation_type?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Star Rating */
+            star_rating?: number | null;
+            /** Address */
+            address?: string | null;
+            /** Destination Id */
+            destination_id?: string | null;
+            /** City */
+            city?: string | null;
+            /** Latitude */
+            latitude?: number | null;
+            /** Longitude */
+            longitude?: number | null;
+            /** Check In Time */
+            check_in_time?: string | null;
+            /** Check Out Time */
+            check_out_time?: string | null;
+        };
+        /** CreateHotelResponse */
+        CreateHotelResponse: {
+            /** Id */
+            id: string;
+            /** Source Platform */
+            source_platform: string;
+            /** Source Hotel Id */
+            source_hotel_id: number;
+            /**
+             * Embedding State
+             * @constant
+             */
+            embedding_state: "missing";
+            /** Is Active */
+            is_active: boolean;
+        };
+        /**
          * CreateVnpayPaymentRequest
          * @description One payment covers every booking in a hold group — a guest can hold
          *     several distinct room types at once (frontend's use-room-hold.ts), but
@@ -975,6 +1068,13 @@ export interface components {
             theme: string;
             /** Items */
             items: components["schemas"]["ItineraryItem"][];
+        };
+        /** DestinationOption */
+        DestinationOption: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
         };
         /**
          * FinalizeTripPayload
@@ -2635,6 +2735,37 @@ export interface operations {
             };
         };
     };
+    list_accommodation_types_api_v1_admin_hotels_accommodation_types_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_hotels_api_v1_admin_hotels_get: {
         parameters: {
             query?: {
@@ -2661,6 +2792,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HotelListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_hotel_api_v1_admin_hotels_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateHotelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateHotelResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2733,6 +2899,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BulkActiveResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_destinations_api_v1_admin_destinations_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DestinationOption"][];
                 };
             };
             /** @description Validation Error */

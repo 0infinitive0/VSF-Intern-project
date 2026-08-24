@@ -1,7 +1,7 @@
 ---
 phase: 8
 title: "Tạo khách sạn mới (B2)"
-status: pending
+status: done
 priority: P1
 effort: "1d"
 dependencies: [7]
@@ -165,16 +165,31 @@ src/admin/pages/hotels/
 
 ## Success Criteria
 
-- [ ] Tạo khách sạn → hàng mới có `source_platform='manual'`, `embedding IS NULL`, `source_hotel_id` là số nguyên tăng dần
-- [ ] Gửi `"source_platform": "booking"` trong body → vẫn ra `manual`
-- [ ] Tạo 2 khách sạn liên tiếp → `source_hotel_id` khác nhau, không vi phạm `UNIQUE(source_platform, source_hotel_id)`
-- [ ] `coordinates` ghi ra parse được bằng đúng hàm app chat đang dùng
-- [ ] Khách sạn mới hiện ở B1 với `embedding_state = 'missing'` (chấm cam)
-- [ ] Khách sạn mới **không** xuất hiện trong `match_hotels_with_rooms` (vì `embedding IS NULL`) — đúng như banner cảnh báo
-- [ ] Không có nút `Lưu nháp` (L25)
-- [ ] Nhãn `ảnh hưởng tìm kiếm của bot` có ở đúng 4 ô: Tên, Loại hình, Mô tả, Địa chỉ (L28)
-- [ ] Bộ đếm ký tự chặn ở 1.000
-- [ ] Bản đồ xem trước không kéo `mapbox-gl` vào bundle admin (kiểm kích thước chunk)
+- [x] Tạo khách sạn → hàng mới có `source_platform='manual'`, `embedding IS NULL`, `source_hotel_id` là số nguyên tăng dần
+- [x] Gửi `"source_platform": "booking"` trong body → vẫn ra `manual`
+- [x] Tạo 2 khách sạn liên tiếp → `source_hotel_id` khác nhau, không vi phạm `UNIQUE(source_platform, source_hotel_id)`
+- [x] `coordinates` ghi ra parse được bằng đúng hàm app chat đang dùng
+- [x] Khách sạn mới hiện ở B1 với `embedding_state = 'missing'` (chấm cam) — suy ra từ B1 (`admin_hotel_rows.hotel_embedded = embedding IS NOT NULL`, không sửa ở phase này) + `embedding` luôn NULL khi tạo tay
+- [x] Khách sạn mới **không** xuất hiện trong `match_hotels_with_rooms` (vì `embedding IS NULL`) — đúng như banner cảnh báo (hành vi có sẵn của hàm match, không cần sửa ở phase này)
+- [x] Không có nút `Lưu nháp` (L25)
+- [x] Nhãn `ảnh hưởng tìm kiếm của bot` có ở đúng 4 ô: Tên, Loại hình, Mô tả, Địa chỉ (L28)
+- [x] Bộ đếm ký tự chặn ở 1.000
+- [x] Bản đồ xem trước không kéo `mapbox-gl` vào bundle admin (kiểm kích thước chunk — admin-*.js ~40KB, không có `mapbox-gl`/`mapboxgl` trong build output)
+
+## Implementation Notes (post-review)
+
+Triển khai xong + review bởi `code-reviewer` subagent, đã sửa các phát hiện quan trọng:
+
+- **Trust boundary**: `destination_id` giờ typed `UUID | None` (không phải `str`) — id sai định dạng 422 thay vì 500 khi chạm DB FK constraint. `accommodation_type`/`address`/`city` giờ có `max_length` khớp cột DB (50/500/100) — tránh Postgres `22001` không được xử lý.
+- **Vĩ độ/Kinh độ**: bắt buộc cả hai hoặc không cái nào (`model_validator`) — trước đó nhập lệch một ô sẽ âm thầm bỏ `coordinates` mà không báo.
+- **`adminFetch`**: giờ hiểu `detail` dạng mảng (422 field errors của FastAPI) — trước đó mọi lỗi 422 hiện ra "Lỗi máy chủ (422)." không rõ trường nào sai. Sửa chung cho toàn bộ admin, không riêng B2.
+- **`destination_id` khớp theo `city`**: chuyển việc match từ lúc gõ phím (có thể race với fetch `/admin/destinations` chưa xong) sang lúc bấm Lưu, match theo state `destinations` mới nhất.
+- **Điều hướng sau khi lưu**: về `/admin/hotels` (B1) thay vì `/admin/hotels/:id` — route đó còn là `RouteStub` (Phase 9 chưa xây), điều hướng tới đó không xác nhận được gì.
+- **CSV export**: `name`/`address`/`city` giờ escape ký tự đầu `=+-@` (formula injection) — B2 là đường đầu tiên biến các cột này thành do người nhập tay, trước đó luôn từ ETL.
+- **`useId()`** cho id DOM trong `hotel-basic-fields.tsx`/`hotel-location-fields.tsx` — hai component này thiết kế để B3 mount cùng lúc nhiều field-group, id cứng sẽ đụng nhau.
+- Debounce 500ms cho ảnh xem trước bản đồ (Mapbox Static Images API tính phí theo request).
+
+Chưa sửa (deferred, có lý do): `list_accommodation_types` quét tối đa 5000 hàng thay vì `SELECT DISTINCT` qua view riêng — dữ liệu hiện tại (~1100 khách sạn) còn xa mức trần, chưa cần thêm migration cho việc này.
 
 ## Risk Assessment
 
