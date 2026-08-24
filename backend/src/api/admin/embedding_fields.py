@@ -37,6 +37,17 @@ EMBEDDING_FIELDS: tuple[str, ...] = (
     "amenities",
 )
 
+# Copied from `TABLE_COLUMNS["rooms"]` in embed_supabase_dag.py (phase-10-rooms.md).
+# `max_guests`, `room_size_sqm`, `images` are NOT here -- they have no effect on
+# `_build_text`'s room template, which admin writes must never touch (see
+# rooms.py's module docstring).
+RAG_FIELDS_ROOM: tuple[str, ...] = (
+    "name",
+    "bed_description",
+    "view",
+    "room_facilities",
+)
+
 PIPELINE_MANAGED_FIELDS_HOTEL: tuple[str, ...] = (
     "destination_id",
     "source_url",

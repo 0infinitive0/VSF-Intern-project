@@ -774,6 +774,93 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/hotels/{hotel_id}/rooms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Rooms */
+        get: operations["list_rooms_api_v1_admin_hotels__hotel_id__rooms_get"];
+        put?: never;
+        /** Create Room */
+        post: operations["create_room_api_v1_admin_hotels__hotel_id__rooms_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/rooms/{room_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Room */
+        delete: operations["delete_room_api_v1_admin_rooms__room_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Room */
+        patch: operations["update_room_api_v1_admin_rooms__room_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/room-facilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Room Facilities
+         * @description Catalog options for the drawer's `Tiện nghi phòng` chips (L43) --
+         *     scope `room`/`both`, same shape as B3's GET /amenities but filtered to
+         *     the room-eligible scopes instead of hotel-eligible ones.
+         */
+        get: operations["list_room_facilities_api_v1_admin_room_facilities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/rooms/{room_id}/images/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Room Image
+         * @description Uploads one file to the shared `hotel-images` bucket under a
+         *     `rooms/{room_id}/` path and returns its public URL -- does not touch
+         *     `rooms.images` itself. Same contract as B3's `upload_hotel_image`
+         *     (backend/src/api/admin/hotels.py): the drawer adds the returned URL to
+         *     its local `images` array and saves it through the ordinary
+         *     PATCH/POST `images` field, so one write path handles both a pasted URL
+         *     and an uploaded file. `room_id` only namespaces the storage path and is
+         *     not checked against `rooms` -- the only caller is the room drawer, which
+         *     only has a real id in edit mode (a room being created has none yet, so
+         *     upload there is disabled client-side, not enforced here).
+         */
+        post: operations["upload_room_image_api_v1_admin_rooms__room_id__images_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/me": {
         parameters: {
             query?: never;
@@ -897,6 +984,14 @@ export interface components {
         };
         /** Body_upload_hotel_image_api_v1_admin_hotels__hotel_id__images_upload_post */
         Body_upload_hotel_image_api_v1_admin_hotels__hotel_id__images_upload_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+        };
+        /** Body_upload_room_image_api_v1_admin_rooms__room_id__images_upload_post */
+        Body_upload_room_image_api_v1_admin_rooms__room_id__images_upload_post: {
             /**
              * File
              * Format: binary
@@ -1131,6 +1226,39 @@ export interface components {
             embedding_state: "missing";
             /** Is Active */
             is_active: boolean;
+        };
+        /**
+         * CreateRoomRequest
+         * @description POST /hotels/{hotel_id}/rooms body. `max_length`s mirror the `rooms`
+         *     column widths (`name`/`view` VARCHAR(255)) in database_schema.sql.
+         */
+        CreateRoomRequest: {
+            /** Name */
+            name: string;
+            /** Max Guests */
+            max_guests?: number | null;
+            /** Bed Description */
+            bed_description?: string | null;
+            /** Room Size Sqm */
+            room_size_sqm?: number | null;
+            /** View */
+            view?: string | null;
+            /** Room Facilities */
+            room_facilities?: string[];
+            /** Images */
+            images?: string[];
+        };
+        /** CreateRoomResponse */
+        CreateRoomResponse: {
+            /** Id */
+            id: string;
+            /** Source Room Id */
+            source_room_id: number;
+            /**
+             * Embedding State
+             * @constant
+             */
+            embedding_state: "missing";
         };
         /**
          * CreateVnpayPaymentRequest
@@ -1792,6 +1920,11 @@ export interface components {
              */
             available_room_count: number | null;
         };
+        /** RoomListResponse */
+        RoomListResponse: {
+            /** Items */
+            items: components["schemas"]["RoomRow"][];
+        };
         /** RoomPricePayload */
         RoomPricePayload: {
             /** Amount */
@@ -1806,6 +1939,46 @@ export interface components {
             sold_out: boolean | null;
             /** Package Details */
             package_details: string | null;
+        };
+        /** RoomRow */
+        RoomRow: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Max Guests */
+            max_guests?: number | null;
+            /** Max Occupancy Raw */
+            max_occupancy_raw?: string | null;
+            /** Bed Description */
+            bed_description?: string | null;
+            /** Room Size Sqm */
+            room_size_sqm?: number | null;
+            /** View */
+            view?: string | null;
+            /** Room Facilities */
+            room_facilities: string[];
+            /** Facility Count */
+            facility_count: number;
+            /** Images */
+            images: string[];
+            /** Image Count */
+            image_count: number;
+            /** Available Room Count */
+            available_room_count?: number | null;
+            /** Lowest Price 30D */
+            lowest_price_30d?: string | null;
+            /** Currency */
+            currency: string;
+            /**
+             * Embedding State
+             * @enum {string}
+             */
+            embedding_state: "embedded" | "missing";
+            /** Is Manual */
+            is_manual: boolean;
+            /** Booking Count */
+            booking_count: number;
         };
         /** RouteInfoPayload */
         RouteInfoPayload: {
@@ -2048,6 +2221,44 @@ export interface components {
              * @enum {string}
              */
             embedding_state: "embedded" | "partial" | "missing";
+        };
+        /**
+         * UpdateRoomRequest
+         * @description PATCH /rooms/{room_id} partial update -- only fields present in the
+         *     body (`model_fields_set`) are considered, same posture as B3's
+         *     UpdateHotelRequest.
+         */
+        UpdateRoomRequest: {
+            /** Name */
+            name?: string | null;
+            /** Max Guests */
+            max_guests?: number | null;
+            /** Bed Description */
+            bed_description?: string | null;
+            /** Room Size Sqm */
+            room_size_sqm?: number | null;
+            /** View */
+            view?: string | null;
+            /** Room Facilities */
+            room_facilities?: string[] | null;
+            /** Images */
+            images?: string[] | null;
+        };
+        /** UpdateRoomResponse */
+        UpdateRoomResponse: {
+            /** Id */
+            id: string;
+            /** Changed Fields */
+            changed_fields: string[];
+            /** Rag Fields Changed */
+            rag_fields_changed: string[];
+            /** Embedding Cleared */
+            embedding_cleared: boolean;
+            /**
+             * Embedding State
+             * @enum {string}
+             */
+            embedding_state: "embedded" | "missing";
         };
         /** UploadImageResponse */
         UploadImageResponse: {
@@ -3347,6 +3558,212 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AmenityOption"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_rooms_api_v1_admin_hotels__hotel_id__rooms_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                hotel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_room_api_v1_admin_hotels__hotel_id__rooms_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                hotel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRoomRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateRoomResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_room_api_v1_admin_rooms__room_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                room_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_room_api_v1_admin_rooms__room_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                room_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateRoomRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateRoomResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_room_facilities_api_v1_admin_room_facilities_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AmenityOption"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_room_image_api_v1_admin_rooms__room_id__images_upload_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                room_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_room_image_api_v1_admin_rooms__room_id__images_upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadImageResponse"];
                 };
             };
             /** @description Validation Error */

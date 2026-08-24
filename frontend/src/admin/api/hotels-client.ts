@@ -25,6 +25,12 @@ export type UpdateHotelResponse = components['schemas']['UpdateHotelResponse']
 export type ReembedResponse = components['schemas']['ReembedResponse']
 export type AmenityOption = components['schemas']['AmenityOption']
 export type UploadImageResponse = components['schemas']['UploadImageResponse']
+export type RoomRow = components['schemas']['RoomRow']
+export type RoomListResponse = components['schemas']['RoomListResponse']
+export type CreateRoomRequest = components['schemas']['CreateRoomRequest']
+export type CreateRoomResponse = components['schemas']['CreateRoomResponse']
+export type UpdateRoomRequest = components['schemas']['UpdateRoomRequest']
+export type UpdateRoomResponse = components['schemas']['UpdateRoomResponse']
 
 export type SourceFilter = 'all' | 'manual' | 'pipeline'
 export type EmbeddingFilter = 'all' | 'embedded' | 'missing'
@@ -150,6 +156,70 @@ export function uploadHotelImage(hotelId: string, file: File): Promise<AdminApiR
   const form = new FormData()
   form.append('file', file)
   return adminFetch<UploadImageResponse>(`/hotels/${hotelId}/images/upload`, { method: 'POST', body: form })
+}
+
+// ---------------------------------------------------------------------------
+// B5 -- Quản lý phòng (phase-10-rooms.md)
+// ---------------------------------------------------------------------------
+
+export function listRooms(hotelId: string): Promise<AdminApiResult<RoomListResponse>> {
+  return adminFetch<RoomListResponse>(`/hotels/${hotelId}/rooms`)
+}
+
+export function createRoom(hotelId: string, body: CreateRoomRequest): Promise<AdminApiResult<CreateRoomResponse>> {
+  return adminFetch<CreateRoomResponse>(`/hotels/${hotelId}/rooms`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export function updateRoom(roomId: string, body: UpdateRoomRequest): Promise<AdminApiResult<UpdateRoomResponse>> {
+  return adminFetch<UpdateRoomResponse>(`/rooms/${roomId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export function listRoomFacilities(): Promise<AdminApiResult<AmenityOption[]>> {
+  return adminFetch<AmenityOption[]>('/room-facilities')
+}
+
+/** No `Content-Type` header set here on purpose -- same reasoning as
+ * `uploadHotelImage` above: `fetch` derives the multipart boundary itself. */
+export function uploadRoomImage(roomId: string, file: File): Promise<AdminApiResult<UploadImageResponse>> {
+  const form = new FormData()
+  form.append('file', file)
+  return adminFetch<UploadImageResponse>(`/rooms/${roomId}/images/upload`, { method: 'POST', body: form })
+}
+
+export type DeleteRoomResult = { ok: true } | { ok: false; detail: string; count?: number }
+
+/** Not routed through `adminFetch`: DELETE returns 204 with no body on
+ * success (`adminFetch`'s unconditional `res.json()` would throw on that),
+ * and the 409 body carries `count` alongside `detail` for the blocked-
+ * bookings banner -- same reasoning as `setHotelActive` above. */
+export async function deleteRoom(roomId: string): Promise<DeleteRoomResult> {
+  let res: Response
+  try {
+    res = await fetch(`${BASE}/rooms/${roomId}`, { method: 'DELETE', headers: await authHeaders() })
+  } catch {
+    return { ok: false, detail: 'Không thể kết nối tới máy chủ.' }
+  }
+  if (res.ok) return { ok: true }
+  let body: unknown = null
+  try {
+    body = await res.json()
+  } catch {
+    // No JSON body -- fall through to the generic detail below.
+  }
+  const record = (body ?? {}) as Record<string, unknown>
+  return {
+    ok: false,
+    detail: typeof record.detail === 'string' ? record.detail : `Lỗi máy chủ (${res.status}).`,
+    count: typeof record.count === 'number' ? record.count : undefined,
+  }
 }
 
 export async function exportHotelsCsv(params: HotelListParams): Promise<{ ok: true } | { ok: false; detail: string }> {

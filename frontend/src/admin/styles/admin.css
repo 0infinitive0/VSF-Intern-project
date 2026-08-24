@@ -474,6 +474,15 @@ button {
   font-weight: 700;
 }
 
+/* B5 (phase-10-rooms.md) -- 0-room empty state that names the consequence
+   ("chưa thể bán"), not a generic "chưa có dữ liệu". */
+.state-block__icon--warn {
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+  font-size: 18px;
+  font-weight: 700;
+}
+
 .state-block__title {
   font-size: 15px;
   font-weight: 600;

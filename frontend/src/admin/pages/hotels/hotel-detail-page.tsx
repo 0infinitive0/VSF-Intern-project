@@ -22,6 +22,7 @@ import { HotelTabBasic } from './hotel-tab-basic'
 import { HotelTabImages } from './hotel-tab-images'
 import { HotelTabLocation } from './hotel-tab-location'
 import { HotelTabNearby } from './hotel-tab-nearby'
+import { HotelTabRooms } from './rooms/hotel-tab-rooms'
 import type { HotelBasicFieldsValue } from './hotel-basic-fields'
 import type { HotelLocationFieldsValue } from './hotel-location-fields'
 import { ReembedDialog } from './reembed-dialog'
@@ -352,7 +353,10 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
         </div>
 
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 22 }}>
-          <div className="card" style={{ maxWidth: 760, padding: 20 }}>
+          {/* Rooms is a data table (8 columns), not a single-column form
+              like every other tab -- the shared 760px card cap would force
+              it into a narrow horizontal scroll for no reason. */}
+          <div className="card" style={{ maxWidth: activeTabId === 'rooms' ? undefined : 760, padding: 20 }}>
             {activeTabId === 'basic' && (
               <HotelTabBasic
                 value={basic}
@@ -382,7 +386,19 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
             )}
             {activeTabId === 'images' && <HotelTabImages hotelId={hotelId} images={images} onChange={setImages} />}
             {activeTabId === 'rooms' && (
-              <div style={{ fontSize: 12.5, color: 'var(--t4)' }}>Quản lý phòng sẽ có ở Phase 10.</div>
+              <HotelTabRooms
+                hotelId={hotelId}
+                hotelName={hotel.name}
+                onRoomsChanged={() => {
+                  // `room_count`/`embedding_state` in the header + tab badge
+                  // are aggregates over `rooms` -- a room write makes them
+                  // stale without this, same posture as handleSave's
+                  // post-PATCH refetch below.
+                  getHotel(hotelId).then((result) => {
+                    if (result.ok) setHotel((current) => (current ? { ...result.data, is_active: current.is_active } : result.data))
+                  })
+                }}
+              />
             )}
             {activeTabId === 'nearby' && (
               <HotelTabNearby nearbyAttractions={hotel.nearby_attractions} nearbyEssentials={hotel.nearby_essentials} />

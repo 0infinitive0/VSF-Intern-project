@@ -37,6 +37,7 @@ _KNOWN_RPC_NAMES = {
     "confirm_booking_reservation",
     "cancel_booking",
     "next_manual_hotel_source_id",
+    "next_manual_room_source_id",
 }
 
 #: Call patterns whose first argument is an RPC name: the direct
