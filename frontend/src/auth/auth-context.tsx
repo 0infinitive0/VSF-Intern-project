@@ -27,7 +27,16 @@
  * straight into that existing account, the same way any other "Continue with
  * Google" click would — see retryGoogleSignIn below.
  */
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react'
 import type { AuthError, User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase-client'
 import { onSessionExpired } from './session-expired-bus'
@@ -56,6 +65,11 @@ interface AuthContextValue {
    * An anonymous session dying never sets this (see onAuthStateChange below) —
    * that case just re-signs-in anonymously with no user-visible interruption. */
   sessionExpired: boolean
+  /** True (for the duration of the render that just picked up a new `user.id`)
+   * when that change was the silent "anonymous session died, re-mint one"
+   * path, not a real sign-out/sign-in. See its defining useRef above for the
+   * full rationale — App.tsx's identity-watch effect is the one consumer. */
+  silentRecoveryRef: RefObject<boolean>
   signInWithPassword: (email: string, password: string) => Promise<AuthResult>
   registerWithPassword: (name: string, email: string, password: string) => Promise<AuthResult>
   signInWithGoogle: () => Promise<AuthResult>
@@ -119,6 +133,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // needed to know whether the session that JUST ended was anonymous.
   const userRef = useRef<User | null>(null)
   userRef.current = user
+  // True exactly when the CURRENT `user` value is the result of the silent
+  // "anonymous session died, re-mint one" path below, as opposed to a real
+  // sign-out/sign-in/registration. Reset to false at the top of every
+  // onAuthStateChange event, so it always describes the transition that just
+  // produced the current `user` — never a stale value from an earlier event.
+  // App.tsx's identity-watch effect reads this to tell "the guest's backing
+  // id silently rotated" apart from "the visitor actually switched accounts"
+  // — from `user.id` alone the two look identical, but only the second one
+  // should reset the active trip (see App.tsx for the full rationale).
+  const silentRecoveryRef = useRef(false)
 
   useEffect(() => {
     let cancelled = false
@@ -141,6 +165,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     boot()
 
     const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
+      // Every event declares its own transition fresh — see silentRecoveryRef's
+      // doc comment above for why this can't be left set from a previous event.
+      silentRecoveryRef.current = false
       if (event === 'SIGNED_OUT') {
         const wasAnonymous = userRef.current?.is_anonymous ?? false
         setUser(null)
@@ -160,6 +187,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               console.error('auth-context: silent anonymous re-sign-in failed', error)
               return
             }
+            silentRecoveryRef.current = true
             setUser(data.user ?? null)
           })
         } else {
@@ -180,6 +208,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // at the call site, not necessarily through onAuthStateChange (see
   // session-expired-bus.ts's module docstring for why both paths exist).
   useEffect(() => onSessionExpired(() => setSessionExpired(true)), [])
+
+  // supabase-js's autoRefreshToken schedules its next refresh with
+  // setTimeout — browsers throttle or fully suspend that timer while the tab
+  // is backgrounded/the device sleeps, so a tab left idle for a few hours can
+  // come back with the timer having silently missed its window. getSession()
+  // is a fast local read that only hits the network when a refresh is
+  // actually due (see auth-headers.ts's comment on the same call), so forcing
+  // one here the moment the tab is visible again is cheap insurance: it makes
+  // the SDK check-and-refresh right away instead of waiting on a timer that
+  // may never fire, which is what was letting anonymous sessions die and get
+  // silently re-minted with a new user.id after the app sat idle a while
+  // (see silentRecoveryRef above and App.tsx's identity-watch effect).
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        supabase.auth.getSession()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [])
 
   const signInWithPassword = useCallback(async (email: string, password: string): Promise<AuthResult> => {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
@@ -299,6 +348,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     isAnonymous: user?.is_anonymous ?? false,
     sessionExpired,
+    silentRecoveryRef,
     signInWithPassword,
     registerWithPassword,
     signInWithGoogle,
