@@ -15,6 +15,7 @@ import {
 import { listPipelines, type PipelineItem } from '../../api/pipelines-client'
 import { Banner } from '../../ui/banner'
 import { Button } from '../../ui/button'
+import { Spinner } from '../../ui/spinner'
 import { Switch } from '../../ui/switch'
 import { Tabs, type TabItem } from '../../ui/tabs'
 import { HotelEmbeddingDot } from './hotel-embedding-dot'
@@ -122,6 +123,14 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
   const [embeddingRun, setEmbeddingRun] = useState<PipelineItem | null>(null)
   const embeddingPollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const embeddingPollAttemptsRef = useRef(0)
+  // The DAG's own `max_active_runs=1` queues this trigger's run behind
+  // whatever's already active (a scheduled sweep, or another admin's
+  // reembed) instead of erroring -- see embedding.py's module docstring.
+  // Polling must therefore track THIS specific dag_run_id, not just
+  // whatever the DAG's `last_run` happens to be: otherwise an unrelated
+  // run finishing first reads as "Đã embed thành công" for this hotel while
+  // its own (still-queued) run hasn't executed yet.
+  const embeddingDagRunIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     return () => {
@@ -298,6 +307,7 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
     const queued = result.ok && result.data.queued
     setReembedState(queued ? 'queued' : 'unavailable')
     if (queued) {
+      embeddingDagRunIdRef.current = result.ok ? result.data.dag_run_id ?? null : null
       if (embeddingPollRef.current) clearTimeout(embeddingPollRef.current)
       embeddingPollAttemptsRef.current = 0
       pollEmbeddingProgress()
@@ -314,6 +324,7 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
   // backend regardless, this only stops the UI from tracking it further.
   function handleDismissReembed() {
     if (embeddingPollRef.current) clearTimeout(embeddingPollRef.current)
+    embeddingDagRunIdRef.current = null
     setReembedState('idle')
     setEmbeddingRun(null)
   }
@@ -321,6 +332,20 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
   function pollEmbeddingProgress() {
     listPipelines().then((result) => {
       const embedding = result.ok ? (result.data.items.find((item: PipelineItem) => item.has_params) ?? null) : null
+      const expectedRunId = embeddingDagRunIdRef.current
+      // `last_run` is the DAG's overall newest run, which is someone else's
+      // run for as long as this trigger's run sits queued behind it -- only
+      // read a state off it once it's actually reporting THIS run.
+      if (expectedRunId && embedding?.last_run?.run_id !== expectedRunId) {
+        setEmbeddingRun(null)
+        embeddingPollAttemptsRef.current += 1
+        if (embeddingPollAttemptsRef.current >= MAX_EMBEDDING_POLL_ATTEMPTS) {
+          setReembedState('stalled')
+          return
+        }
+        embeddingPollRef.current = setTimeout(pollEmbeddingProgress, EMBEDDING_POLL_MS)
+        return
+      }
       setEmbeddingRun(embedding)
       const state = embedding?.last_run?.state
       if (state === 'running' || state === 'queued') {
@@ -361,7 +386,11 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
   }
 
   if (loadState.status === 'loading') {
-    return <div style={{ flex: 1, padding: 28 }} />
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Spinner size={22} />
+      </div>
+    )
   }
 
   if (loadState.status === 'error' || !hotel || !basic || !location) {

@@ -360,6 +360,16 @@ def summarize_task(table, results):
     completed = sum(r["embedded"] for r in results if r)
     total = sum(r["total"] for r in results if r)
     print(f"[{table}] completed={completed} failed={total - completed} (over {len(results)} chunks)")
+    if total > 0 and completed == 0:
+        # `embed_chunk_task` swallows per-row embedding failures (a bad row
+        # must not cost the whole chunk) and always returns normally, so a
+        # systemic failure -- bad/missing embedding provider credentials,
+        # the provider unreachable, wrong dimension -- would otherwise mark
+        # this DAG run `success` with 0 rows actually embedded. The admin's
+        # "Chạy embedding" banner (and the hotel's embedding dot) trusts the
+        # DAG run's own state, so a run that embedded nothing must fail it
+        # instead of lying.
+        raise RuntimeError(f"[{table}] embedding failed for all {total} pending row(s) -- check embedding provider config")
 
 
 with DAG(
