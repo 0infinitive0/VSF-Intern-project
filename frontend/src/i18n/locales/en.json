@@ -464,7 +464,6 @@
   "bookingErrNotConfirmable": "This booking can no longer be confirmed (it may already be confirmed or cancelled).",
   "bookingErrInvalidRequest": "Those booking details weren't valid. Please try again.",
   "bookingErrGuestHoldingElsewhere": "You're already holding a room at a different hotel (possibly in another tab) — please finish or let that hold expire before holding one here.",
-  "bookingErrItineraryNotSaved": "We couldn't reliably save this itinerary yet, so we can't hold a room for it. Please go back to the hotel/itinerary step to rebuild it, then try holding again.",
   "bookingErrNotFound": "This booking could not be found.",
   "bookingErrGeneric": "Something went wrong. Please try again.",
   "bookingErrVnpayCancelled": "You cancelled the payment. Try again whenever you're ready.",

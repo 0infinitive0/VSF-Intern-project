@@ -356,67 +356,6 @@ async def test_create_booking_returns_201_on_success(client, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_create_booking_with_session_id_checks_itinerary_durability_first(client, monkeypatch):
-    """`session_id` present -> the gate must run before reserve_booking even
-    gets a chance to reserve real inventory for a trip with no durable
-    record anywhere (see routes.py's _ensure_itinerary_durable_or_raise).
-    Here the durable copy IS found, so the hold proceeds normally."""
-    import src.api.routes as _routes
-    from src.services import session_store as _session_store
-
-    monkeypatch.setattr(_routes, "reserve_booking", lambda **_kwargs: _fake_booking())
-    monkeypatch.setattr(_session_store, "recover_trip_data", lambda _sid: {"destination": "Đà Nẵng"})
-
-    response = await client.post(
-        "/api/v1/bookings",
-        json={
-            "room_id": _BOOKING_ROOM_ID,
-            "temporary_user_ref": "guest-1",
-            "session_id": "sess-1",
-            "check_in_date": "2026-09-01",
-            "check_out_date": "2026-09-03",
-        },
-    )
-
-    assert response.status_code == 201
-
-
-@pytest.mark.asyncio
-async def test_create_booking_refuses_a_hold_with_no_durable_itinerary_anywhere(client, monkeypatch):
-    """Neither durable copy has anything (recover_trip_data -> None) AND the
-    live checkpoint is also empty, so the last-chance persist attempt has
-    nothing to save either -- refuse the hold rather than let a guest pay
-    for a trip that cannot currently be shown (the 2026-08-25 incident this
-    guards against: session_store.recover_trip_data's doc comment has the
-    full story). Never reaches reserve_booking at all."""
-    from types import SimpleNamespace as _SimpleNamespace
-
-    import src.api.routes as _routes
-    from src.services import session_store as _session_store
-
-    def _fail_if_called(**_kwargs):
-        raise AssertionError("reserve_booking must not run when the itinerary isn't durably saved")
-
-    monkeypatch.setattr(_routes, "reserve_booking", _fail_if_called)
-    monkeypatch.setattr(_session_store, "recover_trip_data", lambda _sid: None)
-    monkeypatch.setattr(_routes, "_get_graph_v2", lambda: _SimpleNamespace(get_state=lambda _c: _SimpleNamespace(values={})))
-
-    response = await client.post(
-        "/api/v1/bookings",
-        json={
-            "room_id": _BOOKING_ROOM_ID,
-            "temporary_user_ref": "guest-1",
-            "session_id": "sess-orphaned",
-            "check_in_date": "2026-09-01",
-            "check_out_date": "2026-09-03",
-        },
-    )
-
-    assert response.status_code == 409
-    assert response.json()["detail"] == "itinerary_not_persisted"
-
-
-@pytest.mark.asyncio
 async def test_create_booking_sold_out_returns_409(client, monkeypatch):
     """The room a second, losing racer just missed — see
     create_booking_reservation's pg_advisory_xact_lock in the migration:

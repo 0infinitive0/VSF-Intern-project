@@ -218,60 +218,15 @@ def _booking_http_error(exc: BookingError) -> HTTPException:
         "booking_reservation_expired",
         "booking_not_confirmable",
         "guest_already_holding_elsewhere",
-        "itinerary_not_persisted",
     }:
         return HTTPException(status_code=409, detail=str(exc))
     logger.exception("Booking operation failed", exc_info=exc)
     return HTTPException(status_code=500, detail="Unable to process booking.")
 
 
-def _ensure_itinerary_durable_or_raise(session_id: str) -> None:
-    """Guest-facing invariant, not a technical nicety: a room hold must never
-    be created for a trip that has no durable record anywhere, because the
-    next step after a hold is real money (VNPay) -- a guest who pays for a
-    trip that later turns out to have never been saved is being defrauded by
-    the product, not just inconvenienced by a bug (see the 2026-08-25
-    incident `session_store.recover_trip_data`'s doc comment describes: an
-    itinerary fully built, shown as done, silently never persisted, gone for
-    good once the checkpoint's 2h TTL passed).
-
-    `session_store.recover_trip_data` now gives every turn two independent
-    durable copies, so this should essentially never fire in practice -- it
-    exists for the sessions created before that fix shipped, and as a last
-    resort for whatever still slips through -- e.g. both this turn's durable
-    writes failing together (a real Supabase outage spanning the whole
-    request). One more save attempt is made from whatever the LIVE
-    checkpoint still holds before giving up and refusing the hold outright
-    -- never let the guest hold a room for nothing.
-    """
-    if session_store.recover_trip_data(session_id) is not None:
-        return
-
-    from src.services.itinerary_store import ItineraryStore, ItineraryStoreError
-
-    app = _get_graph_v2()
-    live_state = app.get_state({"configurable": {"thread_id": session_id}}).values or {}
-    trip_data = live_state.get("trip_data")
-    if trip_data:
-        try:
-            ItineraryStore.from_default().persist_itinerary_bundle(trip_data)
-            return
-        except ItineraryStoreError:
-            logger.exception("Last-chance itinerary persist before booking failed for session %s", session_id)
-
-    logger.critical(
-        "Refusing to create a booking hold for session %s: no durable trip_data anywhere "
-        "(itineraries table, context_data, or live checkpoint).",
-        session_id,
-    )
-    raise BookingError("itinerary_not_persisted")
-
-
 @router.post("/bookings", response_model=BookingPayload, status_code=201)
 def create_booking(request: BookingReservationRequest) -> BookingPayload:
     try:
-        if request.session_id:
-            _ensure_itinerary_durable_or_raise(request.session_id)
         booking = reserve_booking(**request.model_dump())
         return BookingPayload.model_validate(booking)
     except BookingError as exc:
