@@ -182,12 +182,12 @@ def no_audit(monkeypatch):
 
 
 def test_short_code_uses_last_5_hex_chars_uppercase():
-    assert orders_module._short_code("DH", "abcdef12-3456-7890-abcd-ef123f2a1000") == "DH-A1000"
+    assert orders_module.short_code("DH", "abcdef12-3456-7890-abcd-ef123f2a1000") == "DH-A1000"
 
 
 def test_money_str_normalizes_decimal_shape():
-    assert orders_module._money_str(1850000) == "1850000"
-    assert orders_module._money_str("1850000.00") == "1850000.00"
+    assert orders_module.money_str(1850000) == "1850000"
+    assert orders_module.money_str("1850000.00") == "1850000.00"
 
 
 def test_row_to_order_maps_view_row():
@@ -462,10 +462,10 @@ async def test_order_stats_matches_hand_computed_values(client, admin_override, 
         # orders today, not just paid" and a non-divisible amount so a
         # rounding regression (H1) can't hide behind an evenly-divisible
         # fixture the way the previous version of this test did.
-        {"id": "pay1", "amount": "1000000.00", "status": "PAID", "created_at": today_vn_morning},
-        {"id": "pay2", "amount": "700000.00", "status": "PAID", "created_at": today_vn_evening},
-        {"id": "pay3", "amount": "2000000.00", "status": "PENDING", "created_at": today_vn_morning},
-        {"id": "pay4", "amount": "500000.00", "status": "PENDING", "created_at": "2026-01-01T09:00:00Z"},
+        {"id": "pay1", "amount": "1000000.00", "status": "PAID", "created_at": today_vn_morning, "paid_at": today_vn_morning},
+        {"id": "pay2", "amount": "700000.00", "status": "PAID", "created_at": today_vn_evening, "paid_at": today_vn_evening},
+        {"id": "pay3", "amount": "2000000.00", "status": "PENDING", "created_at": today_vn_morning, "paid_at": None},
+        {"id": "pay4", "amount": "500000.00", "status": "PENDING", "created_at": "2026-01-01T09:00:00Z", "paid_at": None},
     ]
     bookings = [
         {"id": "b1", "status": "RESERVED", "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()},
@@ -484,6 +484,66 @@ async def test_order_stats_matches_hand_computed_values(client, admin_override, 
     assert body["avg_order_value"] == "566666.67"
     assert body["pending_count"] == 2
     assert body["expiring_holds_30m"] == 1
+
+
+@pytest.mark.asyncio
+async def test_order_stats_splits_todays_orders_into_confirmed_and_pending(client, admin_override, monkeypatch):
+    """A3 (phase-17-overview-kpi.md): "12 đã xác nhận · 6 chờ" under Đơn hôm
+    nay. `confirmed_today` counts `admin_orders.booking_status = CONFIRMED`
+    within today's VN-local window; `pending_today` is the remainder of
+    `orders_today` -- everything else (PENDING/RESERVED/MIXED/etc.) bucketed
+    as "chờ" per L76's softened copy, not claimed as a precise breakdown."""
+    from zoneinfo import ZoneInfo
+
+    vn_tz = ZoneInfo("Asia/Ho_Chi_Minh")
+    today = datetime.now(vn_tz).date()
+    today_vn_morning = datetime(today.year, today.month, today.day, 8, 0, tzinfo=vn_tz).isoformat()
+    payments = [
+        {"id": f"pay{i}", "amount": "100000.00", "status": "PAID", "created_at": today_vn_morning, "paid_at": today_vn_morning} for i in range(3)
+    ]
+    admin_orders = [
+        {"payment_id": "pay0", "booking_status": "CONFIRMED", "created_at": today_vn_morning},
+        {"payment_id": "pay1", "booking_status": "PENDING", "created_at": today_vn_morning},
+        {"payment_id": "pay2", "booking_status": "RESERVED", "created_at": today_vn_morning},
+    ]
+    fake_client = _FakeClient({"payments": payments, "bookings": [], "admin_orders": admin_orders})
+    monkeypatch.setattr(orders_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.get("/api/v1/admin/orders/stats")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["orders_today"] == 3
+    assert body["confirmed_today"] == 1
+    assert body["pending_today"] == 2
+
+
+@pytest.mark.asyncio
+async def test_order_stats_revenue_today_follows_paid_at_not_created_at_c1(client, admin_override, monkeypatch):
+    """C1 code-review finding / phase-17-overview-kpi.md's own success
+    criterion: "revenue today" is money that landed today, not orders
+    opened today. A payment created yesterday but paid today must count;
+    a payment created today but not yet paid today must not."""
+    from zoneinfo import ZoneInfo
+
+    vn_tz = ZoneInfo("Asia/Ho_Chi_Minh")
+    today = datetime.now(vn_tz).date()
+    today_vn_morning = datetime(today.year, today.month, today.day, 8, 0, tzinfo=vn_tz).isoformat()
+    yesterday_vn_evening = datetime(today.year, today.month, today.day, 8, 0, tzinfo=vn_tz) - timedelta(days=1, hours=-14)
+    payments = [
+        # Opened yesterday, paid this morning -- must count toward today's revenue.
+        {"id": "pay-carryover", "amount": "500000.00", "status": "PAID", "created_at": yesterday_vn_evening.isoformat(), "paid_at": today_vn_morning},
+        # Opened today, still unpaid -- must NOT count toward revenue.
+        {"id": "pay-unpaid-today", "amount": "9000000.00", "status": "PENDING", "created_at": today_vn_morning, "paid_at": None},
+    ]
+    fake_client = _FakeClient({"payments": payments, "bookings": [], "admin_orders": []})
+    monkeypatch.setattr(orders_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.get("/api/v1/admin/orders/stats")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["revenue_today"] == "500000.00"
 
 
 # ---------------------------------------------------------------------------

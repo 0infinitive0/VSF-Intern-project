@@ -4,20 +4,23 @@ import { getAdminMe, type AdminMe } from './api/admin-me'
 import { AdminLogin } from './auth/admin-login'
 import { Forbidden } from './auth/forbidden'
 import { AdminShell } from './layout/admin-shell'
-import { OverviewPage } from './pages/overview-page'
+import { EmbeddingCoveragePage } from './pages/embedding/embedding-coverage-page'
+import { EmbeddingStatusPage } from './pages/embedding/embedding-status-page'
 import { HotelCreatePage } from './pages/hotels/hotel-create-page'
 import { HotelDetailPage } from './pages/hotels/hotel-detail-page'
 import { HotelsPage } from './pages/hotels/hotels-page'
 import { RoomPricesPage } from './pages/hotels/prices/room-prices-page'
 import { OrderDetailPage } from './pages/orders/order-detail-page'
 import { OrdersPage } from './pages/orders/orders-page'
+import { OverviewPage } from './pages/overview/overview-page'
+import { PipelinesPage } from './pages/pipelines/pipelines-page'
 import { RouteStub } from './pages/route-stub'
 import { useAdminRoute } from './router'
 
 type MeState = { status: 'checking' } | { status: 'forbidden' } | { status: 'error'; detail: string } | { status: 'ok'; me: AdminMe }
 
 function resolvePage(path: string, navigate: (to: string) => void) {
-  if (path === '/admin') return <OverviewPage />
+  if (path === '/admin') return <OverviewPage navigate={navigate} />
   if (path === '/admin/hotels/new') return <HotelCreatePage navigate={navigate} />
   if (path.startsWith('/admin/hotels/')) {
     const segments = decodeURIComponent(path.slice('/admin/hotels/'.length)).split('/')
@@ -35,10 +38,10 @@ function resolvePage(path: string, navigate: (to: string) => void) {
     return <HotelDetailPage hotelId={hotelId} navigate={navigate} />
   }
   if (path === '/admin/hotels') return <HotelsPage navigate={navigate} />
-  if (path === '/admin/embedding') return <RouteStub title="Trạng thái embedding" phase={12} />
-  if (path === '/admin/pipelines/do-phu-embedding') return <RouteStub title="Độ phủ embedding" phase={12} />
+  if (path === '/admin/embedding') return <EmbeddingStatusPage navigate={navigate} />
+  if (path === '/admin/pipelines/do-phu-embedding') return <EmbeddingCoveragePage navigate={navigate} />
   if (path.startsWith('/admin/pipelines/runs/')) return <RouteStub title="Chi tiết lần chạy" phase={16} />
-  if (path === '/admin/pipelines') return <RouteStub title="Pipeline" phase={14} />
+  if (path === '/admin/pipelines') return <PipelinesPage navigate={navigate} />
   if (path.startsWith('/admin/orders/')) {
     const paymentId = decodeURIComponent(path.slice('/admin/orders/'.length))
     if (!paymentId) return <OrdersPage navigate={navigate} />

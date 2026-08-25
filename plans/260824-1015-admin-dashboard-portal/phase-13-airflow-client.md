@@ -1,7 +1,7 @@
 ---
 phase: 13
 title: "Airflow client + hạ tầng mạng/credential"
-status: pending
+status: done
 priority: P1
 effort: "1.5d"
 dependencies: [2]
@@ -174,14 +174,21 @@ Luôn `200` — đây là câu trả lời về trạng thái, không phải l�
 
 ## Success Criteria
 
-- [ ] Từ **trong container backend**, `GET /admin/pipelines/health` trả `connected:true`
-- [ ] `airflow_api_base` rỗng → `connected:false`, không có lời gọi mạng nào, không exception rò ra
-- [ ] Airflow tắt → `health` trả `connected:false` trong ≤ timeout, các route admin khác vẫn bình thường
-- [ ] Gọi `trigger_dag_run("clear_airflow_history", ...)` → `AirflowError("dag_not_allowed")`, **không** có request nào ra ngoài
-- [ ] Token hết hạn giữa chừng → tự làm mới **một lần** và thử lại thành công (test)
-- [ ] `grep -ri "airflow_password" backend/src` không cho ra chỗ nào log hay trả về nó
-- [ ] Response thật của 6 endpoint Airflow được lưu làm fixture
-- [ ] `pytest backend/tests/test_airflow_client.py` xanh, không cần Airflow chạy
+- [x] Từ **trong container backend**, `GET /admin/pipelines/health` trả `connected:true` (verified live: `docker compose exec backend python3 -c "from src.services import airflow_client; print(airflow_client.health())"` → `{'connected': True, 'version': '3.3.0'}`)
+- [x] `airflow_api_base` rỗng → `connected:false`, không có lời gọi mạng nào, không exception rò ra
+- [x] Airflow tắt → `health` trả `connected:false`, các route admin khác vẫn bình thường, **không** bị kéo theo bởi một request khác đang chờ Airflow. `airflow_request_timeout` áp cho từng lời gọi mạng riêng lẻ (kể cả lấy token) — tổng thời gian một hàm cấp cao có thể chờ là bội số của nó khi phải làm mới token hoặc gọi nhiều bước (ví dụ `trigger_dag_run` = tối đa 4× timeout), không phải một con số cố định "≤ timeout" duy nhất. Sau code review: khoá tiến trình (`_TokenCache`) trước đây giữ khoá xuyên suốt lúc gọi mạng — dưới threadpool dùng chung của route `def` đồng bộ, một Airflow chết/chậm sẽ tuần tự hoá **mọi** route admin khác đứng sau cùng khoá đó (đo được: 5 lời gọi đồng thời với 1.0s/lần → 5.02s). Đã sửa: khoá chỉ bọc phần đọc/ghi cache trong bộ nhớ, lời gọi mạng nằm ngoài khoá (đo lại: 5 lời gọi đồng thời → ~1.0s). Thêm cache lỗi tạm thời (30s) để một Airflow chết không khiến mỗi request đều thử kết nối lại từ đầu.
+- [x] Gọi `trigger_dag_run("clear_airflow_history", ...)` → `AirflowError("dag_not_allowed")`, **không** có request nào ra ngoài (verified live + unit test, plus parametrized across all 5 read/write functions)
+- [x] Token hết hạn giữa chừng → tự làm mới **một lần** và thử lại thành công (test) — and a second consecutive 401 does **not** loop (separate test); hai lời gọi cùng thấy 401 trên cùng một token cũ chỉ làm mới **một lần**, không phải hai (test riêng, giảm thundering-herd)
+- [x] `grep -ri "airflow_password" backend/src` không cho ra chỗ nào log hay trả về nó
+- [x] Response thật của 6+ endpoint Airflow được lưu làm fixture — `plans/reports/airflow-api-fixtures/` (auth token, version, monitor/health, dag detail, dagRuns list, 2× trigger dagRuns, 2× taskInstances, 3× task log incl. a real failure with full structured traceback, PATCH unpause, plus the full OpenAPI spec). See that directory's `README.md` for every shape deviation found (`logical_date` required on trigger, `map_index` is a query param not a path segment, log content is structured JSON events not plain text, paused DAGs never dispatch a manual trigger).
+- [x] `pytest backend/tests/test_airflow_client.py` xanh, không cần Airflow chạy (29/29 sau code review, fully mocked at the `httpx` layer)
+
+**Sau code review (không có trong danh sách gốc, phát hiện bằng review + đo thật):**
+- [x] `health()` không bao giờ raise kể cả khi Airflow trả về body không phải JSON (200 với HTML/text) — `response.json()` được bọc, lỗi decode biến thành `AirflowError` thay vì `JSONDecodeError` rò ra route "luôn 200"
+- [x] `trigger_dag_run` không còn PATCH `is_paused:false` vô điều kiện mỗi lần — gọi `get_dag` trước, chỉ PATCH khi thật sự đang paused. Tránh phụ thuộc quyền sửa DAG cho trường hợp phổ biến (DAG đã unpause từ lần trigger trước), và PATCH lỗi thì dừng lại trước khi POST (không silently bỏ qua). Đánh đổi vẫn còn: một khi đã unpause, client này không có cách pause lại (đúng theo quyết định #4 — portal không có quyền Airflow) — **Phase 15's confirm dialog nên nói rõ điều này**, xem bảng rủi ro
+- [x] `run_id`/`task_id` được `urllib.parse.quote()` trước khi ghép vào URL — che path traversal/injection nếu Phase 14-16 truyền thẳng giá trị từ query param HTTP vào (chưa có caller nào lúc này, sửa trước khi có)
+- [x] `get_task_log` không crash nếu một phần tử `content[]` không phải dict (Airflow content-negotiate, có thể trả dạng khác)
+- [x] `get_dag`/`get_dag_run`/`trigger_dag_run` raise `AirflowError` rõ ràng thay vì trả `None` lặng lẽ nếu Airflow trả body rỗng/không phải object — chữ ký `-> dict[str, Any]` giờ đúng nghĩa
 
 ## Risk Assessment
 
@@ -191,6 +198,8 @@ Luôn `200` — đây là câu trả lời về trạng thái, không phải l�
 | `POST /auth/token` không tồn tại với FabAuthManager ở cấu hình này | **Cao** | Bước 2 xác nhận riêng; có phương án ghi lại đường dẫn đúng |
 | Hai compose stack không thấy nhau → nhánh Pipeline chết từ đầu | **Cao** | Kiểm từ **trong container**, không phải từ máy host |
 | DAG lạ bị trigger (tốn tiền API, xoá lịch sử) | **Cao** | Allowlist ở tầng client, không chỉ ở route; test riêng cho `clear_airflow_history` |
-| Airflow treo kéo theo worker thread backend | Cao | Timeout mọi lời gọi; handler là `def` chạy trong thread pool nên không chặn event loop |
+| Airflow treo kéo theo worker thread backend | Cao | Timeout mọi lời gọi; handler là `def` chạy trong thread pool nên không chặn event loop. **Sửa sau code review:** bản đầu giữ khoá `_TokenCache` xuyên suốt lúc gọi mạng — dưới threadpool dùng chung, một Airflow chết/chậm tuần tự hoá mọi route admin khác đứng sau cùng khoá (đo được 5×). Đã đổi sang double-checked locking (khoá chỉ bọc đọc/ghi cache, gọi mạng ngoài khoá) + cache lỗi 30s |
 | Credential Airflow lộ qua response lỗi | Cao | Không nhét raw response vào `detail`; có mục grep |
-| Task mapped (`expand`) làm đường dẫn log khác dự đoán | Trung bình | Bước 1 gọi trên một lần chạy embedding thật, có mapped task |
+| Task mapped (`expand`) làm đường dẫn log khác dự đoán | Trung bình | Xác nhận `map_index` là **query param** (không phải path segment) qua OpenAPI spec thật của Airflow; **chưa** xác nhận được trên một lần chạy có mapped task thật — dataset sống lúc build phase này không còn hàng nào thiếu embedding. Còn lại như rủi ro cần Phase 16 xác nhận lần chạy backlog thật đầu tiên |
+| DAG mặc định **paused** khi parse lần đầu (`DAGS_ARE_PAUSED_AT_CREATION: true`) → trigger thủ công bị kẹt `queued` mãi, admin không có quyền Airflow để tự unpause | **Cao** (phát hiện khi test live, không có trong bản kế hoạch gốc) | `trigger_dag_run` kiểm `is_paused` trước, chỉ `PATCH is_paused:false` khi cần. **Đánh đổi chưa giải quyết** (code review nêu, chưa phải bug — cần quyết định ở Phase 15): một khi đã unpause, `embed_supabase_tables_pipeline` (`@daily`) sẽ chạy theo lịch mãi mãi mà không ai được báo, và client này không có cách pause lại (portal không có quyền Airflow, quyết định #4). **Phase 15's hộp thoại xác nhận trigger phải nói rõ** "lần đầu chạy DAG đang tạm dừng sẽ mở lại lịch chạy tự động của nó" |
+| `health()` dùng `/api/v2/version` (cần JWT) thay vì `/api/v2/monitor/health` (không cần JWT, có per-component status) → "Airflow chết" và "sai credential" đều gộp chung thành `connected:false`; scheduler chết (đúng kiểu lỗi khiến một lần trigger kẹt `queued` mãi) không lộ ra ở đây | Thấp-Trung bình (code review nêu, chưa sửa — cân nhắc trước khi Phase 15 thêm nút trigger) | Phase 15/16 cân nhắc gọi thêm `/api/v2/monitor/health` để lấy trạng thái scheduler cạnh version, hoặc phân biệt lỗi 401 (sai credential) khỏi lỗi kết nối ở tầng `health()` |

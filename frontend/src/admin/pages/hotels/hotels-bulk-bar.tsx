@@ -3,16 +3,17 @@ import { Button } from '../../ui/button'
 interface HotelsBulkBarProps {
   selectedCount: number
   onDeactivate: () => void
+  onReembed: () => void
   onClear: () => void
   busy: boolean
 }
 
 /** hotels-bulk-bar.tsx — floats above the pagination bar once a row is
- * checked. Only 2 actions, not the design's 3 (phase-07-hotels-list.md
+ * checked. Only 3 actions, not the design's 3+1 (phase-07-hotels-list.md
  * L19/L20): `Xoá` is cut for good (soft-delete decision #3, bookings.room_id
- * is ON DELETE RESTRICT), and `Chạy embedding` stays hidden until Phase 12
- * ships POST /admin/hotels/reembed rather than rendering a dead button. */
-export function HotelsBulkBar({ selectedCount, onDeactivate, onClear, busy }: HotelsBulkBarProps) {
+ * is ON DELETE RESTRICT); `Chạy embedding` calls the shared
+ * `POST /hotels/reembed` (phase-12-embedding-status.md). */
+export function HotelsBulkBar({ selectedCount, onDeactivate, onReembed, onClear, busy }: HotelsBulkBarProps) {
   if (selectedCount === 0) return null
 
   return (
@@ -31,6 +32,9 @@ export function HotelsBulkBar({ selectedCount, onDeactivate, onClear, busy }: Ho
     >
       <span style={{ fontSize: 13, fontWeight: 600 }}>Đã chọn {selectedCount} khách sạn</span>
       <div style={{ flex: 1 }} />
+      <Button variant="secondary" size="sm" disabled={busy} onClick={onReembed}>
+        Chạy embedding cho {selectedCount} khách sạn
+      </Button>
       <Button variant="secondary" size="sm" disabled={busy} onClick={onDeactivate}>
         Ngừng bán
       </Button>

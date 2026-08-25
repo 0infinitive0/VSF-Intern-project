@@ -179,11 +179,35 @@ Conversation commands:
 
 ```bash
 cd src/airflow
+echo -e "AIRFLOW_UID=$(id -u)\nFERNET_KEY=$(python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')" > .env
 docker compose up airflow-init   # First-time init
 docker compose up -d
 ```
 
-Access Airflow UI at http://localhost:8080 (user: `airflow`, password: `airflow`).
+`.env` isn't checked in (it's a local secret, git-ignored) and `env_file: .env`
+in `docker-compose.yaml` fails to start if it's missing -- the line above
+generates one. The DAG containers only get real Supabase credentials if you
+run with `ENV_FILE_PATH=../../.env docker compose up -d` instead (pointing
+`env_file` at this repo's own `backend/.env`, which already has them) --
+without that, DAG tasks that touch Supabase fail with
+`Missing SUPABASE_URL or SUPABASE_SERVICE_KEY` (verified live).
+
+Access Airflow UI (and its REST API) at **http://localhost:8088** (user:
+`airflow`, password: `airflow`) -- the compose file maps the api-server's
+container port 8080 to host port **8088**, not 8080.
+
+Airflow runs in its own compose stack, on its own Docker network, separate
+from the main app's `docker-compose.yml`. The admin backend (Phase 13,
+`src/services/airflow_client.py`) reaches it via `AIRFLOW_API_BASE` in
+`backend/.env` -- see that file's own comments for the dev/staging/prod
+options; the default (`http://host.docker.internal:8088`) works out of the
+box for both stacks running on the same macOS/Windows dev machine.
+
+Every DAG starts **paused** on first parse
+(`AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: true`) -- a manually triggered
+run on a paused DAG stays `queued` forever until it's unpaused (verified
+live). The admin trigger endpoint (Phase 15) unpauses automatically; a raw
+`curl`/UI trigger during manual testing needs an explicit unpause first.
 
 ---
 

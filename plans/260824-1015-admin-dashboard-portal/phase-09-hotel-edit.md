@@ -229,7 +229,7 @@ src/admin/lib/amenity-groups.ts  L33
 - [x] Mọi tiện ích trong `amenity_catalog` rơi vào đúng một nhóm ở tab Tiện ích (test tự động — khẳng định tường minh cả 14 category, không chỉ "nằm trong danh sách nhóm")
 - [x] Chip embedding **không** hiện mốc thời gian (L34)
 - [x] `admin_audit_log` ghi `before`/`after` chỉ chứa cột đã đổi
-- [x] Airflow chưa nối → `POST /reembed` trả 503, nhưng `embedding` vẫn đã NULL và UI hướng dẫn đúng
+- [x] ~~Airflow chưa nối → `POST /reembed` trả 503~~ — Phase 12 thay `POST /hotels/{id}/reembed` bằng endpoint dùng chung `POST /hotels/reembed` (body `hotel_ids[]`), trả `200` với `queued:false` thay vì `503`; `embedding` vẫn đã NULL và UI hướng dẫn đúng (không đổi hành vi quan sát được)
 
 ## Bổ sung ngoài phạm vi gốc: tải ảnh lên trực tiếp (Supabase Storage)
 

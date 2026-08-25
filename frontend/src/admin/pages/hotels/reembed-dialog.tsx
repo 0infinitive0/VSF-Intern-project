@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { reembedHotel } from '../../api/hotels-client'
+import { reembedHotels } from '../../api/hotels-client'
 import { Banner } from '../../ui/banner'
 import { Button } from '../../ui/button'
 import { Modal } from '../../ui/modal'
@@ -19,18 +19,20 @@ function joinWithVa(names: string[]): string {
 
 /** reembed-dialog.tsx -- B3's post-save dialog (phase-09-hotel-edit.md).
  * Opens only when the save actually touched a RAG field. "Chạy ngay" calls
- * POST /reembed, which always 503s until Phase 13 (Airflow client) exists
- * -- `update_hotel` already cleared `embedding` regardless, so this dialog
- * stays useful even before that endpoint does anything (L36/L37: scope is
- * always "1 khách sạn", no time estimate -- no benchmark data to base one
+ * the shared `POST /hotels/reembed` (phase-12-embedding-status.md), which
+ * always clears `embedding` (step 1, real value on its own) but reports
+ * `queued: false` until Phase 13 (Airflow client) exists to run step 2 --
+ * `update_hotel` already cleared `embedding` regardless, so this dialog
+ * stays useful even before that endpoint can queue anything (L36/L37: scope
+ * is always "1 khách sạn", no time estimate -- no benchmark data to base one
  * on, and the plan says not to invent a number). */
 export function ReembedDialog({ open, onClose, hotelId, ragFieldsChanged }: ReembedDialogProps) {
   const [state, setState] = useState<'idle' | 'loading' | 'unavailable' | 'queued'>('idle')
 
   async function handleReembedNow() {
     setState('loading')
-    const result = await reembedHotel(hotelId)
-    setState(result.ok ? 'queued' : 'unavailable')
+    const result = await reembedHotels([hotelId])
+    setState(result.ok && result.data.queued ? 'queued' : 'unavailable')
   }
 
   function handleClose() {

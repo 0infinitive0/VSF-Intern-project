@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { reembedHotel } from '../../../api/hotels-client'
 import { Banner } from '../../../ui/banner'
 import { Button } from '../../../ui/button'
 import { Modal } from '../../../ui/modal'
@@ -27,17 +26,21 @@ function joinWithVa(names: string[]): string {
 
 /** room-reembed-dialog.tsx -- B5's post-save dialog (phase-10-rooms.md):
  * "cùng hộp thoại `Chạy lại embedding ngay?` của Phase 9, phạm vi ghi
- * `1 phòng`". There is no per-room reembed endpoint (Phase 13's Airflow
- * client doesn't exist yet, same as B3's), so this reuses B3's hotel-scoped
- * `POST /reembed` trigger -- the same mechanism, only the displayed scope
- * label differs ("1 phòng" instead of "1 khách sạn"). */
-export function RoomReembedDialog({ open, onClose, hotelId, ragFieldsChanged }: RoomReembedDialogProps) {
-  const [state, setState] = useState<'idle' | 'loading' | 'unavailable' | 'queued'>('idle')
+ * `1 phòng`". Deliberately does NOT call the shared `POST /hotels/reembed`
+ * (phase-12-embedding-status.md): that endpoint is hotel-scoped (it clears
+ * `hotels.embedding` for the given `hotel_ids`), so calling it here would
+ * de-index the whole parent hotel from bot search over an unrelated
+ * room-description edit -- exactly what this dialog's own copy ("Chỉ nhúng
+ * lại phòng này — không ảnh hưởng các phòng còn lại") promises won't
+ * happen. `update_room` already cleared this room's `embedding` at save
+ * time (rooms.py), so there is nothing left to trigger for the room itself
+ * until Phase 13's Airflow client can kick off a real re-embed run -- "Chạy
+ * ngay" just surfaces that state instead of firing a request. */
+export function RoomReembedDialog({ open, onClose, hotelId: _hotelId, ragFieldsChanged }: RoomReembedDialogProps) {
+  const [state, setState] = useState<'idle' | 'unavailable'>('idle')
 
-  async function handleReembedNow() {
-    setState('loading')
-    const result = await reembedHotel(hotelId)
-    setState(result.ok ? 'queued' : 'unavailable')
+  function handleReembedNow() {
+    setState('unavailable')
   }
 
   function handleClose() {
@@ -65,13 +68,12 @@ export function RoomReembedDialog({ open, onClose, hotelId, ragFieldsChanged }: 
       {state === 'unavailable' && (
         <Banner tone="warn">Đã đánh dấu cần nhúng lại. Chạy pipeline embedding ở mục Dữ liệu bot để bot học ngay.</Banner>
       )}
-      {state === 'queued' && <Banner tone="ok">Đã gửi yêu cầu chạy lại embedding.</Banner>}
 
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        <Button variant="secondary" size="sm" onClick={handleClose} disabled={state === 'loading'}>
+        <Button variant="secondary" size="sm" onClick={handleClose}>
           Để sau
         </Button>
-        <Button variant="primary" size="sm" onClick={handleReembedNow} disabled={state === 'loading' || state === 'queued'}>
+        <Button variant="primary" size="sm" onClick={handleReembedNow} disabled={state === 'unavailable'}>
           Chạy ngay
         </Button>
       </div>

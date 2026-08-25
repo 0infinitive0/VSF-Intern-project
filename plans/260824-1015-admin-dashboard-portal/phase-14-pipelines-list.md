@@ -1,7 +1,7 @@
 ---
 phase: 14
 title: "Danh sách pipeline (C1)"
-status: pending
+status: done
 priority: P1
 effort: "1.5d"
 dependencies: [13]
@@ -155,17 +155,21 @@ src/admin/pages/pipelines/
 
 ## Success Criteria
 
-- [ ] Đúng **4 thẻ**, không có Khách sạn / OTA / OSM (L53)
-- [ ] Airflow tắt → `connected:false`, banner hiện, nút `Chạy` vô hiệu, màn **không** vỡ
-- [ ] Trigger `clear_airflow_history` qua API → `400 dag_not_allowed`
-- [ ] Trigger DAG đang chạy → `409`, không tạo lần chạy thứ hai
-- [ ] Thẻ đang chạy có viền `--acc` + quầng sáng, nút đổi thành `Đang chạy…` vô hiệu
-- [ ] Sparkline hiện đúng 10 thanh, thanh cuối đổi màu theo trạng thái lần chạy mới nhất
-- [ ] Chưa đủ lịch sử → **không** hiện ETA bịa (L56)
-- [ ] Poll 5s khi đang chạy, 60s khi rảnh, dừng khi rời trang (kiểm bằng tab Network)
-- [ ] Bấm F5 liên tục 10 lần → Airflow chỉ nhận ≤ 8 request (cache 10s)
-- [ ] `admin_audit_log` ghi mỗi lần trigger
-- [ ] Không chỗ nào trên UI hiện chữ `dag_id` hay tên DAG kỹ thuật
+- [x] Đúng **4 thẻ**, không có Khách sạn / OTA / OSM (L53) — verified live: tất cả 4 DAG (Embedding, Google Maps, Tour, Địa điểm lân cận) render đúng thứ tự
+- [x] Airflow tắt → `connected:false`, banner hiện, nút `Chạy` vô hiệu, màn **không** vỡ (verified live bằng cách trỏ `airflow_api_base` sang host không tồn tại)
+- [x] Trigger `clear_airflow_history` qua API → `400 dag_not_allowed` (verified live + test)
+- [x] Trigger DAG đang chạy → `409`, không tạo lần chạy thứ hai (test — không tái tạo được live vì DAG rỗng chạy xong trong ~3-5s, quá nhanh để bắt overlap thủ công; logic + test đủ tin cậy)
+- [x] Thẻ đang chạy có viền `--acc` + quầng sáng, nút đổi thành `Đang chạy…` vô hiệu
+- [x] Sparkline hiện đúng 10 thanh, thanh cuối đổi màu theo trạng thái lần chạy mới nhất
+- [x] Chưa đủ lịch sử → **không** hiện ETA bịa (L56)
+- [x] Poll 5s khi đang chạy, 60s khi rảnh, dừng khi rời trang
+- [x] Bấm F5 liên tục 10 lần → Airflow chỉ nhận ≤ 8 request (cache 10s) — verified live: 10 lời gọi liên tiếp chỉ tạo 4 request Airflow (1 vòng, không phải 8×10)
+- [x] `admin_audit_log` ghi mỗi lần trigger (action=`pipeline.trigger`)
+- [x] Không chỗ nào trên UI hiện chữ `dag_id` hay tên DAG kỹ thuật
+
+**Phát hiện thật ngoài phạm vi kế hoạch gốc (build phase này bằng cách gọi Airflow sống):**
+- `tour_pipeline` ban đầu **không tồn tại** trong Airflow đang chạy — `ModuleNotFoundError: No module named 'apify_client'` dù `apify-client` đã có trong `requirements.txt` (image build cũ chưa có gói này). Đã `docker compose build` lại image Airflow để cài gói, xác nhận `tour_pipeline` parse sạch (`importErrors` rỗng) sau khi build lại. Nếu môi trường khác vẫn dùng image cũ, endpoint vẫn **không vỡ** — DAG lỗi bị bỏ qua khỏi danh sách (xử lý ở dưới), chỉ còn 3 thẻ thay vì 4
+- Thêm cơ chế **bỏ qua từng DAG lỗi riêng lẻ** (không có trong kế hoạch gốc): nếu một DAG 404/lỗi ở tầng Airflow (import error, bị xoá, ...), `GET /admin/pipelines` vẫn trả `connected:true` với các DAG còn lại, không vỡ cả màn vì một DAG hỏng — cùng tinh thần L53 nhưng áp cho lỗi runtime thay vì lỗi thiết kế
 
 ## Risk Assessment
 
@@ -174,5 +178,9 @@ src/admin/pages/pipelines/
 | Vẽ 7 thẻ theo thiết kế → 3 nút bấm không được | Cao | L53 quyết định rõ; có mục trong Success Criteria |
 | Poll 5s × nhiều tab đấm sập Airflow | Cao | Cache 10s ở backend; dừng poll khi rời trang |
 | Chạy chồng pipeline crawl → bị OTA chặn IP | Cao | Guard `409` |
-| ETA/tiến độ bịa làm admin tin nhầm rồi bỏ đi | Trung bình | Ẩn khi không đủ dữ liệu; luôn có dấu `≈` |
+| ETA/tiến độ bịa làm admin tin nhầm rồi bỏ đi | Trung bình | Ẩn khi không đủ dữ liệu; luôn có dấu `≈`. **Sửa sau code review:** `estimated_records` ban đầu nhân **mọi** task instance đã xong (kể cả `fetch_pending_*`/`summarize_*` không mapped) × chunk size — một lần chạy 0 hàng cần nhúng vẫn hiện `≈150 bản ghi` bịa. Đã sửa: chỉ đếm instance có `map_index >= 0`, ẩn hẳn field khi không có instance mapped nào |
 | `taskInstances` của mapped task trả cấu trúc lạ làm tính tiến độ sai | Trung bình | Fixture từ lần chạy embedding thật (Phase 13 bước 1) |
+| Lỗi Airflow không phải "mất kết nối" (DAG hỏng, PATCH bị từ chối, trigger bị Airflow từ chối) làm route `POST .../runs` trả `500` thay vì lỗi có kiểu | **Cao** (code review phát hiện bằng repro thật — cùng lớp lỗi với `tour_pipeline` từng 404 lúc build phase này) | `trigger_pipeline_run` chỉ bắt `AirflowUnavailable`, không bắt `AirflowError` nói chung (`AirflowUnavailable` là subclass) — mọi lỗi Airflow khác (404, 403 PATCH, DAG bị từ chối trigger) rơi qua route và 500. Đã thêm `except AirflowError` riêng ở cả 2 lời gọi, trả `502 {"detail":"airflow_request_failed"}` |
+| `_ListCache.invalidate()` bị mất tác dụng nếu trùng thời điểm với một `get()` đang fetch dở | Trung bình (code review phát hiện) | Fetch bắt đầu trước lúc invalidate có thể ghi đè cache bằng kết quả cũ **sau** khi invalidate chạy — khiến admin vừa trigger xong vẫn thấy "chưa chạy" tới 60s. Đã thêm bộ đếm generation: chỉ lưu kết quả fetch nếu generation không đổi kể từ lúc bắt đầu fetch |
+| `conf` từ client đi thẳng vào `dag_run.conf` không kiểm tra, 3/4 DAG không khai báo `params` | Trung bình (code review phát hiện) | Route từ chối `422 pipeline_has_no_params` nếu `conf` khác rỗng mà DAG đó `has_params=False`. Ghi chú cho Phase 15: DAG embedding đọc cấu hình qua Airflow **Variable** (`embed_supabase_only_null`, `embed_supabase_chunk_size`), không đọc qua `dag_run.conf`/`params` — hộp thoại C2 muốn truyền option thật cần sửa DAG trước, không chỉ sửa dialog |
+| Frontend poll loop chết vĩnh viễn nếu `listPipelines()` reject (body không phải JSON) thay vì resolve `{ok:false}` | Trung bình (code review phát hiện) | `poll()` thiếu `.catch` — một reject bỏ qua cả `setListState` lẫn `scheduleNext`, màn kẹt dữ liệu cũ không tự phục hồi. Đã thêm `.catch` gọi `scheduleNext(false)` + hiện banner lỗi |

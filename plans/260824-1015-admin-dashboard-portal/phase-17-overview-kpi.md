@@ -1,7 +1,7 @@
 ---
 phase: 17
 title: "Tổng quan KPI (A3)"
-status: pending
+status: done
 priority: P2
 effort: "1d"
 dependencies: [4, 12, 14]
@@ -158,15 +158,58 @@ src/admin/pages/overview/
 
 ## Success Criteria
 
-- [ ] 4 ô số liệu khớp `GET /admin/orders/stats`
-- [ ] `revenue_today` tính theo `paid_at`, không phải `created_at` (L75)
-- [ ] Airflow tắt → khối pipeline hiện `Không kết nối được Airflow`, ba khối kia vẫn đúng
-- [ ] `attention_orders` sắp xếp: sắp hết hạn → đã trả tiền chưa xác nhận → chờ lâu nhất
-- [ ] Không có đơn cần xử lý → trạng thái rỗng tích cực, không phải `Chưa có dữ liệu`
-- [ ] Đếm ngược giữ chỗ chạy đúng và đổi màu khi ≤ 30 phút
-- [ ] **Không** có khối nhật ký thao tác (L74)
-- [ ] `overview.py` **không** chứa truy vấn SQL/PostgREST nào của riêng nó (code review xác nhận)
-- [ ] Trang tải xong dưới 2 giây với dữ liệu thật
+- [x] 4 ô số liệu khớp `GET /admin/orders/stats`
+- [x] `revenue_today` tính theo `paid_at`, không phải `created_at` (L75)
+- [x] Airflow tắt → khối pipeline hiện `Không kết nối được Airflow`, ba khối kia vẫn đúng
+- [x] `attention_orders` sắp xếp: sắp hết hạn → đã trả tiền chưa xác nhận → chờ lâu nhất
+- [x] Không có đơn cần xử lý → trạng thái rỗng tích cực, không phải `Chưa có dữ liệu`
+- [x] Đếm ngược giữ chỗ chạy đúng và đổi màu khi ≤ 30 phút
+- [x] **Không** có khối nhật ký thao tác (L74)
+- [x] `overview.py` **không** chứa truy vấn SQL/PostgREST nào của riêng nó (code review xác nhận)
+- [x] Trang tải xong dưới 2 giây với dữ liệu thật
+
+## Code review fixes (round 1)
+
+Findings from the mandatory `code-reviewer` pass, all fixed and verified via
+unit tests + live checks against the real Docker backend/Supabase/Airflow
+stack before this phase was marked done:
+
+- **C1 (blocking):** `revenue_today` was filtering `payments.created_at`
+  instead of `paid_at`, contradicting this file's own success criterion.
+  Fixed in `orders.py`'s `get_order_stats()`.
+- **H1 (blocking):** `_fetch_expiring_holds()` had no lower bound on
+  `expires_at`, so it showed the *most already-expired* holds instead of
+  soon-to-expire ones. Confirmed live against real data: all 31 RESERVED
+  holds in the dev DB are stale (never auto-released, oldest from
+  2026-08-18) — the card was silently showing 5 of those as "expiring."
+  Fixed by adding `expires_after`/`expires_before` window params to
+  `_apply_unpaid_filters` and passing `expires_after=now()`.
+- **H2 (blocking):** `_classify_attention`'s `expiring_hold` branch had no
+  lower bound on `minutes_left`, so the same stale holds permanently
+  occupied rank-0 in `attention_orders`, shadowing real
+  `paid_not_confirmed` issues. Fixed with `0 < minutes_left <= threshold`.
+- **M1:** within-bucket sort had no secondary key, so ties fell back to
+  `created_at DESC` (newest-first) — the opposite of the intended "chờ lâu
+  nhất." Added ascending `created_at` as the tiebreak.
+- **M2/M3:** `embedding-status-card.tsx` conflated "still loading" with
+  "Airflow confirmed down" (`pipeline === null` vs `.connected === false`),
+  and nested the independently-healthy embedding count inside the
+  Airflow-connected conditional. Split the two states; embedding count now
+  renders whenever embedding data exists, regardless of Airflow status.
+- **M4:** unused `date` field now rendered as a header subline (added an
+  optional `subtitle` slot to the shared `PageHeader`).
+- **M5:** `fetch_orders`/`fetch_unpaid_bookings` gained a `with_count`
+  param so overview.py's 60s poll skips the unused `count="exact"`.
+- **M6:** `_fetch_attention_orders`' lookback window now uses the existing
+  server-side `from_` filter instead of an unbounded fetch + client-side
+  string comparison on `created_at`.
+- **L1:** promoted `_short_code`, `_money_str`, `_fetch_orders`,
+  `_fetch_unpaid_bookings` in `orders.py` to public names (`short_code`,
+  `money_str`, `fetch_orders`, `fetch_unpaid_bookings`) since `overview.py`
+  is now a legitimate cross-module caller.
+
+M7 (no timeout on the `ThreadPoolExecutor` futures / Supabase client) was
+noted by the reviewer as pre-existing and out of scope for this phase.
 
 ## Risk Assessment
 

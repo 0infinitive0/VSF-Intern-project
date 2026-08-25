@@ -1577,6 +1577,7 @@
               "enum": [
                 "embedded",
                 "missing",
+                "incomplete",
                 "all"
               ],
               "type": "string",
@@ -1896,65 +1897,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/UpdateHotelResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/admin/hotels/{hotel_id}/reembed": {
-      "post": {
-        "tags": [
-          "admin-hotels"
-        ],
-        "summary": "Reembed Hotel",
-        "description": "Always 503 until Phase 13 (Airflow client) exists -- there is no DAG\ntrigger to call yet. `update_hotel` already does the part that matters\n(`embedding = NULL`) without this endpoint; the reembed dialog's \"Chạy\nngay\" is a convenience this phase intentionally leaves unimplemented\nrather than fake.",
-        "operationId": "reembed_hotel_api_v1_admin_hotels__hotel_id__reembed_post",
-        "parameters": [
-          {
-            "name": "hotel_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Hotel Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReembedResponse"
                 }
               }
             }
@@ -3248,6 +3190,407 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CancelOrderResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/embedding/summary": {
+      "get": {
+        "tags": [
+          "admin-embedding"
+        ],
+        "summary": "Get Embedding Summary",
+        "operationId": "get_embedding_summary_api_v1_admin_embedding_summary_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddingSummaryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/embedding/missing": {
+      "get": {
+        "tags": [
+          "admin-embedding"
+        ],
+        "summary": "Get Embedding Missing",
+        "operationId": "get_embedding_missing_api_v1_admin_embedding_missing_get",
+        "parameters": [
+          {
+            "name": "table",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "hotels",
+                "rooms",
+                "attractions"
+              ],
+              "type": "string",
+              "title": "Table"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddingMissingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/hotels/reembed": {
+      "post": {
+        "tags": [
+          "admin-embedding"
+        ],
+        "summary": "Reembed Hotels",
+        "operationId": "reembed_hotels_api_v1_admin_hotels_reembed_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReembedHotelsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReembedHotelsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/pipelines/health": {
+      "get": {
+        "tags": [
+          "admin-pipelines"
+        ],
+        "summary": "Get Pipelines Health",
+        "description": "Always `200` -- this is a status answer for the UI's connection\nbanner, not a request that fails (phase-13's contract).",
+        "operationId": "get_pipelines_health_api_v1_admin_pipelines_health_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelinesHealthResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/pipelines": {
+      "get": {
+        "tags": [
+          "admin-pipelines"
+        ],
+        "summary": "List Pipelines",
+        "operationId": "list_pipelines_api_v1_admin_pipelines_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelinesListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/pipelines/{dag_id}/runs": {
+      "post": {
+        "tags": [
+          "admin-pipelines"
+        ],
+        "summary": "Trigger Pipeline Run",
+        "description": "`dag_id` is checked here **and** inside `airflow_client` (plan's own\n\"cả route và client\") -- this route's check produces the clean `400` the\nspec wants; the client's is the chokepoint that can never be forgotten\nby a future caller. The running/queued check is a live call, never the\n10s list cache -- running a crawl pipeline twice at once is the fastest\nway to get IP-blocked by an OTA and pay for the same API calls twice.\n(A second guard against the same overlap: all 4 DAGs set\n`max_active_runs=1` in Airflow itself, so even a concurrent-POST race\nthat gets past this check can't make Airflow execute two runs at once --\nthe loser just queues behind the winner instead of running in parallel.)\n\nOnly `has_params` DAGs (Embedding, today) may pass a non-empty `conf` --\nthe other 3 have no `params` block in their DAG, so an admin-supplied key\nwould reach a task's `dag_run.conf` with no validation at all.",
+        "operationId": "trigger_pipeline_run_api_v1_admin_pipelines__dag_id__runs_post",
+        "parameters": [
+          {
+            "name": "dag_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dag Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggerRunRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggerRunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/overview": {
+      "get": {
+        "tags": [
+          "admin-overview"
+        ],
+        "summary": "Get Overview",
+        "description": "The 5 blocks are independent reads against different backends\n(Supabase twice over, Supabase again, Supabase again, Airflow via\nPhase 14's own 10s cache) -- run sequentially they summed to ~3s in\ntesting against real data, blowing this phase's own \"dưới 2 giây\"\ncriterion. Fetched in parallel here (same `ThreadPoolExecutor` pattern\nas Phase 14's `_fetch_pipelines_list`) since none of them depend on\nanother's result, bringing real-data latency to roughly the slowest\nsingle block instead of their sum.",
+        "operationId": "get_overview_api_v1_admin_overview_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OverviewResponse"
                 }
               }
             }
@@ -4629,6 +4972,121 @@
           "name"
         ],
         "title": "DestinationOption"
+      },
+      "EmbeddingMissingItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "hotel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hotel Name"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "EmbeddingMissingItem"
+      },
+      "EmbeddingMissingResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EmbeddingMissingItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "EmbeddingMissingResponse"
+      },
+      "EmbeddingSummaryResponse": {
+        "properties": {
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/EmbeddingTableSummary"
+            },
+            "type": "array",
+            "title": "Tables"
+          },
+          "total_missing": {
+            "type": "integer",
+            "title": "Total Missing"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tables",
+          "total_missing"
+        ],
+        "title": "EmbeddingSummaryResponse"
+      },
+      "EmbeddingTableSummary": {
+        "properties": {
+          "table": {
+            "type": "string",
+            "enum": [
+              "hotels",
+              "rooms",
+              "attractions"
+            ],
+            "title": "Table"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "embedded": {
+            "type": "integer",
+            "title": "Embedded"
+          },
+          "missing": {
+            "type": "integer",
+            "title": "Missing"
+          }
+        },
+        "type": "object",
+        "required": [
+          "table",
+          "label",
+          "total",
+          "embedded",
+          "missing"
+        ],
+        "title": "EmbeddingTableSummary"
       },
       "FinalizeTripPayload": {
         "properties": {
@@ -6681,6 +7139,14 @@
             "type": "integer",
             "title": "Orders Yesterday"
           },
+          "confirmed_today": {
+            "type": "integer",
+            "title": "Confirmed Today"
+          },
+          "pending_today": {
+            "type": "integer",
+            "title": "Pending Today"
+          },
           "revenue_today": {
             "type": "string",
             "title": "Revenue Today"
@@ -6710,6 +7176,8 @@
         "required": [
           "orders_today",
           "orders_yesterday",
+          "confirmed_today",
+          "pending_today",
           "revenue_today",
           "currency",
           "avg_order_value",
@@ -6870,6 +7338,335 @@
         ],
         "title": "OrderVnpay"
       },
+      "OverviewAttentionOrder": {
+        "properties": {
+          "payment_id": {
+            "type": "string",
+            "title": "Payment Id"
+          },
+          "order_code": {
+            "type": "string",
+            "title": "Order Code"
+          },
+          "guest_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Name"
+          },
+          "guest_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Email"
+          },
+          "amount": {
+            "type": "string",
+            "title": "Amount"
+          },
+          "issue": {
+            "type": "string",
+            "enum": [
+              "expiring_hold",
+              "paid_not_confirmed",
+              "awaiting_long",
+              "payment_failed"
+            ],
+            "title": "Issue"
+          },
+          "issue_label": {
+            "type": "string",
+            "title": "Issue Label"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "err",
+              "warn",
+              "mute"
+            ],
+            "title": "Severity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "payment_id",
+          "order_code",
+          "amount",
+          "issue",
+          "issue_label",
+          "severity"
+        ],
+        "title": "OverviewAttentionOrder"
+      },
+      "OverviewEmbedding": {
+        "properties": {
+          "embedded": {
+            "type": "integer",
+            "title": "Embedded"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "missing": {
+            "type": "integer",
+            "title": "Missing"
+          },
+          "missing_label": {
+            "type": "string",
+            "title": "Missing Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "embedded",
+          "total",
+          "missing",
+          "missing_label"
+        ],
+        "title": "OverviewEmbedding"
+      },
+      "OverviewExpiringHold": {
+        "properties": {
+          "booking_id": {
+            "type": "string",
+            "title": "Booking Id"
+          },
+          "hold_code": {
+            "type": "string",
+            "title": "Hold Code"
+          },
+          "guest_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Label"
+          },
+          "hotel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hotel Name"
+          },
+          "room_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room Name"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "booking_id",
+          "hold_code"
+        ],
+        "title": "OverviewExpiringHold"
+      },
+      "OverviewOrders": {
+        "properties": {
+          "today": {
+            "type": "integer",
+            "title": "Today"
+          },
+          "confirmed_today": {
+            "type": "integer",
+            "title": "Confirmed Today"
+          },
+          "pending_today": {
+            "type": "integer",
+            "title": "Pending Today"
+          },
+          "revenue_today": {
+            "type": "string",
+            "title": "Revenue Today"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "pending_count": {
+            "type": "integer",
+            "title": "Pending Count"
+          },
+          "expiring_holds_30m": {
+            "type": "integer",
+            "title": "Expiring Holds 30M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "today",
+          "confirmed_today",
+          "pending_today",
+          "revenue_today",
+          "currency",
+          "pending_count",
+          "expiring_holds_30m"
+        ],
+        "title": "OverviewOrders"
+      },
+      "OverviewPipeline": {
+        "properties": {
+          "connected": {
+            "type": "boolean",
+            "title": "Connected"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "dag_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dag Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connected"
+        ],
+        "title": "OverviewPipeline"
+      },
+      "OverviewResponse": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "orders": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverviewOrders"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "attention_orders": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewAttentionOrder"
+            },
+            "type": "array",
+            "title": "Attention Orders"
+          },
+          "expiring_holds": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewExpiringHold"
+            },
+            "type": "array",
+            "title": "Expiring Holds"
+          },
+          "embedding": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverviewEmbedding"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pipeline": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverviewPipeline"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "date"
+        ],
+        "title": "OverviewResponse"
+      },
       "PaymentPayload": {
         "properties": {
           "id": {
@@ -6976,6 +7773,282 @@
           "created_at"
         ],
         "title": "PaymentPayload"
+      },
+      "PipelineItem": {
+        "properties": {
+          "dag_id": {
+            "type": "string",
+            "title": "Dag Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "is_paused": {
+            "type": "boolean",
+            "title": "Is Paused"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule"
+          },
+          "has_params": {
+            "type": "boolean",
+            "title": "Has Params"
+          },
+          "last_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PipelineLastRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recent_runs": {
+            "items": {
+              "$ref": "#/components/schemas/PipelineRunSummary"
+            },
+            "type": "array",
+            "title": "Recent Runs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dag_id",
+          "label",
+          "description",
+          "is_paused",
+          "has_params"
+        ],
+        "title": "PipelineItem"
+      },
+      "PipelineLastRun": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PipelineProgress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "state",
+          "start_date",
+          "end_date"
+        ],
+        "title": "PipelineLastRun"
+      },
+      "PipelineProgress": {
+        "properties": {
+          "done": {
+            "type": "integer",
+            "title": "Done"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "eta_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Seconds"
+          },
+          "estimated_records": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Records"
+          }
+        },
+        "type": "object",
+        "required": [
+          "done",
+          "total"
+        ],
+        "title": "PipelineProgress"
+      },
+      "PipelineRunSummary": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "state"
+        ],
+        "title": "PipelineRunSummary"
+      },
+      "PipelinesHealthResponse": {
+        "properties": {
+          "connected": {
+            "type": "boolean",
+            "title": "Connected"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "airflow_unavailable"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connected"
+        ],
+        "title": "PipelinesHealthResponse"
+      },
+      "PipelinesListResponse": {
+        "properties": {
+          "connected": {
+            "type": "boolean",
+            "title": "Connected"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PipelineItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "airflow_unavailable"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connected",
+          "items"
+        ],
+        "title": "PipelinesListResponse"
       },
       "PlannerChatRequest": {
         "properties": {
@@ -7216,11 +8289,37 @@
         "title": "RangeRow",
         "description": "A VIEW over consecutive `nights` with equal `(price, currency,\nsold_out)` -- not a storage model (see module docstring). `deletable` is\ntrue when at least one night in the range has an admin-written row\n(`source_url IS NULL`); DELETE only ever removes those rows, so a range\nbuilt entirely from OTA rows must hide the delete action (L52). `source`\nmirrors `deletable`'s \"any admin row\" rule (not just the first night's\nwinner) so a range never reports `source: \"pipeline\"` while also being\n`deletable: true`."
       },
-      "ReembedResponse": {
+      "ReembedHotelsRequest": {
         "properties": {
-          "queued": {
+          "hotel_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Hotel Ids"
+          },
+          "include_rooms": {
             "type": "boolean",
-            "title": "Queued"
+            "title": "Include Rooms",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "hotel_ids"
+        ],
+        "title": "ReembedHotelsRequest"
+      },
+      "ReembedHotelsResponse": {
+        "properties": {
+          "cleared_hotels": {
+            "type": "integer",
+            "title": "Cleared Hotels"
+          },
+          "cleared_rooms": {
+            "type": "integer",
+            "title": "Cleared Rooms"
           },
           "dag_run_id": {
             "anyOf": [
@@ -7233,17 +8332,29 @@
             ],
             "title": "Dag Run Id"
           },
-          "scope": {
-            "type": "string",
-            "title": "Scope"
+          "queued": {
+            "type": "boolean",
+            "title": "Queued"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
           }
         },
         "type": "object",
         "required": [
-          "queued",
-          "scope"
+          "cleared_hotels",
+          "cleared_rooms",
+          "queued"
         ],
-        "title": "ReembedResponse"
+        "title": "ReembedHotelsResponse"
       },
       "ReleaseExpiredResponse": {
         "properties": {
@@ -8196,6 +9307,40 @@
         ],
         "title": "ThinkingTraceEntry",
         "description": "One completed step of the turn that produced a reply.\n\nFacts, never sentences: the wording is composed on the client from these and\nfollows the reader's current language, so storing text would render a\nVietnamese conversation in Vietnamese inside an English session and freeze\ntoday's phrasing into history.\n\nWhat may appear in `facts` is whitelisted at the source\n(`agents/graph/phase_facts.py`): keys, counts and schema field paths only."
+      },
+      "TriggerRunRequest": {
+        "properties": {
+          "conf": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Conf"
+          }
+        },
+        "type": "object",
+        "title": "TriggerRunRequest"
+      },
+      "TriggerRunResponse": {
+        "properties": {
+          "dag_id": {
+            "type": "string",
+            "title": "Dag Id"
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dag_id",
+          "run_id",
+          "state"
+        ],
+        "title": "TriggerRunResponse"
       },
       "TripPlanHotel": {
         "properties": {

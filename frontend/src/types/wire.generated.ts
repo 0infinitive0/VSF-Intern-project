@@ -691,30 +691,6 @@ export interface paths {
         patch: operations["update_hotel_api_v1_admin_hotels__hotel_id__patch"];
         trace?: never;
     };
-    "/api/v1/admin/hotels/{hotel_id}/reembed": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Reembed Hotel
-         * @description Always 503 until Phase 13 (Airflow client) exists -- there is no DAG
-         *     trigger to call yet. `update_hotel` already does the part that matters
-         *     (`embedding = NULL`) without this endpoint; the reembed dialog's "Chạy
-         *     ngay" is a convenience this phase intentionally leaves unimplemented
-         *     rather than fake.
-         */
-        post: operations["reembed_hotel_api_v1_admin_hotels__hotel_id__reembed_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/admin/hotels/{hotel_id}/images/upload": {
         parameters: {
             query?: never;
@@ -983,6 +959,155 @@ export interface paths {
         put?: never;
         /** Cancel Order */
         post: operations["cancel_order_api_v1_admin_orders__payment_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/embedding/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Embedding Summary */
+        get: operations["get_embedding_summary_api_v1_admin_embedding_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/embedding/missing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Embedding Missing */
+        get: operations["get_embedding_missing_api_v1_admin_embedding_missing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/hotels/reembed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reembed Hotels */
+        post: operations["reembed_hotels_api_v1_admin_hotels_reembed_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/pipelines/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pipelines Health
+         * @description Always `200` -- this is a status answer for the UI's connection
+         *     banner, not a request that fails (phase-13's contract).
+         */
+        get: operations["get_pipelines_health_api_v1_admin_pipelines_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/pipelines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Pipelines */
+        get: operations["list_pipelines_api_v1_admin_pipelines_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/pipelines/{dag_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trigger Pipeline Run
+         * @description `dag_id` is checked here **and** inside `airflow_client` (plan's own
+         *     "cả route và client") -- this route's check produces the clean `400` the
+         *     spec wants; the client's is the chokepoint that can never be forgotten
+         *     by a future caller. The running/queued check is a live call, never the
+         *     10s list cache -- running a crawl pipeline twice at once is the fastest
+         *     way to get IP-blocked by an OTA and pay for the same API calls twice.
+         *     (A second guard against the same overlap: all 4 DAGs set
+         *     `max_active_runs=1` in Airflow itself, so even a concurrent-POST race
+         *     that gets past this check can't make Airflow execute two runs at once --
+         *     the loser just queues behind the winner instead of running in parallel.)
+         *
+         *     Only `has_params` DAGs (Embedding, today) may pass a non-empty `conf` --
+         *     the other 3 have no `params` block in their DAG, so an admin-supplied key
+         *     would reach a task's `dag_run.conf` with no validation at all.
+         */
+        post: operations["trigger_pipeline_run_api_v1_admin_pipelines__dag_id__runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Overview
+         * @description The 5 blocks are independent reads against different backends
+         *     (Supabase twice over, Supabase again, Supabase again, Airflow via
+         *     Phase 14's own 10s cache) -- run sequentially they summed to ~3s in
+         *     testing against real data, blowing this phase's own "dưới 2 giây"
+         *     criterion. Fetched in parallel here (same `ThreadPoolExecutor` pattern
+         *     as Phase 14's `_fetch_pipelines_list`) since none of them depend on
+         *     another's result, bringing real-data latency to roughly the slowest
+         *     single block instead of their sum.
+         */
+        get: operations["get_overview_api_v1_admin_overview_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1489,6 +1614,45 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+        };
+        /** EmbeddingMissingItem */
+        EmbeddingMissingItem: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Hotel Name */
+            hotel_name?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** EmbeddingMissingResponse */
+        EmbeddingMissingResponse: {
+            /** Items */
+            items: components["schemas"]["EmbeddingMissingItem"][];
+        };
+        /** EmbeddingSummaryResponse */
+        EmbeddingSummaryResponse: {
+            /** Tables */
+            tables: components["schemas"]["EmbeddingTableSummary"][];
+            /** Total Missing */
+            total_missing: number;
+        };
+        /** EmbeddingTableSummary */
+        EmbeddingTableSummary: {
+            /**
+             * Table
+             * @enum {string}
+             */
+            table: "hotels" | "rooms" | "attractions";
+            /** Label */
+            label: string;
+            /** Total */
+            total: number;
+            /** Embedded */
+            embedded: number;
+            /** Missing */
+            missing: number;
         };
         /**
          * FinalizeTripPayload
@@ -2104,6 +2268,10 @@ export interface components {
             orders_today: number;
             /** Orders Yesterday */
             orders_yesterday: number;
+            /** Confirmed Today */
+            confirmed_today: number;
+            /** Pending Today */
+            pending_today: number;
             /** Revenue Today */
             revenue_today: string;
             /** Currency */
@@ -2157,6 +2325,101 @@ export interface components {
             /** Currency */
             currency: string;
         };
+        /** OverviewAttentionOrder */
+        OverviewAttentionOrder: {
+            /** Payment Id */
+            payment_id: string;
+            /** Order Code */
+            order_code: string;
+            /** Guest Name */
+            guest_name?: string | null;
+            /** Guest Email */
+            guest_email?: string | null;
+            /** Amount */
+            amount: string;
+            /**
+             * Issue
+             * @enum {string}
+             */
+            issue: "expiring_hold" | "paid_not_confirmed" | "awaiting_long" | "payment_failed";
+            /** Issue Label */
+            issue_label: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "err" | "warn" | "mute";
+        };
+        /** OverviewEmbedding */
+        OverviewEmbedding: {
+            /** Embedded */
+            embedded: number;
+            /** Total */
+            total: number;
+            /** Missing */
+            missing: number;
+            /** Missing Label */
+            missing_label: string;
+        };
+        /** OverviewExpiringHold */
+        OverviewExpiringHold: {
+            /** Booking Id */
+            booking_id: string;
+            /** Hold Code */
+            hold_code: string;
+            /** Guest Label */
+            guest_label?: string | null;
+            /** Hotel Name */
+            hotel_name?: string | null;
+            /** Room Name */
+            room_name?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+        };
+        /** OverviewOrders */
+        OverviewOrders: {
+            /** Today */
+            today: number;
+            /** Confirmed Today */
+            confirmed_today: number;
+            /** Pending Today */
+            pending_today: number;
+            /** Revenue Today */
+            revenue_today: string;
+            /** Currency */
+            currency: string;
+            /** Pending Count */
+            pending_count: number;
+            /** Expiring Holds 30M */
+            expiring_holds_30m: number;
+        };
+        /** OverviewPipeline */
+        OverviewPipeline: {
+            /** Connected */
+            connected: boolean;
+            /** State */
+            state?: string | null;
+            /** Last Run At */
+            last_run_at?: string | null;
+            /** Duration Seconds */
+            duration_seconds?: number | null;
+            /** Run Id */
+            run_id?: string | null;
+            /** Dag Id */
+            dag_id?: string | null;
+        };
+        /** OverviewResponse */
+        OverviewResponse: {
+            /** Date */
+            date: string;
+            orders?: components["schemas"]["OverviewOrders"] | null;
+            /** Attention Orders */
+            attention_orders?: components["schemas"]["OverviewAttentionOrder"][];
+            /** Expiring Holds */
+            expiring_holds?: components["schemas"]["OverviewExpiringHold"][];
+            embedding?: components["schemas"]["OverviewEmbedding"] | null;
+            pipeline?: components["schemas"]["OverviewPipeline"] | null;
+        };
         /** PaymentPayload */
         PaymentPayload: {
             /**
@@ -2190,6 +2453,76 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** PipelineItem */
+        PipelineItem: {
+            /** Dag Id */
+            dag_id: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Is Paused */
+            is_paused: boolean;
+            /** Schedule */
+            schedule?: string | null;
+            /** Has Params */
+            has_params: boolean;
+            last_run?: components["schemas"]["PipelineLastRun"] | null;
+            /** Recent Runs */
+            recent_runs?: components["schemas"]["PipelineRunSummary"][];
+        };
+        /** PipelineLastRun */
+        PipelineLastRun: {
+            /** Run Id */
+            run_id: string;
+            /** State */
+            state: string | null;
+            /** Start Date */
+            start_date: string | null;
+            /** End Date */
+            end_date: string | null;
+            /** Duration Seconds */
+            duration_seconds?: number | null;
+            progress?: components["schemas"]["PipelineProgress"] | null;
+        };
+        /** PipelineProgress */
+        PipelineProgress: {
+            /** Done */
+            done: number;
+            /** Total */
+            total: number;
+            /** Eta Seconds */
+            eta_seconds?: number | null;
+            /** Estimated Records */
+            estimated_records?: number | null;
+        };
+        /** PipelineRunSummary */
+        PipelineRunSummary: {
+            /** Run Id */
+            run_id: string;
+            /** State */
+            state: string | null;
+            /** Duration Seconds */
+            duration_seconds?: number | null;
+        };
+        /** PipelinesHealthResponse */
+        PipelinesHealthResponse: {
+            /** Connected */
+            connected: boolean;
+            /** Version */
+            version?: string | null;
+            /** Reason */
+            reason?: "airflow_unavailable" | null;
+        };
+        /** PipelinesListResponse */
+        PipelinesListResponse: {
+            /** Connected */
+            connected: boolean;
+            /** Items */
+            items: components["schemas"]["PipelineItem"][];
+            /** Reason */
+            reason?: "airflow_unavailable" | null;
         };
         /**
          * PlannerChatRequest
@@ -2311,14 +2644,28 @@ export interface components {
             /** Deletable */
             deletable: boolean;
         };
-        /** ReembedResponse */
-        ReembedResponse: {
-            /** Queued */
-            queued: boolean;
+        /** ReembedHotelsRequest */
+        ReembedHotelsRequest: {
+            /** Hotel Ids */
+            hotel_ids: string[];
+            /**
+             * Include Rooms
+             * @default false
+             */
+            include_rooms: boolean;
+        };
+        /** ReembedHotelsResponse */
+        ReembedHotelsResponse: {
+            /** Cleared Hotels */
+            cleared_hotels: number;
+            /** Cleared Rooms */
+            cleared_rooms: number;
             /** Dag Run Id */
             dag_run_id?: string | null;
-            /** Scope */
-            scope: string;
+            /** Queued */
+            queued: boolean;
+            /** Detail */
+            detail?: string | null;
         };
         /** ReleaseExpiredResponse */
         ReleaseExpiredResponse: {
@@ -2616,6 +2963,22 @@ export interface components {
             facts: {
                 [key: string]: unknown;
             };
+        };
+        /** TriggerRunRequest */
+        TriggerRunRequest: {
+            /** Conf */
+            conf?: {
+                [key: string]: unknown;
+            };
+        };
+        /** TriggerRunResponse */
+        TriggerRunResponse: {
+            /** Dag Id */
+            dag_id: string;
+            /** Run Id */
+            run_id: string;
+            /** State */
+            state: string;
         };
         /** TripPlanHotel */
         TripPlanHotel: {
@@ -3779,7 +4142,7 @@ export interface operations {
                 q?: string | null;
                 source?: "manual" | "pipeline" | "all";
                 is_active?: boolean | null;
-                embedding?: "embedded" | "missing" | "all";
+                embedding?: "embedded" | "missing" | "incomplete" | "all";
                 page?: number;
                 page_size?: number;
                 format?: "json" | "csv";
@@ -3976,39 +4339,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UpdateHotelResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    reembed_hotel_api_v1_admin_hotels__hotel_id__reembed_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                hotel_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReembedResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4633,6 +4963,236 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CancelOrderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_embedding_summary_api_v1_admin_embedding_summary_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbeddingSummaryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_embedding_missing_api_v1_admin_embedding_missing_get: {
+        parameters: {
+            query: {
+                table: "hotels" | "rooms" | "attractions";
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbeddingMissingResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reembed_hotels_api_v1_admin_hotels_reembed_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReembedHotelsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReembedHotelsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pipelines_health_api_v1_admin_pipelines_health_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelinesHealthResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_pipelines_api_v1_admin_pipelines_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelinesListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trigger_pipeline_run_api_v1_admin_pipelines__dag_id__runs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                dag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TriggerRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TriggerRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_overview_api_v1_admin_overview_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewResponse"];
                 };
             };
             /** @description Validation Error */

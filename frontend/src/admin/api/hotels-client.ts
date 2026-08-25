@@ -22,7 +22,8 @@ export type DestinationOption = components['schemas']['DestinationOption']
 export type HotelDetailResponse = components['schemas']['HotelDetailResponse']
 export type UpdateHotelRequest = components['schemas']['UpdateHotelRequest']
 export type UpdateHotelResponse = components['schemas']['UpdateHotelResponse']
-export type ReembedResponse = components['schemas']['ReembedResponse']
+export type ReembedHotelsRequest = components['schemas']['ReembedHotelsRequest']
+export type ReembedHotelsResponse = components['schemas']['ReembedHotelsResponse']
 export type AmenityOption = components['schemas']['AmenityOption']
 export type UploadImageResponse = components['schemas']['UploadImageResponse']
 export type RoomRow = components['schemas']['RoomRow']
@@ -38,7 +39,7 @@ export type SetRoomPricesRequest = components['schemas']['SetRoomPricesRequest']
 export type SetRoomPricesResponse = components['schemas']['SetRoomPricesResponse']
 
 export type SourceFilter = 'all' | 'manual' | 'pipeline'
-export type EmbeddingFilter = 'all' | 'embedded' | 'missing'
+export type EmbeddingFilter = 'all' | 'embedded' | 'missing' | 'incomplete'
 
 export interface HotelListParams {
   q?: string
@@ -142,11 +143,18 @@ export function updateHotel(hotelId: string, body: UpdateHotelRequest): Promise<
   })
 }
 
-/** 503 (`airflow_unavailable`) is an expected outcome until Phase 13 (Airflow
- * client) exists, not a failure to alarm about -- reembed-dialog.tsx treats
- * it as "queue this for later" rather than an error banner. */
-export function reembedHotel(hotelId: string): Promise<AdminApiResult<ReembedResponse>> {
-  return adminFetch<ReembedResponse>(`/hotels/${hotelId}/reembed`, { method: 'POST' })
+/** One shared trigger for B1's bulk bar, B7's row action, and B3/B5's
+ * post-save dialogs (phase-12-embedding-status.md: "một endpoint, không
+ * phải bốn"). `queued: false, detail: "airflow_unavailable"` is an expected
+ * outcome until Phase 13 (Airflow client) exists, not a failure to alarm
+ * about -- callers treat it as "queued for the next scheduled run" rather
+ * than an error banner. */
+export function reembedHotels(hotelIds: string[], includeRooms = false): Promise<AdminApiResult<ReembedHotelsResponse>> {
+  return adminFetch<ReembedHotelsResponse>('/hotels/reembed', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hotel_ids: hotelIds, include_rooms: includeRooms }),
+  })
 }
 
 export function listAmenities(): Promise<AdminApiResult<AmenityOption[]>> {

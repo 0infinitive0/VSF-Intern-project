@@ -23,8 +23,10 @@ here ever sets it, so a manually created hotel is invisible to
 banner, not a bug).
 
 Admin B3 -- Chi tiết / Sửa khách sạn (phase-09-hotel-edit.md): `get_hotel`,
-`update_hotel`, `reembed_hotel`. Decision #7 (R1, phương án iii) means an
-ETL-sourced hotel is still fully editable here -- `pipeline_managed_fields`
+`update_hotel`. The reembed trigger itself lives in `embedding.py`'s
+`POST /hotels/reembed` (phase-12-embedding-status.md) -- one shared endpoint
+for B1/B3/B5/B7 instead of a per-screen stub. Decision #7 (R1, phương án iii)
+means an ETL-sourced hotel is still fully editable here -- `pipeline_managed_fields`
 (from `embedding_fields.PIPELINE_MANAGED_FIELDS_HOTEL`) only drives a UI
 warning, never a server-side write block. `update_hotel` diffs the request
 body against the current row itself (`model_fields_set`, not a client-sent
@@ -296,12 +298,6 @@ class UpdateHotelResponse(BaseModel):
     embedding_state: Literal["embedded", "partial", "missing"]
 
 
-class ReembedResponse(BaseModel):
-    queued: bool
-    dag_run_id: str | None = None
-    scope: str
-
-
 class UploadImageResponse(BaseModel):
     url: str
 
@@ -339,7 +335,7 @@ def _apply_filters(
     q: str | None,
     source: Literal["manual", "pipeline", "all"],
     is_active: bool | None,
-    embedding: Literal["embedded", "missing", "all"],
+    embedding: Literal["embedded", "missing", "incomplete", "all"],
 ) -> Any:
     if q:
         # `,` is the postgrest .or_() clause separator -- stripped so a
@@ -356,6 +352,13 @@ def _apply_filters(
         query = query.eq("hotel_embedded", True)
     elif embedding == "missing":
         query = query.eq("hotel_embedded", False)
+    elif embedding == "incomplete":
+        # B7's own filter (phase-12-embedding-status.md): a hotel with its
+        # own embedding set but rooms still missing theirs ("partial" in
+        # `_embedding_state`) is not "missing" by B1's `hotel_embedded`-only
+        # definition, but B7 exists to surface exactly this case too --
+        # answering "bot còn chưa học những gì?" requires both.
+        query = query.or_("hotel_embedded.eq.false,rooms_missing_embedding.gt.0")
     return query
 
 
@@ -364,7 +367,7 @@ def _fetch_hotels(
     q: str | None,
     source: Literal["manual", "pipeline", "all"],
     is_active: bool | None,
-    embedding: Literal["embedded", "missing", "all"],
+    embedding: Literal["embedded", "missing", "incomplete", "all"],
     start: int,
     end: int,
 ) -> tuple[list[dict[str, Any]], int]:
@@ -481,7 +484,7 @@ def list_hotels(
     q: str | None = Query(default=None),
     source: Literal["manual", "pipeline", "all"] = Query(default="all"),
     is_active: bool | None = Query(default=None),
-    embedding: Literal["embedded", "missing", "all"] = Query(default="all"),
+    embedding: Literal["embedded", "missing", "incomplete", "all"] = Query(default="all"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=_DEFAULT_PAGE_SIZE, ge=1, le=_MAX_PAGE_SIZE),
     response_format: Literal["json", "csv"] = Query(default="json", alias="format"),
@@ -773,17 +776,6 @@ def update_hotel(
         embedding_cleared=bool(rag_changed),
         embedding_state=_embedding_state(hotel_embedded, rooms_missing),
     )
-
-
-@hotels_router.post("/{hotel_id}/reembed", response_model=ReembedResponse)
-def reembed_hotel(hotel_id: str, admin: AdminUser = Depends(require_admin)) -> ReembedResponse | JSONResponse:
-    """Always 503 until Phase 13 (Airflow client) exists -- there is no DAG
-    trigger to call yet. `update_hotel` already does the part that matters
-    (`embedding = NULL`) without this endpoint; the reembed dialog's "Chạy
-    ngay" is a convenience this phase intentionally leaves unimplemented
-    rather than fake."""
-    del hotel_id, admin
-    return JSONResponse(status_code=503, content={"detail": "airflow_unavailable"})
 
 
 @hotels_router.post("/{hotel_id}/images/upload", response_model=UploadImageResponse, status_code=201)

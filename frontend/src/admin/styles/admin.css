@@ -817,6 +817,18 @@ button {
 }
 
 /* ---------------------------------------------------------------------- */
+/* A3 -- VẤN ĐỀ chip's "sắp hết hạn giữ chỗ" tier (phase-17-overview-      */
+/* kpi.md, "err" severity) -- the one urgent tone `.chip--*` didn't have   */
+/* yet; `.chip--closed` already covers "mute" and `.chip--warn` covers     */
+/* "warn".                                                                 */
+/* ---------------------------------------------------------------------- */
+
+.chip--err {
+  background: var(--err-soft);
+  color: var(--err);
+}
+
+/* ---------------------------------------------------------------------- */
 /* Price calendar (B6 -- tab Giá theo ngày, phase-11-room-prices.md)       */
 /* ---------------------------------------------------------------------- */
 

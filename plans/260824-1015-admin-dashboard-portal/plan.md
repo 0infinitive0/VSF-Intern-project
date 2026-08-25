@@ -143,7 +143,7 @@ xem Phase 17.
 | 1 | [Migration nền dữ liệu](./phase-01-migrations.md) | — | Done |
 | 2 | [Backend: role admin, require_admin, khung router](./phase-02-admin-auth-backend.md) | — | Done |
 | 3 | [Frontend: entry admin.html, shell, đăng nhập](./phase-03-admin-shell-frontend.md) | A1, A2, Z | Done |
-| 4 | [Danh sách đơn hàng](./phase-04-orders-list.md) | D1 | Pending |
+| 4 | [Danh sách đơn hàng](./phase-04-orders-list.md) | D1 | Done |
 | 5 | [Chi tiết đơn hàng](./phase-05-order-detail.md) | D2 | Done |
 | 6 | [Xác nhận / Huỷ đơn](./phase-06-order-actions.md) | D3 | Done |
 | 7 | [Danh sách khách sạn](./phase-07-hotels-list.md) | B1 | Done |
@@ -151,12 +151,12 @@ xem Phase 17.
 | 9 | [Chi tiết / Sửa khách sạn](./phase-09-hotel-edit.md) | B3 | Done |
 | 10 | [Quản lý phòng](./phase-10-rooms.md) | B5 | Done |
 | 11 | [Quản lý giá phòng theo đêm](./phase-11-room-prices.md) | B6 | Done |
-| 12 | [Trạng thái & độ phủ embedding](./phase-12-embedding-status.md) | B7, C4 | Pending |
-| 13 | [Airflow client + hạ tầng mạng/credential](./phase-13-airflow-client.md) | — | Pending |
-| 14 | [Danh sách pipeline](./phase-14-pipelines-list.md) | C1 | Pending |
+| 12 | [Trạng thái & độ phủ embedding](./phase-12-embedding-status.md) | B7, C4 | Done |
+| 13 | [Airflow client + hạ tầng mạng/credential](./phase-13-airflow-client.md) | — | Done |
+| 14 | [Danh sách pipeline](./phase-14-pipelines-list.md) | C1 | Done |
 | 15 | [Chạy pipeline embedding](./phase-15-pipeline-trigger.md) | C2 | Pending |
 | 16 | [Chi tiết lần chạy + log](./phase-16-run-detail-logs.md) | C3 | Pending |
-| 17 | [Tổng quan KPI](./phase-17-overview-kpi.md) | A3 | Pending |
+| 17 | [Tổng quan KPI](./phase-17-overview-kpi.md) | A3 | Done |
 
 ## Known gap — chưa phase nào chặn booking ở khách sạn `is_active = false`
 

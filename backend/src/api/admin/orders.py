@@ -18,7 +18,7 @@ not payment_service, so it stays testable through the same single
 `get_supabase_client()` monkeypatch point as the rest of this file.
 
 `order_code`/`hold_code` (`DH-3F2A1`, `GC-9182`) are display-only, derived
-from the last 5 hex chars of the row's own UUID (`_short_code`) -- there is
+from the last 5 hex chars of the row's own UUID (`short_code`) -- there is
 no sequence backing them, tooltip in the frontend shows the full UUID, and
 lookups still go by UUID.
 
@@ -147,6 +147,14 @@ class ReleaseExpiredResponse(BaseModel):
 class OrderStatsResponse(BaseModel):
     orders_today: int
     orders_yesterday: int
+    # Added for A3 (phase-17-overview-kpi.md): "12 đã xác nhận · 6 chờ" under
+    # the Đơn hôm nay tile. `confirmed_today` = admin_orders.booking_status
+    # = CONFIRMED; `pending_today` is everything else counted here as
+    # "chờ" (L76 softens this to "Đang chờ admin xác nhận" rather than
+    # claiming a precise status breakdown -- PENDING/RESERVED/MIXED and the
+    # rare same-day CANCELLED/EXPIRED all land in this one bucket).
+    confirmed_today: int
+    pending_today: int
     revenue_today: str
     currency: str
     avg_order_value: str
@@ -254,11 +262,11 @@ class OrderDetailResponse(BaseModel):
     chat_session: OrderChatSession | None = None
 
 
-def _short_code(prefix: str, entity_id: str) -> str:
+def short_code(prefix: str, entity_id: str) -> str:
     return f"{prefix}-{entity_id.replace('-', '')[-5:].upper()}"
 
 
-def _money_str(value: Any) -> str:
+def money_str(value: Any) -> str:
     return str(Decimal(str(value)))
 
 
@@ -320,6 +328,8 @@ def _apply_unpaid_filters(
     from_: date | None,
     to_: date | None,
     hotel_id: str | None,
+    expires_after: datetime | None = None,
+    expires_before: datetime | None = None,
 ) -> Any:
     # `booking_status` here is a bare `bookings.status` value, not the
     # aggregated `admin_orders.booking_status` -- MIXED/UNKNOWN (valid on the
@@ -334,18 +344,27 @@ def _apply_unpaid_filters(
         query = query.lt("created_at", _vn_day_start(to_ + timedelta(days=1)))
     if hotel_id:
         query = query.eq("hotel_id", hotel_id)
+    # `expires_after`/`expires_before` window the *hold's own* expiry, not
+    # `created_at` -- shared by `_count_expiring_unpaid` and overview.py's
+    # H1 fix, so "soon to expire" always means the same thing everywhere.
+    if expires_after is not None:
+        query = query.gt("expires_at", expires_after.isoformat())
+    if expires_before is not None:
+        query = query.lte("expires_at", expires_before.isoformat())
     return query
 
 
-def _fetch_orders(*, start: int, end: int, **filters: Any) -> tuple[list[dict[str, Any]], int]:
-    query = get_supabase_client().table(_ORDERS_VIEW).select("*", count="exact")
+def fetch_orders(*, start: int, end: int, with_count: bool = True, **filters: Any) -> tuple[list[dict[str, Any]], int]:
+    query = get_supabase_client().table(_ORDERS_VIEW).select("*", count="exact" if with_count else None)
     query = _apply_paid_filters(query, **filters)
     response = query.order("created_at", desc=True).range(start, end).execute()
     return response.data or [], response.count or 0
 
 
-def _fetch_unpaid_bookings(*, start: int, end: int, **filters: Any) -> tuple[list[dict[str, Any]], int]:
-    query = get_supabase_client().table(_UNPAID_VIEW).select("*", count="exact")
+def fetch_unpaid_bookings(
+    *, start: int, end: int, with_count: bool = True, **filters: Any
+) -> tuple[list[dict[str, Any]], int]:
+    query = get_supabase_client().table(_UNPAID_VIEW).select("*", count="exact" if with_count else None)
     query = _apply_unpaid_filters(query, **filters)
     # Ascending `expires_at` puts the soonest-to-expire hold first; Postgres'
     # default NULLS LAST on ascending order already pushes PENDING rows with
@@ -357,15 +376,15 @@ def _fetch_unpaid_bookings(*, start: int, end: int, **filters: Any) -> tuple[lis
 def _count_expiring_unpaid(*, now: datetime, **filters: Any) -> int:
     soon = now + timedelta(minutes=_EXPIRING_SOON_MINUTES)
     query = get_supabase_client().table(_UNPAID_VIEW).select("booking_id", count="exact")
-    query = _apply_unpaid_filters(query, **filters)
-    response = query.gt("expires_at", now.isoformat()).lte("expires_at", soon.isoformat()).range(0, 0).execute()
+    query = _apply_unpaid_filters(query, expires_after=now, expires_before=soon, **filters)
+    response = query.range(0, 0).execute()
     return response.count or 0
 
 
 def _row_to_order(row: dict[str, Any]) -> OrderRow:
     return OrderRow(
         payment_id=row["payment_id"],
-        order_code=_short_code("DH", row["payment_id"]),
+        order_code=short_code("DH", row["payment_id"]),
         guest_name=row.get("guest_name"),
         guest_email=row.get("guest_email"),
         guest_phone=row.get("guest_phone"),
@@ -375,7 +394,7 @@ def _row_to_order(row: dict[str, Any]) -> OrderRow:
         check_out_date=row.get("check_out_date"),
         room_count=row.get("room_count") or 0,
         booking_count=row.get("booking_count") or 0,
-        amount=_money_str(row["amount"]),
+        amount=money_str(row["amount"]),
         currency=row["currency"],
         booking_status=row["booking_status"],
         payment_status=row["payment_status"],
@@ -392,14 +411,14 @@ def _row_to_unpaid_booking(row: dict[str, Any]) -> UnpaidBookingRow:
     ref = row.get("temporary_user_ref")
     return UnpaidBookingRow(
         booking_id=row["booking_id"],
-        hold_code=_short_code("GC", row["booking_id"]),
+        hold_code=short_code("GC", row["booking_id"]),
         guest_label=f"Khách ẩn danh · {ref[:8]}" if ref else None,
         hotel_name=row.get("hotel_name"),
         room_name=row.get("room_name"),
         check_in_date=row["check_in_date"],
         check_out_date=row["check_out_date"],
         room_count=row.get("room_count") or 0,
-        total_amount=_money_str(row["total_amount"]) if row.get("total_amount") is not None else None,
+        total_amount=money_str(row["total_amount"]) if row.get("total_amount") is not None else None,
         currency=row.get("currency"),
         status=row["status"],
         expires_at=row.get("expires_at"),
@@ -496,11 +515,11 @@ def list_orders(
     if tab == "unpaid":
         unpaid_filters = {"booking_status": booking_status, "from_": from_, "to_": to_, "hotel_id": hotel_id}
         if response_format == "csv":
-            rows, _total = _fetch_unpaid_bookings(start=0, end=_CSV_MAX_ROWS - 1, **unpaid_filters)
+            rows, _total = fetch_unpaid_bookings(start=0, end=_CSV_MAX_ROWS - 1, **unpaid_filters)
             return _unpaid_csv_response([_row_to_unpaid_booking(row) for row in rows])
 
         start = (page - 1) * page_size
-        rows, total = _fetch_unpaid_bookings(start=start, end=start + page_size - 1, **unpaid_filters)
+        rows, total = fetch_unpaid_bookings(start=start, end=start + page_size - 1, **unpaid_filters)
         expiring_count = _count_expiring_unpaid(now=datetime.now(timezone.utc), **unpaid_filters)
         return UnpaidBookingListResponse(
             items=[_row_to_unpaid_booking(row) for row in rows], total=total, page=page, page_size=page_size, expiring_count=expiring_count
@@ -516,11 +535,11 @@ def list_orders(
         "needs_attention": needs_attention,
     }
     if response_format == "csv":
-        rows, _total = _fetch_orders(start=0, end=_CSV_MAX_ROWS - 1, **paid_filters)
+        rows, _total = fetch_orders(start=0, end=_CSV_MAX_ROWS - 1, **paid_filters)
         return _orders_csv_response([_row_to_order(row) for row in rows])
 
     start = (page - 1) * page_size
-    rows, total = _fetch_orders(start=start, end=start + page_size - 1, **paid_filters)
+    rows, total = fetch_orders(start=start, end=start + page_size - 1, **paid_filters)
     return OrderListResponse(items=[_row_to_order(row) for row in rows], total=total, page=page, page_size=page_size)
 
 
@@ -581,17 +600,35 @@ def get_order_stats() -> OrderStatsResponse:
     orders_yesterday = (
         supabase.table("payments").select("id", count="exact").gte("created_at", yesterday_start).lt("created_at", today_start).range(0, 0).execute().count or 0
     )
+    confirmed_today = (
+        supabase.table(_ORDERS_VIEW)
+        .select("payment_id", count="exact")
+        .eq("booking_status", "CONFIRMED")
+        .gte("created_at", today_start)
+        .lt("created_at", tomorrow_start)
+        .range(0, 0)
+        .execute()
+        .count
+        or 0
+    )
+    pending_today = max(0, orders_today - confirmed_today)
 
     # Explicitly bounded (unlike every other query here, which counts rather
     # than transfers rows) -- H2 code-review finding: without a range,
     # PostgREST's own default row cap could silently truncate this sum with
     # no error once a day passes that many PAID payments.
+    #
+    # Filtered on `paid_at`, not `created_at` (phase-17-overview-kpi.md L75 /
+    # its own success criterion, code-review C1 finding): "revenue today"
+    # means money that actually landed today, not orders opened today -- a
+    # guest who starts checkout at 23:50 and pays at 00:10 must count
+    # against the day the money arrived, not the day the cart was created.
     paid_today_rows = (
         supabase.table("payments")
         .select("amount")
         .eq("status", "PAID")
-        .gte("created_at", today_start)
-        .lt("created_at", tomorrow_start)
+        .gte("paid_at", today_start)
+        .lt("paid_at", tomorrow_start)
         .range(0, _REVENUE_ROWS_CAP - 1)
         .execute()
         .data
@@ -600,11 +637,14 @@ def get_order_stats() -> OrderStatsResponse:
     if len(paid_today_rows) >= _REVENUE_ROWS_CAP:
         logger.warning("revenue_today hit the %d-row cap -- figure may be truncated", _REVENUE_ROWS_CAP)
     revenue_today = sum((Decimal(str(row["amount"])) for row in paid_today_rows), Decimal("0"))
-    # L5 (plan): divides by ALL orders created today, not just the paid ones
-    # -- matches the design's sample numbers exactly (62.400.000 / 18).
-    # Quantized to cents (H1 code-review finding): an exact Decimal division
-    # like 62400000/18 doesn't terminate and would otherwise serialize with
-    # ~20 decimal digits instead of a money-shaped value.
+    # L5 (plan): divides by ALL orders *created* today, not just the ones
+    # paid today -- matches the design's sample numbers exactly
+    # (62.400.000 / 18) and is a deliberate mixed-population average (revenue
+    # scoped to `paid_at`, order count scoped to `created_at`), not a bug:
+    # the design's own two sample numbers only reconcile this way. Quantized
+    # to cents (H1 code-review finding): an exact Decimal division like
+    # 62400000/18 doesn't terminate and would otherwise serialize with ~20
+    # decimal digits instead of a money-shaped value.
     avg_order_value = (revenue_today / max(orders_today, 1)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     now = datetime.now(timezone.utc)
@@ -630,9 +670,11 @@ def get_order_stats() -> OrderStatsResponse:
     return OrderStatsResponse(
         orders_today=orders_today,
         orders_yesterday=orders_yesterday,
-        revenue_today=_money_str(revenue_today),
+        confirmed_today=confirmed_today,
+        pending_today=pending_today,
+        revenue_today=money_str(revenue_today),
         currency="VND",
-        avg_order_value=_money_str(avg_order_value),
+        avg_order_value=money_str(avg_order_value),
         pending_count=pending_count,
         pending_over_2h=pending_over_2h,
         expiring_holds_30m=expiring_holds_30m,
@@ -735,7 +777,7 @@ def _booking_row_to_room_line(row: dict[str, Any]) -> OrderRoomLine:
         nights=nights,
         room_count=room_count,
         unit_price=unit_price,
-        total_amount=_money_str(total_amount),
+        total_amount=money_str(total_amount),
         status=row["status"],
         expires_at=row.get("expires_at"),
     )
@@ -848,9 +890,9 @@ def get_order_detail(payment_id: UUID) -> OrderDetailResponse:
     total = Decimal(str(payment["amount"]))
     fee = total - subtotal
     totals = OrderTotals(
-        subtotal=_money_str(subtotal),
-        fee=_money_str(fee) if fee != 0 else None,
-        total=_money_str(total),
+        subtotal=money_str(subtotal),
+        fee=money_str(fee) if fee != 0 else None,
+        total=money_str(total),
         currency=payment["currency"],
     )
 
@@ -870,7 +912,7 @@ def get_order_detail(payment_id: UUID) -> OrderDetailResponse:
         transaction_no=payment.get("vnp_transaction_no"),
         response_code=payment.get("vnp_response_code"),
         paid_at=payment.get("paid_at"),
-        amount=_money_str(total),
+        amount=money_str(total),
         currency=payment["currency"],
     )
 
@@ -882,7 +924,7 @@ def get_order_detail(payment_id: UUID) -> OrderDetailResponse:
 
     return OrderDetailResponse(
         payment_id=str(payment["id"]),
-        order_code=_short_code("DH", str(payment["id"])),
+        order_code=short_code("DH", str(payment["id"])),
         booking_status=booking_status,
         payment_status=payment["status"],
         needs_attention=needs_attention,

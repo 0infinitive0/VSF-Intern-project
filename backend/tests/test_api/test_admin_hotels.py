@@ -274,6 +274,23 @@ async def test_list_hotels_applies_search_source_active_and_embedding_filters(cl
 
 
 @pytest.mark.asyncio
+async def test_list_hotels_embedding_incomplete_covers_missing_hotel_or_missing_rooms(client, admin_override, monkeypatch):
+    """B7's own filter (phase-12-embedding-status.md): unlike `missing`
+    (`hotel_embedded=false` only), `incomplete` must also catch a hotel
+    whose own embedding is set but still has rooms missing theirs -- B1's
+    `missing` filter would silently skip that hotel."""
+    fake_client = _FakeClient({"admin_hotel_rows": [_hotel_row()]})
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.get("/api/v1/admin/hotels", params={"embedding": "incomplete"})
+
+    assert response.status_code == 200
+    query = fake_client.queries["admin_hotel_rows"][0]
+    assert query._or == "hotel_embedded.eq.false,rooms_missing_embedding.gt.0"
+    assert ("hotel_embedded", False) not in query._eq
+
+
+@pytest.mark.asyncio
 async def test_list_hotels_csv_format_returns_downloadable_csv(client, admin_override, monkeypatch):
     fake_client = _FakeClient({"admin_hotel_rows": [_hotel_row(name="Khách sạn Ngô Quyền")]})
     monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
@@ -592,7 +609,7 @@ def test_csv_safe_escapes_leading_formula_characters():
 
 
 # ---------------------------------------------------------------------------
-# GET / PATCH /api/v1/admin/hotels/{id}, POST .../reembed (B3 -- phase-09-hotel-edit.md)
+# GET / PATCH /api/v1/admin/hotels/{id} (B3 -- phase-09-hotel-edit.md)
 # ---------------------------------------------------------------------------
 
 
@@ -931,14 +948,6 @@ async def test_update_hotel_bumps_updated_at_but_excludes_it_from_audit(client, 
     assert "updated_at" in hotels_update.update_payload
     assert "updated_at" not in no_audit[0]["after"]
     assert "updated_at" not in response.json()["changed_fields"]
-
-
-@pytest.mark.asyncio
-async def test_reembed_hotel_returns_503_airflow_unavailable(client, admin_override):
-    response = await client.post("/api/v1/admin/hotels/hotel-1/reembed")
-
-    assert response.status_code == 503
-    assert response.json()["detail"] == "airflow_unavailable"
 
 
 @pytest.mark.asyncio

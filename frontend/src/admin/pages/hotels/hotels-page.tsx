@@ -3,6 +3,7 @@ import {
   bulkSetHotelActive,
   exportHotelsCsv,
   listHotels,
+  reembedHotels,
   setHotelActive,
   type EmbeddingFilter,
   type HotelBlockedBooking,
@@ -17,6 +18,7 @@ import { ErrorState } from '../../ui/error-state'
 import { Modal } from '../../ui/modal'
 import { Pagination } from '../../ui/pagination'
 import { SkeletonTable } from '../../ui/skeleton-table'
+import { ReembedConfirmDialog } from '../embedding/reembed-confirm-dialog'
 import { HotelsBulkBar } from './hotels-bulk-bar'
 import { HotelsTable } from './hotels-table'
 import { HotelsToolbar } from './hotels-toolbar'
@@ -62,6 +64,10 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
   const [bulkError, setBulkError] = useState<string | null>(null)
   const [csvBusy, setCsvBusy] = useState(false)
   const [csvError, setCsvError] = useState<string | null>(null)
+  const [reembedConfirmOpen, setReembedConfirmOpen] = useState(false)
+  const [reembedIncludeRooms, setReembedIncludeRooms] = useState(false)
+  const [reembedBusy, setReembedBusy] = useState(false)
+  const [reembedMessage, setReembedMessage] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null)
 
   // Debounce the search box so every keystroke doesn't fire a request.
   useEffect(() => {
@@ -145,6 +151,27 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
     setSelectedIds(blockedIds.size > 0 ? blockedIds : new Set())
   }
 
+  async function handleBulkReembed() {
+    setReembedBusy(true)
+    setReembedMessage(null)
+    const hotelIds = Array.from(selectedIds)
+    const result = await reembedHotels(hotelIds, reembedIncludeRooms)
+    setReembedBusy(false)
+    setReembedConfirmOpen(false)
+    if (!result.ok) {
+      setReembedMessage({ tone: 'err', text: result.detail })
+      return
+    }
+    setReembedMessage({
+      tone: 'ok',
+      text: result.data.queued
+        ? `Đã gửi yêu cầu chạy lại embedding cho ${hotelIds.length} khách sạn.`
+        : `Đã đánh dấu ${hotelIds.length} khách sạn cần nhúng lại. Pipeline sẽ tự nhặt ở lần chạy kế tiếp, hoặc chạy ngay ở mục Dữ liệu bot.`,
+    })
+    setSelectedIds(new Set())
+    setRefreshKey((k) => k + 1)
+  }
+
   async function handleExportCsv() {
     setCsvBusy(true)
     setCsvError(null)
@@ -176,6 +203,7 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
       <div style={{ flex: 1, minHeight: 0, padding: '22px 28px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         {csvError && <Banner tone="err">{csvError}</Banner>}
         {bulkError && <Banner tone="err">{bulkError}</Banner>}
+        {reembedMessage && <Banner tone={reembedMessage.tone}>{reembedMessage.text}</Banner>}
 
         {rowError && (
           <Banner tone="err">
@@ -249,8 +277,9 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
 
       <HotelsBulkBar
         selectedCount={selectedIds.size}
-        busy={bulkBusy}
+        busy={bulkBusy || reembedBusy}
         onDeactivate={() => setBulkConfirmOpen(true)}
+        onReembed={() => setReembedConfirmOpen(true)}
         onClear={() => setSelectedIds(new Set())}
       />
 
@@ -268,6 +297,16 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
           </Button>
         </div>
       </Modal>
+
+      <ReembedConfirmDialog
+        open={reembedConfirmOpen}
+        count={selectedIds.size}
+        includeRooms={reembedIncludeRooms}
+        busy={reembedBusy}
+        onIncludeRoomsChange={setReembedIncludeRooms}
+        onConfirm={handleBulkReembed}
+        onClose={() => setReembedConfirmOpen(false)}
+      />
     </>
   )
 }

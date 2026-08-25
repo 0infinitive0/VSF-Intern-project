@@ -209,6 +209,17 @@ class Settings(BaseSettings):
         "the account owner's own verified email in some configurations.",
     )
 
+    # Airflow admin client (phase-13-airflow-client.md). Portal users have no
+    # Airflow account of their own (decision #4) -- these credentials live only
+    # here, never returned by any API. Empty airflow_api_base turns the whole
+    # pipeline branch off: airflow_client raises AirflowUnavailable immediately,
+    # no network call attempted.
+    airflow_api_base: str = ""
+    airflow_username: str = ""
+    airflow_password: str = ""
+    airflow_request_timeout: float = Field(default=10.0, gt=0)
+
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings()

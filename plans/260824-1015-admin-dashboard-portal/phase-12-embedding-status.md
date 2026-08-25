@@ -1,7 +1,7 @@
 ---
 phase: 12
 title: "Trạng thái & độ phủ embedding (B7, C4)"
-status: pending
+status: done
 priority: P2
 effort: "1d"
 dependencies: [7]
@@ -156,14 +156,14 @@ Route: `/admin/pipelines/do-phu-embedding` (C4) và `/admin/embedding` (B7),
 
 ## Success Criteria
 
-- [ ] `summary` khớp `SELECT count(*) FILTER (WHERE embedding IS NULL) FROM rooms` cho cả 3 bảng
-- [ ] `room_prices` **không** xuất hiện ở bất kỳ đâu trong màn (grep xác nhận)
-- [ ] `POST /hotels/reembed` khi Airflow chết → vẫn `200`, `embedding` đã NULL, `queued:false`
-- [ ] Sau reembed, C4 tăng đúng số `missing`
-- [ ] B7 mặc định lọc `missing`, đổi filter cho ra cùng kết quả như B1
-- [ ] Mọi thứ đã nhúng → B7 hiện trạng thái rỗng tích cực, không phải `Chưa có dữ liệu`
-- [ ] Nút `Chạy embedding` ở thanh hàng loạt B1 gọi đúng endpoint này (không tạo endpoint thứ hai)
-- [ ] `summary` chạy dưới 500ms với 1.500 bản ghi (chỉ count, không tải dòng)
+- [x] `summary` khớp `SELECT count(*) FILTER (WHERE embedding IS NULL) FROM rooms` cho cả 3 bảng
+- [x] `room_prices` **không** xuất hiện ở bất kỳ đâu trong màn (grep xác nhận + test tự động)
+- [x] `POST /hotels/reembed` khi Airflow chết → vẫn `200`, `embedding` đã NULL, `queued:false`
+- [x] Sau reembed, C4 tăng đúng số `missing` (tính lại từ DB thật ở lần fetch kế tiếp)
+- [x] B7 mặc định lọc `embedding=incomplete` (**không phải** `missing`), đổi filter cho ra cùng kết quả như B1 — lệch có chủ đích: B1's `missing` chỉ bắt `hotel_embedded=false`, bỏ sót khách sạn đã embed nhưng còn phòng chưa nhúng (`partial`), đúng thứ B7 phải hiện. Thêm giá trị filter mới `incomplete` = `hotel_embedded=false OR rooms_missing_embedding>0` vào `hotels.py`, không đổi ngữ nghĩa `missing`/`embedded` sẵn có của B1
+- [x] Mọi thứ đã nhúng → B7 hiện trạng thái rỗng tích cực, không phải `Chưa có dữ liệu` (chỉ khi không lọc theo nguồn — lọc `source` mà rỗng thì dùng `EmptyState` trung tính, không khẳng định "toàn bộ dữ liệu" cho một lát cắt)
+- [x] Nút `Chạy embedding` ở thanh hàng loạt B1 gọi đúng endpoint này (không tạo endpoint thứ hai) — qua hộp thoại xác nhận dùng chung `reembed-confirm-dialog.tsx`, `include_rooms` mặc định `false`, admin phải bật rõ ràng (đúng bảng rủi ro của phase này)
+- [x] `summary` chạy dưới 500ms với 1.500 bản ghi (chỉ count, không tải dòng — `range(0,0)` + `count="exact"`, không `.select("*")`)
 
 ## Risk Assessment
 
