@@ -15,6 +15,7 @@ import { useSessionHistory } from './hooks/use-session-history'
 import { composeIntakeMessage } from './lib/compose-intake-message'
 import { deriveStageView, type StageView } from './lib/derive-stage'
 import { resolveAmenityCatalog } from './lib/hotel-filters'
+import { resolveIdentityTransition } from './lib/identity-transition'
 import { isFieldFilled } from './lib/next-intake-field'
 import { consumeVnpayReturn, isVnpayReturnPending } from './lib/vnpay-return'
 import type { HotelFilterData, HotelOption } from './types'
@@ -617,6 +618,19 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   // *next* non-null id (the new anonymous session) instead means this only
   // ever fires once auth-headers.ts has a real token to attach, and still
   // catches the net change (old real id -> new anonymous id) correctly.
+  //
+  // Also deliberately does NOT fire when auth.user?.id changes because an
+  // anonymous session quietly died and auth-context.tsx re-minted a new one
+  // (its silentRecoveryRef, wired through resolveIdentityTransition below) —
+  // the visitor did nothing here, so from their side nothing should change.
+  // Without this, a tab left idle/backgrounded a few hours (long enough for
+  // supabase-js's autoRefreshToken timer to miss its window — browsers
+  // throttle background-tab timers) would come back to this effect seeing a
+  // new anonymous id indistinguishable from a real sign-out, wiping the
+  // active trip and locking the Hotels/Itinerary step-navigator tabs with no
+  // error shown anywhere. See identity-transition.ts for the full decision
+  // table and auth-context.tsx's silentRecoveryRef for where the flag comes
+  // from.
   const identityInitializedRef = useRef(false)
   const previousUserIdRef = useRef<string | null>(null)
   // Ref-to-latest-closure rather than a dep-array entry: handleNewTrip is
@@ -629,16 +643,19 @@ function PlannerApp({ onOpenAuthPanel }: { onOpenAuthPanel: () => void }) {
   handleNewTripRef.current = handleNewTrip
   useEffect(() => {
     const currentUserId = auth.user?.id ?? null
-    if (!identityInitializedRef.current) {
-      identityInitializedRef.current = true
-      previousUserIdRef.current = currentUserId
-      return
-    }
-    if (currentUserId === null) return
-    if (previousUserIdRef.current === currentUserId) return
-    previousUserIdRef.current = currentUserId
-    handleNewTripRef.current()
-  }, [auth.user?.id])
+    const transition = resolveIdentityTransition({
+      isFirstRender: !identityInitializedRef.current,
+      previousUserId: previousUserIdRef.current,
+      currentUserId,
+      wasSilentRecovery: auth.silentRecoveryRef.current,
+    })
+    identityInitializedRef.current = true
+    if (transition.updatePrevious) previousUserIdRef.current = transition.nextPreviousUserId
+    if (transition.shouldReset) handleNewTripRef.current()
+    // auth.silentRecoveryRef is listed for the lint rule's sake — it's a ref
+    // object (stable identity from useRef in auth-context.tsx), so including
+    // it never causes an extra run; only auth.user?.id changing does that.
+  }, [auth.user?.id, auth.silentRecoveryRef])
 
   async function handlePickSession(sessionId: string) {
     if (state.pending || restoringSessionId || sessionId === state.sessionId) return
