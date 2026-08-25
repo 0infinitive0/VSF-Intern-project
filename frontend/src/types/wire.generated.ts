@@ -1148,6 +1148,167 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/hotels/{hotel_id}/reembed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reembed Hotel
+         * @description Always 503 until Phase 13 (Airflow client) exists -- there is no DAG
+         *     trigger to call yet. `update_hotel` already does the part that matters
+         *     (`embedding = NULL`) without this endpoint; the reembed dialog's "Chạy
+         *     ngay" is a convenience this phase intentionally leaves unimplemented
+         *     rather than fake.
+         */
+        post: operations["reembed_hotel_api_v1_admin_hotels__hotel_id__reembed_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/amenity-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Amenity Catalog */
+        get: operations["list_amenity_catalog_api_v1_admin_amenity_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/amenity-catalog/check-duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check Duplicate */
+        post: operations["check_duplicate_api_v1_admin_amenity_catalog_check_duplicate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/amenity-catalog/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Draft Amenities */
+        post: operations["draft_amenities_api_v1_admin_amenity_catalog_draft_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/amenity-catalog/{amenity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Amenity */
+        delete: operations["delete_amenity_api_v1_admin_amenity_catalog__amenity_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Amenity */
+        patch: operations["update_amenity_api_v1_admin_amenity_catalog__amenity_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/amenity-catalog/{amenity_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Amenity */
+        post: operations["approve_amenity_api_v1_admin_amenity_catalog__amenity_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/amenity-catalog/bulk-approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bulk Approve Amenities */
+        post: operations["bulk_approve_amenities_api_v1_admin_amenity_catalog_bulk_approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/amenity-catalog/{amenity_id}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Retire Amenity */
+        patch: operations["retire_amenity_api_v1_admin_amenity_catalog__amenity_id__retire_patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/amenity-catalog/{amenity_id}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reactivate Amenity */
+        post: operations["reactivate_amenity_api_v1_admin_amenity_catalog__amenity_id__reactivate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3188,6 +3349,173 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
+        };
+        /** AmenityCatalogListResponse */
+        AmenityCatalogListResponse: {
+            /** Items */
+            items: components["schemas"]["AmenityCatalogRow"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Pending Count */
+            pending_count: number;
+        };
+        /** AmenityCatalogRow */
+        AmenityCatalogRow: {
+            /** Id */
+            id: string;
+            /** Label Vi */
+            label_vi: string;
+            /** Label En */
+            label_en: string;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "hotel" | "room" | "both";
+            /** Category */
+            category: string;
+            /** Icon Key */
+            icon_key?: string | null;
+            /** Match Keywords */
+            match_keywords: string[];
+            /** Parent Id */
+            parent_id?: string | null;
+            /** Is Approved */
+            is_approved: boolean;
+            /** Retired At */
+            retired_at?: string | null;
+            /** Hotel Count */
+            hotel_count: number;
+            /** Room Count */
+            room_count: number;
+            /** Child Count */
+            child_count: number;
+        };
+        /** AmenityMatch */
+        AmenityMatch: {
+            /** Id */
+            id: string;
+            /** Label Vi */
+            label_vi: string;
+            /** Label En */
+            label_en: string;
+            /** Score */
+            score: number;
+        };
+        /** ApproveResponse */
+        ApproveResponse: {
+            /** Id */
+            id: string;
+            /** Is Approved */
+            is_approved: boolean;
+        };
+        /** BulkApproveRequest */
+        BulkApproveRequest: {
+            /** Ids */
+            ids: string[];
+        };
+        /** BulkApproveResponse */
+        BulkApproveResponse: {
+            /** Approved */
+            approved: number;
+        };
+        /** CheckDuplicateRequest */
+        CheckDuplicateRequest: {
+            /** Text */
+            text: string;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "hotel" | "room";
+        };
+        /** CheckDuplicateResponse */
+        CheckDuplicateResponse: {
+            /** Parsed */
+            parsed: string[];
+            /** Exact */
+            exact: components["schemas"]["FlaggedName"][];
+            /** Flagged */
+            flagged: components["schemas"]["FlaggedName"][];
+            /** Clear */
+            clear: string[];
+        };
+        /** DraftRequest */
+        DraftRequest: {
+            /** Names */
+            names: string[];
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "hotel" | "room";
+            /** Acknowledge */
+            acknowledge?: string[];
+        };
+        /** DraftResponse */
+        DraftResponse: {
+            /** Items */
+            items: components["schemas"]["AmenityCatalogRow"][];
+            /** Skipped Exact */
+            skipped_exact: string[];
+            /** Skipped Duplicate */
+            skipped_duplicate: string[];
+        };
+        /** FlaggedName */
+        FlaggedName: {
+            /** Name */
+            name: string;
+            closest: components["schemas"]["AmenityMatch"];
+            /** Score */
+            score: number;
+        };
+        /** ReembedResponse */
+        ReembedResponse: {
+            /** Queued */
+            queued: boolean;
+            /** Dag Run Id */
+            dag_run_id?: string | null;
+            /** Scope */
+            scope: string;
+        };
+        /** RetireResponse */
+        RetireResponse: {
+            /** Id */
+            id: string;
+            /** Retired At */
+            retired_at: string | null;
+        };
+        /** UpdateAmenityRequest */
+        UpdateAmenityRequest: {
+            /** Label Vi */
+            label_vi?: string | null;
+            /** Label En */
+            label_en?: string | null;
+            /** Category */
+            category?: string | null;
+            /** Icon Key */
+            icon_key?: string | null;
+            /** Match Keywords */
+            match_keywords?: string[] | null;
+            /** Parent Id */
+            parent_id?: string | null;
+            /** Scope */
+            scope?: ("hotel" | "room" | "both") | null;
+        };
+        /** UpdateAmenityResponse */
+        UpdateAmenityResponse: {
+            /** Id */
+            id: string;
+            /** Changed Fields */
+            changed_fields: string[];
         };
     };
     responses: never;
@@ -4142,7 +4470,7 @@ export interface operations {
                 q?: string | null;
                 source?: "manual" | "pipeline" | "all";
                 is_active?: boolean | null;
-                embedding?: "embedded" | "missing" | "incomplete" | "all";
+                embedding?: "embedded" | "missing" | "all";
                 page?: number;
                 page_size?: number;
                 format?: "json" | "csv";
@@ -5253,6 +5581,349 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    reembed_hotel_api_v1_admin_hotels__hotel_id__reembed_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                hotel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReembedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_amenity_catalog_api_v1_admin_amenity_catalog_get: {
+        parameters: {
+            query?: {
+                scope?: "hotel" | "room" | "all";
+                status?: "approved" | "pending" | "retired" | "all";
+                category?: string;
+                q?: string | null;
+                page?: number;
+                page_size?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AmenityCatalogListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_duplicate_api_v1_admin_amenity_catalog_check_duplicate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckDuplicateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckDuplicateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    draft_amenities_api_v1_admin_amenity_catalog_draft_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_amenity_api_v1_admin_amenity_catalog__amenity_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                amenity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_amenity_api_v1_admin_amenity_catalog__amenity_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                amenity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAmenityRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateAmenityResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_amenity_api_v1_admin_amenity_catalog__amenity_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                amenity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApproveResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_approve_amenities_api_v1_admin_amenity_catalog_bulk_approve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkApproveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkApproveResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retire_amenity_api_v1_admin_amenity_catalog__amenity_id__retire_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                amenity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetireResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reactivate_amenity_api_v1_admin_amenity_catalog__amenity_id__reactivate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                amenity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetireResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

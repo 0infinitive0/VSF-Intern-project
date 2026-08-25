@@ -8,6 +8,26 @@ import { authHeaders } from '../../api/auth-headers'
 
 const BASE = (import.meta.env.VITE_API_BASE || '') + '/api/v1/admin'
 
+// The backend's Supabase client is a single process-wide HTTP/2 connection
+// (get_supabase_client(), @lru_cache'd) shared across FastAPI's threadpool
+// workers -- two admin requests landing at the same instant (e.g. the
+// sidebar's badge fetch racing a page's own list fetch, both firing on
+// mount) can corrupt that shared connection and 500 one or both (repro'd
+// live: httpx.RemoteProtocolError / a raw Cloudflare 400 postgrest can't
+// parse). Serializing every call through this one queue -- so no two
+// requests are ever in flight to the backend at once -- is the fix that
+// stays on the frontend instead of touching that shared backend hub.
+let requestQueue: Promise<unknown> = Promise.resolve()
+
+function enqueue<T>(task: () => Promise<T>): Promise<T> {
+  const result = requestQueue.then(task, task)
+  requestQueue = result.then(
+    () => undefined,
+    () => undefined,
+  )
+  return result
+}
+
 export type AdminApiResult<T> =
   | { ok: true; data: T }
   | { ok: false; status: number; detail: string }
@@ -29,10 +49,8 @@ function detailFromValidationErrors(body: unknown): string | null {
 export async function adminFetch<T>(path: string, init?: RequestInit): Promise<AdminApiResult<T>> {
   let res: Response
   try {
-    res = await fetch(`${BASE}${path}`, {
-      ...init,
-      headers: { ...(await authHeaders()), ...init?.headers },
-    })
+    const headers = { ...(await authHeaders()), ...init?.headers }
+    res = await enqueue(() => fetch(`${BASE}${path}`, { ...init, headers }))
   } catch {
     return { ok: false, status: 0, detail: 'Không thể kết nối tới máy chủ.' }
   }

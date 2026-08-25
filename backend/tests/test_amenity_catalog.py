@@ -8,6 +8,7 @@ class _Query:
     def __init__(self, rows):
         self.rows = rows
         self.filters = []
+        self.is_null_filters = []
         self.requested_ids = None
         self.limit_value = None
 
@@ -17,6 +18,10 @@ class _Query:
 
     def eq(self, field, value):
         self.filters.append((field, value))
+        return self
+
+    def is_(self, field, value):
+        self.is_null_filters.append((field, value))
         return self
 
     def in_(self, field, values):
@@ -60,6 +65,7 @@ def test_query_approved_amenities_filters_by_sanitized_ids(monkeypatch):
         ("wifi", "Wi-Fi"),
     ]
     assert client.query.filters == [("is_approved", True)]
+    assert client.query.is_null_filters == [("retired_at", "null")]
     assert client.query.requested_ids == ("id", ["parking", "wifi"])
     assert client.query.limit_value == 100
 
@@ -88,6 +94,7 @@ def test_query_approved_amenities_reads_every_catalog_page(monkeypatch):
             self.end = -1
         def select(self, _fields): return self
         def eq(self, _field, _value): return self
+        def is_(self, _field, _value): return self
         def range(self, start, end):
             self.start = start
             self.end = end
@@ -173,7 +180,8 @@ def test_discover_and_store_amenities_stages_only_fast_model_candidates(monkeypa
             "category": "wellness",
             "icon_key": "spa",
             "match_keywords": ["wellness", "phòng spa"],
-                "is_approved": False,
+            "parent_id": None,
+            "is_approved": False,
         }
     ]
     assert "unknown scraped hotel amenities" in captured_messages[0].content

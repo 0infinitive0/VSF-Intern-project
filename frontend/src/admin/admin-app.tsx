@@ -4,6 +4,7 @@ import { getAdminMe, type AdminMe } from './api/admin-me'
 import { AdminLogin } from './auth/admin-login'
 import { Forbidden } from './auth/forbidden'
 import { AdminShell } from './layout/admin-shell'
+import { AmenityCatalogPage } from './pages/amenities/amenity-catalog-page'
 import { EmbeddingCoveragePage } from './pages/embedding/embedding-coverage-page'
 import { EmbeddingStatusPage } from './pages/embedding/embedding-status-page'
 import { HotelCreatePage } from './pages/hotels/hotel-create-page'
@@ -38,6 +39,7 @@ function resolvePage(path: string, navigate: (to: string) => void) {
     return <HotelDetailPage hotelId={hotelId} navigate={navigate} />
   }
   if (path === '/admin/hotels') return <HotelsPage navigate={navigate} />
+  if (path === '/admin/amenities-catalog') return <AmenityCatalogPage />
   if (path === '/admin/embedding') return <EmbeddingStatusPage navigate={navigate} />
   if (path === '/admin/pipelines/do-phu-embedding') return <EmbeddingCoveragePage navigate={navigate} />
   if (path.startsWith('/admin/pipelines/runs/')) return <RouteStub title="Chi tiết lần chạy" phase={16} />
