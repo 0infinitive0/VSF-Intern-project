@@ -1,7 +1,7 @@
 import { useId } from 'react'
 import type { DestinationOption } from '../../api/hotels-client'
 import { Input } from '../../ui/input'
-import { MapStaticPreview } from './map-static-preview'
+import { MapLocationPicker } from './map-location-picker'
 import { PipelineFieldBadge } from './pipeline-field-badge'
 import { RagFieldLabel } from './rag-field-label'
 
@@ -138,8 +138,13 @@ export function HotelLocationFields({ value, onChange, destinations, lockedField
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <span className="field-label">Xem trước vị trí trên bản đồ</span>
-        <MapStaticPreview latitude={value.latitude} longitude={value.longitude} />
+        <span className="field-label">Vị trí trên bản đồ</span>
+        <span style={{ fontSize: 12, color: 'var(--t4)' }}>Nhấp vào bản đồ hoặc kéo ghim để chọn vị trí</span>
+        <MapLocationPicker
+          latitude={value.latitude}
+          longitude={value.longitude}
+          onPick={(lat, lng) => onChange({ ...value, latitude: lat, longitude: lng })}
+        />
       </div>
     </div>
   )

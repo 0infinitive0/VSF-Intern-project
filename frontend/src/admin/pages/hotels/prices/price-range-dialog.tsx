@@ -12,7 +12,6 @@ interface PriceRangeDialogProps {
   editingRange: RangeRow | null
   /** Currency for a brand-new range (no `editingRange` to read one from). */
   defaultCurrency: string
-  todayIso: string
   saving: boolean
   onClose: () => void
   onSubmit: (dates: string[], price: string, soldOut: boolean, currency: string) => void
@@ -25,7 +24,7 @@ function lastNightInclusive(rangeTo: string): string {
   return d.toISOString().slice(0, 10)
 }
 
-export function PriceRangeDialog({ open, editingRange, defaultCurrency, todayIso, saving, onClose, onSubmit }: PriceRangeDialogProps) {
+export function PriceRangeDialog({ open, editingRange, defaultCurrency, saving, onClose, onSubmit }: PriceRangeDialogProps) {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [price, setPrice] = useState('')
@@ -62,11 +61,10 @@ export function PriceRangeDialog({ open, editingRange, defaultCurrency, todayIso
             label="Từ ngày"
             type="date"
             value={from}
-            min={todayIso}
             disabled={!!editingRange}
             onChange={(e) => setFrom(e.target.value)}
           />
-          <Input label="Đến ngày" type="date" value={to} min={from || todayIso} onChange={(e) => setTo(e.target.value)} />
+          <Input label="Đến ngày" type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} />
         </div>
 
         <Input label="Giá mỗi đêm" inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d]/g, ''))} placeholder="1500000" />

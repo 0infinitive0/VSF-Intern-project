@@ -45,10 +45,13 @@ interface FormState {
   view: string
   facilities: string[]
   images: string[]
+  availableRoomCount: string
 }
 
 function formFromRoom(room: RoomRow | null): FormState {
-  if (!room) return { name: '', maxGuests: null, bedDescription: '', roomSizeSqm: '', view: '', facilities: [], images: [] }
+  if (!room) {
+    return { name: '', maxGuests: null, bedDescription: '', roomSizeSqm: '', view: '', facilities: [], images: [], availableRoomCount: '' }
+  }
   return {
     name: room.name,
     maxGuests: room.max_guests ?? null,
@@ -57,6 +60,7 @@ function formFromRoom(room: RoomRow | null): FormState {
     view: room.view ?? '',
     facilities: room.room_facilities,
     images: room.images,
+    availableRoomCount: room.available_room_count != null ? String(room.available_room_count) : '',
   }
 }
 
@@ -108,6 +112,7 @@ export function RoomDrawer({ open, onClose, hotelId, hotelName, room, facilityCa
     }
     setSaving(true)
     const sizeValue = form.roomSizeSqm.trim() === '' ? null : Number(form.roomSizeSqm)
+    const availableRoomCountValue = form.availableRoomCount.trim() === '' ? null : Number(form.availableRoomCount)
     const shared = {
       name: form.name.trim(),
       max_guests: form.maxGuests,
@@ -116,6 +121,7 @@ export function RoomDrawer({ open, onClose, hotelId, hotelName, room, facilityCa
       view: form.view.trim() || null,
       room_facilities: form.facilities,
       images: form.images,
+      available_room_count: availableRoomCountValue,
     }
 
     if (isEdit) {
@@ -135,9 +141,10 @@ export function RoomDrawer({ open, onClose, hotelId, hotelName, room, facilityCa
         setSaveError(result.detail)
         return
       }
-      // A freshly created room has never been embedded -- always surface the
-      // re-embed dialog, same as B2's "mới tạo, chưa embed" contract.
-      onSaved(['name'])
+      // A freshly created room has never been embedded, so there is nothing
+      // to "re"-embed yet -- skip the re-embed dialog on create (it only
+      // makes sense after editing an already-embedded room).
+      onSaved([])
     }
   }
 
@@ -213,6 +220,20 @@ export function RoomDrawer({ open, onClose, hotelId, hotelName, room, facilityCa
             value={form.roomSizeSqm}
             onChange={(e) => setForm((prev) => ({ ...prev, roomSizeSqm: e.target.value }))}
           />
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <Input
+              id="room-available-count"
+              label="Số phòng còn trống"
+              type="number"
+              min={0}
+              value={form.availableRoomCount}
+              onChange={(e) => setForm((prev) => ({ ...prev, availableRoomCount: e.target.value }))}
+            />
+            <span style={{ fontSize: 11.5, color: 'var(--t4)' }}>
+              Để trống = 0 phòng khả dụng — dù đã đặt giá, bot vẫn báo hết phòng cho tới khi có số ở đây.
+            </span>
+          </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>

@@ -110,6 +110,7 @@ class CreateRoomRequest(BaseModel):
     view: str | None = Field(default=None, max_length=255)
     room_facilities: list[str] = Field(default_factory=list)
     images: list[str] = Field(default_factory=list, max_length=_MAX_IMAGES)
+    available_room_count: int | None = Field(default=None, ge=0)
 
     @field_validator("name")
     @classmethod
@@ -140,6 +141,7 @@ class UpdateRoomRequest(BaseModel):
     view: str | None = Field(default=None, max_length=255)
     room_facilities: list[str] | None = None
     images: list[str] | None = Field(default=None, max_length=_MAX_IMAGES)
+    available_room_count: int | None = Field(default=None, ge=0)
 
     @field_validator("name")
     @classmethod
@@ -336,13 +338,14 @@ def create_room(hotel_id: str, body: CreateRoomRequest, admin: AdminUser = Depen
         "room_facilities": body.room_facilities,
         "images": body.images,
         "image_count": len(body.images),
+        "available_room_count": body.available_room_count,
     }
     row = get_supabase_client().table("rooms").insert(payload).execute().data[0]
     write_audit(admin, action="room.create", entity_type="room", entity_id=row["id"], after=payload)
     return CreateRoomResponse(id=row["id"], source_room_id=source_room_id, embedding_state="missing")
 
 
-_DIRECT_UPDATE_FIELDS = ("name", "max_guests", "bed_description", "room_size_sqm", "view")
+_DIRECT_UPDATE_FIELDS = ("name", "max_guests", "bed_description", "room_size_sqm", "view", "available_room_count")
 
 
 @rooms_router.patch("/rooms/{room_id}", response_model=UpdateRoomResponse)

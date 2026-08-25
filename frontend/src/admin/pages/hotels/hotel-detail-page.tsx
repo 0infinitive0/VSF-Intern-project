@@ -303,7 +303,15 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
 
   async function handleReembedNow() {
     setReembedState('loading')
-    const result = await reembedHotels([hotelId])
+    // includeRooms=true: this button appears whenever embedding_state is
+    // 'missing' or 'partial' (L437), and 'partial' specifically means the
+    // hotel row itself is already embedded but its rooms aren't -- a
+    // hotel-only reembed would re-embed a row that's already fine and never
+    // touch the rooms, leaving "Thiếu embedding" stuck forever. Unlike the
+    // bulk reembed action (reembed-confirm-dialog.tsx), this is already
+    // scoped to exactly one hotel by being on its own detail page, so it
+    // doesn't need the same confirm-before-including-rooms gate.
+    const result = await reembedHotels([hotelId], true)
     const queued = result.ok && result.data.queued
     setReembedState(queued ? 'queued' : 'unavailable')
     if (queued) {
@@ -469,7 +477,7 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
             {saveError && <Banner tone="err">{saveError}</Banner>}
             {reembedState === 'unavailable' && (
               <Banner tone="warn">
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingRight: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingRight: 4, width: '100%' }}>
                   <span style={{ flex: 1 }}>Đã đánh dấu cần embed lại. Chạy pipeline embedding ở mục Dữ liệu bot để bot học ngay.</span>
                   <Button variant="ghost" size="sm" onClick={handleDismissReembed} aria-label="Đóng">
                     ✕
@@ -479,7 +487,7 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
             )}
             {reembedState === 'stalled' && (
               <Banner tone="warn">
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', paddingRight: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', paddingRight: 4, width: '100%' }}>
                   <span style={{ flex: 1, minWidth: 200 }}>
                     Pipeline embedding đang chờ lâu hơn bình thường (Airflow chưa bắt đầu chạy). Đã đánh dấu cần embed lại, bot sẽ học khi pipeline chạy.
                   </span>
@@ -495,7 +503,7 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
             {reembedState === 'queued' && (
               <Banner tone="ok">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingRight: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingRight: 4, width: '100%' }}>
                     <span style={{ flex: 1 }}>Đã gửi yêu cầu chạy lại embedding.</span>
                     <Button variant="ghost" size="sm" onClick={handleDismissReembed} aria-label="Đóng">
                       ✕
@@ -521,7 +529,7 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
             )}
             {reembedState === 'failed' && (
               <Banner tone="err">
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', paddingRight: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', paddingRight: 4, width: '100%' }}>
                   <span style={{ flex: 1, minWidth: 200 }}>Chạy embedding thất bại. Xem chi tiết lỗi tại trang Pipeline.</span>
                   <Button variant="secondary" size="sm" onClick={() => navigate('/admin/pipelines')}>
                     Xem trạng thái pipeline
