@@ -11,7 +11,6 @@ import {
   type HotelDetailResponse,
   type UpdateHotelRequest,
 } from '../../api/hotels-client'
-import { PageHeader } from '../../layout/page-header'
 import { Banner } from '../../ui/banner'
 import { Switch } from '../../ui/switch'
 import { Tabs, type TabItem } from '../../ui/tabs'
@@ -304,106 +303,111 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
 
   return (
     <>
-      <PageHeader
-        breadcrumb={`Quản trị · Khách sạn · ${hotel.name}`}
-        title={hotel.name}
-        action={
-          <>
-            <HotelSourceChip isManual={hotel.is_manual} />
-            <HotelEmbeddingDot
-              embeddingState={hotel.embedding_state}
-              roomCount={hotel.room_count}
-              roomsMissingEmbedding={hotel.rooms_missing_embedding}
-            />
-            <Switch checked={hotel.is_active} onChange={handleToggleActive} label="Đang bán" disabled={activeBusy} />
-          </>
-        }
-      />
+      {/* Two-row sticky header (breadcrumb+title+source/embed chips on the
+          left, "Đang bán" switch on the right; tabs directly below, no gap)
+          matches B3's artboard -- the generic PageHeader used elsewhere
+          renders a single fixed-height row with `action` pinned to the far
+          right, which would strand the source/embed chips away from the
+          title and leave the tabs visually detached from the header bar. */}
+      <div
+        style={{
+          flex: 'none',
+          padding: '14px 28px 0',
+          background: 'var(--g1)',
+          backdropFilter: 'blur(18px)',
+          borderBottom: '1px solid var(--stroke)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ fontSize: 11.5, color: 'var(--t4)' }}>Quản trị · Khách sạn · {hotel.name}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: '-.01em' }}>{hotel.name}</div>
+              <HotelSourceChip isManual={hotel.is_manual} />
+              <HotelEmbeddingDot
+                embeddingState={hotel.embedding_state}
+                roomCount={hotel.room_count}
+                roomsMissingEmbedding={hotel.rooms_missing_embedding}
+              />
+            </div>
+          </div>
+          <Switch checked={hotel.is_active} onChange={handleToggleActive} label="Đang bán" disabled={activeBusy} />
+        </div>
+
+        <Tabs
+          items={TABS.map((tab) => (tab.key === 'rooms' ? { ...tab, label: `Phòng (${hotel.room_count})` } : tab))}
+          activeKey={activeTabId}
+          onChange={setActiveTab}
+        />
+      </div>
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '14px 28px 0' }}>
-          {!hotel.is_manual && (
-            <Banner tone="warn">
-              Khách sạn này do pipeline ETL quản lý. Các ô có biểu tượng khoá sẽ bị ghi đè vào lần chạy kế tiếp.
-            </Banner>
-          )}
-          {lookupError && (
-            <div style={{ marginTop: 10 }}>
-              <Banner tone="err">{lookupError}</Banner>
-            </div>
-          )}
-          {activeError && (
-            <div style={{ marginTop: 10 }}>
-              <Banner tone="err">{activeError}</Banner>
-            </div>
-          )}
-          {saveError && (
-            <div style={{ marginTop: 10 }}>
-              <Banner tone="err">{saveError}</Banner>
-            </div>
-          )}
-        </div>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 22, display: 'flex', justifyContent: 'center' }}>
+          <div style={{ width: activeTabId === 'rooms' ? '100%' : 820, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {!hotel.is_manual && (
+              <Banner tone="warn">
+                Khách sạn này do pipeline ETL quản lý. Các ô có biểu tượng khoá sẽ bị ghi đè vào lần chạy kế tiếp.
+              </Banner>
+            )}
+            {lookupError && <Banner tone="err">{lookupError}</Banner>}
+            {activeError && <Banner tone="err">{activeError}</Banner>}
+            {saveError && <Banner tone="err">{saveError}</Banner>}
 
-        <div style={{ padding: '14px 28px 0' }}>
-          <Tabs
-            items={TABS.map((tab) => (tab.key === 'rooms' ? { ...tab, label: `Phòng (${hotel.room_count})` } : tab))}
-            activeKey={activeTabId}
-            onChange={setActiveTab}
-          />
-        </div>
-
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 22 }}>
-          {/* Rooms is a data table (8 columns), not a single-column form
-              like every other tab -- the shared 760px card cap would force
-              it into a narrow horizontal scroll for no reason. */}
-          <div className="card" style={{ maxWidth: activeTabId === 'rooms' ? undefined : 760, padding: 20 }}>
-            {activeTabId === 'basic' && (
-              <HotelTabBasic
-                value={basic}
-                onChange={setBasic}
-                accommodationTypeOptions={accommodationTypes}
-                lockedFields={hotel.pipeline_managed_fields}
-                changedFields={changedFields}
-              />
-            )}
-            {activeTabId === 'location' && (
-              <HotelTabLocation
-                value={location}
-                onChange={setLocation}
-                destinations={destinations}
-                lockedFields={hotel.pipeline_managed_fields}
-                changedFields={changedFields}
-              />
-            )}
-            {activeTabId === 'amenities' && (
-              <HotelTabAmenities
-                catalog={amenityCatalog}
-                selected={amenityIds}
-                onChange={setAmenityIds}
-                locked={hotel.pipeline_managed_fields.includes('amenities')}
-                changed={changedFields.includes('amenities')}
-              />
-            )}
-            {activeTabId === 'images' && <HotelTabImages hotelId={hotelId} images={images} onChange={setImages} />}
-            {activeTabId === 'rooms' && (
-              <HotelTabRooms
-                hotelId={hotelId}
-                hotelName={hotel.name}
-                navigate={navigate}
-                onRoomsChanged={() => {
-                  // `room_count`/`embedding_state` in the header + tab badge
-                  // are aggregates over `rooms` -- a room write makes them
-                  // stale without this, same posture as handleSave's
-                  // post-PATCH refetch below.
-                  getHotel(hotelId).then((result) => {
-                    if (result.ok) setHotel((current) => (current ? { ...result.data, is_active: current.is_active } : result.data))
-                  })
-                }}
-              />
-            )}
-            {activeTabId === 'nearby' && (
-              <HotelTabNearby nearbyAttractions={hotel.nearby_attractions} nearbyEssentials={hotel.nearby_essentials} />
-            )}
+            {/* Rooms is a data table (8 columns), not a single-column form
+                like every other tab -- the shared 820px column cap would
+                force it into a narrow horizontal scroll for no reason. */}
+            <div className="card" style={{ padding: 20 }}>
+              {activeTabId === 'basic' && (
+                <HotelTabBasic
+                  value={basic}
+                  onChange={setBasic}
+                  accommodationTypeOptions={accommodationTypes}
+                  lockedFields={hotel.pipeline_managed_fields}
+                  changedFields={changedFields}
+                />
+              )}
+              {activeTabId === 'location' && (
+                <HotelTabLocation
+                  value={location}
+                  onChange={setLocation}
+                  destinations={destinations}
+                  lockedFields={hotel.pipeline_managed_fields}
+                  changedFields={changedFields}
+                />
+              )}
+              {activeTabId === 'amenities' && (
+                <HotelTabAmenities
+                  catalog={amenityCatalog}
+                  selected={amenityIds}
+                  onChange={setAmenityIds}
+                  locked={hotel.pipeline_managed_fields.includes('amenities')}
+                  changed={changedFields.includes('amenities')}
+                />
+              )}
+              {activeTabId === 'images' && <HotelTabImages hotelId={hotelId} images={images} onChange={setImages} />}
+              {activeTabId === 'rooms' && (
+                <HotelTabRooms
+                  hotelId={hotelId}
+                  hotelName={hotel.name}
+                  navigate={navigate}
+                  onRoomsChanged={() => {
+                    // `room_count`/`embedding_state` in the header + tab badge
+                    // are aggregates over `rooms` -- a room write makes them
+                    // stale without this, same posture as handleSave's
+                    // post-PATCH refetch below.
+                    getHotel(hotelId).then((result) => {
+                      if (result.ok) setHotel((current) => (current ? { ...result.data, is_active: current.is_active } : result.data))
+                    })
+                  }}
+                />
+              )}
+              {activeTabId === 'nearby' && (
+                <HotelTabNearby nearbyAttractions={hotel.nearby_attractions} nearbyEssentials={hotel.nearby_essentials} />
+              )}
+            </div>
           </div>
         </div>
 

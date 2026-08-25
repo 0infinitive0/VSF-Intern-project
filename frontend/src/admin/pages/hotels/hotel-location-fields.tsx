@@ -118,15 +118,23 @@ export function HotelLocationFields({ value, onChange, destinations, lockedField
             onChange={(e) => onChange({ ...value, latitude: toNumberOrNull(e.target.value) })}
           />
         </div>
-        <Input
-          id={longitudeId}
-          label="Kinh độ"
-          type="number"
-          step="any"
-          placeholder="108.32694"
-          value={value.longitude ?? ''}
-          onChange={(e) => onChange({ ...value, longitude: toNumberOrNull(e.target.value) })}
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <label htmlFor={longitudeId} className="field-label">
+              Kinh độ
+            </label>
+            {locked('coordinates') && <PipelineFieldBadge />}
+            {changed('coordinates') && <ChangedBadge />}
+          </div>
+          <Input
+            id={longitudeId}
+            type="number"
+            step="any"
+            placeholder="108.32694"
+            value={value.longitude ?? ''}
+            onChange={(e) => onChange({ ...value, longitude: toNumberOrNull(e.target.value) })}
+          />
+        </div>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
