@@ -42,12 +42,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.api.admin.audit import write_audit
 from src.auth import AdminUser, require_admin
 from src.clients.supabase_client import get_supabase_client
-from src.services.booking_service import cancel_booking
+from src.services import payment_service
+from src.services.booking_service import BookingError, cancel_booking, confirm_booking, get_booking
+from src.services.email_service import send_booking_confirmation_email
 from src.services.vnpay_service import VN_TZ
 
 logger = logging.getLogger(__name__)
@@ -207,6 +209,34 @@ class OrderChatSession(BaseModel):
     session_id: str
     started_at: str | None = None
     message_count: int
+
+
+class BookingActionResult(BaseModel):
+    booking_id: str
+    ok: bool
+    error: str | None = None
+
+
+class ConfirmOrderResponse(BaseModel):
+    payment_id: str
+    confirmed: int
+    failed: int
+    booking_status: BookingStatus
+    email_sent: bool
+    results: list[BookingActionResult]
+
+
+class CancelOrderRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=200)
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class CancelOrderResponse(BaseModel):
+    payment_id: str
+    cancelled: int
+    failed: int
+    booking_status: BookingStatus
+    results: list[BookingActionResult]
 
 
 class OrderDetailResponse(BaseModel):
@@ -863,4 +893,176 @@ def get_order_detail(payment_id: UUID) -> OrderDetailResponse:
         timeline=_build_timeline(bookings, payment, booking_status),
         vnpay=vnpay,
         chat_session=_chat_session_info(session_id),
+    )
+
+
+# ---------------------------------------------------------------------------
+# D3 -- Xác nhận / Huỷ đơn (phase-06-order-actions.md)
+#
+# Both write through the same RPCs D5/booking flow already uses
+# (confirm_booking_reservation, cancel_booking) -- never a direct UPDATE on
+# bookings.status -- one call per booking in the payment's group, no shared
+# transaction (each RPC already takes its own row/advisory lock; wrapping
+# several in one transaction would hold those locks far longer and invite
+# deadlocks -- plan's risk table). A partial result (some bookings ok, some
+# not) is a valid 200, not an error: only when EVERY booking in the group
+# fails does this 409.
+# ---------------------------------------------------------------------------
+
+
+def _confirm_one(booking_id: str, temporary_user_ref: str | None) -> tuple[BookingActionResult, bool]:
+    """Confirms one booking. Returns (result, changed) -- `changed` is True
+    only when this call itself just flipped RESERVED -> CONFIRMED; a booking
+    already CONFIRMED (a retried/double-click confirm) counts as `ok=True`
+    but `changed=False` so the caller doesn't re-send the confirmation email
+    for a call that made no actual change (plan success criteria: a second
+    confirm call must not send a second email)."""
+    try:
+        confirm_booking(booking_id=UUID(booking_id), temporary_user_ref=temporary_user_ref or "")
+        return BookingActionResult(booking_id=booking_id, ok=True, error=None), True
+    except BookingError as exc:
+        code = str(exc)
+        if code == "booking_not_confirmable":
+            current = get_booking(UUID(booking_id))
+            if current and current.get("status") == "CONFIRMED":
+                return BookingActionResult(booking_id=booking_id, ok=True, error=None), False
+        return BookingActionResult(booking_id=booking_id, ok=False, error=code), False
+
+
+def _send_order_confirmation_email(payment: dict[str, Any]) -> bool:
+    """Best-effort -- mirrors routes.py's `_send_confirmation_email_best_effort`
+    for the guest-side VNPay IPN flow (kept as its own copy per this module's
+    file-ownership split, see module docstring). Never raises: a Resend
+    outage -- or any other failure while building the email, including the
+    `booking_summary_for_email` read -- must not turn an already-successful
+    confirm into a failed request between the DB write and the audit write.
+    `email_sent` on the response reflects what actually happened."""
+    guest_email = payment.get("guest_email")
+    booking_ids = payment.get("booking_ids") or []
+    if not guest_email or not booking_ids:
+        return False
+    try:
+        summary = payment_service.booking_summary_for_email([UUID(str(b)) for b in booking_ids])
+        send_booking_confirmation_email(
+            to_email=guest_email,
+            guest_name=payment.get("guest_name") or "",
+            hotel_name=(summary or {}).get("hotel_name") or "",
+            hotel_image_url=(summary or {}).get("hotel_image_url"),
+            booking_code=str(payment["id"])[:8].upper(),
+            check_in_date=str((summary or {}).get("check_in_date") or ""),
+            check_out_date=str((summary or {}).get("check_out_date") or ""),
+            rooms=(summary or {}).get("rooms") or [],
+            total_amount=Decimal(str(payment["amount"])) if payment.get("amount") is not None else None,
+            currency=payment.get("currency"),
+        )
+        return True
+    except Exception:
+        logger.exception("Failed to send booking confirmation email for payment %s", payment["id"])
+        return False
+
+
+@orders_router.post("/{payment_id}/confirm", response_model=ConfirmOrderResponse)
+def confirm_order(payment_id: UUID, admin: AdminUser = Depends(require_admin)) -> ConfirmOrderResponse:
+    payment = _fetch_payment(str(payment_id))
+    if payment is None:
+        raise HTTPException(status_code=404, detail="order_not_found")
+
+    before_rollup = _fetch_order_rollup(str(payment_id))
+    temporary_user_ref = payment.get("temporary_user_ref")
+
+    results: list[BookingActionResult] = []
+    confirmed = 0
+    failed = 0
+    any_changed = False
+    for booking_id in payment.get("booking_ids") or []:
+        result, changed = _confirm_one(str(booking_id), temporary_user_ref)
+        results.append(result)
+        if result.ok:
+            confirmed += 1
+        else:
+            failed += 1
+        any_changed = any_changed or changed
+
+    if confirmed == 0:
+        raise HTTPException(status_code=409, detail="booking_not_confirmable")
+
+    # Plan: send the confirmation email only "sau khi mọi booking CONFIRMED"
+    # -- a partial success (some bookings still failed) must not email the
+    # guest a confirmation that lists rooms that were never actually
+    # confirmed, or bill them the full order amount for a partial result.
+    email_sent = _send_order_confirmation_email(payment) if any_changed and failed == 0 else False
+
+    rollup = _fetch_order_rollup(str(payment_id)) or {"booking_status": "UNKNOWN"}
+    write_audit(
+        admin,
+        action="orders.confirm",
+        entity_type="payment",
+        entity_id=str(payment_id),
+        before={"booking_status": (before_rollup or {}).get("booking_status")},
+        after={
+            "booking_status": rollup["booking_status"],
+            "email_sent": email_sent,
+            "results": [r.model_dump() for r in results],
+        },
+    )
+
+    return ConfirmOrderResponse(
+        payment_id=str(payment_id),
+        confirmed=confirmed,
+        failed=failed,
+        booking_status=rollup["booking_status"],
+        email_sent=email_sent,
+        results=results,
+    )
+
+
+@orders_router.post("/{payment_id}/cancel", response_model=CancelOrderResponse)
+def cancel_order(
+    payment_id: UUID, body: CancelOrderRequest, admin: AdminUser = Depends(require_admin)
+) -> CancelOrderResponse:
+    payment = _fetch_payment(str(payment_id))
+    if payment is None:
+        raise HTTPException(status_code=404, detail="order_not_found")
+
+    before_rollup = _fetch_order_rollup(str(payment_id))
+    temporary_user_ref = payment.get("temporary_user_ref")
+
+    results: list[BookingActionResult] = []
+    cancelled = 0
+    failed = 0
+    for booking_id in payment.get("booking_ids") or []:
+        try:
+            cancel_booking(booking_id=UUID(str(booking_id)), temporary_user_ref=temporary_user_ref or "")
+            results.append(BookingActionResult(booking_id=str(booking_id), ok=True, error=None))
+            cancelled += 1
+        except BookingError as exc:
+            results.append(BookingActionResult(booking_id=str(booking_id), ok=False, error=str(exc)))
+            failed += 1
+
+    if cancelled == 0:
+        raise HTTPException(status_code=409, detail="booking_not_cancellable")
+
+    rollup = _fetch_order_rollup(str(payment_id)) or {"booking_status": "UNKNOWN"}
+    # L16 (plan): cancel never sends email -- decision #11, and
+    # email_service has no cancellation template anyway.
+    write_audit(
+        admin,
+        action="orders.cancel",
+        entity_type="payment",
+        entity_id=str(payment_id),
+        before={"booking_status": (before_rollup or {}).get("booking_status")},
+        after={
+            "booking_status": rollup["booking_status"],
+            "reason": body.reason,
+            "note": body.note,
+            "results": [r.model_dump() for r in results],
+        },
+    )
+
+    return CancelOrderResponse(
+        payment_id=str(payment_id),
+        cancelled=cancelled,
+        failed=failed,
+        booking_status=rollup["booking_status"],
+        results=results,
     )

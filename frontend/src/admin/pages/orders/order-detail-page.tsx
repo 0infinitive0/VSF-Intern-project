@@ -1,7 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getOrderDetail, type OrderDetailResponse } from '../../api/orders-client'
 import { PageHeader } from '../../layout/page-header'
+import { cancellableRoomCount, confirmableRoomCount } from '../../lib/order-room-counts'
+import { Banner } from '../../ui/banner'
+import { Button } from '../../ui/button'
 import { ErrorState } from '../../ui/error-state'
+import { CancelOrderDialog } from './cancel-order-dialog'
+import { ConfirmOrderDialog } from './confirm-order-dialog'
 import { OrderChatLink } from './order-chat-link'
 import { OrderGuestCard } from './order-guest-card'
 import { OrderRoomsCard } from './order-rooms-card'
@@ -14,29 +19,46 @@ interface OrderDetailPageProps {
 }
 
 type LoadState = { status: 'loading' } | { status: 'error'; detail: string } | { status: 'ok' }
+type ResultBanner = { tone: 'ok' | 'err'; message: string }
+type OpenDialog = 'confirm' | 'cancel' | null
 
-/** order-detail-page.tsx — D2 orchestrator (phase-05-order-detail.md).
- * Read-only: the plan's two header actions ("Xác nhận đơn"/"Huỷ đơn") open
- * Phase 6's dialog, which doesn't exist yet -- rather than a disabled
- * button with a "Sắp có" tooltip (the plan calls that unacceptable), they
- * simply aren't rendered until Phase 6 ships them. */
+/** order-detail-page.tsx — D2 orchestrator (phase-05-order-detail.md),
+ * wired to D3's two header actions (phase-06-order-actions.md). Each button
+ * only renders when the order actually has a room the action would touch --
+ * an already fully-CONFIRMED order has nothing left to confirm, an already
+ * fully-CANCELLED/EXPIRED one has nothing left to cancel. */
 export function OrderDetailPage({ paymentId }: OrderDetailPageProps) {
   const [loadState, setLoadState] = useState<LoadState>({ status: 'loading' })
   const [order, setOrder] = useState<OrderDetailResponse | null>(null)
+  const [openDialog, setOpenDialog] = useState<OpenDialog>(null)
+  const [resultBanner, setResultBanner] = useState<ResultBanner | null>(null)
+  // Guards against a stale response winning a race: `load()` is called both
+  // by the paymentId effect and directly from handleDialogDone (a reload
+  // after confirm/cancel) -- if paymentId changes while that second call is
+  // still in flight, its response must not overwrite the new order's data.
+  const loadTokenRef = useRef(0)
 
-  useEffect(() => {
-    let cancelled = false
+  function load() {
+    const token = ++loadTokenRef.current
     setLoadState({ status: 'loading' })
     getOrderDetail(paymentId).then((result) => {
-      if (cancelled) return
+      if (loadTokenRef.current !== token) return
       if (!result.ok) return setLoadState({ status: 'error', detail: result.detail })
       setOrder(result.data)
       setLoadState({ status: 'ok' })
     })
-    return () => {
-      cancelled = true
-    }
+  }
+
+  useEffect(() => {
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paymentId])
+
+  function handleDialogDone(message: string, tone: 'ok' | 'err') {
+    setOpenDialog(null)
+    setResultBanner({ tone, message })
+    load()
+  }
 
   if (loadState.status === 'loading') {
     return <div style={{ flex: 1, padding: 28 }} />
@@ -53,6 +75,9 @@ export function OrderDetailPage({ paymentId }: OrderDetailPageProps) {
     )
   }
 
+  const canConfirm = confirmableRoomCount(order) > 0
+  const canCancel = cancellableRoomCount(order) > 0
+
   return (
     <>
       <PageHeader
@@ -62,11 +87,27 @@ export function OrderDetailPage({ paymentId }: OrderDetailPageProps) {
           <>
             <BookingStatusChip status={order.booking_status} />
             <PaymentStatusChip status={order.payment_status} />
+            {canCancel && (
+              <Button variant="ghost" size="sm" style={{ border: '1px solid var(--err)', color: 'var(--err)' }} onClick={() => setOpenDialog('cancel')}>
+                Huỷ đơn
+              </Button>
+            )}
+            {canConfirm && (
+              <Button variant="primary" size="sm" onClick={() => setOpenDialog('confirm')}>
+                Xác nhận đơn
+              </Button>
+            )}
           </>
         }
       />
 
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 22 }}>
+        {resultBanner && (
+          <div style={{ marginBottom: 18 }}>
+            <Banner tone={resultBanner.tone}>{resultBanner.message}</Banner>
+          </div>
+        )}
+
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, alignItems: 'start' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             <OrderGuestCard guest={order.guest} />
@@ -83,6 +124,9 @@ export function OrderDetailPage({ paymentId }: OrderDetailPageProps) {
           </div>
         </div>
       </div>
+
+      <ConfirmOrderDialog open={openDialog === 'confirm'} order={order} onClose={() => setOpenDialog(null)} onDone={handleDialogDone} />
+      <CancelOrderDialog open={openDialog === 'cancel'} order={order} onClose={() => setOpenDialog(null)} onDone={handleDialogDone} />
     </>
   )
 }

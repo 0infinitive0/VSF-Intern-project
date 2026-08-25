@@ -1,7 +1,7 @@
 ---
 phase: 6
 title: "Xác nhận / Huỷ đơn (D3)"
-status: pending
+status: done
 priority: P1
 effort: "1d"
 dependencies: [5]
@@ -160,16 +160,16 @@ khớp, tránh hai bản dịch lệch nhau.
 
 ## Success Criteria
 
-- [ ] Xác nhận đơn 2 phòng → cả 2 `bookings.status = 'CONFIRMED'`, kiểm bằng SQL
-- [ ] Huỷ đơn → `status = 'CANCELLED'` và `cancelled_at` được set
-- [ ] Một phòng đã huỷ trước đó → `200` với `confirmed:1, failed:1`, UI liệt kê phòng lỗi
-- [ ] Gọi confirm hai lần → lần hai vẫn `200`, không tạo thêm thay đổi, không gửi email lần hai
-- [ ] `admin_audit_log` có đúng **một** dòng cho mỗi thao tác, `after.reason` đúng
-- [ ] Email xác nhận gửi được; tắt Resend key → thao tác vẫn `200`, `email_sent:false`
-- [ ] Hộp thoại huỷ **không** nhắc gì tới email (L16)
-- [ ] Hộp thoại xác nhận **không** nhắc "khách sạn nhận thông báo" (L15)
-- [ ] Bấm nhanh hai lần vào nút xác nhận chỉ gửi một request
-- [ ] Không có chỗ nào UPDATE thẳng `bookings.status` (grep xác nhận)
+- [x] Xác nhận đơn 2 phòng → cả 2 `bookings.status = 'CONFIRMED'`, kiểm bằng SQL
+- [x] Huỷ đơn → `status = 'CANCELLED'` và `cancelled_at` được set
+- [x] Một phòng đã huỷ trước đó → `200` với `confirmed:1, failed:1`, UI liệt kê phòng lỗi
+- [x] Gọi confirm hai lần → lần hai vẫn `200`, không tạo thêm thay đổi, không gửi email lần hai
+- [x] `admin_audit_log` có đúng **một** dòng cho mỗi thao tác, `after.reason` đúng
+- [x] Email xác nhận gửi được; tắt Resend key → thao tác vẫn `200`, `email_sent:false`
+- [x] Hộp thoại huỷ **không** nhắc gì tới email (L16)
+- [x] Hộp thoại xác nhận **không** nhắc "khách sạn nhận thông báo" (L15)
+- [x] Bấm nhanh hai lần vào nút xác nhận chỉ gửi một request
+- [x] Không có chỗ nào UPDATE thẳng `bookings.status` (grep xác nhận)
 
 ## Risk Assessment
 

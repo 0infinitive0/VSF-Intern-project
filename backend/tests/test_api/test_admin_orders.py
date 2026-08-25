@@ -674,3 +674,294 @@ async def test_order_detail_no_bookings_does_not_500_on_terminal_rollup(client, 
     # No "created" (needs a booking row) and no "expired" (guarded, empty
     # list) -- "paid" alone doesn't depend on bookings at all.
     assert [e["kind"] for e in body["timeline"]] == ["paid"]
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/admin/orders/{payment_id}/confirm, /cancel -- D3
+# (phase-06-order-actions.md)
+# ---------------------------------------------------------------------------
+
+PAYMENT_ID = "11111111-1111-1111-1111-111111111111"
+
+
+def _fake_email_summary(*_args, **_kwargs):
+    return {
+        "hotel_name": "Silk Path Hà Nội",
+        "hotel_image_url": None,
+        "rooms": [],
+        "check_in_date": "2026-08-25",
+        "check_out_date": "2026-08-28",
+    }
+
+
+@pytest.fixture
+def no_email(monkeypatch):
+    """Stubs the email side-effects of confirm_order so tests can assert on
+    email_sent without hitting Resend. `sent` records each call; set
+    `should_fail` to simulate an EmailError (Resend outage / unconfigured)."""
+    state = {"sent": [], "should_fail": False}
+    monkeypatch.setattr(orders_module.payment_service, "booking_summary_for_email", _fake_email_summary)
+
+    def fake_send(**kwargs):
+        if state["should_fail"]:
+            raise RuntimeError("resend_not_configured")
+        state["sent"].append(kwargs)
+        return "email-id"
+
+    monkeypatch.setattr(orders_module, "send_booking_confirmation_email", fake_send)
+    return state
+
+
+BOOKING_ID_1 = "aaaaaaaa-0000-0000-0000-000000000001"
+BOOKING_ID_2 = "aaaaaaaa-0000-0000-0000-000000000002"
+
+
+def _two_booking_payment_tables(*, booking_status: str = "RESERVED") -> dict[str, list[dict]]:
+    # Real UUID-shaped ids -- confirm_order/cancel_order (unlike the D2 read
+    # path) parse each booking id with UUID(...) before calling the RPC
+    # wrappers, matching booking_service's real `booking_id: UUID` signature.
+    tables = _full_order_tables(booking_ids=[BOOKING_ID_1, BOOKING_ID_2])
+    tables["bookings"] = [
+        _booking_row(id=BOOKING_ID_1, room_id="r1", status=booking_status),
+        _booking_row(id=BOOKING_ID_2, room_id="r2", status=booking_status, check_in_date="2026-08-25", check_out_date="2026-08-28"),
+    ]
+    return tables
+
+
+@pytest.mark.asyncio
+async def test_confirm_order_confirms_all_bookings_and_sends_email(client, admin_override, no_audit, no_email, monkeypatch):
+    fake_client = _FakeClient(_two_booking_payment_tables())
+    monkeypatch.setattr(orders_module, "get_supabase_client", lambda: fake_client)
+
+    confirmed_ids: list[str] = []
+    used_refs: list[str] = []
+
+    def fake_confirm(*, booking_id, temporary_user_ref):
+        confirmed_ids.append(str(booking_id))
+        used_refs.append(temporary_user_ref)
+        return {"id": str(booking_id), "status": "CONFIRMED"}
+
+    monkeypatch.setattr(orders_module, "confirm_booking", fake_confirm)
+
+    response = await client.post(f"/api/v1/admin/orders/{PAYMENT_ID}/confirm")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {
+        "payment_id": PAYMENT_ID,
+        "confirmed": 2,
+        "failed": 0,
+        "booking_status": "RESERVED",  # from the fake admin_orders rollup row
+        "email_sent": True,
+        "results": [
+            {"booking_id": BOOKING_ID_1, "ok": True, "error": None},
+            {"booking_id": BOOKING_ID_2, "ok": True, "error": None},
+        ],
+    }
+    assert sorted(confirmed_ids) == sorted([BOOKING_ID_1, BOOKING_ID_2])
+    assert len(no_email["sent"]) == 1  # sent once for the whole order, not per booking
+
+    # `temporary_user_ref` used for the RPC's ownership check must come from
+    # the `payments` row server-side, never from the request (plan's #1
+    # Cao-rated risk) -- the fake payment fixture's own ref is "guest-ref-1".
+    assert used_refs == ["guest-ref-1", "guest-ref-1"]
+
+    assert len(no_audit) == 1
+    audit = no_audit[0]
+    assert audit["action"] == "orders.confirm"
+    assert audit["entity_type"] == "payment"
+    assert audit["entity_id"] == PAYMENT_ID
+    assert audit["before"]["booking_status"] == "RESERVED"
+    assert audit["after"]["booking_status"] == "RESERVED"
+
+
+@pytest.mark.asyncio
+async def test_confirm_order_email_failure_still_returns_200_with_email_sent_false(
+    client, admin_override, no_audit, no_email, monkeypatch
+):
+    """Plan success criteria: turning off the Resend key (or any other
+    Resend failure) must not fail an otherwise-successful confirm -- the
+    booking write already happened, `email_sent` just reflects reality."""
+    fake_client = _FakeClient(_two_booking_payment_tables())
+    monkeypatch.setattr(orders_module, "get_supabase_client", lambda: fake_client)
+    monkeypatch.setattr(orders_module, "confirm_booking", lambda *, booking_id, temporary_user_ref: {"id": str(booking_id), "status": "CONFIRMED"})
+    no_email["should_fail"] = True
+
+    response = await client.post(f"/api/v1/admin/orders/{PAYMENT_ID}/confirm")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["confirmed"] == 2
+    assert body["email_sent"] is False
+    assert no_email["sent"] == []
+
+
+@pytest.mark.asyncio
+async def test_confirm_order_partial_success_returns_200_with_results(client, admin_override, no_audit, no_email, monkeypatch):
+    fake_client = _FakeClient(_two_booking_payment_tables())
+    monkeypatch.setattr(orders_module, "get_supabase_client", lambda: fake_client)
+
+    def fake_confirm(*, booking_id, temporary_user_ref):
+        if str(booking_id) == BOOKING_ID_2:
+            raise orders_module.BookingError("booking_reservation_expired")
+        return {"id": str(booking_id), "status": "CONFIRMED"}
+
+    monkeypatch.setattr(orders_module, "confirm_booking", fake_confirm)
+
+    response = await client.post(f"/api/v1/admin/orders/{PAYMENT_ID}/confirm")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["confirmed"] == 1
+    assert body["failed"] == 1
+    assert {"booking_id": BOOKING_ID_2, "ok": False, "error": "booking_reservation_expired"} in body["results"]
+    # Plan: email only goes out once EVERY booking is CONFIRMED -- a partial
+    # result must not email the guest a confirmation for a room that's
+    # actually still failed (H1 regression: this used to send on any real
+    # change, including a partial one).
+    assert body["email_sent"] is False
+    assert no_email["sent"] == []
+    assert len(no_audit) == 1
+
+
+@pytest.mark.asyncio
+async def test_confirm_order_all_fail_returns_409(client, admin_override, no_audit, no_email, monkeypatch):
+    fake_client = _FakeClient(_two_booking_payment_tables())
+    monkeypatch.setattr(orders_module, "get_supabase_client", lambda: fake_client)
+
+    def failing_confirm(*, booking_id, temporary_user_ref):
+        raise orders_module.BookingError("booking_not_confirmable")
+
+    monkeypatch.setattr(orders_module, "confirm_booking", failing_confirm)
+    # get_booking is only consulted when the RPC says booking_not_confirmable
+    # -- here it must report a status that ISN'T CONFIRMED, or the idempotent
+    # path would wrongly count these as successes.
+    monkeypatch.setattr(orders_module, "get_booking", lambda booking_id: {"id": str(booking_id), "status": "CANCELLED"})
+
+    response = await client.post(f"/api/v1/admin/orders/{PAYMENT_ID}/confirm")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "booking_not_confirmable"
+    assert no_audit == []  # no audit row for a request that changed nothing
+
+
+@pytest.mark.asyncio
+async def test_confirm_order_second_call_is_idempotent_and_skips_email(client, admin_override, no_audit, no_email, monkeypatch):
+    """Both bookings are already CONFIRMED (as if a first confirm call
+    already succeeded) -- the RPC itself rejects a re-confirm with
+    booking_not_confirmable, so the endpoint must recognize the booking is
+    already at the target state, still return 200/ok, but not resend the
+    email (plan success criteria)."""
+    fake_client = _FakeClient(_two_booking_payment_tables(booking_status="CONFIRMED"))
+    monkeypatch.setattr(orders_module, "get_supabase_client", lambda: fake_client)
+
+    def already_confirmed(*, booking_id, temporary_user_ref):
+        raise orders_module.BookingError("booking_not_confirmable")
+
+    monkeypatch.setattr(orders_module, "confirm_booking", already_confirmed)
+    monkeypatch.setattr(orders_module, "get_booking", lambda booking_id: {"id": str(booking_id), "status": "CONFIRMED"})
+
+    response = await client.post(f"/api/v1/admin/orders/{PAYMENT_ID}/confirm")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["confirmed"] == 2
+    assert body["failed"] == 0
+    assert body["email_sent"] is False
+    assert no_email["sent"] == []
+
+
+@pytest.mark.asyncio
+async def test_confirm_order_404_when_payment_missing(client, admin_override, no_audit, monkeypatch):
+    monkeypatch.setattr(orders_module, "get_supabase_client", lambda: _FakeClient({"payments": []}))
+    response = await client.post("/api/v1/admin/orders/22222222-2222-2222-2222-222222222222/confirm")
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_cancel_order_cancels_all_bookings_no_email(client, admin_override, no_audit, no_email, monkeypatch):
+    fake_client = _FakeClient(_two_booking_payment_tables(booking_status="RESERVED"))
+    monkeypatch.setattr(orders_module, "get_supabase_client", lambda: fake_client)
+
+    cancelled_ids: list[str] = []
+    used_refs: list[str] = []
+
+    def fake_cancel(*, booking_id, temporary_user_ref):
+        cancelled_ids.append(str(booking_id))
+        used_refs.append(temporary_user_ref)
+        return {"id": str(booking_id), "status": "CANCELLED"}
+
+    monkeypatch.setattr(orders_module, "cancel_booking", fake_cancel)
+
+    response = await client.post(
+        f"/api/v1/admin/orders/{PAYMENT_ID}/cancel",
+        json={"reason": "Khách yêu cầu huỷ", "note": "Gọi điện xác nhận"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cancelled"] == 2
+    assert body["failed"] == 0
+    assert sorted(cancelled_ids) == sorted([BOOKING_ID_1, BOOKING_ID_2])
+    assert no_email["sent"] == []  # L16 -- cancel never emails
+    # Same ownership guard as confirm -- plan's #1 Cao-rated risk.
+    assert used_refs == ["guest-ref-1", "guest-ref-1"]
+
+    assert len(no_audit) == 1
+    audit = no_audit[0]
+    assert audit["action"] == "orders.cancel"
+    assert audit["after"]["reason"] == "Khách yêu cầu huỷ"
+    assert audit["after"]["note"] == "Gọi điện xác nhận"
+
+
+@pytest.mark.asyncio
+async def test_cancel_order_missing_reason_returns_422(client, admin_override, no_audit):
+    response = await client.post(f"/api/v1/admin/orders/{PAYMENT_ID}/cancel", json={})
+    assert response.status_code == 422
+    assert no_audit == []
+
+
+@pytest.mark.asyncio
+async def test_cancel_order_all_fail_returns_409(client, admin_override, no_audit, monkeypatch):
+    fake_client = _FakeClient(_two_booking_payment_tables())
+    monkeypatch.setattr(orders_module, "get_supabase_client", lambda: fake_client)
+
+    def failing_cancel(*, booking_id, temporary_user_ref):
+        raise orders_module.BookingError("booking_not_found")
+
+    monkeypatch.setattr(orders_module, "cancel_booking", failing_cancel)
+
+    response = await client.post(f"/api/v1/admin/orders/{PAYMENT_ID}/cancel", json={"reason": "Hết phòng"})
+
+    assert response.status_code == 409
+    assert no_audit == []
+
+
+@pytest.mark.asyncio
+async def test_cancel_order_called_twice_stays_idempotent_200(client, admin_override, no_audit, monkeypatch):
+    """cancel_booking's RPC is itself idempotent (returns the row unchanged
+    for an already-CANCELLED booking, never raises) -- a second cancel call
+    must still succeed with 200, not surface as a failure."""
+    fake_client = _FakeClient(_two_booking_payment_tables(booking_status="CANCELLED"))
+    monkeypatch.setattr(orders_module, "get_supabase_client", lambda: fake_client)
+
+    def idempotent_cancel(*, booking_id, temporary_user_ref):
+        return {"id": str(booking_id), "status": "CANCELLED"}
+
+    monkeypatch.setattr(orders_module, "cancel_booking", idempotent_cancel)
+
+    response = await client.post(f"/api/v1/admin/orders/{PAYMENT_ID}/cancel", json={"reason": "Khách yêu cầu huỷ"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cancelled"] == 2
+    assert body["failed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_cancel_order_404_when_payment_missing(client, admin_override, no_audit, monkeypatch):
+    monkeypatch.setattr(orders_module, "get_supabase_client", lambda: _FakeClient({"payments": []}))
+    response = await client.post(
+        "/api/v1/admin/orders/22222222-2222-2222-2222-222222222222/cancel", json={"reason": "Hết phòng"}
+    )
+    assert response.status_code == 404

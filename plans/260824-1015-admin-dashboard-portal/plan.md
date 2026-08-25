@@ -145,7 +145,7 @@ xem Phase 17.
 | 3 | [Frontend: entry admin.html, shell, đăng nhập](./phase-03-admin-shell-frontend.md) | A1, A2, Z | Done |
 | 4 | [Danh sách đơn hàng](./phase-04-orders-list.md) | D1 | Pending |
 | 5 | [Chi tiết đơn hàng](./phase-05-order-detail.md) | D2 | Done |
-| 6 | [Xác nhận / Huỷ đơn](./phase-06-order-actions.md) | D3 | Pending |
+| 6 | [Xác nhận / Huỷ đơn](./phase-06-order-actions.md) | D3 | Done |
 | 7 | [Danh sách khách sạn](./phase-07-hotels-list.md) | B1 | Done |
 | 8 | [Tạo khách sạn mới](./phase-08-hotel-create.md) | B2 | Done |
 | 9 | [Chi tiết / Sửa khách sạn](./phase-09-hotel-edit.md) | B3 | Done |
@@ -228,7 +228,7 @@ song song bởi ba người, file không giao nhau (xem "Sở hữu file" trong 
 - [ ] 15 màn (A1, A2, B1, B2, B3, B5, B6, B7, C1, C2, C3, C4, D1, D2, D3) chạy được với dữ liệu thật
 - [ ] Sửa giá một đêm cho phòng thuộc hotel ETL: giá mới có hiệu lực ngay ở `place_details`, và khách sạn **vẫn** xuất hiện trong `match_hotels_with_rooms` (không bị lỗi F4)
 - [ ] Tạo hotel manual → embedding NULL → C4 đếm đúng → C2 chạy `only_null` → hotel xuất hiện trong tìm kiếm của bot
-- [ ] Huỷ đơn từ D3 làm `bookings.status` chuyển CANCELLED qua RPC và ghi 1 dòng `admin_audit_log`
+- [x] Huỷ đơn từ D3 làm `bookings.status` chuyển CANCELLED qua RPC và ghi 1 dòng `admin_audit_log`
 - [ ] `npm run build` sinh cả `index.html` và `admin.html`; bundle chat không tăng kích thước
 - [ ] `npm run openapi:check` sạch sau mỗi phase backend
 - [ ] `pytest backend/tests` xanh; app chat không có regression

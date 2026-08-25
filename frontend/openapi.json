@@ -3137,6 +3137,134 @@
         }
       }
     },
+    "/api/v1/admin/orders/{payment_id}/confirm": {
+      "post": {
+        "tags": [
+          "admin-orders"
+        ],
+        "summary": "Confirm Order",
+        "operationId": "confirm_order_api_v1_admin_orders__payment_id__confirm_post",
+        "parameters": [
+          {
+            "name": "payment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Payment Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmOrderResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/orders/{payment_id}/cancel": {
+      "post": {
+        "tags": [
+          "admin-orders"
+        ],
+        "summary": "Cancel Order",
+        "operationId": "cancel_order_api_v1_admin_orders__payment_id__cancel_post",
+        "parameters": [
+          {
+            "name": "payment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Payment Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelOrderResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/me": {
       "get": {
         "summary": "Get Me",
@@ -3521,6 +3649,35 @@
           "file"
         ],
         "title": "Body_upload_room_image_api_v1_admin_rooms__room_id__images_upload_post"
+      },
+      "BookingActionResult": {
+        "properties": {
+          "booking_id": {
+            "type": "string",
+            "title": "Booking Id"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "booking_id",
+          "ok"
+        ],
+        "title": "BookingActionResult"
       },
       "BookingOwnershipRequest": {
         "properties": {
@@ -3930,6 +4087,78 @@
         ],
         "title": "BulkBlockedHotel"
       },
+      "CancelOrderRequest": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "CancelOrderRequest"
+      },
+      "CancelOrderResponse": {
+        "properties": {
+          "payment_id": {
+            "type": "string",
+            "title": "Payment Id"
+          },
+          "cancelled": {
+            "type": "integer",
+            "title": "Cancelled"
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed"
+          },
+          "booking_status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "RESERVED",
+              "CONFIRMED",
+              "CANCELLED",
+              "EXPIRED",
+              "MIXED",
+              "UNKNOWN"
+            ],
+            "title": "Booking Status"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/BookingActionResult"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "payment_id",
+          "cancelled",
+          "failed",
+          "booking_status",
+          "results"
+        ],
+        "title": "CancelOrderResponse"
+      },
       "ChangeHotelRequest": {
         "properties": {
           "session_id": {
@@ -3943,6 +4172,56 @@
           "session_id"
         ],
         "title": "ChangeHotelRequest"
+      },
+      "ConfirmOrderResponse": {
+        "properties": {
+          "payment_id": {
+            "type": "string",
+            "title": "Payment Id"
+          },
+          "confirmed": {
+            "type": "integer",
+            "title": "Confirmed"
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed"
+          },
+          "booking_status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "RESERVED",
+              "CONFIRMED",
+              "CANCELLED",
+              "EXPIRED",
+              "MIXED",
+              "UNKNOWN"
+            ],
+            "title": "Booking Status"
+          },
+          "email_sent": {
+            "type": "boolean",
+            "title": "Email Sent"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/BookingActionResult"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "payment_id",
+          "confirmed",
+          "failed",
+          "booking_status",
+          "email_sent",
+          "results"
+        ],
+        "title": "ConfirmOrderResponse"
       },
       "CreateHotelRequest": {
         "properties": {

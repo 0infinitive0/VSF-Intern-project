@@ -21,6 +21,10 @@ export type OrderStatsResponse = components['schemas']['OrderStatsResponse']
 export type OrderDetailResponse = components['schemas']['OrderDetailResponse']
 export type OrderRoomLine = components['schemas']['OrderRoomLine']
 export type OrderTimelineEvent = components['schemas']['OrderTimelineEvent']
+export type BookingActionResult = components['schemas']['BookingActionResult']
+export type ConfirmOrderResponse = components['schemas']['ConfirmOrderResponse']
+export type CancelOrderRequest = components['schemas']['CancelOrderRequest']
+export type CancelOrderResponse = components['schemas']['CancelOrderResponse']
 
 export type OrdersTab = 'paid' | 'unpaid'
 
@@ -66,6 +70,18 @@ export function getOrderStats(): Promise<AdminApiResult<OrderStatsResponse>> {
 
 export function getOrderDetail(paymentId: string): Promise<AdminApiResult<OrderDetailResponse>> {
   return adminFetch<OrderDetailResponse>(`/orders/${paymentId}`)
+}
+
+export function confirmOrder(paymentId: string): Promise<AdminApiResult<ConfirmOrderResponse>> {
+  return adminFetch<ConfirmOrderResponse>(`/orders/${paymentId}/confirm`, { method: 'POST' })
+}
+
+export function cancelOrder(paymentId: string, body: CancelOrderRequest): Promise<AdminApiResult<CancelOrderResponse>> {
+  return adminFetch<CancelOrderResponse>(`/orders/${paymentId}/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
 }
 
 export function releaseExpiredHolds(): Promise<AdminApiResult<ReleaseExpiredResponse>> {

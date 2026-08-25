@@ -955,6 +955,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/orders/{payment_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Order */
+        post: operations["confirm_order_api_v1_admin_orders__payment_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{payment_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Order */
+        post: operations["cancel_order_api_v1_admin_orders__payment_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/me": {
         parameters: {
             query?: never;
@@ -1091,6 +1125,15 @@ export interface components {
              * Format: binary
              */
             file: string;
+        };
+        /** BookingActionResult */
+        BookingActionResult: {
+            /** Booking Id */
+            booking_id: string;
+            /** Ok */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
         };
         /** BookingOwnershipRequest */
         BookingOwnershipRequest: {
@@ -1260,6 +1303,29 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** CancelOrderRequest */
+        CancelOrderRequest: {
+            /** Reason */
+            reason: string;
+            /** Note */
+            note?: string | null;
+        };
+        /** CancelOrderResponse */
+        CancelOrderResponse: {
+            /** Payment Id */
+            payment_id: string;
+            /** Cancelled */
+            cancelled: number;
+            /** Failed */
+            failed: number;
+            /**
+             * Booking Status
+             * @enum {string}
+             */
+            booking_status: "PENDING" | "RESERVED" | "CONFIRMED" | "CANCELLED" | "EXPIRED" | "MIXED" | "UNKNOWN";
+            /** Results */
+            results: components["schemas"]["BookingActionResult"][];
+        };
         /** ChangeHotelRequest */
         ChangeHotelRequest: {
             /**
@@ -1267,6 +1333,24 @@ export interface components {
              * Format: uuid
              */
             session_id: string;
+        };
+        /** ConfirmOrderResponse */
+        ConfirmOrderResponse: {
+            /** Payment Id */
+            payment_id: string;
+            /** Confirmed */
+            confirmed: number;
+            /** Failed */
+            failed: number;
+            /**
+             * Booking Status
+             * @enum {string}
+             */
+            booking_status: "PENDING" | "RESERVED" | "CONFIRMED" | "CANCELLED" | "EXPIRED" | "MIXED" | "UNKNOWN";
+            /** Email Sent */
+            email_sent: boolean;
+            /** Results */
+            results: components["schemas"]["BookingActionResult"][];
         };
         /**
          * CreateHotelRequest
@@ -4479,6 +4563,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_order_api_v1_admin_orders__payment_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                payment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfirmOrderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_order_api_v1_admin_orders__payment_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                payment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CancelOrderResponse"];
                 };
             };
             /** @description Validation Error */
