@@ -1,10 +1,8 @@
 import { Button } from '../../ui/button'
 
-/** Backend column name -> Vietnamese label, for both this bar and
- * reembed-dialog.tsx's "Bạn vừa sửa X và Y" interpolation. `coordinates` is
- * this page's own pseudo-field for the latitude/longitude pair (there is no
- * single form field for it) -- see hotel-detail-page.tsx's changed-fields
- * computation. */
+/** Backend column name -> Vietnamese label. `coordinates` is this page's own
+ * pseudo-field for the latitude/longitude pair (there is no single form
+ * field for it) -- see hotel-detail-page.tsx's changed-fields computation. */
 export const FIELD_LABELS: Record<string, string> = {
   name: 'Tên khách sạn',
   accommodation_type: 'Loại hình',

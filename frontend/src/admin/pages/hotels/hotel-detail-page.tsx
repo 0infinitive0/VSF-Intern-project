@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   getHotel,
   listAccommodationTypes,
   listAmenities,
   listDestinations,
+  reembedHotels,
   setHotelActive,
   updateHotel,
   type AmenityOption,
@@ -11,7 +12,9 @@ import {
   type HotelDetailResponse,
   type UpdateHotelRequest,
 } from '../../api/hotels-client'
+import { listPipelines, type PipelineItem } from '../../api/pipelines-client'
 import { Banner } from '../../ui/banner'
+import { Button } from '../../ui/button'
 import { Switch } from '../../ui/switch'
 import { Tabs, type TabItem } from '../../ui/tabs'
 import { HotelEmbeddingDot } from './hotel-embedding-dot'
@@ -24,8 +27,14 @@ import { HotelTabNearby } from './hotel-tab-nearby'
 import { HotelTabRooms } from './rooms/hotel-tab-rooms'
 import type { HotelBasicFieldsValue } from './hotel-basic-fields'
 import type { HotelLocationFieldsValue } from './hotel-location-fields'
-import { ReembedDialog } from './reembed-dialog'
+import { PipelineRunProgress } from '../pipelines/pipeline-run-progress'
 import { UnsavedBar } from './unsaved-bar'
+
+const EMBEDDING_POLL_MS = 1000
+// ~2 minutes -- if Airflow hasn't moved the run past `queued`/`running` by
+// then, stop polling instead of leaving the banner looking permanently
+// stuck; the Pipelines page still has the real live status.
+const MAX_EMBEDDING_POLL_ATTEMPTS = 120
 
 interface HotelDetailPageProps {
   hotelId: string
@@ -78,7 +87,6 @@ const TABS: TabItem[] = [
  * same scope line Phase 8 drew: a sidebar-click guard needs a router-level
  * change out of this phase. */
 export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
-  void navigate
   const [loadState, setLoadState] = useState<LoadState>({ status: 'loading' })
   const [hotel, setHotel] = useState<HotelDetailResponse | null>(null)
   const [activeTab, setActiveTab] = useState('basic')
@@ -108,8 +116,18 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
   const [activeError, setActiveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [reembedOpen, setReembedOpen] = useState(false)
-  const [lastRagFieldsChanged, setLastRagFieldsChanged] = useState<string[]>([])
+  const [reembedState, setReembedState] = useState<'idle' | 'loading' | 'queued' | 'unavailable' | 'stalled' | 'success' | 'failed'>(
+    'idle',
+  )
+  const [embeddingRun, setEmbeddingRun] = useState<PipelineItem | null>(null)
+  const embeddingPollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const embeddingPollAttemptsRef = useRef(0)
+
+  useEffect(() => {
+    return () => {
+      if (embeddingPollRef.current) clearTimeout(embeddingPollRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -267,10 +285,65 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
     } else {
       setHotel((current) => (current ? { ...current, embedding_state: result.data.embedding_state } : current))
     }
-    if (result.data.rag_fields_changed.length > 0) {
-      setLastRagFieldsChanged(result.data.rag_fields_changed)
-      setReembedOpen(true)
+    // No confirm dialog here: `update_hotel` already cleared `embedding`
+    // when a RAG field changed, so the header's HotelEmbeddingDot already
+    // reflects the "cần nhúng lại" state on its own. The persistent
+    // "Chạy embedding" button below reads that same state instead of
+    // interrupting every save with a popup.
+  }
+
+  async function handleReembedNow() {
+    setReembedState('loading')
+    const result = await reembedHotels([hotelId])
+    const queued = result.ok && result.data.queued
+    setReembedState(queued ? 'queued' : 'unavailable')
+    if (queued) {
+      if (embeddingPollRef.current) clearTimeout(embeddingPollRef.current)
+      embeddingPollAttemptsRef.current = 0
+      pollEmbeddingProgress()
     }
+  }
+
+  // Polls the shared Pipelines list (same idiom as pipelines-page.tsx) so
+  // "Chạy embedding" shows real %-done instead of leaving the admin staring
+  // at a static "đã gửi yêu cầu" with no idea when it'll actually finish.
+  // Stops once the DAG's `last_run` is no longer `running` and refreshes the
+  // hotel so the embedding badge picks up the outcome on its own.
+  // Dismisses any reembed banner (queued/stalled/success/failed/unavailable).
+  // Also stops an in-flight poll -- the pipeline itself keeps running on the
+  // backend regardless, this only stops the UI from tracking it further.
+  function handleDismissReembed() {
+    if (embeddingPollRef.current) clearTimeout(embeddingPollRef.current)
+    setReembedState('idle')
+    setEmbeddingRun(null)
+  }
+
+  function pollEmbeddingProgress() {
+    listPipelines().then((result) => {
+      const embedding = result.ok ? (result.data.items.find((item: PipelineItem) => item.has_params) ?? null) : null
+      setEmbeddingRun(embedding)
+      const state = embedding?.last_run?.state
+      if (state === 'running' || state === 'queued') {
+        embeddingPollAttemptsRef.current += 1
+        if (embeddingPollAttemptsRef.current >= MAX_EMBEDDING_POLL_ATTEMPTS) {
+          // Airflow itself hasn't moved this run past queued/running in
+          // ~2 minutes -- stop here instead of polling forever; the
+          // Pipelines page still has the real live status.
+          setReembedState('stalled')
+          return
+        }
+        embeddingPollRef.current = setTimeout(pollEmbeddingProgress, EMBEDDING_POLL_MS)
+        return
+      }
+      // Run finished -- stop, show the real outcome instead of leaving the
+      // "queued" banner up, and refresh the hotel so HotelEmbeddingDot picks
+      // up the result too.
+      setReembedState(state === 'success' ? 'success' : state === 'failed' ? 'failed' : 'idle')
+      setEmbeddingRun(null)
+      getHotel(hotelId).then((refreshed) => {
+        if (refreshed.ok) setHotel((current) => (current ? { ...refreshed.data, is_active: current.is_active } : refreshed.data))
+      })
+    })
   }
 
   async function handleToggleActive(next: boolean) {
@@ -332,6 +405,16 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
                 roomCount={hotel.room_count}
                 roomsMissingEmbedding={hotel.rooms_missing_embedding}
               />
+              {hotel.embedding_state !== 'embedded' && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleReembedNow}
+                  disabled={reembedState === 'loading' || reembedState === 'queued'}
+                >
+                  {reembedState === 'loading' ? 'Đang chạy…' : reembedState === 'queued' ? 'Đã gửi yêu cầu' : 'Chạy embedding'}
+                </Button>
+              )}
             </div>
           </div>
           <Switch checked={hotel.is_active} onChange={handleToggleActive} label="Đang bán" disabled={activeBusy} />
@@ -355,6 +438,71 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
             {lookupError && <Banner tone="err">{lookupError}</Banner>}
             {activeError && <Banner tone="err">{activeError}</Banner>}
             {saveError && <Banner tone="err">{saveError}</Banner>}
+            {reembedState === 'unavailable' && (
+              <Banner tone="warn">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingRight: 4 }}>
+                  <span style={{ flex: 1 }}>Đã đánh dấu cần embed lại. Chạy pipeline embedding ở mục Dữ liệu bot để bot học ngay.</span>
+                  <Button variant="ghost" size="sm" onClick={handleDismissReembed} aria-label="Đóng">
+                    ✕
+                  </Button>
+                </div>
+              </Banner>
+            )}
+            {reembedState === 'stalled' && (
+              <Banner tone="warn">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', paddingRight: 4 }}>
+                  <span style={{ flex: 1, minWidth: 200 }}>
+                    Pipeline embedding đang chờ lâu hơn bình thường (Airflow chưa bắt đầu chạy). Đã đánh dấu cần embed lại, bot sẽ học khi pipeline chạy.
+                  </span>
+                  <Button variant="secondary" size="sm" onClick={() => navigate('/admin/pipelines')}>
+                    Xem trạng thái pipeline
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={handleDismissReembed} aria-label="Đóng">
+                    ✕
+                  </Button>
+                </div>
+              </Banner>
+            )}
+            {reembedState === 'queued' && (
+              <Banner tone="ok">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingRight: 4 }}>
+                    <span style={{ flex: 1 }}>Đã gửi yêu cầu chạy lại embedding.</span>
+                    <Button variant="ghost" size="sm" onClick={handleDismissReembed} aria-label="Đóng">
+                      ✕
+                    </Button>
+                  </div>
+                  {embeddingRun?.last_run?.state === 'running' ? (
+                    <PipelineRunProgress lastRun={embeddingRun.last_run} />
+                  ) : (
+                    <span style={{ fontSize: 11.5 }}>Đang chờ pipeline bắt đầu…</span>
+                  )}
+                </div>
+              </Banner>
+            )}
+            {reembedState === 'success' && (
+              <Banner tone="ok">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingRight: 4, width: '100%' }}>
+                  <span style={{ flex: 1 }}>Đã embed thành công — chatbot đã học nội dung mới của khách sạn này.</span>
+                  <Button variant="ghost" size="sm" onClick={handleDismissReembed} aria-label="Đóng">
+                    ✕
+                  </Button>
+                </div>
+              </Banner>
+            )}
+            {reembedState === 'failed' && (
+              <Banner tone="err">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', paddingRight: 4 }}>
+                  <span style={{ flex: 1, minWidth: 200 }}>Chạy embedding thất bại. Xem chi tiết lỗi tại trang Pipeline.</span>
+                  <Button variant="secondary" size="sm" onClick={() => navigate('/admin/pipelines')}>
+                    Xem trạng thái pipeline
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={handleDismissReembed} aria-label="Đóng">
+                    ✕
+                  </Button>
+                </div>
+              </Banner>
+            )}
 
             {/* Rooms is a data table (8 columns), not a single-column form
                 like every other tab -- the shared 820px column cap would
@@ -419,13 +567,6 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
           saving={saving}
         />
       </div>
-
-      <ReembedDialog
-        open={reembedOpen}
-        onClose={() => setReembedOpen(false)}
-        hotelId={hotelId}
-        ragFieldsChanged={lastRagFieldsChanged}
-      />
     </>
   )
 }

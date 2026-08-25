@@ -52,6 +52,7 @@ export function HotelsTable({ rows, selectedIds, onToggleSelect, onToggleSelectA
     {
       key: 'hotel',
       header: 'KHÁCH SẠN',
+      sortValue: (row) => row.name,
       render: (row) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' }}>
           <div className="hotel-avatar">{initials(row.name)}</div>
@@ -66,17 +67,24 @@ export function HotelsTable({ rows, selectedIds, onToggleSelect, onToggleSelectA
         </div>
       ),
     },
-    { key: 'city', header: 'THÀNH PHỐ', render: (row) => row.city ?? '—' },
+    { key: 'city', header: 'THÀNH PHỐ', sortValue: (row) => row.city ?? '', render: (row) => row.city ?? '—' },
     {
       key: 'star_rating',
       header: 'HẠNG SAO',
+      sortValue: (row) => row.star_rating ?? 0,
       render: (row) => '★'.repeat(Math.max(0, Math.round(row.star_rating ?? 0))) || '—',
     },
-    { key: 'source', header: 'NGUỒN', render: (row) => <HotelSourceChip isManual={row.is_manual} /> },
-    { key: 'room_count', header: 'SỐ PHÒNG', align: 'right', render: (row) => row.room_count },
+    {
+      key: 'source',
+      header: 'NGUỒN',
+      sortValue: (row) => (row.is_manual ? 'manual' : 'pipeline'),
+      render: (row) => <HotelSourceChip isManual={row.is_manual} />,
+    },
+    { key: 'room_count', header: 'SỐ PHÒNG', align: 'right', sortValue: (row) => row.room_count, render: (row) => row.room_count },
     {
       key: 'embedding',
       header: 'EMBEDDING',
+      sortValue: (row) => row.embedding_state,
       render: (row) => (
         <HotelEmbeddingDot embeddingState={row.embedding_state} roomCount={row.room_count} roomsMissingEmbedding={row.rooms_missing_embedding} />
       ),
@@ -84,6 +92,7 @@ export function HotelsTable({ rows, selectedIds, onToggleSelect, onToggleSelectA
     {
       key: 'active',
       header: 'ĐANG BÁN',
+      sortValue: (row) => (row.is_active ? 1 : 0),
       render: (row) => (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }} onClick={(e) => e.stopPropagation()}>
           <Switch checked={row.is_active} onChange={(next) => onToggleActive(row, next)} label={`Đang bán ${row.name}`} />
