@@ -53,6 +53,7 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
   const [refreshKey, setRefreshKey] = useState(0)
 
   const [listState, setListState] = useState<ListState>({ status: 'loading' })
+  const [isFetching, setIsFetching] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [rowError, setRowError] = useState<RowBlockedError | null>(null)
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false)
@@ -76,9 +77,11 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
 
   useEffect(() => {
     let cancelled = false
-    setListState({ status: 'loading' })
+    setIsFetching(true)
+    setListState((prev) => (prev.status === 'loaded' ? prev : { status: 'loading' }))
     listHotels({ q: debouncedQ || undefined, source, isActive, embedding, page, pageSize: PAGE_SIZE }).then((result) => {
       if (cancelled) return
+      setIsFetching(false)
       if (!result.ok) return setListState({ status: 'error', detail: result.detail })
       if (result.data.items.length === 0) return setListState({ status: 'empty' })
       setListState({ status: 'loaded', items: result.data.items, total: result.data.total })
@@ -233,12 +236,13 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
                 onToggleSelectAll={toggleSelectAll}
                 onToggleActive={handleToggleActive}
                 onOpenHotel={(id) => navigate(`/admin/hotels/${id}`)}
+                loading={isFetching}
               />
             </div>
             <div style={{ fontSize: 11, color: 'var(--t4)', padding: '8px 14px', borderTop: '1px solid var(--line)' }}>
               Dòng kẻ sọc: dữ liệu lấy từ nguồn OTA — sẽ bị ghi đè khi chạy lại pipeline nhập liệu.
             </div>
-            <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
+            <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={isFetching} />
           </div>
         )}
       </div>

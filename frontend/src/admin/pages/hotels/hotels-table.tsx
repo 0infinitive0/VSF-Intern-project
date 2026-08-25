@@ -11,6 +11,7 @@ interface HotelsTableProps {
   onToggleSelectAll: () => void
   onToggleActive: (row: HotelRow, nextActive: boolean) => void
   onOpenHotel: (id: string) => void
+  loading?: boolean
 }
 
 function initials(name: string): string {
@@ -38,7 +39,7 @@ function RowCheckbox({ checked, onChange, label }: { checked: boolean; onChange:
   )
 }
 
-export function HotelsTable({ rows, selectedIds, onToggleSelect, onToggleSelectAll, onToggleActive, onOpenHotel }: HotelsTableProps) {
+export function HotelsTable({ rows, selectedIds, onToggleSelect, onToggleSelectAll, onToggleActive, onOpenHotel, loading }: HotelsTableProps) {
   const allSelected = rows.length > 0 && rows.every((row) => selectedIds.has(row.id))
 
   const columns: DataTableColumn<HotelRow>[] = [
@@ -100,6 +101,7 @@ export function HotelsTable({ rows, selectedIds, onToggleSelect, onToggleSelectA
       rowKey={(row) => row.id}
       rowClassName={(row) => [!row.is_manual && 'row--striped', selectedIds.has(row.id) && 'row--selected'].filter(Boolean).join(' ') || undefined}
       onRowClick={(row) => onOpenHotel(row.id)}
+      loading={loading}
     />
   )
 }

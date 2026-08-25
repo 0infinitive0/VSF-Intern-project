@@ -4,6 +4,7 @@ import type { UnpaidBookingRow } from '../../api/orders-client'
 
 interface UnpaidHoldsTableProps {
   rows: UnpaidBookingRow[]
+  loading?: boolean
 }
 
 const _TICK_MS = 30_000
@@ -30,7 +31,7 @@ function ExpiresChip({ expiresAt, now }: { expiresAt: string | null | undefined;
   )
 }
 
-export function UnpaidHoldsTable({ rows }: UnpaidHoldsTableProps) {
+export function UnpaidHoldsTable({ rows, loading }: UnpaidHoldsTableProps) {
   // Client-side countdown tick -- plan explicitly says this must not
   // re-fetch from the API (`orders-page.tsx`'s own poll stays on its
   // separate 60s stats interval).
@@ -79,5 +80,5 @@ export function UnpaidHoldsTable({ rows }: UnpaidHoldsTableProps) {
     },
   ]
 
-  return <DataTable columns={columns} rows={rows} rowKey={(row) => row.booking_id} />
+  return <DataTable columns={columns} rows={rows} rowKey={(row) => row.booking_id} loading={loading} />
 }

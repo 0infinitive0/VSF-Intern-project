@@ -4,10 +4,13 @@ import { Banner } from '../../../ui/banner'
 import { Button } from '../../../ui/button'
 import { DataTable, type DataTableColumn } from '../../../ui/data-table'
 import { Money } from '../../../ui/money'
+import { Pagination } from '../../../ui/pagination'
 import { RoomDrawer } from './room-drawer'
 import { RoomReembedDialog } from './room-reembed-dialog'
 import { RoomsEmpty } from './rooms-empty'
 import { roomPricesPath } from '../../../lib/room-prices-path'
+
+const PAGE_SIZE = 25
 
 interface HotelTabRoomsProps {
   hotelId: string
@@ -28,6 +31,7 @@ export function HotelTabRooms({ hotelId, hotelName, navigate, onRoomsChanged }: 
   const [rooms, setRooms] = useState<RoomRow[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [facilityCatalog, setFacilityCatalog] = useState<AmenityOption[]>([])
+  const [page, setPage] = useState(1)
 
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editingRoom, setEditingRoom] = useState<RoomRow | null>(null)
@@ -44,6 +48,7 @@ export function HotelTabRooms({ hotelId, hotelName, navigate, onRoomsChanged }: 
   useEffect(() => {
     setRooms(null)
     setLoadError(null)
+    setPage(1)
     reload()
     listRoomFacilities().then((result) => {
       if (result.ok) setFacilityCatalog(result.data)
@@ -73,6 +78,7 @@ export function HotelTabRooms({ hotelId, hotelName, navigate, onRoomsChanged }: 
 
   function handleDeleted() {
     setDrawerOpen(false)
+    setPage(1)
     reload()
     onRoomsChanged()
   }
@@ -86,6 +92,7 @@ export function HotelTabRooms({ hotelId, hotelName, navigate, onRoomsChanged }: 
   }
 
   const viewSuggestions = Array.from(new Set(rooms.map((r) => r.view).filter((v): v is string => !!v))).sort()
+  const pageRooms = rooms.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   const columns: DataTableColumn<RoomRow>[] = [
     { key: 'name', header: 'TÊN PHÒNG', render: (row) => <span style={{ fontWeight: 600 }}>{row.name}</span> },
@@ -143,8 +150,9 @@ export function HotelTabRooms({ hotelId, hotelName, navigate, onRoomsChanged }: 
       ) : (
         <>
           <div style={{ overflowX: 'auto' }}>
-            <DataTable columns={columns} rows={rooms} rowKey={(row) => row.id} />
+            <DataTable columns={columns} rows={pageRooms} rowKey={(row) => row.id} />
           </div>
+          {rooms.length > PAGE_SIZE && <Pagination page={page} pageSize={PAGE_SIZE} total={rooms.length} onPageChange={setPage} />}
           <div style={{ fontSize: 11.5, color: 'var(--t4)' }}>
             Giá thấp nhất tính trên bảng giá theo ngày trong 30 ngày tới.
           </div>

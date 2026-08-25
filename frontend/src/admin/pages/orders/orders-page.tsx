@@ -94,6 +94,8 @@ export function OrdersPage({ navigate }: OrdersPageProps) {
 
   const [paidState, setPaidState] = useState<PaidListState>({ status: 'loading' })
   const [unpaidState, setUnpaidState] = useState<UnpaidListState>({ status: 'loading' })
+  const [paidFetching, setPaidFetching] = useState(false)
+  const [unpaidFetching, setUnpaidFetching] = useState(false)
   const [stats, setStats] = useState<OrderStatsResponse | null>(null)
   const [hotels, setHotels] = useState<HotelOption[]>([])
 
@@ -120,6 +122,7 @@ export function OrdersPage({ navigate }: OrdersPageProps) {
 
   useEffect(() => {
     let cancelled = false
+    setPaidFetching(true)
     setPaidState((prev) => (prev.status === 'loaded' ? prev : { status: 'loading' }))
     listOrders({
       tab: 'paid',
@@ -133,6 +136,7 @@ export function OrdersPage({ navigate }: OrdersPageProps) {
       pageSize: PAGE_SIZE,
     }).then((result) => {
       if (cancelled) return
+      setPaidFetching(false)
       if (!result.ok) return setPaidState({ status: 'error', detail: result.detail })
       setPaidState({ status: 'loaded', items: result.data.items, total: result.data.total })
     })
@@ -143,9 +147,11 @@ export function OrdersPage({ navigate }: OrdersPageProps) {
 
   useEffect(() => {
     let cancelled = false
+    setUnpaidFetching(true)
     setUnpaidState((prev) => (prev.status === 'loaded' ? prev : { status: 'loading' }))
     listUnpaidBookings({ tab: 'unpaid', page: unpaidPage, pageSize: PAGE_SIZE }).then((result) => {
       if (cancelled) return
+      setUnpaidFetching(false)
       if (!result.ok) return setUnpaidState({ status: 'error', detail: result.detail })
       setUnpaidState({ status: 'loaded', items: result.data.items, total: result.data.total, expiringCount: result.data.expiring_count })
     })
@@ -321,12 +327,12 @@ export function OrdersPage({ navigate }: OrdersPageProps) {
             {paidState.status === 'loaded' && paidState.items.length > 0 && (
               <div className="card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ overflowX: 'auto' }}>
-                  <OrdersTable rows={paidState.items} onOpenOrder={(id) => navigate(`/admin/orders/${id}`)} />
+                  <OrdersTable rows={paidState.items} onOpenOrder={(id) => navigate(`/admin/orders/${id}`)} loading={paidFetching} />
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--t4)', padding: '8px 14px', borderTop: '1px solid var(--line)' }}>
                   Dòng có dải màu bên trái: đã thanh toán, chưa xác nhận · sắp hết hạn giữ chỗ.
                 </div>
-                <Pagination page={paidPage} pageSize={PAGE_SIZE} total={paidTotal} onPageChange={setPaidPage} />
+                <Pagination page={paidPage} pageSize={PAGE_SIZE} total={paidTotal} onPageChange={setPaidPage} loading={paidFetching} />
               </div>
             )}
           </>
@@ -362,9 +368,9 @@ export function OrdersPage({ navigate }: OrdersPageProps) {
             {unpaidState.status === 'loaded' && unpaidState.items.length > 0 && (
               <div className="card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ overflowX: 'auto' }}>
-                  <UnpaidHoldsTable rows={unpaidState.items} />
+                  <UnpaidHoldsTable rows={unpaidState.items} loading={unpaidFetching} />
                 </div>
-                <Pagination page={unpaidPage} pageSize={PAGE_SIZE} total={unpaidTotal} onPageChange={setUnpaidPage} />
+                <Pagination page={unpaidPage} pageSize={PAGE_SIZE} total={unpaidTotal} onPageChange={setUnpaidPage} loading={unpaidFetching} />
               </div>
             )}
           </>
