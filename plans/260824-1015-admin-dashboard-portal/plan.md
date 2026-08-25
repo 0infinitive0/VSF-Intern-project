@@ -3,7 +3,7 @@ title: "Admin Dashboard Portal"
 description: "Portal quản trị nội bộ: quản lý khách sạn/phòng/giá, chạy lại pipeline embedding, xử lý đơn đặt phòng. Mỗi màn là một phase độc lập, backend và frontend tách rõ."
 status: pending
 priority: P1
-effort: "~17 phases"
+effort: "~18 phases"
 tags: [admin, fastapi, react, airflow, supabase]
 created: 2026-08-24
 blockedBy: []
@@ -75,6 +75,10 @@ DỮ LIỆU BOT   → Pipeline · Độ phủ embedding
 
 Mục đang chọn: nền `--acc-soft`, chữ `--acc`, weight 600, `inset 2px 0 0 var(--acc)`.
 Đáy sidebar: avatar tròn `--acc-soft` + tên + email + nút đăng xuất `⏻`.
+
+**Bổ sung ngoài thiết kế gốc (Phase 18):** mục `Danh mục tiện ích` thêm vào cuối nhóm
+`KHÁCH SẠN`, badge = số đề xuất đang chờ duyệt. Không có trong `Sidebar.dc.html` —
+Phase 18 không nằm trong 15 màn gốc, xem phase file để biết lý do.
 
 ## Bám sát thiết kế — quy tắc chung
 
@@ -157,6 +161,7 @@ xem Phase 17.
 | 15 | [Chạy pipeline embedding](./phase-15-pipeline-trigger.md) | C2 | Pending |
 | 16 | [Chi tiết lần chạy + log](./phase-16-run-detail-logs.md) | C3 | Pending |
 | 17 | [Tổng quan KPI](./phase-17-overview-kpi.md) | A3 | Done |
+| 18 | [Danh mục tiện ích & tiện nghi](./phase-18-amenity-catalog.md) | — (không artboard) | Pending |
 
 ## Known gap — chưa phase nào chặn booking ở khách sạn `is_active = false`
 
@@ -184,13 +189,16 @@ chốt **trước khi** Phase 4 log request/response chứa dữ liệu khách t
 ```
 01 (migration) ──┬─> 02 (auth BE) ──> 03 (shell FE) ──┬─> 04 ──> 05 ──> 06     [Đơn hàng]
                  │                                     ├─> 07 ──> 08 ──> 09 ──> 10 ──> 11   [Khách sạn]
+                 │                                     │         └─> 09,10 ──> 18            [Danh mục tiện ích]
                  │                                     ├─> 12                  [Embedding status]
                  │                                     └─> 13 ──> 14 ──> 15 ──> 16          [Pipeline]
                  └────────────────────────────────────────────────────────────> 17 (cần 04,07,12)
 ```
 
-Sau phase 03, ba nhánh **Đơn hàng / Khách sạn / Pipeline** độc lập nhau — có thể làm
-song song bởi ba người, file không giao nhau (xem "Sở hữu file" trong từng phase).
+Sau phase 03, bốn nhánh **Đơn hàng / Khách sạn / Pipeline / Danh mục tiện ích** độc lập
+nhau — có thể làm song song, file không giao nhau (xem "Sở hữu file" trong từng phase).
+Phase 18 chỉ cần 9 và 10 xong (tái dùng `amenity-groups.ts`, quy ước drawer/table), không
+cần 11.
 
 ## Thứ tự khuyến nghị
 

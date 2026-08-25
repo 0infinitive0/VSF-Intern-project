@@ -764,6 +764,19 @@ button {
   font-weight: 600;
 }
 
+/* Third dot state -- reused by amenity-table.tsx's "Đã ngừng dùng" status
+   (phase-18-amenity-catalog.md), same 2-part mark+label shape as the
+   embedded/missing pair above, extended rather than duplicated. */
+.embedding-dot__mark--muted {
+  background: var(--t4);
+}
+
+.embedding-dot__label--muted {
+  font-size: 12.5px;
+  color: var(--t4);
+  font-weight: 500;
+}
+
 /* ---------------------------------------------------------------------- */
 /* Striped / selected rows (B1) -- semantic signal, not decoration: a      */
 /* striped row is pipeline-owned and will be overwritten on the next ETL   */

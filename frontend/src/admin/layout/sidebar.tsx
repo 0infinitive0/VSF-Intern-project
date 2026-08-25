@@ -25,6 +25,7 @@ const NAV: NavGroup[] = [
     items: [
       { label: 'Danh sách khách sạn', path: '/admin/hotels' },
       { label: 'Trạng thái embedding', path: '/admin/embedding' },
+      { label: 'Danh mục tiện ích', path: '/admin/amenities-catalog' },
     ],
   },
   {
@@ -41,9 +42,16 @@ interface SidebarProps {
   path: string
   navigate: (to: string) => void
   pendingOrderCount?: number
+  pendingAmenityCount?: number
 }
 
-export function Sidebar({ path, navigate, pendingOrderCount }: SidebarProps) {
+const BADGE_COUNT_BY_PATH: Record<string, keyof SidebarProps> = {
+  '/admin/orders': 'pendingOrderCount',
+  '/admin/amenities-catalog': 'pendingAmenityCount',
+}
+
+export function Sidebar({ path, navigate, pendingOrderCount, pendingAmenityCount }: SidebarProps) {
+  const badgeCounts: Partial<Record<string, number>> = { pendingOrderCount, pendingAmenityCount }
   const { user, signOut } = useAuth()
 
   return (
@@ -93,7 +101,8 @@ export function Sidebar({ path, navigate, pendingOrderCount }: SidebarProps) {
             )}
             {group.items.map((item) => {
               const active = matchesBase(path, item.path)
-              const badge = item.path === '/admin/orders' ? pendingOrderCount : undefined
+              const badgeKey = BADGE_COUNT_BY_PATH[item.path]
+              const badge = badgeKey ? badgeCounts[badgeKey] : undefined
               return (
                 <button
                   key={item.path}
