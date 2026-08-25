@@ -149,8 +149,8 @@ xem Phase 17.
 | 7 | [Danh sách khách sạn](./phase-07-hotels-list.md) | B1 | Done |
 | 8 | [Tạo khách sạn mới](./phase-08-hotel-create.md) | B2 | Done |
 | 9 | [Chi tiết / Sửa khách sạn](./phase-09-hotel-edit.md) | B3 | Done |
-| 10 | [Quản lý phòng](./phase-10-rooms.md) | B5 | Pending |
-| 11 | [Quản lý giá phòng theo đêm](./phase-11-room-prices.md) | B6 | Pending |
+| 10 | [Quản lý phòng](./phase-10-rooms.md) | B5 | Done |
+| 11 | [Quản lý giá phòng theo đêm](./phase-11-room-prices.md) | B6 | Done |
 | 12 | [Trạng thái & độ phủ embedding](./phase-12-embedding-status.md) | B7, C4 | Pending |
 | 13 | [Airflow client + hạ tầng mạng/credential](./phase-13-airflow-client.md) | — | Pending |
 | 14 | [Danh sách pipeline](./phase-14-pipelines-list.md) | C1 | Pending |

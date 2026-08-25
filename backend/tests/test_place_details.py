@@ -10,26 +10,38 @@ from src.models.schemas import HotelDetailPayload
 
 
 class FakeQuery:
+    """Ignores every filter for `execute()`'s canned response (as before)
+    -- but now records the calls made against each table so a test can
+    assert what filtering the real code actually asked for, not just what
+    data it returned. Needed to catch the class of bug where a query-level
+    `.eq("sold_out", False)` strips a row before it ever reaches Python's
+    own (correct) freshest-row-then-sold_out logic -- a fake that silently
+    ignores filters can't tell the two apart otherwise."""
+
     def __init__(self, client, table):
         self.client, self.table = client, table
 
-    def select(self, *_args):
+    def _record(self, method, *args):
+        self.client.calls.setdefault(self.table, []).append((method, args))
         return self
 
-    def eq(self, *_args):
-        return self
+    def select(self, *args):
+        return self._record("select", *args)
 
-    def gte(self, *_args):
-        return self
+    def eq(self, *args):
+        return self._record("eq", *args)
 
-    def lt(self, *_args):
-        return self
+    def gte(self, *args):
+        return self._record("gte", *args)
 
-    def in_(self, *_args):
-        return self
+    def lt(self, *args):
+        return self._record("lt", *args)
 
-    def limit(self, *_args):
-        return self
+    def in_(self, *args):
+        return self._record("in_", *args)
+
+    def limit(self, *args):
+        return self._record("limit", *args)
 
     def execute(self):
         self.client.queries.append(self.table)
@@ -43,6 +55,7 @@ class FakeClient:
     def __init__(self, responses):
         self.responses, self.queries = responses, []
         self.rpc_calls: list[tuple[str, dict]] = []
+        self.calls: dict[str, list[tuple[str, tuple]]] = {}
 
     def table(self, name):
         return FakeQuery(self, name)
@@ -64,8 +77,13 @@ def test_hotel_detail_selects_matching_room_price_and_never_uses_hotel_lowest_pr
     client = FakeClient({
         "hotels": [_hotel()], "rooms": [_room()],
         "room_prices": [
-            {"room_id": "room-1", "price": 1250000, "currency": "VND", "check_in_date": "2026-09-01", "check_out_date": "2026-09-02", "sold_out": False, "crawled_at": "2026-08-01T00:00:00"},
-            {"room_id": "room-1", "price": 1, "currency": "VND", "check_in_date": "2026-09-01", "check_out_date": "2026-09-02", "sold_out": True, "crawled_at": "2026-08-02T00:00:00"},
+            # Stale sold_out snapshot from an earlier crawl -- superseded by
+            # the fresher, available snapshot below (freshest-by-crawled_at
+            # wins regardless of which one is sold_out; see _average_price's
+            # docstring). The freshest row (2026-08-02) is the one that
+            # decides both price AND availability for the night.
+            {"room_id": "room-1", "price": 1, "currency": "VND", "check_in_date": "2026-09-01", "check_out_date": "2026-09-02", "sold_out": True, "crawled_at": "2026-08-01T00:00:00"},
+            {"room_id": "room-1", "price": 1250000, "currency": "VND", "check_in_date": "2026-09-01", "check_out_date": "2026-09-02", "sold_out": False, "crawled_at": "2026-08-02T00:00:00"},
         ],
         "rpc": {"room-1": 9},
     })
@@ -76,6 +94,33 @@ def test_hotel_detail_selects_matching_room_price_and_never_uses_hotel_lowest_pr
     assert client.queries == ["hotels", "rooms", "room_prices"]
     assert result["rooms"][0]["price"]["amount"] == 1250000
     assert result["rooms"][0]["price"]["package_details"] is None
+
+
+def test_hotel_detail_freshest_sold_out_row_hides_price_even_with_older_available_row(monkeypatch):
+    """Regression for phase-11's code review finding: sold_out must be
+    checked on the FRESHEST row per night, not filtered out before picking
+    the freshest -- otherwise an admin's newer sold_out=True write (or a
+    genuine OTA recrawl reporting the room now sold out) loses to a stale
+    older row that still says available, and the guest sees a price for a
+    night that is not actually bookable."""
+    client = FakeClient({
+        "hotels": [_hotel()], "rooms": [_room()],
+        "room_prices": [
+            {"room_id": "room-1", "price": 1250000, "currency": "VND", "check_in_date": "2026-09-01", "check_out_date": "2026-09-02", "sold_out": False, "crawled_at": "2026-08-01T00:00:00"},
+            {"room_id": "room-1", "price": 1, "currency": "VND", "check_in_date": "2026-09-01", "check_out_date": "2026-09-02", "sold_out": True, "crawled_at": "2026-08-02T00:00:00"},
+        ],
+        "rpc": {"room-1": 9},
+    })
+    monkeypatch.setattr(place_details, "_get_supabase_client", lambda: client)
+
+    result = place_details.get_hotel_detail("hotel-1", date(2026, 9, 1), date(2026, 9, 3))
+
+    assert result["rooms"][0]["price"] is None  # "price on request", not the stale 1,250,000
+    # The room_prices query itself must not filter sold_out at the DB level
+    # -- that would strip the sold_out=True row before _average_price ever
+    # saw it, silently reintroducing this exact bug regardless of the fix
+    # inside _average_price.
+    assert ("eq", ("sold_out", False)) not in client.calls.get("room_prices", [])
 
 
 def test_hotel_detail_averages_room_price_across_every_night_of_the_stay(monkeypatch):

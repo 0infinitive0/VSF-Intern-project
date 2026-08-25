@@ -1,7 +1,7 @@
 ---
 phase: 11
 title: "Quản lý giá phòng theo đêm (B6)"
-status: pending
+status: done
 priority: P1
 effort: "2.5d"
 dependencies: [10, 1]
@@ -226,20 +226,49 @@ src/admin/lib/expand-dates.ts  Chỉ T7&CN, Lặp lại 4 tuần
 
 ## Success Criteria
 
-- [ ] Đặt giá cho khoảng 12 ngày → **12 dòng** `room_prices`, mỗi dòng `check_out_date = check_in_date + 1`
-- [ ] Đặt lại giá cho đúng 12 ngày đó → vẫn **12 dòng** (UPDATE, không nhân bản)
-- [ ] **Hồi quy tìm kiếm:** phòng thuộc khách sạn ETL đã có giá OTA; admin đặt giá đè lên 3 đêm → gọi `match_hotels_with_rooms` với khoảng ngày phủ 3 đêm đó, khách sạn **vẫn** trong kết quả
-- [ ] `place_details` trả về **giá admin vừa nhập**, không phải giá OTA cũ
-- [ ] `Chỉ T7 & CN` chỉ ghi vào thứ Bảy và Chủ nhật
-- [ ] `Lặp lại 4 tuần` ghi đúng 4× số ngày, không trùng, không có ngày quá khứ
-- [ ] Đánh dấu `Hết phòng` → `sold_out = true`, đêm đó biến mất khỏi điều kiện của `match_hotels_with_rooms`
-- [ ] Bảng khoảng ngày gộp đúng: 14 đêm cùng giá → 1 dòng `14 đêm`; đổi giá 1 đêm giữa → tách thành 3 dòng
-- [ ] Xoá khoảng ngày toàn dòng OTA → `deleted: 0`, nút `Xoá` ẩn ở UI
-- [ ] Đêm `sold_out=false` nhưng đã bán hết → chip `Đã kín` (L50)
-- [ ] Ngày quá khứ không chọn được
-- [ ] Màn này **không** có chữ "embedding" nào (grep xác nhận)
-- [ ] `admin_audit_log` ghi 1 dòng gộp cho mỗi lần đặt giá, không phải 12 dòng
-- [ ] Đặt giá 366 ngày hoàn tất dưới 3 giây
+- [x] Đặt giá cho khoảng 12 ngày → **12 dòng** `room_prices`, mỗi dòng `check_out_date = check_in_date + 1`
+- [x] Đặt lại giá cho đúng 12 ngày đó → vẫn **12 dòng** (UPDATE, không nhân bản)
+- [x] **Hồi quy tìm kiếm:** phòng thuộc khách sạn ETL đã có giá OTA; admin đặt giá đè lên 3 đêm → gọi `match_hotels_with_rooms` với khoảng ngày phủ 3 đêm đó, khách sạn **vẫn** trong kết quả — verified: Phase 1's `count(DISTINCT rp.check_in_date)` fix is in `database_schema.sql`, and writing an extra admin row per night (instead of replacing) doesn't change that count
+- [x] `place_details` trả về **giá admin vừa nhập**, không phải giá OTA cũ — verified by code reading (`_average_price` picks max `crawled_at`; admin write always sets `crawled_at=now()`) plus this phase's own `test_get_prices_admin_row_outranks_older_ota_row_by_crawled_at`
+- [x] `Chỉ T7 & CN` chỉ ghi vào thứ Bảy và Chủ nhật
+- [x] `Lặp lại 4 tuần` ghi đúng 4× số ngày, không trùng, không có ngày quá khứ
+- [x] Đánh dấu `Hết phòng` → `sold_out = true`, đêm đó biến mất khỏi điều kiện của `match_hotels_with_rooms` — xem "Vấn đề đã sửa" bên dưới, sửa ngoài phạm vi file gốc của phase với sự đồng ý của người dùng
+- [x] Bảng khoảng ngày gộp đúng: 14 đêm cùng giá → 1 dòng `14 đêm`; đổi giá 1 đêm giữa → tách thành 3 dòng
+- [x] Xoá khoảng ngày toàn dòng OTA → `deleted: 0`, nút `Xoá` ẩn ở UI
+- [x] Đêm `sold_out=false` nhưng đã bán hết → chip `Đã kín` (L50)
+- [x] Ngày quá khứ không chọn được
+- [x] Màn này **không** có chữ "embedding" nào (grep xác nhận)
+- [x] `admin_audit_log` ghi 1 dòng gộp cho mỗi lần đặt giá, không phải 12 dòng
+- [x] Đặt giá 366 ngày hoàn tất dưới 3 giây — verified: 1 RPC call bất kể số đêm (test + phân tích code, không round-trip theo số đêm)
+
+## Vấn đề đã sửa — ngoài phạm vi file gốc của phase, sửa với sự đồng ý của người dùng
+
+**Đánh dấu `Hết phòng` không ẩn đêm đó khỏi tìm kiếm/giá nếu đêm đó đã có dòng OTA.**
+Phát hiện lúc code review: cả `match_hotels_with_rooms` (2 nơi trong
+`database_schema.sql`) lẫn `place_details._average_price` đều lọc
+`sold_out = false` **trên từng dòng, trước khi** chọn dòng `crawled_at` mới
+nhất — không phải "lọc theo trạng thái của dòng thắng". Khi một đêm có cả
+dòng OTA (`sold_out=false`, cũ) và dòng admin (`sold_out=true`, mới), dòng
+OTA vẫn thoả điều kiện lọc nên đêm đó vẫn tính là còn phòng còn giá.
+
+Đã sửa (`20260824_fix_sold_out_freshest_row_precedence.sql`):
+- Hàm mới `public.count_priced_open_nights(room_id, start, end)` — chọn
+  dòng `crawled_at` mới nhất **cho mỗi đêm trước**, rồi mới kiểm tra
+  `sold_out` trên đúng dòng đó. Thay thế `count(DISTINCT rp.check_in_date)
+  WHERE sold_out=false` ở cả 2 nơi trong `match_hotels_with_rooms`.
+- `place_details._average_price`: đổi thứ tự lọc — chọn dòng mới nhất mỗi
+  đêm trước, kiểm tra `sold_out` trên dòng đó sau (thay vì lọc `sold_out`
+  trên toàn bộ dòng thô trước khi chọn dòng mới nhất).
+- `place_details.get_hotel_detail`: bỏ `.eq("sold_out", False)` ở câu
+  query lấy `room_prices` — filter này ở tầng DB sẽ loại dòng
+  `sold_out=True` **trước khi** `_average_price` kịp thấy, vô hiệu hoá fix
+  phía trên. Phát hiện bằng cách viết test giả lập postgrest filter thật
+  (fake cũ bỏ qua mọi `.eq()`/`.gte()`, không phát hiện được lớp lỗi này).
+- Xác nhận cả 2 chiều bằng Postgres thật (không chỉ đọc code): OTA cũ
+  `sold_out=false` + admin mới `sold_out=true` → 0 đêm mở; và chiều ngược
+  lại (admin mở lại đè lên OTA cũ báo hết phòng) → 1 đêm mở.
+- Vẫn giữ cảnh báo trong panel đặt giá (dùng `row_count`) làm lớp bảo vệ
+  thứ hai — không gỡ, vì admin vẫn nên biết khi nào có dòng khác cùng đêm.
 
 ## Risk Assessment
 

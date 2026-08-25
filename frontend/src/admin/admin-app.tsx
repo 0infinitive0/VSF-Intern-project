@@ -8,6 +8,7 @@ import { OverviewPage } from './pages/overview-page'
 import { HotelCreatePage } from './pages/hotels/hotel-create-page'
 import { HotelDetailPage } from './pages/hotels/hotel-detail-page'
 import { HotelsPage } from './pages/hotels/hotels-page'
+import { RoomPricesPage } from './pages/hotels/prices/room-prices-page'
 import { RouteStub } from './pages/route-stub'
 import { useAdminRoute } from './router'
 
@@ -17,11 +18,18 @@ function resolvePage(path: string, navigate: (to: string) => void) {
   if (path === '/admin') return <OverviewPage />
   if (path === '/admin/hotels/new') return <HotelCreatePage navigate={navigate} />
   if (path.startsWith('/admin/hotels/')) {
-    const hotelId = decodeURIComponent(path.slice('/admin/hotels/'.length).split('/')[0] ?? '')
+    const segments = decodeURIComponent(path.slice('/admin/hotels/'.length)).split('/')
+    const hotelId = segments[0] ?? ''
     // A trailing slash ("/admin/hotels/") yields an empty id -- treat it as
     // the list page rather than firing GET /hotels/ (which 404s/307s and
     // leaves HotelDetailPage rendering against no hotel).
     if (!hotelId) return <HotelsPage navigate={navigate} />
+    // /admin/hotels/:hotelId/rooms/:roomId/prices (B6, phase-11) -- the one
+    // nested route under /hotels/:id; everything else on that prefix still
+    // falls through to HotelDetailPage's own tabs.
+    if (segments[1] === 'rooms' && segments[2] && segments[3] === 'prices') {
+      return <RoomPricesPage hotelId={hotelId} roomId={segments[2]} navigate={navigate} />
+    }
     return <HotelDetailPage hotelId={hotelId} navigate={navigate} />
   }
   if (path === '/admin/hotels') return <HotelsPage navigate={navigate} />

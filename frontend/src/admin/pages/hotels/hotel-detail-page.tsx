@@ -389,6 +389,7 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
               <HotelTabRooms
                 hotelId={hotelId}
                 hotelName={hotel.name}
+                navigate={navigate}
                 onRoomsChanged={() => {
                   // `room_count`/`embedding_state` in the header + tab badge
                   // are aggregates over `rooms` -- a room write makes them

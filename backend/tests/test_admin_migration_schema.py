@@ -21,16 +21,28 @@ def test_hotels_is_active_soft_delete_column_and_index():
 
 
 def test_match_hotels_with_rooms_counts_distinct_nights_not_rows():
+    """Bug fix (F4): a night with more than one room_prices row (e.g. an
+    admin price and a stale OTA crawl) must not overshoot the requested
+    night count. Superseded by count_priced_open_nights()
+    (20260824_fix_sold_out_freshest_row_precedence.sql), which counts
+    distinct nights via `DISTINCT ON (rp.check_in_date)` instead of
+    `count(DISTINCT rp.check_in_date)` -- same invariant (one count per
+    night, not per row), different SQL shape because that function also had
+    to start picking the freshest row per night before checking sold_out
+    (see test_match_hotels_with_rooms_checks_sold_out_on_the_freshest_row_per_night
+    in test_room_availability_schema.py)."""
     schema = _schema_text()
 
     function_body = schema.split(
         "CREATE FUNCTION public.match_hotels_with_rooms(", 1
     )[1].split("$$;", 1)[0]
+    helper_body = schema.split(
+        "CREATE OR REPLACE FUNCTION public.count_priced_open_nights(", 1
+    )[1].split("$$;", 1)[0]
 
-    # Bug fix: a night with more than one room_prices row (e.g. an admin price
-    # and a stale OTA crawl) must not overshoot the requested night count.
-    assert function_body.count("count(DISTINCT rp.check_in_date)") == 2
+    assert function_body.count("public.count_priced_open_nights(") == 2
     assert "count(*)" not in function_body.split("hotel_capacity AS (", 1)[0]
+    assert "DISTINCT ON (rp.check_in_date)" in helper_body
 
 
 def test_match_hotels_with_rooms_excludes_deactivated_hotels():

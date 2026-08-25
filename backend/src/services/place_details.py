@@ -61,13 +61,17 @@ def _average_price(
     stay picked yet).
 
     A night re-crawled more than once keeps only its freshest (max
-    `crawled_at`) snapshot before averaging, so a stale re-crawl of the same
-    night never gets double-counted against a fresh one. Nights with no
-    non-sold-out snapshot are simply absent from the average — never
-    fabricated (same "no invented data" stance as the rest of this module).
-    Returns None when nothing in range has a usable price at all — the
-    caller shows "price on request", never falls back to hotel-level
-    pricing.
+    `crawled_at`) snapshot -- picked BEFORE checking `sold_out`, not after:
+    an admin closing a night writes a new row with `sold_out=True`, and that
+    row must win the freshest-snapshot comparison against an older OTA row
+    for the same night even though the OTA row is `sold_out=False` -- the
+    same class of bug `count_priced_open_nights()`
+    (20260824_fix_sold_out_freshest_row_precedence.sql) fixes on the search
+    side. A night whose freshest snapshot IS sold_out is simply absent from
+    the average — never fabricated (same "no invented data" stance as the
+    rest of this module). Returns None when nothing in range has a usable
+    price at all — the caller shows "price on request", never falls back to
+    hotel-level pricing.
 
     The average is computed in `Decimal` and rounded to a whole VND (VND has
     no real subunit) rather than left as a raw float division — VNPay's own
@@ -79,7 +83,7 @@ def _average_price(
     version of this function (plain `float` division, no rounding) broke
     checkout right after per-night averaging shipped.
     """
-    candidates = [row for row in prices if not row.get("sold_out", False) and row.get("check_in_date")]
+    candidates = [row for row in prices if row.get("check_in_date")]
     if check_in is not None and check_out is not None:
         check_in_value, check_out_value = check_in.isoformat(), check_out.isoformat()
         candidates = [
@@ -93,7 +97,11 @@ def _average_price(
         if current is None or str(row.get("crawled_at") or "") > str(current.get("crawled_at") or ""):
             freshest_by_night[night] = row
 
-    priced_nights = [row for row in freshest_by_night.values() if row.get("price") is not None]
+    # sold_out is checked on the freshest row per night, not on every raw
+    # row before picking the freshest -- see the docstring above.
+    priced_nights = [
+        row for row in freshest_by_night.values() if row.get("price") is not None and not row.get("sold_out", False)
+    ]
     if not priced_nights:
         return None
 
@@ -220,7 +228,15 @@ def get_hotel_detail(
             # check_in/check_out row, so this fetches every night in
             # [check_in, check_out) for averaging rather than looking for
             # one row spanning the whole stay.
-            query = client.table("room_prices").select(_PRICE_FIELDS).in_("room_id", room_ids).eq("sold_out", False)
+            #
+            # Deliberately NOT `.eq("sold_out", False)` here -- that would
+            # drop a sold_out=True row before _average_price ever sees it,
+            # defeating its freshest-row-decides-sold_out logic for exactly
+            # the case that logic exists for (a newer sold_out row must be
+            # able to beat an older, still-available one for the same
+            # night). _average_price does its own sold_out filtering, on
+            # the freshest row per night, after this fetch.
+            query = client.table("room_prices").select(_PRICE_FIELDS).in_("room_id", room_ids)
             if check_in is not None and check_out is not None:
                 query = query.gte("check_in_date", check_in.isoformat()).lt(
                     "check_in_date", check_out.isoformat()

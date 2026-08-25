@@ -69,3 +69,19 @@ def test_bookings_keep_optional_local_times_and_a_temporary_user_reference():
     assert "expires_at TIMESTAMPTZ" in schema
     assert "'PENDING', 'RESERVED', 'CONFIRMED', 'CANCELLED', 'EXPIRED'" in schema
     assert "ALTER TABLE bookings ENABLE ROW LEVEL SECURITY" in schema
+
+
+def test_match_hotels_with_rooms_checks_sold_out_on_the_freshest_row_per_night():
+    """Regression for phase-11's code review finding
+    (20260824_fix_sold_out_freshest_row_precedence.sql): the live schema
+    must no longer filter `sold_out` per row before counting distinct
+    priced nights -- that let a stale, still-`sold_out=false` OTA row keep a
+    night "open" even after a fresher row (an admin close, or a genuine OTA
+    recrawl) marked it sold out. `count_priced_open_nights` picks the
+    freshest row per night first, then checks sold_out on that one row."""
+    schema = (ROOT / "scripts" / "database_schema.sql").read_text(encoding="utf-8")
+
+    assert "CREATE OR REPLACE FUNCTION public.count_priced_open_nights" in schema
+    assert "ORDER BY rp.check_in_date, rp.crawled_at DESC" in schema
+    assert schema.count("public.count_priced_open_nights(") >= 3  # definition + both CTEs
+    assert "count(DISTINCT rp.check_in_date)" not in schema

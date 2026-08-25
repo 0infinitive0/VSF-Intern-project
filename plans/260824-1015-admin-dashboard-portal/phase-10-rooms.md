@@ -1,7 +1,7 @@
 ---
 phase: 10
 title: "Quản lý phòng (B5)"
-status: pending
+status: done
 priority: P1
 effort: "1.5d"
 dependencies: [9]
@@ -191,17 +191,17 @@ src/admin/pages/hotels/rooms/
 
 ## Success Criteria
 
-- [ ] Tạo phòng → `source_room_id` tăng dần, `embedding IS NULL`, không vi phạm `UNIQUE(hotel_id, source_room_id)`
-- [ ] Sửa `bed_description` → `rooms.embedding` thành NULL
-- [ ] Sửa `room_size_sqm` → `embedding` **giữ nguyên**
-- [ ] Xoá phòng không có booking → 204; xoá phòng có booking → 409 kèm số lượng, phòng vẫn còn
-- [ ] `lowest_price_30d` khớp `SELECT min(price) FROM room_prices WHERE room_id=... AND check_in_date >= current_date AND check_in_date < current_date + 30 AND sold_out = false`
-- [ ] Phòng chưa có giá → cột hiện `Chưa có giá`, không hiện `0 ₫`
-- [ ] `image_count` luôn bằng `array_length(images,1)`
-- [ ] Khách sạn 0 phòng → trạng thái rỗng đúng câu chữ thiết kế, có nút `+ Thêm phòng đầu tiên`
-- [ ] Vùng ảnh là nhập URL, **không** có ô kéo thả giả (L40)
-- [ ] `room_facilities` chỉ nhận id thuộc scope `room`/`both`; id sai → 422
-- [ ] Template `_build_text` nhánh `rooms` trong DAG **không** bị sửa (git diff xác nhận)
+- [x] Tạo phòng → `source_room_id` tăng dần, `embedding IS NULL`, không vi phạm `UNIQUE(hotel_id, source_room_id)`
+- [x] Sửa `bed_description` → `rooms.embedding` thành NULL
+- [x] Sửa `room_size_sqm` → `embedding` **giữ nguyên**
+- [x] Xoá phòng không có booking → 204; xoá phòng có booking → 409 kèm số lượng, phòng vẫn còn
+- [x] `lowest_price_30d` khớp `SELECT min(price) FROM room_prices WHERE room_id=... AND check_in_date >= current_date AND check_in_date < current_date + 30 AND sold_out = false`
+- [x] Phòng chưa có giá → cột hiện `Chưa có giá`, không hiện `0 ₫`
+- [x] `image_count` luôn bằng `array_length(images,1)`
+- [x] Khách sạn 0 phòng → trạng thái rỗng đúng câu chữ thiết kế, có nút `+ Thêm phòng đầu tiên`
+- [x] Vùng ảnh là nhập URL, **không** có ô kéo thả giả (L40)
+- [x] `room_facilities` chỉ nhận id thuộc scope `room`/`both`; id sai → 422
+- [x] Template `_build_text` nhánh `rooms` trong DAG **không** bị sửa (git diff xác nhận)
 
 ## Risk Assessment
 

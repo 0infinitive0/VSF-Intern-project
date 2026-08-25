@@ -861,6 +861,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/rooms/{room_id}/prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Room Prices */
+        get: operations["get_room_prices_api_v1_admin_rooms__room_id__prices_get"];
+        /** Set Room Prices */
+        put: operations["set_room_prices_api_v1_admin_rooms__room_id__prices_put"];
+        post?: never;
+        /** Delete Room Prices */
+        delete: operations["delete_room_prices_api_v1_admin_rooms__room_id__prices_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/me": {
         parameters: {
             query?: never;
@@ -1299,6 +1318,11 @@ export interface components {
             theme: string;
             /** Items */
             items: components["schemas"]["ItineraryItem"][];
+        };
+        /** DeleteRoomPricesResponse */
+        DeleteRoomPricesResponse: {
+            /** Deleted */
+            deleted: number;
         };
         /** DestinationOption */
         DestinationOption: {
@@ -1750,6 +1774,26 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** NightRow */
+        NightRow: {
+            /** Date */
+            date: string;
+            /** Price */
+            price: string;
+            /** Currency */
+            currency: string;
+            /** Sold Out */
+            sold_out: boolean;
+            /** Available */
+            available: number | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "manual" | "pipeline";
+            /** Row Count */
+            row_count: number;
+        };
         /** PaymentPayload */
         PaymentPayload: {
             /**
@@ -1872,6 +1916,38 @@ export interface components {
             /** Label */
             label: string;
         };
+        /**
+         * RangeRow
+         * @description A VIEW over consecutive `nights` with equal `(price, currency,
+         *     sold_out)` -- not a storage model (see module docstring). `deletable` is
+         *     true when at least one night in the range has an admin-written row
+         *     (`source_url IS NULL`); DELETE only ever removes those rows, so a range
+         *     built entirely from OTA rows must hide the delete action (L52). `source`
+         *     mirrors `deletable`'s "any admin row" rule (not just the first night's
+         *     winner) so a range never reports `source: "pipeline"` while also being
+         *     `deletable: true`.
+         */
+        RangeRow: {
+            /** From */
+            from: string;
+            /** To */
+            to: string;
+            /** Nights */
+            nights: number;
+            /** Price */
+            price: string;
+            /** Currency */
+            currency: string;
+            /** Sold Out */
+            sold_out: boolean;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "manual" | "pipeline";
+            /** Deletable */
+            deletable: boolean;
+        };
         /** ReembedResponse */
         ReembedResponse: {
             /** Queued */
@@ -1944,6 +2020,25 @@ export interface components {
             sold_out: boolean | null;
             /** Package Details */
             package_details: string | null;
+        };
+        /** RoomPricesResponse */
+        RoomPricesResponse: {
+            /** Room Id */
+            room_id: string;
+            /** Room Name */
+            room_name: string;
+            /** Hotel Id */
+            hotel_id: string;
+            /** Hotel Name */
+            hotel_name: string;
+            /** Is Manual */
+            is_manual: boolean;
+            /** Currency */
+            currency: string;
+            /** Nights */
+            nights: components["schemas"]["NightRow"][];
+            /** Ranges */
+            ranges: components["schemas"]["RangeRow"][];
         };
         /** RoomRow */
         RoomRow: {
@@ -2062,6 +2157,35 @@ export interface components {
         SetActiveRequest: {
             /** Is Active */
             is_active: boolean;
+        };
+        /**
+         * SetRoomPricesRequest
+         * @description PUT body -- a discrete list of nights, not a range: the calendar's
+         *     `Chỉ T7 & CN` selection is non-contiguous, and expanding `Lặp lại 4 tuần`
+         *     into individual dates is the frontend's job (`expand-dates.ts`) so this
+         *     endpoint never needs to know about repeat rules.
+         */
+        SetRoomPricesRequest: {
+            /** Dates */
+            dates: string[];
+            /** Price */
+            price: number | string;
+            /** Currency */
+            currency: string;
+            /**
+             * Sold Out
+             * @default false
+             */
+            sold_out: boolean;
+        };
+        /** SetRoomPricesResponse */
+        SetRoomPricesResponse: {
+            /** Written */
+            written: number;
+            /** Created */
+            created: number;
+            /** Updated */
+            updated: number;
         };
         /**
          * SuggestedPlacePayload
@@ -2278,10 +2402,6 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: Record<string, never>;
         };
     };
     responses: never;
@@ -3773,6 +3893,115 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UploadImageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_room_prices_api_v1_admin_rooms__room_id__prices_get: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                room_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomPricesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_room_prices_api_v1_admin_rooms__room_id__prices_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                room_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetRoomPricesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetRoomPricesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_room_prices_api_v1_admin_rooms__room_id__prices_delete: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                room_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteRoomPricesResponse"];
                 };
             };
             /** @description Validation Error */

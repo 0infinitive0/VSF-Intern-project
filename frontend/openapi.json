@@ -2522,6 +2522,226 @@
         }
       }
     },
+    "/api/v1/admin/rooms/{room_id}/prices": {
+      "get": {
+        "tags": [
+          "admin-room-prices"
+        ],
+        "summary": "Get Room Prices",
+        "operationId": "get_room_prices_api_v1_admin_rooms__room_id__prices_get",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "To"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomPricesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "admin-room-prices"
+        ],
+        "summary": "Set Room Prices",
+        "operationId": "set_room_prices_api_v1_admin_rooms__room_id__prices_put",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetRoomPricesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetRoomPricesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "admin-room-prices"
+        ],
+        "summary": "Delete Room Prices",
+        "operationId": "delete_room_prices_api_v1_admin_rooms__room_id__prices_delete",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "To"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteRoomPricesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/me": {
       "get": {
         "summary": "Get Me",
@@ -3704,6 +3924,19 @@
           "items"
         ],
         "title": "DayPlan"
+      },
+      "DeleteRoomPricesResponse": {
+        "properties": {
+          "deleted": {
+            "type": "integer",
+            "title": "Deleted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "deleted"
+        ],
+        "title": "DeleteRoomPricesResponse"
       },
       "DestinationOption": {
         "properties": {
@@ -5239,6 +5472,60 @@
         "title": "NearbyPlacePayload",
         "description": "An entry of `hotels.nearby_attractions` (a jsonb column).\n\n`extra=\"allow\"` because these rows are crawled data: the four fields below\nare the ones the UI reads and were confirmed against real rows, but the\ncolumn may carry more and dropping it on serialization would be a silent\nlie of a different kind.\n\n`distance_text` is a pre-formatted Vietnamese string from the crawl — data,\nnot a UI string. Clients should rebuild the figure from `distance_km` so it\nhonours their locale."
       },
+      "NightRow": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "price": {
+            "type": "string",
+            "title": "Price"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "sold_out": {
+            "type": "boolean",
+            "title": "Sold Out"
+          },
+          "available": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "pipeline"
+            ],
+            "title": "Source"
+          },
+          "row_count": {
+            "type": "integer",
+            "title": "Row Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "price",
+          "currency",
+          "sold_out",
+          "available",
+          "source",
+          "row_count"
+        ],
+        "title": "NightRow"
+      },
       "PaymentPayload": {
         "properties": {
           "id": {
@@ -5531,6 +5818,59 @@
           "label"
         ],
         "title": "PreferencePayload"
+      },
+      "RangeRow": {
+        "properties": {
+          "from": {
+            "type": "string",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "title": "To"
+          },
+          "nights": {
+            "type": "integer",
+            "title": "Nights"
+          },
+          "price": {
+            "type": "string",
+            "title": "Price"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "sold_out": {
+            "type": "boolean",
+            "title": "Sold Out"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "pipeline"
+            ],
+            "title": "Source"
+          },
+          "deletable": {
+            "type": "boolean",
+            "title": "Deletable"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "nights",
+          "price",
+          "currency",
+          "sold_out",
+          "source",
+          "deletable"
+        ],
+        "title": "RangeRow",
+        "description": "A VIEW over consecutive `nights` with equal `(price, currency,\nsold_out)` -- not a storage model (see module docstring). `deletable` is\ntrue when at least one night in the range has an admin-written row\n(`source_url IS NULL`); DELETE only ever removes those rows, so a range\nbuilt entirely from OTA rows must hide the delete action (L52). `source`\nmirrors `deletable`'s \"any admin row\" rule (not just the first night's\nwinner) so a range never reports `source: \"pipeline\"` while also being\n`deletable: true`."
       },
       "ReembedResponse": {
         "properties": {
@@ -5832,6 +6172,60 @@
           "package_details"
         ],
         "title": "RoomPricePayload"
+      },
+      "RoomPricesResponse": {
+        "properties": {
+          "room_id": {
+            "type": "string",
+            "title": "Room Id"
+          },
+          "room_name": {
+            "type": "string",
+            "title": "Room Name"
+          },
+          "hotel_id": {
+            "type": "string",
+            "title": "Hotel Id"
+          },
+          "hotel_name": {
+            "type": "string",
+            "title": "Hotel Name"
+          },
+          "is_manual": {
+            "type": "boolean",
+            "title": "Is Manual"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "nights": {
+            "items": {
+              "$ref": "#/components/schemas/NightRow"
+            },
+            "type": "array",
+            "title": "Nights"
+          },
+          "ranges": {
+            "items": {
+              "$ref": "#/components/schemas/RangeRow"
+            },
+            "type": "array",
+            "title": "Ranges"
+          }
+        },
+        "type": "object",
+        "required": [
+          "room_id",
+          "room_name",
+          "hotel_id",
+          "hotel_name",
+          "is_manual",
+          "currency",
+          "nights",
+          "ranges"
+        ],
+        "title": "RoomPricesResponse"
       },
       "RoomRow": {
         "properties": {
@@ -6263,6 +6657,76 @@
           "is_active"
         ],
         "title": "SetActiveRequest"
+      },
+      "SetRoomPricesRequest": {
+        "properties": {
+          "dates": {
+            "items": {
+              "type": "string",
+              "format": "date"
+            },
+            "type": "array",
+            "maxItems": 366,
+            "minItems": 1,
+            "title": "Dates"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 9999999999.99,
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Price"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 10,
+            "minLength": 1,
+            "title": "Currency"
+          },
+          "sold_out": {
+            "type": "boolean",
+            "title": "Sold Out",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "dates",
+          "price",
+          "currency"
+        ],
+        "title": "SetRoomPricesRequest",
+        "description": "PUT body -- a discrete list of nights, not a range: the calendar's\n`Chỉ T7 & CN` selection is non-contiguous, and expanding `Lặp lại 4 tuần`\ninto individual dates is the frontend's job (`expand-dates.ts`) so this\nendpoint never needs to know about repeat rules."
+      },
+      "SetRoomPricesResponse": {
+        "properties": {
+          "written": {
+            "type": "integer",
+            "title": "Written"
+          },
+          "created": {
+            "type": "integer",
+            "title": "Created"
+          },
+          "updated": {
+            "type": "integer",
+            "title": "Updated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "written",
+          "created",
+          "updated"
+        ],
+        "title": "SetRoomPricesResponse"
       },
       "SuggestedPlacePayload": {
         "properties": {
@@ -7001,13 +7465,6 @@
           "type": {
             "type": "string",
             "title": "Error Type"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "ctx": {
-            "type": "object",
-            "title": "Context"
           }
         },
         "type": "object",

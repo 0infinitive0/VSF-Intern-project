@@ -7,10 +7,12 @@ import { Money } from '../../../ui/money'
 import { RoomDrawer } from './room-drawer'
 import { RoomReembedDialog } from './room-reembed-dialog'
 import { RoomsEmpty } from './rooms-empty'
+import { roomPricesPath } from '../../../lib/room-prices-path'
 
 interface HotelTabRoomsProps {
   hotelId: string
   hotelName: string
+  navigate: (to: string) => void
   /** Bumped by the parent whenever a room write should re-trigger the
    * hotel's own `room_count`/embedding-badge refresh (hotel-detail-page.tsx
    * re-fetches `GET /hotels/{id}` on this). */
@@ -22,7 +24,7 @@ interface HotelTabRoomsProps {
  * rooms are a different resource/lifecycle than the hotel-level tabs
  * (Cơ bản/Vị trí/...), each with its own save button and no cross-tab dirty
  * state to track. */
-export function HotelTabRooms({ hotelId, hotelName, onRoomsChanged }: HotelTabRoomsProps) {
+export function HotelTabRooms({ hotelId, hotelName, navigate, onRoomsChanged }: HotelTabRoomsProps) {
   const [rooms, setRooms] = useState<RoomRow[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [facilityCatalog, setFacilityCatalog] = useState<AmenityOption[]>([])
@@ -116,9 +118,14 @@ export function HotelTabRooms({ hotelId, hotelName, onRoomsChanged }: HotelTabRo
       header: 'THAO TÁC',
       align: 'right',
       render: (row) => (
-        <Button variant="secondary" size="sm" onClick={() => openEdit(row)}>
-          Sửa
-        </Button>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+          <Button variant="secondary" size="sm" onClick={() => navigate(roomPricesPath(hotelId, row.id))}>
+            Giá theo ngày
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => openEdit(row)}>
+            Sửa
+          </Button>
+        </div>
       ),
     },
   ]

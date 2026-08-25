@@ -31,6 +31,11 @@ export type CreateRoomRequest = components['schemas']['CreateRoomRequest']
 export type CreateRoomResponse = components['schemas']['CreateRoomResponse']
 export type UpdateRoomRequest = components['schemas']['UpdateRoomRequest']
 export type UpdateRoomResponse = components['schemas']['UpdateRoomResponse']
+export type RoomPricesResponse = components['schemas']['RoomPricesResponse']
+export type NightRow = components['schemas']['NightRow']
+export type RangeRow = components['schemas']['RangeRow']
+export type SetRoomPricesRequest = components['schemas']['SetRoomPricesRequest']
+export type SetRoomPricesResponse = components['schemas']['SetRoomPricesResponse']
 
 export type SourceFilter = 'all' | 'manual' | 'pipeline'
 export type EmbeddingFilter = 'all' | 'embedded' | 'missing'
@@ -220,6 +225,26 @@ export async function deleteRoom(roomId: string): Promise<DeleteRoomResult> {
     detail: typeof record.detail === 'string' ? record.detail : `Lỗi máy chủ (${res.status}).`,
     count: typeof record.count === 'number' ? record.count : undefined,
   }
+}
+
+// ---------------------------------------------------------------------------
+// B6 -- Quản lý giá phòng theo đêm (phase-11-room-prices.md)
+// ---------------------------------------------------------------------------
+
+export function getRoomPrices(roomId: string, from: string, to: string): Promise<AdminApiResult<RoomPricesResponse>> {
+  return adminFetch<RoomPricesResponse>(`/rooms/${roomId}/prices?from=${from}&to=${to}`)
+}
+
+export function setRoomPrices(roomId: string, body: SetRoomPricesRequest): Promise<AdminApiResult<SetRoomPricesResponse>> {
+  return adminFetch<SetRoomPricesResponse>(`/rooms/${roomId}/prices`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export function deleteRoomPrices(roomId: string, from: string, to: string): Promise<AdminApiResult<{ deleted: number }>> {
+  return adminFetch<{ deleted: number }>(`/rooms/${roomId}/prices?from=${from}&to=${to}`, { method: 'DELETE' })
 }
 
 export async function exportHotelsCsv(params: HotelListParams): Promise<{ ok: true } | { ok: false; detail: string }> {

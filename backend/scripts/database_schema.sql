@@ -474,6 +474,49 @@ ORDER BY r.id, nights.night;
 REVOKE ALL ON public.room_night_occupancy FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.room_night_occupancy TO service_role;
 
+-- Admin B6 (phase-11-room-prices.md) bulk price write -- see
+-- scripts/migrations/20260824_add_admin_upsert_room_prices_rpc.sql for the
+-- full rationale. Raw-SQL upsert, not a postgrest `.upsert()`, because
+-- room_prices' natural key is the expression unique index
+-- ux_room_prices_natural_key above (COALESCE(source_url, '')), which
+-- postgrest's on_conflict=col,col REST param cannot target. Always writes
+-- source_url=NULL, crawled_at=now() -- this is what lets an admin price
+-- outrank a stale OTA row for the same night without touching the OTA
+-- pipeline (decision #7). DISTINCT on the input array guards against
+-- "ON CONFLICT DO UPDATE command cannot affect row a second time" if a
+-- caller ever passes a repeated date.
+CREATE OR REPLACE FUNCTION public.admin_upsert_room_prices(
+    p_room_id UUID,
+    p_nights DATE[],
+    p_price NUMERIC,
+    p_currency TEXT,
+    p_sold_out BOOLEAN
+)
+RETURNS TABLE(written INTEGER, created INTEGER, updated INTEGER)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+    WITH upsert AS (
+        INSERT INTO room_prices (room_id, price, currency, check_in_date, check_out_date, sold_out, source_url, crawled_at)
+        SELECT p_room_id, p_price, p_currency, night, night + 1, p_sold_out, NULL, now()
+        FROM (SELECT DISTINCT night FROM unnest(p_nights) AS night) AS nights
+        ON CONFLICT (room_id, check_in_date, check_out_date, COALESCE(source_url, ''))
+        DO UPDATE SET price = EXCLUDED.price,
+                      currency = EXCLUDED.currency,
+                      sold_out = EXCLUDED.sold_out,
+                      crawled_at = now()
+        RETURNING (xmax = 0) AS inserted
+    )
+    SELECT count(*)::integer AS written,
+           count(*) FILTER (WHERE inserted)::integer AS created,
+           count(*) FILTER (WHERE NOT inserted)::integer AS updated
+    FROM upsert;
+$$;
+REVOKE ALL ON FUNCTION public.admin_upsert_room_prices(UUID, DATE[], NUMERIC, TEXT, BOOLEAN) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.admin_upsert_room_prices(UUID, DATE[], NUMERIC, TEXT, BOOLEAN)
+    TO service_role;
+
 -- Approved, server-managed amenity definitions. Hotels and rooms store these
 -- canonical English IDs in their TEXT[] amenity columns; the backend resolves
 -- them to labels for search results and UI display.
@@ -509,6 +552,38 @@ INSERT INTO amenity_catalog (
     ('breakfast', 'Bao gồm bữa sáng', 'Breakfast included', 'hotel', 'food', 'breakfast_dining', ARRAY['bữa sáng', 'bao gồm bữa sáng', 'breakfast', 'breakfast included'], TRUE),
     ('sea_view', 'Hướng biển', 'Sea view', 'room', 'room_comfort', 'water', ARRAY['view biển', 'hướng biển', 'sea view', 'ocean view'], TRUE)
 ON CONFLICT (id) DO NOTHING;
+
+-- Counts nights in [p_start_date, p_end_date) whose FRESHEST room_prices row
+-- (by crawled_at) is not sold_out -- used by match_hotels_with_rooms below
+-- to decide "does every requested night have a live price". Picking the
+-- freshest row per night BEFORE checking sold_out (not filtering sold_out
+-- per row first) is what lets an admin's newer sold_out=true row actually
+-- close a night that also has an older, still-sold_out=false OTA row for
+-- the same night (20260824_fix_sold_out_freshest_row_precedence.sql) --
+-- mirrors place_details._average_price's own freshest-row-wins rule for
+-- price, applied to sold_out too.
+CREATE OR REPLACE FUNCTION public.count_priced_open_nights(
+    p_room_id UUID,
+    p_start_date DATE,
+    p_end_date DATE
+)
+RETURNS INTEGER
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT count(*)::integer
+    FROM (
+        SELECT DISTINCT ON (rp.check_in_date) rp.sold_out
+        FROM public.room_prices AS rp
+        WHERE rp.room_id = p_room_id
+          AND rp.check_in_date >= p_start_date
+          AND rp.check_out_date <= p_end_date
+        ORDER BY rp.check_in_date, rp.crawled_at DESC
+    ) AS freshest
+    WHERE freshest.sold_out = false;
+$$;
+GRANT EXECUTE ON FUNCTION public.count_priced_open_nights(UUID, DATE, DATE)
+    TO anon, authenticated, service_role;
 
 -- Semantic hotel and room search. The amenities output is a display-ready
 -- catalog join, ordered to match the canonical IDs stored on each hotel.
@@ -560,13 +635,8 @@ AS $$
           SELECT 1
           FROM public.rooms AS r
           WHERE r.hotel_id = h.id
-            AND (
-              SELECT count(DISTINCT rp.check_in_date)
-              FROM public.room_prices AS rp
-              WHERE rp.room_id = r.id
-                AND rp.check_in_date >= filter_start_date
-                AND rp.check_out_date <= filter_end_date
-                AND rp.sold_out = false
+            AND public.count_priced_open_nights(
+              r.id, filter_start_date, filter_end_date
             ) = (filter_end_date - filter_start_date)
             AND public.get_room_availability(
               r.id, filter_start_date, filter_end_date
@@ -587,16 +657,13 @@ AS $$
       AND (
         filter_start_date IS NULL OR filter_end_date IS NULL
         OR (
-          SELECT count(DISTINCT rp.check_in_date)
-          FROM public.room_prices AS rp
-          WHERE rp.room_id = r.id
-            AND rp.check_in_date >= filter_start_date
-            AND rp.check_out_date <= filter_end_date
-            AND rp.sold_out = false
-        ) = (filter_end_date - filter_start_date)
-        AND public.get_room_availability(
-          r.id, filter_start_date, filter_end_date
-        ) > 0
+          public.count_priced_open_nights(
+            r.id, filter_start_date, filter_end_date
+          ) = (filter_end_date - filter_start_date)
+          AND public.get_room_availability(
+            r.id, filter_start_date, filter_end_date
+          ) > 0
+        )
       )
   ),
   combined AS (
