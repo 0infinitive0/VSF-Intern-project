@@ -462,6 +462,7 @@
   "bookingErrNotConfirmable": "Đặt phòng này không còn ở trạng thái có thể xác nhận (có thể đã được xác nhận hoặc huỷ trước đó).",
   "bookingErrInvalidRequest": "Thông tin đặt phòng không hợp lệ. Vui lòng thử lại.",
   "bookingErrGuestHoldingElsewhere": "Bạn đang giữ phòng ở một khách sạn khác (có thể ở một tab khác) — vui lòng hoàn tất hoặc chờ giữ chỗ đó hết hạn trước khi giữ phòng ở đây.",
+  "bookingErrItineraryNotSaved": "Chúng tôi chưa lưu được lịch trình này một cách chắc chắn, nên chưa thể giữ phòng. Vui lòng quay lại bước chọn khách sạn/lịch trình để tạo lại rồi thử giữ phòng lần nữa.",
   "bookingErrNotFound": "Không tìm thấy đặt phòng này.",
   "bookingErrGeneric": "Đã có lỗi xảy ra, vui lòng thử lại.",
   "bookingErrVnpayCancelled": "Bạn đã huỷ thanh toán. Vui lòng thử lại khi bạn sẵn sàng.",

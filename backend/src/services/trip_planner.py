@@ -427,6 +427,11 @@ def _calculate_trip_budget(hotel: Mapping[str, Any], items: Sequence[Mapping[str
     return round(total, 2) if has_known_cost else None
 
 
+#: Backoff between _persist_itinerary_metadata's retry attempts on the RPC
+#: persist path -- see that function's doc comment for why this exists.
+_PERSIST_RETRY_DELAYS_SECONDS = (0.3, 0.6)
+
+
 def _persist_itinerary_metadata(trip_data: dict[str, Any]) -> None:
     """Persist a complete bundle, falling back only for an unapplied migration."""
     itineraries = trip_data.get("itineraries") or []
@@ -445,11 +450,25 @@ def _persist_itinerary_metadata(trip_data: dict[str, Any]) -> None:
             supabase.table("sessions").upsert({"session_id": session_id}).execute()
         except Exception as exc:
             logger.debug("Could not pre-insert session %s: %s", session_id, exc)
-    try:
-        ItineraryStore.from_default().persist_itinerary_bundle(trip_data)
-        return
-    except ItineraryStoreError as exc:
-        logger.warning("Complete itinerary persistence unavailable; retaining local JSON: %s", exc)
+    # Short retry (transient connection blips are the common case this
+    # catches) before falling back to the raw upsert below. Kept brief --
+    # this runs synchronously inside a chat turn, and the itinerary now also
+    # rides along in context_data on every turn regardless (session_store.
+    # recover_trip_data), so this is no longer the single point of failure
+    # it was during the 2026-08-25 incident that added it -- see that
+    # function's doc comment for the full story.
+    last_exc: ItineraryStoreError | None = None
+    for attempt in range(len(_PERSIST_RETRY_DELAYS_SECONDS) + 1):
+        try:
+            ItineraryStore.from_default().persist_itinerary_bundle(trip_data)
+            return
+        except ItineraryStoreError as exc:
+            last_exc = exc
+            if attempt < len(_PERSIST_RETRY_DELAYS_SECONDS):
+                time.sleep(_PERSIST_RETRY_DELAYS_SECONDS[attempt])
+    logger.exception(
+        "Complete itinerary persistence unavailable after retries; retaining local JSON", exc_info=last_exc
+    )
     row = {
         key: itinerary.get(key)
         for key in (
@@ -474,11 +493,10 @@ def _persist_itinerary_metadata(trip_data: dict[str, Any]) -> None:
     try:
         supabase = get_supabase_client()
         supabase.table("itineraries").upsert(row).execute()
-    except Exception as exc:
-        logger.warning(
+    except Exception:
+        logger.exception(
             "Could not persist itinerary metadata to Supabase; apply "
-            "scripts/migrations/20260727_add_itinerary_day_themes.sql first: %s",
-            exc,
+            "scripts/migrations/20260727_add_itinerary_day_themes.sql first"
         )
 
 

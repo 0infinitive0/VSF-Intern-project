@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from dataclasses import dataclass
@@ -18,6 +19,8 @@ from src.services.llm import response_text
 
 if TYPE_CHECKING:
     from src.agents.session import TripSession
+
+logger = logging.getLogger(__name__)
 
 _SAFE_SESSION_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 _CONTEXT_SCHEMA_VERSION = 2
@@ -162,10 +165,28 @@ def _v3_context(state: dict[str, Any]) -> dict[str, Any]:
 
     `travel_state` is the business truth, stored verbatim — it is already the
     flat, JSON-safe `TravelState.to_dict()` shape. `trip` is a pointer to rows
-    that live in other tables, never a copy of them. `ui_summary` keeps v2's
-    exact shape on purpose: it is what `summarize()` renders into the history
-    rail, it carries no dead-plane vocabulary, and keeping it means `summarize`
-    only had to widen its version check instead of growing a third branch.
+    that live in other tables. `ui_summary` keeps v2's exact shape on purpose:
+    it is what `summarize()` renders into the history rail, it carries no
+    dead-plane vocabulary, and keeping it means `summarize` only had to widen
+    its version check instead of growing a third branch.
+
+    `trip_data` (below) is a full copy, not just `trip`'s pointer — added
+    2026-08-25 after a live incident: a guest built a complete itinerary
+    (hotel picked, 2-day plan), saw it rendered immediately from that turn's
+    response, and it survived only as long as the LangGraph checkpoint (RAM,
+    2h idle TTL) — the DEDICATED write meant to survive past that
+    (`trip_planner._persist_itinerary_metadata` -> the `itineraries` table)
+    failed silently (no exception ever reached the user or a loud log), and
+    once the checkpoint expired, nothing was left anywhere to recover. This
+    row's own `context_data`/`chat_messages`, written by the very call this
+    function feeds (`persist_graph_session` -> `_write_checkpoint`, same
+    RPC+upsert shape, running every turn, not just at hotel-selection),
+    turned out to have survived intact for that same incident — so `trip_data`
+    now rides along on that already-proven-reliable path as a second,
+    independent durable copy. `session_store.recover_trip_data` is what reads
+    it back; unlike `itineraries`' typed/FK-constrained columns, this is raw
+    JSONB, so a single malformed item elsewhere can't make this copy's write
+    fail the way it silently broke the specialized one.
     """
     trip = _current_trip(state)
     # `_ui_summary` reads `intake.destination` and `trip_data` — the former is
@@ -181,6 +202,7 @@ def _v3_context(state: dict[str, Any]) -> dict[str, Any]:
         "travel_state_schema_version": TRAVEL_STATE_SCHEMA_VERSION,
         "travel_state": state.get("travel_state") or {},
         "trip": trip,
+        "trip_data": state.get("trip_data") or {},
         "ui_summary": _ui_summary(ui_view, trip),
     }
 
@@ -444,6 +466,40 @@ def load(session_id: str) -> dict[str, Any] | None:
         .execute().data or []
     )
     return row
+
+
+def recover_trip_data(session_id: str) -> dict[str, Any] | None:
+    """Recovers `trip_data` for a session whose LangGraph checkpoint is gone
+    (`SessionRegistry.evict_expired`, agents/session.py, default 2h idle) --
+    the checkpoint is the graph plane's only LIVE copy, but two independent
+    durable copies can survive it: the `itineraries` table (structured,
+    typed columns -- what other code joins/queries against) and the
+    `trip_data` embedded directly in this session's own `context_data` (see
+    `_v3_context`'s doc comment for why the embedded copy exists and why it
+    is the more failure-resistant of the two).
+
+    Tries `itineraries` first (the canonical, query-friendly copy when
+    present), then falls back to the embedded `context_data.trip_data`
+    copy. Callers needing "is there ANY durable copy at all" (routes.py's
+    `restore_session`/`create_booking`, turn_runner.py's `run_turn`) all
+    want this exact precedence, so it lives here once instead of each
+    re-deriving it. Returns None only if genuinely neither exists.
+    """
+    from src.services.itinerary_store import ItineraryStore, ItineraryStoreError
+
+    try:
+        recovered = ItineraryStore.from_default().load_session_trip_data_by_session(session_id)
+    except ItineraryStoreError:
+        logger.exception("itineraries-table trip_data recovery failed for %s", session_id)
+        recovered = None
+    if recovered:
+        return recovered
+
+    row = load(session_id)
+    if row is None:
+        return None
+    embedded = (row.get("context_data") or {}).get("trip_data")
+    return embedded or None
 
 
 def delete(session_id: str, *, user_id: str | None = None) -> None:

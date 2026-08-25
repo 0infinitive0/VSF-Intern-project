@@ -218,15 +218,60 @@ def _booking_http_error(exc: BookingError) -> HTTPException:
         "booking_reservation_expired",
         "booking_not_confirmable",
         "guest_already_holding_elsewhere",
+        "itinerary_not_persisted",
     }:
         return HTTPException(status_code=409, detail=str(exc))
     logger.exception("Booking operation failed", exc_info=exc)
     return HTTPException(status_code=500, detail="Unable to process booking.")
 
 
+def _ensure_itinerary_durable_or_raise(session_id: str) -> None:
+    """Guest-facing invariant, not a technical nicety: a room hold must never
+    be created for a trip that has no durable record anywhere, because the
+    next step after a hold is real money (VNPay) -- a guest who pays for a
+    trip that later turns out to have never been saved is being defrauded by
+    the product, not just inconvenienced by a bug (see the 2026-08-25
+    incident `session_store.recover_trip_data`'s doc comment describes: an
+    itinerary fully built, shown as done, silently never persisted, gone for
+    good once the checkpoint's 2h TTL passed).
+
+    `session_store.recover_trip_data` now gives every turn two independent
+    durable copies, so this should essentially never fire in practice -- it
+    exists for the sessions created before that fix shipped, and as a last
+    resort for whatever still slips through -- e.g. both this turn's durable
+    writes failing together (a real Supabase outage spanning the whole
+    request). One more save attempt is made from whatever the LIVE
+    checkpoint still holds before giving up and refusing the hold outright
+    -- never let the guest hold a room for nothing.
+    """
+    if session_store.recover_trip_data(session_id) is not None:
+        return
+
+    from src.services.itinerary_store import ItineraryStore, ItineraryStoreError
+
+    app = _get_graph_v2()
+    live_state = app.get_state({"configurable": {"thread_id": session_id}}).values or {}
+    trip_data = live_state.get("trip_data")
+    if trip_data:
+        try:
+            ItineraryStore.from_default().persist_itinerary_bundle(trip_data)
+            return
+        except ItineraryStoreError:
+            logger.exception("Last-chance itinerary persist before booking failed for session %s", session_id)
+
+    logger.critical(
+        "Refusing to create a booking hold for session %s: no durable trip_data anywhere "
+        "(itineraries table, context_data, or live checkpoint).",
+        session_id,
+    )
+    raise BookingError("itinerary_not_persisted")
+
+
 @router.post("/bookings", response_model=BookingPayload, status_code=201)
 def create_booking(request: BookingReservationRequest) -> BookingPayload:
     try:
+        if request.session_id:
+            _ensure_itinerary_durable_or_raise(request.session_id)
         booking = reserve_booking(**request.model_dump())
         return BookingPayload.model_validate(booking)
     except BookingError as exc:
@@ -393,6 +438,24 @@ def vnpay_ipn(request: Request) -> dict[str, str]:
             # Lost the race to a concurrent IPN retry that already flipped
             # this payment to PAID/FAILED -- still fine, not our job to redo.
             return {"RspCode": "02", "Message": "Order already confirmed"}
+        # Last-chance visibility, not a gate: VNPay has already taken real
+        # money by the time this webhook fires, so refusing to confirm here
+        # would only leave a paid-but-unrecorded booking, which is worse.
+        # create_booking's own gate (_ensure_itinerary_durable_or_raise)
+        # should make this unreachable for any hold created after that fix
+        # shipped -- if it still fires, it means a paying guest's itinerary
+        # has no durable copy anywhere, which needs a human looking at it
+        # immediately, not a line in a log nobody reads until a support
+        # ticket shows up days later.
+        for booking_id in payment["booking_ids"]:
+            booking = get_booking(UUID(str(booking_id)))
+            session_id = (booking or {}).get("session_id")
+            if session_id and session_store.recover_trip_data(session_id) is None:
+                logger.critical(
+                    "PAID booking %s (payment %s, session %s) has no durable trip_data anywhere -- "
+                    "guest paid for an itinerary that cannot currently be shown. Needs manual follow-up.",
+                    booking_id, payment["id"], session_id,
+                )
         for booking_id in payment["booking_ids"]:
             try:
                 confirm_booking(booking_id=UUID(str(booking_id)), temporary_user_ref=payment["temporary_user_ref"])
@@ -610,21 +673,16 @@ def restore_session(
     state = app.get_state({"configurable": {"thread_id": session_id}}).values or {}
     if not state.get("trip_data"):
         # Checkpoint TTL-evicted (SessionRegistry.evict_expired, session.py,
-        # default 2h idle) -- the itinerary/hotel a guest already built are
-        # still durable in Supabase (itineraries.session_id has no TTL),
-        # only the graph checkpoint holding trip_data is gone. Without this,
-        # a session idle past SESSION_TTL_SECONDS restores with
-        # trip_plan: null / hotel_options: [] and no error anywhere, which
-        # silently locks the guest out of the Hotels/Itinerary
-        # step-navigator tabs (phase-navigation.ts's navigationTarget) even
-        # though their chat transcript below is still fully intact.
-        from src.services.itinerary_store import ItineraryStore, ItineraryStoreError
-
-        try:
-            recovered = ItineraryStore.from_default().load_session_trip_data_by_session(session_id)
-        except ItineraryStoreError:
-            logger.exception("Session trip_data recovery failed for %s", session_id)
-            recovered = None
+        # default 2h idle) -- the graph plane's only LIVE copy of trip_data
+        # is gone. Two independent durable copies can still survive it
+        # (session_store.recover_trip_data's own doc comment has the full
+        # story of why there are two, not one). Without this, a session
+        # idle past SESSION_TTL_SECONDS restores with trip_plan: null /
+        # hotel_options: [] and no error anywhere, which silently locks the
+        # guest out of the Hotels/Itinerary step-navigator tabs
+        # (phase-navigation.ts's navigationTarget) even though their chat
+        # transcript below is still fully intact.
+        recovered = session_store.recover_trip_data(session_id)
         if recovered:
             state = {**state, "trip_data": recovered}
     travel_state = TravelState.from_dict(state.get("travel_state"))

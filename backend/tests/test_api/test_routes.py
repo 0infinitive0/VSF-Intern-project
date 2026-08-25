@@ -356,6 +356,67 @@ async def test_create_booking_returns_201_on_success(client, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_create_booking_with_session_id_checks_itinerary_durability_first(client, monkeypatch):
+    """`session_id` present -> the gate must run before reserve_booking even
+    gets a chance to reserve real inventory for a trip with no durable
+    record anywhere (see routes.py's _ensure_itinerary_durable_or_raise).
+    Here the durable copy IS found, so the hold proceeds normally."""
+    import src.api.routes as _routes
+    from src.services import session_store as _session_store
+
+    monkeypatch.setattr(_routes, "reserve_booking", lambda **_kwargs: _fake_booking())
+    monkeypatch.setattr(_session_store, "recover_trip_data", lambda _sid: {"destination": "Đà Nẵng"})
+
+    response = await client.post(
+        "/api/v1/bookings",
+        json={
+            "room_id": _BOOKING_ROOM_ID,
+            "temporary_user_ref": "guest-1",
+            "session_id": "sess-1",
+            "check_in_date": "2026-09-01",
+            "check_out_date": "2026-09-03",
+        },
+    )
+
+    assert response.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_create_booking_refuses_a_hold_with_no_durable_itinerary_anywhere(client, monkeypatch):
+    """Neither durable copy has anything (recover_trip_data -> None) AND the
+    live checkpoint is also empty, so the last-chance persist attempt has
+    nothing to save either -- refuse the hold rather than let a guest pay
+    for a trip that cannot currently be shown (the 2026-08-25 incident this
+    guards against: session_store.recover_trip_data's doc comment has the
+    full story). Never reaches reserve_booking at all."""
+    from types import SimpleNamespace as _SimpleNamespace
+
+    import src.api.routes as _routes
+    from src.services import session_store as _session_store
+
+    def _fail_if_called(**_kwargs):
+        raise AssertionError("reserve_booking must not run when the itinerary isn't durably saved")
+
+    monkeypatch.setattr(_routes, "reserve_booking", _fail_if_called)
+    monkeypatch.setattr(_session_store, "recover_trip_data", lambda _sid: None)
+    monkeypatch.setattr(_routes, "_get_graph_v2", lambda: _SimpleNamespace(get_state=lambda _c: _SimpleNamespace(values={})))
+
+    response = await client.post(
+        "/api/v1/bookings",
+        json={
+            "room_id": _BOOKING_ROOM_ID,
+            "temporary_user_ref": "guest-1",
+            "session_id": "sess-orphaned",
+            "check_in_date": "2026-09-01",
+            "check_out_date": "2026-09-03",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "itinerary_not_persisted"
+
+
+@pytest.mark.asyncio
 async def test_create_booking_sold_out_returns_409(client, monkeypatch):
     """The room a second, losing racer just missed — see
     create_booking_reservation's pg_advisory_xact_lock in the migration:
@@ -783,6 +844,10 @@ async def test_vnpay_ipn_confirms_bookings_on_a_successful_payment(client, monke
         _payment_service, "mark_payment_paid", lambda **_kwargs: _fake_payment(status="PAID")
     )
     monkeypatch.setattr(_payment_service, "booking_summary_for_email", lambda _id: None)
+    # No session_id on this booking -- the durability check
+    # (_ensure_itinerary_durable_or_raise's sibling in vnpay_ipn) is a no-op
+    # then, same as the pre-fix behavior this test already pinned.
+    monkeypatch.setattr(_routes, "get_booking", lambda _id: {"id": str(_id)})
     confirmed_booking_ids: list[str] = []
     monkeypatch.setattr(
         _routes,
@@ -803,6 +868,48 @@ async def test_vnpay_ipn_confirms_bookings_on_a_successful_payment(client, monke
 
     assert response.json()["RspCode"] == "00"
     assert confirmed_booking_ids == [_BOOKING_ID]
+
+
+@pytest.mark.asyncio
+async def test_vnpay_ipn_still_confirms_but_logs_critical_when_itinerary_is_missing(client, monkeypatch, caplog):
+    """Defense-in-depth, not a gate: VNPay has already taken real money by
+    the time this webhook fires, so the payment/booking confirmation must
+    still go through even when the paid trip's itinerary has no durable
+    copy anywhere -- but that situation needs a human looking at it
+    immediately (see routes.py's vnpay_ipn, the block right before the
+    confirm loop)."""
+    import logging
+
+    import src.api.routes as _routes
+    from src.services import payment_service as _payment_service
+    from src.services import session_store as _session_store
+    from src.services import vnpay_service as _vnpay_service
+
+    monkeypatch.setattr(_vnpay_service, "verify_signature", lambda *_a, **_k: True)
+    monkeypatch.setattr(_payment_service, "get_payment", lambda _id: _fake_payment())
+    monkeypatch.setattr(_payment_service, "mark_payment_paid", lambda **_kwargs: _fake_payment(status="PAID"))
+    monkeypatch.setattr(_payment_service, "booking_summary_for_email", lambda _id: None)
+    monkeypatch.setattr(_routes, "get_booking", lambda _id: {"id": str(_id), "session_id": "sess-orphaned"})
+    monkeypatch.setattr(_session_store, "recover_trip_data", lambda _sid: None)
+    monkeypatch.setattr(_routes, "confirm_booking", lambda *, booking_id, temporary_user_ref: None)
+
+    with caplog.at_level(logging.CRITICAL, logger="src.api.routes"):
+        response = await client.get(
+            "/api/v1/payments/vnpay/ipn",
+            params={
+                "vnp_TxnRef": _PAYMENT_ID,
+                "vnp_Amount": "150000000",
+                "vnp_ResponseCode": "00",
+                "vnp_TransactionStatus": "00",
+                "vnp_TransactionNo": "VNP123",
+            },
+        )
+
+    # The payment still confirms -- refusing here would leave a real charge
+    # unrecorded, which is worse than a missing itinerary.
+    assert response.json()["RspCode"] == "00"
+    assert any("sess-orphaned" in record.message for record in caplog.records)
+    assert any(record.levelno == logging.CRITICAL for record in caplog.records)
 
 
 @pytest.mark.asyncio
