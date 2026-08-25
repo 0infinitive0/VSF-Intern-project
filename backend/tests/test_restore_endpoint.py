@@ -61,15 +61,27 @@ _MESSAGE_ROWS = [
 def restored(monkeypatch: pytest.MonkeyPatch):
     """`restore_session` with the graph, the registry and the database faked."""
 
-    def _build(state: dict[str, Any] | None = None, rows: list[dict[str, Any]] | None = None):
+    def _build(
+        state: dict[str, Any] | None = None,
+        rows: list[dict[str, Any]] | None = None,
+        context_data: dict[str, Any] | None = None,
+    ):
         monkeypatch.setattr(routes, "_get_graph_v2", lambda: _FakeGraphApp(state or {}))
         monkeypatch.setattr(
             routes.registry, "get", lambda _sid: SimpleNamespace(session_id="s1", owner_user_id=None)
         )
         monkeypatch.setattr(routes, "_persistence_enabled", True)
-        monkeypatch.setattr(
-            session_store, "load", lambda _sid: {"session_id": "s1", "messages": rows or []}
-        )
+        # `context_data` defaults to None rather than {} so a test explicitly
+        # asserting "no durable row at all" (session_store.load returning a
+        # row with no context_data key) stays distinguishable from "a row
+        # with an empty context_data" -- recover_trip_data's own tests in
+        # test_graph_session_persistence.py cover that distinction directly;
+        # this fixture only needs to let a test opt into the embedded-copy
+        # fallback without hand-rolling the whole `load` mock itself.
+        row: dict[str, Any] = {"session_id": "s1", "messages": rows or []}
+        if context_data is not None:
+            row["context_data"] = context_data
+        monkeypatch.setattr(session_store, "load", lambda _sid: row)
         return routes.restore_session("s1", None)
 
     return _build
@@ -282,6 +294,29 @@ class TestCheckpointEvictedFallback:
 
         assert payload.trip_plan is None
         assert payload.session_id == "s1"
+
+    def test_falls_back_to_the_trip_data_embedded_in_context_data(
+        self, restored, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Second durable copy (session_store._v3_context/recover_trip_data's
+        own doc comments have the full story): the itineraries table can fail
+        to write (2026-08-25 incident -- a fully-built itinerary, shown to
+        the guest as done, was never durably saved anywhere and could not be
+        recovered once its checkpoint TTL-evicted). context_data.trip_data
+        rides on the same reliable write path chat_messages already proved
+        durable for that exact session, so it must be tried too before
+        conceding nothing survived."""
+        fake_store = _FakeItineraryStore(trip_data=None)
+        monkeypatch.setattr(
+            "src.services.itinerary_store.ItineraryStore.from_default",
+            classmethod(lambda cls: fake_store),
+        )
+
+        payload = restored(state={}, context_data={"trip_data": _RECOVERED_TRIP_DATA})
+
+        assert fake_store.calls == ["s1"]
+        assert payload.trip_plan is not None
+        assert [o.name for o in payload.hotel_options] == ["Vinpearl Resort"]
 
     def test_an_intact_checkpoint_never_triggers_the_durable_lookup(
         self, restored, monkeypatch: pytest.MonkeyPatch

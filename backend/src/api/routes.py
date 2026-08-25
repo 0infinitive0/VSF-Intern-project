@@ -393,6 +393,24 @@ def vnpay_ipn(request: Request) -> dict[str, str]:
             # Lost the race to a concurrent IPN retry that already flipped
             # this payment to PAID/FAILED -- still fine, not our job to redo.
             return {"RspCode": "02", "Message": "Order already confirmed"}
+        # Last-chance visibility, not a gate: VNPay has already taken real
+        # money by the time this webhook fires, so refusing to confirm here
+        # would only leave a paid-but-unrecorded booking, which is worse.
+        # create_booking's own gate (_ensure_itinerary_durable_or_raise)
+        # should make this unreachable for any hold created after that fix
+        # shipped -- if it still fires, it means a paying guest's itinerary
+        # has no durable copy anywhere, which needs a human looking at it
+        # immediately, not a line in a log nobody reads until a support
+        # ticket shows up days later.
+        for booking_id in payment["booking_ids"]:
+            booking = get_booking(UUID(str(booking_id)))
+            session_id = (booking or {}).get("session_id")
+            if session_id and session_store.recover_trip_data(session_id) is None:
+                logger.critical(
+                    "PAID booking %s (payment %s, session %s) has no durable trip_data anywhere -- "
+                    "guest paid for an itinerary that cannot currently be shown. Needs manual follow-up.",
+                    booking_id, payment["id"], session_id,
+                )
         for booking_id in payment["booking_ids"]:
             try:
                 confirm_booking(booking_id=UUID(str(booking_id)), temporary_user_ref=payment["temporary_user_ref"])
@@ -610,21 +628,16 @@ def restore_session(
     state = app.get_state({"configurable": {"thread_id": session_id}}).values or {}
     if not state.get("trip_data"):
         # Checkpoint TTL-evicted (SessionRegistry.evict_expired, session.py,
-        # default 2h idle) -- the itinerary/hotel a guest already built are
-        # still durable in Supabase (itineraries.session_id has no TTL),
-        # only the graph checkpoint holding trip_data is gone. Without this,
-        # a session idle past SESSION_TTL_SECONDS restores with
-        # trip_plan: null / hotel_options: [] and no error anywhere, which
-        # silently locks the guest out of the Hotels/Itinerary
-        # step-navigator tabs (phase-navigation.ts's navigationTarget) even
-        # though their chat transcript below is still fully intact.
-        from src.services.itinerary_store import ItineraryStore, ItineraryStoreError
-
-        try:
-            recovered = ItineraryStore.from_default().load_session_trip_data_by_session(session_id)
-        except ItineraryStoreError:
-            logger.exception("Session trip_data recovery failed for %s", session_id)
-            recovered = None
+        # default 2h idle) -- the graph plane's only LIVE copy of trip_data
+        # is gone. Two independent durable copies can still survive it
+        # (session_store.recover_trip_data's own doc comment has the full
+        # story of why there are two, not one). Without this, a session
+        # idle past SESSION_TTL_SECONDS restores with trip_plan: null /
+        # hotel_options: [] and no error anywhere, which silently locks the
+        # guest out of the Hotels/Itinerary step-navigator tabs
+        # (phase-navigation.ts's navigationTarget) even though their chat
+        # transcript below is still fully intact.
+        recovered = session_store.recover_trip_data(session_id)
         if recovered:
             state = {**state, "trip_data": recovered}
     travel_state = TravelState.from_dict(state.get("travel_state"))

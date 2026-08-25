@@ -783,6 +783,10 @@ async def test_vnpay_ipn_confirms_bookings_on_a_successful_payment(client, monke
         _payment_service, "mark_payment_paid", lambda **_kwargs: _fake_payment(status="PAID")
     )
     monkeypatch.setattr(_payment_service, "booking_summary_for_email", lambda _id: None)
+    # No session_id on this booking -- the durability check
+    # (_ensure_itinerary_durable_or_raise's sibling in vnpay_ipn) is a no-op
+    # then, same as the pre-fix behavior this test already pinned.
+    monkeypatch.setattr(_routes, "get_booking", lambda _id: {"id": str(_id)})
     confirmed_booking_ids: list[str] = []
     monkeypatch.setattr(
         _routes,
@@ -803,6 +807,48 @@ async def test_vnpay_ipn_confirms_bookings_on_a_successful_payment(client, monke
 
     assert response.json()["RspCode"] == "00"
     assert confirmed_booking_ids == [_BOOKING_ID]
+
+
+@pytest.mark.asyncio
+async def test_vnpay_ipn_still_confirms_but_logs_critical_when_itinerary_is_missing(client, monkeypatch, caplog):
+    """Defense-in-depth, not a gate: VNPay has already taken real money by
+    the time this webhook fires, so the payment/booking confirmation must
+    still go through even when the paid trip's itinerary has no durable
+    copy anywhere -- but that situation needs a human looking at it
+    immediately (see routes.py's vnpay_ipn, the block right before the
+    confirm loop)."""
+    import logging
+
+    import src.api.routes as _routes
+    from src.services import payment_service as _payment_service
+    from src.services import session_store as _session_store
+    from src.services import vnpay_service as _vnpay_service
+
+    monkeypatch.setattr(_vnpay_service, "verify_signature", lambda *_a, **_k: True)
+    monkeypatch.setattr(_payment_service, "get_payment", lambda _id: _fake_payment())
+    monkeypatch.setattr(_payment_service, "mark_payment_paid", lambda **_kwargs: _fake_payment(status="PAID"))
+    monkeypatch.setattr(_payment_service, "booking_summary_for_email", lambda _id: None)
+    monkeypatch.setattr(_routes, "get_booking", lambda _id: {"id": str(_id), "session_id": "sess-orphaned"})
+    monkeypatch.setattr(_session_store, "recover_trip_data", lambda _sid: None)
+    monkeypatch.setattr(_routes, "confirm_booking", lambda *, booking_id, temporary_user_ref: None)
+
+    with caplog.at_level(logging.CRITICAL, logger="src.api.routes"):
+        response = await client.get(
+            "/api/v1/payments/vnpay/ipn",
+            params={
+                "vnp_TxnRef": _PAYMENT_ID,
+                "vnp_Amount": "150000000",
+                "vnp_ResponseCode": "00",
+                "vnp_TransactionStatus": "00",
+                "vnp_TransactionNo": "VNP123",
+            },
+        )
+
+    # The payment still confirms -- refusing here would leave a real charge
+    # unrecorded, which is worse than a missing itinerary.
+    assert response.json()["RspCode"] == "00"
+    assert any("sess-orphaned" in record.message for record in caplog.records)
+    assert any(record.levelno == logging.CRITICAL for record in caplog.records)
 
 
 @pytest.mark.asyncio

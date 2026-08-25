@@ -342,13 +342,14 @@ def run_turn(
             # same one) -- reused here rather than adding a second path.
             # snapshot.interrupts is necessarily empty too when values is
             # empty, so this can't affect the resume branch below.
-            from src.services.itinerary_store import ItineraryStore, ItineraryStoreError
+            #
+            # Tries both durable copies (the itineraries table, then the
+            # trip_data embedded in this session's own context_data) --
+            # session_store.recover_trip_data's own doc comment has the
+            # full story of why there are two, not one.
+            from src.services import session_store
 
-            try:
-                recovered = ItineraryStore.from_default().load_session_trip_data_by_session(session_id)
-            except ItineraryStoreError:
-                logger.exception("Session trip_data recovery failed for %s", session_id)
-                recovered = None
+            recovered = session_store.recover_trip_data(session_id)
             if recovered:
                 extra_state = {**(extra_state or {}), "trip_data": recovered}
         if snapshot.interrupts:

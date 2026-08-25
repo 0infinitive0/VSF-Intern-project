@@ -163,6 +163,17 @@ class TestContextShape:
             "status": "Draft",
         }
 
+    def test_also_embeds_a_full_trip_data_copy(self, fake_supabase: _FakeSupabase):
+        """Second, independent durable copy alongside `trip`'s pointer --
+        added after a 2026-08-25 incident where the itineraries table's own
+        write silently failed and nothing survived the checkpoint's 2h TTL.
+        This copy rides the same RPC+upsert path chat_messages already
+        proved reliable for that exact session -- recover_trip_data (below)
+        is what reads it back."""
+        state = _graph_state()
+        session_store.persist_graph_session(_session(), state)
+        assert fake_supabase.context["trip_data"] == state["trip_data"]
+
 
 class TestTranscript:
     def test_records_the_user_turn_and_the_reply(self, fake_supabase: _FakeSupabase):
@@ -364,3 +375,79 @@ class TestSummarizeAcrossVersions:
         }
         summary = session_store.summarize(row)
         assert (summary["destination"], summary["duration_days"]) == ("Hà Nội", 5)
+
+
+class _FakeItineraryStore:
+    """Same shape as test_restore_endpoint.py's / test_turn_runner_checkpoint_
+    recovery.py's own stand-ins for `ItineraryStore.from_default()` -- kept
+    local rather than shared, matching this file's own established style of
+    plain per-module fakes."""
+
+    def __init__(self, trip_data: dict[str, Any] | None = None, error: Exception | None = None) -> None:
+        self._trip_data = trip_data
+        self._error = error
+        self.calls: list[str] = []
+
+    def load_session_trip_data_by_session(self, session_id: str) -> dict[str, Any] | None:
+        self.calls.append(session_id)
+        if self._error is not None:
+            raise self._error
+        return self._trip_data
+
+
+def _patch_itinerary_store(monkeypatch: pytest.MonkeyPatch, fake_store: _FakeItineraryStore) -> None:
+    monkeypatch.setattr(
+        "src.services.itinerary_store.ItineraryStore.from_default", classmethod(lambda cls: fake_store)
+    )
+
+
+class TestRecoverTripData:
+    """The shared fallback restore_session, run_turn, and create_booking's
+    booking gate all call once a session's LangGraph checkpoint is gone.
+    Two independent durable copies, tried in order -- see this function's
+    own doc comment (and _v3_context's) for why there are two, not one."""
+
+    def test_prefers_the_itineraries_table_when_present(self, monkeypatch: pytest.MonkeyPatch):
+        fake_store = _FakeItineraryStore(trip_data={"destination": "Từ itineraries"})
+        _patch_itinerary_store(monkeypatch, fake_store)
+
+        assert session_store.recover_trip_data("s1") == {"destination": "Từ itineraries"}
+        assert fake_store.calls == ["s1"]
+
+    def test_falls_back_to_the_embedded_context_data_copy(self, monkeypatch: pytest.MonkeyPatch):
+        fake_store = _FakeItineraryStore(trip_data=None)
+        _patch_itinerary_store(monkeypatch, fake_store)
+        monkeypatch.setattr(
+            session_store, "load", lambda _sid: {"context_data": {"trip_data": {"destination": "Từ context_data"}}}
+        )
+
+        assert session_store.recover_trip_data("s1") == {"destination": "Từ context_data"}
+
+    def test_a_durable_lookup_failure_still_tries_the_embedded_copy(self, monkeypatch: pytest.MonkeyPatch):
+        from src.services.itinerary_store import ItineraryStoreError
+
+        fake_store = _FakeItineraryStore(error=ItineraryStoreError("supabase unreachable"))
+        _patch_itinerary_store(monkeypatch, fake_store)
+        monkeypatch.setattr(
+            session_store, "load", lambda _sid: {"context_data": {"trip_data": {"destination": "Từ context_data"}}}
+        )
+
+        assert session_store.recover_trip_data("s1") == {"destination": "Từ context_data"}
+
+    def test_returns_none_when_neither_source_has_anything(self, monkeypatch: pytest.MonkeyPatch):
+        fake_store = _FakeItineraryStore(trip_data=None)
+        _patch_itinerary_store(monkeypatch, fake_store)
+        monkeypatch.setattr(session_store, "load", lambda _sid: None)
+
+        assert session_store.recover_trip_data("s1") is None
+
+    def test_returns_none_when_the_session_row_exists_but_never_embedded_trip_data(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A row written before this fix shipped -- context_data has no
+        `trip_data` key at all, not just an empty one."""
+        fake_store = _FakeItineraryStore(trip_data=None)
+        _patch_itinerary_store(monkeypatch, fake_store)
+        monkeypatch.setattr(session_store, "load", lambda _sid: {"context_data": {"trip": {}}})
+
+        assert session_store.recover_trip_data("s1") is None

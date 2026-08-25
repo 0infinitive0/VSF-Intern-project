@@ -20,6 +20,7 @@ from typing import Any
 import pytest
 
 import src.agents.graph.turn_runner as turn_runner
+from src.services import session_store
 
 
 class _FakeApp:
@@ -92,8 +93,10 @@ class TestRecoversTripDataForAFreshTurn:
 
     def test_a_session_with_no_durable_itinerary_runs_the_turn_unchanged(self, monkeypatch: pytest.MonkeyPatch):
         """No itinerary row for this session (it genuinely never built a
-        trip) -- the turn must still run, just without a recovered trip_data
-        key, same as before this fix existed."""
+        trip), AND no trip_data embedded in context_data either (the second
+        durable copy session_store.recover_trip_data also tries -- see its
+        doc comment) -- the turn must still run, just without a recovered
+        trip_data key, same as before this fix existed."""
         captured: dict[str, Any] = {}
         monkeypatch.setattr(turn_runner, "_drive_turn", _fake_drive_turn(captured))
         fake_store = _FakeItineraryStore(trip_data=None)
@@ -101,11 +104,33 @@ class TestRecoversTripDataForAFreshTurn:
             "src.services.itinerary_store.ItineraryStore.from_default",
             classmethod(lambda cls: fake_store),
         )
+        monkeypatch.setattr(session_store, "load", lambda _sid: None)
 
         turn_runner.run_turn(_FakeApp({}), "s1", "xin chào", "vi")
 
         assert fake_store.calls == ["s1"]
         assert "trip_data" not in captured["turn_input"]
+
+    def test_falls_back_to_the_trip_data_embedded_in_context_data(self, monkeypatch: pytest.MonkeyPatch):
+        """Companion to test_restore_endpoint.py's identically-named test:
+        the itineraries table can fail to write (2026-08-25 incident) while
+        context_data.trip_data -- written by the same reliable path every
+        turn's persist_graph_session already goes through -- still has it."""
+        captured: dict[str, Any] = {}
+        monkeypatch.setattr(turn_runner, "_drive_turn", _fake_drive_turn(captured))
+        fake_store = _FakeItineraryStore(trip_data=None)
+        monkeypatch.setattr(
+            "src.services.itinerary_store.ItineraryStore.from_default",
+            classmethod(lambda cls: fake_store),
+        )
+        monkeypatch.setattr(
+            session_store, "load", lambda _sid: {"context_data": {"trip_data": _RECOVERED_TRIP_DATA}}
+        )
+
+        turn_runner.run_turn(_FakeApp({}), "s1", "đổi khách sạn", "vi")
+
+        assert fake_store.calls == ["s1"]
+        assert captured["turn_input"]["trip_data"] == _RECOVERED_TRIP_DATA
 
     def test_a_durable_lookup_failure_does_not_fail_the_turn(self, monkeypatch: pytest.MonkeyPatch):
         from src.services.itinerary_store import ItineraryStoreError
@@ -117,6 +142,7 @@ class TestRecoversTripDataForAFreshTurn:
             "src.services.itinerary_store.ItineraryStore.from_default",
             classmethod(lambda cls: fake_store),
         )
+        monkeypatch.setattr(session_store, "load", lambda _sid: None)
 
         result = turn_runner.run_turn(_FakeApp({}), "s1", "xin chào", "vi")
 
