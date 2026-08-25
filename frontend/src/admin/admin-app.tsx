@@ -9,6 +9,7 @@ import { HotelCreatePage } from './pages/hotels/hotel-create-page'
 import { HotelDetailPage } from './pages/hotels/hotel-detail-page'
 import { HotelsPage } from './pages/hotels/hotels-page'
 import { RoomPricesPage } from './pages/hotels/prices/room-prices-page'
+import { OrderDetailPage } from './pages/orders/order-detail-page'
 import { OrdersPage } from './pages/orders/orders-page'
 import { RouteStub } from './pages/route-stub'
 import { useAdminRoute } from './router'
@@ -38,7 +39,11 @@ function resolvePage(path: string, navigate: (to: string) => void) {
   if (path === '/admin/pipelines/do-phu-embedding') return <RouteStub title="Độ phủ embedding" phase={12} />
   if (path.startsWith('/admin/pipelines/runs/')) return <RouteStub title="Chi tiết lần chạy" phase={16} />
   if (path === '/admin/pipelines') return <RouteStub title="Pipeline" phase={14} />
-  if (path.startsWith('/admin/orders/')) return <RouteStub title="Chi tiết đơn hàng" phase={5} />
+  if (path.startsWith('/admin/orders/')) {
+    const paymentId = decodeURIComponent(path.slice('/admin/orders/'.length))
+    if (!paymentId) return <OrdersPage navigate={navigate} />
+    return <OrderDetailPage paymentId={paymentId} />
+  }
   if (path === '/admin/orders') return <OrdersPage navigate={navigate} />
   return <RouteStub title="Không tìm thấy trang" phase={0} />
 }

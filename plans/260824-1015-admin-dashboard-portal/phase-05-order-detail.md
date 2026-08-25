@@ -1,7 +1,7 @@
 ---
 phase: 5
 title: "Chi tiết đơn hàng (D2)"
-status: pending
+status: done
 priority: P1
 effort: "1.5d"
 dependencies: [4]
@@ -193,14 +193,14 @@ src/admin/pages/orders/
 
 ## Success Criteria
 
-- [ ] `subtotal + fee = total` với mọi đơn; `fee = null` thì UI chỉ hiện 2 dòng
-- [ ] Đơn không có `session_id` → khối "Xem cuộc trò chuyện gốc" **không** render
-- [ ] Đơn PAID chưa CONFIRMED → timeline có mốc cuối `Chờ admin xác nhận` chấm rỗng
-- [ ] Đơn đã huỷ → timeline có mốc `Đã huỷ`, **không** có `awaiting_admin`
-- [ ] Đếm ngược hết hạn giữ chỗ chạy đúng và dừng ở `Đã hết hạn`
-- [ ] Không có ô "Ngân hàng" (L10), không có "Ăn sáng" (L12)
-- [ ] `order_count` khớp `SELECT count(*) FROM payments WHERE guest_email = ...`
-- [ ] `payment_id` không tồn tại → 404, UI hiện trạng thái lỗi của Phase 3
+- [x] `subtotal + fee = total` với mọi đơn; `fee = null` thì UI chỉ hiện 2 dòng
+- [x] Đơn không có `session_id` → khối "Xem cuộc trò chuyện gốc" **không** render
+- [x] Đơn PAID chưa CONFIRMED → timeline có mốc cuối `Chờ admin xác nhận` chấm rỗng
+- [x] Đơn đã huỷ → timeline có mốc `Đã huỷ`, **không** có `awaiting_admin`
+- [x] Đếm ngược hết hạn giữ chỗ chạy đúng và dừng ở `Đã hết hạn`
+- [x] Không có ô "Ngân hàng" (L10), không có "Ăn sáng" (L12)
+- [x] `order_count` khớp `SELECT count(*) FROM payments WHERE guest_email = ...`
+- [x] `payment_id` không tồn tại → 404, UI hiện trạng thái lỗi của Phase 3
 
 ## Risk Assessment
 

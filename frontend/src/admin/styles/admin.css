@@ -912,3 +912,133 @@ button {
   border-radius: 999px;
   padding: 1px 8px;
 }
+
+/* ---------------------------------------------------------------------- */
+/* Order detail (D2 -- phase-05-order-detail.md)                          */
+/* ---------------------------------------------------------------------- */
+
+.kv-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px 20px;
+}
+
+.kv-grid__label {
+  font-size: 11px;
+  color: var(--t4);
+  margin-bottom: 4px;
+}
+
+.kv-grid__value {
+  font-size: 13.5px;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.order-room-line {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.order-room-line:last-child {
+  border-bottom: none;
+}
+
+.order-room-line__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.order-room-line__hotel {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.order-room-line__room {
+  font-size: 12.5px;
+  color: var(--t2);
+  margin-top: 2px;
+}
+
+.order-room-line__meta {
+  font-size: 11.5px;
+  color: var(--t3);
+  margin-top: 6px;
+}
+
+.order-room-line__total {
+  font-size: 13.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.order-totals-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 13px;
+  color: var(--t2);
+}
+
+.order-totals-row--total {
+  font-weight: 700;
+  font-size: 14.5px;
+  color: var(--t1);
+  border-top: 1px solid var(--stroke);
+  margin-top: 6px;
+  padding-top: 10px;
+}
+
+.order-timeline__item {
+  display: flex;
+  gap: 12px;
+}
+
+.order-timeline__rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 11px;
+  flex: none;
+}
+
+.order-timeline__dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.order-timeline__connector {
+  width: 1px;
+  flex: 1;
+  min-height: 22px;
+  background: var(--stroke);
+}
+
+.order-timeline__body {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 20px;
+}
+
+.order-timeline__title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.order-timeline__time {
+  font-size: 11.5px;
+  color: var(--t3);
+  margin-top: 2px;
+}
+
+.order-timeline__note {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}

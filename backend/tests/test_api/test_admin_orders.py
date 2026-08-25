@@ -484,3 +484,193 @@ async def test_order_stats_matches_hand_computed_values(client, admin_override, 
     assert body["avg_order_value"] == "566666.67"
     assert body["pending_count"] == 2
     assert body["expiring_holds_30m"] == 1
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/admin/orders/{payment_id} -- D2 (phase-05-order-detail.md)
+# ---------------------------------------------------------------------------
+
+
+def _payment_row(**overrides) -> dict:
+    row = {
+        "id": "11111111-1111-1111-1111-111111111111",
+        "temporary_user_ref": "guest-ref-1",
+        "booking_ids": ["b1", "b2"],
+        "amount": "1850000.00",
+        "currency": "VND",
+        "status": "PAID",
+        "guest_name": "Trần Quốc Bảo",
+        "guest_email": "bao.tran@vsf.dev",
+        "guest_phone": "0905218447",
+        "vnp_transaction_no": "VNP14829371",
+        "vnp_response_code": "00",
+        "paid_at": "2026-08-24T08:49:00Z",
+        "created_at": "2026-08-24T08:31:00Z",
+    }
+    row.update(overrides)
+    return row
+
+
+def _booking_row(**overrides) -> dict:
+    row = {
+        "id": "b1",
+        "room_id": "r1",
+        "check_in_date": "2026-08-25",
+        "check_out_date": "2026-08-28",
+        "room_count": 1,
+        "total_amount": "1050000.00",
+        "currency": "VND",
+        "status": "RESERVED",
+        "expires_at": "2026-08-24T09:03:00Z",
+        "cancelled_at": None,
+        "created_at": "2026-08-24T08:33:00Z",
+        "updated_at": "2026-08-24T08:33:00Z",
+        "session_id": "ct-90218",
+    }
+    row.update(overrides)
+    return row
+
+
+def _full_order_tables(**payment_overrides) -> dict[str, list[dict]]:
+    return {
+        "payments": [
+            _payment_row(**payment_overrides),
+            # Two more payments sharing guest_email -- exercises L11's
+            # order_count = count(payments WHERE guest_email = ...) = 3.
+            _payment_row(id="p2", amount="500000.00"),
+            _payment_row(id="p3", amount="700000.00"),
+        ],
+        "admin_orders": [{"payment_id": "11111111-1111-1111-1111-111111111111", "booking_status": "RESERVED", "needs_attention": True}],
+        "bookings": [
+            _booking_row(id="b1", room_id="r1", total_amount="1050000.00", room_count=1),
+            _booking_row(id="b2", room_id="r2", total_amount="650000.00", room_count=1, check_in_date="2026-08-25", check_out_date="2026-08-28"),
+        ],
+        "rooms": [
+            {"id": "r1", "name": "Deluxe King", "hotel_id": "h1", "max_guests": 2},
+            {"id": "r2", "name": "Superior Twin", "hotel_id": "h1", "max_guests": 2},
+        ],
+        "hotels": [{"id": "h1", "name": "Silk Path Hà Nội"}],
+        "sessions": [{"session_id": "ct-90218", "created_at": "2026-08-24T08:31:00Z"}],
+        "chat_messages": [{"id": str(i), "session_id": "ct-90218"} for i in range(14)],
+    }
+
+
+@pytest.mark.asyncio
+async def test_order_detail_full_order_returns_totals_timeline_and_vnpay(client, admin_override, monkeypatch):
+    fake_client = _FakeClient(_full_order_tables())
+    monkeypatch.setattr(orders_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.get("/api/v1/admin/orders/11111111-1111-1111-1111-111111111111")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["order_code"] == "DH-11111"
+    assert body["booking_status"] == "RESERVED"
+    assert body["needs_attention"] is True
+
+    # L9: subtotal + fee = total.
+    assert body["totals"] == {"subtotal": "1700000.00", "fee": "150000.00", "total": "1850000.00", "currency": "VND"}
+
+    # L11: matches count(payments WHERE guest_email = bao.tran@vsf.dev).
+    assert body["guest"]["order_count"] == 3
+
+    # L12: no breakfast-package field leaks into the room line.
+    assert set(body["rooms"][0].keys()) >= {"room_name", "max_guests", "nights", "unit_price", "total_amount", "status"}
+    assert "breakfast" not in body["rooms"][0]
+
+    kinds = [e["kind"] for e in body["timeline"]]
+    assert kinds == ["created", "reserved", "paid", "awaiting_admin"]
+    assert body["timeline"][-1]["kind"] == "awaiting_admin"
+
+    assert body["vnpay"]["transaction_no"] == "VNP14829371"
+    # L10: no bank field in the response at all.
+    assert "bank_code" not in body["vnpay"] and "card_type" not in body["vnpay"]
+
+    assert body["chat_session"] == {"session_id": "ct-90218", "started_at": "2026-08-24T08:31:00Z", "message_count": 14}
+
+
+@pytest.mark.asyncio
+async def test_order_detail_hides_chat_session_when_no_session_id(client, admin_override, monkeypatch):
+    tables = _full_order_tables()
+    tables["bookings"] = [_booking_row(id="b1", room_id="r1", session_id=None), _booking_row(id="b2", room_id="r2", session_id=None)]
+    fake_client = _FakeClient(tables)
+    monkeypatch.setattr(orders_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.get("/api/v1/admin/orders/11111111-1111-1111-1111-111111111111")
+
+    assert response.status_code == 200
+    assert response.json()["chat_session"] is None
+
+
+@pytest.mark.asyncio
+async def test_order_detail_fee_is_null_when_total_equals_subtotal(client, admin_override, monkeypatch):
+    tables = _full_order_tables(amount="1700000.00")
+    fake_client = _FakeClient(tables)
+    monkeypatch.setattr(orders_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.get("/api/v1/admin/orders/11111111-1111-1111-1111-111111111111")
+
+    assert response.status_code == 200
+    totals = response.json()["totals"]
+    assert totals["subtotal"] == totals["total"] == "1700000.00"
+    assert totals["fee"] is None
+
+
+@pytest.mark.asyncio
+async def test_order_detail_cancelled_order_has_no_awaiting_admin_milestone(client, admin_override, monkeypatch):
+    tables = _full_order_tables()
+    tables["admin_orders"] = [{"payment_id": "11111111-1111-1111-1111-111111111111", "booking_status": "CANCELLED", "needs_attention": False}]
+    tables["bookings"] = [
+        # `expires_at` deliberately left set (not None): cancel_booking
+        # (20260818_add_booking_reservation_rpcs.sql) sets status=CANCELLED
+        # and cancelled_at, but never clears expires_at -- a cancelled
+        # booking with a real DB row shape still carries a (now-irrelevant)
+        # future expires_at. This is the exact shape that used to leak a
+        # live hold countdown onto a cancelled order's timeline.
+        _booking_row(id="b1", room_id="r1", status="CANCELLED", expires_at="2099-01-01T00:00:00Z", cancelled_at="2026-08-24T09:10:00Z"),
+        _booking_row(id="b2", room_id="r2", status="CANCELLED", expires_at="2099-01-01T00:00:00Z", cancelled_at="2026-08-24T09:10:00Z"),
+    ]
+    fake_client = _FakeClient(tables)
+    monkeypatch.setattr(orders_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.get("/api/v1/admin/orders/11111111-1111-1111-1111-111111111111")
+
+    assert response.status_code == 200
+    kinds = [e["kind"] for e in response.json()["timeline"]]
+    assert "cancelled" in kinds
+    assert "awaiting_admin" not in kinds
+    # H1 regression: a cancelled booking's leftover expires_at must not
+    # surface a "reserved"/live-countdown milestone.
+    assert "reserved" not in kinds
+
+
+@pytest.mark.asyncio
+async def test_order_detail_404_when_payment_missing(client, admin_override, monkeypatch):
+    fake_client = _FakeClient({"payments": []})
+    monkeypatch.setattr(orders_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.get("/api/v1/admin/orders/22222222-2222-2222-2222-222222222222")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_order_detail_no_bookings_does_not_500_on_terminal_rollup(client, admin_override, monkeypatch):
+    """A rollup/booking-row mismatch (e.g. booking_ids pointing at rows that
+    no longer resolve) must degrade gracefully, not 500 -- `_build_timeline`
+    used to call `max()` on an empty list for the EXPIRED/CONFIRMED
+    branches."""
+    tables = _full_order_tables()
+    tables["admin_orders"] = [{"payment_id": "11111111-1111-1111-1111-111111111111", "booking_status": "EXPIRED", "needs_attention": False}]
+    tables["bookings"] = []
+    fake_client = _FakeClient(tables)
+    monkeypatch.setattr(orders_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.get("/api/v1/admin/orders/11111111-1111-1111-1111-111111111111")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["rooms"] == []
+    # No "created" (needs a booking row) and no "expired" (guarded, empty
+    # list) -- "paid" alone doesn't depend on bookings at all.
+    assert [e["kind"] for e in body["timeline"]] == ["paid"]

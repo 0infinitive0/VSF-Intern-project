@@ -144,7 +144,7 @@ xem Phase 17.
 | 2 | [Backend: role admin, require_admin, khung router](./phase-02-admin-auth-backend.md) | — | Done |
 | 3 | [Frontend: entry admin.html, shell, đăng nhập](./phase-03-admin-shell-frontend.md) | A1, A2, Z | Done |
 | 4 | [Danh sách đơn hàng](./phase-04-orders-list.md) | D1 | Pending |
-| 5 | [Chi tiết đơn hàng](./phase-05-order-detail.md) | D2 | Pending |
+| 5 | [Chi tiết đơn hàng](./phase-05-order-detail.md) | D2 | Done |
 | 6 | [Xác nhận / Huỷ đơn](./phase-06-order-actions.md) | D3 | Pending |
 | 7 | [Danh sách khách sạn](./phase-07-hotels-list.md) | B1 | Done |
 | 8 | [Tạo khách sạn mới](./phase-08-hotel-create.md) | B2 | Done |

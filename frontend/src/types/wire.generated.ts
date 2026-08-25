@@ -938,6 +938,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/orders/{payment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Order Detail */
+        get: operations["get_order_detail_api_v1_admin_orders__payment_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/me": {
         parameters: {
             query?: never;
@@ -1852,6 +1869,55 @@ export interface components {
             /** Row Count */
             row_count: number;
         };
+        /** OrderChatSession */
+        OrderChatSession: {
+            /** Session Id */
+            session_id: string;
+            /** Started At */
+            started_at?: string | null;
+            /** Message Count */
+            message_count: number;
+        };
+        /** OrderDetailResponse */
+        OrderDetailResponse: {
+            /** Payment Id */
+            payment_id: string;
+            /** Order Code */
+            order_code: string;
+            /**
+             * Booking Status
+             * @enum {string}
+             */
+            booking_status: "PENDING" | "RESERVED" | "CONFIRMED" | "CANCELLED" | "EXPIRED" | "MIXED" | "UNKNOWN";
+            /**
+             * Payment Status
+             * @enum {string}
+             */
+            payment_status: "PENDING" | "PAID" | "FAILED" | "CANCELLED";
+            /** Needs Attention */
+            needs_attention: boolean;
+            /** Attention Hours */
+            attention_hours: number;
+            guest: components["schemas"]["OrderGuest"];
+            /** Rooms */
+            rooms: components["schemas"]["OrderRoomLine"][];
+            totals: components["schemas"]["OrderTotals"];
+            /** Timeline */
+            timeline: components["schemas"]["OrderTimelineEvent"][];
+            vnpay: components["schemas"]["OrderVnpay"];
+            chat_session?: components["schemas"]["OrderChatSession"] | null;
+        };
+        /** OrderGuest */
+        OrderGuest: {
+            /** Name */
+            name?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** Order Count */
+            order_count: number;
+        };
         /** OrderListResponse */
         OrderListResponse: {
             /** Items */
@@ -1862,6 +1928,46 @@ export interface components {
             page: number;
             /** Page Size */
             page_size: number;
+        };
+        /** OrderRoomLine */
+        OrderRoomLine: {
+            /** Booking Id */
+            booking_id: string;
+            /** Hotel Id */
+            hotel_id?: string | null;
+            /** Hotel Name */
+            hotel_name?: string | null;
+            /** Room Id */
+            room_id: string;
+            /** Room Name */
+            room_name?: string | null;
+            /** Max Guests */
+            max_guests?: number | null;
+            /**
+             * Check In Date
+             * Format: date
+             */
+            check_in_date: string;
+            /**
+             * Check Out Date
+             * Format: date
+             */
+            check_out_date: string;
+            /** Nights */
+            nights: number;
+            /** Room Count */
+            room_count: number;
+            /** Unit Price */
+            unit_price: string;
+            /** Total Amount */
+            total_amount: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "PENDING" | "RESERVED" | "CONFIRMED" | "CANCELLED" | "EXPIRED";
+            /** Expires At */
+            expires_at?: string | null;
         };
         /** OrderRow */
         OrderRow: {
@@ -1926,6 +2032,46 @@ export interface components {
             pending_over_2h: number;
             /** Expiring Holds 30M */
             expiring_holds_30m: number;
+        };
+        /** OrderTimelineEvent */
+        OrderTimelineEvent: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "created" | "reserved" | "paid" | "cancelled" | "expired" | "confirmed" | "awaiting_admin";
+            /** At */
+            at?: string | null;
+            /** Since */
+            since?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Room Count */
+            room_count?: number | null;
+        };
+        /** OrderTotals */
+        OrderTotals: {
+            /** Subtotal */
+            subtotal: string;
+            /** Fee */
+            fee?: string | null;
+            /** Total */
+            total: string;
+            /** Currency */
+            currency: string;
+        };
+        /** OrderVnpay */
+        OrderVnpay: {
+            /** Transaction No */
+            transaction_no?: string | null;
+            /** Response Code */
+            response_code?: string | null;
+            /** Paid At */
+            paid_at?: string | null;
+            /** Amount */
+            amount: string;
+            /** Currency */
+            currency: string;
         };
         /** PaymentPayload */
         PaymentPayload: {
@@ -4300,6 +4446,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderStatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_order_detail_api_v1_admin_orders__payment_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                payment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderDetailResponse"];
                 };
             };
             /** @description Validation Error */

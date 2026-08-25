@@ -3078,6 +3078,65 @@
         }
       }
     },
+    "/api/v1/admin/orders/{payment_id}": {
+      "get": {
+        "tags": [
+          "admin-orders"
+        ],
+        "summary": "Get Order Detail",
+        "operationId": "get_order_detail_api_v1_admin_orders__payment_id__get",
+        "parameters": [
+          {
+            "name": "payment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Payment Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderDetailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/me": {
       "get": {
         "summary": "Get Me",
@@ -5862,6 +5921,172 @@
         ],
         "title": "NightRow"
       },
+      "OrderChatSession": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "message_count": {
+            "type": "integer",
+            "title": "Message Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "message_count"
+        ],
+        "title": "OrderChatSession"
+      },
+      "OrderDetailResponse": {
+        "properties": {
+          "payment_id": {
+            "type": "string",
+            "title": "Payment Id"
+          },
+          "order_code": {
+            "type": "string",
+            "title": "Order Code"
+          },
+          "booking_status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "RESERVED",
+              "CONFIRMED",
+              "CANCELLED",
+              "EXPIRED",
+              "MIXED",
+              "UNKNOWN"
+            ],
+            "title": "Booking Status"
+          },
+          "payment_status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "PAID",
+              "FAILED",
+              "CANCELLED"
+            ],
+            "title": "Payment Status"
+          },
+          "needs_attention": {
+            "type": "boolean",
+            "title": "Needs Attention"
+          },
+          "attention_hours": {
+            "type": "integer",
+            "title": "Attention Hours"
+          },
+          "guest": {
+            "$ref": "#/components/schemas/OrderGuest"
+          },
+          "rooms": {
+            "items": {
+              "$ref": "#/components/schemas/OrderRoomLine"
+            },
+            "type": "array",
+            "title": "Rooms"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/OrderTotals"
+          },
+          "timeline": {
+            "items": {
+              "$ref": "#/components/schemas/OrderTimelineEvent"
+            },
+            "type": "array",
+            "title": "Timeline"
+          },
+          "vnpay": {
+            "$ref": "#/components/schemas/OrderVnpay"
+          },
+          "chat_session": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderChatSession"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "payment_id",
+          "order_code",
+          "booking_status",
+          "payment_status",
+          "needs_attention",
+          "attention_hours",
+          "guest",
+          "rooms",
+          "totals",
+          "timeline",
+          "vnpay"
+        ],
+        "title": "OrderDetailResponse"
+      },
+      "OrderGuest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "order_count": {
+            "type": "integer",
+            "title": "Order Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "order_count"
+        ],
+        "title": "OrderGuest"
+      },
       "OrderListResponse": {
         "properties": {
           "items": {
@@ -5892,6 +6117,123 @@
           "page_size"
         ],
         "title": "OrderListResponse"
+      },
+      "OrderRoomLine": {
+        "properties": {
+          "booking_id": {
+            "type": "string",
+            "title": "Booking Id"
+          },
+          "hotel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hotel Id"
+          },
+          "hotel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hotel Name"
+          },
+          "room_id": {
+            "type": "string",
+            "title": "Room Id"
+          },
+          "room_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room Name"
+          },
+          "max_guests": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Guests"
+          },
+          "check_in_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Check In Date"
+          },
+          "check_out_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Check Out Date"
+          },
+          "nights": {
+            "type": "integer",
+            "title": "Nights"
+          },
+          "room_count": {
+            "type": "integer",
+            "title": "Room Count"
+          },
+          "unit_price": {
+            "type": "string",
+            "title": "Unit Price"
+          },
+          "total_amount": {
+            "type": "string",
+            "title": "Total Amount"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "RESERVED",
+              "CONFIRMED",
+              "CANCELLED",
+              "EXPIRED"
+            ],
+            "title": "Status"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "booking_id",
+          "room_id",
+          "check_in_date",
+          "check_out_date",
+          "nights",
+          "room_count",
+          "unit_price",
+          "total_amount",
+          "status"
+        ],
+        "title": "OrderRoomLine"
       },
       "OrderRow": {
         "properties": {
@@ -6097,6 +6439,157 @@
           "expiring_holds_30m"
         ],
         "title": "OrderStatsResponse"
+      },
+      "OrderTimelineEvent": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "created",
+              "reserved",
+              "paid",
+              "cancelled",
+              "expired",
+              "confirmed",
+              "awaiting_admin"
+            ],
+            "title": "Kind"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "room_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "OrderTimelineEvent"
+      },
+      "OrderTotals": {
+        "properties": {
+          "subtotal": {
+            "type": "string",
+            "title": "Subtotal"
+          },
+          "fee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee"
+          },
+          "total": {
+            "type": "string",
+            "title": "Total"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subtotal",
+          "total",
+          "currency"
+        ],
+        "title": "OrderTotals"
+      },
+      "OrderVnpay": {
+        "properties": {
+          "transaction_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transaction No"
+          },
+          "response_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Code"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          },
+          "amount": {
+            "type": "string",
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          }
+        },
+        "type": "object",
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "title": "OrderVnpay"
       },
       "PaymentPayload": {
         "properties": {

@@ -18,6 +18,9 @@ export type UnpaidBookingRow = components['schemas']['UnpaidBookingRow']
 export type UnpaidBookingListResponse = components['schemas']['UnpaidBookingListResponse']
 export type ReleaseExpiredResponse = components['schemas']['ReleaseExpiredResponse']
 export type OrderStatsResponse = components['schemas']['OrderStatsResponse']
+export type OrderDetailResponse = components['schemas']['OrderDetailResponse']
+export type OrderRoomLine = components['schemas']['OrderRoomLine']
+export type OrderTimelineEvent = components['schemas']['OrderTimelineEvent']
 
 export type OrdersTab = 'paid' | 'unpaid'
 
@@ -59,6 +62,10 @@ export function listUnpaidBookings(params: OrdersListParams): Promise<AdminApiRe
 
 export function getOrderStats(): Promise<AdminApiResult<OrderStatsResponse>> {
   return adminFetch<OrderStatsResponse>('/orders/stats')
+}
+
+export function getOrderDetail(paymentId: string): Promise<AdminApiResult<OrderDetailResponse>> {
+  return adminFetch<OrderDetailResponse>(`/orders/${paymentId}`)
 }
 
 export function releaseExpiredHolds(): Promise<AdminApiResult<ReleaseExpiredResponse>> {

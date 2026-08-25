@@ -1,11 +1,21 @@
-"""Admin D1 -- Danh sách đơn hàng (phase-04-orders-list.md).
+"""Admin D1/D2 -- Danh sách + chi tiết đơn hàng (phase-04-orders-list.md,
+phase-05-order-detail.md).
 
-Read-only, highest-value screen: "đơn hàng" is one payment row (decision #2),
-`bookings` are its line items. Both list tabs read through views —
+Read-only, highest-value screens: "đơn hàng" is one payment row (decision
+#2), `bookings` are its line items. The list (D1) reads through two views --
 `admin_orders` (one row per payment, booking aggregates rolled up) and
 `admin_unpaid_bookings` (bookings not attached to any payment yet) — built in
 scripts/migrations/20260824_add_admin_order_views.sql, since
 `payments.booking_ids` is a UUID[] PostgREST can't join through directly.
+The detail endpoint (D2, `GET /orders/{payment_id}`) reuses `admin_orders`
+for its `booking_status`/`needs_attention` rollup (one CASE, one place it can
+disagree with the list) but re-joins `bookings` -> `rooms` -> `hotels`
+itself rather than reusing payment_service.booking_summary_for_email: that
+helper aggregates rooms for the confirmation email and drops each booking's
+own id/status/expires_at/cancelled_at plus each room's hotel_id/max_guests,
+all of which D2 needs per-line (L9-L14 in the plan). Kept in this module,
+not payment_service, so it stays testable through the same single
+`get_supabase_client()` monkeypatch point as the rest of this file.
 
 `order_code`/`hold_code` (`DH-3F2A1`, `GC-9182`) are display-only, derived
 from the last 5 hex chars of the row's own UUID (`_short_code`) -- there is
@@ -141,6 +151,77 @@ class OrderStatsResponse(BaseModel):
     pending_count: int
     pending_over_2h: int
     expiring_holds_30m: int
+
+
+TimelineKind = Literal["created", "reserved", "paid", "cancelled", "expired", "confirmed", "awaiting_admin"]
+
+
+class OrderGuest(BaseModel):
+    name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    order_count: int
+
+
+class OrderRoomLine(BaseModel):
+    booking_id: str
+    hotel_id: str | None = None
+    hotel_name: str | None = None
+    room_id: str
+    room_name: str | None = None
+    max_guests: int | None = None
+    check_in_date: date
+    check_out_date: date
+    nights: int
+    room_count: int
+    unit_price: str
+    total_amount: str
+    status: RawBookingStatus
+    expires_at: str | None = None
+
+
+class OrderTotals(BaseModel):
+    subtotal: str
+    fee: str | None = None
+    total: str
+    currency: str
+
+
+class OrderTimelineEvent(BaseModel):
+    kind: TimelineKind
+    at: str | None = None
+    since: str | None = None
+    expires_at: str | None = None
+    room_count: int | None = None
+
+
+class OrderVnpay(BaseModel):
+    transaction_no: str | None = None
+    response_code: str | None = None
+    paid_at: str | None = None
+    amount: str
+    currency: str
+
+
+class OrderChatSession(BaseModel):
+    session_id: str
+    started_at: str | None = None
+    message_count: int
+
+
+class OrderDetailResponse(BaseModel):
+    payment_id: str
+    order_code: str
+    booking_status: BookingStatus
+    payment_status: PaymentStatus
+    needs_attention: bool
+    attention_hours: int
+    guest: OrderGuest
+    rooms: list[OrderRoomLine]
+    totals: OrderTotals
+    timeline: list[OrderTimelineEvent]
+    vnpay: OrderVnpay
+    chat_session: OrderChatSession | None = None
 
 
 def _short_code(prefix: str, entity_id: str) -> str:
@@ -525,4 +606,261 @@ def get_order_stats() -> OrderStatsResponse:
         pending_count=pending_count,
         pending_over_2h=pending_over_2h,
         expiring_holds_30m=expiring_holds_30m,
+    )
+
+
+def _round_money(value: Decimal) -> str:
+    """Whole-đồng rounding (risk table: VND has no smaller unit) -- callers
+    that need the frontend's `≈` cue derive it themselves by comparing this
+    back against `total_amount`, so the wire contract stays exactly what the
+    plan specifies (no extra "is_approximate" field)."""
+    return str(value.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def _nights(check_in_date: str, check_out_date: str) -> int:
+    return (date.fromisoformat(check_out_date) - date.fromisoformat(check_in_date)).days
+
+
+def _fetch_payment(payment_id: str) -> dict[str, Any] | None:
+    rows = get_supabase_client().table("payments").select("*").eq("id", payment_id).limit(1).execute().data
+    return dict(rows[0]) if rows else None
+
+
+def _fetch_order_rollup(payment_id: str) -> dict[str, Any] | None:
+    """`booking_status`/`needs_attention` already computed by the
+    `admin_orders` view's CASE (20260824_add_admin_order_views.sql) --
+    reused here so D1's list and this detail screen can never disagree on
+    what either means for the same order."""
+    rows = (
+        get_supabase_client()
+        .table(_ORDERS_VIEW)
+        .select("booking_status, needs_attention")
+        .eq("payment_id", payment_id)
+        .limit(1)
+        .execute()
+        .data
+    )
+    return dict(rows[0]) if rows else None
+
+
+def _fetch_order_bookings(booking_ids: list[str]) -> list[dict[str, Any]]:
+    """Per-booking rows (own id/status/expires_at/cancelled_at kept, unlike
+    payment_service's aggregated booking_summary_for_email) joined to room
+    name/max_guests and hotel id/name -- see this module's docstring for why
+    that helper isn't reused here."""
+    if not booking_ids:
+        return []
+    client = get_supabase_client()
+    booking_rows = (
+        client.table("bookings")
+        .select(
+            "id, room_id, check_in_date, check_out_date, room_count, total_amount, currency, "
+            "status, expires_at, cancelled_at, created_at, updated_at, session_id"
+        )
+        .in_("id", booking_ids)
+        .order("created_at")
+        .execute()
+        .data
+        or []
+    )
+    if not booking_rows:
+        return []
+
+    room_ids = list({row["room_id"] for row in booking_rows})
+    room_rows = client.table("rooms").select("id, name, hotel_id, max_guests").in_("id", room_ids).execute().data or []
+    room_by_id = {row["id"]: row for row in room_rows}
+
+    hotel_ids = list({row["hotel_id"] for row in room_rows if row.get("hotel_id")})
+    hotel_rows = client.table("hotels").select("id, name").in_("id", hotel_ids).execute().data if hotel_ids else []
+    hotel_by_id = {row["id"]: row for row in hotel_rows or []}
+
+    result = []
+    for row in booking_rows:
+        room = room_by_id.get(row["room_id"], {})
+        hotel = hotel_by_id.get(room.get("hotel_id"), {})
+        result.append({
+            **row,
+            "room_name": room.get("name"),
+            "max_guests": room.get("max_guests"),
+            "hotel_id": room.get("hotel_id"),
+            "hotel_name": hotel.get("name"),
+        })
+    return result
+
+
+def _booking_row_to_room_line(row: dict[str, Any]) -> OrderRoomLine:
+    nights = _nights(row["check_in_date"], row["check_out_date"])
+    total_amount = Decimal(str(row["total_amount"])) if row.get("total_amount") is not None else Decimal("0")
+    room_count = row.get("room_count") or 1
+    unit_price = _round_money(total_amount / (max(nights, 1) * room_count))
+    return OrderRoomLine(
+        booking_id=row["id"],
+        hotel_id=row.get("hotel_id"),
+        hotel_name=row.get("hotel_name"),
+        room_id=row["room_id"],
+        room_name=row.get("room_name"),
+        max_guests=row.get("max_guests"),
+        check_in_date=row["check_in_date"],
+        check_out_date=row["check_out_date"],
+        nights=nights,
+        room_count=room_count,
+        unit_price=unit_price,
+        total_amount=_money_str(total_amount),
+        status=row["status"],
+        expires_at=row.get("expires_at"),
+    )
+
+
+def _order_count_for_guest(*, guest_email: str | None, temporary_user_ref: str | None) -> int:
+    """L11 (plan): `guest_email` when present, else `temporary_user_ref` --
+    matches Success Criteria's `SELECT count(*) FROM payments WHERE
+    guest_email = ...` exactly, not the design column's "max of both"
+    phrasing (the Xử lý column and success criteria override it)."""
+    client = get_supabase_client()
+    if guest_email:
+        return client.table("payments").select("id", count="exact").eq("guest_email", guest_email).range(0, 0).execute().count or 0
+    if temporary_user_ref:
+        return (
+            client.table("payments")
+            .select("id", count="exact")
+            .eq("temporary_user_ref", temporary_user_ref)
+            .range(0, 0)
+            .execute()
+            .count
+            or 0
+        )
+    return 0
+
+
+def _as_utc_iso(value: str | None) -> str | None:
+    """`sessions.created_at` is a bare `TIMESTAMP` (no tz), unlike every
+    other timestamp on this screen (`bookings.created_at`/`payments.paid_at`
+    are `timestamptz`) -- PostgREST returns it with no offset, which a
+    browser's `new Date(...)` parses as LOCAL time, skewing it hours off
+    from the "created" milestone shown right above it. Stamped `Z` here:
+    Postgres stores this column's wall-clock in UTC."""
+    if value and "+" not in value and not value.endswith("Z"):
+        return value + "Z"
+    return value
+
+
+def _chat_session_info(session_id: str | None) -> OrderChatSession | None:
+    if not session_id:
+        return None
+    client = get_supabase_client()
+    session_rows = client.table("sessions").select("created_at").eq("session_id", session_id).limit(1).execute().data
+    started_at = _as_utc_iso(session_rows[0]["created_at"]) if session_rows else None
+    message_count = client.table("chat_messages").select("id", count="exact").eq("session_id", session_id).range(0, 0).execute().count or 0
+    return OrderChatSession(session_id=session_id, started_at=started_at, message_count=message_count)
+
+
+def _build_timeline(bookings: list[dict[str, Any]], payment: dict[str, Any], booking_status: str) -> list[OrderTimelineEvent]:
+    """Suy diễn từ dữ liệu có thật -- không có bảng lịch sử trạng thái
+    (module docstring's L9-L14 note), nên chỉ dựng mốc từ trường có bằng
+    chứng (`created_at`, `expires_at`, `paid_at`, `cancelled_at`,
+    `updated_at`). The four closing branches (cancelled/expired/confirmed/
+    awaiting_admin) are mutually exclusive with `booking_status`'s own CASE,
+    so at most one ever appears, and `awaiting_admin` -- the only "still
+    open" branch -- is always emitted last."""
+    events: list[OrderTimelineEvent] = [OrderTimelineEvent(kind="created", at=min(b["created_at"] for b in bookings))] if bookings else []
+
+    def room_count(rows: list[dict[str, Any]]) -> int:
+        return sum(b.get("room_count") or 0 for b in rows)
+
+    # `status == "RESERVED"`, not just `expires_at` truthy: cancel_booking
+    # (20260818_add_booking_reservation_rpcs.sql) sets CANCELLED but never
+    # clears expires_at, unlike confirm_booking_reservation which nulls it
+    # on confirm -- without this guard, a cancelled-before-hold-lapsed order
+    # would still show a live "hết hạn sau ..." countdown next to "Đã huỷ".
+    reserved = [b for b in bookings if b.get("expires_at") and b.get("status") == "RESERVED"]
+    if reserved:
+        first_reserved = min(reserved, key=lambda b: b["created_at"])
+        events.append(
+            OrderTimelineEvent(
+                kind="reserved", at=first_reserved["created_at"], expires_at=first_reserved["expires_at"], room_count=room_count(reserved)
+            )
+        )
+
+    if payment.get("paid_at"):
+        events.append(OrderTimelineEvent(kind="paid", at=payment["paid_at"]))
+
+    if booking_status == "CANCELLED":
+        cancelled = [b for b in bookings if b.get("cancelled_at")]
+        if cancelled:
+            events.append(OrderTimelineEvent(kind="cancelled", at=max(b["cancelled_at"] for b in cancelled), room_count=room_count(cancelled)))
+    elif booking_status == "EXPIRED":
+        expired = [b for b in bookings if b.get("status") == "EXPIRED"]
+        if expired:
+            events.append(OrderTimelineEvent(kind="expired", at=max(b["updated_at"] for b in expired), room_count=room_count(expired)))
+    elif booking_status == "CONFIRMED":
+        if bookings:
+            events.append(OrderTimelineEvent(kind="confirmed", at=max(b["updated_at"] for b in bookings)))
+    elif payment.get("status") == "PAID":
+        events.append(OrderTimelineEvent(kind="awaiting_admin", since=payment.get("paid_at")))
+
+    return events
+
+
+@orders_router.get("/{payment_id}", response_model=OrderDetailResponse)
+def get_order_detail(payment_id: UUID) -> OrderDetailResponse:
+    payment = _fetch_payment(str(payment_id))
+    if payment is None:
+        raise HTTPException(status_code=404, detail="order_not_found")
+
+    rollup = _fetch_order_rollup(str(payment_id)) or {"booking_status": "UNKNOWN", "needs_attention": False}
+    booking_status: BookingStatus = rollup["booking_status"]
+    needs_attention = bool(rollup["needs_attention"])
+
+    bookings = _fetch_order_bookings(payment.get("booking_ids") or [])
+    rooms = [_booking_row_to_room_line(row) for row in bookings]
+
+    subtotal = sum((Decimal(str(b["total_amount"])) for b in bookings if b.get("total_amount") is not None), Decimal("0"))
+    total = Decimal(str(payment["amount"]))
+    fee = total - subtotal
+    totals = OrderTotals(
+        subtotal=_money_str(subtotal),
+        fee=_money_str(fee) if fee != 0 else None,
+        total=_money_str(total),
+        currency=payment["currency"],
+    )
+
+    guest = OrderGuest(
+        name=payment.get("guest_name"),
+        email=payment.get("guest_email"),
+        phone=payment.get("guest_phone"),
+        order_count=_order_count_for_guest(guest_email=payment.get("guest_email"), temporary_user_ref=payment.get("temporary_user_ref")),
+    )
+
+    attention_hours = 0
+    if needs_attention and payment.get("paid_at"):
+        paid_at = datetime.fromisoformat(str(payment["paid_at"]).replace("Z", "+00:00"))
+        attention_hours = max(int((datetime.now(timezone.utc) - paid_at).total_seconds() // 3600), 0)
+
+    vnpay = OrderVnpay(
+        transaction_no=payment.get("vnp_transaction_no"),
+        response_code=payment.get("vnp_response_code"),
+        paid_at=payment.get("paid_at"),
+        amount=_money_str(total),
+        currency=payment["currency"],
+    )
+
+    # Every booking in one order shares a single hold session (a hold is
+    # always for one hotel -- use-room-hold.ts), so the first non-null
+    # session_id speaks for the whole order; L14 hides the block entirely
+    # when every booking has none (not created from a chat session).
+    session_id = next((b["session_id"] for b in bookings if b.get("session_id")), None)
+
+    return OrderDetailResponse(
+        payment_id=str(payment["id"]),
+        order_code=_short_code("DH", str(payment["id"])),
+        booking_status=booking_status,
+        payment_status=payment["status"],
+        needs_attention=needs_attention,
+        attention_hours=attention_hours,
+        guest=guest,
+        rooms=rooms,
+        totals=totals,
+        timeline=_build_timeline(bookings, payment, booking_status),
+        vnpay=vnpay,
+        chat_session=_chat_session_info(session_id),
     )
