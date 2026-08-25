@@ -23,6 +23,13 @@ interface DataTableProps<T> {
   /** Background refetch in flight -- dims current rows and centers a
    * spinner over the table instead of unmounting into a skeleton. */
   loading?: boolean
+  /** Server-side sort: when set, rows are assumed to already be in the
+   * requested order and clicking a sortable header calls `onSortChange`
+   * instead of the table doing its own client-side (rows-already-loaded-
+   * only) sort. Omit both to keep the default client-side behavior used by
+   * hotels-table.tsx/price-range-table.tsx/hotel-tab-rooms.tsx. */
+  sortState?: { key: string; direction: 'asc' | 'desc' } | null
+  onSortChange?: (key: string) => void
 }
 
 const DEFAULT_COLUMN_WIDTH = 150
@@ -32,8 +39,9 @@ interface ColumnMeta {
   align?: 'left' | 'right'
 }
 
-export function DataTable<T>({ columns, rows, rowKey, rowClassName, onRowClick, loading }: DataTableProps<T>) {
+export function DataTable<T>({ columns, rows, rowKey, rowClassName, onRowClick, loading, sortState, onSortChange }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([])
+  const controlled = !!onSortChange
 
   const columnDefs = useMemo<ColumnDef<T, unknown>[]>(
     () =>
@@ -53,10 +61,10 @@ export function DataTable<T>({ columns, rows, rowKey, rowClassName, onRowClick, 
   const table = useReactTable({
     data: rows,
     columns: columnDefs,
-    state: { sorting },
-    onSortingChange: setSorting,
+    state: { sorting: controlled ? [] : sorting },
+    onSortingChange: controlled ? undefined : setSorting,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
+    getSortedRowModel: controlled ? undefined : getSortedRowModel(),
     enableColumnResizing: true,
     columnResizeMode: 'onChange',
   })
@@ -74,14 +82,14 @@ export function DataTable<T>({ columns, rows, rowKey, rowClassName, onRowClick, 
             <tr key={headerGroup.id}>
               {headerGroup.headers.map((header) => {
                 const align = (header.column.columnDef.meta as ColumnMeta | undefined)?.align
-                const sortDir = header.column.getIsSorted()
+                const sortDir = controlled ? (sortState?.key === header.column.id ? sortState.direction : false) : header.column.getIsSorted()
                 const canSort = header.column.getCanSort()
                 return (
                   <th
                     key={header.id}
                     data-align={align === 'right' ? 'right' : undefined}
                     className={canSort ? 'data-table__th--sortable' : undefined}
-                    onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
+                    onClick={canSort ? (controlled ? () => onSortChange!(header.column.id) : header.column.getToggleSortingHandler()) : undefined}
                   >
                     <span className="data-table__th-label">
                       {flexRender(header.column.columnDef.header, header.getContext())}

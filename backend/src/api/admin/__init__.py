@@ -7,6 +7,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from src.api.admin.amenities import amenities_router
+from src.api.admin.amenity_catalog import amenity_catalog_router
 from src.api.admin.destinations import destinations_router
 from src.api.admin.embedding import embedding_router
 from src.api.admin.hotels import hotels_router
@@ -22,6 +23,7 @@ admin_router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
 admin_router.include_router(hotels_router)
 admin_router.include_router(destinations_router)
 admin_router.include_router(amenities_router)
+admin_router.include_router(amenity_catalog_router)
 admin_router.include_router(rooms_router)
 admin_router.include_router(room_prices_router)
 admin_router.include_router(orders_router)

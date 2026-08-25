@@ -106,11 +106,19 @@ def query_approved_amenities(amenity_ids: Collection[str] | None = None) -> list
 
 
 def _query_approved_amenities(requested_ids: list[str], *, fields: str) -> list[AmenityCatalogEntry]:
-    """Execute one field-compatible approved catalog read."""
+    """Execute one field-compatible approved catalog read.
+
+    `retired_at IS NULL` is filtered alongside `is_approved` -- a retired
+    entry (admin catalog screen, phase-18) must disappear from chat search
+    and the B3/B5 pickers exactly like an unapproved one. `retired_at` was
+    added by 20260821_hotel_preference_catalog_redesign.sql and has been live
+    on every deployment since; no rolling-deploy fallback is needed the way
+    `parent_id` briefly required one.
+    """
     if requested_ids:
         response = (
             get_supabase_client().table(_CATALOG_TABLE).select(fields)
-            .eq("is_approved", True).in_("id", requested_ids).limit(_MAX_REQUESTED_IDS).execute()
+            .eq("is_approved", True).is_("retired_at", "null").in_("id", requested_ids).limit(_MAX_REQUESTED_IDS).execute()
         )
         return _parse_catalog_entries(getattr(response, "data", None) or [])
     rows: list[object] = []
@@ -118,7 +126,7 @@ def _query_approved_amenities(requested_ids: list[str], *, fields: str) -> list[
     while True:
         response = (
             get_supabase_client().table(_CATALOG_TABLE).select(fields)
-            .eq("is_approved", True).range(start, start + _CATALOG_PAGE_SIZE - 1).execute()
+            .eq("is_approved", True).is_("retired_at", "null").range(start, start + _CATALOG_PAGE_SIZE - 1).execute()
         )
         page = getattr(response, "data", None) or []
         rows.extend(page)
@@ -594,6 +602,66 @@ def discover_and_store_amenities(
     return _parse_catalog_entries(rows)
 
 
+def catalog_match_score(phrase: str, entry: AmenityCatalogEntry) -> float:
+    """Public wrapper around `_catalog_match_score` -- the same lexical
+    scoring chat-phrase resolution uses to auto-bind, surfaced here for a
+    human decision (admin catalog screen's duplicate-check step, phase-18)
+    instead of an automatic bind."""
+    return _catalog_match_score(phrase, entry)
+
+
+def score_against_catalog(
+    name: str, *, scope: AmenityScope, limit: int = 5
+) -> list[tuple[AmenityCatalogEntry, float]]:
+    """Score one admin-typed name against every approved catalog entry
+    eligible for `scope` (hotel/room/both), sorted by score descending.
+
+    Used by the admin catalog screen's duplicate-check step -- a *warning*
+    surfaced to the admin, not an automatic bind, so this deliberately has no
+    score floor of its own; the caller applies its own thresholds.
+    """
+    entries = [entry for entry in all_approved_amenities() if _scope_is_eligible(entry.scope, scope)]
+    scored = sorted(
+        ((entry, _catalog_match_score(name, entry)) for entry in entries),
+        key=lambda item: (-item[1], item[0].id),
+    )
+    return [(entry, score) for entry, score in scored[:limit] if score > 0]
+
+
+def draft_new_amenities(
+    names: Collection[str], *, scope: AmenityScope, persist: bool = True
+) -> list[AmenityCatalogEntry]:
+    """Admin-initiated batch creation (phase-18's "+ Thêm tiện ích", one or
+    many names at once) -- reuses the exact same classification pipeline
+    chat/pipeline discovery already uses (`discover_and_store_amenities`),
+    entered from admin-typed names instead of unresolved chat phrases. Every
+    resulting row is written `is_approved=False` regardless of source, same
+    as any other discovery output -- an admin-typed name is not auto-approved,
+    it joins the one shared review queue (phase-18 decision #9).
+
+    Chunks through `_MAX_DISCOVERY_CANDIDATES` at a time -- same posture as
+    `bind_amenity_rows`'s own `_batches(...)` loop -- because
+    `discover_and_store_amenities` silently truncates a single call's
+    `candidates` to that cap (`_valid_discovery_candidates`); without
+    chunking here, an admin pasting more than 8 names would have the rest
+    dropped with no error.
+    """
+    raw_names = _valid_raw_values(names)
+    if not raw_names:
+        return []
+    entries = list(query_approved_amenities())
+    entries_by_id = {entry.id: entry for entry in entries}
+    discovered: list[AmenityCatalogEntry] = []
+    for batch in _batches(raw_names, _MAX_DISCOVERY_CANDIDATES):
+        candidates = _discovery_candidates(batch, reserved_ids=set(entries_by_id))
+        batch_entries = discover_and_store_amenities(candidates, scope=scope, persist=persist, existing_entries=entries)
+        discovered.extend(batch_entries)
+        for entry in batch_entries:
+            entries_by_id.setdefault(entry.id, entry)
+        entries = list(entries_by_id.values())
+    return discovered
+
+
 def _approved_discovery_rows(
     candidate_by_id: dict[str, str], source_scope: AmenityScope, existing_entries: Collection[AmenityCatalogEntry] = ()
 ) -> list[dict[str, object]]:
@@ -619,13 +687,16 @@ def _approved_discovery_rows(
                 "must use category language. "
                 "do not include broad parent terms that could match other facilities. If a candidate is the same "
                 "meaning as an existing catalog entry, set existing_id to that listed catalog ID and is_amenity to false; "
-                "never create a synonym or duplicate."
+                "never create a synonym or duplicate. If a genuinely new candidate is a more specific instance of one "
+                "listed existing entry (e.g. \"free parking\" under a \"parking\" entry), set parent_id to that listed "
+                "catalog ID; otherwise set parent_id to null. Only use a listed eligible_existing_ids value for parent_id, "
+                "never invent one."
             )),
             HumanMessage(content=(
                 'Return exactly {"amenities":[{"id":"submitted_id","existing_id":"listed_catalog_id"|null,"is_amenity":true|false,'
                 '"label_vi":"...","label_en":"...","scope":"hotel|room|both",'
-                '"category":"...","icon_key":"...|null","match_keywords":["..."]}]}. '
-                "Use only submitted ids. For each candidate, existing_id may only be one of its eligible_existing_ids. "
+                '"category":"...","icon_key":"...|null","match_keywords":["..."],"parent_id":"listed_catalog_id"|null}]}. '
+                "Use only submitted ids. For each candidate, existing_id and parent_id may only be one of its eligible_existing_ids. "
                 "Source scope is " + source_scope + ". Candidates: "
                 + json.dumps([
                     {"id": key, "label": value, "eligible_existing_ids": [entry["id"] for entry in relevant_by_source[key]]}
@@ -685,6 +756,17 @@ def _approved_discovery_rows(
             continue
         if not keywords:
             keywords = [label_vi.lower()]
+        # Same trust boundary as `existing_id` above: only a listed
+        # `eligible_existing_ids` value is accepted, never an id the model
+        # invented -- an unvalidated parent_id would either violate the FK
+        # constraint at insert time or, worse, silently link to an unrelated
+        # row if it happened to already exist.
+        parent_id_result = result.get("parent_id")
+        parent_id = (
+            parent_id_result
+            if isinstance(parent_id_result, str) and parent_id_result in {entry["id"] for entry in relevant_by_source[source_id]}
+            else None
+        )
         row = {
             "id": amenity_id,
             "_source_id": source_id,
@@ -694,6 +776,7 @@ def _approved_discovery_rows(
             "category": "language" if _is_spoken_language(label_vi, label_en) else _bounded_category(result.get("category")),
             "icon_key": _bounded_icon_key(result.get("icon_key")),
             "match_keywords": list(dict.fromkeys([*keywords, label_vi.lower()])),
+            "parent_id": parent_id,
             "is_approved": False,
         }
         rows.append(row)
