@@ -2742,6 +2742,342 @@
         }
       }
     },
+    "/api/v1/admin/orders": {
+      "get": {
+        "tags": [
+          "admin-orders"
+        ],
+        "summary": "List Orders",
+        "operationId": "list_orders_api_v1_admin_orders_get",
+        "parameters": [
+          {
+            "name": "tab",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "paid",
+                "unpaid"
+              ],
+              "type": "string",
+              "default": "paid",
+              "title": "Tab"
+            }
+          },
+          {
+            "name": "booking_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "PENDING",
+                    "RESERVED",
+                    "CONFIRMED",
+                    "CANCELLED",
+                    "EXPIRED",
+                    "MIXED",
+                    "UNKNOWN"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Booking Status"
+            }
+          },
+          {
+            "name": "payment_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "PENDING",
+                    "PAID",
+                    "FAILED",
+                    "CANCELLED"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Payment Status"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "name": "hotel_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hotel Id"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "needs_attention",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Needs Attention"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "type": "string",
+              "default": "json",
+              "title": "Format"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/OrderListResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/UnpaidBookingListResponse"
+                    }
+                  ],
+                  "title": "Response List Orders Api V1 Admin Orders Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/orders/holds/release-expired": {
+      "post": {
+        "tags": [
+          "admin-orders"
+        ],
+        "summary": "Release Expired Holds",
+        "description": "Cancels every unpaid hold this request itself finds already expired --\n`expires_at < now()` is re-evaluated here against `admin_unpaid_bookings`,\nnever taken from the client, so a stale/forged id list can't cancel a\nbooking that's still live (plan's L4 mitigation, same posture as\n`cancel_reserved_bookings_for_session`).",
+        "operationId": "release_expired_holds_api_v1_admin_orders_holds_release_expired_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseExpiredResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/orders/stats": {
+      "get": {
+        "tags": [
+          "admin-orders"
+        ],
+        "summary": "Get Order Stats",
+        "operationId": "get_order_stats_api_v1_admin_orders_stats_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderStatsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/me": {
       "get": {
         "summary": "Get Me",
@@ -5526,6 +5862,242 @@
         ],
         "title": "NightRow"
       },
+      "OrderListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OrderRow"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "OrderListResponse"
+      },
+      "OrderRow": {
+        "properties": {
+          "payment_id": {
+            "type": "string",
+            "title": "Payment Id"
+          },
+          "order_code": {
+            "type": "string",
+            "title": "Order Code"
+          },
+          "guest_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Name"
+          },
+          "guest_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Email"
+          },
+          "guest_phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Phone"
+          },
+          "hotel_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Hotel Ids"
+          },
+          "hotel_names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Hotel Names"
+          },
+          "check_in_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check In Date"
+          },
+          "check_out_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check Out Date"
+          },
+          "room_count": {
+            "type": "integer",
+            "title": "Room Count"
+          },
+          "booking_count": {
+            "type": "integer",
+            "title": "Booking Count"
+          },
+          "amount": {
+            "type": "string",
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "booking_status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "RESERVED",
+              "CONFIRMED",
+              "CANCELLED",
+              "EXPIRED",
+              "MIXED",
+              "UNKNOWN"
+            ],
+            "title": "Booking Status"
+          },
+          "payment_status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "PAID",
+              "FAILED",
+              "CANCELLED"
+            ],
+            "title": "Payment Status"
+          },
+          "needs_attention": {
+            "type": "boolean",
+            "title": "Needs Attention"
+          },
+          "earliest_expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Earliest Expires At"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "payment_id",
+          "order_code",
+          "hotel_ids",
+          "hotel_names",
+          "room_count",
+          "booking_count",
+          "amount",
+          "currency",
+          "booking_status",
+          "payment_status",
+          "needs_attention",
+          "created_at"
+        ],
+        "title": "OrderRow"
+      },
+      "OrderStatsResponse": {
+        "properties": {
+          "orders_today": {
+            "type": "integer",
+            "title": "Orders Today"
+          },
+          "orders_yesterday": {
+            "type": "integer",
+            "title": "Orders Yesterday"
+          },
+          "revenue_today": {
+            "type": "string",
+            "title": "Revenue Today"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "avg_order_value": {
+            "type": "string",
+            "title": "Avg Order Value"
+          },
+          "pending_count": {
+            "type": "integer",
+            "title": "Pending Count"
+          },
+          "pending_over_2h": {
+            "type": "integer",
+            "title": "Pending Over 2H"
+          },
+          "expiring_holds_30m": {
+            "type": "integer",
+            "title": "Expiring Holds 30M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "orders_today",
+          "orders_yesterday",
+          "revenue_today",
+          "currency",
+          "avg_order_value",
+          "pending_count",
+          "pending_over_2h",
+          "expiring_holds_30m"
+        ],
+        "title": "OrderStatsResponse"
+      },
       "PaymentPayload": {
         "properties": {
           "id": {
@@ -5900,6 +6472,24 @@
           "scope"
         ],
         "title": "ReembedResponse"
+      },
+      "ReleaseExpiredResponse": {
+        "properties": {
+          "released": {
+            "type": "integer",
+            "title": "Released"
+          },
+          "skipped": {
+            "type": "integer",
+            "title": "Skipped"
+          }
+        },
+        "type": "object",
+        "required": [
+          "released",
+          "skipped"
+        ],
+        "title": "ReleaseExpiredResponse"
       },
       "RestoredMessagePayload": {
         "properties": {
@@ -7057,6 +7647,171 @@
         ],
         "title": "TripPlanPayload",
         "description": "Phase 3 payload for the trip plan right panel."
+      },
+      "UnpaidBookingListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UnpaidBookingRow"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          },
+          "expiring_count": {
+            "type": "integer",
+            "title": "Expiring Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size",
+          "expiring_count"
+        ],
+        "title": "UnpaidBookingListResponse"
+      },
+      "UnpaidBookingRow": {
+        "properties": {
+          "booking_id": {
+            "type": "string",
+            "title": "Booking Id"
+          },
+          "hold_code": {
+            "type": "string",
+            "title": "Hold Code"
+          },
+          "guest_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Label"
+          },
+          "hotel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hotel Name"
+          },
+          "room_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room Name"
+          },
+          "check_in_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Check In Date"
+          },
+          "check_out_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Check Out Date"
+          },
+          "room_count": {
+            "type": "integer",
+            "title": "Room Count"
+          },
+          "total_amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Amount"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "RESERVED",
+              "CONFIRMED",
+              "CANCELLED",
+              "EXPIRED"
+            ],
+            "title": "Status"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "booking_id",
+          "hold_code",
+          "check_in_date",
+          "check_out_date",
+          "room_count",
+          "status",
+          "created_at"
+        ],
+        "title": "UnpaidBookingRow"
       },
       "UpdateHotelRequest": {
         "properties": {

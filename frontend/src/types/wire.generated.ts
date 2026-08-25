@@ -880,6 +880,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Orders */
+        get: operations["list_orders_api_v1_admin_orders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/holds/release-expired": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release Expired Holds
+         * @description Cancels every unpaid hold this request itself finds already expired --
+         *     `expires_at < now()` is re-evaluated here against `admin_unpaid_bookings`,
+         *     never taken from the client, so a stale/forged id list can't cancel a
+         *     booking that's still live (plan's L4 mitigation, same posture as
+         *     `cancel_reserved_bookings_for_session`).
+         */
+        post: operations["release_expired_holds_api_v1_admin_orders_holds_release_expired_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Order Stats */
+        get: operations["get_order_stats_api_v1_admin_orders_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/me": {
         parameters: {
             query?: never;
@@ -1794,6 +1852,81 @@ export interface components {
             /** Row Count */
             row_count: number;
         };
+        /** OrderListResponse */
+        OrderListResponse: {
+            /** Items */
+            items: components["schemas"]["OrderRow"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
+        /** OrderRow */
+        OrderRow: {
+            /** Payment Id */
+            payment_id: string;
+            /** Order Code */
+            order_code: string;
+            /** Guest Name */
+            guest_name?: string | null;
+            /** Guest Email */
+            guest_email?: string | null;
+            /** Guest Phone */
+            guest_phone?: string | null;
+            /** Hotel Ids */
+            hotel_ids: string[];
+            /** Hotel Names */
+            hotel_names: string[];
+            /** Check In Date */
+            check_in_date?: string | null;
+            /** Check Out Date */
+            check_out_date?: string | null;
+            /** Room Count */
+            room_count: number;
+            /** Booking Count */
+            booking_count: number;
+            /** Amount */
+            amount: string;
+            /** Currency */
+            currency: string;
+            /**
+             * Booking Status
+             * @enum {string}
+             */
+            booking_status: "PENDING" | "RESERVED" | "CONFIRMED" | "CANCELLED" | "EXPIRED" | "MIXED" | "UNKNOWN";
+            /**
+             * Payment Status
+             * @enum {string}
+             */
+            payment_status: "PENDING" | "PAID" | "FAILED" | "CANCELLED";
+            /** Needs Attention */
+            needs_attention: boolean;
+            /** Earliest Expires At */
+            earliest_expires_at?: string | null;
+            /** Created At */
+            created_at: string;
+        };
+        /** OrderStatsResponse */
+        OrderStatsResponse: {
+            /** Orders Today */
+            orders_today: number;
+            /** Orders Yesterday */
+            orders_yesterday: number;
+            /** Revenue Today */
+            revenue_today: string;
+            /** Currency */
+            currency: string;
+            /** Avg Order Value */
+            avg_order_value: string;
+            /** Pending Count */
+            pending_count: number;
+            /** Pending Over 2H */
+            pending_over_2h: number;
+            /** Expiring Holds 30M */
+            expiring_holds_30m: number;
+        };
         /** PaymentPayload */
         PaymentPayload: {
             /**
@@ -1956,6 +2089,13 @@ export interface components {
             dag_run_id?: string | null;
             /** Scope */
             scope: string;
+        };
+        /** ReleaseExpiredResponse */
+        ReleaseExpiredResponse: {
+            /** Released */
+            released: number;
+            /** Skipped */
+            skipped: number;
         };
         /** RestoredMessagePayload */
         RestoredMessagePayload: {
@@ -2294,6 +2434,59 @@ export interface components {
             days: components["schemas"]["DayPlan"][];
             /** Adjustments */
             adjustments: string[];
+        };
+        /** UnpaidBookingListResponse */
+        UnpaidBookingListResponse: {
+            /** Items */
+            items: components["schemas"]["UnpaidBookingRow"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Expiring Count */
+            expiring_count: number;
+        };
+        /** UnpaidBookingRow */
+        UnpaidBookingRow: {
+            /** Booking Id */
+            booking_id: string;
+            /** Hold Code */
+            hold_code: string;
+            /** Guest Label */
+            guest_label?: string | null;
+            /** Hotel Name */
+            hotel_name?: string | null;
+            /** Room Name */
+            room_name?: string | null;
+            /**
+             * Check In Date
+             * Format: date
+             */
+            check_in_date: string;
+            /**
+             * Check Out Date
+             * Format: date
+             */
+            check_out_date: string;
+            /** Room Count */
+            room_count: number;
+            /** Total Amount */
+            total_amount?: string | null;
+            /** Currency */
+            currency?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "PENDING" | "RESERVED" | "CONFIRMED" | "CANCELLED" | "EXPIRED";
+            /** Expires At */
+            expires_at?: string | null;
+            /** Created At */
+            created_at: string;
+            /** Session Id */
+            session_id?: string | null;
         };
         /**
          * UpdateHotelRequest
@@ -4002,6 +4195,111 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeleteRoomPricesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_orders_api_v1_admin_orders_get: {
+        parameters: {
+            query?: {
+                tab?: "paid" | "unpaid";
+                booking_status?: ("PENDING" | "RESERVED" | "CONFIRMED" | "CANCELLED" | "EXPIRED" | "MIXED" | "UNKNOWN") | null;
+                payment_status?: ("PENDING" | "PAID" | "FAILED" | "CANCELLED") | null;
+                from?: string | null;
+                to?: string | null;
+                hotel_id?: string | null;
+                q?: string | null;
+                needs_attention?: boolean | null;
+                page?: number;
+                page_size?: number;
+                format?: "json" | "csv";
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderListResponse"] | components["schemas"]["UnpaidBookingListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    release_expired_holds_api_v1_admin_orders_holds_release_expired_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseExpiredResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_order_stats_api_v1_admin_orders_stats_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderStatsResponse"];
                 };
             };
             /** @description Validation Error */

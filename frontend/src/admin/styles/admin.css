@@ -670,6 +670,33 @@ button {
 }
 
 /* ---------------------------------------------------------------------- */
+/* Left rail (D1, phase-04-orders-list.md) -- an order row's `needs_       */
+/* attention` (paid but booking not fully confirmed) or an unpaid hold's   */
+/* near-expiry gets an inset-left color bar instead of a full-row tint,    */
+/* so it reads at a glance without competing with the status chips.       */
+/* `box-shadow` set on the <tr> itself (as `.row--striped`/`.row--selected` */
+/* set `background`) does not paint under `.data-table`'s                 */
+/* `border-collapse: collapse` in Chromium/WebKit -- only Firefox honours  */
+/* it -- so the inset shadow goes on the first cell instead.               */
+/* ---------------------------------------------------------------------- */
+
+.data-table tbody tr.row--attention {
+  background: rgba(200, 128, 47, .06);
+}
+
+.data-table tbody tr.row--attention td:first-child {
+  box-shadow: inset 3px 0 0 var(--warn);
+}
+
+.data-table tbody tr.row--expiring {
+  background: rgba(192, 94, 112, .05);
+}
+
+.data-table tbody tr.row--expiring td:first-child {
+  box-shadow: inset 3px 0 0 var(--err);
+}
+
+/* ---------------------------------------------------------------------- */
 /* Đã kín chip (B6, L50) -- third TÌNH TRẠNG state alongside chip--ok/     */
 /* chip--closed above: sold_out=false but real bookings have exhausted    */
 /* inventory. Informational only, never settable by hand.                 */

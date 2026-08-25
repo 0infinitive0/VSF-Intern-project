@@ -9,6 +9,7 @@ import { HotelCreatePage } from './pages/hotels/hotel-create-page'
 import { HotelDetailPage } from './pages/hotels/hotel-detail-page'
 import { HotelsPage } from './pages/hotels/hotels-page'
 import { RoomPricesPage } from './pages/hotels/prices/room-prices-page'
+import { OrdersPage } from './pages/orders/orders-page'
 import { RouteStub } from './pages/route-stub'
 import { useAdminRoute } from './router'
 
@@ -38,7 +39,7 @@ function resolvePage(path: string, navigate: (to: string) => void) {
   if (path.startsWith('/admin/pipelines/runs/')) return <RouteStub title="Chi tiết lần chạy" phase={16} />
   if (path === '/admin/pipelines') return <RouteStub title="Pipeline" phase={14} />
   if (path.startsWith('/admin/orders/')) return <RouteStub title="Chi tiết đơn hàng" phase={5} />
-  if (path === '/admin/orders') return <RouteStub title="Danh sách đơn hàng" phase={4} />
+  if (path === '/admin/orders') return <OrdersPage navigate={navigate} />
   return <RouteStub title="Không tìm thấy trang" phase={0} />
 }
 

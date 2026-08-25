@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends
 from src.api.admin.amenities import amenities_router
 from src.api.admin.destinations import destinations_router
 from src.api.admin.hotels import hotels_router
+from src.api.admin.orders import orders_router
 from src.api.admin.room_prices import room_prices_router
 from src.api.admin.rooms import rooms_router
 from src.api.admin.schemas import AdminMeResponse
@@ -20,6 +21,7 @@ admin_router.include_router(destinations_router)
 admin_router.include_router(amenities_router)
 admin_router.include_router(rooms_router)
 admin_router.include_router(room_prices_router)
+admin_router.include_router(orders_router)
 
 
 @admin_router.get("/me", response_model=AdminMeResponse)

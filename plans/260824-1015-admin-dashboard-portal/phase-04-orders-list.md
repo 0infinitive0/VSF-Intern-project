@@ -1,7 +1,7 @@
 ---
 phase: 4
 title: "Danh sách đơn hàng (D1)"
-status: pending
+status: done
 priority: P1
 effort: "2d"
 dependencies: [3]
@@ -320,18 +320,18 @@ Không đụng file của nhánh Khách sạn / Pipeline.
 
 ## Success Criteria
 
-- [ ] `count(*) FROM admin_orders` = `count(*) FROM payments`
-- [ ] Gọi `admin_orders` bằng `anon` key → permission denied
-- [ ] Đơn 2 phòng huỷ 1 phòng → `booking_status = 'MIXED'`, UI hiện chip `⚠ Một phần`
-- [ ] Đơn PAID mà booking còn RESERVED → `needs_attention`, dòng có dải `--warn` bên trái
-- [ ] Booking RESERVED sắp hết hạn → dải `--err` bên trái
-- [ ] Tab 2 chỉ hiện booking **không** thuộc payment nào (kiểm chéo bằng SQL)
-- [ ] `Giải phóng phòng hết hạn` chỉ đụng booking `expires_at < now()`; booking còn hạn không bị huỷ
-- [ ] 4 ô số liệu khớp SQL viết tay (`orders_today` = `count(*) FROM payments WHERE created_at::date = current_date`)
-- [ ] `?format=csv` tải về file mở được bằng Excel, tiếng Việt không lỗi font (BOM UTF-8)
-- [ ] Nhãn + màu 9 chip khớp đúng bảng trong "Bám sát thiết kế"
-- [ ] Trạng thái rỗng nội suy đúng tên bộ lọc đang áp dụng
-- [ ] Không có nút `Tạo đơn thủ công` (L2)
+- [x] `count(*) FROM admin_orders` = `count(*) FROM payments`
+- [x] Gọi `admin_orders` bằng `anon` key → permission denied
+- [x] Đơn 2 phòng huỷ 1 phòng → `booking_status = 'MIXED'`, UI hiện chip `⚠ Một phần`
+- [x] Đơn PAID mà booking còn RESERVED → `needs_attention`, dòng có dải `--warn` bên trái
+- [x] Booking RESERVED sắp hết hạn → dải `--err` bên trái
+- [x] Tab 2 chỉ hiện booking **không** thuộc payment nào (kiểm chéo bằng SQL)
+- [x] `Giải phóng phòng hết hạn` chỉ đụng booking `expires_at < now()`; booking còn hạn không bị huỷ
+- [x] 4 ô số liệu khớp SQL viết tay (`orders_today` = `count(*) FROM payments WHERE created_at::date = current_date`)
+- [x] `?format=csv` tải về file mở được bằng Excel, tiếng Việt không lỗi font (BOM UTF-8)
+- [x] Nhãn + màu 9 chip khớp đúng bảng trong "Bám sát thiết kế"
+- [x] Trạng thái rỗng nội suy đúng tên bộ lọc đang áp dụng
+- [x] Không có nút `Tạo đơn thủ công` (L2)
 
 ## Risk Assessment
 
