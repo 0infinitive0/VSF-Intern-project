@@ -66,6 +66,7 @@ function formFromRoom(room: RoomRow | null): FormState {
  * per-room drawer has no reason to accumulate cross-tab dirty state. */
 export function RoomDrawer({ open, onClose, hotelId, hotelName, room, facilityCatalog, viewSuggestions, onSaved, onDeleted }: RoomDrawerProps) {
   const [form, setForm] = useState<FormState>(() => formFromRoom(room))
+  const [facilitySearch, setFacilitySearch] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
@@ -84,6 +85,13 @@ export function RoomDrawer({ open, onClose, hotelId, hotelName, room, facilityCa
 
   const isEdit = room !== null
   const facilitiesById = new Map(facilityCatalog.map((entry) => [entry.id, entry]))
+  const facilitySearchQuery = facilitySearch.trim().toLowerCase()
+  // Plain substring match on label_vi -- same lightweight find-as-you-type
+  // filter as B3's hotel amenities tab, over the same small fixed catalog.
+  const filteredFacilityCatalog =
+    facilitySearchQuery === ''
+      ? facilityCatalog
+      : facilityCatalog.filter((entry) => entry.label_vi.toLowerCase().includes(facilitySearchQuery))
 
   function toggleFacility(id: string) {
     setForm((prev) => ({
@@ -246,8 +254,15 @@ export function RoomDrawer({ open, onClose, hotelId, hotelName, room, facilityCa
               <span className="field-label">Tiện nghi phòng</span>
               <RagFieldLabel />
             </div>
+            <Input
+              type="search"
+              placeholder="Tìm tiện nghi..."
+              value={facilitySearch}
+              onChange={(e) => setFacilitySearch(e.target.value)}
+              aria-label="Tìm tiện nghi phòng"
+            />
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {facilityCatalog.map((entry) => {
+              {filteredFacilityCatalog.map((entry) => {
                 const isOn = form.facilities.includes(entry.id)
                 return (
                   <button

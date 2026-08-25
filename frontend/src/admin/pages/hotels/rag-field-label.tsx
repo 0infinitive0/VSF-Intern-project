@@ -9,6 +9,6 @@
  */
 export function RagFieldLabel() {
   return (
-    <span style={{ fontSize: 11, color: 'var(--acc)', fontWeight: 500 }}>ảnh hưởng tìm kiếm của bot</span>
+    <span style={{ fontSize: 11, color: 'var(--acc)', fontWeight: 500 }}>Ảnh hưởng tìm kiếm của chatbot</span>
   )
 }

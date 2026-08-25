@@ -67,7 +67,7 @@ export function UnsavedBar({ changedFields, ragFieldsChanged, onDiscard, onSave,
         </div>
         <div style={{ fontSize: 12, color: 'var(--t3)' }}>
           {names}
-          {ragFieldsChanged.length > 0 && ' · * ảnh hưởng tìm kiếm của bot'}
+          {ragFieldsChanged.length > 0 && ' · * Ảnh hưởng tìm kiếm của chatbot'}
         </div>
       </div>
       <Button variant="secondary" size="sm" onClick={onDiscard} disabled={saving}>
