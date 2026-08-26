@@ -1,6 +1,7 @@
 import { useId } from 'react'
 import type { DestinationOption } from '../../api/hotels-client'
 import { Input } from '../../ui/input'
+import { AddressGeocodeSearch } from './address-geocode-search'
 import { MapLocationPicker } from './map-location-picker'
 import { RagFieldLabel } from './rag-field-label'
 
@@ -59,12 +60,15 @@ export function HotelLocationFields({ value, onChange, destinations, changedFiel
           <RagFieldLabel />
           {changed('address') && <ChangedBadge />}
         </div>
-        <Input
+        <span style={{ fontSize: 12, color: 'var(--t4)' }}>Gõ để tìm và chọn gợi ý, hoặc nhập thủ công</span>
+        <AddressGeocodeSearch
           id={addressId}
-          maxLength={500}
           placeholder="42 Nguyễn Phúc Chu, phường Minh An"
           value={value.address}
-          onChange={(e) => onChange({ ...value, address: e.target.value })}
+          onChange={(address) => onChange({ ...value, address })}
+          onSelect={(result) =>
+            onChange({ ...value, address: result.address, city: result.city || value.city, latitude: result.latitude, longitude: result.longitude })
+          }
         />
       </div>
 

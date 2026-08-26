@@ -66,6 +66,20 @@ hotels_router = APIRouter(prefix="/hotels", tags=["admin-hotels"])
 _VIEW = "admin_hotel_rows"
 _DEFAULT_PAGE_SIZE = 25
 _MAX_PAGE_SIZE = 100
+# B1's sortable header -> admin_hotel_rows column. "embedding" has no single
+# backing column (embedding_state is derived in _embedding_state) --
+# ordering by hotel_embedded then rooms_missing_embedding approximates it.
+# An unrecognized/absent `sort` falls back to the default order below rather
+# than 422ing, since the only caller is this project's own admin frontend.
+_SORT_COLUMNS: dict[str, str] = {
+    "hotel": "name",
+    "city": "city",
+    "star_rating": "star_rating",
+    "source": "is_manual",
+    "room_count": "room_count",
+    "embedding": "hotel_embedded",
+    "active": "is_active",
+}
 # CSV export ignores pagination (an admin exporting a filtered set wants the
 # whole set, not whatever page happened to be on screen) but still needs a
 # ceiling so one request can't pull the entire table unbounded.
@@ -370,10 +384,21 @@ def _fetch_hotels(
     embedding: Literal["embedded", "missing", "incomplete", "all"],
     start: int,
     end: int,
+    sort: str | None = None,
+    sort_dir: Literal["asc", "desc"] = "asc",
 ) -> tuple[list[dict[str, Any]], int]:
     query = get_supabase_client().table(_VIEW).select("*", count="exact")
     query = _apply_filters(query, q=q, source=source, is_active=is_active, embedding=embedding)
-    response = query.order("updated_at", desc=True).range(start, end).execute()
+    column = _SORT_COLUMNS.get(sort or "")
+    if column is None:
+        query = query.order("updated_at", desc=True)
+    else:
+        desc = sort_dir == "desc"
+        query = query.order(column, desc=desc)
+        if column == "hotel_embedded":
+            query = query.order("rooms_missing_embedding", desc=desc)
+        query = query.order("id")  # stable tiebreak so pagination doesn't reshuffle ties
+    response = query.range(start, end).execute()
     return response.data or [], response.count or 0
 
 
@@ -487,14 +512,20 @@ def list_hotels(
     embedding: Literal["embedded", "missing", "incomplete", "all"] = Query(default="all"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=_DEFAULT_PAGE_SIZE, ge=1, le=_MAX_PAGE_SIZE),
+    sort: str | None = Query(default=None),
+    sort_dir: Literal["asc", "desc"] = Query(default="asc"),
     response_format: Literal["json", "csv"] = Query(default="json", alias="format"),
 ) -> HotelListResponse | Response:
     if response_format == "csv":
-        rows, _total = _fetch_hotels(q=q, source=source, is_active=is_active, embedding=embedding, start=0, end=_CSV_MAX_ROWS - 1)
+        rows, _total = _fetch_hotels(
+            q=q, source=source, is_active=is_active, embedding=embedding, start=0, end=_CSV_MAX_ROWS - 1, sort=sort, sort_dir=sort_dir
+        )
         return _hotels_csv_response([_row_to_hotel(row) for row in rows])
 
     start = (page - 1) * page_size
-    rows, total = _fetch_hotels(q=q, source=source, is_active=is_active, embedding=embedding, start=start, end=start + page_size - 1)
+    rows, total = _fetch_hotels(
+        q=q, source=source, is_active=is_active, embedding=embedding, start=start, end=start + page_size - 1, sort=sort, sort_dir=sort_dir
+    )
     return HotelListResponse(items=[_row_to_hotel(row) for row in rows], total=total, page=page, page_size=page_size)
 
 

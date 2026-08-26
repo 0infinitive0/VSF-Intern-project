@@ -37,6 +37,8 @@ interface RowBlockedError {
   bookings: HotelBlockedBooking[]
 }
 
+type SortState = { key: string; direction: 'asc' | 'desc' } | null
+
 interface HotelsPageProps {
   navigate: (to: string) => void
 }
@@ -52,6 +54,7 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
   const [isActive, setIsActive] = useState<boolean | undefined>(undefined)
   const [embedding, setEmbedding] = useState<EmbeddingFilter>('all')
   const [page, setPage] = useState(1)
+  const [sort, setSort] = useState<SortState>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
   const [listState, setListState] = useState<ListState>({ status: 'loading' })
@@ -75,17 +78,26 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
     return () => clearTimeout(timer)
   }, [q])
 
-  // Any filter change re-pages to 1 -- a stale page number past the new
-  // filtered total would just render an empty page.
+  // Any filter or sort change re-pages to 1 -- a stale page number past the
+  // new filtered/ordered total would just render an empty page.
   useEffect(() => {
     setPage(1)
-  }, [debouncedQ, source, isActive, embedding])
+  }, [debouncedQ, source, isActive, embedding, sort])
 
   useEffect(() => {
     let cancelled = false
     setIsFetching(true)
     setListState((prev) => (prev.status === 'loaded' ? prev : { status: 'loading' }))
-    listHotels({ q: debouncedQ || undefined, source, isActive, embedding, page, pageSize: PAGE_SIZE }).then((result) => {
+    listHotels({
+      q: debouncedQ || undefined,
+      source,
+      isActive,
+      embedding,
+      page,
+      pageSize: PAGE_SIZE,
+      sort: sort?.key,
+      sortDir: sort?.direction,
+    }).then((result) => {
       if (cancelled) return
       setIsFetching(false)
       if (!result.ok) return setListState({ status: 'error', detail: result.detail })
@@ -95,7 +107,11 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
     return () => {
       cancelled = true
     }
-  }, [debouncedQ, source, isActive, embedding, page, refreshKey])
+  }, [debouncedQ, source, isActive, embedding, page, sort, refreshKey])
+
+  function handleSortChange(key: string) {
+    setSort((prev) => (!prev || prev.key !== key ? { key, direction: 'asc' } : { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' }))
+  }
 
   const items = listState.status === 'loaded' ? listState.items : []
 
@@ -175,7 +191,16 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
   async function handleExportCsv() {
     setCsvBusy(true)
     setCsvError(null)
-    const result = await exportHotelsCsv({ q: debouncedQ || undefined, source, isActive, embedding, page, pageSize: PAGE_SIZE })
+    const result = await exportHotelsCsv({
+      q: debouncedQ || undefined,
+      source,
+      isActive,
+      embedding,
+      page,
+      pageSize: PAGE_SIZE,
+      sort: sort?.key,
+      sortDir: sort?.direction,
+    })
     setCsvBusy(false)
     if (!result.ok) setCsvError(result.detail)
   }
@@ -265,6 +290,8 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
                 onToggleActive={handleToggleActive}
                 onOpenHotel={(id) => navigate(`/admin/hotels/${id}`)}
                 loading={isFetching}
+                sortState={sort}
+                onSortChange={handleSortChange}
               />
             </div>
             <div style={{ fontSize: 11, color: 'var(--t4)', padding: '8px 14px', borderTop: '1px solid var(--line)' }}>
