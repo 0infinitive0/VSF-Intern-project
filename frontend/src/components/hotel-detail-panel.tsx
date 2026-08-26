@@ -434,9 +434,21 @@ export default function HotelDetailPanel({
                         // across all types never exceeds maxRoomsForParty.
                         const ownQty = room.id ? (cartForHotel[room.id] ?? 0) : 0
                         const remainingForParty = remainingRoomsAllowed(partySize, cartTotalQty, ownQty)
+                        const inventoryCap = room.available_room_count ?? null
                         const maxQty = room.price?.sold_out
                           ? 0
-                          : Math.min(remainingForParty, room.available_room_count ?? remainingForParty)
+                          : Math.min(remainingForParty, inventoryCap ?? remainingForParty)
+                        // Which constraint is actually binding when the guest
+                        // is blocked, so RoomCard can explain WHY instead of
+                        // silently doing nothing — a real sold-out room
+                        // already has its own "Hết phòng" label (no extra
+                        // notice needed); otherwise whichever of the two caps
+                        // is tighter is the one worth naming.
+                        const blockedReason: 'partyLimit' | 'inventoryLimit' | null = room.price?.sold_out
+                          ? null
+                          : inventoryCap != null && inventoryCap < remainingForParty
+                            ? 'inventoryLimit'
+                            : 'partyLimit'
                         return (
                           <RoomCard
                             key={roomKey}
@@ -444,6 +456,7 @@ export default function HotelDetailPanel({
                             delay={`${i * 90}ms`}
                             qty={ownQty}
                             maxQty={maxQty}
+                            blockedReason={blockedReason}
                             onQtyChange={(next) => {
                               if (sessionBookedFromBackend) {
                                 triggerNoticeShake()

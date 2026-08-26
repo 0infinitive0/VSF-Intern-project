@@ -422,6 +422,8 @@
   "roomQtyLabel": "{{count}} phòng",
   "roomQtyDecrease": "Giảm số lượng phòng",
   "roomQtyIncrease": "Tăng số lượng phòng",
+  "roomLimitPartySize": "Đã đạt số lượng phòng tối đa theo số khách của bạn. Hãy giảm bớt phòng ở loại khác nếu muốn thêm phòng này.",
+  "roomLimitInventory": "Loại phòng này đã hết phòng trống để thêm.",
   "holdSectionSelected": "Đã chọn",
   "holdCartEmptyHint": "Vui lòng chọn ít nhất 1 phòng phía trên để tiếp tục tạo lịch trình.",
   "holdTotal": "Tổng cộng",
