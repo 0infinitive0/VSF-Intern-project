@@ -5,6 +5,7 @@ import { cancellableRoomCount, confirmableRoomCount } from '../../lib/order-room
 import { Banner } from '../../ui/banner'
 import { Button } from '../../ui/button'
 import { ErrorState } from '../../ui/error-state'
+import { Spinner } from '../../ui/spinner'
 import { CancelOrderDialog } from './cancel-order-dialog'
 import { ConfirmOrderDialog } from './confirm-order-dialog'
 import { OrderChatLink } from './order-chat-link'
@@ -61,7 +62,11 @@ export function OrderDetailPage({ paymentId }: OrderDetailPageProps) {
   }
 
   if (loadState.status === 'loading') {
-    return <div style={{ flex: 1, padding: 28 }} />
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Spinner size={22} />
+      </div>
+    )
   }
 
   if (loadState.status === 'error' || !order) {

@@ -5,7 +5,6 @@ import { AdminLogin } from './auth/admin-login'
 import { Forbidden } from './auth/forbidden'
 import { AdminShell } from './layout/admin-shell'
 import { AmenityCatalogPage } from './pages/amenities/amenity-catalog-page'
-import { EmbeddingCoveragePage } from './pages/embedding/embedding-coverage-page'
 import { EmbeddingStatusPage } from './pages/embedding/embedding-status-page'
 import { HotelCreatePage } from './pages/hotels/hotel-create-page'
 import { HotelDetailPage } from './pages/hotels/hotel-detail-page'
@@ -14,7 +13,6 @@ import { RoomPricesPage } from './pages/hotels/prices/room-prices-page'
 import { OrderDetailPage } from './pages/orders/order-detail-page'
 import { OrdersPage } from './pages/orders/orders-page'
 import { OverviewPage } from './pages/overview/overview-page'
-import { PipelinesPage } from './pages/pipelines/pipelines-page'
 import { RouteStub } from './pages/route-stub'
 import { useAdminRoute } from './router'
 
@@ -41,9 +39,6 @@ function resolvePage(path: string, navigate: (to: string) => void) {
   if (path === '/admin/hotels') return <HotelsPage navigate={navigate} />
   if (path === '/admin/amenities-catalog') return <AmenityCatalogPage />
   if (path === '/admin/embedding') return <EmbeddingStatusPage navigate={navigate} />
-  if (path === '/admin/pipelines/do-phu-embedding') return <EmbeddingCoveragePage navigate={navigate} />
-  if (path.startsWith('/admin/pipelines/runs/')) return <RouteStub title="Chi tiết lần chạy" phase={16} />
-  if (path === '/admin/pipelines') return <PipelinesPage navigate={navigate} />
   if (path.startsWith('/admin/orders/')) {
     const paymentId = decodeURIComponent(path.slice('/admin/orders/'.length))
     if (!paymentId) return <OrdersPage navigate={navigate} />

@@ -166,7 +166,7 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
       tone: 'ok',
       text: result.data.queued
         ? `Đã gửi yêu cầu chạy lại embedding cho ${hotelIds.length} khách sạn.`
-        : `Đã đánh dấu ${hotelIds.length} khách sạn cần nhúng lại. Pipeline sẽ tự nhặt ở lần chạy kế tiếp, hoặc chạy ngay ở mục Dữ liệu bot.`,
+        : `Đã đánh dấu ${hotelIds.length} khách sạn cần nhúng lại. Pipeline sẽ tự nhặt ở lần chạy kế tiếp, hoặc chạy ngay ở trang Tổng quan.`,
     })
     setSelectedIds(new Set())
     setRefreshKey((k) => k + 1)
