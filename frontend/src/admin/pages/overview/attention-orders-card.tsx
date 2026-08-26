@@ -16,6 +16,21 @@ const SEVERITY_RAIL: Record<string, string | undefined> = {
   mute: undefined,
 }
 
+function SkeletonRows() {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {Array.from({ length: 3 }, (_, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div className="skeleton-bar" style={{ width: 64, height: 10 }} />
+          <div className="skeleton-bar" style={{ width: 110, height: 10 }} />
+          <div className="skeleton-bar" style={{ width: 56, height: 10, marginLeft: 'auto' }} />
+          <div className="skeleton-bar" style={{ width: 84, height: 18, borderRadius: 999 }} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /** attention-orders-card.tsx — A3's "Đơn cần xử lý ngay" block (phase-17-
  * overview-kpi.md). Ranking/≤5 already happened server-side
  * (overview.py's `_fetch_attention_orders`); this only renders. Positive
@@ -31,7 +46,7 @@ export function AttentionOrdersCard({ items, navigate }: AttentionOrdersCardProp
         </button>
       </div>
 
-      {items === null && <div style={{ height: 120, opacity: 0.4 }} />}
+      {items === null && <SkeletonRows />}
 
       {items !== null && items.length === 0 && (
         <EmptyState title="✓ Không có đơn nào cần xử lý ngay." description="Mọi đơn hôm nay đều đã ổn." />

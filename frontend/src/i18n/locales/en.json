@@ -424,6 +424,8 @@
   "roomQtyLabel": "{{count}} rooms",
   "roomQtyDecrease": "Decrease room count",
   "roomQtyIncrease": "Increase room count",
+  "roomLimitPartySize": "You've reached the maximum rooms allowed for your party size. Remove a room from another type to add this one.",
+  "roomLimitInventory": "No more rooms of this type are available to add.",
   "holdSectionSelected": "Selected",
   "holdCartEmptyHint": "Please select at least 1 room above to build your itinerary.",
   "holdTotal": "Total",

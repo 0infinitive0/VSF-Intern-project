@@ -33,7 +33,7 @@ export function HotelsToolbar({
         <Input placeholder="⌕ Tên khách sạn hoặc thành phố…" value={q} onChange={(e) => onQChange(e.target.value)} />
       </div>
 
-      <Select value={source} onChange={(e) => onSourceChange(e.target.value as SourceFilter)} style={{ width: 210 }}>
+      <Select value={source} onChange={(e) => onSourceChange(e.target.value as SourceFilter)} style={{ width: 240 }}>
         <option value="all">Nguồn dữ liệu: Tất cả</option>
         <option value="manual">Nguồn dữ liệu: Tự nhập</option>
         <option value="pipeline">Nguồn dữ liệu: Từ pipeline</option>
@@ -42,14 +42,14 @@ export function HotelsToolbar({
       <Select
         value={isActive === undefined ? 'all' : String(isActive)}
         onChange={(e) => onIsActiveChange(e.target.value === 'all' ? undefined : e.target.value === 'true')}
-        style={{ width: 180 }}
+        style={{ width: 210 }}
       >
         <option value="all">Đang bán: Tất cả</option>
         <option value="true">Đang bán: Đang bán</option>
         <option value="false">Đang bán: Ngừng bán</option>
       </Select>
 
-      <Select value={embedding} onChange={(e) => onEmbeddingChange(e.target.value as EmbeddingFilter)} style={{ width: 190 }}>
+      <Select value={embedding} onChange={(e) => onEmbeddingChange(e.target.value as EmbeddingFilter)} style={{ width: 220 }}>
         <option value="all">Embedding: Tất cả</option>
         <option value="embedded">Embedding: Đã embed</option>
         <option value="missing">Embedding: Chưa embed</option>

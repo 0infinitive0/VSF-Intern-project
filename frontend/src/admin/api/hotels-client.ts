@@ -48,6 +48,11 @@ export interface HotelListParams {
   embedding?: EmbeddingFilter
   page: number
   pageSize: number
+  /** Column key from hotels-table.tsx's DataTableColumn (e.g. "room_count") --
+   * mirrors _SORT_COLUMNS in backend/src/api/admin/hotels.py. Omit for the
+   * server's default (most recently updated first). */
+  sort?: string
+  sortDir?: 'asc' | 'desc'
 }
 
 function buildQuery(params: HotelListParams): URLSearchParams {
@@ -58,6 +63,10 @@ function buildQuery(params: HotelListParams): URLSearchParams {
   if (params.embedding && params.embedding !== 'all') search.set('embedding', params.embedding)
   search.set('page', String(params.page))
   search.set('page_size', String(params.pageSize))
+  if (params.sort) {
+    search.set('sort', params.sort)
+    search.set('sort_dir', params.sortDir ?? 'asc')
+  }
   return search
 }
 

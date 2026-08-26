@@ -544,7 +544,6 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
                   value={basic}
                   onChange={setBasic}
                   accommodationTypeOptions={accommodationTypes}
-                  lockedFields={hotel.pipeline_managed_fields}
                   changedFields={changedFields}
                 />
               )}
@@ -553,7 +552,6 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
                   value={location}
                   onChange={setLocation}
                   destinations={destinations}
-                  lockedFields={hotel.pipeline_managed_fields}
                   changedFields={changedFields}
                 />
               )}
@@ -562,7 +560,6 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
                   catalog={amenityCatalog}
                   selected={amenityIds}
                   onChange={setAmenityIds}
-                  locked={hotel.pipeline_managed_fields.includes('amenities')}
                   changed={changedFields.includes('amenities')}
                 />
               )}

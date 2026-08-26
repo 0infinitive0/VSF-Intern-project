@@ -1,6 +1,6 @@
 # Phase 2 — Ground itinerary chips in real day data
 
-**Status:** pending
+**Status:** done
 **Depends on:** Phase 1
 **Files:** `backend/src/services/suggestions.py`, `backend/src/api/routes.py`,
 `backend/tests/test_suggestions.py`, `backend/tests/test_stream_suggestions.py`

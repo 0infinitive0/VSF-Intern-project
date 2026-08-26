@@ -32,12 +32,26 @@ import type { AmenityCatalogOption, RoomDetail } from '../types'
  * cầu" label — never 0, never the hotel-level price. A sold-out room forces
  * maxQty to 0 (caller's job — see hotel-detail-panel.tsx) so the add button
  * is disabled rather than silently capped at a phantom count.
+ *
+ * The +/"Thêm phòng" buttons are deliberately NOT a real `disabled` HTML
+ * button when blocked for a reason OTHER than sold_out (`blockedReason` set):
+ * a true `disabled` attribute swallows the click entirely, so a guest who
+ * deliberately presses "+" at the party-size/inventory cap got zero feedback
+ * — confusing when the availability badge right above still reads "Còn
+ * phòng". Same trick the `sessionBookedFromBackend` lock button already
+ * uses below: style the not-allowed look manually, keep the button
+ * clickable, and surface WHY via `showBlockedNotice` (a local shake +
+ * one-line message, auto-hiding — see hotel-detail-panel.tsx's
+ * triggerNoticeShake for the sibling pattern this mirrors, kept local here
+ * instead of the panel's footer notice since that banner sits far below the
+ * room list and is worded only for the "already paid" case).
  */
 export default function RoomCard({
   room,
   delay,
   qty,
   maxQty,
+  blockedReason,
   onQtyChange,
   amenityDetails,
   selectedAmenityIds,
@@ -50,6 +64,13 @@ export default function RoomCard({
   qty: number
   /** Upper bound for `qty` — 0 disables the add button entirely. */
   maxQty: number
+  /** Why `qty` can't go higher right now, when it can't — null whenever
+   * `maxQty` isn't the binding constraint (room not at cap) OR the room is
+   * genuinely sold out (that case already has its own "Hết phòng" label, no
+   * extra notice needed). Set by the caller (hotel-detail-panel.tsx), which
+   * is the only place that knows both the party-size cap AND this room
+   * type's real inventory count. */
+  blockedReason: 'partyLimit' | 'inventoryLimit' | null
   onQtyChange: (nextQty: number) => void
   /** Shared room/both catalog data from the surrounding hotel-detail response. */
   amenityDetails: AmenityCatalogOption[]
@@ -118,6 +139,43 @@ export default function RoomCard({
   )
   const selected = qty > 0
   const canAdd = maxQty > 0 && qty < maxQty
+
+  // Local "why can't I add more" notice — shake + a one-line message, shown
+  // when the guest presses +/"Thêm phòng" while blocked for a reason worth
+  // explaining (blockedReason != null; a genuinely sold-out room already
+  // says so via its own label, no extra notice). Auto-hides after 3s, and
+  // clears itself early the moment the room becomes addable again (e.g. the
+  // guest freed up room elsewhere in the cart).
+  const [blockedNotice, setBlockedNotice] = useState(false)
+  const blockedNoticeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Separate from `blockedNotice` on purpose: the notice element stays
+  // mounted (so collapsing animates), so restarting the shake by toggling
+  // the SAME state off/on would make the message itself flicker shut and
+  // reopen on every repeat click. This counter only ever increases and is
+  // used as the button row's `key`, remounting just that row so the CSS
+  // animation replays from the start while the notice below sits still.
+  const [shakeNonce, setShakeNonce] = useState(0)
+
+  useEffect(() => {
+    if (canAdd) setBlockedNotice(false)
+  }, [canAdd])
+
+  useEffect(() => {
+    return () => {
+      if (blockedNoticeTimeout.current) clearTimeout(blockedNoticeTimeout.current)
+    }
+  }, [])
+
+  const showBlockedNotice = () => {
+    if (blockedNoticeTimeout.current) clearTimeout(blockedNoticeTimeout.current)
+    setBlockedNotice(true)
+    setShakeNonce((n) => n + 1)
+    blockedNoticeTimeout.current = setTimeout(() => setBlockedNotice(false), 3000)
+  }
+
+  const handleBlockedAttempt = () => {
+    if (blockedReason) showBlockedNotice()
+  }
 
   return (
     <div
@@ -237,7 +295,10 @@ export default function RoomCard({
           </div>
         )}
 
-        <div className="flex gap-2 mt-3 items-center">
+        <div
+          key={shakeNonce}
+          className={`flex gap-2 mt-3 items-center ${shakeNonce > 0 ? 'notice-shake-anim' : ''}`}
+        >
           {sessionBookedFromBackend ? (
             <button
               type="button"
@@ -274,9 +335,11 @@ export default function RoomCard({
               <button
                 type="button"
                 aria-label={t('roomQtyIncrease')}
-                disabled={!canAdd}
-                onClick={() => onQtyChange(qty + 1)}
-                className="w-[34px] h-[34px] flex-none rounded-[11px] border-none text-[15px] cursor-pointer flex items-center justify-center transition-transform duration-200 active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
+                aria-disabled={!canAdd}
+                onClick={() => (canAdd ? onQtyChange(qty + 1) : handleBlockedAttempt())}
+                className={`w-[34px] h-[34px] flex-none rounded-[11px] border-none text-[15px] flex items-center justify-center transition-transform duration-200 active:scale-90 ${
+                  canAdd ? 'cursor-pointer' : 'cursor-not-allowed opacity-40'
+                }`}
                 style={{ background: 'var(--acc)', color: 'var(--on-acc)' }}
               >
                 +
@@ -285,15 +348,29 @@ export default function RoomCard({
           ) : (
             <button
               type="button"
-              disabled={!canAdd}
+              aria-disabled={!canAdd}
               onClick={(e) => {
                 e.stopPropagation()
-                onQtyChange(1)
+                if (canAdd) onQtyChange(1)
+                else handleBlockedAttempt()
               }}
-              className="flex-1 p-2.5 rounded-[14px] border-none text-[12.5px] font-[590] tracking-[-0.1px] cursor-pointer transition-all duration-200 active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-50"
+              className={`flex-1 p-2.5 rounded-[14px] border-none text-[12.5px] font-[590] tracking-[-0.1px] transition-all duration-200 active:scale-[0.985] ${
+                canAdd ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
+              }`}
               style={{ background: 'var(--fill)', color: 'var(--t2)' }}
             >
-              {maxQty > 0 ? t('roomAddBtn') : t('roomSoldOut')}
+              {/* "Hết phòng" is reserved for an ACTUALLY sold-out room
+                  (price.sold_out, real data) — when maxQty is merely 0
+                  because the party-size cap across the cart's other room
+                  types is already used up (hotel-detail-panel.tsx's
+                  remainingRoomsAllowed), the button still reads "Thêm
+                  phòng", just dimmed via `canAdd` above — telling a guest
+                  "hết phòng" for a room type that's actually still
+                  available would be misleading. Pressing it anyway surfaces
+                  why via handleBlockedAttempt, instead of silently doing
+                  nothing (a real `disabled` attribute would swallow the
+                  click). */}
+              {price?.sold_out ? t('roomSoldOut') : t('roomAddBtn')}
             </button>
           )}
           <button
@@ -311,6 +388,34 @@ export default function RoomCard({
             {t('roomExpand')}
           </button>
         </div>
+        {/* Stays mounted while `blockedReason` holds so BOTH directions
+            animate — a conditional mount would snap the card's height shut
+            when the notice auto-hides. The margin lives on the innermost
+            div, not the collapsing grid, so the collapsed state contributes
+            exactly zero height (a margin on the grid itself would leave a
+            visible gap and reintroduce the jump). */}
+        {blockedReason && (
+          <div
+            className="smooth-collapse"
+            data-open={blockedNotice}
+            aria-hidden={!blockedNotice}
+          >
+            <div>
+              <div
+                role="status"
+                className="mt-1.5 flex items-center gap-1 text-[11.5px] font-[480]"
+                style={{ color: 'var(--color-error-ink)' }}
+              >
+                <span className="material-symbols-outlined text-[13px] flex-none" aria-hidden="true">
+                  info
+                </span>
+                <span>
+                  {t(blockedReason === 'partyLimit' ? 'roomLimitPartySize' : 'roomLimitInventory')}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

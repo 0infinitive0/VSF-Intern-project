@@ -15,6 +15,7 @@ import src.services.suggestions as suggestions_module
 from src.services.suggestions import (
     NextChatSuggestions,
     SuggestionContext,
+    SuggestionDay,
     SuggestionHotelCard,
     generate_next_chat_suggestions,
 )
@@ -205,6 +206,155 @@ def test_limit_is_respected(monkeypatch):
     _patch(monkeypatch, result=NextChatSuggestions(suggestions=_PROMPTS))
 
     assert len(generate_next_chat_suggestions(_context(), limit=1)) == 1
+
+
+def test_prompt_states_the_capability_whitelist(monkeypatch):
+    captured = {}
+
+    class _CapturingStructured:
+        def invoke(self, messages):
+            captured["prompt"] = messages[0].content
+            return NextChatSuggestions(suggestions=_PROMPTS)
+
+    class _CapturingLLM:
+        def with_structured_output(self, _model):
+            return _CapturingStructured()
+
+    monkeypatch.setattr(suggestions_module, "get_llm", lambda **_kwargs: _CapturingLLM())
+
+    generate_next_chat_suggestions(_context())
+
+    prompt = captured["prompt"]
+    for line in suggestions_module._ALLOWED_SCOPE:
+        assert line in prompt
+
+
+def test_prompt_forbids_out_of_scope_requests(monkeypatch):
+    captured = {}
+
+    class _CapturingStructured:
+        def invoke(self, messages):
+            captured["prompt"] = messages[0].content
+            return NextChatSuggestions(suggestions=_PROMPTS)
+
+    class _CapturingLLM:
+        def with_structured_output(self, _model):
+            return _CapturingStructured()
+
+    monkeypatch.setattr(suggestions_module, "get_llm", lambda **_kwargs: _CapturingLLM())
+
+    generate_next_chat_suggestions(_context())
+
+    prompt = captured["prompt"]
+    for line in suggestions_module._FORBIDDEN_SCOPE:
+        assert line in prompt
+    assert "Đặt phòng" in prompt
+    assert "Vé máy bay" in prompt
+
+
+def test_scope_block_is_present_for_every_gated_worker(monkeypatch):
+    captured = {}
+
+    class _CapturingStructured:
+        def invoke(self, messages):
+            captured["prompt"] = messages[0].content
+            return NextChatSuggestions(suggestions=_PROMPTS)
+
+    class _CapturingLLM:
+        def with_structured_output(self, _model):
+            return _CapturingStructured()
+
+    monkeypatch.setattr(suggestions_module, "get_llm", lambda **_kwargs: _CapturingLLM())
+
+    for worker in suggestions_module._ACTION_HINTS:
+        generate_next_chat_suggestions(_context(worker=worker))
+        prompt = captured["prompt"]
+        for line in suggestions_module._ALLOWED_SCOPE:
+            assert line in prompt, worker
+        for line in suggestions_module._FORBIDDEN_SCOPE:
+            assert line in prompt, worker
+
+
+def test_prompt_lists_real_itinerary_days_and_activities(monkeypatch):
+    captured = {}
+
+    class _CapturingStructured:
+        def invoke(self, messages):
+            captured["prompt"] = messages[0].content
+            return NextChatSuggestions(suggestions=_PROMPTS)
+
+    class _CapturingLLM:
+        def with_structured_output(self, _model):
+            return _CapturingStructured()
+
+    monkeypatch.setattr(suggestions_module, "get_llm", lambda **_kwargs: _CapturingLLM())
+
+    days = (
+        SuggestionDay(day_number=1, theme="Khám phá trung tâm", activities=("Tham quan Cầu Rồng",)),
+        SuggestionDay(day_number=2, theme="Biển", activities=("Tắm biển Mỹ Khê", "Ăn hải sản")),
+    )
+    generate_next_chat_suggestions(_context(itinerary_days=days))
+
+    prompt = captured["prompt"]
+    assert "Ngày 1" in prompt
+    assert "Khám phá trung tâm" in prompt
+    assert "Tham quan Cầu Rồng" in prompt
+    assert "Ngày 2" in prompt
+    assert "Tắm biển Mỹ Khê" in prompt
+    assert "Ăn hải sản" in prompt
+
+
+def test_prompt_says_no_itinerary_when_there_are_no_days(monkeypatch):
+    captured = {}
+
+    class _CapturingStructured:
+        def invoke(self, messages):
+            captured["prompt"] = messages[0].content
+            return NextChatSuggestions(suggestions=_PROMPTS)
+
+    class _CapturingLLM:
+        def with_structured_output(self, _model):
+            return _CapturingStructured()
+
+    monkeypatch.setattr(suggestions_module, "get_llm", lambda **_kwargs: _CapturingLLM())
+
+    generate_next_chat_suggestions(_context(itinerary_days=()))
+
+    prompt = captured["prompt"]
+    assert "chưa có lịch trình" in prompt
+    assert "Ngày " not in prompt
+
+
+def test_day_and_activity_caps_bound_the_prompt(monkeypatch):
+    captured = {}
+
+    class _CapturingStructured:
+        def invoke(self, messages):
+            captured["prompt"] = messages[0].content
+            return NextChatSuggestions(suggestions=_PROMPTS)
+
+    class _CapturingLLM:
+        def with_structured_output(self, _model):
+            return _CapturingStructured()
+
+    monkeypatch.setattr(suggestions_module, "get_llm", lambda **_kwargs: _CapturingLLM())
+
+    days = tuple(
+        SuggestionDay(
+            day_number=day_number,
+            theme=f"Chủ đề {day_number}",
+            activities=tuple(f"Hoạt động {day_number}-{activity}" for activity in range(1, 11)),
+        )
+        for day_number in range(1, 11)
+    )
+    generate_next_chat_suggestions(_context(itinerary_days=days))
+
+    prompt = captured["prompt"]
+    day_lines = [line for line in prompt.splitlines() if line.startswith("- Ngày ")]
+    assert len(day_lines) == suggestions_module._MAX_DAYS_IN_PROMPT
+    for line in day_lines:
+        activity_count = line.count("Hoạt động")
+        assert activity_count == suggestions_module._MAX_ACTIVITIES_PER_DAY_IN_PROMPT
 
 
 def test_no_hardcoded_suggestion_strings_survive_in_the_module_source():

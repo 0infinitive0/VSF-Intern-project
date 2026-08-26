@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   bulkSetHotelActive,
   exportHotelsCsv,
@@ -10,6 +10,7 @@ import {
   type HotelRow,
   type SourceFilter,
 } from '../../api/hotels-client'
+import { listPipelines, type PipelineItem } from '../../api/pipelines-client'
 import { PageHeader } from '../../layout/page-header'
 import { Banner } from '../../ui/banner'
 import { Button } from '../../ui/button'
@@ -19,11 +20,18 @@ import { Modal } from '../../ui/modal'
 import { Pagination } from '../../ui/pagination'
 import { SkeletonTable } from '../../ui/skeleton-table'
 import { ReembedConfirmDialog } from '../embedding/reembed-confirm-dialog'
+import { PipelineRunProgress } from '../pipelines/pipeline-run-progress'
 import { HotelsBulkBar } from './hotels-bulk-bar'
 import { HotelsTable } from './hotels-table'
 import { HotelsToolbar } from './hotels-toolbar'
 
 const PAGE_SIZE = 25
+
+const EMBEDDING_POLL_MS = 1000
+// ~2 minutes -- same cap as hotel-detail-page.tsx's single-hotel poll; if
+// Airflow hasn't moved the run past queued/running by then, stop instead of
+// polling forever (the Pipelines page still has the real live status).
+const MAX_EMBEDDING_POLL_ATTEMPTS = 120
 
 type ListState =
   | { status: 'loading' }
@@ -36,6 +44,8 @@ interface RowBlockedError {
   count: number
   bookings: HotelBlockedBooking[]
 }
+
+type SortState = { key: string; direction: 'asc' | 'desc' } | null
 
 interface HotelsPageProps {
   navigate: (to: string) => void
@@ -52,6 +62,7 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
   const [isActive, setIsActive] = useState<boolean | undefined>(undefined)
   const [embedding, setEmbedding] = useState<EmbeddingFilter>('all')
   const [page, setPage] = useState(1)
+  const [sort, setSort] = useState<SortState>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
   const [listState, setListState] = useState<ListState>({ status: 'loading' })
@@ -66,8 +77,27 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
   const [csvError, setCsvError] = useState<string | null>(null)
   const [reembedConfirmOpen, setReembedConfirmOpen] = useState(false)
   const [reembedIncludeRooms, setReembedIncludeRooms] = useState(false)
-  const [reembedBusy, setReembedBusy] = useState(false)
-  const [reembedMessage, setReembedMessage] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null)
+  // Mirrors hotel-detail-page.tsx's single-hotel reembed state machine so
+  // the bulk action reports the pipeline's real completion instead of just
+  // the trigger response ("loading" while the request is in flight,
+  // "queued"+progress while the DAG run itself executes, then the real
+  // success/failed outcome).
+  const [reembedState, setReembedState] = useState<'idle' | 'loading' | 'queued' | 'unavailable' | 'stalled' | 'success' | 'failed'>('idle')
+  const [reembedCount, setReembedCount] = useState(0)
+  const [reembedErrorDetail, setReembedErrorDetail] = useState<string | null>(null)
+  const [embeddingRun, setEmbeddingRun] = useState<PipelineItem | null>(null)
+  const embeddingPollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const embeddingPollAttemptsRef = useRef(0)
+  // Tracks THIS trigger's dag_run_id (not just the DAG's `last_run`) --
+  // same reasoning as hotel-detail-page.tsx: the DAG's `max_active_runs=1`
+  // can queue this run behind an unrelated one already in flight.
+  const embeddingDagRunIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (embeddingPollRef.current) clearTimeout(embeddingPollRef.current)
+    }
+  }, [])
 
   // Debounce the search box so every keystroke doesn't fire a request.
   useEffect(() => {
@@ -75,17 +105,26 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
     return () => clearTimeout(timer)
   }, [q])
 
-  // Any filter change re-pages to 1 -- a stale page number past the new
-  // filtered total would just render an empty page.
+  // Any filter or sort change re-pages to 1 -- a stale page number past the
+  // new filtered/ordered total would just render an empty page.
   useEffect(() => {
     setPage(1)
-  }, [debouncedQ, source, isActive, embedding])
+  }, [debouncedQ, source, isActive, embedding, sort])
 
   useEffect(() => {
     let cancelled = false
     setIsFetching(true)
     setListState((prev) => (prev.status === 'loaded' ? prev : { status: 'loading' }))
-    listHotels({ q: debouncedQ || undefined, source, isActive, embedding, page, pageSize: PAGE_SIZE }).then((result) => {
+    listHotels({
+      q: debouncedQ || undefined,
+      source,
+      isActive,
+      embedding,
+      page,
+      pageSize: PAGE_SIZE,
+      sort: sort?.key,
+      sortDir: sort?.direction,
+    }).then((result) => {
       if (cancelled) return
       setIsFetching(false)
       if (!result.ok) return setListState({ status: 'error', detail: result.detail })
@@ -95,7 +134,11 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
     return () => {
       cancelled = true
     }
-  }, [debouncedQ, source, isActive, embedding, page, refreshKey])
+  }, [debouncedQ, source, isActive, embedding, page, sort, refreshKey])
+
+  function handleSortChange(key: string) {
+    setSort((prev) => (!prev || prev.key !== key ? { key, direction: 'asc' } : { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' }))
+  }
 
   const items = listState.status === 'loaded' ? listState.items : []
 
@@ -152,30 +195,93 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
   }
 
   async function handleBulkReembed() {
-    setReembedBusy(true)
-    setReembedMessage(null)
     const hotelIds = Array.from(selectedIds)
+    setReembedState('loading')
+    setReembedCount(hotelIds.length)
+    setReembedErrorDetail(null)
     const result = await reembedHotels(hotelIds, reembedIncludeRooms)
-    setReembedBusy(false)
     setReembedConfirmOpen(false)
+    setSelectedIds(new Set())
+    // Cleared to NULL server-side regardless of outcome below -- refresh
+    // now so the table's embedding dots already show "cần nhúng lại".
+    setRefreshKey((k) => k + 1)
+
     if (!result.ok) {
-      setReembedMessage({ tone: 'err', text: result.detail })
+      setReembedState('failed')
+      setReembedErrorDetail(result.detail)
       return
     }
-    setReembedMessage({
-      tone: 'ok',
-      text: result.data.queued
-        ? `Đã gửi yêu cầu chạy lại embedding cho ${hotelIds.length} khách sạn.`
-        : `Đã đánh dấu ${hotelIds.length} khách sạn cần nhúng lại. Pipeline sẽ tự nhặt ở lần chạy kế tiếp, hoặc chạy ngay ở trang Tổng quan.`,
+    if (!result.data.queued) {
+      setReembedState('unavailable')
+      return
+    }
+    setReembedState('queued')
+    embeddingDagRunIdRef.current = result.data.dag_run_id ?? null
+    if (embeddingPollRef.current) clearTimeout(embeddingPollRef.current)
+    embeddingPollAttemptsRef.current = 0
+    pollEmbeddingProgress()
+  }
+
+  // Polls the shared Pipelines list (same idiom as hotel-detail-page.tsx's
+  // single-hotel reembed) so the bulk action reports real %-done and the
+  // actual success/failed outcome instead of leaving a static "đã gửi yêu
+  // cầu" banner up with no idea when the DAG run actually finishes.
+  function pollEmbeddingProgress() {
+    listPipelines().then((result) => {
+      const embedding = result.ok ? (result.data.items.find((item: PipelineItem) => item.has_params) ?? null) : null
+      const expectedRunId = embeddingDagRunIdRef.current
+      if (expectedRunId && embedding?.last_run?.run_id !== expectedRunId) {
+        setEmbeddingRun(null)
+        embeddingPollAttemptsRef.current += 1
+        if (embeddingPollAttemptsRef.current >= MAX_EMBEDDING_POLL_ATTEMPTS) {
+          setReembedState('stalled')
+          return
+        }
+        embeddingPollRef.current = setTimeout(pollEmbeddingProgress, EMBEDDING_POLL_MS)
+        return
+      }
+      setEmbeddingRun(embedding)
+      const state = embedding?.last_run?.state
+      if (state === 'running' || state === 'queued') {
+        embeddingPollAttemptsRef.current += 1
+        if (embeddingPollAttemptsRef.current >= MAX_EMBEDDING_POLL_ATTEMPTS) {
+          setReembedState('stalled')
+          return
+        }
+        embeddingPollRef.current = setTimeout(pollEmbeddingProgress, EMBEDDING_POLL_MS)
+        return
+      }
+      // Run finished -- stop, show the real outcome, and refresh the list so
+      // every touched row's embedding dot picks up the result.
+      setReembedState(state === 'success' ? 'success' : state === 'failed' ? 'failed' : 'idle')
+      setEmbeddingRun(null)
+      setRefreshKey((k) => k + 1)
     })
-    setSelectedIds(new Set())
-    setRefreshKey((k) => k + 1)
+  }
+
+  // Dismisses any reembed banner (queued/stalled/success/failed/unavailable).
+  // Also stops an in-flight poll -- the pipeline itself keeps running on the
+  // backend regardless, this only stops the UI from tracking it further.
+  function handleDismissReembed() {
+    if (embeddingPollRef.current) clearTimeout(embeddingPollRef.current)
+    embeddingDagRunIdRef.current = null
+    setReembedState('idle')
+    setEmbeddingRun(null)
   }
 
   async function handleExportCsv() {
     setCsvBusy(true)
     setCsvError(null)
-    const result = await exportHotelsCsv({ q: debouncedQ || undefined, source, isActive, embedding, page, pageSize: PAGE_SIZE })
+    const result = await exportHotelsCsv({
+      q: debouncedQ || undefined,
+      source,
+      isActive,
+      embedding,
+      page,
+      pageSize: PAGE_SIZE,
+      sort: sort?.key,
+      sortDir: sort?.direction,
+    })
     setCsvBusy(false)
     if (!result.ok) setCsvError(result.detail)
   }
@@ -203,7 +309,71 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
       <div style={{ flex: 1, minHeight: 0, padding: '22px 28px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         {csvError && <Banner tone="err">{csvError}</Banner>}
         {bulkError && <Banner tone="err">{bulkError}</Banner>}
-        {reembedMessage && <Banner tone={reembedMessage.tone}>{reembedMessage.text}</Banner>}
+
+        {reembedState === 'unavailable' && (
+          <Banner tone="warn">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingRight: 4, width: '100%' }}>
+              <span style={{ flex: 1 }}>
+                Đã đánh dấu {reembedCount} khách sạn cần nhúng lại. Pipeline sẽ tự nhặt ở lần chạy kế tiếp, hoặc chạy ngay ở trang Tổng quan.
+              </span>
+              <Button variant="ghost" size="sm" onClick={handleDismissReembed} aria-label="Đóng">
+                ✕
+              </Button>
+            </div>
+          </Banner>
+        )}
+        {reembedState === 'stalled' && (
+          <Banner tone="warn">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', paddingRight: 4, width: '100%' }}>
+              <span style={{ flex: 1, minWidth: 200 }}>
+                Pipeline embedding đang chờ lâu hơn bình thường (Airflow chưa bắt đầu chạy). Đã đánh dấu {reembedCount} khách sạn cần nhúng lại,
+                bot sẽ học khi pipeline chạy.
+              </span>
+              <Button variant="ghost" size="sm" onClick={handleDismissReembed} aria-label="Đóng">
+                ✕
+              </Button>
+            </div>
+          </Banner>
+        )}
+        {reembedState === 'queued' && (
+          <Banner tone="ok">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingRight: 4, width: '100%' }}>
+                <span style={{ flex: 1 }}>Đã gửi yêu cầu chạy lại embedding cho {reembedCount} khách sạn.</span>
+                <Button variant="ghost" size="sm" onClick={handleDismissReembed} aria-label="Đóng">
+                  ✕
+                </Button>
+              </div>
+              {embeddingRun?.last_run?.state === 'running' ? (
+                <PipelineRunProgress lastRun={embeddingRun.last_run} />
+              ) : (
+                <span style={{ fontSize: 11.5 }}>Đang chờ pipeline bắt đầu…</span>
+              )}
+            </div>
+          </Banner>
+        )}
+        {reembedState === 'success' && (
+          <Banner tone="ok">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingRight: 4, width: '100%' }}>
+              <span style={{ flex: 1 }}>Đã embed thành công {reembedCount} khách sạn — chatbot đã học nội dung mới.</span>
+              <Button variant="ghost" size="sm" onClick={handleDismissReembed} aria-label="Đóng">
+                ✕
+              </Button>
+            </div>
+          </Banner>
+        )}
+        {reembedState === 'failed' && (
+          <Banner tone="err">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', paddingRight: 4, width: '100%' }}>
+              <span style={{ flex: 1, minWidth: 200 }}>
+                {reembedErrorDetail ?? 'Chạy embedding thất bại. Thử chạy lại pipeline ở trang Tổng quan.'}
+              </span>
+              <Button variant="ghost" size="sm" onClick={handleDismissReembed} aria-label="Đóng">
+                ✕
+              </Button>
+            </div>
+          </Banner>
+        )}
 
         {rowError && (
           <Banner tone="err">
@@ -265,6 +435,8 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
                 onToggleActive={handleToggleActive}
                 onOpenHotel={(id) => navigate(`/admin/hotels/${id}`)}
                 loading={isFetching}
+                sortState={sort}
+                onSortChange={handleSortChange}
               />
             </div>
             <div style={{ fontSize: 11, color: 'var(--t4)', padding: '8px 14px', borderTop: '1px solid var(--line)' }}>
@@ -277,7 +449,7 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
 
       <HotelsBulkBar
         selectedCount={selectedIds.size}
-        busy={bulkBusy || reembedBusy}
+        busy={bulkBusy || reembedState === 'loading'}
         onDeactivate={() => setBulkConfirmOpen(true)}
         onReembed={() => setReembedConfirmOpen(true)}
         onClear={() => setSelectedIds(new Set())}
@@ -302,7 +474,7 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
         open={reembedConfirmOpen}
         count={selectedIds.size}
         includeRooms={reembedIncludeRooms}
-        busy={reembedBusy}
+        busy={reembedState === 'loading'}
         onIncludeRoomsChange={setReembedIncludeRooms}
         onConfirm={handleBulkReembed}
         onClose={() => setReembedConfirmOpen(false)}

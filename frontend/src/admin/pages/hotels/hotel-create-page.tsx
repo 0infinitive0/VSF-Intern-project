@@ -25,8 +25,7 @@ interface HotelCreatePageProps {
 /** hotel-create-page.tsx -- B2 orchestrator (phase-08-hotel-create.md). Owns
  * form state and the two lookups (destinations, accommodation-type
  * suggestions); hotel-basic-fields.tsx/hotel-location-fields.tsx stay
- * presentational and are reused as-is by B3 (Phase 9) via their
- * `lockedFields` prop. */
+ * presentational and are reused as-is by B3 (Phase 9). */
 export function HotelCreatePage({ navigate }: HotelCreatePageProps) {
   const [basic, setBasic] = useState<HotelBasicFieldsValue>({
     name: '',
@@ -164,7 +163,6 @@ export function HotelCreatePage({ navigate }: HotelCreatePageProps) {
               value={basic}
               onChange={setBasic}
               accommodationTypeOptions={accommodationTypes}
-              lockedFields={[]}
               changedFields={[]}
               descriptionMaxLength={DESCRIPTION_MAX_LENGTH}
             />
@@ -176,7 +174,6 @@ export function HotelCreatePage({ navigate }: HotelCreatePageProps) {
               value={location}
               onChange={setLocation}
               destinations={destinations}
-              lockedFields={[]}
               changedFields={[]}
             />
           </div>

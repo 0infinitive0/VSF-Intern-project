@@ -1,6 +1,27 @@
 import { useTranslation } from 'react-i18next'
+import ReactMarkdown, { type Components } from 'react-markdown'
+import remarkBreaks from 'remark-breaks'
 import { useTypewriter } from '../lib/use-typewriter'
 import type { ChatMessage } from '../types'
+
+/** Compact block spacing to fit the chat bubble (react-markdown's default
+ * elements carry browser UA margins/list-styles sized for full-page prose).
+ * No raw-HTML plugin (`rehype-raw`) is installed, so the model's own text
+ * can never inject markup here -- only these fixed elements render. */
+const MARKDOWN_COMPONENTS: Components = {
+  p: ({ children }) => <p className="mb-1.5 last:mb-0">{children}</p>,
+  ul: ({ children }) => <ul className="mb-1.5 last:mb-0 pl-4 list-disc space-y-0.5">{children}</ul>,
+  ol: ({ children }) => <ol className="mb-1.5 last:mb-0 pl-4 list-decimal space-y-0.5">{children}</ol>,
+  li: ({ children }) => <li>{children}</li>,
+  strong: ({ children }) => <strong className="font-[650]">{children}</strong>,
+  em: ({ children }) => <em className="italic">{children}</em>,
+  code: ({ children }) => <code className="px-1 py-0.5 rounded bg-on-surface/10 text-[0.92em]">{children}</code>,
+  a: ({ children, href }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+      {children}
+    </a>
+  ),
+}
 
 /** `message.at` (ISO) → localized "HH:mm" caption, or null when absent
  * (streaming placeholder bubbles, or any turn the backend didn't stamp) —
@@ -20,7 +41,9 @@ function formatMessageTime(at: string | undefined, locale: string): string | nul
  *   - AI: glass-3 surface, on-surface ink, hairline --line border, soft drop shadow
  *   - user: `linear-gradient(145deg,#4F86E8,#2C5FC9)`, near-white ink, blue glow
  *   - 24px "V" avatar on AI turns; timestamp caption beneath the bubble
- *   - bubbles cap at 44ch; the backend's pre-formatted text is preserved
+ *   - bubbles cap at 44ch; AI replies render as Markdown (bold/italic/code/
+ *     lists), user turns stay plain text so the user's own input is never
+ *     reinterpreted as formatting
  */
 export default function MessageBubble({
   message,
@@ -59,9 +82,15 @@ export default function MessageBubble({
       )}
       <div className={`flex flex-col gap-1 max-w-[84%] min-w-0 ${isUser ? 'items-end' : 'items-start'}`}>
         <div
-          className={`max-w-[44ch] px-3.5 py-2.5 text-[14px] leading-[1.58] tracking-[-0.08px] whitespace-pre-wrap ${radiusClass} ${bubbleClass}`}
+          className={`max-w-[44ch] px-3.5 py-2.5 text-[14px] leading-[1.58] tracking-[-0.08px] ${isUser ? 'whitespace-pre-wrap' : ''} ${radiusClass} ${bubbleClass}`}
         >
-          {shownText}
+          {isUser ? (
+            shownText
+          ) : (
+            <ReactMarkdown remarkPlugins={[remarkBreaks]} components={MARKDOWN_COMPONENTS}>
+              {shownText}
+            </ReactMarkdown>
+          )}
           {(streaming || typing) && (
             <span className="inline-block w-[2px] h-[1em] ml-0.5 -mb-0.5 bg-current animate-[vBlink_1s_step-end_infinite]" aria-hidden="true" />
           )}

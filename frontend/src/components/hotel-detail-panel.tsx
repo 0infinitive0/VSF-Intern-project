@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ConfirmDialog from './confirm-dialog'
 import MatchReasons from './match-reasons'
@@ -13,7 +13,7 @@ import { displayAmenityLabels } from '../lib/hotel-filters'
 import { formatHotelStars } from '../lib/format-stars'
 import { formatSourcePlatform } from '../lib/format-source-platform'
 import { cartMatchesHeldBookings } from '../lib/room-cart-diff'
-import { maxRoomsForParty } from '../lib/room-capacity'
+import { remainingRoomsAllowed } from '../lib/room-capacity'
 import type { AmenityCatalogOption, HotelOption, RoomDetail } from '../types'
 
 /** Nights from the trip's real intake dates — same rule as stage-hotels.tsx's
@@ -410,42 +410,72 @@ export default function HotelDetailPanel({
                     <span className="text-[11.5px] text-primary font-medium">{t('detailRoomsGuide')}</span>
                   </div>
                   <div className="flex flex-col gap-2.5">
-                    {detail.rooms.map((room, i) => {
-                      const roomKey = room.id ?? room.name ?? String(i)
-                      // At most one unit of this room type per traveler
-                      // (room-capacity.ts explains why capacity-based
-                      // division is the wrong cap here), capped by real
-                      // inventory — replaces the old flat cap of 4, which
-                      // had nothing to do with who's traveling.
-                      const roomsAllowed = maxRoomsForParty(partySize)
-                      const maxQty = room.price?.sold_out
-                        ? 0
-                        : Math.min(roomsAllowed, room.available_room_count ?? roomsAllowed)
-                      return (
-                        <RoomCard
-                          key={roomKey}
-                          room={room}
-                          delay={`${i * 90}ms`}
-                          qty={room.id ? (roomHold.cartFor(hotelId)[room.id] ?? 0) : 0}
-                          maxQty={maxQty}
-                          onQtyChange={(next) => {
-                            if (sessionBookedFromBackend) {
-                              triggerNoticeShake()
-                              return
-                            }
-                            if (!room.id) return
-                            roomHold.setQty(hotelId, room.id, next, maxQty)
-                            if (next > 0 && option != null && onSelectHotel) {
-                              onSelectHotel(option.index)
-                            }
-                          }}
-                          amenityDetails={detail.room_amenities ?? []}
-                          selectedAmenityIds={selectedAmenityIds}
-                          sessionBookedFromBackend={sessionBookedFromBackend}
-                          onAttemptAddRoom={triggerNoticeShake}
-                        />
-                      )
-                    })}
+                    {(() => {
+                      // Party-size cap applies to the TOTAL rooms across every
+                      // room type in this hotel's cart, not to each room type
+                      // independently — otherwise a party of 2 could add 1 of
+                      // room A, 1 of room B, 1 of room C, etc. and end up with
+                      // far more rooms than travelers (bug: each room type's
+                      // maxQty used to be computed in isolation from
+                      // maxRoomsForParty alone, with no reference to what was
+                      // already selected elsewhere in the same cart).
+                      const cartForHotel = roomHold.cartFor(hotelId)
+                      const cartTotalQty = roomHold.cartCount(hotelId)
+                      return detail.rooms.map((room, i) => {
+                        const roomKey = room.id ?? room.name ?? String(i)
+                        // At most one unit of this room type per traveler
+                        // (room-capacity.ts explains why capacity-based
+                        // division is the wrong cap here), capped by real
+                        // inventory — replaces the old flat cap of 4, which
+                        // had nothing to do with who's traveling.
+                        // remainingRoomsAllowed also subtracts however much
+                        // of that party-size allowance is already used up by
+                        // OTHER room types in the same cart, so the total
+                        // across all types never exceeds maxRoomsForParty.
+                        const ownQty = room.id ? (cartForHotel[room.id] ?? 0) : 0
+                        const remainingForParty = remainingRoomsAllowed(partySize, cartTotalQty, ownQty)
+                        const inventoryCap = room.available_room_count ?? null
+                        const maxQty = room.price?.sold_out
+                          ? 0
+                          : Math.min(remainingForParty, inventoryCap ?? remainingForParty)
+                        // Which constraint is actually binding when the guest
+                        // is blocked, so RoomCard can explain WHY instead of
+                        // silently doing nothing — a real sold-out room
+                        // already has its own "Hết phòng" label (no extra
+                        // notice needed); otherwise whichever of the two caps
+                        // is tighter is the one worth naming.
+                        const blockedReason: 'partyLimit' | 'inventoryLimit' | null = room.price?.sold_out
+                          ? null
+                          : inventoryCap != null && inventoryCap < remainingForParty
+                            ? 'inventoryLimit'
+                            : 'partyLimit'
+                        return (
+                          <RoomCard
+                            key={roomKey}
+                            room={room}
+                            delay={`${i * 90}ms`}
+                            qty={ownQty}
+                            maxQty={maxQty}
+                            blockedReason={blockedReason}
+                            onQtyChange={(next) => {
+                              if (sessionBookedFromBackend) {
+                                triggerNoticeShake()
+                                return
+                              }
+                              if (!room.id) return
+                              roomHold.setQty(hotelId, room.id, next, maxQty)
+                              if (next > 0 && option != null && onSelectHotel) {
+                                onSelectHotel(option.index)
+                              }
+                            }}
+                            amenityDetails={detail.room_amenities ?? []}
+                            selectedAmenityIds={selectedAmenityIds}
+                            sessionBookedFromBackend={sessionBookedFromBackend}
+                            onAttemptAddRoom={triggerNoticeShake}
+                          />
+                        )
+                      })
+                    })()}
                   </div>
                 </div>
               )}
@@ -624,6 +654,15 @@ function HoldFooter({
   const cartCount = rows.reduce((n, r) => n + r.qty, 0)
   const total = rows.reduce((sum, r) => sum + (r.subtotal ?? 0), 0)
 
+  // The cart summary stays mounted while it collapses (see .smooth-collapse),
+  // so removing the last room would otherwise flash "0 phòng đã chọn" and
+  // "0 ₫" for the entire exit animation. Keep rendering the last non-empty
+  // figures on the way out. DISPLAY ONLY — every decision below (canStart,
+  // disabled, label, handleClick) reads the real, current cart.
+  const lastFilledCart = useRef({ rows, cartCount, total })
+  if (cartCount > 0) lastFilledCart.current = { rows, cartCount, total }
+  const shownCart = cartCount > 0 ? { rows, cartCount, total } : lastFilledCart.current
+
   const heldHere = roomHold.status === 'HELD' && roomHold.heldHotelId === hotelId
   const heldElsewhere = roomHold.status === 'HELD' && roomHold.heldHotelId !== hotelId
   const busy = roomHold.status === 'HOLDING'
@@ -650,9 +689,13 @@ function HoldFooter({
           : t('holdCtaBlocked')
         : busy
           ? t('holdCtaBusy')
-          : cartCount === 0
+          : // shownCart, not the live count: this label only ever renders
+            // inside the cart state, which is mid-collapse when the count
+            // hits 0 — reading the live count would swap the button's text
+            // halfway through its own exit animation.
+            shownCart.cartCount === 0
             ? t('holdCtaSelectRoom')
-            : t('holdCtaWithRooms', { count: cartCount })
+            : t('holdCtaWithRooms', { count: shownCart.cartCount })
   const disabled =
     sessionBookedFromBackend ||
     busy ||
@@ -690,8 +733,12 @@ function HoldFooter({
 
   return (
     <>
+    {/* No `gap` on the row below on purpose: both states inside it are always
+        mounted (so the swap between them can animate), and a flex gap would
+        hold open a permanent strip of dead space between the collapsed one
+        and the open one. Each state spaces its own contents instead. */}
     <div
-      className="flex-none px-5 pt-3 pb-3.5 flex flex-col gap-2 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+      className="flex-none px-5 pt-3 pb-3.5 flex flex-col transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
       style={{
         background: 'var(--pop-bg, var(--g3))',
         backdropFilter: 'blur(26px) saturate(1.7)',
@@ -700,23 +747,39 @@ function HoldFooter({
         boxShadow: '0 -16px 36px -18px rgb(var(--shadow-rgb) / 0.55)',
       }}
     >
-      {cartCount > 0 ? (
-        <div className="flex flex-col gap-2 animate-[vRise_0.3s_cubic-bezier(0.22,1,0.36,1)_both]">
+      {/* Cart state and empty state are both mounted at all times, each
+          collapsing as the other opens, so the footer's height interpolates
+          between them instead of snapping (see .smooth-collapse). No entry
+          animation on either: the collapse and cross-fade IS the transition,
+          and a vRise on top would play over it on first paint. */}
+      <div className="smooth-collapse smooth-collapse--bleed" data-open={cartCount > 0}>
+        <div>
+        <div className="flex flex-col gap-2">
           {/* Compact 1-Row Summary Header */}
+          {/* Badge and total are keyed on the room count so both replay their
+              entrance every time it changes — adding a room should read as an
+              event, not as a digit quietly incrementing. Keying the button
+              remounts it, which is what restarts the animation; nothing is
+              focused here at that moment (the guest is pressing + over on a
+              room card), so no focus is lost. */}
           <div className="flex items-center justify-between gap-3 px-0.5">
             <button
+              key={shownCart.cartCount}
               type="button"
               onClick={() => setDetailsExpanded((prev) => !prev)}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary-soft/90 border border-primary/30 text-primary text-[12px] font-[590] hover:bg-primary-soft transition-all duration-200 cursor-pointer shadow-sm active:scale-95"
+              className="hold-badge-pop flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary-soft/90 border border-primary/30 text-primary text-[12px] font-[590] hover:bg-primary-soft transition-all duration-200 cursor-pointer shadow-sm active:scale-95"
             >
-              <span className="material-symbols-outlined text-[15px]">king_bed</span>
-              <span>
-                {rows.length > 1
-                  ? t('holdRoomsSummaryBadgeTypes', { types: rows.length, count: cartCount })
-                  : t('holdRoomsSummaryBadge', { count: cartCount })}
+              <span className="hold-badge-item-in material-symbols-outlined text-[15px]">king_bed</span>
+              <span className="hold-badge-item-in hold-badge-item-in--delay">
+                {shownCart.rows.length > 1
+                  ? t('holdRoomsSummaryBadgeTypes', {
+                      types: shownCart.rows.length,
+                      count: shownCart.cartCount,
+                    })
+                  : t('holdRoomsSummaryBadge', { count: shownCart.cartCount })}
               </span>
               <span
-                className={`material-symbols-outlined text-[14px] transition-transform duration-200 ${
+                className={`hold-badge-fade-in material-symbols-outlined text-[14px] transition-transform duration-200 ${
                   detailsExpanded ? 'rotate-180' : ''
                 }`}
               >
@@ -725,32 +788,46 @@ function HoldFooter({
             </button>
             <div className="flex items-baseline gap-1.5 tabular-nums">
               <span className="text-[11.5px] text-on-surface-muted font-normal">{t('holdTotal')}:</span>
-              <span className="text-[17.5px] font-[650] tracking-[-0.35px] text-primary">
-                {formatCurrency(total, i18n.language)}
+              <span
+                key={shownCart.cartCount}
+                className="hold-badge-item-in hold-badge-item-in--delay text-[17.5px] font-[650] tracking-[-0.35px] text-primary"
+              >
+                {formatCurrency(shownCart.total, i18n.language)}
               </span>
             </div>
           </div>
 
-          {/* Collapsible Details Drawer */}
-          {detailsExpanded && (
-            <div className="max-h-[110px] overflow-y-auto custom-scrollbar flex flex-col gap-1.5 p-2 rounded-xl bg-fill/60 border border-line animate-[vRise_0.2s_ease-out_both]">
-              {rows.map((row) => (
-                <div key={row.roomId} className="flex items-center justify-between gap-2 text-[12px]">
-                  <span className="truncate text-on-surface font-medium">{row.name}</span>
-                  <div className="flex items-center gap-2 flex-none tabular-nums">
-                    <span className="text-on-surface-muted text-[11px]">{t('roomQtyLabel', { count: row.qty })}</span>
-                    <span className="font-semibold text-on-surface">
-                      {row.subtotal != null ? formatCurrency(row.subtotal, i18n.language) : t('roomPriceOnRequest')}
-                    </span>
+          {/* Collapsible Details Drawer — stays mounted so it slides both
+              ways; --absorb-gap cancels the one `gap-2` it would otherwise
+              still hold open while closed. */}
+          <div
+            className="smooth-collapse smooth-collapse--absorb-gap"
+            data-open={detailsExpanded}
+          >
+            <div>
+              <div className="max-h-[110px] overflow-y-auto custom-scrollbar flex flex-col gap-1.5 p-2 rounded-xl bg-fill/60 border border-line">
+                {shownCart.rows.map((row) => (
+                  <div key={row.roomId} className="flex items-center justify-between gap-2 text-[12px]">
+                    <span className="truncate text-on-surface font-medium">{row.name}</span>
+                    <div className="flex items-center gap-2 flex-none tabular-nums">
+                      <span className="text-on-surface-muted text-[11px]">{t('roomQtyLabel', { count: row.qty })}</span>
+                      <span className="font-semibold text-on-surface">
+                        {row.subtotal != null ? formatCurrency(row.subtotal, i18n.language) : t('roomPriceOnRequest')}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          )}
+          </div>
 
           {sessionBookedFromBackend && (
             <div
-              id="hold-footer-notice"
+              /* Both footer states are mounted at once now, and each carries
+                 its own copy of this notice — so the id goes only on the one
+                 currently shown, or triggerNoticeShake's getElementById would
+                 scroll to the collapsed, invisible copy. */
+              id={cartCount > 0 ? 'hold-footer-notice' : undefined}
               role="status"
               onAnimationEnd={onNoticeAnimationEnd}
               className={`flex items-center gap-2.5 p-3 rounded-2xl border text-[12px] font-medium leading-snug transition-all duration-300 ${
@@ -800,11 +877,16 @@ function HoldFooter({
             {label}
           </button>
         </div>
-      ) : (
-        <div className="animate-[vRise_0.3s_cubic-bezier(0.22,1,0.36,1)_both]">
+        </div>
+      </div>
+      <div className="smooth-collapse smooth-collapse--bleed" data-open={cartCount === 0}>
+        <div>
+        <div>
           {sessionBookedFromBackend ? (
             <div
-              id="hold-footer-notice"
+              /* See the sibling notice in the cart state above: only the
+                 visible copy may hold the id. */
+              id={cartCount === 0 ? 'hold-footer-notice' : undefined}
               role="status"
               onAnimationEnd={onNoticeAnimationEnd}
               className={`w-full flex items-center justify-center gap-2.5 px-4 py-3 rounded-full border text-center text-[12.5px] font-[550] text-amber-700 dark:text-amber-300 transition-all duration-300 ${
@@ -856,7 +938,8 @@ function HoldFooter({
             </>
           )}
         </div>
-      )}
+        </div>
+      </div>
     </div>
     <ConfirmDialog
       open={confirmSwitchOpen}

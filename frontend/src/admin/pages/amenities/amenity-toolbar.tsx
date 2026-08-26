@@ -21,7 +21,7 @@ export function AmenityToolbar({ q, onQChange, category, onCategoryChange, statu
         <Input placeholder="⌕ Tìm theo tên tiếng Việt, tiếng Anh…" value={q} onChange={(e) => onQChange(e.target.value)} />
       </div>
 
-      <Select value={category} onChange={(e) => onCategoryChange(e.target.value)} style={{ width: 200 }}>
+      <Select value={category} onChange={(e) => onCategoryChange(e.target.value)} style={{ width: 230 }}>
         <option value="all">Nhóm: Tất cả (14)</option>
         {AMENITY_CATEGORY_ORDER.map((c) => (
           <option key={c} value={c}>
@@ -30,7 +30,7 @@ export function AmenityToolbar({ q, onQChange, category, onCategoryChange, statu
         ))}
       </Select>
 
-      <Select value={status} onChange={(e) => onStatusChange(e.target.value as CatalogStatus)} style={{ width: 170 }}>
+      <Select value={status} onChange={(e) => onStatusChange(e.target.value as CatalogStatus)} style={{ width: 200 }}>
         <option value="all">Trạng thái: Tất cả</option>
         <option value="approved">Trạng thái: Đã duyệt</option>
         <option value="pending">Trạng thái: Chờ duyệt</option>

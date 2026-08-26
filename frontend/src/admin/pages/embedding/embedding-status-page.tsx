@@ -280,7 +280,7 @@ export function EmbeddingStatusPage({ navigate }: EmbeddingStatusPageProps) {
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Select value={source} onChange={(e) => setSource(e.target.value as SourceFilter)} style={{ width: 170 }}>
+          <Select value={source} onChange={(e) => setSource(e.target.value as SourceFilter)} style={{ width: 200 }}>
             <option value="all">Nguồn: Tất cả</option>
             <option value="manual">Tự nhập</option>
             <option value="pipeline">Từ pipeline</option>
