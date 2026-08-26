@@ -197,7 +197,7 @@ export function RoomPricesPage({ hotelId, roomId, navigate }: RoomPricesPageProp
           {viewMode === 'calendar' ? (
             <>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <PriceCalendar monthStart={month} nights={data.nights} selectedDates={selectedDates} onSelectionChange={setSelectedDates} todayIso={today} />
+                <PriceCalendar monthStart={month} nights={data.nights} selectedDates={selectedDates} onSelectionChange={setSelectedDates} />
               </div>
               {selectedDates.size > 0 && (
                 <div style={{ width: 300, flex: 'none' }}>
@@ -249,7 +249,6 @@ export function RoomPricesPage({ hotelId, roomId, navigate }: RoomPricesPageProp
         open={rangeDialogOpen}
         editingRange={editingRange}
         defaultCurrency={data.currency}
-        todayIso={today}
         saving={saving}
         onClose={() => {
           setRangeDialogOpen(false)

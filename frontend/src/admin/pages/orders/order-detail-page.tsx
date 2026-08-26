@@ -120,7 +120,6 @@ export function OrderDetailPage({ paymentId }: OrderDetailPageProps) {
               <OrderTimeline events={order.timeline} />
             </div>
             <OrderVnpayCard order={order} />
-            <OrderChatLink chatSession={order.chat_session} />
           </div>
         </div>
       </div>

@@ -10,9 +10,20 @@ criterion).
 bar, B7's row action, and B3/B5's post-save dialogs (phase-09/10, which
 previously called a since-removed `POST /hotels/{hotel_id}/reembed` stub --
 this replaces it with `hotel_ids: [hotel_id]`). It always does step 1 (clear
-`embedding` to NULL, which alone has real value: the next `@daily`
-`only_null` run picks the row up) and always reports `queued: false` for
-step 2 (DAG trigger) until Phase 13's Airflow client exists to call.
+`embedding` to NULL, which alone has real value: the next `@daily` `only_null`
+run picks the row up regardless), then does step 2 -- trigger
+`embed_supabase_tables_pipeline` via Phase 13's Airflow client, passing
+`hotel_ids`/`include_rooms` as the trigger `conf`. The DAG
+(`embed_supabase_dag.py`'s `fetch_pending_rows_task`) reads that conf and, when
+present, scopes the run to exactly those hotels (and their rooms only if
+`include_rooms`) instead of sweeping every pending row in the system --
+`queued: false` only means Airflow itself couldn't be reached/errored.
+
+Always triggers a fresh run rather than checking for one already in flight:
+the DAG's own `max_active_runs=1` queues a second trigger behind the first
+instead of erroring, and an already-running run may have started with
+different (or no) `hotel_ids` conf and would silently never pick up this
+request's hotels otherwise.
 """
 
 from __future__ import annotations
@@ -23,10 +34,17 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from src.api.admin.audit import write_audit
+from src.api.admin.pipelines import invalidate_pipelines_cache
 from src.auth import AdminUser, require_admin
 from src.clients.supabase_client import get_supabase_client
+from src.services import airflow_client
 
 embedding_router = APIRouter(tags=["admin-embedding"])
+
+# Same DAG `pipelines.py`'s `_PIPELINE_CATALOG["embed_supabase_tables_pipeline"]`
+# triggers for the "Embedding" pipeline card -- one shared re-embed run, not a
+# second parallel trigger path.
+_EMBED_DAG_ID = "embed_supabase_tables_pipeline"
 
 EmbeddedTable = Literal["hotels", "rooms", "attractions"]
 
@@ -170,8 +188,27 @@ def reembed_hotels(body: ReembedHotelsRequest, admin: AdminUser = Depends(requir
             after={"hotel_ids": body.hotel_ids, "cleared_hotels": cleared_hotels, "cleared_rooms": cleared_rooms},
         )
 
-    # Step 2 (trigger embed_supabase_tables_pipeline with only_null=true)
-    # needs Phase 13's Airflow client, which doesn't exist yet -- step 1
-    # above already ran and has real value on its own (the plan's mitigation:
-    # the next scheduled only-null run picks these rows up regardless).
-    return ReembedHotelsResponse(cleared_hotels=cleared_hotels, cleared_rooms=cleared_rooms, dag_run_id=None, queued=False, detail="airflow_unavailable")
+    # Step 2: actually run the pipeline now, scoped to exactly these hotels
+    # (see module docstring for why this always triggers rather than
+    # deferring to an already-running run).
+    dag_run_id: str | None = None
+    queued = False
+    detail: str | None = None
+    try:
+        result = airflow_client.trigger_dag_run(
+            _EMBED_DAG_ID, conf={"hotel_ids": body.hotel_ids, "include_rooms": body.include_rooms}
+        )
+        dag_run_id = result.get("dag_run_id")
+        queued = True
+        # Otherwise a poller reading `GET /pipelines` right after this call
+        # (the hotel-detail-page progress banner, or the Pipelines page
+        # itself) can see a stale pre-trigger snapshot for up to 10s.
+        invalidate_pipelines_cache()
+    except airflow_client.AirflowUnavailable:
+        detail = "airflow_unavailable"
+    except airflow_client.AirflowError:
+        detail = "airflow_request_failed"
+
+    return ReembedHotelsResponse(
+        cleared_hotels=cleared_hotels, cleared_rooms=cleared_rooms, dag_run_id=dag_run_id, queued=queued, detail=detail
+    )

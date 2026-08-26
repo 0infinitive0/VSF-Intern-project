@@ -26,6 +26,17 @@ Airflow Variables:
   ceil(rows / chunk_size) stays under Airflow's `max_map_length` (default 1024);
   too high and the embedding endpoint rejects the request for size (handled by
   splitting, at the cost of a wasted round trip).
+
+Trigger conf (admin "Chạy embedding" button, `POST /hotels/reembed` ->
+`src/api/admin/embedding.py`): `{"hotel_ids": [...], "include_rooms": bool}`.
+When `hotel_ids` is present the run is scoped to exactly those hotels (and
+their rooms, only if `include_rooms`) instead of the Variables above --
+`attractions` is skipped entirely (that table isn't hotel-edit scoped) and the
+`only_null`/`force_tables`/`batch_limit` Variables are bypassed, since an
+admin who explicitly asked to re-embed these specific rows wants them redone
+now, not gated by a global scheduler switch. The unscheduled trigger from the
+Pipelines page still sends `conf: {}`, which falls through to the normal
+Variable-driven full/incremental behavior unchanged.
 """
 
 import json
@@ -203,29 +214,56 @@ def _embed_texts(texts: list[str]) -> list[list[float]]:
 
 
 @task
-def fetch_pending_rows_task(table):
+def fetch_pending_rows_task(table, dag_run=None):
     import requests
 
-    supabase_url, supabase_key = _require_supabase_creds()
-    only_null = Variable.get("embed_supabase_only_null", default_var="true").strip().lower() != "false"
-    # Per-table force list. Changing one table's embedding text invalidates only that
-    # table's stored vectors, so it needs a full re-embed while the others stay on
-    # cheap NULL-only backfill — the global switch above can't express that.
-    force_tables = {
-        name.strip().casefold()
-        for name in Variable.get("embed_supabase_force_tables", default_var="").split(",")
-        if name.strip()
-    }
-    if table.casefold() in force_tables:
-        only_null = False
-    # 0 (or any non-positive value) means "no cap — take every pending row in one
-    # run", for when you want a table fully done in a single trigger instead of
-    # draining it across several scheduled runs.
-    batch_limit = int(Variable.get("embed_supabase_batch_limit", default_var="1000"))
-    unlimited = batch_limit <= 0
+    # `dag_run` is Airflow-context-injected (TaskFlow auto-fills any param
+    # named after a known context key) -- `None` covers unit-style calls with
+    # no real DagRun, same as every `default_var=` fallback below.
+    conf = (dag_run.conf if dag_run is not None else None) or {}
+    hotel_ids = [str(v) for v in conf.get("hotel_ids") or []]
+    include_rooms = bool(conf.get("include_rooms"))
 
+    if hotel_ids and table == "attractions":
+        print(f"[{table}] skipped -- hotel-scoped run (conf.hotel_ids) never touches attractions")
+        return []
+    if hotel_ids and table == "rooms" and not include_rooms:
+        print(f"[{table}] skipped -- hotel-scoped run without include_rooms")
+        return []
+
+    supabase_url, supabase_key = _require_supabase_creds()
     headers = _supabase_headers(supabase_key)
     columns = TABLE_COLUMNS[table]
+
+    if hotel_ids:
+        # Explicit re-embed of specific hotels -- bypass `only_null`/
+        # `force_tables`/`batch_limit` entirely. An admin who just cleared
+        # exactly these rows' `embedding` and asked to run now wants exactly
+        # these rows redone, not gated by a Variable meant for the global
+        # scheduled sweep.
+        only_null = False
+        id_column = "id" if table == "hotels" else "hotel_id"
+        id_filter = f"&{id_column}=in.({','.join(hotel_ids)})"
+        batch_limit = 0  # unlimited -- bounded by hotel_ids count already, never a real backlog
+        unlimited = True
+    else:
+        only_null = Variable.get("embed_supabase_only_null", default_var="true").strip().lower() != "false"
+        # Per-table force list. Changing one table's embedding text invalidates only that
+        # table's stored vectors, so it needs a full re-embed while the others stay on
+        # cheap NULL-only backfill — the global switch above can't express that.
+        force_tables = {
+            name.strip().casefold()
+            for name in Variable.get("embed_supabase_force_tables", default_var="").split(",")
+            if name.strip()
+        }
+        if table.casefold() in force_tables:
+            only_null = False
+        id_filter = ""
+        # 0 (or any non-positive value) means "no cap — take every pending row in one
+        # run", for when you want a table fully done in a single trigger instead of
+        # draining it across several scheduled runs.
+        batch_limit = int(Variable.get("embed_supabase_batch_limit", default_var="1000"))
+        unlimited = batch_limit <= 0
 
     # Supabase REST caps ANY single response at 1000 rows and silently truncates
     # past it — a bare `limit=1200` comes back with 1000 and no error. Page through
@@ -240,6 +278,7 @@ def fetch_pending_rows_task(table):
         )
         if only_null:
             url += "&embedding=is.null"
+        url += id_filter
 
         response = requests.get(url, headers=headers)
         response.raise_for_status()
@@ -321,6 +360,16 @@ def summarize_task(table, results):
     completed = sum(r["embedded"] for r in results if r)
     total = sum(r["total"] for r in results if r)
     print(f"[{table}] completed={completed} failed={total - completed} (over {len(results)} chunks)")
+    if total > 0 and completed == 0:
+        # `embed_chunk_task` swallows per-row embedding failures (a bad row
+        # must not cost the whole chunk) and always returns normally, so a
+        # systemic failure -- bad/missing embedding provider credentials,
+        # the provider unreachable, wrong dimension -- would otherwise mark
+        # this DAG run `success` with 0 rows actually embedded. The admin's
+        # "Chạy embedding" banner (and the hotel's embedding dot) trusts the
+        # DAG run's own state, so a run that embedded nothing must fail it
+        # instead of lying.
+        raise RuntimeError(f"[{table}] embedding failed for all {total} pending row(s) -- check embedding provider config")
 
 
 with DAG(

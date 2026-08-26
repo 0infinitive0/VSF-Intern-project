@@ -138,7 +138,7 @@ button {
 }
 
 .btn--ghost {
-  background: transparent;
+  background: rgb(212 221 233 / 66%);
   color: var(--t2);
 }
 
@@ -902,14 +902,6 @@ button {
   cursor: pointer;
   font-family: inherit;
   text-align: left;
-}
-
-.price-calendar__cell:disabled {
-  cursor: default;
-}
-
-.price-calendar__cell[data-past] {
-  opacity: .5;
 }
 
 .price-calendar__cell[data-selected] {

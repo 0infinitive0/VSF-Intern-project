@@ -11,6 +11,7 @@ import pytest
 from src.api.admin import embedding as embedding_module
 from src.auth import AdminUser, require_admin
 from src.main import app
+from src.services import airflow_client
 
 
 class _Response:
@@ -266,3 +267,94 @@ async def test_reembed_rejects_empty_hotel_ids(client, admin_override):
     response = await client.post("/api/v1/admin/hotels/reembed", json={"hotel_ids": []})
 
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_reembed_triggers_the_embedding_dag_scoped_to_the_given_hotels(client, admin_override, no_audit, monkeypatch):
+    fake_client = _FakeClient({"hotels": [{"id": "h1", "embedding": [0.1]}]})
+    monkeypatch.setattr(embedding_module, "get_supabase_client", lambda: fake_client)
+    calls: list[tuple] = []
+
+    def _trigger(dag_id, conf=None, note=None):
+        calls.append((dag_id, conf))
+        return {"dag_run_id": "run1"}
+
+    monkeypatch.setattr(airflow_client, "trigger_dag_run", _trigger)
+
+    response = await client.post("/api/v1/admin/hotels/reembed", json={"hotel_ids": ["h1"]})
+
+    assert response.status_code == 200
+    assert response.json() == {"cleared_hotels": 1, "cleared_rooms": 0, "dag_run_id": "run1", "queued": True, "detail": None}
+    # `conf` is what actually scopes the DAG run to this hotel (and no others)
+    # -- `embed_supabase_dag.py`'s `fetch_pending_rows_task` reads it back.
+    assert calls == [(embedding_module._EMBED_DAG_ID, {"hotel_ids": ["h1"], "include_rooms": False})]
+
+
+@pytest.mark.asyncio
+async def test_reembed_invalidates_the_pipelines_list_cache_on_success(client, admin_override, no_audit, monkeypatch):
+    # Without this, a poller reading `GET /pipelines` right after this call
+    # (the hotel-detail-page progress banner) can see a stale pre-trigger
+    # snapshot for up to `_LIST_CACHE_TTL_SECONDS` -- looks like the run is
+    # stuck in "queued" when it has actually already started.
+    fake_client = _FakeClient({"hotels": [{"id": "h1", "embedding": [0.1]}]})
+    monkeypatch.setattr(embedding_module, "get_supabase_client", lambda: fake_client)
+    monkeypatch.setattr(airflow_client, "trigger_dag_run", lambda dag_id, conf=None, note=None: {"dag_run_id": "run1"})
+    calls = []
+    monkeypatch.setattr(embedding_module, "invalidate_pipelines_cache", lambda: calls.append(True))
+
+    response = await client.post("/api/v1/admin/hotels/reembed", json={"hotel_ids": ["h1"]})
+
+    assert response.status_code == 200
+    assert calls == [True]
+
+
+@pytest.mark.asyncio
+async def test_reembed_does_not_invalidate_the_cache_when_trigger_fails(client, admin_override, no_audit, monkeypatch):
+    fake_client = _FakeClient({"hotels": [{"id": "h1", "embedding": [0.1]}]})
+    monkeypatch.setattr(embedding_module, "get_supabase_client", lambda: fake_client)
+
+    def _raise(*_args, **_kwargs):
+        raise airflow_client.AirflowError("airflow_request_failed")
+
+    monkeypatch.setattr(airflow_client, "trigger_dag_run", _raise)
+    calls = []
+    monkeypatch.setattr(embedding_module, "invalidate_pipelines_cache", lambda: calls.append(True))
+
+    response = await client.post("/api/v1/admin/hotels/reembed", json={"hotel_ids": ["h1"]})
+
+    assert response.status_code == 200
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_reembed_always_triggers_even_if_a_run_is_already_in_flight(client, admin_override, no_audit, monkeypatch):
+    # No `already-running` short-circuit: an in-flight run may have started
+    # with unrelated (or no) `hotel_ids` conf and would never pick up this
+    # request's hotel otherwise. The DAG's own `max_active_runs=1` queues the
+    # new trigger behind it instead.
+    fake_client = _FakeClient({"hotels": [{"id": "h1", "embedding": [0.1]}]})
+    monkeypatch.setattr(embedding_module, "get_supabase_client", lambda: fake_client)
+    triggered = []
+    monkeypatch.setattr(airflow_client, "trigger_dag_run", lambda dag_id, conf=None, note=None: triggered.append(conf) or {"dag_run_id": "run2"})
+
+    response = await client.post("/api/v1/admin/hotels/reembed", json={"hotel_ids": ["h1"]})
+
+    assert response.status_code == 200
+    assert response.json()["queued"] is True
+    assert triggered == [{"hotel_ids": ["h1"], "include_rooms": False}]
+
+
+@pytest.mark.asyncio
+async def test_reembed_reports_airflow_request_failed_when_trigger_errors(client, admin_override, no_audit, monkeypatch):
+    fake_client = _FakeClient({"hotels": [{"id": "h1", "embedding": [0.1]}]})
+    monkeypatch.setattr(embedding_module, "get_supabase_client", lambda: fake_client)
+
+    def _raise(*_args, **_kwargs):
+        raise airflow_client.AirflowError("airflow_request_failed")
+
+    monkeypatch.setattr(airflow_client, "trigger_dag_run", _raise)
+
+    response = await client.post("/api/v1/admin/hotels/reembed", json={"hotel_ids": ["h1"]})
+
+    assert response.status_code == 200
+    assert response.json() == {"cleared_hotels": 1, "cleared_rooms": 0, "dag_run_id": None, "queued": False, "detail": "airflow_request_failed"}

@@ -10,7 +10,6 @@ interface PriceCalendarProps {
   nights: NightRow[]
   selectedDates: Set<string>
   onSelectionChange: (dates: Set<string>) => void
-  todayIso: string
 }
 
 function daysInMonth(monthStart: string): string[] {
@@ -35,9 +34,10 @@ function shiftDate(isoDate: string, deltaDays: number): string {
  * price-calendar.tsx — B6's month grid (phase-11-room-prices.md). Mouse
  * drag-select (mousedown anchor -> mouseenter extends -> window mouseup
  * commits) and Shift+Arrow keyboard selection share one range primitive
- * (`dateRange`) so both produce identical results. Past dates render at
- * reduced opacity and are inert to both input paths -- pricing a night
- * that has already happened is meaningless (see module's phase plan).
+ * (`dateRange`) so both produce identical results. Past dates are
+ * selectable like any other day -- admins backfill historical prices (e.g.
+ * closing a crawler gap) as well as future ones, and neither the write API
+ * nor the search RPC care whether a priced night is before or after today.
  *
  * Selection is driven ONLY by mousedown/mouseenter (drag) and Enter/Space
  * (keyboard toggle) -- there is deliberately no `onClick` handler. A click
@@ -47,14 +47,10 @@ function shiftDate(isoDate: string, deltaDays: number): string {
  * listener that clears `selecting` -- depending on event-flush timing, the
  * click's own mousedown-selection could get toggled straight back off.
  */
-export function PriceCalendar({ monthStart, nights, selectedDates, onSelectionChange, todayIso }: PriceCalendarProps) {
+export function PriceCalendar({ monthStart, nights, selectedDates, onSelectionChange }: PriceCalendarProps) {
   const nightsByDate = new Map(nights.map((n) => [n.date, n]))
   const days = daysInMonth(monthStart)
   const leadingBlanks = mondayIndex(days[0])
-
-  function isPast(date: string): boolean {
-    return date < todayIso
-  }
 
   const [anchor, setAnchor] = useState<string | null>(null)
   const [selecting, setSelecting] = useState(false)
@@ -67,11 +63,7 @@ export function PriceCalendar({ monthStart, nights, selectedDates, onSelectionCh
   const DRAG_THRESHOLD_PX = 6
   const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null)
   const draggingRef = useRef(false)
-  // Roving tabindex starts on the first selectable (non-past) day -- a
-  // `disabled` button can never receive focus, so starting on a past day
-  // (e.g. loading the current month after the 1st) would leave nothing in
-  // the grid reachable by Tab at all.
-  const [focusDate, setFocusDate] = useState<string>(() => days.find((d) => !isPast(d)) ?? days[days.length - 1])
+  const [focusDate, setFocusDate] = useState<string>(days[0])
   const cellRefs = useRef(new Map<string, HTMLButtonElement>())
 
   useEffect(() => {
@@ -82,7 +74,6 @@ export function PriceCalendar({ monthStart, nights, selectedDates, onSelectionCh
   }, [selecting])
 
   function startSelect(date: string, e: React.MouseEvent) {
-    if (isPast(date)) return
     setAnchor(date)
     setSelecting(true)
     setFocusDate(date)
@@ -92,7 +83,7 @@ export function PriceCalendar({ monthStart, nights, selectedDates, onSelectionCh
   }
 
   function extendSelect(date: string, e: React.MouseEvent) {
-    if (!selecting || !anchor || isPast(date)) return
+    if (!selecting || !anchor) return
     if (!draggingRef.current) {
       const start = mouseDownPosRef.current
       const traveled = start ? Math.hypot(e.clientX - start.x, e.clientY - start.y) : Infinity
@@ -103,18 +94,17 @@ export function PriceCalendar({ monthStart, nights, selectedDates, onSelectionCh
   }
 
   function moveFocus(date: string, extend: boolean) {
-    if (date < days[0] || date > days[days.length - 1] || isPast(date)) return
+    if (date < days[0] || date > days[days.length - 1]) return
     setFocusDate(date)
     cellRefs.current.get(date)?.focus()
     if (extend) {
       const from = anchor ?? focusDate
       setAnchor(from)
-      onSelectionChange(new Set(dateRange(from, date).filter((d) => !isPast(d))))
+      onSelectionChange(new Set(dateRange(from, date)))
     }
   }
 
   function toggleDate(date: string) {
-    if (isPast(date)) return
     setAnchor(date)
     const next = new Set(selectedDates)
     if (next.has(date)) next.delete(date)
@@ -145,7 +135,6 @@ export function PriceCalendar({ monthStart, nights, selectedDates, onSelectionCh
         ))}
         {days.map((date) => {
           const night = nightsByDate.get(date)
-          const past = isPast(date)
           const weekend = mondayIndex(date) >= 5
           const selected = selectedDates.has(date)
           const soldOut = night?.sold_out ?? false
@@ -160,9 +149,7 @@ export function PriceCalendar({ monthStart, nights, selectedDates, onSelectionCh
               className="price-calendar__cell"
               data-selected={selected || undefined}
               data-sold-out={soldOut || undefined}
-              data-past={past || undefined}
               tabIndex={date === focusDate ? 0 : -1}
-              disabled={past}
               onMouseDown={(e) => startSelect(date, e)}
               onMouseEnter={(e) => extendSelect(date, e)}
               onFocus={() => setFocusDate(date)}

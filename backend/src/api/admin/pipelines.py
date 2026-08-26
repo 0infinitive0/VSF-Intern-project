@@ -66,7 +66,11 @@ _TERMINAL_TASK_STATES = frozenset({"success", "failed", "skipped", "upstream_fai
 # card (L57); wrong if that Variable is ever overridden away from 25.
 _EMBEDDING_DEFAULT_CHUNK_SIZE = 25
 
-_LIST_CACHE_TTL_SECONDS = 10
+# Was 10s; lowered so the hotel-detail-page reembed progress banner (polling
+# every 1s) actually sees state changes promptly instead of the cache masking
+# them for up to 10s -- still dedupes any burst of requests inside the same
+# ~2s window, just no longer at the cost of near-real-time progress/success.
+_LIST_CACHE_TTL_SECONDS = 2
 
 
 class PipelinesHealthResponse(BaseModel):
@@ -268,6 +272,15 @@ class _ListCache:
 
 
 _list_cache = _ListCache()
+
+
+def invalidate_pipelines_cache() -> None:
+    """Public entrypoint for other admin routes that trigger a DAG run
+    outside this router (`embedding.py`'s `POST /hotels/reembed`, which
+    shares `embed_supabase_tables_pipeline` with the "Chạy embedding" button
+    here) -- without this, a poller reading `GET /pipelines` right after such
+    a trigger can see a stale snapshot for up to `_LIST_CACHE_TTL_SECONDS`."""
+    _list_cache.invalidate()
 
 
 @pipelines_router.get("", response_model=PipelinesListResponse)
