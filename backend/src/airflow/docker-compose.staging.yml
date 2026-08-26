@@ -32,6 +32,10 @@ x-airflow-common:
   &airflow-common
   image: ${AIRFLOW_IMAGE_NAME:-vsf-airflow:3.3.0}
   build: .
+  # `vsf-airflow` is a local tag, not a registry image -- without this,
+  # `up` tries to pull it first and fails with "pull access denied" on any
+  # host that hasn't built it yet.
+  pull_policy: build
   env_file:
     - ${ENV_FILE_PATH:-.env}
   environment:
