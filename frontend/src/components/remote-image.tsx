@@ -28,11 +28,19 @@ export default function RemoteImage({
   alt,
   className = '',
   icon = 'hotel',
+  fit = 'cover',
 }: {
   src?: string | null
   alt: string
   className?: string
   icon?: string
+  /** `cover` (default) fills the box and crops — right for every thumbnail
+   * here, where the box shape is fixed and the photo is decorative. `contain`
+   * is for the one place cropping is wrong: image-lightbox.tsx, where the
+   * whole point is seeing the photo entire. Kept as a prop rather than a raw
+   * <img> in the lightbox so it still gets the loading/error fallback chain
+   * above. */
+  fit?: 'cover' | 'contain'
 }) {
   const [status, setStatus] = useState<'loading' | 'ok' | 'error'>(src ? 'loading' : 'error')
 
@@ -60,7 +68,7 @@ export default function RemoteImage({
       <img
         src={src ?? undefined}
         alt={alt}
-        className="w-full h-full object-cover"
+        className={`w-full h-full ${fit === 'contain' ? 'object-contain' : 'object-cover'}`}
         loading="lazy"
         onLoad={() => setStatus('ok')}
         onError={() => setStatus('error')}
