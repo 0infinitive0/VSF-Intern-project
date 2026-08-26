@@ -726,34 +726,84 @@ button[aria-disabled="true"],
   animation: notice-shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
 }
 
-/* Smooth reveal/collapse for RoomCard's "why you can't add this room"
-   notice. grid 0fr->1fr animates to the content's own natural height —
-   height:auto isn't animatable, and the message wraps to a different number
-   of lines per locale/card width, so a hardcoded max-height would either
-   clip it or animate at the wrong speed. Toggled via data-open, and the
-   element stays mounted so collapsing animates too (a conditional mount
-   would snap the card's height on the way out). */
-.room-notice-collapse {
+/* Height-animating reveal/collapse, toggled by data-open. grid 0fr->1fr
+   animates to the content's OWN natural height — height:auto isn't
+   animatable, and this wraps content whose line count varies by locale and
+   container width, so a hardcoded max-height would either clip it or animate
+   at the wrong speed. The element must stay mounted for the collapse
+   direction to animate at all (a conditional mount snaps the height shut on
+   the way out — the bug this exists to fix).
+
+   Two collapses that swap (one opening as the other closes, same duration)
+   interpolate the container's total height between their two sizes, which is
+   how HoldFooter cross-fades its empty-cart hint and its CTA block.
+
+   visibility, not opacity alone: a collapsed-but-mounted block still holds
+   focusable buttons that would otherwise stay tabbable and clickable.
+   Delaying it by the collapse duration keeps the content visible while the
+   animation plays, then drops it out of the tab order for good. */
+.smooth-collapse {
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
+  visibility: hidden;
   transform: translateY(-3px);
   transition:
     grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1),
     opacity 0.24s ease,
-    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    margin 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    visibility 0s linear 0.3s;
 }
 
-.room-notice-collapse[data-open='true'] {
+.smooth-collapse[data-open='true'] {
   grid-template-rows: 1fr;
   opacity: 1;
+  visibility: visible;
   transform: translateY(0);
+  transition:
+    grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.24s ease,
+    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    margin 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    visibility 0s;
 }
 
 /* The animating grid row must be able to shrink below its content box. */
-.room-notice-collapse > * {
+.smooth-collapse > * {
   overflow: hidden;
   min-height: 0;
+}
+
+/* For content whose drop shadow or hover scale-up would be sheared off by
+   the overflow:hidden above (HoldFooter's CTA glow, its hint pill's
+   hover:scale). Pads the clipped box, then cancels that padding with a
+   margin animating in lockstep, so the open state lands on exactly the
+   footprint it had before the padding was added. The inline pair is constant
+   (it never affects height, so it needs no transition); only the bottom pair
+   has to move with the collapse. */
+.smooth-collapse--bleed {
+  margin-inline: -4px;
+}
+
+.smooth-collapse--bleed > * {
+  padding: 0 4px 14px;
+}
+
+.smooth-collapse--bleed[data-open='true'] {
+  margin-bottom: -14px;
+}
+
+/* For a collapse sitting in a `gap-2` flex column: at zero height it still
+   sits between two gaps where an unmounted sibling would have contributed
+   none, leaving exactly one gap of dead space. Cancel that one gap while
+   closed. */
+.smooth-collapse--absorb-gap {
+  margin-top: -0.5rem;
+}
+
+.smooth-collapse--absorb-gap[data-open='true'] {
+  margin-top: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -396,7 +396,7 @@ export default function RoomCard({
             visible gap and reintroduce the jump). */}
         {blockedReason && (
           <div
-            className="room-notice-collapse"
+            className="smooth-collapse"
             data-open={blockedNotice}
             aria-hidden={!blockedNotice}
           >

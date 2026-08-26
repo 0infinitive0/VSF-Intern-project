@@ -720,8 +720,12 @@ function HoldFooter({
 
   return (
     <>
+    {/* No `gap` on the row below on purpose: both states inside it are always
+        mounted (so the swap between them can animate), and a flex gap would
+        hold open a permanent strip of dead space between the collapsed one
+        and the open one. Each state spaces its own contents instead. */}
     <div
-      className="flex-none px-5 pt-3 pb-3.5 flex flex-col gap-2 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+      className="flex-none px-5 pt-3 pb-3.5 flex flex-col transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
       style={{
         background: 'var(--pop-bg, var(--g3))',
         backdropFilter: 'blur(26px) saturate(1.7)',
@@ -730,8 +734,13 @@ function HoldFooter({
         boxShadow: '0 -16px 36px -18px rgb(var(--shadow-rgb) / 0.55)',
       }}
     >
-      {cartCount > 0 ? (
-        <div className="flex flex-col gap-2 animate-[vRise_0.3s_cubic-bezier(0.22,1,0.36,1)_both]">
+      {/* Cart state and empty state are both mounted at all times, each
+          collapsing as the other opens, so the footer's height interpolates
+          between them instead of snapping (see .smooth-collapse). No entry
+          animation on either: the collapse and cross-fade IS the transition,
+          and a vRise on top would play over it on first paint. */}
+      <div className="smooth-collapse smooth-collapse--bleed" data-open={cartCount > 0}>
+        <div className="flex flex-col gap-2">
           {/* Compact 1-Row Summary Header */}
           <div className="flex items-center justify-between gap-3 px-0.5">
             <button
@@ -761,26 +770,37 @@ function HoldFooter({
             </div>
           </div>
 
-          {/* Collapsible Details Drawer */}
-          {detailsExpanded && (
-            <div className="max-h-[110px] overflow-y-auto custom-scrollbar flex flex-col gap-1.5 p-2 rounded-xl bg-fill/60 border border-line animate-[vRise_0.2s_ease-out_both]">
-              {rows.map((row) => (
-                <div key={row.roomId} className="flex items-center justify-between gap-2 text-[12px]">
-                  <span className="truncate text-on-surface font-medium">{row.name}</span>
-                  <div className="flex items-center gap-2 flex-none tabular-nums">
-                    <span className="text-on-surface-muted text-[11px]">{t('roomQtyLabel', { count: row.qty })}</span>
-                    <span className="font-semibold text-on-surface">
-                      {row.subtotal != null ? formatCurrency(row.subtotal, i18n.language) : t('roomPriceOnRequest')}
-                    </span>
+          {/* Collapsible Details Drawer — stays mounted so it slides both
+              ways; --absorb-gap cancels the one `gap-2` it would otherwise
+              still hold open while closed. */}
+          <div
+            className="smooth-collapse smooth-collapse--absorb-gap"
+            data-open={detailsExpanded}
+          >
+            <div>
+              <div className="max-h-[110px] overflow-y-auto custom-scrollbar flex flex-col gap-1.5 p-2 rounded-xl bg-fill/60 border border-line">
+                {rows.map((row) => (
+                  <div key={row.roomId} className="flex items-center justify-between gap-2 text-[12px]">
+                    <span className="truncate text-on-surface font-medium">{row.name}</span>
+                    <div className="flex items-center gap-2 flex-none tabular-nums">
+                      <span className="text-on-surface-muted text-[11px]">{t('roomQtyLabel', { count: row.qty })}</span>
+                      <span className="font-semibold text-on-surface">
+                        {row.subtotal != null ? formatCurrency(row.subtotal, i18n.language) : t('roomPriceOnRequest')}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          )}
+          </div>
 
           {sessionBookedFromBackend && (
             <div
-              id="hold-footer-notice"
+              /* Both footer states are mounted at once now, and each carries
+                 its own copy of this notice — so the id goes only on the one
+                 currently shown, or triggerNoticeShake's getElementById would
+                 scroll to the collapsed, invisible copy. */
+              id={cartCount > 0 ? 'hold-footer-notice' : undefined}
               role="status"
               onAnimationEnd={onNoticeAnimationEnd}
               className={`flex items-center gap-2.5 p-3 rounded-2xl border text-[12px] font-medium leading-snug transition-all duration-300 ${
@@ -830,11 +850,14 @@ function HoldFooter({
             {label}
           </button>
         </div>
-      ) : (
-        <div className="animate-[vRise_0.3s_cubic-bezier(0.22,1,0.36,1)_both]">
+      </div>
+      <div className="smooth-collapse smooth-collapse--bleed" data-open={cartCount === 0}>
+        <div>
           {sessionBookedFromBackend ? (
             <div
-              id="hold-footer-notice"
+              /* See the sibling notice in the cart state above: only the
+                 visible copy may hold the id. */
+              id={cartCount === 0 ? 'hold-footer-notice' : undefined}
               role="status"
               onAnimationEnd={onNoticeAnimationEnd}
               className={`w-full flex items-center justify-center gap-2.5 px-4 py-3 rounded-full border text-center text-[12.5px] font-[550] text-amber-700 dark:text-amber-300 transition-all duration-300 ${
@@ -886,7 +909,7 @@ function HoldFooter({
             </>
           )}
         </div>
-      )}
+      </div>
     </div>
     <ConfirmDialog
       open={confirmSwitchOpen}
