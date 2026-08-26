@@ -54,7 +54,7 @@ export function OrdersToolbar({
       <Select
         value={bookingStatus ?? 'all'}
         onChange={(e) => onBookingStatusChange(e.target.value === 'all' ? undefined : (e.target.value as BookingStatusKey))}
-        style={{ width: 190 }}
+        style={{ width: 220 }}
       >
         <option value="all">Trạng thái đơn: Tất cả</option>
         <option value="PENDING">Trạng thái đơn: Chờ xác nhận</option>
@@ -68,7 +68,7 @@ export function OrdersToolbar({
       <Select
         value={paymentStatus ?? 'all'}
         onChange={(e) => onPaymentStatusChange(e.target.value === 'all' ? undefined : (e.target.value as PaymentStatusKey))}
-        style={{ width: 170 }}
+        style={{ width: 200 }}
       >
         <option value="all">Thanh toán: Tất cả</option>
         <option value="PENDING">Thanh toán: Chờ thanh toán</option>
@@ -77,7 +77,7 @@ export function OrdersToolbar({
         <option value="CANCELLED">Thanh toán: Đã huỷ</option>
       </Select>
 
-      <Select value={hotelId ?? 'all'} onChange={(e) => onHotelIdChange(e.target.value === 'all' ? undefined : e.target.value)} style={{ width: 190 }}>
+      <Select value={hotelId ?? 'all'} onChange={(e) => onHotelIdChange(e.target.value === 'all' ? undefined : e.target.value)} style={{ width: 220 }}>
         <option value="all">Khách sạn: Tất cả</option>
         {hotels.map((hotel) => (
           <option key={hotel.id} value={hotel.id}>
