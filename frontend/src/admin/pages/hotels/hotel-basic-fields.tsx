@@ -2,7 +2,6 @@ import { useId } from 'react'
 import { Input } from '../../ui/input'
 import { Select } from '../../ui/select'
 import { Textarea } from '../../ui/textarea'
-import { PipelineFieldBadge } from './pipeline-field-badge'
 import { RagFieldLabel } from './rag-field-label'
 
 export interface HotelBasicFieldsValue {
@@ -17,12 +16,6 @@ interface HotelBasicFieldsProps {
   value: HotelBasicFieldsValue
   onChange: (next: HotelBasicFieldsValue) => void
   accommodationTypeOptions: string[]
-  /** DB column names (e.g. 'name', 'star_rating') this hotel's row got from
-   * the ETL pipeline. Renders the 🔒 warning badge next to the field's
-   * label -- decision #7 (phase-09-hotel-edit.md) means the field stays
-   * fully editable regardless; this is a warning, never a `disabled`.
-   * B2 always passes []. */
-  lockedFields: string[]
   /** Field names changed from the loaded value but not yet saved -- renders
    * the "đã sửa" badge next to that field's label. B2 always passes []. */
   changedFields: string[]
@@ -46,18 +39,15 @@ function ChangedBadge() {
 }
 
 /** hotel-basic-fields.tsx -- "Thông tin cơ bản" group, shared by B2
- * (hotel-create-page.tsx, lockedFields=[]) and B3's Cơ bản tab
- * (phase-09-hotel-edit.md, lockedFields=ETL columns). */
+ * (hotel-create-page.tsx) and B3's Cơ bản tab (phase-09-hotel-edit.md). */
 export function HotelBasicFields({
   value,
   onChange,
   accommodationTypeOptions,
-  lockedFields,
   changedFields,
   descriptionMaxLength,
   showLocationHighlight,
 }: HotelBasicFieldsProps) {
-  const locked = (field: string) => lockedFields.includes(field)
   const changed = (field: string) => changedFields.includes(field)
   // Unique per mounted instance -- B3 (Phase 9) is expected to render this
   // component alongside other field groups, and a literal id would collide
@@ -78,7 +68,6 @@ export function HotelBasicFields({
             Tên khách sạn
           </label>
           <RagFieldLabel />
-          {locked('name') && <PipelineFieldBadge />}
           {changed('name') && <ChangedBadge />}
         </div>
         <Input
@@ -96,7 +85,6 @@ export function HotelBasicFields({
               Loại hình
             </label>
             <RagFieldLabel />
-            {locked('accommodation_type') && <PipelineFieldBadge />}
             {changed('accommodation_type') && <ChangedBadge />}
           </div>
           <Input
@@ -119,7 +107,6 @@ export function HotelBasicFields({
             <label htmlFor={starId} className="field-label">
               Hạng sao
             </label>
-            {locked('star_rating') && <PipelineFieldBadge />}
             {changed('star_rating') && <ChangedBadge />}
           </div>
           <Select
@@ -144,7 +131,6 @@ export function HotelBasicFields({
               Mô tả
             </label>
             <RagFieldLabel />
-            {locked('description') && <PipelineFieldBadge />}
             {changed('description') && <ChangedBadge />}
           </div>
           <span style={{ fontSize: 11, color: 'var(--t4)' }}>
@@ -167,7 +153,6 @@ export function HotelBasicFields({
               Điểm nổi bật vị trí
             </label>
             <RagFieldLabel />
-            {locked('location_highlight') && <PipelineFieldBadge />}
             {changed('location_highlight') && <ChangedBadge />}
           </div>
           <Input

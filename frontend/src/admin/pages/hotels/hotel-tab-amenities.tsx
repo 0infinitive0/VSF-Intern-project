@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import type { AmenityOption } from '../../api/hotels-client'
 import { AMENITY_CATEGORY_ORDER, categoryLabel } from '../../lib/amenity-categories'
 import { Input } from '../../ui/input'
-import { PipelineFieldBadge } from './pipeline-field-badge'
 import { RagFieldLabel } from './rag-field-label'
 
 interface HotelTabAmenitiesProps {
@@ -13,7 +12,6 @@ interface HotelTabAmenitiesProps {
    * toggling one chip must never silently drop those. */
   selected: string[]
   onChange: (next: string[]) => void
-  locked: boolean
   changed: boolean
 }
 
@@ -25,7 +23,7 @@ function ChangedBadge() {
  * Sections the catalog by its real `category` column, one section per
  * category (see amenity-categories.ts) -- no consolidation into fewer
  * display buckets. */
-export function HotelTabAmenities({ catalog, selected, onChange, locked, changed }: HotelTabAmenitiesProps) {
+export function HotelTabAmenities({ catalog, selected, onChange, changed }: HotelTabAmenitiesProps) {
   const [search, setSearch] = useState('')
   const selectedSet = useMemo(() => new Set(selected), [selected])
   // Counted against `catalog`, not `selected.length` -- a legacy id not in
@@ -83,7 +81,6 @@ export function HotelTabAmenities({ catalog, selected, onChange, locked, changed
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
           <span style={{ fontSize: 15, fontWeight: 700 }}>Tiện ích khách sạn</span>
           <RagFieldLabel />
-          {locked && <PipelineFieldBadge />}
           {changed && <ChangedBadge />}
         </div>
         <span style={{ fontSize: 12, color: 'var(--t3)' }}>

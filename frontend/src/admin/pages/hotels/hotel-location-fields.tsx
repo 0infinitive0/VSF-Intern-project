@@ -2,7 +2,6 @@ import { useId } from 'react'
 import type { DestinationOption } from '../../api/hotels-client'
 import { Input } from '../../ui/input'
 import { MapLocationPicker } from './map-location-picker'
-import { PipelineFieldBadge } from './pipeline-field-badge'
 import { RagFieldLabel } from './rag-field-label'
 
 export interface HotelLocationFieldsValue {
@@ -16,11 +15,6 @@ interface HotelLocationFieldsProps {
   value: HotelLocationFieldsValue
   onChange: (next: HotelLocationFieldsValue) => void
   destinations: DestinationOption[]
-  /** DB column names this hotel's row got from the ETL pipeline. Renders the
-   * 🔒 warning badge next to the field's label -- decision #7
-   * (phase-09-hotel-edit.md) means the field stays fully editable
-   * regardless; this is a warning, never a `disabled`. B2 always passes []. */
-  lockedFields: string[]
   /** Field names changed from the loaded value but not yet saved -- renders
    * the "đã sửa" badge next to that field's label. B2 always passes []. */
   changedFields: string[]
@@ -37,15 +31,13 @@ function ChangedBadge() {
 }
 
 /** hotel-location-fields.tsx -- "Vị trí" group, shared by B2
- * (hotel-create-page.tsx, lockedFields=[]) and B3's Vị trí tab
- * (phase-09-hotel-edit.md, lockedFields=ETL columns). `city` stays free
- * text (L26); resolving it to a `destination_id` only happens at submit
- * time in hotel-create-page.tsx (against whatever `destinations` list has
- * loaded by then), not here on every keystroke -- doing it here would race
- * the destinations fetch and could silently drop a match typed before the
- * list arrived. */
-export function HotelLocationFields({ value, onChange, destinations, lockedFields, changedFields }: HotelLocationFieldsProps) {
-  const locked = (field: string) => lockedFields.includes(field)
+ * (hotel-create-page.tsx) and B3's Vị trí tab (phase-09-hotel-edit.md).
+ * `city` stays free text (L26); resolving it to a `destination_id` only
+ * happens at submit time in hotel-create-page.tsx (against whatever
+ * `destinations` list has loaded by then), not here on every keystroke --
+ * doing it here would race the destinations fetch and could silently drop a
+ * match typed before the list arrived. */
+export function HotelLocationFields({ value, onChange, destinations, changedFields }: HotelLocationFieldsProps) {
   const changed = (field: string) => changedFields.includes(field)
   // Unique per mounted instance -- B3 (Phase 9) is expected to render this
   // component alongside other field groups, and a literal id would collide
@@ -65,7 +57,6 @@ export function HotelLocationFields({ value, onChange, destinations, lockedField
             Địa chỉ
           </label>
           <RagFieldLabel />
-          {locked('address') && <PipelineFieldBadge />}
           {changed('address') && <ChangedBadge />}
         </div>
         <Input
@@ -82,7 +73,6 @@ export function HotelLocationFields({ value, onChange, destinations, lockedField
           <label htmlFor={cityId} className="field-label">
             Thành phố / Tỉnh
           </label>
-          {locked('city') && <PipelineFieldBadge />}
           {changed('city') && <ChangedBadge />}
         </div>
         <Input
@@ -106,7 +96,6 @@ export function HotelLocationFields({ value, onChange, destinations, lockedField
             <label htmlFor={latitudeId} className="field-label">
               Vĩ độ
             </label>
-            {locked('coordinates') && <PipelineFieldBadge />}
             {changed('coordinates') && <ChangedBadge />}
           </div>
           <Input
@@ -123,7 +112,6 @@ export function HotelLocationFields({ value, onChange, destinations, lockedField
             <label htmlFor={longitudeId} className="field-label">
               Kinh độ
             </label>
-            {locked('coordinates') && <PipelineFieldBadge />}
             {changed('coordinates') && <ChangedBadge />}
           </div>
           <Input

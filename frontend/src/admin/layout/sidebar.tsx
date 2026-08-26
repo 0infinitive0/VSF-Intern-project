@@ -47,6 +47,13 @@ export function Sidebar({ path, navigate, pendingOrderCount, pendingAmenityCount
   const badgeCounts: Partial<Record<string, number>> = { pendingOrderCount, pendingAmenityCount }
   const { user, signOut } = useAuth()
 
+  // Longest matching path wins so a nested route (e.g. /admin/hotels) doesn't
+  // also light up its ancestor (/admin) via matchesBase's prefix check.
+  const activePath = NAV.flatMap((g) => g.items)
+    .map((item) => item.path)
+    .filter((p) => matchesBase(path, p))
+    .sort((a, b) => b.length - a.length)[0]
+
   return (
     <div
       style={{
@@ -93,7 +100,7 @@ export function Sidebar({ path, navigate, pendingOrderCount, pendingAmenityCount
               </div>
             )}
             {group.items.map((item) => {
-              const active = matchesBase(path, item.path)
+              const active = item.path === activePath
               const badgeKey = BADGE_COUNT_BY_PATH[item.path]
               const badge = badgeKey ? badgeCounts[badgeKey] : undefined
               return (

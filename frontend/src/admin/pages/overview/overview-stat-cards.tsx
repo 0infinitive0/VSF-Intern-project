@@ -44,7 +44,25 @@ function StatCard({ label, value, subline, valueColor, rail }: StatCardProps) {
 }
 
 function SkeletonCard() {
-  return <div style={{ flex: 1, minWidth: 0, height: 84, borderRadius: 16, background: 'var(--g3)', border: '1px solid var(--stroke)' }} />
+  return (
+    <div
+      style={{
+        flex: 1,
+        minWidth: 0,
+        background: 'var(--g3)',
+        border: '1px solid var(--stroke)',
+        borderRadius: 16,
+        padding: '14px 16px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+      }}
+    >
+      <div className="skeleton-bar" style={{ width: '50%', height: 9 }} />
+      <div className="skeleton-bar" style={{ width: '35%', height: 22 }} />
+      <div className="skeleton-bar" style={{ width: '65%', height: 8 }} />
+    </div>
+  )
 }
 
 export function OverviewStatCards({ orders }: OverviewStatCardsProps) {

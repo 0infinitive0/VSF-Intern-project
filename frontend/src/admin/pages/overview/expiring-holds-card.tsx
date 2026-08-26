@@ -13,6 +13,22 @@ const _WARN_THRESHOLD_MS = 30 * 60 * 1000
  * (⏱ đã hết hạn / ≤30 phút / >30 phút) -- kept local rather than imported
  * since that file doesn't export it, but the shapes and thresholds match
  * exactly. */
+function SkeletonRows() {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {Array.from({ length: 3 }, (_, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
+            <div className="skeleton-bar" style={{ width: 140, height: 10 }} />
+            <div className="skeleton-bar" style={{ width: 100, height: 9 }} />
+          </div>
+          <div className="skeleton-bar" style={{ width: 56, height: 18, borderRadius: 999 }} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function ExpiresChip({ expiresAt, now }: { expiresAt: string | null | undefined; now: number }) {
   if (!expiresAt) return <span style={{ color: 'var(--t4)' }}>—</span>
   const msLeft = new Date(expiresAt).getTime() - now
@@ -47,7 +63,7 @@ export function ExpiringHoldsCard({ holds }: ExpiringHoldsCardProps) {
         )}
       </div>
 
-      {holds === null && <div style={{ height: 100, opacity: 0.4 }} />}
+      {holds === null && <SkeletonRows />}
 
       {holds !== null && holds.length === 0 && (
         <EmptyState title="✓ Không có giữ chỗ nào sắp hết hạn." description="Chưa có khách nào giữ chỗ sắp hết hạn trong 30 phút tới." />
