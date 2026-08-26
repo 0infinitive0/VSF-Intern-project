@@ -110,6 +110,23 @@ export default function ImageLightbox({
 
   if (!mounted || count === 0) return null
 
+  // The photo before, at and after the current one, all kept mounted and
+  // stacked. Keying a single <img> on the URL instead made every navigation
+  // remount it, so the guest watched RemoteImage's loading box flash between
+  // photos; here the neighbour is already loaded and the swap is a pure
+  // opacity/transform transition with nothing to wait for.
+  //
+  // The offset (-1/0/+1) is the layer's position, not `i - safeIndex`, so
+  // wrapping from the last photo to the first still slides one step rather
+  // than the whole width of the array. Current is written last: at one or two
+  // photos the three roles collide on the same index, and the visible layer
+  // has to win.
+  const layerOffsets = new Map<number, number>()
+  layerOffsets.set((safeIndex - 1 + count) % count, -1)
+  layerOffsets.set((safeIndex + 1) % count, 1)
+  layerOffsets.set(safeIndex, 0)
+  const layers = [...layerOffsets.entries()].sort((a, b) => a[0] - b[0])
+
   const navButtonClass =
     'absolute top-1/2 -translate-y-1/2 w-11 h-11 rounded-full flex items-center justify-center ' +
     'text-white border border-white/20 cursor-pointer transition-all duration-200 ' +
@@ -156,17 +173,36 @@ export default function ImageLightbox({
           transition: `opacity ${EXIT_MS}ms ease, transform 320ms cubic-bezier(.22,1,.36,1)`,
         }}
       >
-        <RemoteImage
-          // Keyed on the URL so switching photos remounts the box and replays
-          // its own loading state, instead of showing the previous photo
-          // until the new one decodes.
-          key={images[safeIndex]}
-          src={images[safeIndex]}
-          alt={altFor(safeIndex)}
-          icon={icon}
-          fit="contain"
-          className="w-full rounded-[24px] h-[78vh]"
-        />
+        <div className="relative w-full h-[78vh]">
+          {layers.map(([i, offset]) => (
+            <div
+              // Keyed by index, not URL: the same photo can legitimately
+              // appear twice in one array, and duplicate keys would collapse
+              // two layers into one.
+              key={i}
+              className="absolute inset-0"
+              // The outgoing layer keeps its own transition running while the
+              // incoming one fades in over it, which is what makes this read
+              // as a cross-fade rather than a blank-then-appear.
+              style={{
+                opacity: offset === 0 ? 1 : 0,
+                transform: `translateX(${offset * 26}px)`,
+                transition:
+                  'opacity 280ms ease, transform 340ms cubic-bezier(.22,1,.36,1)',
+                pointerEvents: offset === 0 ? undefined : 'none',
+              }}
+              aria-hidden={offset !== 0}
+            >
+              <RemoteImage
+                src={images[i]}
+                alt={offset === 0 ? altFor(i) : ''}
+                icon={icon}
+                fit="contain"
+                className="w-full h-full rounded-[24px]"
+              />
+            </div>
+          ))}
+        </div>
 
         {count > 1 && (
           <>
