@@ -146,7 +146,17 @@ export default function ImageLightbox({
       // Only a click that lands on the backdrop itself closes — the same
       // guard booking-modal.tsx uses, so dragging off the photo or releasing
       // over a control doesn't dismiss.
+      //
+      // stopPropagation is required here, not optional: createPortal moves
+      // this DOM node to document.body, but React re-parents the SYNTHETIC
+      // event to bubble up the component tree it was rendered from, not the
+      // DOM tree it lives in. Without this, clicking prev/next/close bubbles
+      // straight through the portal into whatever opened the gallery — in
+      // RoomCard that's the whole card's onClick, which collapses the
+      // details section this gallery lives in and unmounts the lightbox out
+      // from under the guest mid-click.
       onClick={(e) => {
+        e.stopPropagation()
         if (e.target === e.currentTarget) onClose()
       }}
       onTouchStart={(e) => {
