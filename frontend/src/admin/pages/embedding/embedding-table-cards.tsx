@@ -30,7 +30,7 @@ export function EmbeddingTableCards({ tables }: { tables: EmbeddingTableSummary[
               {formatInt(t.embedded)} / {formatInt(t.total)}
             </div>
             <div style={{ fontSize: 12, fontWeight: 600, color: hasMissing ? 'var(--warn-ink)' : 'var(--ok-ink)' }}>
-              {hasMissing ? `${formatInt(t.missing)} chưa nhúng` : '✓ Đủ'}
+              {hasMissing ? `${formatInt(t.missing)} chưa embed` : '✓ Đủ'}
             </div>
           </div>
         )
