@@ -196,11 +196,22 @@ export default function ChatPanel({
     // missing one of them. Once `intake.missing` is empty it already has all
     // three, and prepending them to typed text turns a correction into a
     // self-contradiction ("Tôi muốn đi Hà Nội ... tôi muốn đổi lại đi nha
-    // trang") that the user then sees as their own message. Budget and
-    // preferences sentences are unaffected: those are never gated by
-    // `missing`, so a locally-collected budget still has to travel with the
-    // typed text. See ComposeIntakeOptions.includeTripFacts.
+    // trang") that the user then sees as their own message. See
+    // ComposeIntakeOptions.includeTripFacts.
     const backendHasTripFacts = intake != null && (intake.missing?.length ?? 0) === 0
+    // Same self-contradiction bug for the "preferences" step's bundled fields
+    // (chips/companions/pace/day-rhythm): `intake.missing` never lists them
+    // (next-intake-field.ts), but the backend still confirms each once
+    // answered via plain chat. Left unguarded, an already-confirmed "đi một
+    // mình" rode along on every later typed message however unrelated
+    // ("đổi ngày đi sang ngày 1/7" went out as "Đi cùng: đi một mình. đổi
+    // ngày đi sang ngày 1/7"). While the preferences step is actually active,
+    // keep restating everything unconditionally — that's the real
+    // in-progress submission, same as the widget's own submit button.
+    const backendHasCompanions = intake != null && Boolean(intake.companions)
+    const backendHasPace = intake != null && Boolean(intake.pace)
+    const backendHasDayRhythm = intake != null && (intake.day_rhythm?.length ?? 0) > 0
+    const backendHasPreferenceLabels = intake != null && (intake.preferences?.length ?? 0) > 0
     onSend(
       composeIntakeMessage(
         {
@@ -213,7 +224,13 @@ export default function ChatPanel({
               }
             : { notes: intakeForm.notes ? `${intakeForm.notes} ${text}` : text }),
         },
-        { includeTripFacts: !backendHasTripFacts },
+        {
+          includeTripFacts: !backendHasTripFacts,
+          includePreferenceLabels: atPreferencesStep || !backendHasPreferenceLabels,
+          includeCompanions: atPreferencesStep || !backendHasCompanions,
+          includePace: atPreferencesStep || !backendHasPace,
+          includeDayRhythm: atPreferencesStep || !backendHasDayRhythm,
+        },
       ),
     )
   }

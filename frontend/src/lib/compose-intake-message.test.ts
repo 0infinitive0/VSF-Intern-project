@@ -166,6 +166,40 @@ describe('composeIntakeMessage', () => {
     )
     expect(message).toBe('Ngân sách khách sạn: không giới hạn. cho tôi xem khách sạn')
   })
+
+  // Session 249ef9b6 turn 3: companions was already confirmed by the backend
+  // in an earlier turn ("đi một mình"), and the user typed only a date
+  // change. Restating it produced "Đi cùng: đi một mình. đổi ngày đi sang
+  // ngày 1/7" — text the user never typed, echoed back as their own message.
+  it('omits companions/pace/day-rhythm/preference-label sentences when the caller says the backend already has them', () => {
+    const form = fill({
+      companions: 'solo',
+      pace: 'relaxed',
+      dayRhythm: ['earlyStart'],
+      preferences: ['beach'],
+      notes: 'đổi ngày đi sang ngày 1/7',
+    })
+    const message = composeIntakeMessage(form, {
+      includeTripFacts: false,
+      includeCompanions: false,
+      includePace: false,
+      includeDayRhythm: false,
+      includePreferenceLabels: false,
+    })
+    expect(message).toBe('đổi ngày đi sang ngày 1/7')
+    // Default stays byte-identical to the frozen wire protocol.
+    expect(composeIntakeMessage(form, { includeTripFacts: false })).toBe(
+      'Sở thích: biển. Đi cùng: đi một mình. Nhịp độ: thư thái. Nhịp sinh hoạt: bắt đầu sớm. đổi ngày đi sang ngày 1/7',
+    )
+  })
+
+  it('keeps free text typed at the preferences step even when preference labels are suppressed', () => {
+    const message = composeIntakeMessage(
+      fill({ preferences: ['beach'], preferencesNotes: 'trẻ em' }),
+      { includeTripFacts: false, includePreferenceLabels: false },
+    )
+    expect(message).toBe('Sở thích: trẻ em.')
+  })
 })
 
 /**

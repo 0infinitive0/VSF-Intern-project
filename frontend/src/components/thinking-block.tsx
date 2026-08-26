@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useTypewriter } from '../lib/use-typewriter'
 import type { ThinkingGroup, ThinkingGroupKey } from '../types'
 
 /**
@@ -41,8 +42,20 @@ export default function ThinkingBlock({ groups }: { groups: ThinkingGroup[] }) {
   // Once the turn has answered, every step closes: the reply is what the reader
   // came for, and a step left open pushes it down the page — or, when the
   // model's reasoning ran long, right off it. Clicking still opens any step.
+  //
+  // Exception: a turn with exactly one step (e.g. a plain date correction —
+  // only `analyze` ever fires) has nothing to collapse FOR — there is no
+  // second step competing for room, so closing it just leaves a bare
+  // checkmark with the one useful line ("Nhận diện: ...", "Ghi nhận: ...")
+  // hidden behind a click for no space saved.
   const openStep =
-    pinnedStep === null ? (allDone ? null : lastWithDetail ?? runningKey) : pinnedStep || null
+    pinnedStep === null
+      ? allDone
+        ? groups.length === 1
+          ? groups[0].key
+          : null
+        : lastWithDetail ?? runningKey
+      : pinnedStep || null
 
   if (groups.length === 0) return null
 
@@ -139,12 +152,7 @@ function Step({
               belonging to the step above it. */}
           <div className="pl-[26px] pt-0.5 pb-1 flex flex-col gap-0">
             {group.lines.map((line) => (
-              <p
-                key={line}
-                className="text-[13px] leading-[1.65] text-on-surface-muted motion-safe:animate-[vRise_.26s_ease-out]"
-              >
-                {line}
-              </p>
+              <ThinkingLine key={line} text={line} />
             ))}
 
             {/* The model's own words, kept visibly apart from the product's.
@@ -161,6 +169,23 @@ function Step({
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * A single fact line ("Nhận diện: ...", "Ghi nhận: ..."), typed out like the
+ * reply below it. The line arrives complete — the backend reports a finished
+ * fact, not tokens — so this paces the reveal the same way `useTypewriter`
+ * already does for template replies in message-bubble.tsx: nothing is
+ * withheld, only the reveal is spread out so the block doesn't read as static
+ * while the reply beside it types itself out.
+ */
+function ThinkingLine({ text }: { text: string }) {
+  const shown = useTypewriter(text, true)
+  return (
+    <p className="text-[13px] leading-[1.65] text-on-surface-muted motion-safe:animate-[vRise_.26s_ease-out]">
+      {shown}
+    </p>
   )
 }
 

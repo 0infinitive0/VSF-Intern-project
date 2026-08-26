@@ -123,11 +123,34 @@ export interface ComposeIntakeOptions {
    * question on the user's behalf before it was ever put to them.
    */
   includePreferencesOptOut?: boolean
+  /**
+   * Whether to restate preference chips / companions / pace / day-rhythm —
+   * each defaults true (every existing caller, including the terminal
+   * "preferences" widget submit, states everything it knows). The free-text
+   * composer path (chat-panel.tsx's handleComposerSend) is the only caller
+   * that passes false for a field the backend has already confirmed: once
+   * `intake.companions` (etc.) is set, that field must not keep riding along
+   * on every later typed message the way `includeTripFacts` already guards
+   * destination/dates/people — see the `includeTripFacts` doc above for the
+   * self-contradiction bug this mirrors ("Đi cùng: đi một mình." glued onto
+   * a message that only asked to change the date).
+   */
+  includePreferenceLabels?: boolean
+  includeCompanions?: boolean
+  includePace?: boolean
+  includeDayRhythm?: boolean
 }
 
 export function composeIntakeMessage(
   form: IntakeFormState,
-  { includeTripFacts = true, includePreferencesOptOut = false }: ComposeIntakeOptions = {},
+  {
+    includeTripFacts = true,
+    includePreferencesOptOut = false,
+    includePreferenceLabels = true,
+    includeCompanions = true,
+    includePace = true,
+    includeDayRhythm = true,
+  }: ComposeIntakeOptions = {},
 ): string {
   const sentences: string[] = []
 
@@ -160,7 +183,9 @@ export function composeIntakeMessage(
     sentences.push(`Ngân sách khách sạn: ${budgetRangePhrase(form.budgetMinVnd, form.budgetMaxVnd)}.`)
   }
 
-  const preferenceLabels = form.preferences.map((key) => PREFERENCE_WIRE_VALUE_VI[key])
+  const preferenceLabels = includePreferenceLabels
+    ? form.preferences.map((key) => PREFERENCE_WIRE_VALUE_VI[key])
+    : []
   const freeTextPreference = form.preferencesNotes.trim()
   if (preferenceLabels.length > 0 || freeTextPreference) {
     const allLabels = freeTextPreference ? [...preferenceLabels, freeTextPreference] : preferenceLabels
@@ -168,13 +193,13 @@ export function composeIntakeMessage(
   } else if (includePreferencesOptOut) {
     sentences.push(`Sở thích: ${PREFERENCES_SKIP_PHRASE}.`)
   }
-  if (form.companions) {
+  if (includeCompanions && form.companions) {
     sentences.push(`Đi cùng: ${COMPANION_WIRE_VALUE_VI[form.companions]}.`)
   }
-  if (form.pace) {
+  if (includePace && form.pace) {
     sentences.push(`Nhịp độ: ${PACE_WIRE_VALUE_VI[form.pace]}.`)
   }
-  if (form.dayRhythm.length > 0) {
+  if (includeDayRhythm && form.dayRhythm.length > 0) {
     const labels = form.dayRhythm.map((key) => DAY_RHYTHM_WIRE_VALUE_VI[key])
     sentences.push(`Nhịp sinh hoạt: ${labels.join(', ')}.`)
   }
