@@ -187,6 +187,22 @@ def _v3_context(state: dict[str, Any]) -> dict[str, Any]:
     it back; unlike `itineraries`' typed/FK-constrained columns, this is raw
     JSONB, so a single malformed item elsewhere can't make this copy's write
     fail the way it silently broke the specialized one.
+
+    `hotel_options` (below) is the same idea applied to the OTHER thing a
+    checkpoint eviction takes with it: `previous_hotel_options`
+    (agents/graph/state.py) -- the real ranked hotel search-results list a
+    guest was shown/browsing (match_score, pricing, everything), which lives
+    ONLY in the checkpoint, never in `itineraries` or anywhere else. Added
+    2026-08-25 same day as `trip_data` above, after live reports of the same
+    root problem surfacing two ways once `trip_data` alone was fixed: (a) a
+    guest who HAD picked a hotel came back to see only that one card, the
+    other 4 gone, and its "Giữ phòng" broken (the single-entry fallback
+    `hotel_options_from_trip_data` builds is explicitly not a real search
+    result -- see its own doc comment); (b) a guest who had NOT picked one
+    yet -- still browsing the list -- came back to the Hotels tab locked
+    outright (`hotel_options_from_trip_data` has no `trip_data.hotel` to
+    reconstruct even one card from). `session_store.recover_hotel_options`
+    reads this back the same way `recover_trip_data` does.
     """
     trip = _current_trip(state)
     # `_ui_summary` reads `intake.destination` and `trip_data` — the former is
@@ -203,6 +219,7 @@ def _v3_context(state: dict[str, Any]) -> dict[str, Any]:
         "travel_state": state.get("travel_state") or {},
         "trip": trip,
         "trip_data": state.get("trip_data") or {},
+        "hotel_options": state.get("previous_hotel_options") or [],
         "ui_summary": _ui_summary(ui_view, trip),
     }
 
@@ -481,9 +498,9 @@ def recover_trip_data(session_id: str) -> dict[str, Any] | None:
     Tries `itineraries` first (the canonical, query-friendly copy when
     present), then falls back to the embedded `context_data.trip_data`
     copy. Callers needing "is there ANY durable copy at all" (routes.py's
-    `restore_session`/`create_booking`, turn_runner.py's `run_turn`) all
-    want this exact precedence, so it lives here once instead of each
-    re-deriving it. Returns None only if genuinely neither exists.
+    `restore_session`, turn_runner.py's `run_turn`) both want this exact
+    precedence, so it lives here once instead of each re-deriving it.
+    Returns None only if genuinely neither exists.
     """
     from src.services.itinerary_store import ItineraryStore, ItineraryStoreError
 
@@ -500,6 +517,25 @@ def recover_trip_data(session_id: str) -> dict[str, Any] | None:
         return None
     embedded = (row.get("context_data") or {}).get("trip_data")
     return embedded or None
+
+
+def recover_hotel_options(session_id: str) -> list[dict[str, Any]] | None:
+    """Recovers the real hotel search-results list (`previous_hotel_options`
+    in graph state) for a session whose checkpoint is gone -- see
+    `_v3_context`'s doc comment for the full story of why this exists
+    alongside `recover_trip_data`. Unlike `trip_data`, there is no second
+    structured-table copy to try first (`previous_hotel_options` never had
+    one) -- the embedded `context_data.hotel_options` copy is the only
+    durable source. Returns None when genuinely nothing was ever shown for
+    this session (predates this fix, or a turn that reset it before any
+    search ran) -- callers fall back to `response_payload.
+    hotel_options_from_trip_data`'s single-entry reconstruction in that case.
+    """
+    row = load(session_id)
+    if row is None:
+        return None
+    options = (row.get("context_data") or {}).get("hotel_options")
+    return options or None
 
 
 def delete(session_id: str, *, user_id: str | None = None) -> None:

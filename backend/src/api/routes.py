@@ -43,9 +43,9 @@ from src.agents.graph.nodes.load_context import load_context
 from src.agents.graph.response_payload import (
     derive_stage,
     durable_hotel_options,
-    hotel_options_from_trip_data,
     intake_status_from_travel_state,
     last_worker_from_task_results,
+    recovered_hotel_options,
 )
 from src.agents.graph.turn_runner import (
     _persist_turn as _persist_turn_impl,
@@ -642,7 +642,7 @@ def restore_session(
         if recovered:
             state = {**state, "trip_data": recovered}
     travel_state = TravelState.from_dict(state.get("travel_state"))
-    hotel_options = durable_hotel_options(state) or hotel_options_from_trip_data(state.get("trip_data"))
+    hotel_options = durable_hotel_options(state) or recovered_hotel_options(session_id, state.get("trip_data"))
 
     return SessionRestorePayload(
         session_id=session_id,

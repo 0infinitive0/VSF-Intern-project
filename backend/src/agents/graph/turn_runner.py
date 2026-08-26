@@ -352,6 +352,17 @@ def run_turn(
             recovered = session_store.recover_trip_data(session_id)
             if recovered:
                 extra_state = {**(extra_state or {}), "trip_data": recovered}
+            # Same recovery for the OTHER thing this checkpoint took with it:
+            # the real hotel search-results list (session_store.
+            # recover_hotel_options's doc comment has the full story). A
+            # continuing turn that reads previous_hotel_options (hotel_node
+            # revising the list, qa_node's shown_hotels tool answering "what
+            # was #3 again?") would otherwise see an empty list and behave as
+            # if no search had ever run, even though the guest's chat
+            # transcript shows one plainly did.
+            recovered_options = session_store.recover_hotel_options(session_id)
+            if recovered_options:
+                extra_state = {**(extra_state or {}), "previous_hotel_options": recovered_options}
         if snapshot.interrupts:
             result = _drive_turn(app, config, Command(resume=message), stream=stream)
             unresolved = result.get("unresolved_resume_text")

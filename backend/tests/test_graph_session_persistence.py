@@ -174,6 +174,20 @@ class TestContextShape:
         session_store.persist_graph_session(_session(), state)
         assert fake_supabase.context["trip_data"] == state["trip_data"]
 
+    def test_also_embeds_the_shown_hotel_options_list(self, fake_supabase: _FakeSupabase):
+        """Same idea as `trip_data` above, applied to `previous_hotel_options`
+        -- the real ranked search-results list, which otherwise lives ONLY in
+        the checkpoint (see this function's own doc comment for the two live
+        symptoms this fixes: a picked hotel losing its 4 alternatives, and a
+        guest who hadn't picked one yet losing the Hotels tab outright)."""
+        state = _graph_state(previous_hotel_options=[{"id": "h-1", "name": "Mường Thanh"}])
+        session_store.persist_graph_session(_session(), state)
+        assert fake_supabase.context["hotel_options"] == [{"id": "h-1", "name": "Mường Thanh"}]
+
+    def test_hotel_options_embeds_as_an_empty_list_when_none_were_shown(self, fake_supabase: _FakeSupabase):
+        session_store.persist_graph_session(_session(), _graph_state())
+        assert fake_supabase.context["hotel_options"] == []
+
 
 class TestTranscript:
     def test_records_the_user_turn_and_the_reply(self, fake_supabase: _FakeSupabase):
@@ -402,10 +416,10 @@ def _patch_itinerary_store(monkeypatch: pytest.MonkeyPatch, fake_store: _FakeIti
 
 
 class TestRecoverTripData:
-    """The shared fallback restore_session, run_turn, and create_booking's
-    booking gate all call once a session's LangGraph checkpoint is gone.
-    Two independent durable copies, tried in order -- see this function's
-    own doc comment (and _v3_context's) for why there are two, not one."""
+    """The shared fallback restore_session and run_turn both call once a
+    session's LangGraph checkpoint is gone. Two independent durable copies,
+    tried in order -- see this function's own doc comment (and
+    _v3_context's) for why there are two, not one."""
 
     def test_prefers_the_itineraries_table_when_present(self, monkeypatch: pytest.MonkeyPatch):
         fake_store = _FakeItineraryStore(trip_data={"destination": "Từ itineraries"})
@@ -451,3 +465,39 @@ class TestRecoverTripData:
         monkeypatch.setattr(session_store, "load", lambda _sid: {"context_data": {"trip": {}}})
 
         assert session_store.recover_trip_data("s1") is None
+
+
+class TestRecoverHotelOptions:
+    """Sibling to TestRecoverTripData for `previous_hotel_options` -- unlike
+    `trip_data`, there is no structured-table copy to try first (see
+    recover_hotel_options's own doc comment), so the embedded
+    `context_data.hotel_options` copy is the only durable source."""
+
+    def test_reads_the_embedded_copy(self, monkeypatch: pytest.MonkeyPatch):
+        options = [{"id": "h-1", "name": "Mường Thanh"}]
+        monkeypatch.setattr(session_store, "load", lambda _sid: {"context_data": {"hotel_options": options}})
+
+        assert session_store.recover_hotel_options("s1") == options
+
+    def test_returns_none_when_the_session_row_does_not_exist(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(session_store, "load", lambda _sid: None)
+
+        assert session_store.recover_hotel_options("s1") is None
+
+    def test_returns_none_when_context_data_never_embedded_hotel_options(self, monkeypatch: pytest.MonkeyPatch):
+        """A row written before this fix shipped, or one where trip_data got
+        embedded but no search had run yet -- context_data has no
+        `hotel_options` key at all."""
+        monkeypatch.setattr(session_store, "load", lambda _sid: {"context_data": {"trip_data": {}}})
+
+        assert session_store.recover_hotel_options("s1") is None
+
+    def test_returns_none_for_an_embedded_empty_list_not_just_a_missing_key(self, monkeypatch: pytest.MonkeyPatch):
+        """A session that has run turns (so `hotel_options` is present, per
+        _v3_context always writing at least `[]`) but never searched --
+        `or None` normalizes an explicit `[]` the same as "nothing to
+        recover", so callers fall back to hotel_options_from_trip_data
+        exactly as they would for a missing key."""
+        monkeypatch.setattr(session_store, "load", lambda _sid: {"context_data": {"hotel_options": []}})
+
+        assert session_store.recover_hotel_options("s1") is None

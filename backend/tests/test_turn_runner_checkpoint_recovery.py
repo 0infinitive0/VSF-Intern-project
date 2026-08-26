@@ -68,6 +68,7 @@ class TestRecoversTripDataForAFreshTurn:
             "src.services.itinerary_store.ItineraryStore.from_default",
             classmethod(lambda cls: fake_store),
         )
+        monkeypatch.setattr(session_store, "load", lambda _sid: None)
 
         turn_runner.run_turn(_FakeApp({}), "s1", "đổi khách sạn", "vi")
 
@@ -85,11 +86,32 @@ class TestRecoversTripDataForAFreshTurn:
             "src.services.itinerary_store.ItineraryStore.from_default",
             classmethod(lambda cls: fake_store),
         )
+        monkeypatch.setattr(session_store, "load", lambda _sid: None)
 
         turn_runner.run_turn(_FakeApp({}), "s1", "chọn khách sạn 1", "vi", extra_state={"selected_hotel_id": "h-1"})
 
         assert captured["turn_input"]["selected_hotel_id"] == "h-1"
         assert captured["turn_input"]["trip_data"] == _RECOVERED_TRIP_DATA
+
+    def test_injects_recovered_hotel_options_alongside_trip_data(self, monkeypatch: pytest.MonkeyPatch):
+        """Sibling recovery for the OTHER thing a checkpoint eviction takes
+        with it -- session_store.recover_hotel_options's doc comment has the
+        full story of why this rides along the same recovery block."""
+        captured: dict[str, Any] = {}
+        monkeypatch.setattr(turn_runner, "_drive_turn", _fake_drive_turn(captured))
+        fake_store = _FakeItineraryStore(trip_data=_RECOVERED_TRIP_DATA)
+        monkeypatch.setattr(
+            "src.services.itinerary_store.ItineraryStore.from_default",
+            classmethod(lambda cls: fake_store),
+        )
+        recovered_options = [{"id": "hotel-1", "name": "Vinpearl Resort"}]
+        monkeypatch.setattr(
+            session_store, "load", lambda _sid: {"context_data": {"hotel_options": recovered_options}}
+        )
+
+        turn_runner.run_turn(_FakeApp({}), "s1", "khách sạn đó có gì gần đó", "vi")
+
+        assert captured["turn_input"]["previous_hotel_options"] == recovered_options
 
     def test_a_session_with_no_durable_itinerary_runs_the_turn_unchanged(self, monkeypatch: pytest.MonkeyPatch):
         """No itinerary row for this session (it genuinely never built a
@@ -110,6 +132,7 @@ class TestRecoversTripDataForAFreshTurn:
 
         assert fake_store.calls == ["s1"]
         assert "trip_data" not in captured["turn_input"]
+        assert "previous_hotel_options" not in captured["turn_input"]
 
     def test_falls_back_to_the_trip_data_embedded_in_context_data(self, monkeypatch: pytest.MonkeyPatch):
         """Companion to test_restore_endpoint.py's identically-named test:

@@ -276,6 +276,32 @@ class TestCheckpointEvictedFallback:
         assert payload.trip_plan is None
         assert payload.hotel_options == []
 
+    def test_still_browsing_no_hotel_picked_yet_recovers_the_shown_list(
+        self, restored, monkeypatch: pytest.MonkeyPatch
+    ):
+        """The other live report alongside test_recovers_the_real_hotel_
+        options_list_when_embedded above: a guest who saw the search results
+        but had NOT picked a hotel yet -- `trip_data.hotel` never existed, so
+        `hotel_options_from_trip_data` has nothing to reconstruct even a
+        single card from -- used to come back to the Hotels tab locked
+        outright (`hotelOptionsAvailable` false, no `tripPlan` either). The
+        embedded `context_data.hotel_options` copy is what fixes this case
+        specifically: no trip_data.hotel needed at all."""
+        fake_store = _FakeItineraryStore(trip_data=None)
+        monkeypatch.setattr(
+            "src.services.itinerary_store.ItineraryStore.from_default",
+            classmethod(lambda cls: fake_store),
+        )
+        shown_list = [
+            {"id": "hotel-1", "name": "Vinpearl Resort", "average_nightly_price": 1_200_000},
+            {"id": "hotel-2", "name": "Mường Thanh", "average_nightly_price": 900_000},
+        ]
+
+        payload = restored(state={}, context_data={"hotel_options": shown_list})
+
+        assert payload.trip_plan is None
+        assert [o.name for o in payload.hotel_options] == ["Vinpearl Resort", "Mường Thanh"]
+
     def test_a_durable_lookup_failure_does_not_fail_the_whole_restore(
         self, restored, monkeypatch: pytest.MonkeyPatch
     ):
@@ -317,6 +343,31 @@ class TestCheckpointEvictedFallback:
         assert fake_store.calls == ["s1"]
         assert payload.trip_plan is not None
         assert [o.name for o in payload.hotel_options] == ["Vinpearl Resort"]
+
+    def test_recovers_the_real_hotel_options_list_when_embedded(
+        self, restored, monkeypatch: pytest.MonkeyPatch
+    ):
+        """When `context_data.hotel_options` (session_store.
+        recover_hotel_options's doc comment has the full story) has the real
+        ranked list, that must win over the single-entry `hotel_options_from_
+        trip_data` reconstruction above -- a guest who was shown 5 hotels
+        must see all 5 again, not just the one they'd picked (or none at all,
+        if they hadn't picked one yet)."""
+        fake_store = _FakeItineraryStore(trip_data=None)
+        monkeypatch.setattr(
+            "src.services.itinerary_store.ItineraryStore.from_default",
+            classmethod(lambda cls: fake_store),
+        )
+        real_list = [
+            {"id": "hotel-1", "name": "Vinpearl Resort", "average_nightly_price": 1_200_000},
+            {"id": "hotel-2", "name": "Mường Thanh", "average_nightly_price": 900_000},
+        ]
+
+        payload = restored(
+            state={}, context_data={"trip_data": _RECOVERED_TRIP_DATA, "hotel_options": real_list}
+        )
+
+        assert [o.name for o in payload.hotel_options] == ["Vinpearl Resort", "Mường Thanh"]
 
     def test_an_intact_checkpoint_never_triggers_the_durable_lookup(
         self, restored, monkeypatch: pytest.MonkeyPatch
