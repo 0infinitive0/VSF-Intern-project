@@ -740,6 +740,7 @@ function HoldFooter({
           animation on either: the collapse and cross-fade IS the transition,
           and a vRise on top would play over it on first paint. */}
       <div className="smooth-collapse smooth-collapse--bleed" data-open={cartCount > 0}>
+        <div>
         <div className="flex flex-col gap-2">
           {/* Compact 1-Row Summary Header */}
           <div className="flex items-center justify-between gap-3 px-0.5">
@@ -850,8 +851,10 @@ function HoldFooter({
             {label}
           </button>
         </div>
+        </div>
       </div>
       <div className="smooth-collapse smooth-collapse--bleed" data-open={cartCount === 0}>
+        <div>
         <div>
           {sessionBookedFromBackend ? (
             <div
@@ -908,6 +911,7 @@ function HoldFooter({
               </button>
             </>
           )}
+        </div>
         </div>
       </div>
     </div>

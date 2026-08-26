@@ -777,16 +777,22 @@ button[aria-disabled="true"],
 
 /* For content whose drop shadow or hover scale-up would be sheared off by
    the overflow:hidden above (HoldFooter's CTA glow, its hint pill's
-   hover:scale). Pads the clipped box, then cancels that padding with a
+   hover:scale). Pads out a margin of slack, then cancels it with a negative
    margin animating in lockstep, so the open state lands on exactly the
    footprint it had before the padding was added. The inline pair is constant
    (it never affects height, so it needs no transition); only the bottom pair
-   has to move with the collapse. */
+   has to move with the collapse.
+
+   The padding goes on a wrapper INSIDE the clipped cell (`> * > *`), never on
+   the cell itself: padding counts toward a grid item's automatic minimum
+   size, so a padded cell refuses to collapse past it and the closed state
+   keeps a strip of that padding as dead space — which is exactly the gap this
+   modifier is supposed to be invisible about. */
 .smooth-collapse--bleed {
   margin-inline: -4px;
 }
 
-.smooth-collapse--bleed > * {
+.smooth-collapse--bleed > * > * {
   padding: 0 4px 14px;
 }
 
