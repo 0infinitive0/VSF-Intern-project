@@ -13,7 +13,7 @@ import { displayAmenityLabels } from '../lib/hotel-filters'
 import { formatHotelStars } from '../lib/format-stars'
 import { formatSourcePlatform } from '../lib/format-source-platform'
 import { cartMatchesHeldBookings } from '../lib/room-cart-diff'
-import { maxRoomsForParty } from '../lib/room-capacity'
+import { remainingRoomsAllowed } from '../lib/room-capacity'
 import type { AmenityCatalogOption, HotelOption, RoomDetail } from '../types'
 
 /** Nights from the trip's real intake dates — same rule as stage-hotels.tsx's
@@ -410,42 +410,59 @@ export default function HotelDetailPanel({
                     <span className="text-[11.5px] text-primary font-medium">{t('detailRoomsGuide')}</span>
                   </div>
                   <div className="flex flex-col gap-2.5">
-                    {detail.rooms.map((room, i) => {
-                      const roomKey = room.id ?? room.name ?? String(i)
-                      // At most one unit of this room type per traveler
-                      // (room-capacity.ts explains why capacity-based
-                      // division is the wrong cap here), capped by real
-                      // inventory — replaces the old flat cap of 4, which
-                      // had nothing to do with who's traveling.
-                      const roomsAllowed = maxRoomsForParty(partySize)
-                      const maxQty = room.price?.sold_out
-                        ? 0
-                        : Math.min(roomsAllowed, room.available_room_count ?? roomsAllowed)
-                      return (
-                        <RoomCard
-                          key={roomKey}
-                          room={room}
-                          delay={`${i * 90}ms`}
-                          qty={room.id ? (roomHold.cartFor(hotelId)[room.id] ?? 0) : 0}
-                          maxQty={maxQty}
-                          onQtyChange={(next) => {
-                            if (sessionBookedFromBackend) {
-                              triggerNoticeShake()
-                              return
-                            }
-                            if (!room.id) return
-                            roomHold.setQty(hotelId, room.id, next, maxQty)
-                            if (next > 0 && option != null && onSelectHotel) {
-                              onSelectHotel(option.index)
-                            }
-                          }}
-                          amenityDetails={detail.room_amenities ?? []}
-                          selectedAmenityIds={selectedAmenityIds}
-                          sessionBookedFromBackend={sessionBookedFromBackend}
-                          onAttemptAddRoom={triggerNoticeShake}
-                        />
-                      )
-                    })}
+                    {(() => {
+                      // Party-size cap applies to the TOTAL rooms across every
+                      // room type in this hotel's cart, not to each room type
+                      // independently — otherwise a party of 2 could add 1 of
+                      // room A, 1 of room B, 1 of room C, etc. and end up with
+                      // far more rooms than travelers (bug: each room type's
+                      // maxQty used to be computed in isolation from
+                      // maxRoomsForParty alone, with no reference to what was
+                      // already selected elsewhere in the same cart).
+                      const cartForHotel = roomHold.cartFor(hotelId)
+                      const cartTotalQty = roomHold.cartCount(hotelId)
+                      return detail.rooms.map((room, i) => {
+                        const roomKey = room.id ?? room.name ?? String(i)
+                        // At most one unit of this room type per traveler
+                        // (room-capacity.ts explains why capacity-based
+                        // division is the wrong cap here), capped by real
+                        // inventory — replaces the old flat cap of 4, which
+                        // had nothing to do with who's traveling.
+                        // remainingRoomsAllowed also subtracts however much
+                        // of that party-size allowance is already used up by
+                        // OTHER room types in the same cart, so the total
+                        // across all types never exceeds maxRoomsForParty.
+                        const ownQty = room.id ? (cartForHotel[room.id] ?? 0) : 0
+                        const remainingForParty = remainingRoomsAllowed(partySize, cartTotalQty, ownQty)
+                        const maxQty = room.price?.sold_out
+                          ? 0
+                          : Math.min(remainingForParty, room.available_room_count ?? remainingForParty)
+                        return (
+                          <RoomCard
+                            key={roomKey}
+                            room={room}
+                            delay={`${i * 90}ms`}
+                            qty={ownQty}
+                            maxQty={maxQty}
+                            onQtyChange={(next) => {
+                              if (sessionBookedFromBackend) {
+                                triggerNoticeShake()
+                                return
+                              }
+                              if (!room.id) return
+                              roomHold.setQty(hotelId, room.id, next, maxQty)
+                              if (next > 0 && option != null && onSelectHotel) {
+                                onSelectHotel(option.index)
+                              }
+                            }}
+                            amenityDetails={detail.room_amenities ?? []}
+                            selectedAmenityIds={selectedAmenityIds}
+                            sessionBookedFromBackend={sessionBookedFromBackend}
+                            onAttemptAddRoom={triggerNoticeShake}
+                          />
+                        )
+                      })
+                    })()}
                   </div>
                 </div>
               )}
