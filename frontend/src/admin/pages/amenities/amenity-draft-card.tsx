@@ -6,7 +6,7 @@ import { AmenityFormFields, formFromRow, type AmenityFormState } from './amenity
 
 interface AmenityDraftCardProps {
   row: AmenityCatalogRow
-  parentOptions: AmenityCatalogRow[]
+  scope: 'hotel' | 'room'
   onApproved: (id: string) => void
   onRejected: (id: string) => void
   disabled: boolean
@@ -33,7 +33,7 @@ function diff(row: AmenityCatalogRow, form: AmenityFormState) {
  * expands into the same AmenityFormFields the edit drawer uses. "Duyệt"
  * saves any pending edits first (PATCH), then approves -- admin never
  * duyệt's a field they just changed without it actually landing. */
-export function AmenityDraftCard({ row, parentOptions, onApproved, onRejected, disabled }: AmenityDraftCardProps) {
+export function AmenityDraftCard({ row, scope, onApproved, onRejected, disabled }: AmenityDraftCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [form, setForm] = useState<AmenityFormState>(() => formFromRow(row))
   const [busy, setBusy] = useState(false)
@@ -90,7 +90,7 @@ export function AmenityDraftCard({ row, parentOptions, onApproved, onRejected, d
 
       {error && <Banner tone="err">{error}</Banner>}
 
-      {expanded && <AmenityFormFields value={form} onChange={setForm} parentOptions={parentOptions.filter((o) => o.id !== row.id)} />}
+      {expanded && <AmenityFormFields value={form} onChange={setForm} scope={scope} excludeId={row.id} />}
 
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <button type="button" className="btn btn--danger btn--sm" disabled={isBusy} onClick={handleReject}>

@@ -52,7 +52,6 @@ export function AmenityCatalogPage() {
 
   const [listState, setListState] = useState<ListState>({ status: 'loading' })
   const [isFetching, setIsFetching] = useState(false)
-  const [parentOptions, setParentOptions] = useState<AmenityCatalogRow[]>([])
   const [busyId, setBusyId] = useState<string | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
 
@@ -97,19 +96,6 @@ export function AmenityCatalogPage() {
       setSortKey(key)
       setSortDirection('asc')
     }
-  }
-
-  // Parent-select options: approved entries eligible for the active tab's
-  // scope. Fetched on demand -- when a flow that actually needs a parent
-  // picker opens -- rather than eagerly alongside the list on every mount:
-  // firing both at once raced two concurrent Supabase-backed requests
-  // against the backend's single shared HTTP/2 client and corrupted the
-  // connection (repro'd live: every list load 500'd). hotels-page.tsx's B1
-  // pattern is one fetch-firing effect per page; this keeps that shape by
-  // never letting two page-owned fetches start in the same tick.
-  async function loadParentOptions() {
-    const result = await listAmenityCatalog({ scope, status: 'approved', category: 'all', page: 1, pageSize: 100 })
-    if (result.ok) setParentOptions(result.data.items)
   }
 
   const items = listState.status === 'loaded' ? listState.items : []
@@ -168,14 +154,7 @@ export function AmenityCatalogPage() {
         action={
           <>
             {pendingCount > 0 && <span className="chip chip--pending tabular-nums">{pendingCount} chờ duyệt</span>}
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => {
-                setAddFlowOpen(true)
-                loadParentOptions()
-              }}
-            >
+            <Button variant="primary" size="sm" onClick={() => setAddFlowOpen(true)}>
               + Thêm tiện ích
             </Button>
           </>
@@ -224,10 +203,7 @@ export function AmenityCatalogPage() {
             <div style={{ overflowX: 'auto' }}>
               <AmenityTable
                 rows={items}
-                onEdit={(row) => {
-                  setEditingRow(row)
-                  loadParentOptions()
-                }}
+                onEdit={setEditingRow}
                 onApprove={handleApprove}
                 onReject={handleReject}
                 onRetire={handleRetire}
@@ -250,7 +226,7 @@ export function AmenityCatalogPage() {
         open={draftItems !== null}
         onClose={() => setDraftItems(null)}
         items={draftItems ?? []}
-        parentOptions={parentOptions}
+        scope={scope}
         onDone={() => {
           setDraftItems(null)
           refresh()
@@ -261,7 +237,7 @@ export function AmenityCatalogPage() {
         open={editingRow !== null}
         onClose={() => setEditingRow(null)}
         row={editingRow}
-        parentOptions={parentOptions}
+        scope={scope}
         onSaved={() => {
           setEditingRow(null)
           refresh()

@@ -234,6 +234,24 @@ async def test_list_includes_usage_and_child_counts(client, fake_client, admin_o
 
 
 @pytest.mark.asyncio
+async def test_get_amenity_returns_single_row(client, fake_client, admin_override):
+    fake_client._tables["amenity_catalog"] = [_entry("wifi", "Wi-Fi", "Wi-Fi")]
+
+    response = await client.get(f"{BASE}/wifi")
+    assert response.status_code == 200
+    assert response.json()["id"] == "wifi"
+    assert response.json()["label_vi"] == "Wi-Fi"
+
+
+@pytest.mark.asyncio
+async def test_get_amenity_404s_for_unknown_id(client, fake_client, admin_override):
+    fake_client._tables["amenity_catalog"] = []
+
+    response = await client.get(f"{BASE}/does-not-exist")
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_list_sorts_by_usage_across_pages(client, fake_client, admin_override):
     """Sorting by usage must reflect every matched row, not just whatever
     page happened to already be loaded -- the bug this replaced: client-side
