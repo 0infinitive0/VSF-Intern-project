@@ -106,7 +106,7 @@ export default function StageRouter({
   }
 
   if (stage === 'generating') {
-    return <StageGenerating elapsedMs={state.elapsedMs} phases={state.phases} />
+    return <StageGenerating elapsedMs={state.elapsedMs} phases={state.phases} hasTripPlan={state.tripPlan != null} />
   }
 
   if (stage === 'hotels') {

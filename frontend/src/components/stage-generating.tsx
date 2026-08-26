@@ -23,17 +23,29 @@ import type { TurnPhase } from '../types'
 export default function StageGenerating({
   elapsedMs,
   phases,
+  hasTripPlan,
 }: {
   elapsedMs: number
   phases: TurnPhase[]
+  /**
+   * Once a trip plan already exists, a later turn that re-runs `hotel_node`
+   * (e.g. editing dates/people/budget re-triggers a real availability
+   * re-check per `IMPACT_MAP`, domain/travel_state.py) is not the user
+   * picking a hotel for the first time — showing "Đang tìm khách sạn phù
+   * hợp" here reads as if their already-selected hotel is being searched
+   * for again. Dropped from the checklist in that case; the real backend
+   * work still happens, this only hides a misleading row.
+   */
+  hasTripPlan: boolean
 }): ReactNode {
   const { t } = useTranslation()
   const seconds = Math.floor(elapsedMs / 1000)
+  const visiblePhases = hasTripPlan ? phases.filter((p) => p.key !== 'hotel_search') : phases
   // Title must track the same phase the checklist below is currently
   // spinning on — never an independent elapsed-time guess that can drift
   // from what's actually happening (e.g. still reading "lên lịch trình"
   // while the list has already moved on to "soạn câu trả lời").
-  const currentPhaseLabelKey = [...phases].reverse().map((p) => phaseLabelKey(p.key)).find((key) => key !== null)
+  const currentPhaseLabelKey = [...visiblePhases].reverse().map((p) => phaseLabelKey(p.key)).find((key) => key !== null)
   const copy = currentPhaseLabelKey
     ? t(currentPhaseLabelKey)
     : seconds >= 10
@@ -59,9 +71,9 @@ export default function StageGenerating({
           <div className="text-[15px] font-[530] tracking-[-0.2px]">{copy}</div>
         </div>
 
-        {phases.length > 0 ? (
+        {visiblePhases.length > 0 ? (
           <div className="mb-6">
-            <TurnPhases phases={phases} />
+            <TurnPhases phases={visiblePhases} />
           </div>
         ) : (
           <div className="h-1 rounded-full bg-fill2 overflow-hidden mb-6" aria-hidden="true">
