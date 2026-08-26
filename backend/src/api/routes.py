@@ -105,6 +105,7 @@ from src.services.place_details import get_attraction_detail, get_hotel_detail
 from src.services.trip_finalize import FinalizeTripError, finalize_session_trip, is_trip_finalized
 from src.services.suggestions import (
     SuggestionContext,
+    SuggestionDay,
     SuggestionHotelCard,
     generate_next_chat_suggestions,
 )
@@ -1104,6 +1105,18 @@ def _suggestion_context(app, config: dict, response: PlannerChatResponse) -> Sug
         amenity.label_en if language == "en" else amenity.label_vi for amenity in response.hotel_amenities
     )
     active_filter_labels = tuple(preference.label for preference in response.active_preferences)
+    itinerary_days = (
+        tuple(
+            SuggestionDay(
+                day_number=day.day_number,
+                theme=day.theme,
+                activities=tuple(item.activity for item in day.items if item.activity),
+            )
+            for day in response.trip_plan.days
+        )
+        if response.trip_plan
+        else ()
+    )
 
     return SuggestionContext(
         worker=worker,
@@ -1115,6 +1128,7 @@ def _suggestion_context(app, config: dict, response: PlannerChatResponse) -> Sug
         hotel_amenity_labels=amenity_labels,
         active_filter_labels=active_filter_labels,
         trip_duration_days=response.trip_plan.duration_days if response.trip_plan else None,
+        itinerary_days=itinerary_days,
     )
 
 

@@ -1,6 +1,6 @@
 # Phase 1 — Capability scope in the suggestion prompt
 
-**Status:** pending
+**Status:** done
 **Files:** `backend/src/services/suggestions.py`, `backend/tests/test_suggestions.py`
 
 ## Context

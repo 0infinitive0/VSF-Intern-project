@@ -2,11 +2,12 @@
 
 Every chip comes from an LLM call grounded in THIS turn's real data (worker
 action, hotel cards actually shown, amenity labels actually on those cards,
-active filters, trip length, language) -- there is no static/hardcoded list
-anywhere in this file. A chip that names a filter value or an amenity must
-trace back to something the caller actually put in `SuggestionContext`; the
-prompt says so explicitly and `_clean` only dedupes/trims what the LLM
-returns, it does not fabricate anything.
+active filters, trip length, language) AND bounded to what the graph can
+actually serve -- there is no static/hardcoded list anywhere in this file. A
+chip that names a filter value or an amenity must trace back to something the
+caller actually put in `SuggestionContext`; the prompt says so explicitly and
+`_clean` only dedupes/trims what the LLM returns, it does not fabricate
+anything.
 
 LLM failure, timeout, or a malformed/empty response all degrade to `[]` --
 "no chip this turn" is a valid, designed state (see
@@ -39,6 +40,10 @@ _DEFAULT_TIMEOUT_SECONDS = 12.0
 
 _MAX_CARDS_IN_PROMPT = 5
 _MAX_SUGGESTION_WORDS = 12
+#: Same reasoning as `_MAX_CARDS_IN_PROMPT`: prompt size must not scale with
+#: trip length, so a long itinerary is truncated rather than fully rendered.
+_MAX_DAYS_IN_PROMPT = 7
+_MAX_ACTIVITIES_PER_DAY_IN_PROMPT = 4
 
 #: A short, human phrase for what each gated worker just did, spliced into the
 #: prompt so the model grounds its suggestions in the right kind of action
@@ -51,6 +56,37 @@ _ACTION_HINTS: dict[str, str] = {
     "booking_node": "vừa xử lý yêu cầu đặt hoặc thanh toán",
 }
 
+#: What a next chat turn can actually be answered by: `hotel_node` and
+#: `itinerary_node` do real work, `budget_check` is a deterministic graph
+#: edge, and read-only questions about what's on screen land on `qa_node`
+#: (its tools are `get_hotel_options`/`get_trip_plan`/`query_hotel`/
+#: `query_hotel_rooms`/`search_places` -- see `qa_node.py`). This is a
+#: capability fence, not a suggestion source -- it never appears verbatim as
+#: a chip, it only bounds what kind of chip the LLM may propose. Kept as a
+#: prompt instruction rather than a keyword post-filter deliberately: a
+#: static reject list would be brittle across two languages, and this
+#: module's charter is "no hardcoded suggestion strings" (see docstring
+#: above), which a fence on request *kind* does not violate.
+_ALLOWED_SCOPE: tuple[str, ...] = (
+    "Tìm, lọc, sắp xếp hoặc chọn khách sạn",
+    "Hỏi đáp (chỉ đọc) về khách sạn và phòng ĐANG hiển thị",
+    "Tạo hoặc sửa lịch trình theo ngày, tìm địa điểm nổi bật gần khách sạn",
+    "Kiểm tra ngân sách so với lựa chọn hiện tại",
+)
+
+#: Real dead ends today: `booking_node` always declines and the supervisor
+#: can never route to it (`_IMPOSSIBLE["booking_node"]` is unconditionally
+#: `True` in `routing.py`); none of the others has a worker at all.
+_FORBIDDEN_SCOPE: tuple[str, ...] = (
+    "Đặt phòng hoặc thanh toán",
+    "Vé máy bay, tàu, hoặc xe",
+    "Thời tiết",
+    "Ảnh hoặc video",
+    "Đánh giá hay giá từ nguồn ngoài (Booking, Agoda, ...)",
+    "Visa hoặc bảo hiểm du lịch",
+    "Bất cứ yêu cầu nào cần dữ liệu ngoài dữ liệu đã cho ở trên",
+)
+
 
 @dataclass(frozen=True)
 class SuggestionHotelCard:
@@ -62,6 +98,15 @@ class SuggestionHotelCard:
 
 
 @dataclass(frozen=True)
+class SuggestionDay:
+    """The subset of one itinerary day's fields worth grounding a chip in."""
+
+    day_number: int
+    theme: str = ""
+    activities: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class SuggestionContext:
     """Grounding data for one turn's suggestion chips.
 
@@ -70,6 +115,11 @@ class SuggestionContext:
     session type) build one from whatever their own turn data looks like, so
     this is the one shape `generate_next_chat_suggestions` needs to know
     about rather than reaching into either caller's state directly.
+
+    `itinerary_days` defaults to `()` so `terminal_chat.py` (intentionally
+    thinner, no itinerary grounding) keeps constructing this unchanged; when
+    populated it is capped the same way `hotel_cards` is, so prompt size
+    never scales with trip length.
     """
 
     worker: str
@@ -81,6 +131,7 @@ class SuggestionContext:
     hotel_amenity_labels: tuple[str, ...] = ()
     active_filter_labels: tuple[str, ...] = ()
     trip_duration_days: int | None = None
+    itinerary_days: tuple[SuggestionDay, ...] = ()
 
 
 class NextChatSuggestions(BaseModel):
@@ -118,7 +169,26 @@ def _format_cards(cards: tuple[SuggestionHotelCard, ...]) -> str:
     return "\n".join(lines)
 
 
+def _format_days(days: tuple[SuggestionDay, ...]) -> str:
+    if not days:
+        return "(chưa có lịch trình)"
+    lines = []
+    for day in days[:_MAX_DAYS_IN_PROMPT]:
+        activities = ", ".join(day.activities[:_MAX_ACTIVITIES_PER_DAY_IN_PROMPT])
+        theme = day.theme or "chưa rõ chủ đề"
+        lines.append(f"- Ngày {day.day_number} ({theme}): {activities or '(chưa có hoạt động)'}")
+    return "\n".join(lines)
+
+
 def _build_prompt(context: SuggestionContext, limit: int) -> str:
+    """The full grounding + capability-scope prompt for one turn.
+
+    Grounding (data the LLM may reference) and scope (kinds of request the
+    LLM may propose) are two different constraints -- this function states
+    both, in that order, before the existing `Ràng buộc bắt buộc` list.
+    """
+    allowed = "\n".join(f"- {line}" for line in _ALLOWED_SCOPE)
+    forbidden = "\n".join(f"- {line}" for line in _FORBIDDEN_SCOPE)
     language_instruction = (
         "Viết TOÀN BỘ gợi ý bằng tiếng Anh."
         if context.language == "en"
@@ -138,6 +208,8 @@ def _build_prompt(context: SuggestionContext, limit: int) -> str:
 
 Điểm đến: {context.destination or "(chưa rõ)"}
 Số ngày lịch trình: {duration}
+Lịch trình theo ngày (chỉ được nhắc tới ngày và hoạt động có trong danh sách này):
+{_format_days(context.itinerary_days)}
 Khách sạn đang hiển thị:
 {_format_cards(context.hotel_cards)}
 Tiện ích có thật trên các thẻ khách sạn: {amenities}
@@ -145,8 +217,15 @@ Bộ lọc đang bật: {filters}
 Hành động vừa thực hiện: {action_hint}
 Trả lời gần nhất của trợ lý: {context.reply[:800]}
 
+Trợ lý này CHỈ có thể:
+{allowed}
+
+Trợ lý này KHÔNG BAO GIỜ được gợi ý các yêu cầu sau (không có khả năng xử lý):
+{forbidden}
+
 Ràng buộc bắt buộc:
-- Chỉ dùng dữ liệu đã cho ở trên, không bịa thêm khách sạn, tiện ích, hay số liệu.
+- Mỗi gợi ý phải nằm trong danh sách "CHỈ có thể" ở trên, không thuộc danh sách "KHÔNG BAO GIỜ".
+- Chỉ dùng dữ liệu đã cho ở trên, không bịa thêm khách sạn, tiện ích, số liệu, ngày, hay hoạt động lịch trình nào ngoài danh sách "Lịch trình theo ngày" ở trên.
 - Nếu gợi ý là một yêu cầu lọc, PHẢI kèm số cụ thể lấy từ dữ liệu trên (ví dụ điểm đánh giá, mức giá).
 - Không nhắc tới bất kỳ tiện ích nào ngoài danh sách tiện ích có thật ở trên.
 - Mỗi gợi ý là một câu lệnh hoàn chỉnh, gửi thẳng vào chat được, dưới {_MAX_SUGGESTION_WORDS} từ.

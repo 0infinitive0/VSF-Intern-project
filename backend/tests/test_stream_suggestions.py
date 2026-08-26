@@ -358,3 +358,51 @@ class TestSuggestionContext:
         ctx = routes._suggestion_context(app, {}, _response(trip_plan=None))
         assert ctx is not None
         assert ctx.trip_duration_days is None
+
+    def test_itinerary_days_are_mapped_from_the_trip_plan(self):
+        app = _FakeApp(_state("itinerary_node", "ok"))
+        response = _response(
+            trip_plan={
+                "status": "Draft",
+                "duration_days": 2,
+                "budget_currency": "VND",
+                "days": [
+                    {
+                        "day_number": 1,
+                        "theme": "Khám phá trung tâm",
+                        "items": [
+                            {"order_index": 0, "activity": "Tham quan Cầu Rồng"},
+                            {"order_index": 1, "activity": "Ăn tối"},
+                        ],
+                    },
+                    {
+                        "day_number": 2,
+                        "theme": "Biển",
+                        "items": [{"order_index": 0, "activity": "Tắm biển Mỹ Khê"}],
+                    },
+                ],
+            },
+            hotel_options=[],
+            hotel_amenities=[],
+        )
+
+        ctx = routes._suggestion_context(app, {}, response)
+
+        assert ctx is not None
+        assert ctx.itinerary_days == (
+            suggestions_module.SuggestionDay(
+                day_number=1,
+                theme="Khám phá trung tâm",
+                activities=("Tham quan Cầu Rồng", "Ăn tối"),
+            ),
+            suggestions_module.SuggestionDay(
+                day_number=2, theme="Biển", activities=("Tắm biển Mỹ Khê",)
+            ),
+        )
+
+    def test_itinerary_days_is_empty_when_there_is_no_trip_plan(self):
+        app = _FakeApp(_state("itinerary_node", "ok"))
+        ctx = routes._suggestion_context(app, {}, _response(trip_plan=None))
+        assert ctx is not None
+        assert ctx.itinerary_days == ()
+        assert ctx.trip_duration_days is None

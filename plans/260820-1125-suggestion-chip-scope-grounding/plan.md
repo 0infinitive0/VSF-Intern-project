@@ -1,7 +1,7 @@
 ---
 title: "Suggestion chip scope + itinerary grounding"
 description: "Keep next-chat suggestion chips inside what the agent can actually do, and ground itinerary chips in the real day/item data the same way hotel chips are grounded in real cards."
-status: pending
+status: done
 priority: P2
 branch: "main"
 tags: [suggestions, prompt, grounding, langgraph]
