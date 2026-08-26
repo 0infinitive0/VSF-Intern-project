@@ -3,10 +3,18 @@
 Sent once from routes.py's VNPay IPN handler, right after a payment's
 bookings are confirmed — never before, since a bounced/failed email must
 never be mistaken for a bounced payment. Callers should catch EmailError and
-log-and-continue rather than let a Resend outage fail the confirmation
-itself: by the time this runs, the booking is already CONFIRMED and the
-guest has already paid — losing the email is a real but much smaller
-problem than losing/duplicating the payment confirmation would be.
+log-and-continue rather than let an email-provider outage fail the
+confirmation itself: by the time this runs, the booking is already CONFIRMED
+and the guest has already paid — losing the email is a real but much
+smaller problem than losing/duplicating the payment confirmation would be.
+
+Sends through Brevo's transactional email API (single-sender verification --
+switched 2026-08-26 from Resend, whose free sandbox sender
+(onboarding@resend.dev) can only deliver to the Resend account owner's own
+verified email; sending to any real guest silently failed. Brevo's
+equivalent free tier only requires verifying ONE sender address (a
+confirmation-link click in the Brevo dashboard, config.brevo_from_email),
+not a whole domain with DNS records, and then delivers to any recipient).
 """
 
 from __future__ import annotations
@@ -15,15 +23,17 @@ import logging
 from decimal import Decimal
 from typing import Any
 
-import resend
+import httpx
 
 from src.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+_BREVO_SEND_URL = "https://api.brevo.com/v3/smtp/email"
+
 
 class EmailError(RuntimeError):
-    """Resend rejected the request, or isn't configured at all."""
+    """Brevo rejected the request, or isn't configured at all."""
 
 
 def _money(amount: Decimal | None, currency: str | None) -> str | None:
@@ -153,15 +163,14 @@ def send_booking_confirmation_email(
     total_amount: Decimal | None,
     currency: str | None,
 ) -> str:
-    """Sends the confirmation email; returns Resend's message id.
+    """Sends the confirmation email; returns Brevo's message id.
 
-    Raises EmailError on any failure (not configured, Resend API error) —
+    Raises EmailError on any failure (not configured, Brevo API error) —
     the caller decides whether to swallow it (see the module doc comment)."""
     settings = get_settings()
-    if not settings.resend_api_key:
-        raise EmailError("resend_not_configured")
+    if not settings.brevo_api_key or not settings.brevo_from_email:
+        raise EmailError("brevo_not_configured")
 
-    resend.api_key = settings.resend_api_key
     amount_line = _money(total_amount, currency)
     html = _confirmation_html(
         guest_name=guest_name,
@@ -176,16 +185,30 @@ def send_booking_confirmation_email(
     )
 
     try:
-        response = resend.Emails.send({
-            "from": settings.resend_from_email,
-            "to": [to_email],
-            "subject": f"Xác nhận đặt phòng {booking_code} — VP-OTA",
-            "html": html,
-        })
-    except Exception as exc:
+        response = httpx.post(
+            _BREVO_SEND_URL,
+            headers={
+                "api-key": settings.brevo_api_key,
+                "content-type": "application/json",
+                "accept": "application/json",
+            },
+            json={
+                "sender": {"email": settings.brevo_from_email, "name": "VP-OTA"},
+                "to": [{"email": to_email}],
+                "subject": f"Xác nhận đặt phòng {booking_code} — VP-OTA",
+                "htmlContent": html,
+            },
+            timeout=10.0,
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
         raise EmailError(str(exc)) from exc
 
-    message_id = response.get("id") if isinstance(response, dict) else None
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise EmailError("brevo_invalid_response") from exc
+    message_id = data.get("messageId") if isinstance(data, dict) else None
     if not message_id:
-        raise EmailError("resend_no_message_id")
+        raise EmailError("brevo_no_message_id")
     return message_id

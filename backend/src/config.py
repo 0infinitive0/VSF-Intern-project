@@ -199,14 +199,20 @@ class Settings(BaseSettings):
         "public /api/v1/payments/vnpay/ipn. Kept here so it is not just tribal knowledge.",
     )
 
-    # Email (Resend -- plan 260818-vnpay-payment-and-email-confirmation)
-    resend_api_key: str = ""
-    resend_from_email: str = Field(
-        default="onboarding@resend.dev",
-        description="Resend's shared sandbox sender, usable with no domain verification "
-        "for testing. Replace with a verified sender on your own domain before sending "
-        "to real guests -- Resend rejects onboarding@resend.dev to recipients outside "
-        "the account owner's own verified email in some configurations.",
+    # Email (Brevo -- plan 260818-vnpay-payment-and-email-confirmation, switched
+    # from Resend 2026-08-26: Resend's free sandbox sender only delivers to the
+    # account owner's own verified email, and this project has no domain to
+    # verify for the unrestricted alternative. Brevo's free tier only needs
+    # ONE sender address verified -- a link-click in the Brevo dashboard
+    # (Settings > Senders, Domains & Dedicated IPs > Senders), no DNS/domain
+    # required -- and then delivers to any recipient.)
+    brevo_api_key: str = ""
+    brevo_from_email: str = Field(
+        default="",
+        description="Must be a single-sender-verified address in your Brevo account "
+        "(dashboard > Senders) -- Brevo rejects sends from an unverified address. "
+        "Reusing an existing inbox you can click a confirmation link from (e.g. a "
+        "Gmail address) is fine; no domain/DNS setup needed for this tier.",
     )
 
     # Airflow admin client (phase-13-airflow-client.md). Portal users have no
