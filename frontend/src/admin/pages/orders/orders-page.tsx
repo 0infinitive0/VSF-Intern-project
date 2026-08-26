@@ -255,7 +255,7 @@ export function OrdersPage({ navigate }: OrdersPageProps) {
     <>
       <PageHeader
         breadcrumb="Quản trị · Đơn hàng"
-        title="Danh sách đơn"
+        title="Danh sách đơn hàng"
         action={
           <Button variant="secondary" size="sm" disabled={csvBusy} onClick={handleExportCsv}>
             ↓ Xuất CSV

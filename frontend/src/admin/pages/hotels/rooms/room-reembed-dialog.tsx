@@ -66,7 +66,7 @@ export function RoomReembedDialog({ open, onClose, hotelId: _hotelId, ragFieldsC
       <div style={{ fontSize: 11.5, color: 'var(--t4)' }}>Chỉ nhúng lại phòng này — không ảnh hưởng các phòng còn lại.</div>
 
       {state === 'unavailable' && (
-        <Banner tone="warn">Đã đánh dấu cần nhúng lại. Chạy pipeline embedding ở mục Dữ liệu bot để bot học ngay.</Banner>
+        <Banner tone="warn">Đã đánh dấu cần nhúng lại. Chạy pipeline embedding ở trang Tổng quan để bot học ngay.</Banner>
       )}
 
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

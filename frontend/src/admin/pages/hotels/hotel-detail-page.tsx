@@ -478,7 +478,7 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
             {reembedState === 'unavailable' && (
               <Banner tone="warn">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingRight: 4, width: '100%' }}>
-                  <span style={{ flex: 1 }}>Đã đánh dấu cần embed lại. Chạy pipeline embedding ở mục Dữ liệu bot để bot học ngay.</span>
+                  <span style={{ flex: 1 }}>Đã đánh dấu cần embed lại. Chạy pipeline embedding ở trang Tổng quan để bot học ngay.</span>
                   <Button variant="ghost" size="sm" onClick={handleDismissReembed} aria-label="Đóng">
                     ✕
                   </Button>
@@ -491,9 +491,6 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
                   <span style={{ flex: 1, minWidth: 200 }}>
                     Pipeline embedding đang chờ lâu hơn bình thường (Airflow chưa bắt đầu chạy). Đã đánh dấu cần embed lại, bot sẽ học khi pipeline chạy.
                   </span>
-                  <Button variant="secondary" size="sm" onClick={() => navigate('/admin/pipelines')}>
-                    Xem trạng thái pipeline
-                  </Button>
                   <Button variant="ghost" size="sm" onClick={handleDismissReembed} aria-label="Đóng">
                     ✕
                   </Button>
@@ -502,7 +499,7 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
             )}
             {reembedState === 'queued' && (
               <Banner tone="ok">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingRight: 4, width: '100%' }}>
                     <span style={{ flex: 1 }}>Đã gửi yêu cầu chạy lại embedding.</span>
                     <Button variant="ghost" size="sm" onClick={handleDismissReembed} aria-label="Đóng">
@@ -530,10 +527,7 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
             {reembedState === 'failed' && (
               <Banner tone="err">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', paddingRight: 4, width: '100%' }}>
-                  <span style={{ flex: 1, minWidth: 200 }}>Chạy embedding thất bại. Xem chi tiết lỗi tại trang Pipeline.</span>
-                  <Button variant="secondary" size="sm" onClick={() => navigate('/admin/pipelines')}>
-                    Xem trạng thái pipeline
-                  </Button>
+                  <span style={{ flex: 1, minWidth: 200 }}>Chạy embedding thất bại. Thử chạy lại pipeline ở trang Tổng quan.</span>
                   <Button variant="ghost" size="sm" onClick={handleDismissReembed} aria-label="Đóng">
                     ✕
                   </Button>

@@ -28,14 +28,7 @@ const NAV: NavGroup[] = [
       { label: 'Danh mục tiện ích', path: '/admin/amenities-catalog' },
     ],
   },
-  {
-    label: 'DỮ LIỆU BOT',
-    items: [
-      { label: 'Pipeline', path: '/admin/pipelines' },
-      { label: 'Độ phủ embedding', path: '/admin/pipelines/do-phu-embedding' },
-    ],
-  },
-  { label: 'ĐƠN HÀNG', items: [{ label: 'Danh sách đơn', path: '/admin/orders' }] },
+  { label: 'ĐƠN HÀNG', items: [{ label: 'Danh sách đơn hàng', path: '/admin/orders' }] },
 ]
 
 interface SidebarProps {
