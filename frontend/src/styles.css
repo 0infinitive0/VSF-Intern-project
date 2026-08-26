@@ -800,6 +800,68 @@ button[aria-disabled="true"],
   margin-bottom: -14px;
 }
 
+/* HoldFooter's room-count badge and running total, replayed by keying them on
+   the count so each added room visibly registers instead of the figures
+   silently ticking over. The badge pops as a whole; its icon and label
+   stagger in just behind it.
+
+   Only the badge's own pop is fill-less: it animates `transform`, and any
+   fill mode would pin `scale(1)` on the button for good, outranking the
+   `active:scale-95` press feedback forever after. The delayed ones need
+   `both` to stay hidden through their delay, and none of them touch a
+   property their element also sets — which is why the chevron fades only,
+   never transforms: it carries `rotate-180` while the drawer is open, and an
+   animation ending at `transform: none` would silently unrotate it. */
+@keyframes hold-badge-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  55% {
+    transform: scale(1.05);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.hold-badge-pop {
+  animation: hold-badge-pop 0.36s cubic-bezier(0.34, 1.42, 0.64, 1);
+}
+
+@keyframes hold-badge-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.hold-badge-item-in {
+  animation: hold-badge-item-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.hold-badge-item-in--delay {
+  animation-delay: 0.06s;
+}
+
+@keyframes hold-badge-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.hold-badge-fade-in {
+  animation: hold-badge-fade-in 0.3s ease 0.12s both;
+}
+
 /* For a collapse sitting in a `gap-2` flex column: at zero height it still
    sits between two gaps where an unmounted sibling would have contributed
    none, leaving exactly one gap of dead space. Cancel that one gap while

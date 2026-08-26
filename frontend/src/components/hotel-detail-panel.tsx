@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ConfirmDialog from './confirm-dialog'
 import MatchReasons from './match-reasons'
@@ -654,6 +654,15 @@ function HoldFooter({
   const cartCount = rows.reduce((n, r) => n + r.qty, 0)
   const total = rows.reduce((sum, r) => sum + (r.subtotal ?? 0), 0)
 
+  // The cart summary stays mounted while it collapses (see .smooth-collapse),
+  // so removing the last room would otherwise flash "0 phòng đã chọn" and
+  // "0 ₫" for the entire exit animation. Keep rendering the last non-empty
+  // figures on the way out. DISPLAY ONLY — every decision below (canStart,
+  // disabled, label, handleClick) reads the real, current cart.
+  const lastFilledCart = useRef({ rows, cartCount, total })
+  if (cartCount > 0) lastFilledCart.current = { rows, cartCount, total }
+  const shownCart = cartCount > 0 ? { rows, cartCount, total } : lastFilledCart.current
+
   const heldHere = roomHold.status === 'HELD' && roomHold.heldHotelId === hotelId
   const heldElsewhere = roomHold.status === 'HELD' && roomHold.heldHotelId !== hotelId
   const busy = roomHold.status === 'HOLDING'
@@ -680,9 +689,13 @@ function HoldFooter({
           : t('holdCtaBlocked')
         : busy
           ? t('holdCtaBusy')
-          : cartCount === 0
+          : // shownCart, not the live count: this label only ever renders
+            // inside the cart state, which is mid-collapse when the count
+            // hits 0 — reading the live count would swap the button's text
+            // halfway through its own exit animation.
+            shownCart.cartCount === 0
             ? t('holdCtaSelectRoom')
-            : t('holdCtaWithRooms', { count: cartCount })
+            : t('holdCtaWithRooms', { count: shownCart.cartCount })
   const disabled =
     sessionBookedFromBackend ||
     busy ||
@@ -743,20 +756,30 @@ function HoldFooter({
         <div>
         <div className="flex flex-col gap-2">
           {/* Compact 1-Row Summary Header */}
+          {/* Badge and total are keyed on the room count so both replay their
+              entrance every time it changes — adding a room should read as an
+              event, not as a digit quietly incrementing. Keying the button
+              remounts it, which is what restarts the animation; nothing is
+              focused here at that moment (the guest is pressing + over on a
+              room card), so no focus is lost. */}
           <div className="flex items-center justify-between gap-3 px-0.5">
             <button
+              key={shownCart.cartCount}
               type="button"
               onClick={() => setDetailsExpanded((prev) => !prev)}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary-soft/90 border border-primary/30 text-primary text-[12px] font-[590] hover:bg-primary-soft transition-all duration-200 cursor-pointer shadow-sm active:scale-95"
+              className="hold-badge-pop flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary-soft/90 border border-primary/30 text-primary text-[12px] font-[590] hover:bg-primary-soft transition-all duration-200 cursor-pointer shadow-sm active:scale-95"
             >
-              <span className="material-symbols-outlined text-[15px]">king_bed</span>
-              <span>
-                {rows.length > 1
-                  ? t('holdRoomsSummaryBadgeTypes', { types: rows.length, count: cartCount })
-                  : t('holdRoomsSummaryBadge', { count: cartCount })}
+              <span className="hold-badge-item-in material-symbols-outlined text-[15px]">king_bed</span>
+              <span className="hold-badge-item-in hold-badge-item-in--delay">
+                {shownCart.rows.length > 1
+                  ? t('holdRoomsSummaryBadgeTypes', {
+                      types: shownCart.rows.length,
+                      count: shownCart.cartCount,
+                    })
+                  : t('holdRoomsSummaryBadge', { count: shownCart.cartCount })}
               </span>
               <span
-                className={`material-symbols-outlined text-[14px] transition-transform duration-200 ${
+                className={`hold-badge-fade-in material-symbols-outlined text-[14px] transition-transform duration-200 ${
                   detailsExpanded ? 'rotate-180' : ''
                 }`}
               >
@@ -765,8 +788,11 @@ function HoldFooter({
             </button>
             <div className="flex items-baseline gap-1.5 tabular-nums">
               <span className="text-[11.5px] text-on-surface-muted font-normal">{t('holdTotal')}:</span>
-              <span className="text-[17.5px] font-[650] tracking-[-0.35px] text-primary">
-                {formatCurrency(total, i18n.language)}
+              <span
+                key={shownCart.cartCount}
+                className="hold-badge-item-in hold-badge-item-in--delay text-[17.5px] font-[650] tracking-[-0.35px] text-primary"
+              >
+                {formatCurrency(shownCart.total, i18n.language)}
               </span>
             </div>
           </div>
@@ -780,7 +806,7 @@ function HoldFooter({
           >
             <div>
               <div className="max-h-[110px] overflow-y-auto custom-scrollbar flex flex-col gap-1.5 p-2 rounded-xl bg-fill/60 border border-line">
-                {rows.map((row) => (
+                {shownCart.rows.map((row) => (
                   <div key={row.roomId} className="flex items-center justify-between gap-2 text-[12px]">
                     <span className="truncate text-on-surface font-medium">{row.name}</span>
                     <div className="flex items-center gap-2 flex-none tabular-nums">
