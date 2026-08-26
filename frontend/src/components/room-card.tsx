@@ -148,6 +148,13 @@ export default function RoomCard({
   // guest freed up room elsewhere in the cart).
   const [blockedNotice, setBlockedNotice] = useState(false)
   const blockedNoticeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Separate from `blockedNotice` on purpose: the notice element stays
+  // mounted (so collapsing animates), so restarting the shake by toggling
+  // the SAME state off/on would make the message itself flicker shut and
+  // reopen on every repeat click. This counter only ever increases and is
+  // used as the button row's `key`, remounting just that row so the CSS
+  // animation replays from the start while the notice below sits still.
+  const [shakeNonce, setShakeNonce] = useState(0)
 
   useEffect(() => {
     if (canAdd) setBlockedNotice(false)
@@ -161,11 +168,8 @@ export default function RoomCard({
 
   const showBlockedNotice = () => {
     if (blockedNoticeTimeout.current) clearTimeout(blockedNoticeTimeout.current)
-    // false -> raf -> true so the CSS shake animation restarts even if the
-    // guest clicks again while it's still visible (same retrigger trick as
-    // hotel-detail-panel.tsx's triggerNoticeShake).
-    setBlockedNotice(false)
-    requestAnimationFrame(() => setBlockedNotice(true))
+    setBlockedNotice(true)
+    setShakeNonce((n) => n + 1)
     blockedNoticeTimeout.current = setTimeout(() => setBlockedNotice(false), 3000)
   }
 
@@ -292,7 +296,8 @@ export default function RoomCard({
         )}
 
         <div
-          className={`flex gap-2 mt-3 items-center ${blockedNotice ? 'notice-shake-anim' : ''}`}
+          key={shakeNonce}
+          className={`flex gap-2 mt-3 items-center ${shakeNonce > 0 ? 'notice-shake-anim' : ''}`}
         >
           {sessionBookedFromBackend ? (
             <button
@@ -383,16 +388,32 @@ export default function RoomCard({
             {t('roomExpand')}
           </button>
         </div>
-        {blockedNotice && blockedReason && (
+        {/* Stays mounted while `blockedReason` holds so BOTH directions
+            animate — a conditional mount would snap the card's height shut
+            when the notice auto-hides. The margin lives on the innermost
+            div, not the collapsing grid, so the collapsed state contributes
+            exactly zero height (a margin on the grid itself would leave a
+            visible gap and reintroduce the jump). */}
+        {blockedReason && (
           <div
-            role="status"
-            className="mt-1.5 flex items-center gap-1 text-[11.5px] font-[480]"
-            style={{ color: 'var(--color-error-ink)' }}
+            className="room-notice-collapse"
+            data-open={blockedNotice}
+            aria-hidden={!blockedNotice}
           >
-            <span className="material-symbols-outlined text-[13px] flex-none" aria-hidden="true">
-              info
-            </span>
-            <span>{t(blockedReason === 'partyLimit' ? 'roomLimitPartySize' : 'roomLimitInventory')}</span>
+            <div>
+              <div
+                role="status"
+                className="mt-1.5 flex items-center gap-1 text-[11.5px] font-[480]"
+                style={{ color: 'var(--color-error-ink)' }}
+              >
+                <span className="material-symbols-outlined text-[13px] flex-none" aria-hidden="true">
+                  info
+                </span>
+                <span>
+                  {t(blockedReason === 'partyLimit' ? 'roomLimitPartySize' : 'roomLimitInventory')}
+                </span>
+              </div>
+            </div>
           </div>
         )}
       </div>

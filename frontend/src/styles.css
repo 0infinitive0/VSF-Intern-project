@@ -214,9 +214,21 @@ body {
   overscroll-behavior: none;
 }
 
-button:not(:disabled),
-[role="button"]:not(:disabled) {
+/* `aria-disabled` counts as disabled here, not just the real attribute: some
+   buttons must stay clickable to EXPLAIN why they're blocked (RoomCard's
+   +/"Thêm phòng" at the party-size cap, its sessionBookedFromBackend lock)
+   — a true `disabled` swallows the click. This rule is unlayered, so it
+   outranks every Tailwind utility no matter the specificity; without the
+   aria-disabled arm, a `cursor-not-allowed` class on those buttons is
+   silently overridden back to `pointer`. */
+button:not(:disabled):not([aria-disabled="true"]),
+[role="button"]:not(:disabled):not([aria-disabled="true"]) {
   cursor: pointer;
+}
+
+button[aria-disabled="true"],
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
 }
 
 @keyframes vPinIn {
@@ -712,6 +724,36 @@ button:not(:disabled),
 
 .notice-shake-anim {
   animation: notice-shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+/* Smooth reveal/collapse for RoomCard's "why you can't add this room"
+   notice. grid 0fr->1fr animates to the content's own natural height —
+   height:auto isn't animatable, and the message wraps to a different number
+   of lines per locale/card width, so a hardcoded max-height would either
+   clip it or animate at the wrong speed. Toggled via data-open, and the
+   element stays mounted so collapsing animates too (a conditional mount
+   would snap the card's height on the way out). */
+.room-notice-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-3px);
+  transition:
+    grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.24s ease,
+    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.room-notice-collapse[data-open='true'] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* The animating grid row must be able to shrink below its content box. */
+.room-notice-collapse > * {
+  overflow: hidden;
+  min-height: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
