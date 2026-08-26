@@ -246,14 +246,9 @@ img, video, canvas, svg{ max-width:100%; max-height:100%; }
 #s6{ --slide-bg: var(--offwhite); }
 
 /* ===========================================
-   SLIDE 7 — EVALUATION (offwhite)
+   SLIDE 7 — PRODUCT (blue)
    =========================================== */
-#s7{ --slide-bg: var(--offwhite); }
-
-/* ===========================================
-   SLIDE 8 — PRODUCT (blue)
-   =========================================== */
-#s8{ --slide-bg: var(--blue); }
+#s7{ --slide-bg: var(--blue); }
 .split-row{ display:flex; gap:56px; margin-top:50px; flex:1; }
 .feat-col{ flex:1; display:flex; flex-direction:column; gap:22px; justify-content:center; }
 .feat-item{ display:flex; align-items:center; gap:20px; }
@@ -273,9 +268,9 @@ img, video, canvas, svg{ max-width:100%; max-height:100%; }
 .itin-box .row .dot{ width:10px; height:10px; border:2px solid var(--black); background:var(--pink); flex-shrink:0; }
 
 /* ===========================================
-   SLIDE 9 — ADMIN DASHBOARD (yellow)
+   SLIDE 8 — ADMIN DASHBOARD (yellow)
    =========================================== */
-#s9{ --slide-bg: var(--yellow); }
+#s8{ --slide-bg: var(--yellow); }
 .admin-mock-frame{ height:100%; display:flex; }
 .admin-mock-side{ width:34%; border-right:var(--b3); padding:18px 14px; display:flex; flex-direction:column; gap:4px; }
 .am-logo{ width:32px; height:32px; border:var(--b2); background:var(--black); color:var(--white); display:flex; align-items:center; justify-content:center; font-family:var(--f-label); font-weight:700; font-size:12px; margin-bottom:12px; }
@@ -295,20 +290,20 @@ img, video, canvas, svg{ max-width:100%; max-height:100%; }
 /* ===========================================
    SLIDE 11-13 — TEAM (pink / green / blue)
    =========================================== */
-#s11{ --slide-bg: var(--pink); }
-#s12{ --slide-bg: var(--green); }
-#s13{ --slide-bg: var(--blue); }
+#s10{ --slide-bg: var(--pink); }
+#s11{ --slide-bg: var(--green); }
+#s12{ --slide-bg: var(--blue); }
 .member-split{ display:flex; border:var(--b3); overflow:hidden; height:42px; }
 .member-split-seg{ display:flex; align-items:center; justify-content:center; font-family:var(--f-label); font-size:12px; font-weight:700; border-right:var(--b2); white-space:nowrap; overflow:hidden; }
 .member-split-seg:last-child{ border-right:none; }
 
 /* ===========================================
-   SLIDE 14 — CLOSE / DEMO (black)
+   SLIDE 13 — CLOSE / DEMO (black)
    =========================================== */
-#s14{ --slide-bg: var(--black); }
-#s14 .slide-pad{ align-items:center; justify-content:center; text-align:center; position:relative; }
+#s13{ --slide-bg: var(--black); }
+#s13 .slide-pad{ align-items:center; justify-content:center; text-align:center; position:relative; }
 .close-frame{ border:4px solid var(--white); background:var(--black); box-shadow:var(--sh-close-y); padding:56px 70px; }
-#s14 .subtitle-mono{ color:var(--cream); }
+#s13 .subtitle-mono{ color:var(--cream); }
 .close-repo{ display:inline-flex; align-items:center; gap:14px; border:var(--b3); border-color:var(--white); background:var(--black); padding:14px 28px; box-shadow:var(--sh-close-w); text-decoration:none; cursor:pointer; transition:transform .12s ease, box-shadow .12s ease; }
 .close-repo:hover{ transform:translate(-3px,-3px); box-shadow:9px 9px 0px var(--white); }
 .close-repo span{ font-family:var(--f-label); font-size:18px; color:var(--white); font-weight:600; }
@@ -317,12 +312,12 @@ img, video, canvas, svg{ max-width:100%; max-height:100%; }
 .close-repo-primary:hover{ box-shadow:9px 9px 0px var(--white); }
 .close-repo-primary span{ color:var(--black); }
 .close-repo-primary .icon-square{ background:var(--black); color:var(--yellow); }
-#s14 .thanks{ margin-top:44px; font-family:var(--f-display); font-weight:900; font-size:40px; letter-spacing:0.08em; color:var(--yellow); }
+#s13 .thanks{ margin-top:44px; font-family:var(--f-display); font-weight:900; font-size:40px; letter-spacing:0.08em; color:var(--yellow); }
 
 /* ===========================================
-   SLIDE 15 — ROADMAP (cream)
+   SLIDE 14 — ROADMAP (cream)
    =========================================== */
-#s15{ --slide-bg: var(--cream); }
+#s14{ --slide-bg: var(--cream); }
 .rmap{ position:relative; display:flex; justify-content:space-between; align-items:flex-start; flex:1; margin-top:56px; padding:0 8px; }
 .rmap-line{ position:absolute; top:17px; left:6%; right:6%; height:3px; background:var(--black); z-index:0; }
 .rmap-stop{ position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; width:23%; }
@@ -335,14 +330,14 @@ img, video, canvas, svg{ max-width:100%; max-height:100%; }
 .rmap-card li::before{ content:''; position:absolute; left:0; top:9px; width:6px; height:6px; background:var(--black); }
 
 /* ===========================================
-   SLIDE 16 — APPENDIX DIVIDER (black)
+   SLIDE 15 — APPENDIX DIVIDER (black)
    =========================================== */
-#s16{ --slide-bg: var(--black); }
+#s15{ --slide-bg: var(--black); }
 
 /* ===========================================
-   SLIDE 17 — GRAPH TOPOLOGY (dark, mermaid.js)
+   SLIDE 16 — GRAPH TOPOLOGY (dark, mermaid.js)
    =========================================== */
-#s17{ --slide-bg: #0d0e1a; }
+#s16{ --slide-bg: #0d0e1a; }
 .mermaid-frame{ height:520px; margin-top:10px; }
 .mermaid-frame .mermaid{ display:block; width:100%; height:100%; margin:0; }
 .mermaid-frame svg{ display:block; width:100% !important; height:100% !important; object-fit:contain; }
