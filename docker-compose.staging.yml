@@ -18,6 +18,13 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    # airflow_net: shared with backend/src/airflow/docker-compose.staging.yml
+    # so this container can reach `airflow-apiserver:8080` for
+    # AIRFLOW_API_BASE (backend/.env.example option (b)). Create it once on
+    # the host: `docker network create airflow_net`.
+    networks:
+      - default
+      - airflow_net
 
   # ── Frontend (React + Vite → Nginx) ─────────────────────────────────────────
   frontend:
@@ -59,6 +66,10 @@ services:
       frontend:
         condition: service_healthy
     restart: unless-stopped
+
+networks:
+  airflow_net:
+    external: true
 
 volumes:
   caddy_data:

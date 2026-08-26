@@ -1,0 +1,190 @@
+# Lean staging config for the Airflow stack -- companion to the official
+# CeleryExecutor docker-compose.yaml (kept as-is for local dev, per its own
+# "do not use in production" warning). This trims it down to just enough to
+# run embed_supabase_dag.py (pure HTTP calls -- Supabase REST + the embedding
+# API, no Playwright) on a small single host colocated with the app:
+#
+#   - LocalExecutor instead of CeleryExecutor: no redis, worker, triggerer,
+#     or flower. The embedding DAG has no deferrable/sensor tasks, so a
+#     triggerer isn't needed; other (scraping) DAGs stay paused at creation
+#     and are never actually run here, so their Playwright cost never hits.
+#   - Parallelism capped low (AIRFLOW_PARALLELISM / AIRFLOW_MAX_ACTIVE_TASKS,
+#     default 2): the DAG is HTTP-bound, not CPU-bound, so fewer concurrent
+#     mapped tasks trades run time for a much smaller memory footprint.
+#   - airflow-apiserver joins the external `airflow_net` network so the app's
+#     backend container (on the main docker-compose.staging.yml, also joined
+#     to `airflow_net`) can reach it at http://airflow-apiserver:8080 --
+#     AIRFLOW_API_BASE option (b) in backend/.env.example. Create the network
+#     once on the host: `docker network create airflow_net`.
+#   - No host port publishing for postgres or the apiserver by default (only
+#     the app container needs to reach them, over airflow_net) -- uncomment
+#     the apiserver's `ports:` to open a bound-to-localhost SSH-tunnel path
+#     for occasional UI access.
+#
+# Usage:
+#   cd backend/src/airflow
+#   echo -e "AIRFLOW_UID=$(id -u)\nFERNET_KEY=$(python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')" > .env
+#   docker network create airflow_net   # once, if the app stack hasn't already
+#   docker compose -f docker-compose.staging.yml up airflow-init
+#   docker compose -f docker-compose.staging.yml up -d
+---
+x-airflow-common:
+  &airflow-common
+  image: ${AIRFLOW_IMAGE_NAME:-vsf-airflow:3.3.0}
+  build: .
+  env_file:
+    - ${ENV_FILE_PATH:-.env}
+  environment:
+    &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW__API_AUTH__JWT_SECRET:-airflow_jwt_secret}
+    AIRFLOW__API_AUTH__JWT_ISSUER: ${AIRFLOW__API_AUTH__JWT_ISSUER:-airflow}
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+    # HTTP-bound DAG, not CPU-bound -- capped low to keep peak memory small
+    # on a small instance. Raise via env if a run needs to finish faster and
+    # the host has headroom.
+    AIRFLOW__CORE__PARALLELISM: ${AIRFLOW_PARALLELISM:-2}
+    AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: ${AIRFLOW_MAX_ACTIVE_TASKS:-2}
+    _PIP_ADDITIONAL_REQUIREMENTS: ''
+    AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
+  volumes:
+    - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
+    - ../../data:/opt/airflow/data:ro
+    - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
+    - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
+    - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    &airflow-common-depends-on
+    postgres:
+      condition: service_healthy
+
+services:
+  dashboard:
+    build: ./dashboard
+    restart: always
+    env_file: ../../.env
+    ports:
+      - "127.0.0.1:8085:8082"
+    volumes:
+      - ./dashboard:/app
+      - ../..:/project:ro
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+
+  airflow-apiserver:
+    <<: *airflow-common
+    command: api-server
+    # Bound to localhost -- reach it in production via `ssh -L 8088:localhost:8088`,
+    # not a public port. The app backend reaches it over airflow_net instead.
+    ports:
+      - "127.0.0.1:8088:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    networks:
+      - default
+      - airflow_net
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    command: dag-processor
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type DagProcessorJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        if [[ -z "${AIRFLOW_UID}" ]]; then
+          export AIRFLOW_UID=$$(id -u)
+        fi
+        mkdir -v -p /opt/airflow/{logs,dags,plugins,config}
+        /entrypoint airflow version
+        /entrypoint airflow config list >/dev/null
+        chown -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/
+        chown -v -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/{logs,dags,plugins,config}
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+      _PIP_ADDITIONAL_REQUIREMENTS: ''
+    user: "0:0"
+
+  airflow-cli:
+    <<: *airflow-common
+    profiles:
+      - debug
+    environment:
+      <<: *airflow-common-env
+      CONNECTION_CHECK_MAX_COUNT: "0"
+    command:
+      - bash
+      - -c
+      - airflow
+    depends_on:
+      <<: *airflow-common-depends-on
+
+networks:
+  airflow_net:
+    external: true
+
+volumes:
+  postgres-db-volume:
