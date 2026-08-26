@@ -86,7 +86,7 @@ export function Sidebar({ path, navigate, pendingOrderCount, pendingAmenityCount
           VSF
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.1 }}>Trip Planner</div>
+          <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.1 }}>VP-OTA</div>
           <div style={{ fontSize: 11, color: 'var(--t4)', lineHeight: 1.1 }}>Bảng quản trị</div>
         </div>
       </div>
