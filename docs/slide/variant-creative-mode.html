@@ -1,0 +1,1965 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VP-OTA — Pitch Deck (Creative Mode)</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+/* =========================================================
+   RESET
+   ========================================================= */
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#000;}
+
+/* =========================================================
+   FIXED 16:9 STAGE — viewport-base.css (mandatory, inlined)
+   ========================================================= */
+.deck-viewport{position:fixed;inset:0;overflow:hidden;background:#000;}
+.deck-stage{position:absolute;left:0;top:0;width:1920px;height:1080px;overflow:hidden;transform-origin:0 0;background:#EFE9D9;}
+.slide{position:absolute;inset:0;width:1920px;height:1080px;overflow:hidden;display:block;visibility:hidden;opacity:0;pointer-events:none;background:#EFE9D9;}
+.slide.active,.slide.visible{visibility:visible;opacity:1;pointer-events:auto;z-index:1;}
+img,video,canvas,svg{max-width:100%;max-height:100%;}
+.deck-controls{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:1000;}
+@media print{
+  html,body{width:1920px;height:auto;overflow:visible;background:#fff;}
+  .deck-viewport{position:static;overflow:visible;background:#fff;}
+  .deck-stage{position:static;width:auto;height:auto;transform:none !important;background:none;}
+  .slide{position:relative;display:block !important;visibility:visible !important;opacity:1 !important;pointer-events:auto !important;width:1920px;height:1080px;break-after:page;page-break-after:always;}
+  .slide:last-child{break-after:auto;page-break-after:auto;}
+  .deck-controls{display:none !important;}
+}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:0.01ms !important;transition-duration:0.2s !important;}
+}
+
+/* =========================================================
+   CREATIVE MODE — DESIGN TOKENS
+   ========================================================= */
+:root{
+  --cream:#EFE9D9;
+  --cream-2:#E4DCC4;
+  --ink:#0F0F0F;
+  --ink-2:#2A2A2A;
+  --green:#1F8A4C;
+  --green-dark:#136636;
+  --pink:#F06CA8;
+  --pink-dark:#D14E8B;
+  --orange:#E85A1F;
+  --yellow:#F5C518;
+  --f-display:'Archivo Black', sans-serif;
+  --f-body:'Space Grotesk', sans-serif;
+  --f-mono:'JetBrains Mono', ui-monospace, monospace;
+  --ease:cubic-bezier(.16,1,.3,1);
+}
+
+.slide{font-family:var(--f-body);color:var(--ink);background:var(--cream);}
+.slide.slide-ink{background:var(--ink);color:var(--cream);}
+.slide.slide-green{background:var(--green);color:var(--cream);}
+
+/* =========================================================
+   CHROME FRAME — topbar / meta-footer (every slide)
+   ========================================================= */
+.topbar{position:absolute;left:64px;right:64px;top:48px;display:flex;justify-content:space-between;align-items:center;font-family:var(--f-mono);font-size:22px;letter-spacing:.08em;text-transform:uppercase;z-index:6;}
+.topbar .tb-left{opacity:.92;}
+.topbar .tb-pill{border:2px solid var(--ink);padding:6px 16px;border-radius:999px;white-space:nowrap;}
+.slide-ink .topbar .tb-pill,.slide-green .topbar .tb-pill{border-color:var(--cream);}
+.meta-footer{position:absolute;left:64px;right:64px;bottom:40px;display:flex;justify-content:space-between;align-items:center;font-family:var(--f-mono);font-size:20px;letter-spacing:.06em;text-transform:uppercase;z-index:6;}
+.meta-footer .mf-right{display:flex;align-items:center;gap:10px;white-space:nowrap;}
+.meta-footer .mf-dot{width:9px;height:9px;border-radius:50%;background:var(--ink);display:inline-block;}
+.slide-ink .meta-footer .mf-dot,.slide-green .meta-footer .mf-dot{background:var(--cream);}
+
+.content{position:absolute;left:96px;right:96px;top:148px;bottom:108px;}
+
+/* =========================================================
+   TYPOGRAPHY
+   ========================================================= */
+.dh{font-family:var(--f-display);font-weight:400;text-transform:uppercase;line-height:.92;letter-spacing:-0.01em;}
+.dh-hero{font-size:150px;}
+.dh-xl{font-size:130px;}
+.dh-lg{font-size:96px;}
+.dh-md{font-size:80px;}
+.dh-sm{font-size:64px;}
+.dh-xs{font-size:52px;line-height:.98;}
+.dh-2xs{font-size:42px;line-height:1.02;}
+
+.stat-num{font-family:var(--f-display);font-weight:400;line-height:.9;}
+.step-num{font-family:var(--f-display);font-weight:400;line-height:.85;}
+.step-title{font-family:var(--f-display);text-transform:uppercase;font-weight:400;line-height:1.05;}
+.marker-label{font-family:var(--f-display);text-transform:uppercase;font-weight:400;line-height:1.05;}
+
+.body-lg{font-family:var(--f-body);font-size:26px;line-height:1.4;}
+.body-md{font-family:var(--f-body);font-size:21px;line-height:1.4;}
+.body-sm{font-family:var(--f-body);font-size:18px;line-height:1.4;}
+
+.mono-label{font-family:var(--f-mono);font-size:20px;letter-spacing:.06em;text-transform:uppercase;}
+.mono-kicker{font-family:var(--f-mono);font-size:20px;letter-spacing:.14em;text-transform:uppercase;}
+.mono-tag{font-family:var(--f-mono);font-size:16px;letter-spacing:.08em;text-transform:uppercase;border:3px solid var(--ink);padding:6px 14px;display:inline-block;background:var(--cream);}
+.mono-tag-solid{background:var(--ink);color:var(--cream);}
+
+code{font-family:var(--f-mono);background:rgba(15,15,15,.07);padding:1px 7px;font-size:.88em;border-radius:0;}
+.slide-ink code,.slide-green code{background:rgba(239,233,217,.16);}
+b{font-weight:700;}
+
+/* =========================================================
+   KICKER / LABEL PILL (section tag)
+   ========================================================= */
+.kicker{background:var(--ink);color:var(--cream);font-family:var(--f-mono);font-size:20px;letter-spacing:.14em;text-transform:uppercase;padding:9px 18px;display:inline-block;}
+.kicker.k-pink{background:var(--pink);color:var(--ink);}
+.kicker.k-green{background:var(--green);color:var(--cream);}
+.kicker.k-orange{background:var(--orange);color:var(--cream);}
+.kicker.k-yellow{background:var(--yellow);color:var(--ink);}
+.kicker.k-cream{background:var(--cream);color:var(--ink);}
+
+/* =========================================================
+   REVEAL ANIMATION (staggered load, per Motion principle)
+   ========================================================= */
+.reveal{opacity:0;transform:translateY(26px);transition:opacity .6s var(--ease),transform .6s var(--ease);}
+.slide.visible .reveal{opacity:1;transform:translateY(0);}
+.r1{transition-delay:.05s;} .r2{transition-delay:.12s;} .r3{transition-delay:.20s;}
+.r4{transition-delay:.28s;} .r5{transition-delay:.36s;} .r6{transition-delay:.44s;}
+.r7{transition-delay:.52s;} .r8{transition-delay:.60s;}
+
+/* =========================================================
+   STAT CELL
+   ========================================================= */
+.stat-cell{border:4px solid var(--ink);padding:26px 30px;display:flex;flex-direction:column;gap:8px;}
+.stat-cell .stat-num{font-size:76px;}
+.stat-cell .stat-desc{font-family:var(--f-body);font-size:18px;line-height:1.32;}
+.stat-cell .stat-tag{margin-top:auto;font-family:var(--f-mono);font-size:14px;letter-spacing:.06em;text-transform:uppercase;opacity:.75;}
+.stat-cell-green{background:var(--green);color:var(--cream);}
+.stat-cell-pink{background:var(--pink);color:var(--ink);}
+.stat-cell-orange{background:var(--orange);color:var(--cream);}
+.stat-cell-yellow{background:var(--yellow);color:var(--ink);}
+.stat-cell-cream{background:var(--cream);color:var(--ink);}
+
+/* =========================================================
+   STEP CARD
+   ========================================================= */
+.step-card{border:4px solid var(--ink);padding:24px;display:flex;flex-direction:column;gap:10px;background:var(--cream);}
+.step-card .step-num{font-size:64px;}
+.step-card h4{font-size:22px;}
+.step-card p{font-family:var(--f-body);font-size:16.5px;line-height:1.35;}
+.step-card-pink{background:var(--pink);}
+.step-card-green{background:var(--green);color:var(--cream);}
+.step-card-orange{background:var(--orange);color:var(--cream);}
+.step-card-yellow{background:var(--yellow);}
+.step-row{display:flex;align-items:stretch;gap:0;}
+.step-arrow{width:26px;flex-shrink:0;align-self:center;height:0;border-top:16px solid transparent;border-bottom:16px solid transparent;border-left:22px solid var(--ink);}
+.step-arrow-down{width:0;flex-shrink:0;align-self:center;border-left:16px solid transparent;border-right:16px solid transparent;border-top:22px solid var(--ink);}
+
+/* =========================================================
+   SPEC CARD (bordered panel w/ header strip)
+   ========================================================= */
+.spec-card{border:4px solid var(--ink);background:var(--cream);display:flex;flex-direction:column;}
+.spec-hd{font-family:var(--f-display);text-transform:uppercase;font-size:19px;line-height:1.15;padding:13px 20px;background:var(--ink);color:var(--cream);border-bottom:4px solid var(--ink);}
+.spec-hd-pink{background:var(--pink);color:var(--ink);}
+.spec-hd-green{background:var(--green);color:var(--cream);}
+.spec-hd-orange{background:var(--orange);color:var(--cream);}
+.spec-hd-yellow{background:var(--yellow);color:var(--ink);}
+.spec-hd-cream{background:var(--cream);color:var(--ink);}
+.spec-body{padding:18px 22px;flex:1;display:flex;flex-direction:column;gap:10px;}
+.spec-card ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;}
+.spec-card li{font-family:var(--f-body);font-size:17.5px;line-height:1.38;}
+.spec-card .note{font-family:var(--f-body);font-size:17.5px;line-height:1.42;margin:0;}
+.spec-card-green{background:var(--green);color:var(--cream);}
+.spec-card-pink{background:var(--pink);}
+.spec-card-yellow{background:var(--yellow);}
+.spec-card-orange{background:var(--orange);color:var(--cream);}
+.spec-row{display:flex;gap:22px;align-items:stretch;}
+.spec-row > *{flex:1;}
+
+/* =========================================================
+   TABLE
+   ========================================================= */
+.cm-table{border:4px solid var(--ink);background:var(--cream-2);border-collapse:collapse;width:100%;}
+.cm-table th,.cm-table td{border:3px solid var(--ink);padding:12px 18px;text-align:left;font-family:var(--f-body);font-size:16.5px;line-height:1.3;vertical-align:top;}
+.cm-table thead th{background:var(--ink);color:var(--cream);font-family:var(--f-display);text-transform:uppercase;font-size:16px;font-weight:400;letter-spacing:0;}
+.cm-table td.center,.cm-table th.center{text-align:center;}
+.cm-table tr.current td{background:var(--green);color:var(--cream);font-weight:600;}
+
+/* =========================================================
+   BADGE (rotated), MARKER, STAMP, KICKER-CTA
+   ========================================================= */
+.badge-rot{background:var(--yellow);border:4px solid var(--ink);font-family:var(--f-display);font-size:22px;text-transform:uppercase;padding:10px 20px;transform:rotate(-4deg);display:inline-block;}
+.marker-block{border:4px solid var(--ink);box-shadow:24px 24px 0 var(--orange),24px 24px 0 4px var(--ink);padding:28px 34px;font-family:var(--f-display);text-transform:uppercase;line-height:1.08;}
+.stacked{border:4px solid var(--ink);box-shadow:18px 18px 0 var(--ink);background:var(--cream);}
+.deco-circle{background:var(--yellow);border:4px solid var(--ink);border-radius:50%;position:absolute;}
+
+/* =========================================================
+   BAR CHART
+   ========================================================= */
+.bars{display:flex;flex-direction:column;gap:10px;}
+.bar-row{display:flex;align-items:center;gap:12px;}
+.bar-label{font-family:var(--f-mono);font-size:14px;text-transform:uppercase;letter-spacing:.03em;width:150px;flex-shrink:0;}
+.bar-track{flex:1;height:22px;border:3px solid var(--ink);background:var(--cream);}
+.bar-fill{height:100%;border-right:3px solid var(--ink);}
+.bar-fill.striped{background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.35) 0 8px, transparent 8px 16px);}
+.bar-val{font-family:var(--f-mono);font-size:13.5px;width:190px;flex-shrink:0;}
+
+/* =========================================================
+   MINI TIMELINE
+   ========================================================= */
+.mtl{position:relative;display:flex;justify-content:space-between;padding-top:12px;}
+.mtl::before{content:'';position:absolute;left:0;right:0;top:20px;height:3px;background:var(--ink);}
+.mtl-item{display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;flex:1;padding:0 4px;}
+.mtl-dot{width:16px;height:16px;border-radius:50%;background:var(--ink);border:3px solid var(--ink);z-index:1;}
+.mtl-time{font-family:var(--f-mono);font-size:12.5px;}
+.mtl-label{font-family:var(--f-body);font-size:12.5px;text-align:center;line-height:1.2;}
+
+/* =========================================================
+   NODE-SLIDE SCAFFOLD (appendix node deep-dives)
+   ========================================================= */
+.node-head{display:flex;justify-content:space-between;align-items:flex-end;}
+.node-name{font-family:var(--f-mono);font-weight:700;font-size:52px;margin-top:12px;}
+.file-tag{font-family:var(--f-mono);font-size:15px;border:2px solid var(--ink);padding:7px 16px;}
+.phase-track{display:flex;align-items:center;gap:8px;margin-top:26px;}
+.pt-dot{width:32px;height:32px;border:3px solid var(--ink);display:flex;align-items:center;justify-content:center;font-family:var(--f-mono);font-size:15px;background:var(--cream);flex-shrink:0;}
+.pt-dot.active{background:var(--pink);}
+.pt-line{width:34px;height:3px;background:var(--ink);flex-shrink:0;}
+.pt-line.filled{background:var(--ink);}
+.pt-label{font-family:var(--f-mono);font-size:15px;letter-spacing:.05em;text-transform:uppercase;margin-left:10px;}
+.node-desc{font-family:var(--f-body);font-size:22px;line-height:1.45;margin-top:20px;max-width:1650px;}
+.node-cols{display:flex;gap:22px;margin-top:22px;align-items:stretch;}
+
+/* =========================================================
+   FLOW DIAGRAM (LangGraph, slide 17)
+   ========================================================= */
+.flow-node{border:3px solid var(--ink);background:var(--cream);padding:10px 12px 9px;font-family:var(--f-mono);font-size:14px;text-align:center;position:relative;flex:1;}
+.flow-node .ftag{position:absolute;top:-11px;left:6px;font-size:10px;padding:2px 7px;border:2px solid var(--ink);text-transform:uppercase;letter-spacing:.03em;background:var(--cream);}
+.ftag-pipe{background:var(--orange);color:var(--cream);}
+.ftag-work{background:var(--pink);color:var(--ink);}
+.ftag-det{background:var(--green);color:var(--cream);}
+.flow-exit{font-family:var(--f-mono);font-size:10px;background:var(--yellow);border:2px solid var(--ink);padding:2px 6px;margin-top:6px;display:inline-block;}
+.flow-terminal{width:56px;height:56px;border-radius:50%;background:var(--ink);color:var(--cream);display:flex;align-items:center;justify-content:center;font-family:var(--f-mono);font-size:10px;text-align:center;flex-shrink:0;}
+.flow-row{display:flex;align-items:center;gap:8px;}
+.flow-hbus{position:relative;height:34px;}
+.flow-hbus::before{content:'';position:absolute;left:0;right:0;top:0;height:3px;background:var(--ink);}
+.flow-hbus .stub{position:absolute;top:0;width:3px;height:34px;background:var(--ink);}
+.flow-vstub{width:3px;height:26px;background:var(--ink);margin:0 auto;}
+.flow-legend{display:flex;gap:16px;margin-top:6px;flex-wrap:wrap;}
+
+/* =========================================================
+   NAV CHROME (outside slide design system)
+   ========================================================= */
+.nav-controls{position:fixed;right:26px;bottom:26px;display:flex;gap:10px;z-index:1000;}
+.nav-btn{width:52px;height:52px;background:var(--cream);border:3px solid var(--ink);display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:var(--f-mono);font-size:22px;user-select:none;}
+.nav-btn:hover{background:var(--yellow);}
+.nav-back-btn{position:fixed;left:26px;bottom:26px;background:var(--yellow);border:3px solid var(--ink);padding:12px 20px;font-family:var(--f-mono);font-size:16px;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;z-index:1000;display:none;}
+.nav-back-btn.show{display:block;}
+.jump-hint{position:fixed;top:26px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--cream);border:3px solid var(--cream);padding:10px 20px;font-family:var(--f-mono);font-size:15px;letter-spacing:.05em;text-transform:uppercase;z-index:1000;opacity:0;pointer-events:none;transition:opacity .2s;}
+.jump-hint.show{opacity:1;}
+
+/* misc layout helpers */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:22px;}
+.grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:20px;}
+.grid5{display:grid;grid-template-columns:repeat(5,1fr);gap:18px;}
+.grid6{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr;gap:20px;}
+.flex-row{display:flex;gap:20px;}
+
+/* appendix divider index */
+.appendix-index{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-flow:column;grid-template-rows:repeat(10,auto);gap:9px 40px;}
+.idx-item{display:flex;align-items:center;gap:12px;padding:7px 0;border-bottom:1px solid rgba(239,233,217,.25);cursor:pointer;}
+.idx-num{font-family:var(--f-mono);font-weight:700;font-size:14px;background:var(--cream);color:var(--ink);min-width:30px;height:24px;padding:0 4px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.idx-label{font-family:var(--f-body);font-size:14.5px;color:var(--cream);line-height:1.25;}
+</style>
+</head>
+<body>
+
+<div class="deck-viewport">
+  <main class="deck-stage" id="deckStage">
+
+<!-- ============ SLIDE 1 — COVER ============ -->
+<section class="slide active" id="s1">
+  <div class="deco-circle" style="width:220px;height:220px;top:110px;right:130px;"></div>
+  <div class="stacked" style="width:150px;height:70px;bottom:130px;left:96px;position:absolute;background:var(--orange);"></div>
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">COVER</span></div>
+  <div class="content">
+    <div class="kicker k-yellow reveal r1">AI TRAVEL AGENT</div>
+    <h1 class="dh dh-hero reveal r2" style="margin-top:26px;">VP-OTA</h1>
+    <p class="body-lg reveal r3" style="margin-top:24px;max-width:1100px;">AI Agent lập kế hoạch du lịch đa lượt cho khách du lịch Việt Nam</p>
+    <div class="reveal r4" style="margin-top:34px;display:flex;gap:18px;flex-wrap:wrap;">
+      <span class="badge-rot" style="background:var(--pink);">Conversational AI</span>
+      <span class="badge-rot" style="background:var(--orange);color:var(--cream);">Semantic Search (RAG)</span>
+      <span class="badge-rot" style="background:var(--pink);">Auto-Scheduling</span>
+    </div>
+    <p class="mono-label reveal r5" style="position:absolute;bottom:40px;left:0;opacity:.8;">LangGraph · GPT-5.1 · FastAPI · Supabase pgvector · React</p>
+  </div>
+  <div class="meta-footer"><span class="mf-left">TRỢ LÝ AI LẬP LỊCH TRÌNH DU LỊCH</span><span class="mf-right">01<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ SLIDE 2 — PROBLEM ============ -->
+<section class="slide" id="s2">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">01 — VẤN ĐỀ</span></div>
+  <div class="content">
+    <div class="kicker k-cream reveal r1" style="border:3px solid var(--ink);background:var(--cream);">VẤN ĐỀ</div>
+    <h2 class="dh dh-md reveal r2" style="margin-top:22px;max-width:1650px;">Lập kế hoạch du lịch vẫn còn thủ công và rời rạc</h2>
+    <p class="body-lg reveal r3" style="margin-top:16px;max-width:1200px;">Ba điểm nghẽn lặp lại ở hầu hết hành trình tự lên kế hoạch của du khách Việt Nam.</p>
+    <div class="grid3 reveal r4" style="margin-top:34px;">
+      <div class="step-card">
+        <div class="step-num" style="font-size:44px;">T</div>
+        <h4 class="step-title">Tốn nhiều thời gian</h4>
+        <p>Phải mở hàng chục tab để so sánh khách sạn, vé và lịch trình trước khi quyết định.</p>
+      </div>
+      <div class="step-card step-card-pink">
+        <div class="step-num" style="font-size:44px;">C</div>
+        <h4 class="step-title">Thiếu cá nhân hóa</h4>
+        <p>Gợi ý chung chung, không bám sát ngân sách, sở thích và số ngày của từng nhóm khách.</p>
+      </div>
+      <div class="step-card step-card-yellow">
+        <div class="step-num" style="font-size:44px;">R</div>
+        <h4 class="step-title">Lịch trình rời rạc</h4>
+        <p>Tự ghép lịch dễ bỏ sót khoảng cách di chuyển, giờ mở cửa, bữa ăn và nghỉ ngơi.</p>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">VẤN ĐỀ — BA ĐIỂM NGHẼN</span><span class="mf-right">02<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ SLIDE 3 — SOLUTION ============ -->
+<section class="slide" id="s3">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">02 — GIẢI PHÁP</span></div>
+  <div class="content">
+    <div class="kicker k-pink reveal r1">GIẢI PHÁP</div>
+    <h2 class="dh dh-md reveal r2" style="margin-top:22px;max-width:1700px;">Trợ lý AI lập lịch trình bằng hội thoại tự nhiên</h2>
+    <p class="body-lg reveal r3" style="margin-top:16px;max-width:1500px;">VP-OTA trò chuyện bằng tiếng Việt tự nhiên với du khách, tự động thu thập nhu cầu, tìm kiếm địa điểm theo ngữ nghĩa và lập lịch trình tối ưu — thay cho việc tự tra cứu thủ công qua nhiều nguồn.</p>
+    <div class="grid4 reveal r4" style="margin-top:30px;">
+      <div class="step-card" style="min-height:250px;">
+        <div class="step-num" style="font-size:40px;">H</div>
+        <h4 class="step-title" style="font-size:19px;">Hội thoại đa lượt</h4>
+        <p>Thu thập nhu cầu tự nhiên qua các câu hỏi làm rõ.</p>
+      </div>
+      <div class="step-card step-card-green" style="min-height:250px;">
+        <div class="step-num" style="font-size:40px;">S</div>
+        <h4 class="step-title" style="font-size:19px;">Tìm kiếm ngữ nghĩa (RAG)</h4>
+        <p>Truy vấn điểm đến &amp; khách sạn qua Supabase pgvector.</p>
+      </div>
+      <div class="step-card step-card-pink" style="min-height:250px;">
+        <div class="step-num" style="font-size:40px;">L</div>
+        <h4 class="step-title" style="font-size:19px;">Lập lịch tự động</h4>
+        <p>Tối ưu khoảng cách, chèn bữa ăn &amp; nghỉ ngơi hợp lý.</p>
+      </div>
+      <div class="step-card step-card-orange" style="min-height:250px;">
+        <div class="step-num" style="font-size:40px;">R</div>
+        <h4 class="step-title" style="font-size:19px;">Tái sử dụng lịch trình</h4>
+        <p>Fingerprint BGE-M3 tái dùng template tương đồng cao.</p>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">GIẢI PHÁP — HỘI THOẠI + RAG + AUTO-SCHEDULE</span><span class="mf-right">03<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ SLIDE 4 — PROCESS ============ -->
+<section class="slide" id="s4">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">03 — QUY TRÌNH</span></div>
+  <div class="content">
+    <div class="kicker k-cream reveal r1" style="border:3px solid var(--ink);">QUY TRÌNH</div>
+    <h2 class="dh dh-md reveal r2" style="margin-top:22px;max-width:1650px;">Từ hội thoại đến lịch trình hoàn chỉnh</h2>
+    <div class="step-row reveal r3" style="margin-top:44px;">
+      <div class="step-card" style="flex:1;"><div class="step-num">1</div><h4 class="step-title">Thu thập nhu cầu</h4><p>Điểm đến, số ngày, số người, sở thích</p></div>
+      <div class="step-arrow"></div>
+      <div class="step-card step-card-pink" style="flex:1;"><div class="step-num">2</div><h4 class="step-title">Tìm kiếm ngữ nghĩa</h4><p>RAG qua Supabase pgvector</p></div>
+      <div class="step-arrow"></div>
+      <div class="step-card" style="flex:1;"><div class="step-num">3</div><h4 class="step-title">Lập lịch tự động</h4><p>Tối ưu khoảng cách / thời gian</p></div>
+      <div class="step-arrow"></div>
+      <div class="step-card step-card-orange" style="flex:1;"><div class="step-num">4</div><h4 class="step-title">Chọn &amp; chỉnh sửa</h4><p>Đổi khách sạn, sửa itinerary</p></div>
+      <div class="step-arrow"></div>
+      <div class="step-card step-card-yellow" style="flex:1;"><div class="step-num">5</div><h4 class="step-title">Chốt &amp; đặt phòng</h4><p>Xác nhận lịch trình, thanh toán</p></div>
+    </div>
+    <div class="marker-block reveal r4" style="margin-top:56px;font-size:22px;background:var(--pink);max-width:1500px;box-shadow:18px 18px 0 var(--ink);">
+      <span class="mono-label" style="display:block;font-size:15px;margin-bottom:8px;">VÒNG LẶP THÔNG MINH</span>
+      <span style="font-family:var(--f-body);text-transform:none;font-size:19px;line-height:1.4;font-weight:500;">Trước bước lập lịch, hệ thống kiểm tra Tier 1 Cache — nếu tìm thấy lịch trình mẫu tương đồng đủ cao, tái sử dụng ngay thay vì tính toán lại từ đầu.</span>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">QUY TRÌNH — 5 BƯỚC</span><span class="mf-right">04<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ SLIDE 5 — ARCHITECTURE (SUMMARY) ============ -->
+<section class="slide" id="s5" data-nav-architecture="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">04 — KIẾN TRÚC</span></div>
+  <div class="content">
+    <div class="kicker k-orange reveal r1">KIẾN TRÚC</div>
+    <h2 class="dh dh-md reveal r2" style="margin-top:22px;">Kiến trúc hệ thống</h2>
+    <table class="cm-table reveal r3" style="margin-top:26px;">
+      <thead><tr><th style="width:14%;">Lớp</th><th style="width:20%;">Công nghệ</th><th>Chi tiết</th></tr></thead>
+      <tbody>
+        <tr><td><b>FRONTEND</b></td><td>React 19 + Vite</td><td>ChatPanel · ItineraryPanel · SSE streaming</td></tr>
+        <tr class="current"><td><b>ORCHESTRATOR</b></td><td>FastAPI + LangGraph</td><td>14-node StateGraph, GPT-5.1 (reasoning) + GPT-4o-mini (fast) — Patch pipeline → Supervisor → Hotel / Itinerary / Booking / QA workers</td></tr>
+        <tr><td><b>DOMAIN SERVICES</b></td><td>Service Layer</td><td>hotel_selection · trip_scheduler · itinerary_reuse · supabase_search — pure, deterministic Python</td></tr>
+        <tr><td><b>DATA LAYER</b></td><td>Supabase (Postgres)</td><td>PostgreSQL + pgvector (RAG &amp; Tier 1 Cache) · Airflow ETL</td></tr>
+      </tbody>
+    </table>
+    <div class="reveal r4" style="margin-top:18px;display:flex;flex-wrap:wrap;gap:9px;">
+      <span class="mono-tag">React 19 + Vite</span><span class="mono-tag">FastAPI</span><span class="mono-tag">LangGraph</span>
+      <span class="mono-tag">GPT-5.1 + GPT-4o-mini</span><span class="mono-tag">Supabase pgvector</span><span class="mono-tag">Cloudflare Workers AI</span>
+      <span class="mono-tag">Airflow</span><span class="mono-tag">Docker Compose</span>
+    </div>
+    <div class="reveal r5" id="jumpToAppendixBtn" style="margin-top:20px;padding:16px 26px;display:flex;align-items:center;gap:18px;background:var(--yellow);border:4px solid var(--ink);width:fit-content;cursor:pointer;box-shadow:12px 12px 0 var(--ink);">
+      <span class="step-title" style="font-size:26px;">→</span>
+      <span class="mono-label" style="font-size:15px;letter-spacing:.02em;">30 slide phụ lục chi tiết từng node, thuật toán, luồng đặt phòng/thanh toán, và cost/token — bấm để xem</span>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">KIẾN TRÚC — 4 LỚP</span><span class="mf-right">05<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ SLIDE 6 — LANGGRAPH FLOW (SUMMARY) ============ -->
+<section class="slide" id="s6">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">05 — LANGGRAPH</span></div>
+  <div class="content">
+    <div class="kicker k-pink reveal r1">LANGGRAPH</div>
+    <h2 class="dh dh-sm reveal r2" style="margin-top:18px;">Luồng xử lý 1 lượt chat — 14 node</h2>
+    <p class="body-md reveal r2" style="margin-top:6px;max-width:1500px;">Mỗi tin nhắn người dùng đi qua 3 giai đoạn tuần tự — chi tiết từng node ở phụ lục.</p>
+    <div class="grid3 reveal r3" style="margin-top:22px;align-items:start;">
+      <div class="spec-card">
+        <div class="spec-hd spec-hd-orange">Giai đoạn 1 · 7 node — Hiểu yêu cầu</div>
+        <div class="spec-body" style="gap:7px;">
+          <div><b style="font-family:var(--f-mono);font-size:15px;">load_context</b><br><span class="body-sm">Reset dữ liệu tạm đầu mỗi lượt chat</span></div>
+          <div><b style="font-family:var(--f-mono);font-size:15px;">scope_guard</b><br><span class="body-sm">Chặn tin nhắn jailbreak / độc hại</span> <span class="flow-exit" style="margin-top:0;">⤷ respond</span></div>
+          <div><b style="font-family:var(--f-mono);font-size:15px;">extract_patch</b><br><span class="body-sm">LLM đọc ý định, tạo patch thay đổi</span></div>
+          <div><b style="font-family:var(--f-mono);font-size:15px;">validate_patch</b><br><span class="body-sm">Kiểm tra patch hợp lệ (dry-run)</span></div>
+          <div><b style="font-family:var(--f-mono);font-size:15px;">apply_patch</b><br><span class="body-sm">Ghi thay đổi thật vào state</span></div>
+          <div><b style="font-family:var(--f-mono);font-size:15px;">ask_slot</b><br><span class="body-sm">Hỏi thông tin còn thiếu</span> <span class="flow-exit" style="margin-top:0;">⤷ respond</span></div>
+          <div><b style="font-family:var(--f-mono);font-size:15px;">intake_qa</b><br><span class="body-sm">Trả lời câu hỏi phát sinh giữa chừng</span> <span class="flow-exit" style="margin-top:0;">⤷ respond</span></div>
+        </div>
+      </div>
+      <div class="spec-card">
+        <div class="spec-hd spec-hd-pink">Giai đoạn 2 · 5 node — Điều phối &amp; thực thi</div>
+        <div class="spec-body" style="gap:7px;">
+          <div><b style="font-family:var(--f-mono);font-size:15px;">supervisor</b><br><span class="body-sm">Chọn worker chạy tiếp theo (ít khi cần LLM)</span></div>
+          <div><b style="font-family:var(--f-mono);font-size:15px;">hotel_node</b><br><span class="body-sm">Tìm &amp; xếp hạng khách sạn theo bộ lọc</span></div>
+          <div><b style="font-family:var(--f-mono);font-size:15px;">itinerary_node</b><br><span class="body-sm">Dựng / chỉnh sửa lịch trình từng ngày</span></div>
+          <div><b style="font-family:var(--f-mono);font-size:15px;">booking_node</b><br><span class="body-sm">Luôn từ chối trong graph *</span></div>
+          <div><b style="font-family:var(--f-mono);font-size:15px;">qa_node</b><br><span class="body-sm">Trả lời câu hỏi tự do về chuyến đi (ReAct)</span></div>
+          <div class="mono-label" style="font-size:13px;margin-top:6px;">🔁 supervisor ↔ worker lặp đến khi hết việc (tối đa 5 lần)</div>
+        </div>
+      </div>
+      <div class="spec-card">
+        <div class="spec-hd spec-hd-green">Giai đoạn 3 · 2 node — Hoàn tất</div>
+        <div class="spec-body" style="gap:7px;">
+          <div><b style="font-family:var(--f-mono);font-size:15px;">budget_check</b><br><span class="body-sm">So sánh ngân sách, tự re-plan nếu vượt (1 lần)</span></div>
+          <div><b style="font-family:var(--f-mono);font-size:15px;">respond</b><br><span class="body-sm">Gộp câu trả lời cuối, gửi về frontend</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="spec-card reveal r4" style="margin-top:18px;flex-direction:row;align-items:center;">
+      <span class="mono-tag" style="background:var(--yellow);flex-shrink:0;margin:16px 0 16px 20px;">* booking_node</span>
+      <p class="body-sm" style="padding:14px 22px;">Từ chối <b>trong graph này theo thiết kế</b> — không phải tính năng còn thiếu. Đặt phòng &amp; thanh toán VNPay <b>hoạt động thật</b>, nhưng đi qua REST API riêng (booking_service · payment_service · vnpay_service) sau khi khách chọn khách sạn — tách khỏi vòng lặp chat/LLM để không phụ thuộc AI cho bước tài chính.</p>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">LANGGRAPH — 14 NODE, 3 GIAI ĐOẠN</span><span class="mf-right">06<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ SLIDE 7 — EVALUATION ============ -->
+<section class="slide" id="s7">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">06 — ĐÁNH GIÁ</span></div>
+  <div class="content">
+    <div class="kicker k-green reveal r1">ĐÁNH GIÁ &amp; ĐO LƯỜNG</div>
+    <h2 class="dh dh-sm reveal r2" style="margin-top:18px;">Kết quả thật trên bộ eval — không phải ước lượng</h2>
+    <p class="mono-label reveal r2" style="margin-top:6px;font-size:16px;opacity:.75;">eval/results/ragas-20260820 · 23 record retrieval (VI) · 9 hội thoại / 35 lượt E2E · Cloudflare bge-m3</p>
+    <div class="grid3 reveal r3" style="margin-top:24px;">
+      <div class="stat-cell stat-cell-cream" style="text-align:center;align-items:center;"><div class="stat-num" style="font-size:52px;">0.80–0.86</div><p class="stat-desc">Precision truy xuất (VI) — dao động qua các lần chạy</p></div>
+      <div class="stat-cell stat-cell-pink" style="text-align:center;align-items:center;"><div class="stat-num" style="font-size:52px;">0.833</div><p class="stat-desc">Context relevance truy xuất (VI)</p></div>
+      <div class="stat-cell stat-cell-orange" style="text-align:center;align-items:center;"><div class="stat-num" style="font-size:52px;">0.78–0.87</div><p class="stat-desc">Faithfulness E2E — dao động qua 5 lần chạy</p></div>
+    </div>
+    <div class="grid2 reveal r4" style="margin-top:22px;">
+      <div class="spec-card">
+        <div class="spec-hd">Latency (p50 / p95)</div>
+        <div class="spec-body">
+          <div style="display:flex;justify-content:space-between;border-bottom:2px solid var(--ink);padding-bottom:8px;"><span class="mono-label" style="font-size:16px;">retrieval.search</span><span class="mono-label" style="font-size:16px;">4.54s / 7.99s</span></div>
+          <div style="display:flex;justify-content:space-between;border-bottom:2px solid var(--ink);padding-bottom:8px;"><span class="mono-label" style="font-size:16px;">e2e.turn</span><span class="mono-label" style="font-size:16px;">6.98s / 12.82s</span></div>
+          <div style="display:flex;justify-content:space-between;"><span class="mono-label" style="font-size:16px;">e2e.conversation</span><span class="mono-label" style="font-size:16px;">29.03s / 37.44s</span></div>
+        </div>
+      </div>
+      <div class="spec-card">
+        <div class="spec-hd">Chi phí đo được / lần chạy eval</div>
+        <div class="spec-body">
+          <div style="display:flex;justify-content:space-between;border-bottom:2px solid var(--ink);padding-bottom:8px;"><span class="mono-label" style="font-size:16px;">Retrieval (46 lời gọi)</span><span class="mono-label" style="font-size:16px;">$0.0224</span></div>
+          <div style="display:flex;justify-content:space-between;"><span class="mono-label" style="font-size:16px;">E2E app (55 lời gọi)</span><span class="mono-label" style="font-size:16px;">$0.0836</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="mono-label reveal r5" style="margin-top:16px;font-size:14px;opacity:.65;">Bộ eval nhỏ, chỉ tiếng Việt — đọc các con số như xu hướng ban đầu, không phải cam kết ở quy mô lớn. Chi tiết đầy đủ trong plans/reports/eval-260820-1703.</p>
+  </div>
+  <div class="meta-footer"><span class="mf-left">ĐÁNH GIÁ &amp; ĐO LƯỜNG</span><span class="mf-right">07<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ SLIDE 8 — PRODUCT ============ -->
+<section class="slide" id="s8">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">07 — SẢN PHẨM</span></div>
+  <div class="content">
+    <div class="kicker k-cream reveal r1" style="border:3px solid var(--ink);">SẢN PHẨM</div>
+    <h2 class="dh dh-md reveal r2" style="margin-top:22px;">Trải nghiệm sản phẩm</h2>
+    <div class="grid2 reveal r3" style="margin-top:30px;align-items:stretch;gap:40px;">
+      <div style="display:flex;flex-direction:column;gap:20px;justify-content:center;">
+        <div style="display:flex;gap:16px;align-items:flex-start;"><div class="step-num" style="font-size:36px;width:48px;">1</div><span class="body-lg">ChatPanel + ItineraryPanel hiển thị song song</span></div>
+        <div style="display:flex;gap:16px;align-items:flex-start;"><div class="step-num" style="font-size:36px;width:48px;">2</div><span class="body-lg">Card khách sạn trực quan, so sánh &amp; chọn nhanh</span></div>
+        <div style="display:flex;gap:16px;align-items:flex-start;"><div class="step-num" style="font-size:36px;width:48px;">3</div><span class="body-lg">Chỉnh sửa lịch trình, đổi khách sạn tức thời</span></div>
+        <div style="display:flex;gap:16px;align-items:flex-start;"><div class="step-num" style="font-size:36px;width:48px;">4</div><span class="body-lg">Đặt phòng &amp; thanh toán VNPay tích hợp sẵn</span></div>
+        <div style="display:flex;gap:16px;align-items:flex-start;"><div class="step-num" style="font-size:36px;width:48px;">5</div><span class="body-lg">Streaming phản hồi qua SSE, hỗ trợ song ngữ Việt / Anh</span></div>
+      </div>
+      <div class="stacked reveal r4" style="padding:0;overflow:hidden;">
+        <div style="background:var(--ink);color:var(--cream);padding:12px 18px;display:flex;align-items:center;gap:8px;">
+          <span style="width:14px;height:14px;background:var(--pink);display:inline-block;"></span>
+          <span style="width:14px;height:14px;background:var(--yellow);display:inline-block;"></span>
+          <span style="width:14px;height:14px;background:var(--green);display:inline-block;"></span>
+          <span class="mono-label" style="margin-left:10px;font-size:15px;">VP-OTA</span>
+        </div>
+        <div style="padding:20px;display:flex;flex-direction:column;gap:12px;">
+          <div style="align-self:flex-end;max-width:75%;background:var(--ink);color:var(--cream);padding:12px 16px;border:3px solid var(--ink);font-size:16px;">Tôi muốn đi Đà Nẵng 3 ngày 2 người thích lịch sử</div>
+          <div style="align-self:flex-start;max-width:75%;background:var(--cream);padding:12px 16px;border:3px solid var(--ink);font-size:16px;">Bạn muốn ngân sách khoảng bao nhiêu cho chuyến đi?</div>
+          <div style="align-self:flex-end;max-width:75%;background:var(--ink);color:var(--cream);padding:12px 16px;border:3px solid var(--ink);font-size:16px;">Khoảng 5 triệu / người</div>
+          <div style="border:3px solid var(--ink);background:var(--yellow);padding:12px 16px;">
+            <div class="mono-label" style="font-size:13px;">LỊCH TRÌNH — NGÀY 1</div>
+            <div style="margin-top:8px;font-size:15px;display:flex;flex-direction:column;gap:6px;">
+              <div>● 08:00 &nbsp;Bãi biển Mỹ Khê</div>
+              <div>● 11:30 &nbsp;Ăn trưa hải sản</div>
+              <div>● 14:00 &nbsp;Ngũ Hành Sơn</div>
+              <div>● 18:30 &nbsp;Cầu Rồng phun lửa</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">SẢN PHẨM — CHAT + ITINERARY</span><span class="mf-right">08<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ SLIDE 9 — ADMIN DASHBOARD ============ -->
+<section class="slide" id="s9">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">07 — SẢN PHẨM</span></div>
+  <div class="content">
+    <div class="kicker k-cream reveal r1" style="border:3px solid var(--ink);">SẢN PHẨM</div>
+    <h2 class="dh dh-md reveal r2" style="margin-top:22px;">Bảng quản trị vận hành</h2>
+    <div class="grid2 reveal r3" style="margin-top:30px;align-items:stretch;gap:40px;">
+      <div style="display:flex;flex-direction:column;gap:18px;justify-content:center;">
+        <div style="display:flex;gap:16px;align-items:flex-start;"><div class="step-num" style="font-size:32px;width:44px;">1</div><span class="body-md">Tổng quan doanh thu, đơn hàng &amp; giữ chỗ sắp hết hạn theo thời gian thực</span></div>
+        <div style="display:flex;gap:16px;align-items:flex-start;"><div class="step-num" style="font-size:32px;width:44px;">2</div><span class="body-md">Quản lý khách sạn, phòng, giá &amp; trạng thái embedding</span></div>
+        <div style="display:flex;gap:16px;align-items:flex-start;"><div class="step-num" style="font-size:32px;width:44px;">3</div><span class="body-md">Theo dõi pipeline dữ liệu &amp; độ phủ embedding</span></div>
+        <div style="display:flex;gap:16px;align-items:flex-start;"><div class="step-num" style="font-size:32px;width:44px;">4</div><span class="body-md">Danh mục tiện ích khách sạn, duyệt &amp; chuẩn hoá</span></div>
+        <div style="display:flex;gap:16px;align-items:flex-start;"><div class="step-num" style="font-size:32px;width:44px;">5</div><span class="body-md">Xử lý đơn hàng, huỷ &amp; giữ chỗ hết hạn</span></div>
+      </div>
+      <div class="stacked reveal r4" style="padding:0;overflow:hidden;display:flex;">
+        <div style="width:180px;background:var(--ink);color:var(--cream);padding:16px 14px;font-size:13px;flex-shrink:0;">
+          <div class="mono-label" style="font-size:14px;border:2px solid var(--cream);width:40px;height:40px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;">VP</div>
+          <div class="mono-label" style="font-size:11px;opacity:.6;margin:10px 0 4px;">TỔNG QUAN</div>
+          <div style="background:var(--pink);color:var(--ink);padding:6px 8px;margin-bottom:4px;">Tổng quan</div>
+          <div class="mono-label" style="font-size:11px;opacity:.6;margin:10px 0 4px;">KHÁCH SẠN</div>
+          <div style="padding:6px 8px;">Danh sách khách sạn</div>
+          <div style="padding:6px 8px;">Trạng thái embedding</div>
+          <div style="padding:6px 8px;">Danh mục tiện ích</div>
+          <div class="mono-label" style="font-size:11px;opacity:.6;margin:10px 0 4px;">DỮ LIỆU BOT</div>
+          <div style="padding:6px 8px;">Pipeline</div>
+          <div class="mono-label" style="font-size:11px;opacity:.6;margin:10px 0 4px;">ĐƠN HÀNG</div>
+          <div style="padding:6px 8px;">Danh sách đơn</div>
+        </div>
+        <div style="flex:1;padding:20px;">
+          <div class="grid4" style="gap:10px;">
+            <div class="stat-cell stat-cell-cream" style="padding:10px 12px;"><div class="stat-num" style="font-size:26px;">18</div><div class="body-sm" style="font-size:12px;">Đơn hôm nay</div></div>
+            <div class="stat-cell stat-cell-cream" style="padding:10px 12px;"><div class="stat-num" style="font-size:26px;">42tr</div><div class="body-sm" style="font-size:12px;">Doanh thu</div></div>
+            <div class="stat-cell stat-cell-yellow" style="padding:10px 12px;"><div class="stat-num" style="font-size:26px;">3</div><div class="body-sm" style="font-size:12px;">Chờ xử lý</div></div>
+            <div class="stat-cell stat-cell-pink" style="padding:10px 12px;"><div class="stat-num" style="font-size:26px;">1</div><div class="body-sm" style="font-size:12px;">Sắp hết hạn</div></div>
+          </div>
+          <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px;font-size:14px;">
+            <div style="display:flex;gap:8px;align-items:center;"><span style="width:12px;height:12px;border-radius:50%;background:var(--green);display:inline-block;"></span>Khách sạn Mường Thanh — đã xác nhận</div>
+            <div style="display:flex;gap:8px;align-items:center;"><span style="width:12px;height:12px;border-radius:50%;background:var(--yellow);display:inline-block;"></span>Vinpearl Resort — chờ admin xác nhận</div>
+            <div style="display:flex;gap:8px;align-items:center;"><span style="width:12px;height:12px;border-radius:50%;background:var(--pink);display:inline-block;"></span>Furama Resort — giữ chỗ hết hạn trong 12 phút</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">SẢN PHẨM — ADMIN DASHBOARD</span><span class="mf-right">09<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ SLIDE 10 — NOTABLE FEATURES ============ -->
+<section class="slide" id="s10">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">08 — GIÁ TRỊ</span></div>
+  <div class="content">
+    <div class="kicker k-green reveal r1">VÌ SAO CHỌN CHÚNG TÔI</div>
+    <h2 class="dh dh-md reveal r2" style="margin-top:22px;">Giá trị thật cho khách &amp; doanh nghiệp</h2>
+    <div class="grid6 reveal r3" style="margin-top:26px;">
+      <div class="step-card"><div class="step-num" style="font-size:34px;">88</div><h4 class="step-title" style="font-size:19px;">Lên lịch trình tức thì</h4><p>Chuyến đi giống trước đó? Trả kết quả ngay từ cache thông minh (88% tương đồng) thay vì bắt khách chờ AI tính lại từ đầu.</p></div>
+      <div class="step-card step-card-orange"><div class="step-num" style="font-size:34px;">✓</div><h4 class="step-title" style="font-size:19px;">Đáng tin cậy theo thiết kế</h4><p>Mỗi bước xử lý tự kiểm tra chéo — lỗi bị bắt ngay bên trong hệ thống, không lọt ra đến trải nghiệm khách hàng.</p></div>
+      <div class="step-card step-card-pink"><div class="step-num" style="font-size:34px;">$</div><h4 class="step-title" style="font-size:19px;">Không bao giờ vượt ngân sách âm thầm</h4><p>Tự phát hiện &amp; tự điều chỉnh khi vượt tiền, luôn báo rõ cho khách thay vì lặng lẽ trả một kế hoạch quá đắt.</p></div>
+      <div class="step-card step-card-green"><div class="step-num" style="font-size:34px;">⚡</div><h4 class="step-title" style="font-size:19px;">Đúng mô hình AI cho đúng việc</h4><p>GPT-5.1 xử lý phần suy luận phức tạp, GPT-4o-mini trả lời nhanh cho phần đơn giản — tối ưu cả tốc độ lẫn chi phí.</p></div>
+      <div class="step-card step-card-yellow"><div class="step-num" style="font-size:34px;">₫</div><h4 class="step-title" style="font-size:19px;">Đặt phòng &amp; thanh toán thật</h4><p>Không chỉ là demo — VNPay hoạt động thật, khách chốt lịch và thanh toán ngay trong một luồng liền mạch.</p></div>
+      <div class="step-card"><div class="step-num" style="font-size:34px;">語</div><h4 class="step-title" style="font-size:19px;">Trò chuyện tự nhiên, không phải điền form</h4><p>Song ngữ Việt/Anh, phản hồi tức thời từng chữ qua streaming — cảm giác như nhắn tin với một người am hiểu du lịch.</p></div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">GIÁ TRỊ THẬT — 6 ĐIỂM NỔI BẬT</span><span class="mf-right">10<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ SLIDE 11 — TEAM: TIỀN ANH KIỆT ============ -->
+<section class="slide" id="s11">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">09 — ĐỘI NGŨ</span></div>
+  <div class="content">
+    <div class="kicker k-pink reveal r1">ĐỘI NGŨ</div>
+    <h2 class="dh dh-md reveal r2" style="margin-top:22px;">Tiền Anh Kiệt</h2>
+    <p class="mono-label reveal r2" style="margin-top:6px;font-size:17px;opacity:.75;">Full-stack &amp; AI Orchestration Lead · 192 commit (GitHub history)</p>
+    <div class="grid2 reveal r3" style="margin-top:40px;align-items:stretch;gap:50px;">
+      <div style="display:flex;flex-direction:column;gap:18px;justify-content:center;">
+        <div style="display:flex;gap:14px;align-items:flex-start;"><span class="mono-tag" style="background:var(--pink);flex-shrink:0;padding:6px 9px;">✓</span><span class="body-md">Thiết kế &amp; refactor LangGraph agent graph (14 node, conditional routing)</span></div>
+        <div style="display:flex;gap:14px;align-items:flex-start;"><span class="mono-tag" style="background:var(--pink);flex-shrink:0;padding:6px 9px;">✓</span><span class="body-md">Streaming chat UX — thinking block theo bước, suggestion chip theo ngữ cảnh</span></div>
+        <div style="display:flex;gap:14px;align-items:flex-start;"><span class="mono-tag" style="background:var(--pink);flex-shrink:0;padding:6px 9px;">✓</span><span class="body-md">Tối ưu tìm kiếm điểm đến (RPC tiered search, lọc bán kính)</span></div>
+        <div style="display:flex;gap:14px;align-items:flex-start;"><span class="mono-tag" style="background:var(--pink);flex-shrink:0;padding:6px 9px;">✓</span><span class="body-md">Xử lý lỗi embedding hệ thống &amp; dẫn dắt bộ eval / kế hoạch dự án</span></div>
+        <div style="display:flex;gap:14px;align-items:flex-start;"><span class="mono-tag" style="background:var(--pink);flex-shrink:0;padding:6px 9px;">✓</span><span class="body-md">Triển khai &amp; vận hành hạ tầng trên AWS EC2 (Docker Compose, Caddy)</span></div>
+      </div>
+      <div class="stacked reveal r4" style="padding:36px;display:flex;flex-direction:column;justify-content:center;gap:24px;">
+        <div style="width:130px;height:130px;background:var(--pink);border:4px solid var(--ink);margin:0 auto;display:flex;align-items:center;justify-content:center;" class="step-title">TK</div>
+        <div style="display:flex;border:3px solid var(--ink);height:44px;">
+          <div style="flex:51;background:var(--orange);color:var(--cream);display:flex;align-items:center;justify-content:center;font-family:var(--f-mono);font-size:14px;">Backend 51%</div>
+          <div style="flex:49;background:var(--yellow);display:flex;align-items:center;justify-content:center;font-family:var(--f-mono);font-size:14px;">Frontend 49%</div>
+        </div>
+        <p class="mono-label" style="text-align:center;font-size:14px;opacity:.7;">backend/src/agents · frontend/admin · plans &amp; eval</p>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">ĐỘI NGŨ — TIỀN ANH KIỆT</span><span class="mf-right">11<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ SLIDE 12 — TEAM: NGUYỄN HỮU ĐỨC ============ -->
+<section class="slide" id="s12">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">09 — ĐỘI NGŨ</span></div>
+  <div class="content">
+    <div class="kicker k-green reveal r1">ĐỘI NGŨ</div>
+    <h2 class="dh dh-md reveal r2" style="margin-top:22px;">Nguyễn Hữu Đức</h2>
+    <p class="mono-label reveal r2" style="margin-top:6px;font-size:17px;opacity:.75;">Backend &amp; Data Engineer · 147 commit (GitHub history)</p>
+    <div class="grid2 reveal r3" style="margin-top:40px;align-items:stretch;gap:50px;">
+      <div style="display:flex;flex-direction:column;gap:18px;justify-content:center;">
+        <div style="display:flex;gap:14px;align-items:flex-start;"><span class="mono-tag" style="background:var(--green);color:var(--cream);flex-shrink:0;padding:6px 9px;">✓</span><span class="body-md">Cải thiện tìm kiếm &amp; lọc khách sạn (lọc theo số khách trong SQL, giá phòng trung bình theo kỳ ở)</span></div>
+        <div style="display:flex;gap:14px;align-items:flex-start;"><span class="mono-tag" style="background:var(--green);color:var(--cream);flex-shrink:0;padding:6px 9px;">✓</span><span class="body-md">Thiết kế kiến trúc cơ sở dữ liệu (schema Supabase/Postgres, pgvector)</span></div>
+        <div style="display:flex;gap:14px;align-items:flex-start;"><span class="mono-tag" style="background:var(--green);color:var(--cream);flex-shrink:0;padding:6px 9px;">✓</span><span class="body-md">Tier 1 Cache — hoàn thiện &amp; lưu lịch trình làm template tái sử dụng</span></div>
+        <div style="display:flex;gap:14px;align-items:flex-start;"><span class="mono-tag" style="background:var(--green);color:var(--cream);flex-shrink:0;padding:6px 9px;">✓</span><span class="body-md">Dịch vụ backend/agent &amp; pipeline dữ liệu Airflow (ETL, ingest)</span></div>
+        <div style="display:flex;gap:14px;align-items:flex-start;"><span class="mono-tag" style="background:var(--green);color:var(--cream);flex-shrink:0;padding:6px 9px;">✓</span><span class="body-md">Trang quản trị danh mục tiện ích/room-facility &amp; tích hợp LLM provider (Cloudflare, OpenRouter)</span></div>
+      </div>
+      <div class="stacked reveal r4" style="padding:36px;display:flex;flex-direction:column;justify-content:center;gap:24px;">
+        <div style="width:130px;height:130px;background:var(--green);color:var(--cream);border:4px solid var(--ink);margin:0 auto;display:flex;align-items:center;justify-content:center;" class="step-title">ND</div>
+        <div style="display:flex;border:3px solid var(--ink);height:44px;">
+          <div style="flex:76;background:var(--orange);color:var(--cream);display:flex;align-items:center;justify-content:center;font-family:var(--f-mono);font-size:14px;">Backend 76%</div>
+          <div style="flex:24;background:var(--yellow);display:flex;align-items:center;justify-content:center;font-family:var(--f-mono);font-size:14px;">Frontend 24%</div>
+        </div>
+        <p class="mono-label" style="text-align:center;font-size:14px;opacity:.7;">backend/src/agents · database schema · hotel search &amp; filter</p>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">ĐỘI NGŨ — NGUYỄN HỮU ĐỨC</span><span class="mf-right">12<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ SLIDE 13 — TEAM: ĐINH NGUYỄN NHẬT LÂM ============ -->
+<section class="slide" id="s13">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">09 — ĐỘI NGŨ</span></div>
+  <div class="content">
+    <div class="kicker k-orange reveal r1">ĐỘI NGŨ</div>
+    <h2 class="dh dh-md reveal r2" style="margin-top:22px;">Đinh Nguyễn Nhật Lâm</h2>
+    <p class="mono-label reveal r2" style="margin-top:6px;font-size:17px;opacity:.75;">Frontend &amp; Booking Experience Engineer · 135 commit (GitHub history)</p>
+    <div class="grid2 reveal r3" style="margin-top:40px;align-items:stretch;gap:50px;">
+      <div style="display:flex;flex-direction:column;gap:22px;justify-content:center;">
+        <div style="display:flex;gap:14px;align-items:flex-start;"><span class="mono-tag" style="background:var(--orange);color:var(--cream);flex-shrink:0;padding:6px 9px;">✓</span><span class="body-md">Luồng đặt phòng &amp; thanh toán VNPay — giữ chỗ, đổi phòng, biên nhận</span></div>
+        <div style="display:flex;gap:14px;align-items:flex-start;"><span class="mono-tag" style="background:var(--orange);color:var(--cream);flex-shrink:0;padding:6px 9px;">✓</span><span class="body-md">Bản đồ tương tác Mapbox GL JS — animation tuyến đường, marker</span></div>
+        <div style="display:flex;gap:14px;align-items:flex-start;"><span class="mono-tag" style="background:var(--orange);color:var(--cream);flex-shrink:0;padding:6px 9px;">✓</span><span class="body-md">Tích hợp pipeline embedding Cloudflare Workers AI vào Airflow</span></div>
+        <div style="display:flex;gap:14px;align-items:flex-start;"><span class="mono-tag" style="background:var(--orange);color:var(--cream);flex-shrink:0;padding:6px 9px;">✓</span><span class="body-md">View SQL room_night_occupancy phục vụ tra cứu phòng trống trực quan</span></div>
+      </div>
+      <div class="stacked reveal r4" style="padding:36px;display:flex;flex-direction:column;justify-content:center;gap:24px;">
+        <div style="width:130px;height:130px;background:var(--orange);color:var(--cream);border:4px solid var(--ink);margin:0 auto;display:flex;align-items:center;justify-content:center;" class="step-title">ĐL</div>
+        <div style="display:flex;border:3px solid var(--ink);height:44px;">
+          <div style="flex:18;background:var(--orange);color:var(--cream);display:flex;align-items:center;justify-content:center;font-family:var(--f-mono);font-size:12px;">18%</div>
+          <div style="flex:82;background:var(--yellow);display:flex;align-items:center;justify-content:center;font-family:var(--f-mono);font-size:14px;">Frontend 82%</div>
+        </div>
+        <p class="mono-label" style="text-align:center;font-size:14px;opacity:.7;">frontend/components · booking/VNPay flow · Mapbox GL JS</p>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">ĐỘI NGŨ — ĐINH NGUYỄN NHẬT LÂM</span><span class="mf-right">13<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ SLIDE 14 — CLOSE / DEMO (THE GREEN SLIDE) ============ -->
+<section class="slide slide-green" id="s14">
+  <div class="deco-circle" style="width:180px;height:180px;top:90px;left:110px;background:var(--yellow);"></div>
+  <div class="deco-circle" style="width:120px;height:120px;bottom:90px;right:130px;background:var(--pink);"></div>
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">10 — CẢM ƠN</span></div>
+  <div class="content" style="display:flex;flex-direction:column;justify-content:center;align-items:flex-start;">
+    <div class="reveal r1">
+      <h2 class="dh dh-md" style="max-width:1600px;">Cùng đồng hành cùng VP-OTA</h2>
+      <p class="body-lg" style="margin-top:20px;max-width:1100px;">Sẵn sàng demo trực tiếp và trao đổi thêm về lộ trình phát triển sản phẩm.</p>
+      <div class="reveal r2" style="margin-top:34px;display:flex;gap:20px;flex-wrap:wrap;">
+        <a href="https://trip-planner-ai.duckdns.org/" target="_blank" rel="noopener noreferrer" style="text-decoration:none;display:flex;align-items:center;gap:14px;background:var(--yellow);color:var(--ink);border:4px solid var(--cream);padding:16px 26px;box-shadow:14px 14px 0 var(--ink);">
+          <span class="step-title" style="font-size:24px;">▶</span><span class="mono-label" style="font-size:17px;">Xem demo trực tiếp</span>
+        </a>
+        <a href="https://github.com/0infinitive0/VSF-Intern-project" target="_blank" rel="noopener noreferrer" style="text-decoration:none;display:flex;align-items:center;gap:14px;background:var(--cream);color:var(--ink);border:4px solid var(--cream);padding:16px 26px;">
+          <span class="step-title" style="font-size:24px;">G</span><span class="mono-label" style="font-size:17px;">github.com/0infinitive0/VSF-Intern-project</span>
+        </a>
+      </div>
+    </div>
+    <div class="dh dh-hero reveal r3" style="margin-top:54px;">CẢM ƠN!</div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">CẢM ƠN — VP-OTA</span><span class="mf-right">14<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ SLIDE 15 — ROADMAP ============ -->
+<section class="slide" id="s15">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">11 — LỘ TRÌNH</span></div>
+  <div class="content">
+    <div class="kicker k-orange reveal r1">LỘ TRÌNH</div>
+    <h2 class="dh dh-md reveal r2" style="margin-top:22px;">Lộ trình phát triển</h2>
+    <p class="mono-label reveal r2" style="margin-top:8px;font-size:16px;opacity:.75;">Mốc thời gian dự kiến, tính từ 08/2026 — có thể điều chỉnh theo ưu tiên vận hành thực tế</p>
+    <div class="grid4 reveal r3" style="margin-top:40px;align-items:start;">
+      <div>
+        <div class="mono-label" style="font-size:15px;">Đến T8/2026</div>
+        <div class="step-num" style="font-size:36px;margin:10px 0;background:var(--green);color:var(--cream);width:52px;height:52px;border:3px solid var(--ink);display:flex;align-items:center;justify-content:center;">✓</div>
+        <div class="spec-card spec-card-green">
+          <div class="spec-hd spec-hd-cream">ĐÃ HOÀN THÀNH</div>
+          <div class="spec-body"><ul style="color:var(--cream);">
+            <li>Hội thoại AI + RAG search + lập lịch tự động</li>
+            <li>Đặt phòng, thanh toán VNPay &amp; giữ chỗ real-time</li>
+            <li>Mở rộng test coverage &amp; UX chỉnh sửa lịch trình</li>
+          </ul></div>
+        </div>
+      </div>
+      <div>
+        <div class="mono-label" style="font-size:15px;">Q4 2026</div>
+        <div class="step-num" style="font-size:30px;margin:10px 0;background:var(--orange);color:var(--cream);width:52px;height:52px;border:3px solid var(--ink);display:flex;align-items:center;justify-content:center;">»</div>
+        <div class="spec-card spec-card-orange">
+          <div class="spec-hd spec-hd-cream">TIẾP THEO</div>
+          <div class="spec-body"><ul><li>Mở rộng dữ liệu điểm đến &amp; khách sạn</li></ul></div>
+        </div>
+      </div>
+      <div>
+        <div class="mono-label" style="font-size:15px;">Q1 2027</div>
+        <div class="step-num" style="font-size:30px;margin:10px 0;background:var(--pink);width:52px;height:52px;border:3px solid var(--ink);display:flex;align-items:center;justify-content:center;">★</div>
+        <div class="spec-card spec-card-pink">
+          <div class="spec-hd spec-hd-cream">SẮP TỚI</div>
+          <div class="spec-body"><ul><li>Ứng dụng mobile</li></ul></div>
+        </div>
+      </div>
+      <div>
+        <div class="mono-label" style="font-size:15px;">Q2 2027</div>
+        <div class="step-num" style="font-size:30px;margin:10px 0;background:var(--cream);width:52px;height:52px;border:3px solid var(--ink);display:flex;align-items:center;justify-content:center;">◆</div>
+        <div class="spec-card">
+          <div class="spec-hd">ĐỊNH HƯỚNG</div>
+          <div class="spec-body"><ul><li>Đo lường &amp; giám sát chi phí AI theo thời gian thực</li></ul></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">LỘ TRÌNH PHÁT TRIỂN</span><span class="mf-right">15<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ SLIDE 16 — APPENDIX DIVIDER ============ -->
+<section class="slide slide-ink" id="s16" data-appendix="true" data-appendix-divider="true">
+  <div class="deco-circle" style="width:260px;height:260px;top:-60px;right:-60px;background:var(--yellow);"></div>
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">BACKUP SLIDES</span></div>
+  <div class="content">
+    <div class="kicker k-yellow reveal r1">BACKUP SLIDES</div>
+    <h2 class="dh dh-md reveal r2" style="margin-top:22px;">Phụ lục kỹ thuật</h2>
+    <p class="body-lg reveal r3" style="margin-top:16px;max-width:1400px;color:var(--cream);">Chỉ dùng khi được hỏi chi tiết. Mỗi node LangGraph, mỗi thuật toán, và ước tính chi phí có slide riêng — bấm số trang + Enter để nhảy nhanh.</p>
+    <div class="appendix-index reveal r4" style="margin-top:30px;">
+      <div class="idx-item" data-n="17"><span class="idx-num">17</span><span class="idx-label">Sơ đồ luồng đầy đủ (14 node)</span></div>
+      <div class="idx-item" data-n="18"><span class="idx-num">18</span><span class="idx-label">Node 01 — load_context</span></div>
+      <div class="idx-item" data-n="19"><span class="idx-num">19</span><span class="idx-label">Node 02 — scope_guard</span></div>
+      <div class="idx-item" data-n="20"><span class="idx-num">20</span><span class="idx-label">Node 03 — extract_patch</span></div>
+      <div class="idx-item" data-n="21"><span class="idx-num">21</span><span class="idx-label">Node 04 — validate_patch</span></div>
+      <div class="idx-item" data-n="22"><span class="idx-num">22</span><span class="idx-label">Node 05 — apply_patch</span></div>
+      <div class="idx-item" data-n="23"><span class="idx-num">23</span><span class="idx-label">Node 06 — ask_slot</span></div>
+      <div class="idx-item" data-n="24"><span class="idx-num">24</span><span class="idx-label">Node 07 — intake_qa</span></div>
+      <div class="idx-item" data-n="25"><span class="idx-num">25</span><span class="idx-label">Node 08 — supervisor</span></div>
+      <div class="idx-item" data-n="26"><span class="idx-num">26</span><span class="idx-label">Node 09 — hotel_node</span></div>
+      <div class="idx-item" data-n="27"><span class="idx-num">27</span><span class="idx-label">Node 10 — itinerary_node</span></div>
+      <div class="idx-item" data-n="28"><span class="idx-num">28</span><span class="idx-label">Node 11 — booking_node</span></div>
+      <div class="idx-item" data-n="29"><span class="idx-num">29</span><span class="idx-label">Node 12 — qa_node</span></div>
+      <div class="idx-item" data-n="30"><span class="idx-num">30</span><span class="idx-label">Node 13 — budget_check</span></div>
+      <div class="idx-item" data-n="31"><span class="idx-num">31</span><span class="idx-label">Node 14 — respond</span></div>
+      <div class="idx-item" data-n="32"><span class="idx-num">32</span><span class="idx-label">Lựa chọn mô hình AI &amp; so sánh</span></div>
+      <div class="idx-item" data-n="33"><span class="idx-num">33</span><span class="idx-label">Vì sao chọn BGE-M3 cho embedding?</span></div>
+      <div class="idx-item" data-n="34"><span class="idx-num">34</span><span class="idx-label">Công thức chấm điểm khách sạn</span></div>
+      <div class="idx-item" data-n="35"><span class="idx-num">35</span><span class="idx-label">Thuật toán lập lịch trình</span></div>
+      <div class="idx-item" data-n="36"><span class="idx-num">36</span><span class="idx-label">Tier 1 Cache — tổng quan</span></div>
+      <div class="idx-item" data-n="37"><span class="idx-num">37</span><span class="idx-label">Tier 1 Cache — chi tiết</span></div>
+      <div class="idx-item" data-n="38"><span class="idx-num">38</span><span class="idx-label">Pipeline tìm kiếm ngữ nghĩa (RAG)</span></div>
+      <div class="idx-item" data-n="39"><span class="idx-num">39</span><span class="idx-label">Quản lý session &amp; state</span></div>
+      <div class="idx-item" data-n="40"><span class="idx-num">40</span><span class="idx-label">Ước tính chi phí &amp; token</span></div>
+      <div class="idx-item" data-n="41"><span class="idx-num">41</span><span class="idx-label">Q&amp;A — Giá đổi lúc thanh toán?</span></div>
+      <div class="idx-item" data-n="42"><span class="idx-num">42</span><span class="idx-label">Q&amp;A — Vì sao giữ booking_node?</span></div>
+      <div class="idx-item" data-n="43"><span class="idx-num">43</span><span class="idx-label">Q&amp;A — Greedy vs CSP/ILP?</span></div>
+      <div class="idx-item" data-n="44"><span class="idx-num">44</span><span class="idx-label">Q&amp;A — Cache hit rate &amp; cost thật?</span></div>
+      <div class="idx-item" data-n="45"><span class="idx-num">45</span><span class="idx-label">Luồng đặt phòng &amp; thanh toán VNPay</span></div>
+      <div class="idx-item" data-n="46"><span class="idx-num">46</span><span class="idx-label">Giữ phòng — quyết định thiết kế &amp; rủi ro</span></div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">PHỤ LỤC KỸ THUẬT</span><span class="mf-right">BACKUP · 16<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ SLIDE 17 — GRAPH TOPOLOGY (FLOW DIAGRAM) ============ -->
+<section class="slide" id="s17" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">PHỤ LỤC · KIẾN TRÚC</span></div>
+  <div class="content" style="top:130px;bottom:50px;">
+    <div class="kicker k-cream reveal r1" style="border:3px solid var(--ink);">PHỤ LỤC · KIẾN TRÚC</div>
+    <h2 class="dh dh-xs reveal r2" style="margin-top:14px;">Toàn bộ luồng LangGraph — 14 node</h2>
+
+    <div class="reveal r3" style="margin-top:20px;border:4px solid var(--ink);background:var(--cream-2);padding:22px 24px 18px;">
+
+      <!-- ROW 1 — PATCH PIPELINE -->
+      <div class="flow-row">
+        <div class="flow-terminal">START</div>
+        <div class="step-arrow" style="border-left-width:14px;border-top-width:12px;border-bottom-width:12px;"></div>
+        <div class="flow-node"><span class="ftag ftag-pipe">pipeline</span>load_context</div>
+        <div class="step-arrow" style="border-left-width:14px;border-top-width:12px;border-bottom-width:12px;"></div>
+        <div class="flow-node"><span class="ftag ftag-pipe">pipeline</span>scope_guard<div class="flow-exit">blocked ⤷ respond</div></div>
+        <div class="step-arrow" style="border-left-width:14px;border-top-width:12px;border-bottom-width:12px;"></div>
+        <div class="flow-node"><span class="ftag ftag-pipe">pipeline</span>extract_patch</div>
+        <div class="step-arrow" style="border-left-width:14px;border-top-width:12px;border-bottom-width:12px;"></div>
+        <div class="flow-node"><span class="ftag ftag-pipe">pipeline</span>validate_patch</div>
+        <div class="step-arrow" style="border-left-width:14px;border-top-width:12px;border-bottom-width:12px;"></div>
+        <div class="flow-node"><span class="ftag ftag-pipe">pipeline</span>apply_patch</div>
+        <div class="step-arrow" style="border-left-width:14px;border-top-width:12px;border-bottom-width:12px;"></div>
+        <div class="flow-node"><span class="ftag ftag-pipe">pipeline</span>ask_slot<div class="flow-exit">ask ⤷ respond</div></div>
+        <div class="step-arrow" style="border-left-width:14px;border-top-width:12px;border-bottom-width:12px;"></div>
+        <div class="flow-node"><span class="ftag ftag-pipe">pipeline</span>intake_qa<div class="flow-exit">⤷ respond / supervisor</div></div>
+      </div>
+
+      <!-- CONNECTOR DOWN TO SUPERVISOR -->
+      <div style="display:flex;justify-content:center;">
+        <div class="flow-vstub" style="height:22px;"></div>
+      </div>
+      <div style="display:flex;justify-content:center;">
+        <div class="flow-node" style="max-width:220px;flex:none;"><span class="ftag ftag-work">worker</span>supervisor<div class="flow-exit">done ⤷ respond</div></div>
+      </div>
+      <div style="display:flex;justify-content:center;">
+        <div class="flow-vstub" style="height:16px;"></div>
+      </div>
+
+      <!-- BUS TO 4 WORKERS -->
+      <div class="flow-hbus"><div class="stub" style="left:12.5%;"></div><div class="stub" style="left:37.5%;"></div><div class="stub" style="left:62.5%;"></div><div class="stub" style="left:87.5%;"></div></div>
+      <div class="flow-row" style="gap:22px;">
+        <div class="flow-node"><span class="ftag ftag-work">worker</span>hotel_node<div class="flow-exit">↻ supervisor</div><div class="flow-exit">→ budget_check</div></div>
+        <div class="flow-node"><span class="ftag ftag-work">worker</span>itinerary_node<div class="flow-exit">↻ supervisor</div><div class="flow-exit">→ budget_check / respond</div></div>
+        <div class="flow-node"><span class="ftag ftag-work">worker</span>booking_node *<div class="flow-exit">→ budget_check</div></div>
+        <div class="flow-node"><span class="ftag ftag-work">worker</span>qa_node<div class="flow-exit">→ respond</div></div>
+      </div>
+      <div style="text-align:center;margin-top:8px;">
+        <span class="mono-tag" style="font-size:12px;background:var(--yellow);">🔁 supervisor ↔ worker lặp đến khi hết việc (tối đa 5 lần)</span>
+      </div>
+
+      <!-- CONNECTOR DOWN TO BUDGET/RESPOND -->
+      <div class="flow-hbus" style="margin-top:14px;"><div class="stub" style="left:16.6%;"></div><div class="stub" style="left:50%;"></div><div class="stub" style="left:83.3%;"></div></div>
+      <div class="flow-row" style="justify-content:center;gap:22px;">
+        <div class="flow-node" style="max-width:200px;flex:none;"><span class="ftag ftag-det">det</span>budget_check</div>
+        <div class="step-arrow" style="border-left-width:14px;border-top-width:12px;border-bottom-width:12px;"></div>
+        <div class="flow-node" style="max-width:200px;flex:none;"><span class="ftag ftag-det">det</span>respond</div>
+        <div class="step-arrow" style="border-left-width:14px;border-top-width:12px;border-bottom-width:12px;"></div>
+        <div class="flow-terminal">END</div>
+      </div>
+
+      <div class="flow-legend">
+        <span class="mono-tag" style="font-size:12px;"><span style="display:inline-block;width:10px;height:10px;background:var(--orange);margin-right:6px;"></span>Patch pipeline</span>
+        <span class="mono-tag" style="font-size:12px;"><span style="display:inline-block;width:10px;height:10px;background:var(--pink);margin-right:6px;"></span>Worker</span>
+        <span class="mono-tag" style="font-size:12px;"><span style="display:inline-block;width:10px;height:10px;background:var(--green);margin-right:6px;"></span>Deterministic</span>
+      </div>
+    </div>
+
+    <div class="node-cols reveal r4" style="margin-top:14px;">
+      <div class="spec-card">
+        <div class="spec-hd spec-hd-orange">Checkpointer</div>
+        <div class="spec-body"><p class="note">Mặc định <b>MemorySaver</b> (dev/CLI luôn dùng cái này). Production dùng <b>PostgresSaver</b>, setup lúc FastAPI khởi động.</p></div>
+      </div>
+      <div class="spec-card">
+        <div class="spec-hd spec-hd-pink">Contract enforcement</div>
+        <div class="spec-body"><p class="note">hotel_node, itinerary_node, booking_node được bọc bởi <b>enforce_contract()</b> — diff state trước/sau, raise nếu ghi ngoài khai báo hoặc kết thúc không có reply.</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">KIẾN TRÚC — SƠ ĐỒ LUỒNG ĐẦY ĐỦ</span><span class="mf-right">BACKUP · 17<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ NODE 01 — load_context ============ -->
+<section class="slide" id="s18" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">NODE 01/14</span></div>
+  <div class="content">
+    <div class="node-head reveal r1">
+      <div>
+        <span class="kicker k-orange" style="font-size:16px;padding:7px 14px;">Patch pipeline · Node 01/14</span>
+        <div class="node-name">load_context()</div>
+      </div>
+      <div class="file-tag reveal r2">nodes/load_context.py:49-75</div>
+    </div>
+    <div class="phase-track reveal r2">
+      <div class="pt-dot active">1</div><div class="pt-line"></div><div class="pt-dot">2</div><div class="pt-line"></div><div class="pt-dot">3</div>
+      <span class="pt-label">GIAI ĐOẠN 1 · HIỂU YÊU CẦU</span>
+    </div>
+    <p class="node-desc reveal r2">Node đầu tiên sau START, chạy ở mọi turn. Reset các field chỉ tồn tại trong turn hiện tại (patch, intent, applied_changes, jailbreak_blocked, supervisor_iterations) — nhưng cố tình <b>không</b> reset các field xuyên-turn (missing_slots, trip_data, selected_hotel_id, pending_clarify_day).</p>
+    <div class="node-cols reveal r3">
+      <div class="spec-card" style="flex:1.3;">
+        <div class="spec-hd">Key behavior</div>
+        <div class="spec-body"><ul>
+          <li>Dùng <code>state.get(...)</code> thay vì <code>state[...]</code> — thread mới chưa có checkpoint</li>
+          <li>Ghi: patch=[], intent="", applied_changes=[], jailbreak_blocked=False, supervisor_iterations=0</li>
+        </ul></div>
+      </div>
+      <div class="spec-card" style="flex:0.8;">
+        <div class="spec-hd">Routes to</div>
+        <div class="spec-body"><p class="note">scope_guard (luôn luôn)</p></div>
+        <div class="spec-hd spec-hd-green">LLM calls</div>
+        <div class="spec-body"><p class="note">Không có</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">NODE 01/14 — LOAD_CONTEXT</span><span class="mf-right">BACKUP · 18<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ NODE 02 — scope_guard ============ -->
+<section class="slide" id="s19" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">NODE 02/14</span></div>
+  <div class="content">
+    <div class="node-head reveal r1">
+      <div>
+        <span class="kicker k-orange" style="font-size:16px;padding:7px 14px;">Patch pipeline · Node 02/14</span>
+        <div class="node-name">scope_guard()</div>
+      </div>
+      <div class="file-tag reveal r2">nodes/scope_guard.py:47-67</div>
+    </div>
+    <div class="phase-track reveal r2">
+      <div class="pt-dot active">1</div><div class="pt-line"></div><div class="pt-dot">2</div><div class="pt-line"></div><div class="pt-dot">3</div>
+      <span class="pt-label">GIAI ĐOẠN 1 · HIỂU YÊU CẦU</span>
+    </div>
+    <p class="node-desc reveal r2">Chạy <code>detect_jailbreak()</code> trên tin nhắn cuối của user, theo cấu hình <code>jailbreak_guard_mode</code> (block/log/off, mặc định <b>block</b>). Nếu phát hiện jailbreak độ tin cậy cao ở mode block, set <code>jailbreak_blocked=True</code> và đi thẳng đến respond — bỏ qua toàn bộ patch pipeline.</p>
+    <div class="node-cols reveal r3">
+      <div class="spec-card" style="flex:1.3;">
+        <div class="spec-hd">Key behavior</div>
+        <div class="spec-body"><ul>
+          <li>Guardrail song sinh (từ chối câu hỏi ngoài phạm vi) <b>chưa được xây</b>, dù tài liệu kế hoạch cũ ghi là đã xong</li>
+          <li>Đây là bộ lọc an toàn duy nhất chạy trước khi patch pipeline động vào state</li>
+        </ul></div>
+      </div>
+      <div class="spec-card" style="flex:0.8;">
+        <div class="spec-hd">Routes to</div>
+        <div class="spec-body"><p class="note">respond (nếu blocked) · extract_patch (bình thường)</p></div>
+        <div class="spec-hd spec-hd-green">LLM calls</div>
+        <div class="spec-body"><p class="note">Không có (heuristic/regex detector)</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">NODE 02/14 — SCOPE_GUARD</span><span class="mf-right">BACKUP · 19<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ NODE 03 — extract_patch ============ -->
+<section class="slide" id="s20" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">NODE 03/14</span></div>
+  <div class="content">
+    <div class="node-head reveal r1">
+      <div>
+        <span class="kicker k-orange" style="font-size:16px;padding:7px 14px;">Patch pipeline · Node 03/14</span>
+        <div class="node-name">extract_patch()</div>
+      </div>
+      <div class="file-tag reveal r2">nodes/extract_patch.py:588-658</div>
+    </div>
+    <div class="phase-track reveal r2">
+      <div class="pt-dot active">1</div><div class="pt-line"></div><div class="pt-dot">2</div><div class="pt-line"></div><div class="pt-dot">3</div>
+      <span class="pt-label">GIAI ĐOẠN 1 · HIỂU YÊU CẦU</span>
+    </div>
+    <p class="node-desc reveal r2">Bước "hiểu người dùng" duy nhất trong toàn graph — 1 lời gọi reasoning LLM (temperature=0.0) trả về <code>{intent, changes[], reason}</code> dạng JSON, retry 1 lần nếu parse lỗi, fallback về patch rỗng không bao giờ raise.</p>
+    <div class="node-cols reveal r3">
+      <div class="spec-card" style="flex:1.3;">
+        <div class="spec-hd">Key behavior</div>
+        <div class="spec-body"><ul>
+          <li><code>intent</code> KHÔNG tự chọn worker — chỉ <code>detect_impact()</code> + <code>WORKFLOW_TO_WORKER</code> mới định tuyến</li>
+          <li>Nhiều lớp grounding tất định phủ lên kết quả LLM: khớp destination/theme/companion với danh mục đóng</li>
+          <li>Regex parse ngày tháng ghi đè LLM cho đúng định dạng date-picker của frontend</li>
+          <li>Resolve phạm vi ngày ("ngày 1"/"hôm cuối") thành field chính xác</li>
+        </ul></div>
+      </div>
+      <div class="spec-card" style="flex:0.8;">
+        <div class="spec-hd">Routes to</div>
+        <div class="spec-body"><p class="note">validate_patch (luôn luôn)</p></div>
+        <div class="spec-hd spec-hd-pink">LLM calls</div>
+        <div class="spec-body"><p class="note">1 lần — get_reasoning_llm, temp 0.0</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">NODE 03/14 — EXTRACT_PATCH</span><span class="mf-right">BACKUP · 20<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ NODE 04 — validate_patch ============ -->
+<section class="slide" id="s21" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">NODE 04/14</span></div>
+  <div class="content">
+    <div class="node-head reveal r1">
+      <div>
+        <span class="kicker k-orange" style="font-size:16px;padding:7px 14px;">Patch pipeline · Node 04/14</span>
+        <div class="node-name">validate_patch()</div>
+      </div>
+      <div class="file-tag reveal r2">nodes/validate_patch.py:132-154</div>
+    </div>
+    <div class="phase-track reveal r2">
+      <div class="pt-dot active">1</div><div class="pt-line"></div><div class="pt-dot">2</div><div class="pt-line"></div><div class="pt-dot">3</div>
+      <span class="pt-label">GIAI ĐOẠN 1 · HIỂU YÊU CẦU</span>
+    </div>
+    <p class="node-desc reveal r2">Dry-run áp patch (<code>domain.travel_state.apply_patch</code>) mà không commit, rồi chạy <code>detect_impact()</code> để biết worker nào cần chạy sau này. Thêm 2 bước suy ra khoảng ngân sách tất định trước khi validate.</p>
+    <div class="node-cols reveal r3">
+      <div class="spec-card" style="flex:1.3;">
+        <div class="spec-hd">Key behavior</div>
+        <div class="spec-body"><ul>
+          <li><code>budget.target</code> đơn lẻ → suy ra dải min/max ±20% (sàn 100k VND)</li>
+          <li><code>budget.trip_total</code> chia đều theo số đêm → dải min/max tương tự</li>
+          <li><code>interrupt()</code> do date-ambiguity ngày xưa nay đã là dead code — luôn resolve DD-MM tất định</li>
+        </ul></div>
+      </div>
+      <div class="spec-card" style="flex:0.8;">
+        <div class="spec-hd">Routes to</div>
+        <div class="spec-body"><p class="note">apply_patch (luôn luôn)</p></div>
+        <div class="spec-hd spec-hd-green">LLM calls</div>
+        <div class="spec-body"><p class="note">Không có</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">NODE 04/14 — VALIDATE_PATCH</span><span class="mf-right">BACKUP · 21<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ NODE 05 — apply_patch ============ -->
+<section class="slide" id="s22" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">NODE 05/14</span></div>
+  <div class="content">
+    <div class="node-head reveal r1">
+      <div>
+        <span class="kicker k-orange" style="font-size:16px;padding:7px 14px;">Patch pipeline · Node 05/14</span>
+        <div class="node-name">apply_patch()</div>
+      </div>
+      <div class="file-tag reveal r2">nodes/apply_patch.py:35-74</div>
+    </div>
+    <div class="phase-track reveal r2">
+      <div class="pt-dot active">1</div><div class="pt-line"></div><div class="pt-dot">2</div><div class="pt-line"></div><div class="pt-dot">3</div>
+      <span class="pt-label">GIAI ĐOẠN 1 · HIỂU YÊU CẦU</span>
+    </div>
+    <p class="node-desc reveal r2">Commit <code>proposed_travel_state → travel_state</code>. Dựng hàng đợi <code>pending_tasks</code> (danh sách việc supervisor sẽ giao) từ <code>impacted_workflows</code>, sắp theo <code>WORKER_ORDER</code> cố định: hotel → itinerary → booking → qa.</p>
+    <div class="node-cols reveal r3">
+      <div class="spec-card" style="flex:1.3;">
+        <div class="spec-hd">Key behavior</div>
+        <div class="spec-body"><ul>
+          <li>Tự thêm <code>hotel_node</code> vào queue khi <code>selected_hotel_id</code> vừa được set — chọn khách sạn không tự sinh ra impacted_workflow</li>
+          <li>Ghi audit record best-effort vào <code>sessions.context_data["state_audit"]</code> — không bao giờ raise nếu lỗi</li>
+        </ul></div>
+      </div>
+      <div class="spec-card" style="flex:0.8;">
+        <div class="spec-hd">Routes to</div>
+        <div class="spec-body"><p class="note">ask_slot (luôn luôn)</p></div>
+        <div class="spec-hd spec-hd-green">LLM calls</div>
+        <div class="spec-body"><p class="note">Không có</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">NODE 05/14 — APPLY_PATCH</span><span class="mf-right">BACKUP · 22<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ NODE 06 — ask_slot ============ -->
+<section class="slide" id="s23" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">NODE 06/14</span></div>
+  <div class="content">
+    <div class="node-head reveal r1">
+      <div>
+        <span class="kicker k-orange" style="font-size:16px;padding:7px 14px;">Patch pipeline · Node 06/14</span>
+        <div class="node-name">ask_slot()</div>
+      </div>
+      <div class="file-tag reveal r2">nodes/ask_slot.py:134-149</div>
+    </div>
+    <div class="phase-track reveal r2">
+      <div class="pt-dot active">1</div><div class="pt-line"></div><div class="pt-dot">2</div><div class="pt-line"></div><div class="pt-dot">3</div>
+      <span class="pt-label">GIAI ĐOẠN 1 · HIỂU YÊU CẦU</span>
+    </div>
+    <p class="node-desc reveal r2">Slot-filling tất định — tìm slot bắt buộc còn thiếu tiếp theo theo thứ tự cố định (destination → people → dates → budget) và render câu hỏi Việt/Anh thật sự sẽ gửi cho user.</p>
+    <div class="node-cols reveal r3">
+      <div class="spec-card" style="flex:1.3;">
+        <div class="spec-hd">Key behavior</div>
+        <div class="spec-body"><ul>
+          <li>Có dòng "không bắt được ý" khi slot vừa hỏi lại vẫn chưa có giá trị hợp lệ</li>
+          <li>Thứ tự slot cố định trong <code>SlotSpec</code>, không đổi theo ngữ cảnh</li>
+        </ul></div>
+      </div>
+      <div class="spec-card" style="flex:0.8;">
+        <div class="spec-hd">Routes to</div>
+        <div class="spec-body"><p class="note">respond (hỏi) · intake_qa (câu hỏi giữa chừng) · supervisor (đủ slot)</p></div>
+        <div class="spec-hd spec-hd-green">LLM calls</div>
+        <div class="spec-body"><p class="note">Không có (render template)</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">NODE 06/14 — ASK_SLOT</span><span class="mf-right">BACKUP · 23<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ NODE 07 — intake_qa ============ -->
+<section class="slide" id="s24" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">NODE 07/14</span></div>
+  <div class="content">
+    <div class="node-head reveal r1">
+      <div>
+        <span class="kicker k-orange" style="font-size:16px;padding:7px 14px;">Patch pipeline · Node 07/14</span>
+        <div class="node-name">intake_qa()</div>
+      </div>
+      <div class="file-tag reveal r2">nodes/intake_qa.py:66-92</div>
+    </div>
+    <div class="phase-track reveal r2">
+      <div class="pt-dot active">1</div><div class="pt-line"></div><div class="pt-dot">2</div><div class="pt-line"></div><div class="pt-dot">3</div>
+      <span class="pt-label">GIAI ĐOẠN 1 · HIỂU YÊU CẦU</span>
+    </div>
+    <p class="node-desc reveal r2">Van thoát read-only cho 2 tình huống: (1) user hỏi thật giữa lúc đang bị hỏi slot — trả lời thay vì hỏi lại; (2) patch rỗng vì không nêu giá trị cụ thể — hỏi làm rõ thay vì âm thầm không làm gì.</p>
+    <div class="node-cols reveal r3">
+      <div class="spec-card" style="flex:1.3;">
+        <div class="spec-hd">Key behavior</div>
+        <div class="spec-body"><ul>
+          <li>Không tool, không retry</li>
+          <li>Bất kỳ exception nào → trả về <code>{"intake_answer": None}</code>, không chặn turn</li>
+        </ul></div>
+      </div>
+      <div class="spec-card" style="flex:0.8;">
+        <div class="spec-hd">Routes to</div>
+        <div class="spec-body"><p class="note">respond · supervisor</p></div>
+        <div class="spec-hd spec-hd-pink">LLM calls</div>
+        <div class="spec-body"><p class="note">1 lần — get_fast_llm, temp 0.2, streaming</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">NODE 07/14 — INTAKE_QA</span><span class="mf-right">BACKUP · 24<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ NODE 08 — supervisor ============ -->
+<section class="slide" id="s25" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">NODE 08/14</span></div>
+  <div class="content">
+    <div class="node-head reveal r1">
+      <div>
+        <span class="kicker k-pink" style="font-size:16px;padding:7px 14px;">Worker · Node 08/14</span>
+        <div class="node-name">supervisor()</div>
+      </div>
+      <div class="file-tag reveal r2">nodes/supervisor.py:185-336</div>
+    </div>
+    <div class="phase-track reveal r2">
+      <div class="pt-dot">1</div><div class="pt-line filled"></div><div class="pt-dot active">2</div><div class="pt-line"></div><div class="pt-dot">3</div>
+      <span class="pt-label">GIAI ĐOẠN 2 · ĐIỀU PHỐI &amp; THỰC THI</span>
+    </div>
+    <p class="node-desc reveal r2">Node điều phối thuần túy — <code>all_tasks_done</code> là predicate Python, không gọi LLM. 3 nhánh theo thứ tự: fast path (~90% turn, 0 LLM), LLM path (structured output), fallback (lỗi LLM → suy luận tất định).</p>
+    <div class="node-cols reveal r3">
+      <div class="spec-card" style="flex:1.3;">
+        <div class="spec-hd">Key behavior</div>
+        <div class="spec-body"><ul>
+          <li>Fast path: lấy task đầu theo <code>WORKER_ORDER</code>, không gọi LLM</li>
+          <li>LLM path: <code>get_fast_llm(temp=0)</code> + structured output trên <code>SessionManifest</code> gọn (chỉ boolean/count, không dữ liệu thật)</li>
+          <li><code>MAX_SUPERVISOR_ITERATIONS=5</code>, <code>MAX_DAY_REBUILD_HOPS=100</code> tách riêng để itinerary &gt;5 ngày không bị cắt</li>
+          <li>Route cứng <code>list_nearby</code> — fix bug: câu hỏi "gần khách sạn có gì" từng làm sinh lại cả itinerary</li>
+        </ul></div>
+      </div>
+      <div class="spec-card" style="flex:0.8;">
+        <div class="spec-hd">Routes to</div>
+        <div class="spec-body"><p class="note">hotel_node · itinerary_node · booking_node · qa_node · respond</p></div>
+        <div class="spec-hd spec-hd-pink">LLM calls</div>
+        <div class="spec-body"><p class="note">0-1 lần (get_fast_llm, temp 0) — chỉ ~10% turn</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">NODE 08/14 — SUPERVISOR</span><span class="mf-right">BACKUP · 25<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ NODE 09 — hotel_node ============ -->
+<section class="slide" id="s26" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">NODE 09/14</span></div>
+  <div class="content">
+    <div class="node-head reveal r1">
+      <div>
+        <span class="kicker k-pink" style="font-size:16px;padding:7px 14px;">Worker · Node 09/14</span>
+        <div class="node-name">hotel_node()</div>
+      </div>
+      <div class="file-tag reveal r2">nodes/hotel_node.py:215-521</div>
+    </div>
+    <div class="phase-track reveal r2">
+      <div class="pt-dot">1</div><div class="pt-line filled"></div><div class="pt-dot active">2</div><div class="pt-line"></div><div class="pt-dot">3</div>
+      <span class="pt-label">GIAI ĐOẠN 2 · ĐIỀU PHỐI &amp; THỰC THI</span>
+    </div>
+    <p class="node-desc reveal r2">Áp <code>hotel_preferences</code> làm bộ lọc cứng cấp app qua <code>select_hotel_candidates()</code>. Khi user chọn khách sạn (<code>selected_hotel_id</code>), gọi <code>build_selected_hotel_trip</code> — dựng cả khách sạn VÀ itinerary trong một lần.</p>
+    <div class="node-cols reveal r3">
+      <div class="spec-card" style="flex:1.3;">
+        <div class="spec-hd">Key behavior</div>
+        <div class="spec-body"><ul>
+          <li>Khóa tuyệt đối: từ chối đụng vào <code>trip_data</code> nếu session đã có booking đã thanh toán</li>
+          <li>Có thể <code>interrupt()</code> một lần để hỏi tâm điểm tìm kiếm bán kính khi không tự resolve được</li>
+          <li>Chấm điểm/xếp hạng là Python thuần — xem slide 34 "Công thức chấm điểm khách sạn"</li>
+        </ul></div>
+      </div>
+      <div class="spec-card" style="flex:0.8;">
+        <div class="spec-hd">Routes to</div>
+        <div class="spec-body"><p class="note">budget_check (hết task) · supervisor (còn task)</p></div>
+        <div class="spec-hd spec-hd-green">LLM calls</div>
+        <div class="spec-body"><p class="note">0 trực tiếp trong node này</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">NODE 09/14 — HOTEL_NODE</span><span class="mf-right">BACKUP · 26<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ NODE 10 — itinerary_node ============ -->
+<section class="slide" id="s27" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">NODE 10/14</span></div>
+  <div class="content">
+    <div class="node-head reveal r1">
+      <div>
+        <span class="kicker k-pink" style="font-size:16px;padding:7px 14px;">Worker · Node 10/14</span>
+        <div class="node-name">itinerary_node()</div>
+      </div>
+      <div class="file-tag reveal r2">nodes/itinerary_node.py:393-701</div>
+    </div>
+    <div class="phase-track reveal r2">
+      <div class="pt-dot">1</div><div class="pt-line filled"></div><div class="pt-dot active">2</div><div class="pt-line"></div><div class="pt-dot">3</div>
+      <span class="pt-label">GIAI ĐOẠN 2 · ĐIỀU PHỐI &amp; THỰC THI</span>
+    </div>
+    <p class="node-desc reveal r2">Trình <b>chỉnh sửa</b> itinerary, không phải trình dựng — mọi action cần <code>trip_data</code> đã tồn tại (chỉ hotel_node tạo ra nó). Đọc action từ <code>task_description</code> JSON: <code>rebuild_days</code>, <code>edit_item</code>, <code>lock_days</code>, <code>list_nearby</code>.</p>
+    <div class="node-cols reveal r3">
+      <div class="spec-card" style="flex:1.3;">
+        <div class="spec-hd">Key behavior</div>
+        <div class="spec-body"><ul>
+          <li><code>rebuild_days</code> lặp qua subgraph <code>rebuild_day</code> cho từng ngày, tự re-queue vào <code>pending_tasks</code></li>
+          <li><code>edit_item</code> dùng bộ 9-operation <code>trip_edit_planner</code> có sẵn</li>
+          <li><code>list_nearby</code> chỉ đọc — không đụng <code>trip_data</code></li>
+        </ul></div>
+      </div>
+      <div class="spec-card" style="flex:0.8;">
+        <div class="spec-hd">Routes to</div>
+        <div class="spec-body"><p class="note">respond · budget_check · supervisor (loop)</p></div>
+        <div class="spec-hd spec-hd-pink">LLM calls</div>
+        <div class="spec-body"><p class="note">1 lần sinh day-theme — CHỈ khi Tier 1 Cache miss</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">NODE 10/14 — ITINERARY_NODE</span><span class="mf-right">BACKUP · 27<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ NODE 11 — booking_node ============ -->
+<section class="slide" id="s28" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">NODE 11/14</span></div>
+  <div class="content">
+    <div class="node-head reveal r1">
+      <div>
+        <span class="kicker k-pink" style="font-size:16px;padding:7px 14px;">Worker · Node 11/14</span>
+        <div class="node-name">booking_node()</div>
+      </div>
+      <div class="file-tag reveal r2">nodes/booking_node.py:35-42</div>
+    </div>
+    <div class="phase-track reveal r2">
+      <div class="pt-dot">1</div><div class="pt-line filled"></div><div class="pt-dot active">2</div><div class="pt-line"></div><div class="pt-dot">3</div>
+      <span class="pt-label">GIAI ĐOẠN 2 · ĐIỀU PHỐI &amp; THỰC THI</span>
+    </div>
+    <p class="node-desc reveal r2"><b>Luôn từ chối</b> — <code>_IMPOSSIBLE=True</code> cứng, supervisor không bao giờ thật sự delegate vào đây. Tồn tại để turn có ý định đặt phòng nhận phản hồi trung thực thay vì rơi vào ack chung chung.</p>
+    <div class="node-cols reveal r3">
+      <div class="spec-card spec-card-yellow" style="flex:1.3;">
+        <div class="spec-hd spec-hd-cream">Quan trọng — phân biệt rõ</div>
+        <div class="spec-body"><p class="note">Đặt phòng &amp; thanh toán VNPay <b>thật sự tồn tại và hoạt động</b> (booking_service.py, payment_service.py, vnpay_service.py) — nhưng đi qua REST route riêng (api/routes.py), <b>không</b> qua chat agent này. Chat agent không thể tự đặt phòng.</p></div>
+      </div>
+      <div class="spec-card" style="flex:0.8;">
+        <div class="spec-hd">Routes to</div>
+        <div class="spec-body"><p class="note">budget_check (ngay lập tức)</p></div>
+        <div class="spec-hd spec-hd-green">LLM calls</div>
+        <div class="spec-body"><p class="note">Không có</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">NODE 11/14 — BOOKING_NODE</span><span class="mf-right">BACKUP · 28<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ NODE 12 — qa_node ============ -->
+<section class="slide" id="s29" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">NODE 12/14</span></div>
+  <div class="content">
+    <div class="node-head reveal r1">
+      <div>
+        <span class="kicker k-pink" style="font-size:16px;padding:7px 14px;">Worker · Node 12/14</span>
+        <div class="node-name">qa_node()</div>
+      </div>
+      <div class="file-tag reveal r2">nodes/qa_node.py:186-195</div>
+    </div>
+    <div class="phase-track reveal r2">
+      <div class="pt-dot">1</div><div class="pt-line filled"></div><div class="pt-dot active">2</div><div class="pt-line"></div><div class="pt-dot">3</div>
+      <span class="pt-label">GIAI ĐOẠN 2 · ĐIỀU PHỐI &amp; THỰC THI</span>
+    </div>
+    <p class="node-desc reveal r2">Không phải hàm thường — 1 subgraph <code>create_react_agent</code> (ReAct loop). Read-only theo <b>cấu trúc</b>: schema <code>QAState</code> chỉ mở rộng field đọc — <code>travel_state</code>/<code>pending_tasks</code>/<code>task_results</code> không thể chạm tới, không chỉ là quy ước.</p>
+    <div class="node-cols reveal r3">
+      <div class="spec-card" style="flex:1.3;">
+        <div class="spec-hd">Key behavior</div>
+        <div class="spec-body"><ul>
+          <li>Tools: get_hotel_options, get_trip_plan, query_hotel, query_hotel_rooms, search_places</li>
+          <li><code>pre_model_hook</code> cắt transcript về ngân sách 30.000 token trước mỗi lời gọi LLM trong loop</li>
+        </ul></div>
+      </div>
+      <div class="spec-card" style="flex:0.8;">
+        <div class="spec-hd">Routes to</div>
+        <div class="spec-body"><p class="note">respond (luôn luôn, edge thường)</p></div>
+        <div class="spec-hd spec-hd-pink">LLM calls</div>
+        <div class="spec-body"><p class="note">N lần thay đổi — giới hạn bởi token budget, không giới hạn số lượt</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">NODE 12/14 — QA_NODE</span><span class="mf-right">BACKUP · 29<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ NODE 13 — budget_check ============ -->
+<section class="slide" id="s30" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">NODE 13/14</span></div>
+  <div class="content">
+    <div class="node-head reveal r1">
+      <div>
+        <span class="kicker k-green" style="font-size:16px;padding:7px 14px;">Deterministic · Node 13/14</span>
+        <div class="node-name">budget_check()</div>
+      </div>
+      <div class="file-tag reveal r2">nodes/budget_check.py:307-457</div>
+    </div>
+    <div class="phase-track reveal r2">
+      <div class="pt-dot">1</div><div class="pt-line filled"></div><div class="pt-dot">2</div><div class="pt-line filled"></div><div class="pt-dot active">3</div>
+      <span class="pt-label">GIAI ĐOẠN 3 · HOÀN TẤT</span>
+    </div>
+    <p class="node-desc reveal r2">Python thuần, 0 LLM. Pass-through nếu <code>budget.trip_total</code> chưa set. Nếu vượt ngân sách: suy ra trần giá khách sạn/đêm từ phần còn lại sau khi trừ chi phí hoạt động, chạy <b>đúng 1 lần</b> re-plan.</p>
+    <div class="node-cols reveal r3">
+      <div class="spec-card" style="flex:1.3;">
+        <div class="spec-hd">Key behavior</div>
+        <div class="spec-body"><ul>
+          <li>Re-plan: tìm lại khách sạn dưới trần giá (loại khách sạn hiện tại), rebuild chỉ những ngày chưa khóa</li>
+          <li>Không bao giờ lặp tối ưu vô hạn — đúng 1 pass</li>
+          <li>Không bao giờ âm thầm trả về plan vượt ngân sách mà không báo cho user</li>
+        </ul></div>
+      </div>
+      <div class="spec-card" style="flex:0.8;">
+        <div class="spec-hd">Routes to</div>
+        <div class="spec-body"><p class="note">respond (luôn luôn)</p></div>
+        <div class="spec-hd spec-hd-green">LLM calls</div>
+        <div class="spec-body"><p class="note">Không có</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">NODE 13/14 — BUDGET_CHECK</span><span class="mf-right">BACKUP · 30<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ NODE 14 — respond ============ -->
+<section class="slide" id="s31" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">NODE 14/14</span></div>
+  <div class="content">
+    <div class="node-head reveal r1">
+      <div>
+        <span class="kicker k-green" style="font-size:16px;padding:7px 14px;">Deterministic · Node 14/14</span>
+        <div class="node-name">respond()</div>
+      </div>
+      <div class="file-tag reveal r2">nodes/respond.py:284-381</div>
+    </div>
+    <div class="phase-track reveal r2">
+      <div class="pt-dot">1</div><div class="pt-line filled"></div><div class="pt-dot">2</div><div class="pt-line filled"></div><div class="pt-dot active">3</div>
+      <span class="pt-label">GIAI ĐOẠN 3 · HOÀN TẤT</span>
+    </div>
+    <p class="node-desc reveal r2">Mọi nhánh của graph đều chảy qua đây trước END. Dựng câu trả lời theo thứ tự ưu tiên cố định, rồi gói toàn bộ <code>PlannerChatResponse</code> gửi về frontend.</p>
+    <div class="node-cols reveal r3">
+      <div class="spec-card" style="flex:1.3;">
+        <div class="spec-hd">Thứ tự ưu tiên câu trả lời</div>
+        <div class="spec-body"><ul>
+          <li>1. Câu hỏi intake_qa + câu hỏi ask_slot (ghép lại)</li>
+          <li>2. <code>task_results[-1]["reply"]</code> gần nhất</li>
+          <li>3. Tin nhắn AI chưa tiêu thụ trong <code>messages</code> (từ qa_node)</li>
+          <li>4. Ack chung "Đã cập nhật thông tin chuyến đi." — log ở mức <b>ERROR</b> như lưới an toàn phát hiện bug</li>
+        </ul></div>
+      </div>
+      <div class="spec-card" style="flex:0.8;">
+        <div class="spec-hd">Routes to</div>
+        <div class="spec-body"><p class="note">END</p></div>
+        <div class="spec-hd spec-hd-green">LLM calls</div>
+        <div class="spec-body"><p class="note">Không có</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">NODE 14/14 — RESPOND</span><span class="mf-right">BACKUP · 31<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ D1 — LLM MODEL CHOICE ============ -->
+<section class="slide" id="s32" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">PHỤ LỤC · Q&amp;A</span></div>
+  <div class="content">
+    <div class="kicker k-pink reveal r1">PHỤ LỤC · Q&amp;A</div>
+    <h2 class="dh dh-sm reveal r2" style="margin-top:16px;">Lựa chọn mô hình AI &amp; so sánh</h2>
+    <p class="mono-label reveal r2" style="margin-top:8px;font-size:16px;opacity:.75;">Cấu hình đang chạy thật (backend/.env) — không phải ví dụ trong README</p>
+    <div class="grid3 reveal r3" style="margin-top:22px;">
+      <div class="spec-card">
+        <div class="spec-hd spec-hd-pink">Reasoning LLM</div>
+        <div class="spec-body">
+          <div class="step-title" style="font-size:26px;">GPT-5.1</div>
+          <div class="mono-label" style="font-size:12px;opacity:.65;">LLM_MODEL=gpt-5.1-2025-11-13</div>
+          <p class="note" style="margin-top:6px;">extract_patch · sinh day-theme khi cache miss</p>
+        </div>
+      </div>
+      <div class="spec-card">
+        <div class="spec-hd spec-hd-orange">Fast LLM</div>
+        <div class="spec-body">
+          <div class="step-title" style="font-size:26px;">GPT-4o-mini</div>
+          <div class="mono-label" style="font-size:12px;opacity:.65;">LLM_FAST_MODEL=gpt-4o-mini</div>
+          <p class="note" style="margin-top:6px;">supervisor · intake_qa · qa_node (ReAct)</p>
+        </div>
+      </div>
+      <div class="spec-card">
+        <div class="spec-hd spec-hd-green">Embeddings</div>
+        <div class="spec-body">
+          <div class="step-title" style="font-size:24px;">BGE-M3</div>
+          <div class="mono-label" style="font-size:12px;opacity:.65;">EMBEDDING_MODEL=@cf/baai/bge-m3</div>
+          <p class="note" style="margin-top:6px;">qua Cloudflare Workers AI — 1024-d, RAG + Tier 1 Cache</p>
+        </div>
+      </div>
+    </div>
+    <div class="grid2 reveal r4" style="margin-top:22px;">
+      <div class="spec-card spec-card-yellow">
+        <div class="spec-hd spec-hd-cream">Bằng chứng tuning thật</div>
+        <div class="spec-body"><p class="note">Mặc định <code>reasoning_effort="low"</code> cho họ model reasoning (gpt-5.1 nằm trong họ này) sau khi đo được: mức "medium" mặc định của OpenAI tốn <b>76 giây / 1536 token reasoning ẩn</b> — 89% tổng 119s — chỉ để trả lời 1 câu hỏi năng lực đơn giản trong qa_node. (config.py:30-39)</p></div>
+      </div>
+      <div class="spec-card">
+        <div class="spec-hd">Factory hỗ trợ 6 provider</div>
+        <div class="spec-body">
+          <div style="display:flex;flex-wrap:wrap;gap:8px;">
+            <span class="mono-tag" style="font-size:13px;">Ollama (fallback tự động)</span>
+            <span class="mono-tag" style="font-size:13px;background:var(--pink);">OpenAI — đang dùng</span>
+            <span class="mono-tag" style="font-size:13px;">Google Gemini</span>
+            <span class="mono-tag" style="font-size:13px;">Anthropic</span>
+            <span class="mono-tag" style="font-size:13px;">OpenRouter</span>
+            <span class="mono-tag" style="font-size:13px;background:var(--green);color:var(--cream);">Cloudflare — đang dùng (embeddings)</span>
+          </div>
+          <p class="note" style="margin-top:10px;">Đổi provider chỉ bằng biến môi trường, không đổi code. Ollama tự động là lưới an toàn khi provider chính lỗi.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">MÔ HÌNH AI &amp; SO SÁNH</span><span class="mf-right">BACKUP · 32<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ D1B — EMBEDDING MODEL CHOICE ============ -->
+<section class="slide" id="s33" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">PHỤ LỤC · Q&amp;A</span></div>
+  <div class="content">
+    <div class="kicker k-pink reveal r1">PHỤ LỤC · Q&amp;A</div>
+    <h2 class="dh dh-sm reveal r2" style="margin-top:16px;">Vì sao chọn BGE-M3 cho embedding?</h2>
+    <p class="mono-label reveal r2" style="margin-top:8px;font-size:16px;opacity:.75;">EMBEDDING_MODEL=@cf/baai/bge-m3 qua Cloudflare Workers AI · 1024-d</p>
+    <div class="grid3 reveal r3" style="margin-top:20px;">
+      <div class="spec-card"><div class="spec-hd">Đa ngôn ngữ Việt/Anh</div><div class="spec-body"><p class="note">BGE-M3 huấn luyện đa ngôn ngữ (100+), phù hợp truy vấn du lịch song ngữ mà không cần dịch trước.</p></div></div>
+      <div class="spec-card"><div class="spec-hd">Khớp sẵn schema 1024-d</div><div class="spec-body"><p class="note"><code>EMBEDDING_DIMENSION=1024</code> bị ép cứng trong code (itinerary_reuse.py) — ghi vector sai chiều sẽ raise lỗi ngay.</p></div></div>
+      <div class="spec-card"><div class="spec-hd">Không khóa 1 nhà cung cấp</div><div class="spec-body"><p class="note">Cùng model bge-m3 chạy được qua Ollama (local), Cloudflare Workers AI, hoặc OpenRouter — đổi hạ tầng mà không cần re-embed.</p></div></div>
+    </div>
+    <table class="cm-table reveal r4" style="margin-top:20px;">
+      <thead><tr><th>Model</th><th>Đa ngôn ngữ VN</th><th class="center">Chiều vector</th><th>Chi phí</th><th class="center">Tự host được</th><th>Khớp schema hiện tại</th></tr></thead>
+      <tbody>
+        <tr class="current"><td>BGE-M3 (đang dùng)</td><td>Mạnh — tối ưu đa ngôn ngữ</td><td class="center">1024</td><td>Free tier (Cloudflare) / miễn phí (Ollama)</td><td class="center">Có</td><td>✓ Khớp sẵn</td></tr>
+        <tr><td>OpenAI text-embedding-3-small</td><td>Khá, thiên tiếng Anh</td><td class="center">1536</td><td>Trả phí / token</td><td class="center">Không</td><td>✗ Cần re-embed</td></tr>
+        <tr><td>Google text-embedding-004</td><td>Khá</td><td class="center">768</td><td>Trả phí / token</td><td class="center">Không</td><td>✗ Cần re-embed</td></tr>
+        <tr><td>Cohere embed-multilingual-v3</td><td>Mạnh</td><td class="center">1024</td><td>Trả phí / token</td><td class="center">Không</td><td>Dim khớp, nhưng vector space khác → vẫn cần re-embed</td></tr>
+      </tbody>
+    </table>
+    <p class="mono-label reveal r4" style="margin-top:10px;font-size:13.5px;opacity:.65;">Đổi model embedding không chỉ là đổi API key — mọi vector đã lưu (hotel, attraction, lịch trình đã cache) phải re-embed lại vì vector space không tương thích giữa các model.</p>
+  </div>
+  <div class="meta-footer"><span class="mf-left">VÌ SAO CHỌN BGE-M3?</span><span class="mf-right">BACKUP · 33<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ D2 — HOTEL SCORING ============ -->
+<section class="slide" id="s34" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">PHỤ LỤC · Q&amp;A</span></div>
+  <div class="content">
+    <div class="kicker k-pink reveal r1">PHỤ LỤC · Q&amp;A</div>
+    <h2 class="dh dh-sm reveal r2" style="margin-top:16px;">Công thức chấm điểm khách sạn</h2>
+    <p class="mono-label reveal r2" style="margin-top:8px;font-size:16px;opacity:.75;">services/hotel_selection.py</p>
+    <div class="step-row reveal r3" style="margin-top:20px;">
+      <div class="step-card" style="flex:1;"><span class="mono-tag" style="font-size:13px;width:fit-content;">STAGE 1</span><h4 class="step-title" style="font-size:20px;">Lọc cứng</h4><p style="font-size:15.5px;">Giá (RPC) · rating · amenities · review · số khách — không bao giờ là điểm cộng mềm</p></div>
+      <div class="step-arrow"></div>
+      <div class="step-card" style="flex:1;"><span class="mono-tag" style="font-size:13px;width:fit-content;">STAGE 2</span><h4 class="step-title" style="font-size:20px;">Semantic search</h4><p style="font-size:15.5px;">bge-m3 embed → Supabase RPC match_hotels_with_rooms, ngưỡng 0.35</p></div>
+      <div class="step-arrow"></div>
+      <div class="step-card step-card-yellow" style="flex:1;"><span class="mono-tag" style="font-size:13px;width:fit-content;">STAGE 3</span><h4 class="step-title" style="font-size:20px;">Chấm điểm mềm</h4><p style="font-size:15.5px;">2 công thức song song — xem bên dưới</p></div>
+    </div>
+    <div class="spec-card reveal r4" style="margin-top:20px;">
+      <div class="spec-hd">_composite_score — dùng để SẮP XẾP (recommendation_score)</div>
+      <div class="spec-body">
+        <div class="bars">
+          <div class="bar-row"><span class="bar-label">Similarity</span><div class="bar-track"><div class="bar-fill" style="width:55%;background:var(--pink);"></div></div><span class="bar-val">0.55</span></div>
+          <div class="bar-row"><span class="bar-label">Rating</span><div class="bar-track"><div class="bar-fill" style="width:20%;background:var(--orange);"></div></div><span class="bar-val">0.20</span></div>
+          <div class="bar-row"><span class="bar-label">Review score</span><div class="bar-track"><div class="bar-fill" style="width:15%;background:var(--green);"></div></div><span class="bar-val">0.15</span></div>
+          <div class="bar-row"><span class="bar-label">Price fit</span><div class="bar-track"><div class="bar-fill" style="width:10%;background:var(--yellow);"></div></div><span class="bar-val">0.10</span></div>
+        </div>
+        <p class="note" style="margin-top:6px;">+ budget_bonus (≤0.05, decay tuyến tính quanh giá mục tiêu) + amenity_bonus (0.03/tag khớp, cộng dồn tối đa 0.20)</p>
+      </div>
+    </div>
+    <div class="spec-card spec-card-yellow reveal r4" style="margin-top:14px;flex-direction:row;align-items:center;">
+      <div class="spec-body" style="padding:14px 22px;"><p class="note">⚠ <b>match_score</b> hiển thị cho user dùng công thức KHÁC (<code>_realistic_match_score</code>: 0.4×star + 0.6×review, trộn thêm price/amenity fit) — độc lập hoàn toàn với điểm sắp xếp ở trên, dễ gây nhầm khi debug thứ hạng.</p></div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">CÔNG THỨC CHẤM ĐIỂM KHÁCH SẠN</span><span class="mf-right">BACKUP · 34<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ D3 — ITINERARY ALGORITHM ============ -->
+<section class="slide" id="s35" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">PHỤ LỤC · Q&amp;A</span></div>
+  <div class="content">
+    <div class="kicker k-pink reveal r1">PHỤ LỤC · Q&amp;A</div>
+    <h2 class="dh dh-sm reveal r2" style="margin-top:16px;">Thuật toán lập lịch trình</h2>
+    <p class="mono-label reveal r2" style="margin-top:8px;font-size:14.5px;opacity:.75;max-width:1700px;">services/trip_scheduler.py (1458 dòng, hàm thuần Python) — greedy theo khung giờ cố định. KHÔNG phải constraint solver, KHÔNG phải TSP cổ điển.</p>
+    <div class="spec-card reveal r3" style="margin-top:16px;">
+      <div class="spec-hd">8 khung giờ cố định / ngày</div>
+      <div class="spec-body">
+        <div class="mtl">
+          <div class="mtl-item"><div class="mtl-dot"></div><div class="mtl-time">07:00</div><div class="mtl-label">Breakfast</div></div>
+          <div class="mtl-item"><div class="mtl-dot" style="background:var(--orange);"></div><div class="mtl-time">~08:15</div><div class="mtl-label">Sáng</div></div>
+          <div class="mtl-item"><div class="mtl-dot"></div><div class="mtl-time">11:00-12:30</div><div class="mtl-label">Lunch</div></div>
+          <div class="mtl-item"><div class="mtl-dot" style="background:var(--green);"></div><div class="mtl-time">13:00</div><div class="mtl-label">Nghỉ KS (90p)</div></div>
+          <div class="mtl-item"><div class="mtl-dot" style="background:var(--orange);"></div><div class="mtl-time">~15:30</div><div class="mtl-label">Chiều</div></div>
+          <div class="mtl-item"><div class="mtl-dot" style="background:var(--pink);"></div><div class="mtl-time">~17:45</div><div class="mtl-label">Coffee</div></div>
+          <div class="mtl-item"><div class="mtl-dot"></div><div class="mtl-time">~18:45</div><div class="mtl-label">Dinner</div></div>
+          <div class="mtl-item"><div class="mtl-dot" style="background:var(--yellow);"></div><div class="mtl-time">≤20:30</div><div class="mtl-label">Tối (tùy chọn)</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="grid2 reveal r4" style="margin-top:16px;">
+      <div class="spec-card">
+        <div class="spec-hd">Scoring — CÓ điểm neo</div>
+        <div class="spec-body">
+          <div class="bars">
+            <div class="bar-row"><span class="bar-label" style="width:120px;">similarity</span><div class="bar-track" style="height:18px;"><div class="bar-fill" style="width:45%;background:var(--pink);"></div></div><span class="bar-val" style="width:44px;font-size:12px;">0.45</span></div>
+            <div class="bar-row"><span class="bar-label" style="width:120px;">dist→anchor</span><div class="bar-track" style="height:18px;"><div class="bar-fill" style="width:35%;background:var(--orange);"></div></div><span class="bar-val" style="width:44px;font-size:12px;">0.35</span></div>
+            <div class="bar-row"><span class="bar-label" style="width:120px;">dist→hotel</span><div class="bar-track" style="height:18px;"><div class="bar-fill" style="width:10%;background:var(--green);"></div></div><span class="bar-val" style="width:44px;font-size:12px;">0.10</span></div>
+            <div class="bar-row"><span class="bar-label" style="width:120px;">rating</span><div class="bar-track" style="height:18px;"><div class="bar-fill" style="width:10%;background:var(--yellow);"></div></div><span class="bar-val" style="width:44px;font-size:12px;">0.10</span></div>
+          </div>
+          <p class="note" style="margin-top:6px;">− 0.55 × phạt đường vòng (detour/route_limit)</p>
+        </div>
+      </div>
+      <div class="spec-card">
+        <div class="spec-hd">Gom cụm bán kính</div>
+        <div class="spec-body">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="mono-tag" style="background:var(--pink);">5 km</span><span class="step-title" style="font-size:16px;">→</span>
+            <span class="mono-tag" style="background:var(--orange);color:var(--cream);">10 km</span><span class="step-title" style="font-size:16px;">→</span>
+            <span class="mono-tag" style="background:var(--green);color:var(--cream);">15 km</span>
+          </div>
+          <p class="note" style="margin-top:8px;">Nới dần chỉ khi bán kính chặt hơn ra 0 kết quả. Khoảng cách Haversine thẳng (không phải ETA routing thật) — thời gian di chuyển = distance/25km/h, làm tròn lên 5 phút, sàn 10 phút.</p>
+        </div>
+      </div>
+    </div>
+    <div class="grid2 reveal r5" style="margin-top:14px;">
+      <div class="spec-card"><div class="spec-hd">Meal/rest insertion</div><div class="spec-body"><p class="note">Bữa ăn bị hotel-covered → thay bằng item tại khách sạn. Đúng 1 block nghỉ 90 phút lúc 13:00/ngày.</p></div></div>
+      <div class="spec-card"><div class="spec-hd">Repair pass</div><div class="spec-body"><p class="note"><code>validate_or_repair_day</code>: gỡ trùng nghỉ, ép ≤1 điểm thiên nhiên/ngày, đẩy hoạt động biển khỏi giữa trưa.</p></div></div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">THUẬT TOÁN LẬP LỊCH TRÌNH</span><span class="mf-right">BACKUP · 35<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ D4B — TIER 1 CACHE OVERVIEW ============ -->
+<section class="slide" id="s36" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">PHỤ LỤC · Q&amp;A</span></div>
+  <div class="content" style="display:flex;align-items:center;gap:60px;">
+    <div class="reveal r1" style="flex:1.3;">
+      <div class="kicker k-pink">PHỤ LỤC · Q&amp;A</div>
+      <h2 class="dh dh-xs" style="margin-top:24px;max-width:1050px;">Tier 1 Cache: tái sử dụng lịch trình thông minh</h2>
+      <p class="body-lg" style="margin-top:22px;max-width:1000px;">Mỗi lịch trình mới được mã hoá thành fingerprint ngữ nghĩa bằng mô hình embedding BGE-M3. Khi một yêu cầu tương tự xuất hiện, hệ thống lấy lại template gần giống thay vì lập lịch lại từ đầu — giúp phản hồi nhanh hơn và giảm tải cho LLM.</p>
+      <div style="display:flex;align-items:center;gap:14px;margin-top:22px;">
+        <span class="mono-tag-solid mono-tag" style="background:var(--orange);color:var(--cream);border-color:var(--ink);">F</span>
+        <span class="mono-label" style="font-size:17px;">Fingerprint BGE-M3</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;margin-top:14px;">
+        <span class="mono-tag-solid mono-tag" style="background:var(--green);color:var(--cream);border-color:var(--ink);">D</span>
+        <span class="mono-label" style="font-size:17px;">Supabase pgvector (bge-m3, 1024-d)</span>
+      </div>
+    </div>
+    <div class="reveal r2" style="flex:1;">
+      <div class="stat-cell stat-cell-green" style="box-shadow:24px 24px 0 var(--orange),24px 24px 0 4px var(--ink);padding:40px;text-align:center;align-items:center;">
+        <div class="stat-num" style="font-size:130px;">88%</div>
+        <p class="stat-desc" style="font-size:20px;margin-top:8px;">ngưỡng tương đồng tối thiểu để tái sử dụng lịch trình mẫu</p>
+        <span class="mono-label stat-tag" style="font-size:15px;">Similarity threshold</span>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">TIER 1 CACHE — TỔNG QUAN</span><span class="mf-right">BACKUP · 36<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ D4 — TIER 1 CACHE DEEP DIVE ============ -->
+<section class="slide" id="s37" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">PHỤ LỤC · Q&amp;A</span></div>
+  <div class="content">
+    <div class="kicker k-pink reveal r1">PHỤ LỤC · Q&amp;A</div>
+    <h2 class="dh dh-sm reveal r2" style="margin-top:16px;">Tier 1 Cache — chi tiết</h2>
+    <div class="grid2 reveal r3" style="margin-top:20px;">
+      <div class="spec-card">
+        <div class="spec-hd">Fingerprint &amp; ngưỡng</div>
+        <div class="spec-body"><ul>
+          <li><code>ITINERARY_REUSE_TIER1_THRESHOLD</code> — trip_planner.py:69, mặc định <b>0.88</b>, override được qua env</li>
+          <li>Fingerprint: ghép text (destination, duration, adults/children, sở thích đã sort, planning_constraints canonical JSON) → embed bge-m3 (1024-d)</li>
+          <li>Gửi vector qua Supabase RPC <code>match_itineraries</code></li>
+        </ul></div>
+      </div>
+      <div class="spec-card"><div class="spec-hd">Lọc cứng TRƯỚC similarity</div><div class="spec-body"><p class="note">destination_id · duration_days · hotel_id (bắt buộc) · planning_constraints — phải khớp <b>chính xác</b> mới xét đến % tương đồng.</p></div></div>
+    </div>
+    <div class="spec-card reveal r4" style="margin-top:18px;">
+      <div class="spec-hd">classify_reuse_candidate() — 7 bước kiểm tra bảo thủ, theo thứ tự</div>
+      <div class="spec-body">
+        <div class="mtl">
+          <div class="mtl-item"><div class="mtl-dot"></div><div class="mtl-label">Destination khớp</div></div>
+          <div class="mtl-item"><div class="mtl-dot"></div><div class="mtl-label">Hotel khớp</div></div>
+          <div class="mtl-item"><div class="mtl-dot"></div><div class="mtl-label">Duration khớp</div></div>
+          <div class="mtl-item"><div class="mtl-dot"></div><div class="mtl-label">Constraints khớp</div></div>
+          <div class="mtl-item"><div class="mtl-dot"></div><div class="mtl-label">Status Finalized</div></div>
+          <div class="mtl-item"><div class="mtl-dot" style="background:var(--pink);"></div><div class="mtl-label">Similarity ≥ 0.88</div></div>
+          <div class="mtl-item"><div class="mtl-dot" style="background:var(--green);"></div><div class="mtl-label">Bundle hợp lệ (≥7 item/ngày)</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="grid2 reveal r5" style="margin-top:16px;">
+      <div class="spec-card spec-card-green"><span class="mono-tag" style="background:var(--cream);color:var(--ink);margin:16px 0 0 18px;">HIT</span><div class="spec-body"><p class="note">Rebuild itinerary QUANH khách sạn hiện tại, dùng lại <code>day_themes</code> cũ — không copy y nguyên.</p></div></div>
+      <div class="spec-card spec-card-pink"><span class="mono-tag" style="background:var(--cream);color:var(--ink);margin:16px 0 0 18px;">MISS</span><div class="spec-body"><p class="note">Rơi xuống pipeline sinh theme bằng LLM (gpt-5.1) + scheduler bình thường.</p></div></div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">TIER 1 CACHE — CHI TIẾT</span><span class="mf-right">BACKUP · 37<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ D5 — RAG PIPELINE ============ -->
+<section class="slide" id="s38" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">PHỤ LỤC · Q&amp;A</span></div>
+  <div class="content">
+    <div class="kicker k-pink reveal r1">PHỤ LỤC · Q&amp;A</div>
+    <h2 class="dh dh-sm reveal r2" style="margin-top:16px;">Pipeline tìm kiếm ngữ nghĩa (RAG)</h2>
+    <p class="mono-label reveal r2" style="margin-top:8px;font-size:15px;opacity:.75;">Embedding lưu &amp; query hoàn toàn trên Supabase pgvector — không hybrid keyword/BM25, không reranker model</p>
+    <div class="step-row reveal r3" style="margin-top:40px;">
+      <div class="step-card" style="flex:1;"><div class="step-num">1</div><h4 class="step-title">Trích filter</h4><p>(tùy chọn) LLM đọc category/giá/rating từ câu hỏi tự do</p></div>
+      <div class="step-arrow"></div>
+      <div class="step-card step-card-pink" style="flex:1;"><div class="step-num">2</div><h4 class="step-title">Embed</h4><p>bge-m3 → vector 1024-d</p></div>
+      <div class="step-arrow"></div>
+      <div class="step-card" style="flex:1;"><div class="step-num">3</div><h4 class="step-title">pgvector RPC</h4><p>Cosine similarity, ngưỡng 0.35 (hotel) / 0.40 (attraction)</p></div>
+      <div class="step-arrow"></div>
+      <div class="step-card step-card-orange" style="flex:1;"><div class="step-num">4</div><h4 class="step-title">Lọc + degrade</h4><p>0 kết quả sau lọc chặt → trả về kết quả chưa lọc, không bao giờ rỗng</p></div>
+      <div class="step-arrow"></div>
+      <div class="step-card step-card-yellow" style="flex:1;"><div class="step-num">5</div><h4 class="step-title">Hydrate</h4><p>Query lần 2 lấy đầy đủ field canonical theo ID đã match</p></div>
+    </div>
+    <div class="spec-card reveal r4" style="margin-top:34px;">
+      <div class="spec-hd">Biến thể tiered — dùng cho trip_scheduler</div>
+      <div class="spec-body">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span class="mono-tag">3km / 0.40</span><span>→</span><span class="mono-tag">3km / 0.25</span><span>→</span><span class="mono-tag">8km / 0.40</span><span>→</span><span class="mono-tag">12km / 0.25</span>
+        </div>
+        <p class="note" style="margin-top:8px;">Mở rộng dần từng tier — dừng ngay khi đủ số lượng ứng viên cần.</p>
+      </div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">PIPELINE RAG</span><span class="mf-right">BACKUP · 38<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ D6 — SESSION & STATE ============ -->
+<section class="slide" id="s39" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">PHỤ LỤC · Q&amp;A</span></div>
+  <div class="content">
+    <div class="kicker k-pink reveal r1">PHỤ LỤC · Q&amp;A</div>
+    <h2 class="dh dh-sm reveal r2" style="margin-top:16px;">Quản lý session &amp; state</h2>
+    <div class="grid3 reveal r3" style="margin-top:22px;">
+      <div class="stat-cell stat-cell-cream" style="text-align:center;align-items:center;"><div class="stat-num" style="font-size:56px;">2h</div><p class="stat-desc">TTL SessionRegistry</p></div>
+      <div class="stat-cell stat-cell-cream" style="text-align:center;align-items:center;"><div class="stat-num" style="font-size:56px;">200</div><p class="stat-desc">Cap session / process</p></div>
+      <div class="stat-cell stat-cell-cream" style="text-align:center;align-items:center;"><div class="stat-num" style="font-size:56px;">1</div><p class="stat-desc">Uvicorn worker (in-memory)</p></div>
+    </div>
+    <div class="spec-card reveal r4" style="margin-top:20px;">
+      <div class="spec-hd">Chuỗi khôi phục session (SessionRegistry.get)</div>
+      <div class="spec-body">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <span class="mono-tag" style="background:var(--orange);color:var(--cream);">1. In-memory dict</span><span class="step-title" style="font-size:16px;">→</span>
+          <span class="mono-tag" style="background:var(--green);color:var(--cream);">2. Supabase sessions row</span><span class="step-title" style="font-size:16px;">→</span>
+          <span class="mono-tag" style="background:var(--pink);">3. Hỏi thẳng checkpointer</span>
+        </div>
+      </div>
+    </div>
+    <div class="grid2 reveal r5" style="margin-top:16px;">
+      <div class="spec-card"><div class="spec-hd">TravelGraphState</div><div class="spec-body"><p class="note">State thật của LangGraph mỗi turn: messages, travel_state, patch fields, pending_tasks/task_results. <code>trip_data</code> cố tình để NGOÀI travel_state — round-trip dict sẽ âm thầm drop field lạ.</p></div></div>
+      <div class="spec-card"><div class="spec-hd">Checkpointer</div><div class="spec-body"><p class="note">Mặc định <code>memory</code>; production dùng <code>PostgresSaver</code>. CLI/script <b>luôn</b> dùng <code>MemorySaver</code> bất kể config.</p></div></div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">SESSION &amp; STATE</span><span class="mf-right">BACKUP · 39<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ D7 — COST & TOKEN ESTIMATE ============ -->
+<section class="slide" id="s40" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">PHỤ LỤC · Q&amp;A</span></div>
+  <div class="content">
+    <div class="kicker k-pink reveal r1">PHỤ LỤC · Q&amp;A</div>
+    <h2 class="dh dh-sm reveal r2" style="margin-top:16px;">Ước tính chi phí &amp; token</h2>
+    <div class="reveal r2" style="margin-top:14px;padding:14px 24px;background:var(--yellow);border:4px solid var(--ink);width:fit-content;"><p class="body-md"><b>Sự thật trước tiên:</b> không có token counting hay cost tracking nào được đo đạc trong code hiện tại (đã tìm khắp backend/, eval/, docs/).</p></div>
+    <div class="spec-card reveal r3" style="margin-top:18px;">
+      <div class="spec-hd">Tần suất gọi LLM theo node / turn (đếm từ code)</div>
+      <div class="spec-body">
+        <div class="bars">
+          <div class="bar-row"><span class="bar-label">extract_patch</span><div class="bar-track"><div class="bar-fill" style="width:100%;background:var(--pink);"></div></div><span class="bar-val">100% turn · reasoning</span></div>
+          <div class="bar-row"><span class="bar-label">itinerary theme</span><div class="bar-track"><div class="bar-fill" style="width:30%;background:var(--pink);"></div></div><span class="bar-val">chỉ khi cache miss · reasoning</span></div>
+          <div class="bar-row"><span class="bar-label">intake_qa</span><div class="bar-track"><div class="bar-fill" style="width:15%;background:var(--orange);"></div></div><span class="bar-val">có điều kiện · fast</span></div>
+          <div class="bar-row"><span class="bar-label">supervisor</span><div class="bar-track"><div class="bar-fill" style="width:10%;background:var(--orange);"></div></div><span class="bar-val">~10% turn · fast</span></div>
+          <div class="bar-row"><span class="bar-label">qa_node</span><div class="bar-track"><div class="bar-fill striped" style="width:100%;background:var(--orange);"></div></div><span class="bar-val">N lần, trần 30.000 token · fast</span></div>
+        </div>
+        <p class="note" style="margin-top:10px;"><b>0 LLM call (Python thuần):</b> load_context, scope_guard, validate_patch, apply_patch, ask_slot, hotel_node (scoring), booking_node, budget_check, respond.</p>
+      </div>
+    </div>
+    <div class="grid2 reveal r4" style="margin-top:16px;">
+      <div class="spec-card"><div class="spec-hd">Con số thật duy nhất trong code</div><div class="spec-body"><p class="note" style="font-size:20px;"><code>qa_context_token_budget</code> = <b>30.000 token</b> / lời gọi (config.py)</p></div></div>
+      <div class="spec-card spec-card-yellow" style="flex:1.4;"><div class="spec-hd spec-hd-cream">Chưa đo — ước tính định tính</div><div class="spec-body"><p class="note">Không có token counting / cost tracking trong code (đã tìm khắp backend/, eval/, docs/). Model thật đang chạy: <b>gpt-5.1</b> (reasoning, đắt hơn/token) cho extract_patch &amp; sinh theme; <b>gpt-4o-mini</b> (fast, rẻ hơn) cho supervisor/intake_qa/qa_node. Muốn số $ chính xác cần bật đo token thật, không suy đoán từ giá công khai.</p></div></div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">CHI PHÍ &amp; TOKEN</span><span class="mf-right">BACKUP · 40<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ D8 — DYNAMIC PRICE / AVAILABILITY ============ -->
+<section class="slide" id="s41" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">PHỤ LỤC · CÂU HỎI DỰ KIẾN</span></div>
+  <div class="content">
+    <div class="kicker k-yellow reveal r1">PHỤ LỤC · CÂU HỎI DỰ KIẾN</div>
+    <h2 class="dh dh-2xs reveal r2" style="margin-top:18px;max-width:1700px;">Giá phòng đổi giữa lúc khách thanh toán thì sao?</h2>
+    <div class="grid2 reveal r3" style="margin-top:26px;">
+      <div class="spec-card spec-card-green"><div class="spec-hd spec-hd-cream">Đã có</div><div class="spec-body"><ul style="color:var(--cream);">
+        <li>Đối soát số tiền VNPay thật — làm tròn giá phòng trung bình về VND nguyên, tránh lệch <code>vnp_Amount</code> (fix đã merge)</li>
+        <li>Trạng thái <b>CANCELLED</b> rõ ràng khi VNPay timeout — khách không bao giờ "treo" không biết kết quả</li>
+      </ul></div></div>
+      <div class="spec-card spec-card-pink"><div class="spec-hd spec-hd-cream">Chưa có (trung thực)</div><div class="spec-body"><ul>
+        <li>Không tìm thấy re-check tồn phòng real-time ngay trước khi tạo booking (đã tìm booking_service.py)</li>
+        <li>Chưa có khóa tồn kho (inventory lock) giữ chỗ trong lúc khách điền thanh toán</li>
+      </ul></div></div>
+    </div>
+    <div class="spec-card reveal r4" style="margin-top:18px;"><div class="spec-body" style="padding:18px 24px;"><p class="note">Đây là khoảng cách thật, không phải điểm yếu che giấu — đối soát số tiền &amp; xử lý timeout đã production-ready; giữ chỗ real-time là hạng mục roadmap tiếp theo.</p></div></div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">Q&amp;A — GIÁ ĐỔI LÚC THANH TOÁN?</span><span class="mf-right">BACKUP · 41<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ D9 — WHY KEEP booking_node ============ -->
+<section class="slide" id="s42" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">PHỤ LỤC · CÂU HỎI DỰ KIẾN</span></div>
+  <div class="content">
+    <div class="kicker k-yellow reveal r1">PHỤ LỤC · CÂU HỎI DỰ KIẾN</div>
+    <h2 class="dh dh-2xs reveal r2" style="margin-top:18px;max-width:1750px;">booking_node luôn từ chối — sao không định tuyến ở API gateway?</h2>
+    <div class="reveal r3" style="margin-top:22px;border:4px solid var(--ink);background:var(--cream-2);padding:22px 28px;font-family:var(--f-mono);font-size:16px;line-height:1.55;max-width:1700px;">
+      <span class="mono-label" style="font-size:13px;opacity:.65;display:block;margin-bottom:10px;">Trích docstring thật của node (booking_node.py):</span>
+      "plan.md defers booking entirely: no auth model, no inventory source.
+      But the supervisor needs a routable destination for a booking request,
+      or such a turn would silently fall to respond with nothing said —
+      <span style="background:var(--yellow);padding:0 4px;">the exact silent no-op this whole plan exists to eliminate.</span>"
+    </div>
+    <div class="node-cols reveal r4" style="margin-top:20px;">
+      <div class="spec-card" style="flex:1;">
+        <div class="spec-hd">3 lý do giữ trong graph</div>
+        <div class="spec-body"><ul>
+          <li>Tránh <b>silent no-op</b> — turn "đặt phòng giúp mình" phải luôn nhận phản hồi trung thực, không rơi vào ack chung chung</li>
+          <li>Đồng nhất framework: mọi worker đi qua cùng <code>pending_tasks</code> → <code>budget_check</code> → <code>respond</code>, không cần đường tắt riêng ở gateway</li>
+          <li>Scaffolding sẵn cho Phase 6: khi có intent-classification thật, chỉ cần đổi <code>_IMPOSSIBLE["booking_node"]</code>, không phải viết lại routing</li>
+        </ul></div>
+      </div>
+      <div class="spec-card spec-card-yellow" style="flex:0.8;"><div class="spec-hd spec-hd-cream">Định tuyến ở API gateway?</div><div class="spec-body"><p class="note">Sẽ tách rời logic "đặt phòng" khỏi vòng đời turn thống nhất — nghĩa là 2 hệ thống lỗi/log riêng biệt cho cùng 1 ý định người dùng.</p></div></div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">Q&amp;A — VÌ SAO GIỮ BOOKING_NODE?</span><span class="mf-right">BACKUP · 42<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ D10 — GREEDY VS CSP/ILP ============ -->
+<section class="slide" id="s43" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">PHỤ LỤC · CÂU HỎI DỰ KIẾN</span></div>
+  <div class="content">
+    <div class="kicker k-yellow reveal r1">PHỤ LỤC · CÂU HỎI DỰ KIẾN</div>
+    <h2 class="dh dh-2xs reveal r2" style="margin-top:18px;max-width:1750px;">Sao dùng greedy heuristic thay vì CSP / ILP solver?</h2>
+    <p class="mono-label reveal r2" style="margin-top:10px;font-size:15px;opacity:.75;">Lý do kỹ thuật suy ra từ hành vi hệ thống — không phải trích tài liệu thiết kế có sẵn</p>
+    <div class="grid2 reveal r3" style="margin-top:24px;">
+      <div class="spec-card"><div class="spec-hd">Độ trễ hội thoại</div><div class="spec-body"><p class="note">Chat cần phản hồi trong vài giây. ILP với ràng buộc mềm (giờ mở cửa, sở thích, khoảng cách, ngân sách) có thể mất nhiều giây–phút để hội tụ tối ưu toàn cục.</p></div></div>
+      <div class="spec-card"><div class="spec-hd">Lịch trình luôn bị sửa lại</div><div class="spec-body"><p class="note">Khách chỉnh sửa liên tục (<code>edit_item</code>, <code>rebuild_days</code>) — tối ưu toàn cục 1 lần kém giá trị hơn khả năng sửa nhanh + repair pass cục bộ.</p></div></div>
+    </div>
+    <div class="grid2 reveal r4" style="margin-top:20px;">
+      <div class="spec-card"><div class="spec-hd">Ràng buộc thực tế khó mô hình hóa</div><div class="spec-body"><p class="note">Giờ mở cửa động, bữa ăn đã gồm trong khách sạn, tránh biển giữa trưa... là domain rule — biểu diễn trong ILP sẽ nổ số biến nhanh chóng.</p></div></div>
+      <div class="spec-card"><div class="spec-hd">Giải thích được cho khách</div><div class="spec-body"><p class="note">Mỗi lựa chọn log lý do cụ thể (<code>adjustments</code>) — nghiệm ILP dạng "hộp đen" khó trả lời "vì sao lịch trình lại như vậy".</p></div></div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">Q&amp;A — GREEDY VS CSP/ILP?</span><span class="mf-right">BACKUP · 43<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ D11 — CACHE HIT RATE / COST ============ -->
+<section class="slide" id="s44" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">PHỤ LỤC · CÂU HỎI DỰ KIẾN</span></div>
+  <div class="content">
+    <div class="kicker k-yellow reveal r1">PHỤ LỤC · CÂU HỎI DỰ KIẾN</div>
+    <h2 class="dh dh-2xs reveal r2" style="margin-top:18px;max-width:1750px;">Tier 1 Cache hit rate thật? Chi phí LLM / lịch trình?</h2>
+    <div class="reveal r2" style="margin-top:16px;padding:14px 24px;background:var(--yellow);border:4px solid var(--ink);width:fit-content;"><p class="body-md"><b>Trung thực:</b> chưa có dashboard % hit rate hay $ cost — nhưng dữ liệu thô đã tồn tại, chỉ thiếu lớp tổng hợp.</p></div>
+    <div class="grid2 reveal r3" style="margin-top:20px;">
+      <div class="spec-card spec-card-green"><div class="spec-hd spec-hd-cream">Đã log mỗi lần</div><div class="spec-body"><ul style="color:var(--cream);">
+        <li><code>reuse_miss reason=no_qualified_candidate</code> — log mỗi lần cache miss</li>
+        <li><code>reuse_rejected template=... reason=...</code> — log lý do từ chối từng template ứng viên</li>
+      </ul></div></div>
+      <div class="spec-card"><div class="spec-hd">Cần thêm để có con số thật</div><div class="spec-body"><ul>
+        <li>Tổng hợp log hit/miss thành metric % theo thời gian (chưa có dashboard)</li>
+        <li>Bật token counting thật cho gpt-5.1 / gpt-4o-mini theo từng lời gọi (chưa instrument)</li>
+      </ul></div></div>
+    </div>
+    <div class="spec-card reveal r4" style="margin-top:16px;"><div class="spec-body" style="padding:16px 24px;"><p class="note">Đây là việc thêm 1 lớp aggregation, không phải xây lại từ đầu — hạ tầng log đã sẵn sàng để nối vào.</p></div></div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">Q&amp;A — CACHE HIT RATE &amp; COST?</span><span class="mf-right">BACKUP · 44<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ APPENDIX — BOOKING FLOW OVERVIEW ============ -->
+<section class="slide" id="s45" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">PHỤ LỤC · KIẾN TRÚC</span></div>
+  <div class="content">
+    <div class="kicker k-cream reveal r1" style="border:3px solid var(--ink);">PHỤ LỤC · KIẾN TRÚC</div>
+    <h2 class="dh dh-sm reveal r2" style="margin-top:16px;">Luồng đặt phòng &amp; thanh toán VNPay</h2>
+    <p class="mono-label reveal r2" style="margin-top:8px;font-size:15px;opacity:.75;">use-room-hold.ts · routes.py · vnpay_service.py</p>
+    <div class="step-row reveal r3" style="margin-top:34px;">
+      <div class="step-card" style="flex:1;"><div class="step-num">1</div><h4 class="step-title">Chọn phòng &amp; giữ chỗ</h4><p>RPC khoá theo room_id + guest_ref, TTL 15 phút</p></div>
+      <div class="step-arrow"></div>
+      <div class="step-card step-card-pink" style="flex:1;"><div class="step-num">2</div><h4 class="step-title">Đếm ngược</h4><p>Đọc lại expires_at từ server mỗi giây</p></div>
+      <div class="step-arrow"></div>
+      <div class="step-card" style="flex:1;"><div class="step-num">3</div><h4 class="step-title">Nhập thông tin khách</h4><p>Tên, email, số điện thoại</p></div>
+      <div class="step-arrow"></div>
+      <div class="step-card step-card-orange" style="flex:1;"><div class="step-num">4</div><h4 class="step-title">Tạo giao dịch VNPay</h4><p>Ký URL HMAC-SHA512, rời hẳn SPA</p></div>
+      <div class="step-arrow"></div>
+      <div class="step-card step-card-yellow" style="flex:1;"><div class="step-num">5</div><h4 class="step-title">2 kênh xác nhận song song</h4><p>Chỉ 1 trong 2 đáng tin — xem bên dưới</p></div>
+    </div>
+    <div class="grid2 reveal r4" style="margin-top:24px;">
+      <div class="spec-card spec-card-green"><span class="mono-tag" style="background:var(--cream);color:var(--ink);margin:16px 0 0 20px;">IPN · SERVER-TO-SERVER</span><div class="spec-body"><p class="note">Xác minh chữ ký + đối chiếu số tiền → <code>UPDATE ... WHERE status='PENDING'</code> (chính câu lệnh này LÀ cơ chế idempotent) → xác nhận booking → gửi email. Nguồn xác nhận DUY NHẤT đáng tin.</p></div></div>
+      <div class="spec-card spec-card-pink"><span class="mono-tag" style="background:var(--cream);color:var(--ink);margin:16px 0 0 20px;">REDIRECT · HIỂN THỊ</span><div class="spec-body"><p class="note">Query string có thể bị sửa, không được tin. SPA tải lại toàn bộ, poll <code>GET /payments/{id}</code> tối đa ~20s để hiện màn kết quả.</p></div></div>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">LUỒNG ĐẶT PHÒNG &amp; THANH TOÁN VNPAY</span><span class="mf-right">BACKUP · 45<span class="mf-dot"></span>46</span></div>
+</section>
+
+<!-- ============ APPENDIX — ROOM HOLD DESIGN & RISK ============ -->
+<section class="slide" id="s46" data-appendix="true">
+  <div class="topbar"><span class="tb-left">VP-OTA · AI TRIP PLANNER</span><span class="tb-pill">PHỤ LỤC · Q&amp;A</span></div>
+  <div class="content">
+    <div class="kicker k-pink reveal r1">PHỤ LỤC · Q&amp;A</div>
+    <h2 class="dh dh-sm reveal r2" style="margin-top:16px;">Giữ phòng — quyết định thiết kế &amp; rủi ro</h2>
+    <p class="mono-label reveal r2" style="margin-top:8px;font-size:15px;opacity:.75;">use-room-hold.ts — state toàn cục theo tab, không theo session</p>
+    <div class="grid2 reveal r3" style="margin-top:22px;">
+      <div class="spec-card"><div class="spec-hd">Không có cron dọn dẹp</div><div class="spec-body"><p class="note">Hold hết hạn chỉ đơn giản ngừng được tính vào "phòng đang giữ" (<code>expires_at &gt; now()</code> trong truy vấn còn phòng) — chỉ thật sự đổi <code>status→EXPIRED</code> khi có ai cố <code>confirm</code> nó.</p></div></div>
+      <div class="spec-card"><div class="spec-hd">roomHold là state TOÀN CỤC</div><div class="spec-body"><p class="note">Không theo từng đoạn chat — quyết định có chủ đích. Gốc rễ của nhiều bản vá sau này: đổi khách sạn, xoá session đang giữ, hiển thị nhầm hold của đoạn chat khác.</p></div></div>
+    </div>
+    <div class="grid2 reveal r4" style="margin-top:16px;">
+      <div class="spec-card"><div class="spec-hd">Chỉ giữ 1 khách sạn 1 lúc</div><div class="spec-body"><p class="note">Khoá advisory theo <code>guest_ref</code> (không chỉ <code>room_id</code>) chặn ở tầng DB — không phụ thuộc frontend kiểm tra đúng hay không.</p></div></div>
+      <div class="spec-card"><div class="spec-hd">switchHold luôn huỷ rồi tạo lại</div><div class="spec-body"><p class="note">Không có API "sửa" hold — đổi loại phòng hay đổi khách sạn đều release toàn bộ + reserve lại, TTL 15 phút mới tinh.</p></div></div>
+    </div>
+    <div class="reveal r5" style="margin-top:18px;padding:16px 24px;background:var(--yellow);border:4px solid var(--ink);">
+      <p class="body-sm">⚠ <b>Sự cố thật đã gặp:</b> thanh toán VNPay thật thành công nhưng app từng kẹt "đang chờ xác nhận" — do tính giá trung bình ra số lẻ <code>float</code>, lệch với số VND nguyên VNPay trả về trong IPN → <code>RspCode 04 "Invalid amount"</code>. Đã sửa bằng <code>Decimal</code> + làm tròn VND nguyên, dung sai &lt;1 VND khi so khớp — đã xác nhận chạy đúng trên staging thật.</p>
+    </div>
+  </div>
+  <div class="meta-footer"><span class="mf-left">GIỮ PHÒNG — THIẾT KẾ &amp; RỦI RO</span><span class="mf-right">BACKUP · 46<span class="mf-dot"></span>46</span></div>
+</section>
+
+  </main>
+</div>
+
+<div class="jump-hint" id="jumpHint"></div>
+<div class="nav-controls">
+  <div class="nav-btn" id="prevBtn" title="Previous">←</div>
+  <div class="nav-btn" id="nextBtn" title="Next">→</div>
+</div>
+<div class="nav-back-btn" id="appendixBackBtn">← Phụ lục</div>
+
+<script>
+/* ===========================================
+   SLIDE PRESENTATION CONTROLLER
+   =========================================== */
+class SlidePresentation{
+  constructor(){
+    this.slides = Array.from(document.querySelectorAll('.slide'));
+    this.currentSlide = 0;
+    this.stage = document.getElementById('deckStage');
+    this.appendixBackBtn = document.getElementById('appendixBackBtn');
+    this.jumpHint = document.getElementById('jumpHint');
+    this.jumpBuffer = '';
+    this.jumpTimer = null;
+    this.setupStageScale();
+    this.setupKeyboardNav();
+    this.setupTouchNav();
+    this.setupButtons();
+    this.setupIndexJump();
+    this.appendixBackBtn.addEventListener('click', ()=>{
+      const current = this.slides[this.currentSlide];
+      const isDivider = current.dataset.appendixDivider === 'true';
+      const target = isDivider
+        ? document.querySelector('[data-nav-architecture="true"]')
+        : document.querySelector('[data-appendix-divider="true"]');
+      const idx = target ? this.slides.indexOf(target) : -1;
+      if(idx >= 0) this.showSlide(idx);
+    });
+    this.showSlide(0);
+  }
+  setupIndexJump(){
+    document.querySelectorAll('.appendix-index .idx-item').forEach(item=>{
+      item.addEventListener('click', ()=>{
+        const n = parseInt(item.dataset.n, 10);
+        if(!isNaN(n)) this.showSlide(n-1);
+      });
+    });
+    const jumpBtn = document.getElementById('jumpToAppendixBtn');
+    if(jumpBtn){
+      jumpBtn.addEventListener('click', ()=>{
+        const divider = document.querySelector('.slide[data-appendix="true"]');
+        if(divider){
+          const idx = this.slides.indexOf(divider);
+          if(idx >= 0) this.showSlide(idx);
+        }
+      });
+    }
+  }
+  handleDigit(digit){
+    clearTimeout(this.jumpTimer);
+    this.jumpBuffer = (this.jumpBuffer + digit).slice(-2);
+    this.jumpHint.textContent = 'Nhảy đến slide ' + this.jumpBuffer + ' — Enter để xác nhận';
+    this.jumpHint.classList.add('show');
+    this.jumpTimer = setTimeout(()=>{ this.jumpBuffer=''; this.jumpHint.classList.remove('show'); }, 2000);
+  }
+  confirmJump(){
+    const n = parseInt(this.jumpBuffer, 10);
+    this.jumpBuffer=''; this.jumpHint.classList.remove('show');
+    clearTimeout(this.jumpTimer);
+    if(!isNaN(n) && n>=1 && n<=this.slides.length) this.showSlide(n-1);
+  }
+  setupStageScale(){
+    const scale = () => {
+      const factor = Math.min(window.innerWidth/1920, window.innerHeight/1080);
+      const x = (window.innerWidth - 1920*factor)/2;
+      const y = (window.innerHeight - 1080*factor)/2;
+      this.stage.style.transform = `translate(${x}px, ${y}px) scale(${factor})`;
+    };
+    scale();
+    window.addEventListener('resize', scale);
+  }
+  setupKeyboardNav(){
+    document.addEventListener('keydown', (e) => {
+      if(/^[0-9]$/.test(e.key)){ this.handleDigit(e.key); return; }
+      if(e.key==='Enter' && this.jumpBuffer){ this.confirmJump(); return; }
+      if(e.key==='Escape' && this.jumpBuffer){ this.jumpBuffer=''; this.jumpHint.classList.remove('show'); return; }
+      if(['ArrowRight','PageDown',' '].includes(e.key)){ e.preventDefault(); this.next(); }
+      if(['ArrowLeft','PageUp'].includes(e.key)){ e.preventDefault(); this.prev(); }
+      if(e.key==='Home') this.showSlide(0);
+      if(e.key==='End') this.showSlide(this.slides.length-1);
+    });
+  }
+  setupTouchNav(){
+    let touchX = null;
+    document.addEventListener('touchstart', e=> touchX = e.touches[0].clientX);
+    document.addEventListener('touchend', e=>{
+      if(touchX===null) return;
+      const dx = e.changedTouches[0].clientX - touchX;
+      if(dx > 50) this.prev();
+      if(dx < -50) this.next();
+      touchX = null;
+    });
+  }
+  setupButtons(){
+    document.getElementById('prevBtn').addEventListener('click', ()=> this.prev());
+    document.getElementById('nextBtn').addEventListener('click', ()=> this.next());
+  }
+  next(){ this.showSlide(this.currentSlide+1); }
+  prev(){ this.showSlide(this.currentSlide-1); }
+  showSlide(index){
+    this.currentSlide = Math.max(0, Math.min(index, this.slides.length-1));
+    this.slides.forEach((slide,i)=>{
+      slide.classList.toggle('active', i===this.currentSlide);
+      slide.classList.toggle('visible', i===this.currentSlide);
+    });
+    const current = this.slides[this.currentSlide];
+    const isAppendix = current.dataset.appendix === 'true';
+    const isDivider = current.dataset.appendixDivider === 'true';
+    this.appendixBackBtn.classList.toggle('show', isAppendix);
+    if(isAppendix) this.appendixBackBtn.textContent = isDivider ? '← Kiến trúc' : '← Phụ lục';
+  }
+}
+
+new SlidePresentation();
+</script>
+
+</body>
+</html>

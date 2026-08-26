@@ -17,8 +17,12 @@ class SlidePresentation{
     this.setupButtons();
     this.setupIndexJump();
     this.appendixBackBtn.addEventListener('click', ()=>{
-      const arch = document.getElementById('s5');
-      const idx = this.slides.indexOf(arch);
+      const current = this.slides[this.currentSlide];
+      const isDivider = current.dataset.appendixDivider === 'true';
+      const target = isDivider
+        ? document.querySelector('[data-nav-architecture="true"]')
+        : document.querySelector('[data-appendix-divider="true"]');
+      const idx = target ? this.slides.indexOf(target) : -1;
       if(idx >= 0) this.showSlide(idx);
     });
     this.showSlide(0);
@@ -100,10 +104,13 @@ class SlidePresentation{
       slide.classList.toggle('active', i===this.currentSlide);
       slide.classList.toggle('visible', i===this.currentSlide);
     });
-    const isAppendix = this.slides[this.currentSlide].dataset.appendix === 'true';
+    const current = this.slides[this.currentSlide];
+    const isAppendix = current.dataset.appendix === 'true';
+    const isDivider = current.dataset.appendixDivider === 'true';
     const num = String(this.currentSlide+1).padStart(2,'0') + ' / ' + String(this.slides.length).padStart(2,'0');
     this.counter.textContent = isAppendix ? ('BACKUP · ' + num) : num;
     this.appendixBackBtn.classList.toggle('show', isAppendix);
+    if(isAppendix) this.appendixBackBtn.textContent = isDivider ? '← Kiến trúc' : '← Phụ lục';
   }
 }
 

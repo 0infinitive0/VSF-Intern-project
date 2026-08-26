@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VSF Trip Planner — Pitch Deck</title>
+<title>VP-OTA — Pitch Deck</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -55,8 +55,12 @@
       const PAD = 20; // extra safety margin beyond the measured natural width
       const neededWidth = textEl.scrollWidth + PAD;
       const foWidth = parseFloat(fo.getAttribute('width'));
-      if (neededWidth <= foWidth) return;
       const rectWidth = parseFloat(rect.getAttribute('width'));
+      // Circle-shaped nodes (start/finish) carry a dead, zero-height label
+      // rect that Mermaid itself never sizes (width/x come out NaN) — skip
+      // rather than propagate NaN into further attribute writes.
+      if (!Number.isFinite(foWidth) || !Number.isFinite(rectWidth)) return;
+      if (neededWidth <= foWidth) return;
       const extraPadding = rectWidth - foWidth; // preserve Mermaid's own rect-vs-label padding ratio
       const newFoWidth = neededWidth;
       const newRectWidth = neededWidth + extraPadding;
@@ -84,7 +88,7 @@
 
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--yellow); margin:0 auto;">AI TRAVEL AGENT</div>
-        <h1 class="heading-xl reveal r2" style="margin-top:32px;">VSF Trip<br>Planner</h1>
+        <h1 class="heading-xl reveal r2" style="margin-top:32px;">VP-OTA</h1>
         <p class="subtitle-mono reveal r3" style="margin-top:28px; max-width:900px;">AI Agent lập kế hoạch du lịch đa lượt cho khách du lịch Việt Nam</p>
         <div class="tags reveal r4">
           <div class="label-pill tilt-n2" style="background:var(--blue);">Conversational AI</div>
@@ -130,7 +134,7 @@
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--pink);">Giải pháp</div>
         <h2 class="heading-lg reveal r2" style="margin-top:26px; max-width:1500px;">Trợ lý AI lập lịch trình bằng hội thoại tự nhiên</h2>
-        <p class="body-text reveal r3" style="margin-top:18px; max-width:1300px;">VSF Trip Planner trò chuyện bằng tiếng Việt tự nhiên với du khách, tự động thu thập nhu cầu, tìm kiếm địa điểm theo ngữ nghĩa và lập lịch trình tối ưu — thay cho việc tự tra cứu thủ công qua nhiều nguồn.</p>
+        <p class="body-text reveal r3" style="margin-top:18px; max-width:1300px;">VP-OTA trò chuyện bằng tiếng Việt tự nhiên với du khách, tự động thu thập nhu cầu, tìm kiếm địa điểm theo ngữ nghĩa và lập lịch trình tối ưu — thay cho việc tự tra cứu thủ công qua nhiều nguồn.</p>
 
         <div class="feature-grid">
           <div class="card-elevated feature-card reveal r4">
@@ -206,7 +210,7 @@
     </section>
 
     <!-- ============ SLIDE 5 — ARCHITECTURE (SUMMARY) ============ -->
-    <section class="slide" id="s5">
+    <section class="slide" id="s5" data-nav-architecture="true">
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--blue);">Kiến trúc</div>
         <h2 class="heading-lg reveal r2" style="margin-top:26px;">Kiến trúc hệ thống</h2>
@@ -250,8 +254,8 @@
         </div>
 
         <div class="card-elevated tilt-n2 reveal r6" id="jumpToAppendixBtn" style="margin-top:16px; padding:16px 26px; display:flex; align-items:center; gap:18px; background:var(--yellow); width:fit-content; cursor:pointer;">
-          <div class="icon-square" style="background:var(--white); width:40px; height:40px; font-size:16px;">→</div>
-          <span class="mono-tag" style="font-size:14px;">30 slide phụ lục chi tiết từng node, thuật toán, luồng đặt phòng/thanh toán, và cost/token — bấm để xem</span>
+          <div class="icon-square" style="background:var(--white); width:40px; height:40px; font-size:18px;">→</div>
+          <span class="mono-tag" style="font-size:16px;">30 slide phụ lục chi tiết từng node, thuật toán, luồng đặt phòng/thanh toán, và cost/token — bấm để xem</span>
         </div>
       </div>
     </section>
@@ -261,7 +265,7 @@
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--pink);">LangGraph</div>
         <h2 class="heading-lg reveal r2" style="margin-top:22px;">Luồng xử lý 1 lượt chat — 14 node</h2>
-        <p class="body-text reveal r2" style="margin-top:8px; max-width:1500px; font-size:16px;">Mỗi tin nhắn người dùng đi qua 3 giai đoạn tuần tự — chi tiết từng node ở phụ lục.</p>
+        <p class="body-text reveal r2" style="margin-top:8px; max-width:1500px; font-size:18px;">Mỗi tin nhắn người dùng đi qua 3 giai đoạn tuần tự — chi tiết từng node ở phụ lục.</p>
 
         <div class="flow-slide-cols reveal r3">
           <div class="flow-col">
@@ -313,7 +317,7 @@
 
         <div class="card-flat reveal r4" style="margin-top:16px; padding:14px 26px; display:flex; align-items:center; gap:16px;">
           <span class="mono-tag" style="background:var(--yellow); padding:5px 12px; flex-shrink:0;">* booking_node</span>
-          <p class="body-card" style="font-size:14px;">Từ chối <b>trong graph này theo thiết kế</b> — không phải tính năng còn thiếu. Đặt phòng &amp; thanh toán VNPay <b>hoạt động thật</b>, nhưng đi qua REST API riêng (booking_service · payment_service · vnpay_service) sau khi khách chọn khách sạn — tách khỏi vòng lặp chat/LLM để không phụ thuộc AI cho bước tài chính.</p>
+          <p class="body-card" style="font-size:16px;">Từ chối <b>trong graph này theo thiết kế</b> — không phải tính năng còn thiếu. Đặt phòng &amp; thanh toán VNPay <b>hoạt động thật</b>, nhưng đi qua REST API riêng (booking_service · payment_service · vnpay_service) sau khi khách chọn khách sạn — tách khỏi vòng lặp chat/LLM để không phụ thuộc AI cho bước tài chính.</p>
         </div>
       </div>
     </section>
@@ -323,38 +327,38 @@
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--green);">Đánh giá &amp; đo lường</div>
         <h2 class="heading-lg reveal r2" style="margin-top:22px;">Kết quả thật trên bộ eval — không phải ước lượng</h2>
-        <p class="mono-meta reveal r2" style="margin-top:6px; font-size:18px;">eval/results/ragas-20260820 · 23 record retrieval (VI) · 9 hội thoại / 35 lượt E2E · Cloudflare bge-m3</p>
+        <p class="mono-meta reveal r2" style="margin-top:6px; font-size:20px;">eval/results/ragas-20260820 · 23 record retrieval (VI) · 9 hội thoại / 35 lượt E2E · Cloudflare bge-m3</p>
 
         <div class="node-cols reveal r3" style="margin-top:20px; gap:20px;">
           <div class="card-elevated" style="flex:1; padding:24px 16px; text-align:center;">
             <div class="stat-number" style="font-size:50px;">0.80–0.86</div>
-            <p style="margin-top:8px; font-family:var(--f-display); font-size:17px; font-weight:500; line-height:1.35; color:var(--black);">Precision truy xuất (VI) — dao động qua các lần chạy</p>
+            <p style="margin-top:8px; font-family:var(--f-display); font-size:19px; font-weight:500; line-height:1.35; color:var(--black);">Precision truy xuất (VI) — dao động qua các lần chạy</p>
           </div>
           <div class="card-elevated" style="flex:1; padding:24px 16px; text-align:center;">
             <div class="stat-number" style="font-size:50px;">0.833</div>
-            <p style="margin-top:8px; font-family:var(--f-display); font-size:17px; font-weight:500; line-height:1.35; color:var(--black);">Context relevance truy xuất (VI)</p>
+            <p style="margin-top:8px; font-family:var(--f-display); font-size:19px; font-weight:500; line-height:1.35; color:var(--black);">Context relevance truy xuất (VI)</p>
           </div>
           <div class="card-elevated" style="flex:1; padding:24px 16px; text-align:center;">
             <div class="stat-number" style="font-size:50px;">0.78–0.87</div>
-            <p style="margin-top:8px; font-family:var(--f-display); font-size:17px; font-weight:500; line-height:1.35; color:var(--black);">Faithfulness E2E — dao động qua 5 lần chạy</p>
+            <p style="margin-top:8px; font-family:var(--f-display); font-size:19px; font-weight:500; line-height:1.35; color:var(--black);">Faithfulness E2E — dao động qua 5 lần chạy</p>
           </div>
         </div>
 
         <div class="node-cols reveal r4" style="margin-top:20px;">
           <div class="spec-card" style="flex:1; padding:22px 28px;">
-            <div class="spec-hd" style="font-size:15px;">Latency (p50 / p95)</div>
-            <div class="kv-row" style="font-size:18px; padding:11px 0;"><span class="k">retrieval.search</span><span class="v">4.54s / 7.99s</span></div>
-            <div class="kv-row" style="font-size:18px; padding:11px 0;"><span class="k">e2e.turn</span><span class="v">6.98s / 12.82s</span></div>
-            <div class="kv-row" style="font-size:18px; padding:11px 0;"><span class="k">e2e.conversation</span><span class="v">29.03s / 37.44s</span></div>
+            <div class="spec-hd" style="font-size:17px;">Latency (p50 / p95)</div>
+            <div class="kv-row" style="font-size:20px; padding:11px 0;"><span class="k">retrieval.search</span><span class="v">4.54s / 7.99s</span></div>
+            <div class="kv-row" style="font-size:20px; padding:11px 0;"><span class="k">e2e.turn</span><span class="v">6.98s / 12.82s</span></div>
+            <div class="kv-row" style="font-size:20px; padding:11px 0;"><span class="k">e2e.conversation</span><span class="v">29.03s / 37.44s</span></div>
           </div>
           <div class="spec-card" style="flex:1; padding:22px 28px;">
-            <div class="spec-hd" style="font-size:15px;">Chi phí đo được / lần chạy eval</div>
-            <div class="kv-row" style="font-size:18px; padding:11px 0;"><span class="k">Retrieval (46 lời gọi)</span><span class="v">$0.0224</span></div>
-            <div class="kv-row" style="font-size:18px; padding:11px 0;"><span class="k">E2E app (55 lời gọi)</span><span class="v">$0.0836</span></div>
+            <div class="spec-hd" style="font-size:17px;">Chi phí đo được / lần chạy eval</div>
+            <div class="kv-row" style="font-size:20px; padding:11px 0;"><span class="k">Retrieval (46 lời gọi)</span><span class="v">$0.0224</span></div>
+            <div class="kv-row" style="font-size:20px; padding:11px 0;"><span class="k">E2E app (55 lời gọi)</span><span class="v">$0.0836</span></div>
           </div>
         </div>
 
-        <p class="mono-meta reveal r5" style="margin-top:16px; font-size:14px; color:#5b6b73;">Bộ eval nhỏ, chỉ tiếng Việt — đọc các con số như xu hướng ban đầu, không phải cam kết ở quy mô lớn. Chi tiết đầy đủ trong plans/reports/eval-260820-1703.</p>
+        <p class="mono-meta reveal r5" style="margin-top:16px; font-size:16px; color:#5b6b73;">Bộ eval nhỏ, chỉ tiếng Việt — đọc các con số như xu hướng ban đầu, không phải cam kết ở quy mô lớn. Chi tiết đầy đủ trong plans/reports/eval-260820-1703.</p>
       </div>
     </section>
 
@@ -378,7 +382,7 @@
                 <div class="sq" style="background:var(--pink);"></div>
                 <div class="sq" style="background:var(--yellow);"></div>
                 <div class="sq" style="background:var(--green);"></div>
-                <span>VSF Trip Planner</span>
+                <span>VP-OTA</span>
               </div>
               <div class="mock-body">
                 <div class="bubble me">Tôi muốn đi Đà Nẵng 3 ngày 2 người thích lịch sử</div>
@@ -398,8 +402,54 @@
       </div>
     </section>
 
-    <!-- ============ SLIDE 9 — NOTABLE FEATURES ============ -->
+    <!-- ============ SLIDE 9 — ADMIN DASHBOARD ============ -->
     <section class="slide" id="s9">
+      <div class="slide-pad">
+        <div class="label-pill tilt-n2 reveal r1" style="background:var(--white);">Sản phẩm</div>
+        <h2 class="heading-lg reveal r2" style="margin-top:26px;">Bảng quản trị vận hành</h2>
+
+        <div class="split-row">
+          <div class="feat-col reveal r3">
+            <div class="feat-item"><div class="list-number">1</div><span>Tổng quan doanh thu, đơn hàng &amp; giữ chỗ sắp hết hạn theo thời gian thực</span></div>
+            <div class="feat-item"><div class="list-number">2</div><span>Quản lý khách sạn, phòng, giá &amp; trạng thái embedding</span></div>
+            <div class="feat-item"><div class="list-number">3</div><span>Theo dõi pipeline dữ liệu &amp; độ phủ embedding</span></div>
+            <div class="feat-item"><div class="list-number">4</div><span>Danh mục tiện ích khách sạn, duyệt &amp; chuẩn hoá</span></div>
+            <div class="feat-item"><div class="list-number">5</div><span>Xử lý đơn hàng, huỷ &amp; giữ chỗ hết hạn</span></div>
+          </div>
+          <div class="mock-col reveal r4">
+            <div class="card-elevated admin-mock-frame">
+              <div class="admin-mock-side">
+                <div class="am-logo">VP</div>
+                <div class="am-group">TỔNG QUAN</div>
+                <div class="am-item active">Tổng quan</div>
+                <div class="am-group">KHÁCH SẠN</div>
+                <div class="am-item">Danh sách khách sạn</div>
+                <div class="am-item">Trạng thái embedding</div>
+                <div class="am-item">Danh mục tiện ích</div>
+                <div class="am-group">DỮ LIỆU BOT</div>
+                <div class="am-item">Pipeline</div>
+                <div class="am-group">ĐƠN HÀNG</div>
+                <div class="am-item">Danh sách đơn</div>
+              </div>
+              <div class="admin-mock-main">
+                <div class="am-stats">
+                  <div class="am-stat"><div class="am-stat-lbl">Đơn hôm nay</div><div class="am-stat-val">18</div></div>
+                  <div class="am-stat"><div class="am-stat-lbl">Doanh thu</div><div class="am-stat-val">42tr</div></div>
+                  <div class="am-stat am-warn"><div class="am-stat-lbl">Chờ xử lý</div><div class="am-stat-val">3</div></div>
+                  <div class="am-stat am-err"><div class="am-stat-lbl">Sắp hết hạn</div><div class="am-stat-val">1</div></div>
+                </div>
+                <div class="am-row"><div class="am-dot" style="background:var(--green);"></div>Khách sạn Mường Thanh — đã xác nhận</div>
+                <div class="am-row"><div class="am-dot" style="background:var(--yellow);"></div>Vinpearl Resort — chờ admin xác nhận</div>
+                <div class="am-row"><div class="am-dot" style="background:var(--pink);"></div>Furama Resort — giữ chỗ hết hạn trong 12 phút</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 10 — NOTABLE FEATURES ============ -->
+    <section class="slide" id="s10">
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--green);">Vì sao chọn chúng tôi</div>
         <h2 class="heading-lg reveal r2" style="margin-top:26px;">Giá trị thật cho khách & doanh nghiệp</h2>
@@ -407,7 +457,7 @@
         <div class="feature-grid-6 reveal r3">
           <div class="card-elevated feature-card-sm">
             <div class="feature-deco"></div>
-            <div class="icon-square" style="background:var(--yellow); font-size:24px;">88</div>
+            <div class="icon-square" style="background:var(--yellow); font-size:26px;">88</div>
             <div class="card-title" style="margin-top:16px;">Lên lịch trình tức thì</div>
             <p class="body-card" style="margin-top:8px;">Chuyến đi giống trước đó? Trả kết quả ngay từ cache thông minh (88% tương đồng) thay vì bắt khách chờ AI tính lại từ đầu.</p>
           </div>
@@ -425,7 +475,7 @@
           </div>
           <div class="card-elevated feature-card-sm">
             <div class="feature-deco"></div>
-            <div class="icon-square" style="background:var(--green); font-size:26px;">⚡</div>
+            <div class="icon-square" style="background:var(--green); font-size:28px;">⚡</div>
             <div class="card-title" style="margin-top:16px;">Đúng mô hình AI cho đúng việc</div>
             <p class="body-card" style="margin-top:8px;">GPT-5.1 xử lý phần suy luận phức tạp, GPT-4o-mini trả lời nhanh cho phần đơn giản — tối ưu cả tốc độ lẫn chi phí.</p>
           </div>
@@ -445,13 +495,99 @@
       </div>
     </section>
 
-    <!-- ============ SLIDE 10 — CLOSE / DEMO ============ -->
-    <section class="slide" id="s10">
+    <!-- ============ SLIDE 11 — TEAM: TIỀN ANH KIỆT ============ -->
+    <section class="slide" id="s11">
+      <div class="slide-pad">
+        <div class="label-pill tilt-n2 reveal r1" style="background:var(--pink);">Đội ngũ</div>
+        <h2 class="heading-lg reveal r2" style="margin-top:26px;">Tiền Anh Kiệt</h2>
+        <p class="mono-meta reveal r2" style="margin-top:6px; font-size:18px;">Full-stack & AI Orchestration Lead · 192 commit (GitHub history)</p>
+
+        <div class="split-row" style="margin-top:40px;">
+          <div class="feat-col reveal r3" style="justify-content:center; gap:16px;">
+            <div class="feat-item"><div class="icon-square" style="background:var(--pink); width:44px; height:44px; font-size:18px;">✓</div><span>Thiết kế &amp; refactor LangGraph agent graph (14 node, conditional routing)</span></div>
+            <div class="feat-item"><div class="icon-square" style="background:var(--pink); width:44px; height:44px; font-size:18px;">✓</div><span>Streaming chat UX — thinking block theo bước, suggestion chip theo ngữ cảnh</span></div>
+            <div class="feat-item"><div class="icon-square" style="background:var(--pink); width:44px; height:44px; font-size:18px;">✓</div><span>Tối ưu tìm kiếm điểm đến (RPC tiered search, lọc bán kính)</span></div>
+            <div class="feat-item"><div class="icon-square" style="background:var(--pink); width:44px; height:44px; font-size:18px;">✓</div><span>Xử lý lỗi embedding hệ thống &amp; dẫn dắt bộ eval / kế hoạch dự án</span></div>
+            <div class="feat-item"><div class="icon-square" style="background:var(--pink); width:44px; height:44px; font-size:18px;">✓</div><span>Triển khai &amp; vận hành hạ tầng trên AWS EC2 (Docker Compose, Caddy)</span></div>
+          </div>
+          <div class="mock-col reveal r4">
+            <div class="card-elevated" style="height:100%; padding:32px; display:flex; flex-direction:column; justify-content:center; gap:24px;">
+              <div class="icon-square" style="width:100px; height:100px; font-size:36px; background:var(--pink); margin:0 auto;">TK</div>
+              <div class="member-split">
+                <div class="member-split-seg" style="flex:51; background:var(--blue);">Backend 51%</div>
+                <div class="member-split-seg" style="flex:49; background:var(--yellow);">Frontend 49%</div>
+              </div>
+              <p class="mono-meta" style="text-align:center; font-size:15px;">backend/src/agents · frontend/admin · plans &amp; eval</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 12 — TEAM: NGUYỄN HỮU ĐỨC ============ -->
+    <section class="slide" id="s12">
+      <div class="slide-pad">
+        <div class="label-pill tilt-n2 reveal r1" style="background:var(--green);">Đội ngũ</div>
+        <h2 class="heading-lg reveal r2" style="margin-top:26px;">Nguyễn Hữu Đức</h2>
+        <p class="mono-meta reveal r2" style="margin-top:6px; font-size:18px;">Backend & Data Engineer · 147 commit (GitHub history)</p>
+
+        <div class="split-row" style="margin-top:40px;">
+          <div class="feat-col reveal r3" style="justify-content:center; gap:16px;">
+            <div class="feat-item"><div class="icon-square" style="background:var(--green); width:44px; height:44px; font-size:18px;">✓</div><span>Cải thiện tìm kiếm &amp; lọc khách sạn (lọc theo số khách trong SQL, giá phòng trung bình theo kỳ ở)</span></div>
+            <div class="feat-item"><div class="icon-square" style="background:var(--green); width:44px; height:44px; font-size:18px;">✓</div><span>Thiết kế kiến trúc cơ sở dữ liệu (schema Supabase/Postgres, pgvector)</span></div>
+            <div class="feat-item"><div class="icon-square" style="background:var(--green); width:44px; height:44px; font-size:18px;">✓</div><span>Tier 1 Cache — hoàn thiện &amp; lưu lịch trình làm template tái sử dụng</span></div>
+            <div class="feat-item"><div class="icon-square" style="background:var(--green); width:44px; height:44px; font-size:18px;">✓</div><span>Dịch vụ backend/agent &amp; pipeline dữ liệu Airflow (ETL, ingest)</span></div>
+            <div class="feat-item"><div class="icon-square" style="background:var(--green); width:44px; height:44px; font-size:18px;">✓</div><span>Trang quản trị danh mục tiện ích/room-facility &amp; tích hợp LLM provider (Cloudflare, OpenRouter)</span></div>
+          </div>
+          <div class="mock-col reveal r4">
+            <div class="card-elevated" style="height:100%; padding:32px; display:flex; flex-direction:column; justify-content:center; gap:24px;">
+              <div class="icon-square" style="width:100px; height:100px; font-size:36px; background:var(--green); margin:0 auto;">ND</div>
+              <div class="member-split">
+                <div class="member-split-seg" style="flex:76; background:var(--blue);">Backend 76%</div>
+                <div class="member-split-seg" style="flex:24; background:var(--yellow);">Frontend 24%</div>
+              </div>
+              <p class="mono-meta" style="text-align:center; font-size:15px;">backend/src/agents · database schema · hotel search &amp; filter</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 13 — TEAM: ĐINH NGUYỄN NHẬT LÂM ============ -->
+    <section class="slide" id="s13">
+      <div class="slide-pad">
+        <div class="label-pill tilt-n2 reveal r1" style="background:var(--blue);">Đội ngũ</div>
+        <h2 class="heading-lg reveal r2" style="margin-top:26px;">Đinh Nguyễn Nhật Lâm</h2>
+        <p class="mono-meta reveal r2" style="margin-top:6px; font-size:18px;">Frontend & Booking Experience Engineer · 135 commit (GitHub history)</p>
+
+        <div class="split-row" style="margin-top:40px;">
+          <div class="feat-col reveal r3" style="justify-content:center; gap:20px;">
+            <div class="feat-item"><div class="icon-square" style="background:var(--blue); width:44px; height:44px; font-size:18px;">✓</div><span>Luồng đặt phòng &amp; thanh toán VNPay — giữ chỗ, đổi phòng, biên nhận</span></div>
+            <div class="feat-item"><div class="icon-square" style="background:var(--blue); width:44px; height:44px; font-size:18px;">✓</div><span>Bản đồ tương tác Mapbox GL JS — animation tuyến đường, marker</span></div>
+            <div class="feat-item"><div class="icon-square" style="background:var(--blue); width:44px; height:44px; font-size:18px;">✓</div><span>Tích hợp pipeline embedding Cloudflare Workers AI vào Airflow</span></div>
+            <div class="feat-item"><div class="icon-square" style="background:var(--blue); width:44px; height:44px; font-size:18px;">✓</div><span>View SQL room_night_occupancy phục vụ tra cứu phòng trống trực quan</span></div>
+          </div>
+          <div class="mock-col reveal r4">
+            <div class="card-elevated" style="height:100%; padding:32px; display:flex; flex-direction:column; justify-content:center; gap:24px;">
+              <div class="icon-square" style="width:100px; height:100px; font-size:36px; background:var(--blue); margin:0 auto;">ĐL</div>
+              <div class="member-split">
+                <div class="member-split-seg" style="flex:18; background:var(--blue);">Backend 18%</div>
+                <div class="member-split-seg" style="flex:82; background:var(--yellow);">Frontend 82%</div>
+              </div>
+              <p class="mono-meta" style="text-align:center; font-size:15px;">frontend/components · booking/VNPay flow · Mapbox GL JS</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 14 — CLOSE / DEMO ============ -->
+    <section class="slide" id="s14">
       <div class="star-burst tilt-n8" style="width:110px;height:110px;background:var(--yellow);top:80px;left:120px;"></div>
       <div class="star-burst tilt-p8" style="width:80px;height:80px;background:var(--pink);bottom:100px;right:140px;"></div>
       <div class="slide-pad">
         <div class="close-frame reveal r1">
-          <h2 class="close-title">Cùng đồng hành cùng VSF Trip Planner</h2>
+          <h2 class="close-title">Cùng đồng hành cùng VP-OTA</h2>
           <p class="subtitle-mono" style="margin-top:20px;">Sẵn sàng demo trực tiếp và trao đổi thêm về lộ trình phát triển sản phẩm.</p>
           <div class="reveal r2" style="margin-top:32px; display:flex; gap:18px; flex-wrap:wrap; justify-content:center;">
             <a href="https://trip-planner-ai.duckdns.org/" target="_blank" rel="noopener noreferrer" class="close-repo close-repo-primary">
@@ -468,49 +604,63 @@
       </div>
     </section>
 
-    <!-- ============ SLIDE 11 — ROADMAP ============ -->
-    <section class="slide" id="s11">
+    <!-- ============ SLIDE 15 — ROADMAP ============ -->
+    <section class="slide" id="s15">
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--blue);">Lộ trình</div>
         <h2 class="heading-lg reveal r2" style="margin-top:26px;">Lộ trình phát triển</h2>
+        <p class="mono-meta reveal r2" style="margin-top:8px; font-size:18px;">Mốc thời gian dự kiến, tính từ 08/2026 — có thể điều chỉnh theo ưu tiên vận hành thực tế</p>
 
-        <div class="stage-row">
-          <div class="card-elevated stage-card tilt-n2 reveal r3" style="background:var(--green);">
-            <div class="top-bar"></div>
-            <div class="icon-square" style="background:var(--white);">✓</div>
-            <div class="lbl">ĐÃ HOÀN THÀNH</div>
-            <ul>
-              <li><div class="num">1</div>Hội thoại đa lượt + RAG search</li>
-              <li><div class="num">2</div>Lập lịch tự động (trip_scheduler)</li>
-              <li><div class="num">3</div>Đặt phòng &amp; thanh toán VNPay</li>
-            </ul>
+        <div class="rmap reveal r3">
+          <div class="rmap-line"></div>
+          <div class="rmap-stop">
+            <div class="rmap-date">Đến T8/2026</div>
+            <div class="rmap-dot" style="background:var(--green);">✓</div>
+            <div class="rmap-card" style="background:var(--green);">
+              <div class="rmap-lbl">ĐÃ HOÀN THÀNH</div>
+              <ul>
+                <li>Hội thoại AI + RAG search + lập lịch tự động</li>
+                <li>Đặt phòng, thanh toán VNPay &amp; giữ chỗ real-time</li>
+                <li>Mở rộng test coverage &amp; UX chỉnh sửa lịch trình</li>
+              </ul>
+            </div>
           </div>
-          <div class="card-elevated stage-card tilt-p2 reveal r4" style="background:var(--blue);">
-            <div class="top-bar"></div>
-            <div class="icon-square" style="background:var(--white);">»</div>
-            <div class="lbl">ĐANG TRIỂN KHAI</div>
-            <ul>
-              <li><div class="num">1</div>Nâng cấp hệ thống đặt phòng &amp; giữ chỗ (real-time inventory, tự dọn hold hết hạn)</li>
-              <li><div class="num">2</div>Mở rộng test coverage (pytest)</li>
-              <li><div class="num">3</div>Cải thiện UX chỉnh sửa lịch trình</li>
-            </ul>
+          <div class="rmap-stop">
+            <div class="rmap-date">Q4 2026</div>
+            <div class="rmap-dot" style="background:var(--blue);">»</div>
+            <div class="rmap-card" style="background:var(--blue);">
+              <div class="rmap-lbl">TIẾP THEO</div>
+              <ul>
+                <li>Mở rộng dữ liệu điểm đến &amp; khách sạn</li>
+              </ul>
+            </div>
           </div>
-          <div class="card-elevated stage-card tilt-n2 reveal r5" style="background:var(--pink);">
-            <div class="top-bar"></div>
-            <div class="icon-square" style="background:var(--white);">★</div>
-            <div class="lbl">SẮP TỚI</div>
-            <ul>
-              <li><div class="num">1</div>Ứng dụng mobile</li>
-              <li><div class="num">2</div>Mở rộng dữ liệu điểm đến &amp; khách sạn</li>
-              <li><div class="num">3</div>Đo lường &amp; giám sát chi phí AI theo thời gian thực</li>
-            </ul>
+          <div class="rmap-stop">
+            <div class="rmap-date">Q1 2027</div>
+            <div class="rmap-dot" style="background:var(--pink);">★</div>
+            <div class="rmap-card" style="background:var(--pink);">
+              <div class="rmap-lbl">SẮP TỚI</div>
+              <ul>
+                <li>Ứng dụng mobile</li>
+              </ul>
+            </div>
+          </div>
+          <div class="rmap-stop">
+            <div class="rmap-date">Q2 2027</div>
+            <div class="rmap-dot" style="background:var(--cream);">◆</div>
+            <div class="rmap-card" style="background:var(--cream);">
+              <div class="rmap-lbl">ĐỊNH HƯỚNG</div>
+              <ul>
+                <li>Đo lường &amp; giám sát chi phí AI theo thời gian thực</li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- ============ SLIDE 12 — APPENDIX DIVIDER ============ -->
-    <section class="slide" id="s12" data-appendix="true">
+    <!-- ============ SLIDE 16 — APPENDIX DIVIDER ============ -->
+    <section class="slide" id="s16" data-appendix="true" data-appendix-divider="true">
       <div class="dot-grid" style="width:500px;height:500px;top:-80px;right:-80px;"></div>
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--yellow);">Backup slides</div>
@@ -518,42 +668,42 @@
         <p class="body-text reveal r3" style="margin-top:16px; color:var(--cream); max-width:1300px;">Chỉ dùng khi được hỏi chi tiết. Mỗi node LangGraph, mỗi thuật toán, và ước tính chi phí có slide riêng — bấm số trang + Enter để nhảy nhanh.</p>
 
         <div class="appendix-index reveal r4">
-          <div class="idx-item"><div class="idx-num">13</div><div class="idx-label">Sơ đồ luồng đầy đủ (14 node)</div></div>
-          <div class="idx-item"><div class="idx-num">14</div><div class="idx-label">Node 01 — load_context</div></div>
-          <div class="idx-item"><div class="idx-num">15</div><div class="idx-label">Node 02 — scope_guard</div></div>
-          <div class="idx-item"><div class="idx-num">16</div><div class="idx-label">Node 03 — extract_patch</div></div>
-          <div class="idx-item"><div class="idx-num">17</div><div class="idx-label">Node 04 — validate_patch</div></div>
-          <div class="idx-item"><div class="idx-num">18</div><div class="idx-label">Node 05 — apply_patch</div></div>
-          <div class="idx-item"><div class="idx-num">19</div><div class="idx-label">Node 06 — ask_slot</div></div>
-          <div class="idx-item"><div class="idx-num">20</div><div class="idx-label">Node 07 — intake_qa</div></div>
-          <div class="idx-item"><div class="idx-num">21</div><div class="idx-label">Node 08 — supervisor</div></div>
-          <div class="idx-item"><div class="idx-num">22</div><div class="idx-label">Node 09 — hotel_node</div></div>
-          <div class="idx-item"><div class="idx-num">23</div><div class="idx-label">Node 10 — itinerary_node</div></div>
-          <div class="idx-item"><div class="idx-num">24</div><div class="idx-label">Node 11 — booking_node</div></div>
-          <div class="idx-item"><div class="idx-num">25</div><div class="idx-label">Node 12 — qa_node</div></div>
-          <div class="idx-item"><div class="idx-num">26</div><div class="idx-label">Node 13 — budget_check</div></div>
-          <div class="idx-item"><div class="idx-num">27</div><div class="idx-label">Node 14 — respond</div></div>
-          <div class="idx-item"><div class="idx-num">28</div><div class="idx-label">Lựa chọn mô hình AI &amp; so sánh</div></div>
-          <div class="idx-item"><div class="idx-num">29</div><div class="idx-label">Vì sao chọn BGE-M3 cho embedding?</div></div>
-          <div class="idx-item"><div class="idx-num">30</div><div class="idx-label">Công thức chấm điểm khách sạn</div></div>
-          <div class="idx-item"><div class="idx-num">31</div><div class="idx-label">Thuật toán lập lịch trình</div></div>
-          <div class="idx-item"><div class="idx-num">32</div><div class="idx-label">Tier 1 Cache — tổng quan</div></div>
-          <div class="idx-item"><div class="idx-num">33</div><div class="idx-label">Tier 1 Cache — chi tiết</div></div>
-          <div class="idx-item"><div class="idx-num">34</div><div class="idx-label">Pipeline tìm kiếm ngữ nghĩa (RAG)</div></div>
-          <div class="idx-item"><div class="idx-num">35</div><div class="idx-label">Quản lý session &amp; state</div></div>
-          <div class="idx-item"><div class="idx-num">36</div><div class="idx-label">Ước tính chi phí &amp; token</div></div>
-          <div class="idx-item"><div class="idx-num">37</div><div class="idx-label">Q&amp;A — Giá đổi lúc thanh toán?</div></div>
-          <div class="idx-item"><div class="idx-num">38</div><div class="idx-label">Q&amp;A — Vì sao giữ booking_node?</div></div>
-          <div class="idx-item"><div class="idx-num">39</div><div class="idx-label">Q&amp;A — Greedy vs CSP/ILP?</div></div>
-          <div class="idx-item"><div class="idx-num">40</div><div class="idx-label">Q&amp;A — Cache hit rate & cost thật?</div></div>
-          <div class="idx-item"><div class="idx-num">41</div><div class="idx-label">Luồng đặt phòng &amp; thanh toán VNPay</div></div>
-          <div class="idx-item"><div class="idx-num">42</div><div class="idx-label">Giữ phòng — quyết định thiết kế &amp; rủi ro</div></div>
+          <div class="idx-item"><div class="idx-num">17</div><div class="idx-label">Sơ đồ luồng đầy đủ (14 node)</div></div>
+          <div class="idx-item"><div class="idx-num">18</div><div class="idx-label">Node 01 — load_context</div></div>
+          <div class="idx-item"><div class="idx-num">19</div><div class="idx-label">Node 02 — scope_guard</div></div>
+          <div class="idx-item"><div class="idx-num">20</div><div class="idx-label">Node 03 — extract_patch</div></div>
+          <div class="idx-item"><div class="idx-num">21</div><div class="idx-label">Node 04 — validate_patch</div></div>
+          <div class="idx-item"><div class="idx-num">22</div><div class="idx-label">Node 05 — apply_patch</div></div>
+          <div class="idx-item"><div class="idx-num">23</div><div class="idx-label">Node 06 — ask_slot</div></div>
+          <div class="idx-item"><div class="idx-num">24</div><div class="idx-label">Node 07 — intake_qa</div></div>
+          <div class="idx-item"><div class="idx-num">25</div><div class="idx-label">Node 08 — supervisor</div></div>
+          <div class="idx-item"><div class="idx-num">26</div><div class="idx-label">Node 09 — hotel_node</div></div>
+          <div class="idx-item"><div class="idx-num">27</div><div class="idx-label">Node 10 — itinerary_node</div></div>
+          <div class="idx-item"><div class="idx-num">28</div><div class="idx-label">Node 11 — booking_node</div></div>
+          <div class="idx-item"><div class="idx-num">29</div><div class="idx-label">Node 12 — qa_node</div></div>
+          <div class="idx-item"><div class="idx-num">30</div><div class="idx-label">Node 13 — budget_check</div></div>
+          <div class="idx-item"><div class="idx-num">31</div><div class="idx-label">Node 14 — respond</div></div>
+          <div class="idx-item"><div class="idx-num">32</div><div class="idx-label">Lựa chọn mô hình AI &amp; so sánh</div></div>
+          <div class="idx-item"><div class="idx-num">33</div><div class="idx-label">Vì sao chọn BGE-M3 cho embedding?</div></div>
+          <div class="idx-item"><div class="idx-num">34</div><div class="idx-label">Công thức chấm điểm khách sạn</div></div>
+          <div class="idx-item"><div class="idx-num">35</div><div class="idx-label">Thuật toán lập lịch trình</div></div>
+          <div class="idx-item"><div class="idx-num">36</div><div class="idx-label">Tier 1 Cache — tổng quan</div></div>
+          <div class="idx-item"><div class="idx-num">37</div><div class="idx-label">Tier 1 Cache — chi tiết</div></div>
+          <div class="idx-item"><div class="idx-num">38</div><div class="idx-label">Pipeline tìm kiếm ngữ nghĩa (RAG)</div></div>
+          <div class="idx-item"><div class="idx-num">39</div><div class="idx-label">Quản lý session &amp; state</div></div>
+          <div class="idx-item"><div class="idx-num">40</div><div class="idx-label">Ước tính chi phí &amp; token</div></div>
+          <div class="idx-item"><div class="idx-num">41</div><div class="idx-label">Q&amp;A — Giá đổi lúc thanh toán?</div></div>
+          <div class="idx-item"><div class="idx-num">42</div><div class="idx-label">Q&amp;A — Vì sao giữ booking_node?</div></div>
+          <div class="idx-item"><div class="idx-num">43</div><div class="idx-label">Q&amp;A — Greedy vs CSP/ILP?</div></div>
+          <div class="idx-item"><div class="idx-num">44</div><div class="idx-label">Q&amp;A — Cache hit rate & cost thật?</div></div>
+          <div class="idx-item"><div class="idx-num">45</div><div class="idx-label">Luồng đặt phòng &amp; thanh toán VNPay</div></div>
+          <div class="idx-item"><div class="idx-num">46</div><div class="idx-label">Giữ phòng — quyết định thiết kế &amp; rủi ro</div></div>
         </div>
       </div>
     </section>
 
-    <!-- ============ SLIDE 13 — GRAPH TOPOLOGY (MERMAID) ============ -->
-    <section class="slide" id="s13" data-appendix="true">
+    <!-- ============ SLIDE 17 — GRAPH TOPOLOGY (MERMAID) ============ -->
+    <section class="slide" id="s17" data-appendix="true">
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--white);">Phụ lục · Kiến trúc</div>
         <h2 class="heading-lg reveal r2" style="margin-top:22px; color:var(--white);">Toàn bộ luồng LangGraph — 14 node</h2>
@@ -627,7 +777,7 @@ flowchart LR
     </section>
 
     <!-- ============ NODE 01 — load_context ============ -->
-    <section class="slide" id="s14" data-appendix="true">
+    <section class="slide" id="s18" data-appendix="true">
       <div class="slide-pad">
         <div class="node-head reveal r1">
           <div>
@@ -660,7 +810,7 @@ flowchart LR
     </section>
 
     <!-- ============ NODE 02 — scope_guard ============ -->
-    <section class="slide" id="s15" data-appendix="true">
+    <section class="slide" id="s19" data-appendix="true">
       <div class="slide-pad">
         <div class="node-head reveal r1">
           <div>
@@ -693,7 +843,7 @@ flowchart LR
     </section>
 
     <!-- ============ NODE 03 — extract_patch ============ -->
-    <section class="slide" id="s16" data-appendix="true">
+    <section class="slide" id="s20" data-appendix="true">
       <div class="slide-pad">
         <div class="node-head reveal r1">
           <div>
@@ -728,7 +878,7 @@ flowchart LR
     </section>
 
     <!-- ============ NODE 04 — validate_patch ============ -->
-    <section class="slide" id="s17" data-appendix="true">
+    <section class="slide" id="s21" data-appendix="true">
       <div class="slide-pad">
         <div class="node-head reveal r1">
           <div>
@@ -762,7 +912,7 @@ flowchart LR
     </section>
 
     <!-- ============ NODE 05 — apply_patch ============ -->
-    <section class="slide" id="s18" data-appendix="true">
+    <section class="slide" id="s22" data-appendix="true">
       <div class="slide-pad">
         <div class="node-head reveal r1">
           <div>
@@ -795,7 +945,7 @@ flowchart LR
     </section>
 
     <!-- ============ NODE 06 — ask_slot ============ -->
-    <section class="slide" id="s19" data-appendix="true">
+    <section class="slide" id="s23" data-appendix="true">
       <div class="slide-pad">
         <div class="node-head reveal r1">
           <div>
@@ -828,7 +978,7 @@ flowchart LR
     </section>
 
     <!-- ============ NODE 07 — intake_qa ============ -->
-    <section class="slide" id="s20" data-appendix="true">
+    <section class="slide" id="s24" data-appendix="true">
       <div class="slide-pad">
         <div class="node-head reveal r1">
           <div>
@@ -861,7 +1011,7 @@ flowchart LR
     </section>
 
     <!-- ============ NODE 08 — supervisor ============ -->
-    <section class="slide" id="s21" data-appendix="true">
+    <section class="slide" id="s25" data-appendix="true">
       <div class="slide-pad">
         <div class="node-head reveal r1">
           <div>
@@ -896,7 +1046,7 @@ flowchart LR
     </section>
 
     <!-- ============ NODE 09 — hotel_node ============ -->
-    <section class="slide" id="s22" data-appendix="true">
+    <section class="slide" id="s26" data-appendix="true">
       <div class="slide-pad">
         <div class="node-head reveal r1">
           <div>
@@ -930,7 +1080,7 @@ flowchart LR
     </section>
 
     <!-- ============ NODE 10 — itinerary_node ============ -->
-    <section class="slide" id="s23" data-appendix="true">
+    <section class="slide" id="s27" data-appendix="true">
       <div class="slide-pad">
         <div class="node-head reveal r1">
           <div>
@@ -964,7 +1114,7 @@ flowchart LR
     </section>
 
     <!-- ============ NODE 11 — booking_node ============ -->
-    <section class="slide" id="s24" data-appendix="true">
+    <section class="slide" id="s28" data-appendix="true">
       <div class="slide-pad">
         <div class="node-head reveal r1">
           <div>
@@ -994,7 +1144,7 @@ flowchart LR
     </section>
 
     <!-- ============ NODE 12 — qa_node ============ -->
-    <section class="slide" id="s25" data-appendix="true">
+    <section class="slide" id="s29" data-appendix="true">
       <div class="slide-pad">
         <div class="node-head reveal r1">
           <div>
@@ -1027,7 +1177,7 @@ flowchart LR
     </section>
 
     <!-- ============ NODE 13 — budget_check ============ -->
-    <section class="slide" id="s26" data-appendix="true">
+    <section class="slide" id="s30" data-appendix="true">
       <div class="slide-pad">
         <div class="node-head reveal r1">
           <div>
@@ -1061,7 +1211,7 @@ flowchart LR
     </section>
 
     <!-- ============ NODE 14 — respond ============ -->
-    <section class="slide" id="s27" data-appendix="true">
+    <section class="slide" id="s31" data-appendix="true">
       <div class="slide-pad">
         <div class="node-head reveal r1">
           <div>
@@ -1096,7 +1246,7 @@ flowchart LR
     </section>
 
     <!-- ============ D1 — LLM MODEL CHOICE ============ -->
-    <section class="slide" id="s28" data-appendix="true">
+    <section class="slide" id="s32" data-appendix="true">
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--pink);">Phụ lục · Q&amp;A</div>
         <h2 class="heading-lg reveal r2" style="margin-top:22px;">Lựa chọn mô hình AI &amp; so sánh</h2>
@@ -1107,7 +1257,7 @@ flowchart LR
             <div style="background:var(--pink); padding:14px 22px; border-bottom:var(--b3);"><span class="mono-tag">REASONING LLM</span></div>
             <div style="padding:22px 22px 26px 22px;">
               <div class="node-name" style="font-size:30px; margin-top:0;">GPT-5.1</div>
-              <div class="mono-meta" style="font-size:11px; opacity:0.65; margin-top:2px;">LLM_MODEL=gpt-5.1-2025-11-13</div>
+              <div class="mono-meta" style="font-size:13px; opacity:0.65; margin-top:2px;">LLM_MODEL=gpt-5.1-2025-11-13</div>
               <p class="note" style="margin-top:10px;">extract_patch · sinh day-theme khi cache miss</p>
             </div>
           </div>
@@ -1115,15 +1265,15 @@ flowchart LR
             <div style="background:var(--blue); padding:14px 22px; border-bottom:var(--b3);"><span class="mono-tag">FAST LLM</span></div>
             <div style="padding:22px 22px 26px 22px;">
               <div class="node-name" style="font-size:30px; margin-top:0;">GPT-4o-mini</div>
-              <div class="mono-meta" style="font-size:11px; opacity:0.65; margin-top:2px;">LLM_FAST_MODEL=gpt-4o-mini</div>
+              <div class="mono-meta" style="font-size:13px; opacity:0.65; margin-top:2px;">LLM_FAST_MODEL=gpt-4o-mini</div>
               <p class="note" style="margin-top:10px;">supervisor · intake_qa · qa_node (ReAct)</p>
             </div>
           </div>
           <div class="card-elevated" style="flex:1; padding:0; overflow:hidden;">
             <div style="background:var(--green); padding:14px 22px; border-bottom:var(--b3);"><span class="mono-tag">EMBEDDINGS</span></div>
             <div style="padding:22px 22px 26px 22px;">
-              <div class="node-name" style="font-size:26px; margin-top:0;">BGE-M3</div>
-              <div class="mono-meta" style="font-size:11px; opacity:0.65; margin-top:2px;">EMBEDDING_MODEL=@cf/baai/bge-m3</div>
+              <div class="node-name" style="font-size:28px; margin-top:0;">BGE-M3</div>
+              <div class="mono-meta" style="font-size:13px; opacity:0.65; margin-top:2px;">EMBEDDING_MODEL=@cf/baai/bge-m3</div>
               <p class="note" style="margin-top:10px;">qua Cloudflare Workers AI — 1024-d, RAG + Tier 1 Cache</p>
             </div>
           </div>
@@ -1151,7 +1301,7 @@ flowchart LR
     </section>
 
     <!-- ============ D1B — EMBEDDING MODEL CHOICE ============ -->
-    <section class="slide" id="s29" data-appendix="true">
+    <section class="slide" id="s33" data-appendix="true">
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--pink);">Phụ lục · Q&amp;A</div>
         <h2 class="heading-lg reveal r2" style="margin-top:22px;">Vì sao chọn BGE-M3 cho embedding?</h2>
@@ -1160,15 +1310,15 @@ flowchart LR
         <div class="node-cols reveal r3" style="margin-top:20px; gap:22px;">
           <div class="spec-card" style="flex:1; padding:20px 24px;">
             <div class="spec-hd">Đa ngôn ngữ Việt/Anh</div>
-            <p class="note" style="font-size:13.5px;">BGE-M3 huấn luyện đa ngôn ngữ (100+), phù hợp truy vấn du lịch song ngữ mà không cần dịch trước.</p>
+            <p class="note" style="font-size:15.5px;">BGE-M3 huấn luyện đa ngôn ngữ (100+), phù hợp truy vấn du lịch song ngữ mà không cần dịch trước.</p>
           </div>
           <div class="spec-card" style="flex:1; padding:20px 24px;">
             <div class="spec-hd">Khớp sẵn schema 1024-d</div>
-            <p class="note" style="font-size:13.5px;"><code>EMBEDDING_DIMENSION=1024</code> bị ép cứng trong code (itinerary_reuse.py) — ghi vector sai chiều sẽ raise lỗi ngay.</p>
+            <p class="note" style="font-size:15.5px;"><code>EMBEDDING_DIMENSION=1024</code> bị ép cứng trong code (itinerary_reuse.py) — ghi vector sai chiều sẽ raise lỗi ngay.</p>
           </div>
           <div class="spec-card" style="flex:1; padding:20px 24px;">
             <div class="spec-hd">Không khóa 1 nhà cung cấp</div>
-            <p class="note" style="font-size:13.5px;">Cùng model bge-m3 chạy được qua Ollama (local), Cloudflare Workers AI, hoặc OpenRouter — đổi hạ tầng mà không cần re-embed.</p>
+            <p class="note" style="font-size:15.5px;">Cùng model bge-m3 chạy được qua Ollama (local), Cloudflare Workers AI, hoặc OpenRouter — đổi hạ tầng mà không cần re-embed.</p>
           </div>
         </div>
 
@@ -1218,12 +1368,12 @@ flowchart LR
             </tr>
           </tbody>
         </table>
-        <p class="mono-meta reveal r4" style="margin-top:10px; font-size:12px;">Đổi model embedding không chỉ là đổi API key — mọi vector đã lưu (hotel, attraction, lịch trình đã cache) phải re-embed lại vì vector space không tương thích giữa các model.</p>
+        <p class="mono-meta reveal r4" style="margin-top:10px; font-size:14px;">Đổi model embedding không chỉ là đổi API key — mọi vector đã lưu (hotel, attraction, lịch trình đã cache) phải re-embed lại vì vector space không tương thích giữa các model.</p>
       </div>
     </section>
 
     <!-- ============ D2 — HOTEL SCORING ============ -->
-    <section class="slide" id="s30" data-appendix="true">
+    <section class="slide" id="s34" data-appendix="true">
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--pink);">Phụ lục · Q&amp;A</div>
         <h2 class="heading-lg reveal r2" style="margin-top:22px;">Công thức chấm điểm khách sạn</h2>
@@ -1232,20 +1382,20 @@ flowchart LR
         <div style="display:flex; align-items:stretch; gap:0; margin-top:20px;" class="reveal r3">
           <div class="card-small" style="flex:1; padding:20px 24px;">
             <span class="mono-tag" style="background:var(--white); display:inline-block; padding:4px 12px;">STAGE 1</span>
-            <div class="card-title" style="font-size:18px; margin-top:10px;">Lọc cứng</div>
-            <p class="body-card" style="font-size:13px; margin-top:6px;">Giá (RPC) · rating · amenities · review · số khách — không bao giờ là điểm cộng mềm</p>
+            <div class="card-title" style="font-size:20px; margin-top:10px;">Lọc cứng</div>
+            <p class="body-card" style="font-size:15px; margin-top:6px;">Giá (RPC) · rating · amenities · review · số khách — không bao giờ là điểm cộng mềm</p>
           </div>
           <div class="flow-arrow"><svg viewBox="0 0 48 48" fill="none"><path d="M4 24h34m0 0L26 12m12 12L26 36" stroke="black" stroke-width="5" stroke-linecap="square" stroke-linejoin="miter"/></svg></div>
           <div class="card-small" style="flex:1; padding:20px 24px;">
             <span class="mono-tag" style="background:var(--white); display:inline-block; padding:4px 12px;">STAGE 2</span>
-            <div class="card-title" style="font-size:18px; margin-top:10px;">Semantic search</div>
-            <p class="body-card" style="font-size:13px; margin-top:6px;">bge-m3 embed → Supabase RPC match_hotels_with_rooms, ngưỡng 0.35</p>
+            <div class="card-title" style="font-size:20px; margin-top:10px;">Semantic search</div>
+            <p class="body-card" style="font-size:15px; margin-top:6px;">bge-m3 embed → Supabase RPC match_hotels_with_rooms, ngưỡng 0.35</p>
           </div>
           <div class="flow-arrow"><svg viewBox="0 0 48 48" fill="none"><path d="M4 24h34m0 0L26 12m12 12L26 36" stroke="black" stroke-width="5" stroke-linecap="square" stroke-linejoin="miter"/></svg></div>
           <div class="card-small" style="flex:1; padding:20px 24px; background:var(--yellow);">
             <span class="mono-tag" style="background:var(--white); display:inline-block; padding:4px 12px;">STAGE 3</span>
-            <div class="card-title" style="font-size:18px; margin-top:10px;">Chấm điểm mềm</div>
-            <p class="body-card" style="font-size:13px; margin-top:6px;">2 công thức song song — xem bên dưới</p>
+            <div class="card-title" style="font-size:20px; margin-top:10px;">Chấm điểm mềm</div>
+            <p class="body-card" style="font-size:15px; margin-top:6px;">2 công thức song song — xem bên dưới</p>
           </div>
         </div>
 
@@ -1267,7 +1417,7 @@ flowchart LR
     </section>
 
     <!-- ============ D3 — ITINERARY ALGORITHM ============ -->
-    <section class="slide" id="s31" data-appendix="true">
+    <section class="slide" id="s35" data-appendix="true">
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--pink);">Phụ lục · Q&amp;A</div>
         <h2 class="heading-lg reveal r2" style="margin-top:22px;">Thuật toán lập lịch trình</h2>
@@ -1292,12 +1442,12 @@ flowchart LR
           <div class="spec-card" style="flex:1;">
             <div class="spec-hd">Scoring — CÓ điểm neo</div>
             <div class="bar-chart" style="margin-top:10px;">
-              <div class="bar-row"><span class="bar-label" style="width:130px; font-size:12.5px;">similarity</span><div class="bar-track" style="height:20px;"><div class="bar-fill" style="width:45%; background:var(--pink);"></div></div><span class="bar-val" style="width:50px; font-size:12px;">0.45</span></div>
-              <div class="bar-row"><span class="bar-label" style="width:130px; font-size:12.5px;">dist→anchor</span><div class="bar-track" style="height:20px;"><div class="bar-fill" style="width:35%; background:var(--blue);"></div></div><span class="bar-val" style="width:50px; font-size:12px;">0.35</span></div>
-              <div class="bar-row"><span class="bar-label" style="width:130px; font-size:12.5px;">dist→hotel</span><div class="bar-track" style="height:20px;"><div class="bar-fill" style="width:10%; background:var(--green);"></div></div><span class="bar-val" style="width:50px; font-size:12px;">0.10</span></div>
-              <div class="bar-row"><span class="bar-label" style="width:130px; font-size:12.5px;">rating</span><div class="bar-track" style="height:20px;"><div class="bar-fill" style="width:10%; background:var(--yellow);"></div></div><span class="bar-val" style="width:50px; font-size:12px;">0.10</span></div>
+              <div class="bar-row"><span class="bar-label" style="width:130px; font-size:14.5px;">similarity</span><div class="bar-track" style="height:20px;"><div class="bar-fill" style="width:45%; background:var(--pink);"></div></div><span class="bar-val" style="width:50px; font-size:14px;">0.45</span></div>
+              <div class="bar-row"><span class="bar-label" style="width:130px; font-size:14.5px;">dist→anchor</span><div class="bar-track" style="height:20px;"><div class="bar-fill" style="width:35%; background:var(--blue);"></div></div><span class="bar-val" style="width:50px; font-size:14px;">0.35</span></div>
+              <div class="bar-row"><span class="bar-label" style="width:130px; font-size:14.5px;">dist→hotel</span><div class="bar-track" style="height:20px;"><div class="bar-fill" style="width:10%; background:var(--green);"></div></div><span class="bar-val" style="width:50px; font-size:14px;">0.10</span></div>
+              <div class="bar-row"><span class="bar-label" style="width:130px; font-size:14.5px;">rating</span><div class="bar-track" style="height:20px;"><div class="bar-fill" style="width:10%; background:var(--yellow);"></div></div><span class="bar-val" style="width:50px; font-size:14px;">0.10</span></div>
             </div>
-            <p class="note" style="margin-top:10px; font-size:13px;">− 0.55 × phạt đường vòng (detour/route_limit)</p>
+            <p class="note" style="margin-top:10px; font-size:15px;">− 0.55 × phạt đường vòng (detour/route_limit)</p>
           </div>
           <div class="spec-card" style="flex:1;">
             <div class="spec-hd">Gom cụm bán kính</div>
@@ -1308,25 +1458,25 @@ flowchart LR
               <span style="font-family:'Space Grotesk',monospace; font-weight:700;">→</span>
               <span class="qty-tag" style="background:var(--green);">15 km</span>
             </div>
-            <p class="note" style="margin-top:12px; font-size:13px;">Nới dần chỉ khi bán kính chặt hơn ra 0 kết quả. Khoảng cách Haversine thẳng (không phải ETA routing thật) — thời gian di chuyển = distance/25km/h, làm tròn lên 5 phút, sàn 10 phút.</p>
+            <p class="note" style="margin-top:12px; font-size:15px;">Nới dần chỉ khi bán kính chặt hơn ra 0 kết quả. Khoảng cách Haversine thẳng (không phải ETA routing thật) — thời gian di chuyển = distance/25km/h, làm tròn lên 5 phút, sàn 10 phút.</p>
           </div>
         </div>
 
         <div class="node-cols reveal r5" style="margin-top:16px;">
           <div class="spec-card" style="flex:1; padding:18px 24px;">
             <div class="spec-hd">Meal/rest insertion</div>
-            <p class="note" style="font-size:13.5px;">Bữa ăn bị hotel-covered → thay bằng item tại khách sạn. Đúng 1 block nghỉ 90 phút lúc 13:00/ngày.</p>
+            <p class="note" style="font-size:15.5px;">Bữa ăn bị hotel-covered → thay bằng item tại khách sạn. Đúng 1 block nghỉ 90 phút lúc 13:00/ngày.</p>
           </div>
           <div class="spec-card" style="flex:1; padding:18px 24px;">
             <div class="spec-hd">Repair pass</div>
-            <p class="note" style="font-size:13.5px;"><code>validate_or_repair_day</code>: gỡ trùng nghỉ, ép ≤1 điểm thiên nhiên/ngày, đẩy hoạt động biển khỏi giữa trưa.</p>
+            <p class="note" style="font-size:15.5px;"><code>validate_or_repair_day</code>: gỡ trùng nghỉ, ép ≤1 điểm thiên nhiên/ngày, đẩy hoạt động biển khỏi giữa trưa.</p>
           </div>
         </div>
       </div>
     </section>
 
     <!-- ============ D4B — TIER 1 CACHE OVERVIEW ============ -->
-    <section class="slide" id="s32" data-appendix="true">
+    <section class="slide" id="s36" data-appendix="true">
       <div class="slide-pad">
         <div class="grid">
           <div class="left">
@@ -1335,11 +1485,11 @@ flowchart LR
             <p class="body-text reveal r3" style="margin-top:24px;">Mỗi lịch trình mới được mã hoá thành fingerprint ngữ nghĩa bằng mô hình embedding BGE-M3. Khi một yêu cầu tương tự xuất hiện, hệ thống lấy lại template gần giống thay vì lập lịch lại từ đầu — giúp phản hồi nhanh hơn và giảm tải cho LLM.</p>
             <div class="badge-row reveal r4">
               <div class="icon-square" style="background:var(--blue);">F</div>
-              <span class="mono-tag" style="font-size:17px;">Fingerprint BGE-M3</span>
+              <span class="mono-tag" style="font-size:19px;">Fingerprint BGE-M3</span>
             </div>
             <div class="badge-row reveal r5">
               <div class="icon-square" style="background:var(--green);">D</div>
-              <span class="mono-tag" style="font-size:17px;">Supabase pgvector (bge-m3, 1024-d)</span>
+              <span class="mono-tag" style="font-size:19px;">Supabase pgvector (bge-m3, 1024-d)</span>
             </div>
           </div>
           <div class="card-elevated stat-card tilt-n2 reveal r6">
@@ -1353,7 +1503,7 @@ flowchart LR
     </section>
 
     <!-- ============ D4 — TIER 1 CACHE DEEP DIVE ============ -->
-    <section class="slide" id="s33" data-appendix="true">
+    <section class="slide" id="s37" data-appendix="true">
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--pink);">Phụ lục · Q&amp;A</div>
         <h2 class="heading-lg reveal r2" style="margin-top:22px;">Tier 1 Cache — chi tiết</h2>
@@ -1399,7 +1549,7 @@ flowchart LR
     </section>
 
     <!-- ============ D5 — RAG PIPELINE ============ -->
-    <section class="slide" id="s34" data-appendix="true">
+    <section class="slide" id="s38" data-appendix="true">
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--pink);">Phụ lục · Q&amp;A</div>
         <h2 class="heading-lg reveal r2" style="margin-top:22px;">Pipeline tìm kiếm ngữ nghĩa (RAG)</h2>
@@ -1447,7 +1597,7 @@ flowchart LR
     </section>
 
     <!-- ============ D6 — SESSION & STATE ============ -->
-    <section class="slide" id="s35" data-appendix="true">
+    <section class="slide" id="s39" data-appendix="true">
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--pink);">Phụ lục · Q&amp;A</div>
         <h2 class="heading-lg reveal r2" style="margin-top:22px;">Quản lý session &amp; state</h2>
@@ -1480,18 +1630,18 @@ flowchart LR
         <div class="node-cols reveal r5" style="margin-top:18px;">
           <div class="spec-card" style="flex:1; padding:18px 24px;">
             <div class="spec-hd">TravelGraphState</div>
-            <p class="note" style="font-size:13.5px;">State thật của LangGraph mỗi turn: messages, travel_state, patch fields, pending_tasks/task_results. <code>trip_data</code> cố tình để NGOÀI travel_state — round-trip dict sẽ âm thầm drop field lạ.</p>
+            <p class="note" style="font-size:15.5px;">State thật của LangGraph mỗi turn: messages, travel_state, patch fields, pending_tasks/task_results. <code>trip_data</code> cố tình để NGOÀI travel_state — round-trip dict sẽ âm thầm drop field lạ.</p>
           </div>
           <div class="spec-card" style="flex:1; padding:18px 24px;">
             <div class="spec-hd">Checkpointer</div>
-            <p class="note" style="font-size:13.5px;">Mặc định <code>memory</code>; production dùng <code>PostgresSaver</code>. CLI/script <b>luôn</b> dùng <code>MemorySaver</code> bất kể config.</p>
+            <p class="note" style="font-size:15.5px;">Mặc định <code>memory</code>; production dùng <code>PostgresSaver</code>. CLI/script <b>luôn</b> dùng <code>MemorySaver</code> bất kể config.</p>
           </div>
         </div>
       </div>
     </section>
 
     <!-- ============ D7 — COST & TOKEN ESTIMATE ============ -->
-    <section class="slide" id="s36" data-appendix="true">
+    <section class="slide" id="s40" data-appendix="true">
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--pink);">Phụ lục · Q&amp;A</div>
         <h2 class="heading-lg reveal r2" style="margin-top:22px;">Ước tính chi phí &amp; token</h2>
@@ -1512,7 +1662,7 @@ flowchart LR
         <div class="node-cols reveal r4" style="margin-top:18px;">
           <div class="spec-card" style="flex:1;">
             <div class="spec-hd">Con số thật duy nhất trong code</div>
-            <p class="note" style="font-size:20px;"><code>qa_context_token_budget</code> = <b>30.000 token</b> / lời gọi (config.py)</p>
+            <p class="note" style="font-size:22px;"><code>qa_context_token_budget</code> = <b>30.000 token</b> / lời gọi (config.py)</p>
           </div>
           <div class="spec-card" style="flex:1.4; background:var(--yellow);">
             <div class="spec-hd" style="background:var(--white);">Chưa đo — ước tính định tính</div>
@@ -1523,7 +1673,7 @@ flowchart LR
     </section>
 
     <!-- ============ D8 — DYNAMIC PRICE / AVAILABILITY ============ -->
-    <section class="slide" id="s37" data-appendix="true">
+    <section class="slide" id="s41" data-appendix="true">
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--yellow);">Phụ lục · Câu hỏi dự kiến</div>
         <h2 class="heading-lg reveal r2" style="margin-top:22px; font-size:44px;">Giá phòng đổi giữa lúc khách thanh toán thì sao?</h2>
@@ -1550,11 +1700,11 @@ flowchart LR
     </section>
 
     <!-- ============ D9 — WHY KEEP booking_node ============ -->
-    <section class="slide" id="s38" data-appendix="true">
+    <section class="slide" id="s42" data-appendix="true">
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--yellow);">Phụ lục · Câu hỏi dự kiến</div>
         <h2 class="heading-lg reveal r2" style="margin-top:22px; font-size:40px;">booking_node luôn từ chối — sao không định tuyến ở API gateway?</h2>
-        <div class="formula-box reveal r3" style="margin-top:22px; font-size:15px;">Trích docstring thật của node (booking_node.py):
+        <div class="formula-box reveal r3" style="margin-top:22px; font-size:17px;">Trích docstring thật của node (booking_node.py):
 
 "plan.md defers booking entirely: no auth model, no inventory source.
 But the supervisor needs a routable destination for a booking request,
@@ -1578,7 +1728,7 @@ or such a turn would silently fall to respond with nothing said —
     </section>
 
     <!-- ============ D10 — GREEDY VS CSP/ILP ============ -->
-    <section class="slide" id="s39" data-appendix="true">
+    <section class="slide" id="s43" data-appendix="true">
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--yellow);">Phụ lục · Câu hỏi dự kiến</div>
         <h2 class="heading-lg reveal r2" style="margin-top:22px; font-size:44px;">Sao dùng greedy heuristic thay vì CSP / ILP solver?</h2>
@@ -1607,7 +1757,7 @@ or such a turn would silently fall to respond with nothing said —
     </section>
 
     <!-- ============ D11 — CACHE HIT RATE / COST ============ -->
-    <section class="slide" id="s40" data-appendix="true">
+    <section class="slide" id="s44" data-appendix="true">
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--yellow);">Phụ lục · Câu hỏi dự kiến</div>
         <h2 class="heading-lg reveal r2" style="margin-top:22px; font-size:44px;">Tier 1 Cache hit rate thật? Chi phí LLM / lịch trình?</h2>
@@ -1637,7 +1787,7 @@ or such a turn would silently fall to respond with nothing said —
     </section>
 
     <!-- ============ APPENDIX — BOOKING FLOW OVERVIEW ============ -->
-    <section class="slide" id="s41" data-appendix="true">
+    <section class="slide" id="s45" data-appendix="true">
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--white);">Phụ lục · Kiến trúc</div>
         <h2 class="heading-lg reveal r2" style="margin-top:22px;">Luồng đặt phòng &amp; thanh toán VNPay</h2>
@@ -1689,7 +1839,7 @@ or such a turn would silently fall to respond with nothing said —
     </section>
 
     <!-- ============ APPENDIX — ROOM HOLD DESIGN & RISK ============ -->
-    <section class="slide" id="s42" data-appendix="true">
+    <section class="slide" id="s46" data-appendix="true">
       <div class="slide-pad">
         <div class="label-pill tilt-n2 reveal r1" style="background:var(--pink);">Phụ lục · Q&amp;A</div>
         <h2 class="heading-lg reveal r2" style="margin-top:22px;">Giữ phòng — quyết định thiết kế &amp; rủi ro</h2>
@@ -1730,7 +1880,7 @@ or such a turn would silently fall to respond with nothing said —
 <div class="slide-counter" id="counter">01 / 10</div>
 <div class="jump-hint" id="jumpHint"></div>
 <div class="nav-controls">
-  <div class="nav-back-btn" id="appendixBackBtn">← Slide 5</div>
+  <div class="nav-back-btn" id="appendixBackBtn">← Phụ lục</div>
   <div class="nav-btn" id="prevBtn" title="Previous"><svg viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2.5" stroke-linecap="square"><path d="M15 5l-7 7 7 7"/></svg></div>
   <div class="nav-btn" id="nextBtn" title="Next"><svg viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2.5" stroke-linecap="square"><path d="M9 5l7 7-7 7"/></svg></div>
 </div>

@@ -1,0 +1,2372 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VP-OTA — Pitch Deck (Capsule)</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..900&family=Space+Grotesk:wght@300..700&display=swap" rel="stylesheet">
+
+<style>
+/* ===========================================
+   RESET
+   =========================================== */
+*{ margin:0; padding:0; box-sizing:border-box; }
+
+/* ===========================================
+   FIXED 16:9 STAGE: MANDATORY BASE STYLES (viewport-base.css, verbatim)
+   =========================================== */
+html, body{
+  width:100%; height:100%; margin:0; overflow:hidden;
+  background: var(--stage-bg, #000);
+}
+.deck-viewport{ position:fixed; inset:0; overflow:hidden; background:var(--stage-bg,#000); }
+.deck-stage{
+  position:absolute; left:0; top:0; width:1920px; height:1080px;
+  overflow:hidden; transform-origin:0 0; background:var(--slide-bg,#fff);
+}
+.slide{
+  position:absolute; inset:0; width:1920px; height:1080px;
+  overflow:hidden; display:block; visibility:hidden; opacity:0; pointer-events:none;
+  background: var(--slide-bg,#fff);
+}
+.slide.active, .slide.visible{ visibility:visible; opacity:1; pointer-events:auto; z-index:1; }
+img, video, canvas, svg{ max-width:100%; max-height:100%; }
+.deck-controls{ position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:1000; }
+@media print{
+  html, body{ width:1920px; height:auto; overflow:visible; background:#fff; }
+  .deck-viewport{ position:static; overflow:visible; background:#fff; }
+  .deck-stage{ position:static; width:auto; height:auto; transform:none !important; background:none; }
+  .slide{ position:relative; display:block !important; visibility:visible !important; opacity:1 !important; pointer-events:auto !important; width:1920px; height:1080px; break-after:page; page-break-after:always; }
+  .slide:last-child{ break-after:auto; page-break-after:auto; }
+  .deck-controls{ display:none !important; }
+}
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after{ animation-duration:0.01ms !important; transition-duration:0.2s !important; }
+}
+
+/* ===========================================
+   CAPSULE DESIGN SYSTEM — TOKENS
+   =========================================== */
+:root{
+  --cream:#F5F5F0; --ink:#1A1A1A; --outline:#1E1E1E; --white:#FFFFFF;
+  --coral:#E85D4E; --lime:#C4D94E; --lavender:#C5B5E0; --sky:#8BB4F7;
+  --violet:#A06CE8; --yellow:#F2D160; --peach:#F5B895; --mint:#A8E6CF;
+  --shadow: rgba(26,26,26,0.08);
+  --f-display:'Bodoni Moda', serif;
+  --f-body:'Space Grotesk', sans-serif;
+  --stage-bg:#0e0e0c;
+  --slide-bg: var(--cream);
+}
+
+.slide{ background:var(--cream); color:var(--ink); font-family:var(--f-body); }
+.slide-pad{ position:relative; height:100%; padding:64px 96px; display:flex; flex-direction:column; z-index:2; }
+.atmosphere{ position:absolute; inset:0; z-index:0; pointer-events:none; }
+
+/* ===========================================
+   GRAIN OVERLAY — always present, 4% opacity, multiply
+   =========================================== */
+.grain-overlay{
+  position:fixed; inset:0; pointer-events:none; z-index:9999; opacity:0.04; mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ===========================================
+   TYPOGRAPHY
+   =========================================== */
+.h-display{ font-family:var(--f-display); font-weight:800; font-size:108px; line-height:0.9; letter-spacing:-0.02em; color:var(--ink); }
+.h-closing{ font-family:var(--f-display); font-weight:800; font-size:74px; line-height:0.95; letter-spacing:-0.03em; color:var(--ink); }
+.h-headline{ font-family:var(--f-display); font-weight:700; font-size:54px; line-height:1.08; letter-spacing:-0.02em; color:var(--ink); }
+.h-section{ font-family:var(--f-display); font-weight:700; font-size:44px; line-height:1.1; letter-spacing:-0.01em; color:var(--ink); }
+.h-quote{ font-family:var(--f-display); font-weight:600; font-size:38px; line-height:1.35; letter-spacing:-0.01em; color:var(--ink); }
+.h-card{ font-family:var(--f-display); font-weight:700; font-size:24px; line-height:1.15; color:var(--ink); }
+.stat-num{ font-family:var(--f-display); font-weight:800; font-size:44px; line-height:1; letter-spacing:-0.03em; color:var(--coral); }
+.orbit-num{ font-family:var(--f-display); font-weight:700; font-size:38px; line-height:1; color:var(--ink); }
+.body-txt{ font-family:var(--f-body); font-size:21px; font-weight:400; line-height:1.6; color:rgba(26,26,26,0.68); }
+.body-sm{ font-family:var(--f-body); font-size:16.5px; font-weight:400; line-height:1.55; color:rgba(26,26,26,0.7); }
+.subtitle{ font-family:var(--f-body); font-size:17px; font-weight:400; line-height:1.4; letter-spacing:0.15em; text-transform:uppercase; color:rgba(26,26,26,0.6); }
+.label-txt{ font-family:var(--f-body); font-size:13px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:rgba(26,26,26,0.55); }
+.mono-meta{ font-family:var(--f-body); font-size:16px; font-weight:500; letter-spacing:0.02em; color:rgba(26,26,26,0.62); }
+.node-fn{ font-family:'Space Grotesk',monospace; font-weight:700; font-size:40px; letter-spacing:-0.01em; color:var(--ink); margin-top:16px; }
+
+/* ===========================================
+   PILL / CARD COMPONENTS
+   =========================================== */
+.pill{ display:inline-flex; align-items:center; border-radius:9999px; border:2px solid var(--outline); font-family:var(--f-body); font-weight:500; letter-spacing:0.02em; white-space:nowrap; background:var(--white); }
+.header-tag{ padding:9px 24px; background:var(--lavender); font-size:13px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; width:fit-content; }
+.title-pill{ padding:20px 48px; background:var(--yellow); font-weight:600; font-size:15px; letter-spacing:0.14em; text-transform:uppercase; }
+.tag-pill{ padding:13px 28px; font-weight:600; font-size:14px; letter-spacing:0.06em; text-transform:uppercase; }
+.mini-chip{ padding:7px 18px; background:var(--white); font-size:12px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; }
+.file-tag{ padding:9px 22px; font-family:'Space Grotesk',monospace; font-size:13px; font-weight:600; box-shadow:4px 4px 0 var(--shadow); white-space:nowrap; }
+
+.pill-card{ background:var(--white); border:2px solid var(--outline); border-radius:2rem; padding:36px 32px; box-shadow:8px 8px 0 var(--shadow); }
+.pill-card ul{ list-style:none; margin-top:6px; }
+.pill-card li{ font-family:var(--f-body); font-size:15.5px; font-weight:400; line-height:1.5; padding:7px 0 7px 22px; position:relative; color:rgba(26,26,26,0.75); }
+.pill-card li::before{ content:''; position:absolute; left:0; top:16px; width:8px; height:8px; border-radius:50%; background:var(--coral); }
+.note-txt{ font-family:var(--f-body); font-size:15px; line-height:1.55; color:rgba(26,26,26,0.72); margin-top:6px; }
+.card-tag{ display:inline-flex; padding:7px 18px; border-radius:9999px; border:2px solid var(--outline); background:var(--yellow); font-weight:700; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:14px; }
+
+.stat-pill{ background:var(--white); border:2px solid var(--outline); border-radius:2rem; padding:34px 26px; box-shadow:6px 6px 0 var(--shadow); text-align:center; }
+.stat-pill .stat-num{ font-size:50px; }
+.stat-pill p{ font-family:var(--f-body); font-size:16.5px; font-weight:500; line-height:1.4; margin-top:12px; color:rgba(26,26,26,0.72); }
+
+.bar-track{ height:34px; background:var(--cream); border:2px solid var(--outline); border-radius:9999px; overflow:hidden; position:relative; flex:1; }
+.bar-fill{ height:100%; border-radius:9999px; border-right:2px solid var(--outline); }
+.bar-row{ display:flex; align-items:center; gap:16px; }
+.bar-label{ width:170px; flex-shrink:0; font-family:'Space Grotesk',monospace; font-weight:700; font-size:14px; }
+.bar-val{ width:220px; flex-shrink:0; font-family:var(--f-body); font-size:13px; font-weight:600; }
+.bar-chart{ display:flex; flex-direction:column; gap:13px; }
+
+.accent-line{ width:60px; height:4px; background:var(--coral); border-radius:9999px; }
+.card-icon{ width:60px; height:60px; border-radius:50%; border:2px solid var(--outline); display:flex; align-items:center; justify-content:center; font-family:var(--f-display); font-size:24px; font-weight:700; flex-shrink:0; }
+.step-node{ width:56px; height:56px; border-radius:50%; border:2px solid var(--outline); background:var(--white); display:flex; align-items:center; justify-content:center; font-family:var(--f-display); font-size:22px; font-weight:700; box-shadow:4px 4px 0 var(--shadow); flex-shrink:0; }
+
+.diagram-node{ border-radius:9999px; border:2px solid var(--outline); padding:13px 26px; box-shadow:6px 6px 0 var(--shadow); background:var(--white); font-family:'Space Grotesk',monospace; font-weight:700; font-size:14px; white-space:nowrap; }
+.diagram-connector{ width:36px; height:4px; background:var(--outline); flex-shrink:0; position:relative; }
+.diagram-connector::after{ content:''; position:absolute; right:-1px; top:50%; transform:translateY(-50%); border-style:solid; border-width:6px 0 6px 8px; border-color:transparent transparent transparent var(--outline); }
+
+.deco-pill{ position:absolute; border-radius:9999px; border:2px solid var(--outline); display:flex; align-items:center; justify-content:center; font-family:var(--f-body); font-weight:600; font-size:13px; letter-spacing:0.08em; text-transform:uppercase; padding:11px 24px; z-index:1; }
+.deco-circle{ position:absolute; border-radius:50%; border:2px solid var(--outline); z-index:1; }
+.quote-highlight{ display:inline-block; border-radius:9999px; border:2px solid var(--outline); padding:3px 16px; background:var(--lime); font-family:var(--f-body); font-weight:600; font-size:0.62em; text-transform:uppercase; letter-spacing:0.04em; }
+.visual-frame{ border-radius:2rem; border:2px solid var(--outline); box-shadow:12px 12px 0 var(--shadow); overflow:hidden; position:relative; }
+
+/* ===========================================
+   REVEAL ANIMATION (staggered)
+   =========================================== */
+.reveal{ opacity:0; transform:translateY(28px); transition:opacity .55s cubic-bezier(.16,1,.3,1), transform .55s cubic-bezier(.16,1,.3,1); }
+.slide.visible .reveal{ opacity:1; transform:translateY(0); }
+.slide.visible .r1{ transition-delay:.05s; }
+.slide.visible .r2{ transition-delay:.15s; }
+.slide.visible .r3{ transition-delay:.25s; }
+.slide.visible .r4{ transition-delay:.35s; }
+.slide.visible .r5{ transition-delay:.45s; }
+.slide.visible .r6{ transition-delay:.55s; }
+
+/* ===========================================
+   LAYOUT UTILITIES
+   =========================================== */
+.node-cols{ display:flex; gap:26px; margin-top:30px; align-items:stretch; }
+.grid-3{ display:grid; grid-template-columns:repeat(3,1fr); gap:30px; }
+.grid-4{ display:grid; grid-template-columns:repeat(4,1fr); gap:28px; }
+.split-row{ display:flex; gap:56px; margin-top:44px; flex:1; }
+.feat-col{ flex:1; display:flex; flex-direction:column; gap:20px; justify-content:center; }
+.feat-item{ display:flex; align-items:center; gap:20px; }
+.feat-item span{ font-family:var(--f-body); font-weight:500; font-size:18px; line-height:1.4; color:var(--ink); }
+.mock-col{ flex:1.05; }
+
+/* Node-detail (appendix) header row */
+.node-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:24px; }
+.phase-mini{ display:flex; align-items:center; gap:0; margin-top:22px; }
+.pm-dot{ width:30px; height:30px; border-radius:50%; border:2px solid var(--outline); background:var(--white); display:flex; align-items:center; justify-content:center; font-family:var(--f-body); font-weight:700; font-size:13px; flex-shrink:0; }
+.pm-dot.active{ background:var(--yellow); }
+.pm-line{ width:26px; height:2px; background:rgba(26,26,26,0.2); flex-shrink:0; }
+.pm-line.filled{ background:var(--outline); }
+.pm-label{ margin-left:14px; }
+
+/* qty-tag chips */
+.qty-tag{ display:inline-flex; align-items:center; gap:6px; border-radius:9999px; border:2px solid var(--outline); padding:8px 18px; font-family:var(--f-body); font-weight:600; font-size:13px; background:var(--white); margin:4px 8px 4px 0; box-shadow:4px 4px 0 var(--shadow); }
+.kv-row{ display:flex; justify-content:space-between; gap:16px; font-family:var(--f-body); font-size:15.5px; padding:10px 0; border-bottom:2px dashed rgba(26,26,26,0.15); }
+.kv-row:last-child{ border-bottom:none; }
+.kv-row .k{ font-weight:600; }
+.kv-row .v{ font-weight:400; text-align:right; }
+
+/* mini timeline (RAG / classify_reuse / itinerary time-slots) */
+.mini-tl{ position:relative; display:flex; justify-content:space-between; padding:0 8px; }
+.mini-tl::before{ content:''; position:absolute; top:18px; left:24px; right:24px; height:2px; background:rgba(26,26,26,0.22); z-index:0; }
+.mt-stop{ position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; text-align:center; width:13%; }
+.mt-stop .dot{ width:36px; height:36px; border-radius:50%; border:2px solid var(--outline); background:var(--white); }
+.mt-stop .dot.accent{ background:var(--coral); }
+.mt-stop .dot.accent2{ background:var(--lime); }
+.mt-time{ font-family:var(--f-body); font-size:12px; font-weight:700; margin-top:9px; }
+.mt-lbl{ font-family:var(--f-body); font-size:12.5px; font-weight:500; margin-top:3px; line-height:1.25; }
+
+/* comparison table */
+.cmp-table{ width:100%; border-collapse:separate; border-spacing:0; margin-top:14px; }
+.cmp-table th, .cmp-table td{ padding:12px 16px; text-align:left; font-family:var(--f-body); font-size:14px; border-bottom:2px solid rgba(26,26,26,0.12); }
+.cmp-table th{ background:var(--ink); color:var(--white); font-weight:600; font-size:11px; letter-spacing:0.05em; text-transform:uppercase; }
+.cmp-table th:first-child{ border-top-left-radius:16px; }
+.cmp-table th:last-child{ border-top-right-radius:16px; }
+.cmp-table tr.current td{ background:var(--lime); font-weight:600; }
+.cmp-table td.center{ text-align:center; }
+
+/* appendix index grid */
+.appendix-index{ display:grid; grid-template-columns:repeat(3,1fr); gap:15px 40px; margin-top:26px; }
+.idx-item{ display:flex; align-items:center; gap:14px; cursor:pointer; }
+.idx-num{ width:36px; height:36px; border-radius:50%; border:2px solid var(--outline); background:var(--ink); color:var(--yellow); display:flex; align-items:center; justify-content:center; font-family:var(--f-body); font-weight:700; font-size:13px; flex-shrink:0; }
+.idx-label{ font-family:var(--f-body); font-weight:500; font-size:14.5px; color:var(--ink); line-height:1.25; }
+
+/* main-deck LangGraph flow columns (slide 6) */
+.flow-cols{ display:flex; gap:0; margin-top:26px; flex:1; align-items:stretch; }
+.flow-col{ flex:1; background:var(--white); border:2px solid var(--outline); border-radius:2rem; box-shadow:8px 8px 0 var(--shadow); overflow:hidden; display:flex; flex-direction:column; }
+.flow-col-head{ padding:18px 26px; border-bottom:2px solid var(--outline); }
+.flow-col-head .tag{ font-family:var(--f-body); font-weight:700; font-size:12px; letter-spacing:0.08em; text-transform:uppercase; color:rgba(26,26,26,0.6); }
+.flow-col-head h4{ font-family:var(--f-display); font-weight:700; font-size:25px; margin-top:4px; color:var(--ink); }
+.flow-rows{ flex:1; display:flex; flex-direction:column; }
+.flow-row-item{ flex:1; display:flex; flex-direction:column; justify-content:center; gap:4px; padding:9px 26px; border-bottom:1px dashed rgba(26,26,26,0.16); position:relative; }
+.flow-row-item:last-child{ border-bottom:none; }
+.flow-row-item .node-chip{ align-self:flex-start; border-radius:9999px; border:2px solid var(--outline); background:var(--cream); padding:5px 14px; font-family:'Space Grotesk',monospace; font-weight:700; font-size:13px; }
+.flow-row-item .fd-text{ font-family:var(--f-body); font-size:13px; color:rgba(26,26,26,0.65); line-height:1.3; padding-right:76px; }
+.exit-badge{ position:absolute; right:18px; top:50%; transform:translateY(-50%); font-size:10px; font-weight:700; border:2px solid var(--outline); border-radius:9999px; padding:3px 10px; background:var(--yellow); font-family:var(--f-body); white-space:nowrap; }
+.flow-arrow-col{ width:56px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.loop-note{ margin:0 22px 20px 22px; padding:10px 16px; border:2px solid var(--outline); border-radius:9999px; background:var(--yellow); font-weight:700; font-size:11.5px; text-align:center; letter-spacing:0.02em; }
+
+/* timeline row (process / RAG pipeline / booking flow) */
+.timeline-row{ display:flex; gap:0; margin-top:60px; align-items:flex-start; justify-content:space-between; position:relative; }
+.timeline-step{ position:relative; width:19%; }
+.timeline-step .step-node{ margin-bottom:14px; }
+.timeline-step h4{ font-family:var(--f-display); font-weight:700; font-size:19px; margin-bottom:8px; color:var(--ink); }
+.timeline-step p{ font-family:var(--f-body); font-size:14.5px; line-height:1.4; color:rgba(26,26,26,0.65); }
+.step-connector{ position:absolute; top:28px; left:100%; width:34px; height:4px; background:var(--outline); }
+.step-connector::after{ content:''; position:absolute; right:-1px; top:50%; transform:translateY(-50%); border-style:solid; border-width:5px 0 5px 7px; border-color:transparent transparent transparent var(--outline); }
+
+/* roadmap */
+.rmap{ position:relative; display:flex; justify-content:space-between; align-items:flex-start; flex:1; margin-top:56px; padding:0 8px; }
+.rmap-line{ position:absolute; top:27px; left:6%; right:6%; height:3px; background:var(--outline); z-index:0; }
+.rmap-stop{ position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; width:23%; }
+.rmap-date{ font-family:var(--f-body); font-weight:700; font-size:15px; letter-spacing:0.04em; margin-bottom:14px; }
+.rmap-dot{ width:56px; height:56px; border-radius:50%; border:2px solid var(--outline); box-shadow:4px 4px 0 var(--shadow); display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:700; }
+.rmap-card{ margin-top:22px; width:100%; border:2px solid var(--outline); border-radius:1.5rem; box-shadow:6px 6px 0 var(--shadow); padding:22px 20px; box-sizing:border-box; background:var(--white); }
+.rmap-lbl{ font-family:var(--f-body); font-weight:700; font-size:12px; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:12px; }
+.rmap-card ul{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px; }
+.rmap-card li{ font-family:var(--f-body); font-weight:400; font-size:14.5px; line-height:1.35; padding-left:16px; position:relative; color:rgba(26,26,26,0.75); }
+.rmap-card li::before{ content:''; position:absolute; left:0; top:7px; width:6px; height:6px; border-radius:50%; background:var(--ink); }
+
+/* product / admin mockups */
+.mock-frame{ height:100%; padding:0; display:flex; flex-direction:column; }
+.mock-bar{ border-bottom:2px solid var(--outline); padding:16px 22px; display:flex; align-items:center; gap:8px; }
+.mock-bar .sq{ width:13px; height:13px; border-radius:50%; border:2px solid var(--outline); }
+.mock-bar span{ font-family:var(--f-body); font-size:13px; font-weight:700; margin-left:10px; letter-spacing:0.06em; text-transform:uppercase; }
+.mock-body{ padding:22px; flex:1; display:flex; flex-direction:column; gap:14px; }
+.bubble{ max-width:76%; padding:13px 18px; border:2px solid var(--outline); border-radius:9999px; font-family:var(--f-body); font-size:14.5px; font-weight:500; }
+.bubble.me{ background:var(--yellow); margin-right:auto; border-bottom-left-radius:6px; }
+.bubble.bot{ background:var(--white); margin-left:auto; border-bottom-right-radius:6px; }
+.itin-box{ border:2px solid var(--outline); border-radius:1.5rem; padding:18px 20px; margin-top:auto; background:var(--mint); }
+.itin-box .hd{ font-family:var(--f-body); font-weight:700; font-size:12.5px; letter-spacing:0.06em; margin-bottom:12px; text-transform:uppercase; }
+.itin-box .row{ display:flex; align-items:center; gap:10px; font-family:var(--f-body); font-size:14.5px; font-weight:500; padding:5px 0; }
+.itin-box .row .dot{ width:9px; height:9px; border-radius:50%; border:2px solid var(--outline); background:var(--coral); flex-shrink:0; }
+
+.admin-mock-frame{ height:100%; display:flex; border-radius:2rem; overflow:hidden; }
+.admin-mock-side{ width:34%; border-right:2px solid var(--outline); padding:18px 14px; display:flex; flex-direction:column; gap:4px; background:var(--cream); }
+.am-logo{ width:32px; height:32px; border-radius:50%; border:2px solid var(--outline); background:var(--ink); color:var(--yellow); display:flex; align-items:center; justify-content:center; font-family:var(--f-body); font-weight:700; font-size:11px; margin-bottom:12px; }
+.am-group{ font-family:var(--f-body); font-size:10.5px; font-weight:700; letter-spacing:0.08em; color:#8a8578; margin:10px 0 4px; text-transform:uppercase; }
+.am-item{ font-family:var(--f-body); font-size:13px; font-weight:500; padding:8px 12px; border-radius:9999px; }
+.am-item.active{ background:var(--yellow); border:2px solid var(--outline); font-weight:700; }
+.admin-mock-main{ flex:1; padding:22px; display:flex; flex-direction:column; gap:14px; background:var(--white); }
+.am-stats{ display:flex; gap:10px; }
+.am-stat{ flex:1; border:2px solid var(--outline); border-radius:1.2rem; padding:10px 12px; }
+.am-stat.am-warn{ background:var(--peach); }
+.am-stat.am-err{ background:#f6b8ae; }
+.am-stat-lbl{ font-family:var(--f-body); font-size:10.5px; font-weight:600; }
+.am-stat-val{ font-family:var(--f-display); font-size:22px; font-weight:800; margin-top:2px; }
+.am-row{ display:flex; align-items:center; gap:10px; font-family:var(--f-body); font-size:13.5px; font-weight:500; border:2px solid var(--outline); border-radius:9999px; padding:10px 16px; }
+.am-dot{ width:9px; height:9px; border-radius:50%; border:2px solid var(--outline); flex-shrink:0; }
+
+/* team member card */
+.member-split{ display:flex; border:2px solid var(--outline); border-radius:9999px; overflow:hidden; height:44px; }
+.member-split-seg{ display:flex; align-items:center; justify-content:center; font-family:var(--f-body); font-size:12px; font-weight:700; border-right:2px solid var(--outline); white-space:nowrap; overflow:hidden; }
+.member-split-seg:last-child{ border-right:none; }
+.avatar-circle{ width:100px; height:100px; border-radius:50%; border:2px solid var(--outline); display:flex; align-items:center; justify-content:center; font-family:var(--f-display); font-weight:800; font-size:34px; margin:0 auto; box-shadow:6px 6px 0 var(--shadow); }
+
+/* close/demo slide */
+.close-frame{ text-align:center; }
+.close-links{ display:flex; gap:20px; flex-wrap:wrap; justify-content:center; margin-top:36px; }
+.close-link{ display:inline-flex; align-items:center; gap:14px; border-radius:9999px; border:2px solid var(--outline); background:var(--white); padding:16px 32px; box-shadow:6px 6px 0 var(--shadow); text-decoration:none; transition:transform .15s ease, box-shadow .15s ease; }
+.close-link:hover{ transform:translate(-3px,-3px); box-shadow:9px 9px 0 var(--shadow); }
+.close-link span{ font-family:var(--f-body); font-size:16px; color:var(--ink); font-weight:600; }
+.close-link .card-icon{ width:44px; height:44px; font-size:18px; }
+.close-link-primary{ background:var(--yellow); }
+
+/* formula/quote box for docstring slide */
+.formula-box{ border:2px solid var(--outline); border-radius:1.5rem; background:var(--ink); color:var(--cream); padding:30px 34px; font-family:'Space Grotesk',monospace; font-size:16px; line-height:1.75; white-space:pre-wrap; box-shadow:8px 8px 0 var(--shadow); }
+.formula-box .hl{ color:var(--yellow); font-weight:700; }
+
+/* persistent chrome — outside slide design system */
+.slide-counter{ position:fixed; left:22px; bottom:22px; border:2px solid var(--outline); background:var(--white); border-radius:9999px; padding:12px 22px; font-family:var(--f-body); font-size:14px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; box-shadow:4px 4px 0 rgba(0,0,0,0.35); z-index:1000; }
+.nav-controls{ position:fixed; right:22px; bottom:22px; display:flex; gap:10px; z-index:1000; }
+.nav-btn{ width:52px; height:52px; border-radius:50%; border:2px solid var(--outline); background:var(--white); box-shadow:4px 4px 0 rgba(0,0,0,0.35); display:flex; align-items:center; justify-content:center; cursor:pointer; transition:transform .12s ease, box-shadow .12s ease; }
+.nav-btn:hover{ transform:translate(-2px,-2px); box-shadow:6px 6px 0 rgba(0,0,0,0.4); }
+.nav-btn:active{ transform:translate(2px,2px); box-shadow:2px 2px 0 rgba(0,0,0,0.4); }
+.nav-btn svg{ width:20px; height:20px; }
+.nav-back-btn{ height:52px; padding:0 22px; border-radius:9999px; border:2px solid var(--outline); background:var(--yellow); box-shadow:4px 4px 0 rgba(0,0,0,0.35); display:none; align-items:center; justify-content:center; cursor:pointer; white-space:nowrap; font-family:var(--f-body); font-size:13px; font-weight:700; letter-spacing:0.03em; color:var(--ink); transition:transform .12s ease, box-shadow .12s ease; }
+.nav-back-btn.show{ display:flex; }
+.nav-back-btn:hover{ transform:translate(-2px,-2px); box-shadow:6px 6px 0 rgba(0,0,0,0.4); }
+.jump-hint{ position:fixed; left:50%; bottom:96px; transform:translateX(-50%); z-index:999; display:none; border:2px solid var(--outline); background:var(--yellow); border-radius:9999px; padding:10px 24px; font-family:var(--f-body); font-size:14px; font-weight:700; letter-spacing:0.05em; box-shadow:4px 4px 0 rgba(0,0,0,0.35); }
+.jump-hint.show{ display:block; }
+
+/* inline editing (hover hotzone + toggle) */
+.edit-hotzone{ position:fixed; top:0; left:0; width:80px; height:80px; z-index:10000; cursor:pointer; }
+.edit-toggle{ position:fixed; top:16px; left:16px; width:44px; height:44px; border-radius:50%; border:2px solid var(--outline); background:var(--yellow); display:flex; align-items:center; justify-content:center; font-size:18px; cursor:pointer; opacity:0; pointer-events:none; transition:opacity .3s ease; z-index:10001; box-shadow:4px 4px 0 rgba(0,0,0,0.35); }
+.edit-toggle.show, .edit-toggle.active{ opacity:1; pointer-events:auto; }
+[contenteditable="true"]{ outline:2px dashed var(--outline); outline-offset:2px; cursor:text; }
+
+.tilt-n2{ transform:rotate(-2deg); }
+.tilt-p2{ transform:rotate(2deg); }
+.tilt-n3{ transform:rotate(-3deg); }
+.tilt-p3{ transform:rotate(3deg); }
+</style>
+</head>
+<body>
+
+<div class="deck-viewport">
+  <main class="deck-stage" id="deckStage">
+
+    <!-- ============ SLIDE 1 — COVER ============ -->
+    <section class="slide active" id="s1">
+      <div class="atmosphere" style="background:
+        radial-gradient(ellipse at 18% 22%, rgba(232,93,78,0.12), transparent 55%),
+        radial-gradient(ellipse at 82% 78%, rgba(139,180,247,0.14), transparent 55%),
+        radial-gradient(ellipse at 50% 100%, rgba(196,217,78,0.10), transparent 50%);"></div>
+      <div class="deco-pill tilt-n2" style="top:110px; left:130px; background:var(--sky);">TRIP</div>
+      <div class="deco-pill tilt-p2" style="top:160px; right:170px; background:var(--peach);">AI</div>
+      <div class="deco-circle" style="width:70px; height:70px; bottom:210px; left:90px; background:var(--mint);"></div>
+      <div class="deco-pill tilt-n3" style="bottom:170px; right:120px; background:var(--lavender);">GO</div>
+      <div class="deco-pill tilt-p2" style="top:420px; left:60px; background:var(--yellow);">PLAN</div>
+      <div class="deco-pill tilt-n2" style="top:400px; right:60px; background:var(--lime);">FLOW</div>
+      <div class="deco-circle" style="width:36px; height:36px; top:280px; right:360px; background:var(--coral);"></div>
+
+      <div class="slide-pad" style="align-items:center; justify-content:center; text-align:center;">
+        <div class="pill title-pill reveal r1" style="margin:0 auto;">AI Travel Agent</div>
+        <h1 class="h-display reveal r2" style="margin-top:36px;">VP-OTA</h1>
+        <p class="subtitle reveal r3" style="margin-top:30px; max-width:900px; margin-left:auto; margin-right:auto;">AI Agent lập kế hoạch du lịch đa lượt cho khách du lịch Việt Nam</p>
+        <div class="reveal r4" style="margin-top:34px; display:flex; gap:18px; justify-content:center;">
+          <div class="pill mini-chip tilt-n2" style="background:var(--sky);">Conversational AI</div>
+          <div class="pill mini-chip tilt-p2" style="background:var(--mint);">Semantic Search (RAG)</div>
+          <div class="pill mini-chip tilt-n2" style="background:var(--peach);">Auto-Scheduling</div>
+        </div>
+        <p class="mono-meta reveal r5" style="position:absolute; bottom:70px; left:96px; right:96px; text-align:center;">LangGraph · GPT-5.1 · FastAPI · Supabase pgvector · React</p>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 2 — PROBLEM ============ -->
+    <section class="slide" id="s2">
+      <div class="atmosphere" style="background:
+        radial-gradient(ellipse at 90% 10%, rgba(197,181,224,0.14), transparent 55%),
+        radial-gradient(ellipse at 8% 90%, rgba(242,209,96,0.14), transparent 55%);"></div>
+      <div class="deco-pill tilt-p2" style="top:100px; right:140px; background:var(--lavender);">NOW</div>
+      <div class="deco-circle" style="width:40px; height:40px; bottom:130px; left:70px; background:var(--peach);"></div>
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--white);">Vấn đề</div>
+        <h2 class="h-headline reveal r2" style="margin-top:26px; max-width:1400px;">Lập kế hoạch du lịch vẫn còn thủ công và rời rạc</h2>
+        <p class="body-txt reveal r3" style="margin-top:18px; max-width:1100px;">Ba điểm nghẽn lặp lại ở hầu hết hành trình tự lên kế hoạch của du khách Việt Nam.</p>
+
+        <div style="display:flex; gap:36px; margin-top:56px;">
+          <div class="pill-card tilt-n2 reveal r4" style="flex:1;">
+            <div class="card-icon" style="background:var(--yellow);">T</div>
+            <div class="h-card" style="margin-top:22px;">Tốn nhiều thời gian</div>
+            <p class="body-sm" style="margin-top:12px;">Phải mở hàng chục tab để so sánh khách sạn, vé và lịch trình trước khi quyết định.</p>
+          </div>
+          <div class="pill-card tilt-p2 reveal r5" style="flex:1;">
+            <div class="card-icon" style="background:var(--peach);">C</div>
+            <div class="h-card" style="margin-top:22px;">Thiếu cá nhân hóa</div>
+            <p class="body-sm" style="margin-top:12px;">Gợi ý chung chung, không bám sát ngân sách, sở thích và số ngày của từng nhóm khách.</p>
+          </div>
+          <div class="pill-card tilt-n2 reveal r6" style="flex:1;">
+            <div class="card-icon" style="background:var(--mint);">R</div>
+            <div class="h-card" style="margin-top:22px;">Lịch trình rời rạc</div>
+            <p class="body-sm" style="margin-top:12px;">Tự ghép lịch dễ bỏ sót khoảng cách di chuyển, giờ mở cửa, bữa ăn và nghỉ ngơi.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 3 — SOLUTION ============ -->
+    <section class="slide" id="s3">
+      <div class="atmosphere" style="background:
+        radial-gradient(ellipse at 85% 15%, rgba(139,180,247,0.13), transparent 55%),
+        radial-gradient(ellipse at 10% 85%, rgba(168,230,207,0.14), transparent 55%);"></div>
+      <div class="deco-pill tilt-n2" style="top:110px; right:130px; background:var(--coral); color:var(--white);">RAG</div>
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--peach);">Giải pháp</div>
+        <h2 class="h-headline reveal r2" style="margin-top:26px; max-width:1500px;">Trợ lý AI lập lịch trình bằng hội thoại tự nhiên</h2>
+        <p class="body-txt reveal r3" style="margin-top:18px; max-width:1300px;">VP-OTA trò chuyện bằng tiếng Việt tự nhiên với du khách, tự động thu thập nhu cầu, tìm kiếm địa điểm theo ngữ nghĩa và lập lịch trình tối ưu — thay cho việc tự tra cứu thủ công qua nhiều nguồn.</p>
+
+        <div class="grid-4 reveal r4" style="margin-top:48px;">
+          <div class="pill-card" style="padding:32px 26px;">
+            <div class="card-icon" style="background:var(--sky);">H</div>
+            <div class="h-card" style="margin-top:20px; font-size:21px;">Hội thoại đa lượt</div>
+            <p class="body-sm" style="margin-top:10px;">Thu thập nhu cầu tự nhiên qua các câu hỏi làm rõ.</p>
+          </div>
+          <div class="pill-card" style="padding:32px 26px;">
+            <div class="card-icon" style="background:var(--lime);">S</div>
+            <div class="h-card" style="margin-top:20px; font-size:21px;">Tìm kiếm ngữ nghĩa (RAG)</div>
+            <p class="body-sm" style="margin-top:10px;">Truy vấn điểm đến & khách sạn qua Supabase pgvector.</p>
+          </div>
+          <div class="pill-card" style="padding:32px 26px;">
+            <div class="card-icon" style="background:var(--coral); color:var(--white);">L</div>
+            <div class="h-card" style="margin-top:20px; font-size:21px;">Lập lịch tự động</div>
+            <p class="body-sm" style="margin-top:10px;">Tối ưu khoảng cách, chèn bữa ăn & nghỉ ngơi hợp lý.</p>
+          </div>
+          <div class="pill-card" style="padding:32px 26px;">
+            <div class="card-icon" style="background:var(--yellow);">R</div>
+            <div class="h-card" style="margin-top:20px; font-size:21px;">Tái sử dụng lịch trình</div>
+            <p class="body-sm" style="margin-top:10px;">Fingerprint BGE-M3 tái dùng template tương đồng cao.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 4 — PROCESS ============ -->
+    <section class="slide" id="s4">
+      <div class="atmosphere" style="background:
+        radial-gradient(ellipse at 12% 15%, rgba(242,209,96,0.16), transparent 55%),
+        radial-gradient(ellipse at 90% 85%, rgba(196,217,78,0.14), transparent 55%);"></div>
+      <div class="deco-pill tilt-p2" style="top:100px; right:150px; background:var(--mint);">LOOP</div>
+      <div class="deco-circle" style="width:34px; height:34px; bottom:100px; left:80px; background:var(--coral);"></div>
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--white);">Quy trình</div>
+        <h2 class="h-headline reveal r2" style="margin-top:26px; max-width:1500px;">Từ hội thoại đến lịch trình hoàn chỉnh</h2>
+
+        <div class="timeline-row reveal r3">
+          <div class="timeline-step">
+            <div class="step-node">1</div>
+            <h4>Thu thập nhu cầu</h4>
+            <p>Điểm đến, số ngày, số người, sở thích</p>
+            <div class="step-connector"></div>
+          </div>
+          <div class="timeline-step">
+            <div class="step-node">2</div>
+            <h4>Tìm kiếm ngữ nghĩa</h4>
+            <p>RAG qua Supabase pgvector</p>
+            <div class="step-connector"></div>
+          </div>
+          <div class="timeline-step">
+            <div class="step-node">3</div>
+            <h4>Lập lịch tự động</h4>
+            <p>Tối ưu khoảng cách / thời gian</p>
+            <div class="step-connector"></div>
+          </div>
+          <div class="timeline-step">
+            <div class="step-node">4</div>
+            <h4>Chọn &amp; chỉnh sửa</h4>
+            <p>Đổi khách sạn, sửa itinerary</p>
+            <div class="step-connector"></div>
+          </div>
+          <div class="timeline-step">
+            <div class="step-node" style="background:var(--yellow);">5</div>
+            <h4>Chốt &amp; đặt phòng</h4>
+            <p>Xác nhận lịch trình, thanh toán</p>
+          </div>
+        </div>
+
+        <div class="pill-card reveal r4" style="margin-top:auto; padding:28px 36px;">
+          <p class="body-txt" style="color:var(--ink);"><b>Vòng lặp thông minh:</b> trước bước lập lịch, hệ thống kiểm tra Tier 1 Cache — nếu tìm thấy lịch trình mẫu tương đồng đủ cao, tái sử dụng ngay thay vì tính toán lại từ đầu.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 5 — ARCHITECTURE (SUMMARY) ============ -->
+    <section class="slide" id="s5" data-nav-architecture="true">
+      <div class="atmosphere" style="background:
+        radial-gradient(ellipse at 88% 12%, rgba(139,180,247,0.14), transparent 55%),
+        radial-gradient(ellipse at 10% 90%, rgba(242,209,96,0.12), transparent 55%);"></div>
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--sky);">Kiến trúc</div>
+        <h2 class="h-headline reveal r2" style="margin-top:26px;">Kiến trúc hệ thống</h2>
+
+        <div style="display:flex; flex-direction:column; gap:18px; margin-top:36px;">
+          <div class="pill-card reveal r3" style="display:flex; align-items:center; gap:28px; padding:20px 30px;">
+            <div class="card-icon" style="background:var(--sky);">F</div>
+            <div style="flex:0 0 320px;">
+              <div class="label-txt">FRONTEND</div>
+              <div class="h-card" style="font-size:24px; margin-top:2px;">React 19 + Vite</div>
+            </div>
+            <div class="body-sm" style="flex:1;">ChatPanel · ItineraryPanel · SSE streaming</div>
+          </div>
+          <div class="pill-card reveal r4" style="display:flex; align-items:center; gap:28px; padding:20px 30px;">
+            <div class="card-icon" style="background:var(--coral); color:var(--white);">O</div>
+            <div style="flex:0 0 320px;">
+              <div class="label-txt">ORCHESTRATOR</div>
+              <div class="h-card" style="font-size:24px; margin-top:2px;">FastAPI + LangGraph</div>
+            </div>
+            <div class="body-sm" style="flex:1;">14-node StateGraph, GPT-5.1 (reasoning) + GPT-4o-mini (fast) — Patch pipeline → Supervisor → Hotel / Itinerary / Booking / QA workers</div>
+          </div>
+          <div class="pill-card reveal r5" style="display:flex; align-items:center; gap:28px; padding:20px 30px;">
+            <div class="card-icon" style="background:var(--lime);">S</div>
+            <div style="flex:0 0 320px;">
+              <div class="label-txt">DOMAIN SERVICES</div>
+              <div class="h-card" style="font-size:24px; margin-top:2px;">Service Layer</div>
+            </div>
+            <div class="body-sm" style="flex:1;">hotel_selection · trip_scheduler · itinerary_reuse · supabase_search — pure, deterministic Python</div>
+          </div>
+          <div class="pill-card reveal r6" style="display:flex; align-items:center; gap:28px; padding:20px 30px;">
+            <div class="card-icon" style="background:var(--mint);">D</div>
+            <div style="flex:0 0 320px;">
+              <div class="label-txt">DATA LAYER</div>
+              <div class="h-card" style="font-size:24px; margin-top:2px;">Supabase (Postgres)</div>
+            </div>
+            <div class="body-sm" style="flex:1;">PostgreSQL + pgvector (RAG & Tier 1 Cache) · Airflow ETL</div>
+          </div>
+        </div>
+
+        <div class="reveal r6" style="margin-top:20px; display:flex; flex-wrap:wrap; gap:10px;">
+          <span class="pill mini-chip">React 19 + Vite</span>
+          <span class="pill mini-chip">FastAPI</span>
+          <span class="pill mini-chip">LangGraph</span>
+          <span class="pill mini-chip">GPT-5.1 + GPT-4o-mini</span>
+          <span class="pill mini-chip">Supabase pgvector</span>
+          <span class="pill mini-chip">Cloudflare Workers AI</span>
+          <span class="pill mini-chip">Airflow</span>
+          <span class="pill mini-chip">Docker Compose</span>
+        </div>
+
+        <div class="pill reveal r6" id="jumpToAppendixBtn" style="margin-top:26px; padding:18px 30px; display:flex; align-items:center; gap:20px; background:var(--yellow); width:fit-content; cursor:pointer; border-radius:9999px; box-shadow:6px 6px 0 var(--shadow);">
+          <div class="card-icon" style="background:var(--white); width:42px; height:42px; font-size:18px;">→</div>
+          <span class="mono-meta" style="font-size:15px; font-weight:700; color:var(--ink);">30 slide phụ lục chi tiết từng node, thuật toán, luồng đặt phòng/thanh toán, và cost/token — bấm để xem</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 6 — LANGGRAPH FLOW ============ -->
+    <section class="slide" id="s6">
+      <div class="atmosphere" style="background:
+        radial-gradient(ellipse at 90% 90%, rgba(196,217,78,0.12), transparent 55%),
+        radial-gradient(ellipse at 6% 10%, rgba(232,93,78,0.10), transparent 55%);"></div>
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--peach);">LangGraph</div>
+        <h2 class="h-headline reveal r2" style="margin-top:22px; font-size:46px;">Luồng xử lý 1 lượt chat — 14 node</h2>
+        <p class="body-txt reveal r2" style="margin-top:8px; max-width:1500px; font-size:17px;">Mỗi tin nhắn người dùng đi qua 3 giai đoạn tuần tự — chi tiết từng node ở phụ lục.</p>
+
+        <div class="flow-cols reveal r3">
+          <div class="flow-col">
+            <div class="flow-col-head" style="background:var(--sky);">
+              <div class="tag">GIAI ĐOẠN 1 · 7 NODE</div>
+              <h4>Hiểu yêu cầu</h4>
+            </div>
+            <div class="flow-rows">
+              <div class="flow-row-item"><div class="node-chip">load_context</div><div class="fd-text">Reset dữ liệu tạm đầu mỗi lượt chat</div></div>
+              <div class="flow-row-item"><div class="node-chip">scope_guard</div><div class="fd-text">Chặn tin nhắn jailbreak / độc hại</div><div class="exit-badge">⤷ respond</div></div>
+              <div class="flow-row-item"><div class="node-chip">extract_patch</div><div class="fd-text">LLM đọc ý định, tạo patch thay đổi</div></div>
+              <div class="flow-row-item"><div class="node-chip">validate_patch</div><div class="fd-text">Kiểm tra patch hợp lệ (dry-run)</div></div>
+              <div class="flow-row-item"><div class="node-chip">apply_patch</div><div class="fd-text">Ghi thay đổi thật vào state</div></div>
+              <div class="flow-row-item"><div class="node-chip">ask_slot</div><div class="fd-text">Hỏi thông tin còn thiếu (điểm đến, ngày...)</div><div class="exit-badge">⤷ respond</div></div>
+              <div class="flow-row-item"><div class="node-chip">intake_qa</div><div class="fd-text">Trả lời câu hỏi phát sinh giữa chừng</div><div class="exit-badge">⤷ respond</div></div>
+            </div>
+          </div>
+
+          <div class="flow-arrow-col"><div class="diagram-connector" style="width:36px;"></div></div>
+
+          <div class="flow-col">
+            <div class="flow-col-head" style="background:var(--peach);">
+              <div class="tag">GIAI ĐOẠN 2 · 5 NODE</div>
+              <h4>Điều phối &amp; thực thi</h4>
+            </div>
+            <div class="flow-rows">
+              <div class="flow-row-item"><div class="node-chip">supervisor</div><div class="fd-text">Chọn worker chạy tiếp theo (ít khi cần LLM)</div></div>
+              <div class="flow-row-item"><div class="node-chip">hotel_node</div><div class="fd-text">Tìm &amp; xếp hạng khách sạn theo bộ lọc</div></div>
+              <div class="flow-row-item"><div class="node-chip">itinerary_node</div><div class="fd-text">Dựng / chỉnh sửa lịch trình từng ngày</div></div>
+              <div class="flow-row-item"><div class="node-chip">booking_node</div><div class="fd-text">Luôn từ chối trong graph *</div></div>
+              <div class="flow-row-item"><div class="node-chip">qa_node</div><div class="fd-text">Trả lời câu hỏi tự do về chuyến đi (ReAct)</div></div>
+            </div>
+            <div class="loop-note">🔁 supervisor ↔ worker lặp đến khi hết việc (tối đa 5 lần)</div>
+          </div>
+
+          <div class="flow-arrow-col"><div class="diagram-connector" style="width:36px;"></div></div>
+
+          <div class="flow-col">
+            <div class="flow-col-head" style="background:var(--lime);">
+              <div class="tag">GIAI ĐOẠN 3 · 2 NODE</div>
+              <h4>Hoàn tất</h4>
+            </div>
+            <div class="flow-rows">
+              <div class="flow-row-item"><div class="node-chip">budget_check</div><div class="fd-text">So sánh ngân sách, tự re-plan nếu vượt (1 lần)</div></div>
+              <div class="flow-row-item"><div class="node-chip">respond</div><div class="fd-text">Gộp câu trả lời cuối, gửi về frontend</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="pill-card reveal r4" style="margin-top:18px; padding:16px 28px; display:flex; align-items:center; gap:18px;">
+          <span class="pill mini-chip" style="background:var(--yellow); flex-shrink:0;">* booking_node</span>
+          <p class="body-sm" style="font-size:15px;">Từ chối <b>trong graph này theo thiết kế</b> — không phải tính năng còn thiếu. Đặt phòng &amp; thanh toán VNPay <b>hoạt động thật</b>, nhưng đi qua REST API riêng (booking_service · payment_service · vnpay_service) sau khi khách chọn khách sạn — tách khỏi vòng lặp chat/LLM để không phụ thuộc AI cho bước tài chính.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 7 — EVALUATION ============ -->
+    <section class="slide" id="s7">
+      <div class="atmosphere" style="background:
+        radial-gradient(ellipse at 85% 20%, rgba(196,217,78,0.14), transparent 55%),
+        radial-gradient(ellipse at 10% 85%, rgba(139,180,247,0.12), transparent 55%);"></div>
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--lime);">Đánh giá &amp; đo lường</div>
+        <h2 class="h-headline reveal r2" style="margin-top:22px; font-size:46px;">Kết quả thật trên bộ eval — không phải ước lượng</h2>
+        <p class="mono-meta reveal r2" style="margin-top:6px; font-size:16px;">eval/results/ragas-20260820 · 23 record retrieval (VI) · 9 hội thoại / 35 lượt E2E · Cloudflare bge-m3</p>
+
+        <div style="display:flex; gap:26px; margin-top:30px;" class="reveal r3">
+          <div class="stat-pill" style="flex:1;">
+            <div class="stat-num">0.80–0.86</div>
+            <p>Precision truy xuất (VI) — dao động qua các lần chạy</p>
+          </div>
+          <div class="stat-pill" style="flex:1;">
+            <div class="stat-num" style="color:var(--violet);">0.833</div>
+            <p>Context relevance truy xuất (VI)</p>
+          </div>
+          <div class="stat-pill" style="flex:1;">
+            <div class="stat-num" style="color:var(--coral);">0.78–0.87</div>
+            <p>Faithfulness E2E — dao động qua 5 lần chạy</p>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:26px; margin-top:26px;" class="reveal r4">
+          <div class="pill-card" style="flex:1; padding:26px 32px;">
+            <div class="card-tag">Latency (p50 / p95)</div>
+            <div class="kv-row"><span class="k">retrieval.search</span><span class="v">4.54s / 7.99s</span></div>
+            <div class="kv-row"><span class="k">e2e.turn</span><span class="v">6.98s / 12.82s</span></div>
+            <div class="kv-row"><span class="k">e2e.conversation</span><span class="v">29.03s / 37.44s</span></div>
+          </div>
+          <div class="pill-card" style="flex:1; padding:26px 32px;">
+            <div class="card-tag">Chi phí đo được / lần chạy eval</div>
+            <div class="kv-row"><span class="k">Retrieval (46 lời gọi)</span><span class="v">$0.0224</span></div>
+            <div class="kv-row"><span class="k">E2E app (55 lời gọi)</span><span class="v">$0.0836</span></div>
+          </div>
+        </div>
+
+        <p class="mono-meta reveal r5" style="margin-top:20px; font-size:14px;">Bộ eval nhỏ, chỉ tiếng Việt — đọc các con số như xu hướng ban đầu, không phải cam kết ở quy mô lớn. Chi tiết đầy đủ trong plans/reports/eval-260820-1703.</p>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 8 — PRODUCT ============ -->
+    <section class="slide" id="s8">
+      <div class="atmosphere" style="background:
+        radial-gradient(ellipse at 88% 85%, rgba(168,230,207,0.14), transparent 55%),
+        radial-gradient(ellipse at 8% 15%, rgba(242,209,96,0.12), transparent 55%);"></div>
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--white);">Sản phẩm</div>
+        <h2 class="h-headline reveal r2" style="margin-top:26px;">Trải nghiệm sản phẩm</h2>
+
+        <div class="split-row">
+          <div class="feat-col reveal r3">
+            <div class="feat-item"><div class="step-node" style="font-size:18px;">1</div><span>ChatPanel + ItineraryPanel hiển thị song song</span></div>
+            <div class="feat-item"><div class="step-node" style="font-size:18px;">2</div><span>Card khách sạn trực quan, so sánh &amp; chọn nhanh</span></div>
+            <div class="feat-item"><div class="step-node" style="font-size:18px;">3</div><span>Chỉnh sửa lịch trình, đổi khách sạn tức thời</span></div>
+            <div class="feat-item"><div class="step-node" style="font-size:18px;">4</div><span>Đặt phòng &amp; thanh toán VNPay tích hợp sẵn</span></div>
+            <div class="feat-item"><div class="step-node" style="font-size:18px;">5</div><span>Streaming phản hồi qua SSE, hỗ trợ song ngữ Việt / Anh</span></div>
+          </div>
+          <div class="mock-col reveal r4">
+            <div class="visual-frame mock-frame" style="background:var(--white);">
+              <div class="mock-bar">
+                <div class="sq" style="background:var(--coral);"></div>
+                <div class="sq" style="background:var(--yellow);"></div>
+                <div class="sq" style="background:var(--lime);"></div>
+                <span>VP-OTA</span>
+              </div>
+              <div class="mock-body">
+                <div class="bubble me">Tôi muốn đi Đà Nẵng 3 ngày 2 người thích lịch sử</div>
+                <div class="bubble bot">Bạn muốn ngân sách khoảng bao nhiêu cho chuyến đi?</div>
+                <div class="bubble me">Khoảng 5 triệu / người</div>
+                <div class="itin-box">
+                  <div class="hd">Lịch trình — Ngày 1</div>
+                  <div class="row"><div class="dot"></div>08:00 &nbsp;Bãi biển Mỹ Khê</div>
+                  <div class="row"><div class="dot"></div>11:30 &nbsp;Ăn trưa hải sản</div>
+                  <div class="row"><div class="dot"></div>14:00 &nbsp;Ngũ Hành Sơn</div>
+                  <div class="row"><div class="dot"></div>18:30 &nbsp;Cầu Rồng phun lửa</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 9 — ADMIN DASHBOARD ============ -->
+    <section class="slide" id="s9">
+      <div class="atmosphere" style="background:
+        radial-gradient(ellipse at 90% 10%, rgba(242,209,96,0.14), transparent 55%),
+        radial-gradient(ellipse at 10% 90%, rgba(139,180,247,0.12), transparent 55%);"></div>
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--white);">Sản phẩm</div>
+        <h2 class="h-headline reveal r2" style="margin-top:26px;">Bảng quản trị vận hành</h2>
+
+        <div class="split-row">
+          <div class="feat-col reveal r3">
+            <div class="feat-item"><div class="step-node" style="font-size:18px;">1</div><span>Tổng quan doanh thu, đơn hàng &amp; giữ chỗ sắp hết hạn theo thời gian thực</span></div>
+            <div class="feat-item"><div class="step-node" style="font-size:18px;">2</div><span>Quản lý khách sạn, phòng, giá &amp; trạng thái embedding</span></div>
+            <div class="feat-item"><div class="step-node" style="font-size:18px;">3</div><span>Theo dõi pipeline dữ liệu &amp; độ phủ embedding</span></div>
+            <div class="feat-item"><div class="step-node" style="font-size:18px;">4</div><span>Danh mục tiện ích khách sạn, duyệt &amp; chuẩn hoá</span></div>
+            <div class="feat-item"><div class="step-node" style="font-size:18px;">5</div><span>Xử lý đơn hàng, huỷ &amp; giữ chỗ hết hạn</span></div>
+          </div>
+          <div class="mock-col reveal r4">
+            <div class="visual-frame admin-mock-frame" style="background:var(--white);">
+              <div class="admin-mock-side">
+                <div class="am-logo">VP</div>
+                <div class="am-group">Tổng quan</div>
+                <div class="am-item active">Tổng quan</div>
+                <div class="am-group">Khách sạn</div>
+                <div class="am-item">Danh sách khách sạn</div>
+                <div class="am-item">Trạng thái embedding</div>
+                <div class="am-item">Danh mục tiện ích</div>
+                <div class="am-group">Dữ liệu bot</div>
+                <div class="am-item">Pipeline</div>
+                <div class="am-group">Đơn hàng</div>
+                <div class="am-item">Danh sách đơn</div>
+              </div>
+              <div class="admin-mock-main">
+                <div class="am-stats">
+                  <div class="am-stat"><div class="am-stat-lbl">Đơn hôm nay</div><div class="am-stat-val">18</div></div>
+                  <div class="am-stat"><div class="am-stat-lbl">Doanh thu</div><div class="am-stat-val">42tr</div></div>
+                  <div class="am-stat am-warn"><div class="am-stat-lbl">Chờ xử lý</div><div class="am-stat-val">3</div></div>
+                  <div class="am-stat am-err"><div class="am-stat-lbl">Sắp hết hạn</div><div class="am-stat-val">1</div></div>
+                </div>
+                <div class="am-row"><div class="am-dot" style="background:var(--lime);"></div>Khách sạn Mường Thanh — đã xác nhận</div>
+                <div class="am-row"><div class="am-dot" style="background:var(--yellow);"></div>Vinpearl Resort — chờ admin xác nhận</div>
+                <div class="am-row"><div class="am-dot" style="background:var(--coral);"></div>Furama Resort — giữ chỗ hết hạn trong 12 phút</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 10 — NOTABLE FEATURES ============ -->
+    <section class="slide" id="s10">
+      <div class="atmosphere" style="background:
+        radial-gradient(ellipse at 90% 90%, rgba(196,217,78,0.13), transparent 55%),
+        radial-gradient(ellipse at 8% 10%, rgba(232,93,78,0.10), transparent 55%);"></div>
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--lime);">Vì sao chọn chúng tôi</div>
+        <h2 class="h-headline reveal r2" style="margin-top:26px;">Giá trị thật cho khách &amp; doanh nghiệp</h2>
+
+        <div class="grid-3 reveal r3" style="margin-top:36px; grid-template-rows:repeat(2,1fr); flex:1;">
+          <div class="pill-card" style="padding:26px 24px;">
+            <div class="card-icon" style="background:var(--yellow); font-size:22px;">88</div>
+            <div class="h-card" style="margin-top:16px; font-size:20px;">Lên lịch trình tức thì</div>
+            <p class="body-sm" style="margin-top:8px;">Chuyến đi giống trước đó? Trả kết quả ngay từ cache thông minh (88% tương đồng) thay vì bắt khách chờ AI tính lại từ đầu.</p>
+          </div>
+          <div class="pill-card" style="padding:26px 24px;">
+            <div class="card-icon" style="background:var(--sky);">✓</div>
+            <div class="h-card" style="margin-top:16px; font-size:20px;">Đáng tin cậy theo thiết kế</div>
+            <p class="body-sm" style="margin-top:8px;">Mỗi bước xử lý tự kiểm tra chéo — lỗi bị bắt ngay bên trong hệ thống, không lọt ra đến trải nghiệm khách hàng.</p>
+          </div>
+          <div class="pill-card" style="padding:26px 24px;">
+            <div class="card-icon" style="background:var(--coral); color:var(--white);">$</div>
+            <div class="h-card" style="margin-top:16px; font-size:20px;">Không bao giờ vượt ngân sách âm thầm</div>
+            <p class="body-sm" style="margin-top:8px;">Tự phát hiện &amp; tự điều chỉnh khi vượt tiền, luôn báo rõ cho khách thay vì lặng lẽ trả một kế hoạch quá đắt.</p>
+          </div>
+          <div class="pill-card" style="padding:26px 24px;">
+            <div class="card-icon" style="background:var(--lime); font-size:24px;">⚡</div>
+            <div class="h-card" style="margin-top:16px; font-size:20px;">Đúng mô hình AI cho đúng việc</div>
+            <p class="body-sm" style="margin-top:8px;">GPT-5.1 xử lý phần suy luận phức tạp, GPT-4o-mini trả lời nhanh cho phần đơn giản — tối ưu cả tốc độ lẫn chi phí.</p>
+          </div>
+          <div class="pill-card" style="padding:26px 24px;">
+            <div class="card-icon" style="background:var(--peach);">₫</div>
+            <div class="h-card" style="margin-top:16px; font-size:20px;">Đặt phòng &amp; thanh toán thật</div>
+            <p class="body-sm" style="margin-top:8px;">Không chỉ là demo — VNPay hoạt động thật, khách chốt lịch và thanh toán ngay trong một luồng liền mạch.</p>
+          </div>
+          <div class="pill-card" style="padding:26px 24px;">
+            <div class="card-icon" style="background:var(--white);">語</div>
+            <div class="h-card" style="margin-top:16px; font-size:20px;">Trò chuyện tự nhiên, không phải điền form</div>
+            <p class="body-sm" style="margin-top:8px;">Song ngữ Việt/Anh, phản hồi tức thời từng chữ qua streaming — cảm giác như nhắn tin với một người am hiểu du lịch.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 11 — TEAM: TIỀN ANH KIỆT ============ -->
+    <section class="slide" id="s11">
+      <div class="atmosphere" style="background:
+        radial-gradient(ellipse at 88% 15%, rgba(232,93,78,0.12), transparent 55%),
+        radial-gradient(ellipse at 8% 88%, rgba(242,209,96,0.12), transparent 55%);"></div>
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--peach);">Đội ngũ</div>
+        <h2 class="h-headline reveal r2" style="margin-top:26px;">Tiền Anh Kiệt</h2>
+        <p class="mono-meta reveal r2" style="margin-top:6px; font-size:17px;">Full-stack &amp; AI Orchestration Lead · 192 commit (GitHub history)</p>
+
+        <div class="split-row" style="margin-top:40px;">
+          <div class="feat-col reveal r3" style="justify-content:center; gap:18px;">
+            <div class="feat-item"><div class="card-icon" style="background:var(--peach); width:44px; height:44px; font-size:17px;">✓</div><span>Thiết kế &amp; refactor LangGraph agent graph (14 node, conditional routing)</span></div>
+            <div class="feat-item"><div class="card-icon" style="background:var(--peach); width:44px; height:44px; font-size:17px;">✓</div><span>Streaming chat UX — thinking block theo bước, suggestion chip theo ngữ cảnh</span></div>
+            <div class="feat-item"><div class="card-icon" style="background:var(--peach); width:44px; height:44px; font-size:17px;">✓</div><span>Tối ưu tìm kiếm điểm đến (RPC tiered search, lọc bán kính)</span></div>
+            <div class="feat-item"><div class="card-icon" style="background:var(--peach); width:44px; height:44px; font-size:17px;">✓</div><span>Xử lý lỗi embedding hệ thống &amp; dẫn dắt bộ eval / kế hoạch dự án</span></div>
+            <div class="feat-item"><div class="card-icon" style="background:var(--peach); width:44px; height:44px; font-size:17px;">✓</div><span>Triển khai &amp; vận hành hạ tầng trên AWS EC2 (Docker Compose, Caddy)</span></div>
+          </div>
+          <div class="mock-col reveal r4">
+            <div class="pill-card" style="height:100%; padding:34px; display:flex; flex-direction:column; justify-content:center; gap:26px;">
+              <div class="avatar-circle" style="background:var(--peach);">TK</div>
+              <div class="member-split">
+                <div class="member-split-seg" style="flex:51; background:var(--sky);">Backend 51%</div>
+                <div class="member-split-seg" style="flex:49; background:var(--yellow);">Frontend 49%</div>
+              </div>
+              <p class="mono-meta" style="text-align:center; font-size:14px;">backend/src/agents · frontend/admin · plans &amp; eval</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 12 — TEAM: NGUYỄN HỮU ĐỨC ============ -->
+    <section class="slide" id="s12">
+      <div class="atmosphere" style="background:
+        radial-gradient(ellipse at 88% 15%, rgba(196,217,78,0.14), transparent 55%),
+        radial-gradient(ellipse at 8% 88%, rgba(139,180,247,0.12), transparent 55%);"></div>
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--lime);">Đội ngũ</div>
+        <h2 class="h-headline reveal r2" style="margin-top:26px;">Nguyễn Hữu Đức</h2>
+        <p class="mono-meta reveal r2" style="margin-top:6px; font-size:17px;">Backend &amp; Data Engineer · 147 commit (GitHub history)</p>
+
+        <div class="split-row" style="margin-top:40px;">
+          <div class="feat-col reveal r3" style="justify-content:center; gap:18px;">
+            <div class="feat-item"><div class="card-icon" style="background:var(--lime); width:44px; height:44px; font-size:17px;">✓</div><span>Cải thiện tìm kiếm &amp; lọc khách sạn (lọc theo số khách trong SQL, giá phòng trung bình theo kỳ ở)</span></div>
+            <div class="feat-item"><div class="card-icon" style="background:var(--lime); width:44px; height:44px; font-size:17px;">✓</div><span>Thiết kế kiến trúc cơ sở dữ liệu (schema Supabase/Postgres, pgvector)</span></div>
+            <div class="feat-item"><div class="card-icon" style="background:var(--lime); width:44px; height:44px; font-size:17px;">✓</div><span>Tier 1 Cache — hoàn thiện &amp; lưu lịch trình làm template tái sử dụng</span></div>
+            <div class="feat-item"><div class="card-icon" style="background:var(--lime); width:44px; height:44px; font-size:17px;">✓</div><span>Dịch vụ backend/agent &amp; pipeline dữ liệu Airflow (ETL, ingest)</span></div>
+            <div class="feat-item"><div class="card-icon" style="background:var(--lime); width:44px; height:44px; font-size:17px;">✓</div><span>Trang quản trị danh mục tiện ích/room-facility &amp; tích hợp LLM provider (Cloudflare, OpenRouter)</span></div>
+          </div>
+          <div class="mock-col reveal r4">
+            <div class="pill-card" style="height:100%; padding:34px; display:flex; flex-direction:column; justify-content:center; gap:26px;">
+              <div class="avatar-circle" style="background:var(--lime);">ND</div>
+              <div class="member-split">
+                <div class="member-split-seg" style="flex:76; background:var(--sky);">Backend 76%</div>
+                <div class="member-split-seg" style="flex:24; background:var(--yellow);">Frontend 24%</div>
+              </div>
+              <p class="mono-meta" style="text-align:center; font-size:14px;">backend/src/agents · database schema · hotel search &amp; filter</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 13 — TEAM: ĐINH NGUYỄN NHẬT LÂM ============ -->
+    <section class="slide" id="s13">
+      <div class="atmosphere" style="background:
+        radial-gradient(ellipse at 88% 15%, rgba(139,180,247,0.14), transparent 55%),
+        radial-gradient(ellipse at 8% 88%, rgba(197,181,224,0.12), transparent 55%);"></div>
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--sky);">Đội ngũ</div>
+        <h2 class="h-headline reveal r2" style="margin-top:26px;">Đinh Nguyễn Nhật Lâm</h2>
+        <p class="mono-meta reveal r2" style="margin-top:6px; font-size:17px;">Frontend &amp; Booking Experience Engineer · 135 commit (GitHub history)</p>
+
+        <div class="split-row" style="margin-top:40px;">
+          <div class="feat-col reveal r3" style="justify-content:center; gap:22px;">
+            <div class="feat-item"><div class="card-icon" style="background:var(--sky); width:44px; height:44px; font-size:17px;">✓</div><span>Luồng đặt phòng &amp; thanh toán VNPay — giữ chỗ, đổi phòng, biên nhận</span></div>
+            <div class="feat-item"><div class="card-icon" style="background:var(--sky); width:44px; height:44px; font-size:17px;">✓</div><span>Bản đồ tương tác Mapbox GL JS — animation tuyến đường, marker</span></div>
+            <div class="feat-item"><div class="card-icon" style="background:var(--sky); width:44px; height:44px; font-size:17px;">✓</div><span>Tích hợp pipeline embedding Cloudflare Workers AI vào Airflow</span></div>
+            <div class="feat-item"><div class="card-icon" style="background:var(--sky); width:44px; height:44px; font-size:17px;">✓</div><span>View SQL room_night_occupancy phục vụ tra cứu phòng trống trực quan</span></div>
+          </div>
+          <div class="mock-col reveal r4">
+            <div class="pill-card" style="height:100%; padding:34px; display:flex; flex-direction:column; justify-content:center; gap:26px;">
+              <div class="avatar-circle" style="background:var(--sky);">ĐL</div>
+              <div class="member-split">
+                <div class="member-split-seg" style="flex:18; background:var(--sky);">Backend 18%</div>
+                <div class="member-split-seg" style="flex:82; background:var(--yellow);">Frontend 82%</div>
+              </div>
+              <p class="mono-meta" style="text-align:center; font-size:14px;">frontend/components · booking/VNPay flow · Mapbox GL JS</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 14 — CLOSE / DEMO ============ -->
+    <section class="slide" id="s14">
+      <div class="atmosphere" style="background:
+        radial-gradient(ellipse at 50% 0%, rgba(242,209,96,0.18), transparent 55%),
+        radial-gradient(ellipse at 15% 85%, rgba(232,93,78,0.12), transparent 55%),
+        radial-gradient(ellipse at 88% 85%, rgba(139,180,247,0.12), transparent 55%);"></div>
+      <div class="deco-pill tilt-n2" style="top:100px; left:130px; background:var(--yellow);">TRIP</div>
+      <div class="deco-pill tilt-p2" style="top:130px; right:150px; background:var(--coral); color:var(--white);">GO</div>
+      <div class="deco-circle" style="width:60px; height:60px; bottom:160px; left:100px; background:var(--mint);"></div>
+      <div class="deco-pill tilt-n3" style="bottom:130px; right:120px; background:var(--lavender);">NEXT</div>
+      <div class="deco-circle" style="width:30px; height:30px; top:320px; right:340px; background:var(--peach);"></div>
+      <div class="deco-pill tilt-p2" style="bottom:340px; left:60px; background:var(--sky);">DEMO</div>
+
+      <div class="slide-pad" style="align-items:center; justify-content:center; text-align:center;">
+        <div class="close-frame reveal r1">
+          <h2 class="h-closing">Cùng đồng hành cùng VP-OTA</h2>
+          <p class="subtitle" style="margin-top:22px;">Sẵn sàng demo trực tiếp và trao đổi thêm về lộ trình phát triển sản phẩm.</p>
+          <div class="close-links reveal r2">
+            <a href="https://trip-planner-ai.duckdns.org/" target="_blank" rel="noopener noreferrer" class="close-link close-link-primary">
+              <div class="card-icon" style="background:var(--white);">▶</div>
+              <span>Xem demo trực tiếp</span>
+            </a>
+            <a href="https://github.com/0infinitive0/VSF-Intern-project" target="_blank" rel="noopener noreferrer" class="close-link">
+              <div class="card-icon" style="background:var(--ink); color:var(--yellow);">G</div>
+              <span>github.com/0infinitive0/VSF-Intern-project</span>
+            </a>
+          </div>
+        </div>
+        <div class="pill title-pill reveal r3" style="margin-top:48px; background:var(--yellow);">Cảm ơn!</div>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 15 — ROADMAP ============ -->
+    <section class="slide" id="s15">
+      <div class="atmosphere" style="background:
+        radial-gradient(ellipse at 90% 10%, rgba(139,180,247,0.14), transparent 55%),
+        radial-gradient(ellipse at 10% 90%, rgba(242,209,96,0.12), transparent 55%);"></div>
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--sky);">Lộ trình</div>
+        <h2 class="h-headline reveal r2" style="margin-top:26px;">Lộ trình phát triển</h2>
+        <p class="mono-meta reveal r2" style="margin-top:8px; font-size:16px;">Mốc thời gian dự kiến, tính từ 08/2026 — có thể điều chỉnh theo ưu tiên vận hành thực tế</p>
+
+        <div class="rmap reveal r3">
+          <div class="rmap-line"></div>
+          <div class="rmap-stop">
+            <div class="rmap-date">Đến T8/2026</div>
+            <div class="rmap-dot" style="background:var(--lime);">✓</div>
+            <div class="rmap-card">
+              <div class="rmap-lbl">Đã hoàn thành</div>
+              <ul>
+                <li>Hội thoại AI + RAG search + lập lịch tự động</li>
+                <li>Đặt phòng, thanh toán VNPay &amp; giữ chỗ real-time</li>
+                <li>Mở rộng test coverage &amp; UX chỉnh sửa lịch trình</li>
+              </ul>
+            </div>
+          </div>
+          <div class="rmap-stop">
+            <div class="rmap-date">Q4 2026</div>
+            <div class="rmap-dot" style="background:var(--sky);">»</div>
+            <div class="rmap-card">
+              <div class="rmap-lbl">Tiếp theo</div>
+              <ul>
+                <li>Mở rộng dữ liệu điểm đến &amp; khách sạn</li>
+              </ul>
+            </div>
+          </div>
+          <div class="rmap-stop">
+            <div class="rmap-date">Q1 2027</div>
+            <div class="rmap-dot" style="background:var(--coral); color:var(--white);">★</div>
+            <div class="rmap-card">
+              <div class="rmap-lbl">Sắp tới</div>
+              <ul>
+                <li>Ứng dụng mobile</li>
+              </ul>
+            </div>
+          </div>
+          <div class="rmap-stop">
+            <div class="rmap-date">Q2 2027</div>
+            <div class="rmap-dot" style="background:var(--lavender);">◆</div>
+            <div class="rmap-card">
+              <div class="rmap-lbl">Định hướng</div>
+              <ul>
+                <li>Đo lường &amp; giám sát chi phí AI theo thời gian thực</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 16 — APPENDIX DIVIDER ============ -->
+    <section class="slide" id="s16" data-appendix="true" data-appendix-divider="true">
+      <div class="atmosphere" style="background:
+        radial-gradient(ellipse at 85% 15%, rgba(242,209,96,0.16), transparent 55%),
+        radial-gradient(ellipse at 10% 85%, rgba(139,180,247,0.12), transparent 55%);"></div>
+      <div class="deco-pill tilt-n2" style="top:100px; right:140px; background:var(--lavender);">DEEP</div>
+      <div class="deco-pill tilt-p2" style="bottom:110px; left:100px; background:var(--mint);">DIVE</div>
+      <div class="slide-pad">
+        <div class="pill title-pill reveal r1" style="background:var(--yellow);">Backup slides</div>
+        <h2 class="h-headline reveal r2" style="margin-top:26px;">Phụ lục kỹ thuật</h2>
+        <p class="body-txt reveal r3" style="margin-top:16px; max-width:1300px;">Chỉ dùng khi được hỏi chi tiết. Mỗi node LangGraph, mỗi thuật toán, và ước tính chi phí có slide riêng — bấm số trang + Enter để nhảy nhanh.</p>
+
+        <div class="appendix-index reveal r4">
+          <div class="idx-item"><div class="idx-num">17</div><div class="idx-label">Sơ đồ luồng đầy đủ (14 node)</div></div>
+          <div class="idx-item"><div class="idx-num">18</div><div class="idx-label">Node 01 — load_context</div></div>
+          <div class="idx-item"><div class="idx-num">19</div><div class="idx-label">Node 02 — scope_guard</div></div>
+          <div class="idx-item"><div class="idx-num">20</div><div class="idx-label">Node 03 — extract_patch</div></div>
+          <div class="idx-item"><div class="idx-num">21</div><div class="idx-label">Node 04 — validate_patch</div></div>
+          <div class="idx-item"><div class="idx-num">22</div><div class="idx-label">Node 05 — apply_patch</div></div>
+          <div class="idx-item"><div class="idx-num">23</div><div class="idx-label">Node 06 — ask_slot</div></div>
+          <div class="idx-item"><div class="idx-num">24</div><div class="idx-label">Node 07 — intake_qa</div></div>
+          <div class="idx-item"><div class="idx-num">25</div><div class="idx-label">Node 08 — supervisor</div></div>
+          <div class="idx-item"><div class="idx-num">26</div><div class="idx-label">Node 09 — hotel_node</div></div>
+          <div class="idx-item"><div class="idx-num">27</div><div class="idx-label">Node 10 — itinerary_node</div></div>
+          <div class="idx-item"><div class="idx-num">28</div><div class="idx-label">Node 11 — booking_node</div></div>
+          <div class="idx-item"><div class="idx-num">29</div><div class="idx-label">Node 12 — qa_node</div></div>
+          <div class="idx-item"><div class="idx-num">30</div><div class="idx-label">Node 13 — budget_check</div></div>
+          <div class="idx-item"><div class="idx-num">31</div><div class="idx-label">Node 14 — respond</div></div>
+          <div class="idx-item"><div class="idx-num">32</div><div class="idx-label">Lựa chọn mô hình AI &amp; so sánh</div></div>
+          <div class="idx-item"><div class="idx-num">33</div><div class="idx-label">Vì sao chọn BGE-M3 cho embedding?</div></div>
+          <div class="idx-item"><div class="idx-num">34</div><div class="idx-label">Công thức chấm điểm khách sạn</div></div>
+          <div class="idx-item"><div class="idx-num">35</div><div class="idx-label">Thuật toán lập lịch trình</div></div>
+          <div class="idx-item"><div class="idx-num">36</div><div class="idx-label">Tier 1 Cache — tổng quan</div></div>
+          <div class="idx-item"><div class="idx-num">37</div><div class="idx-label">Tier 1 Cache — chi tiết</div></div>
+          <div class="idx-item"><div class="idx-num">38</div><div class="idx-label">Pipeline tìm kiếm ngữ nghĩa (RAG)</div></div>
+          <div class="idx-item"><div class="idx-num">39</div><div class="idx-label">Quản lý session &amp; state</div></div>
+          <div class="idx-item"><div class="idx-num">40</div><div class="idx-label">Ước tính chi phí &amp; token</div></div>
+          <div class="idx-item"><div class="idx-num">41</div><div class="idx-label">Q&amp;A — Giá đổi lúc thanh toán?</div></div>
+          <div class="idx-item"><div class="idx-num">42</div><div class="idx-label">Q&amp;A — Vì sao giữ booking_node?</div></div>
+          <div class="idx-item"><div class="idx-num">43</div><div class="idx-label">Q&amp;A — Greedy vs CSP/ILP?</div></div>
+          <div class="idx-item"><div class="idx-num">44</div><div class="idx-label">Q&amp;A — Cache hit rate &amp; cost thật?</div></div>
+          <div class="idx-item"><div class="idx-num">45</div><div class="idx-label">Luồng đặt phòng &amp; thanh toán VNPay</div></div>
+          <div class="idx-item"><div class="idx-num">46</div><div class="idx-label">Giữ phòng — quyết định thiết kế &amp; rủi ro</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 17 — GRAPH TOPOLOGY (FULL, 14 NODES) ============ -->
+    <section class="slide" id="s17" data-appendix="true">
+      <div class="atmosphere" style="background:
+        radial-gradient(ellipse at 90% 10%, rgba(139,180,247,0.12), transparent 55%),
+        radial-gradient(ellipse at 8% 90%, rgba(160,108,232,0.10), transparent 55%);"></div>
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--white);">Phụ lục · Kiến trúc</div>
+        <h2 class="h-headline reveal r2" style="margin-top:20px; font-size:42px;">Toàn bộ luồng LangGraph — 14 node</h2>
+
+        <div class="reveal r3" style="margin-top:26px; display:flex; flex-direction:column; gap:20px;">
+          <!-- Tier 1: patch pipeline, sequential -->
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:nowrap;">
+            <div class="diagram-node" style="border-radius:50%; width:44px; height:44px; padding:0; display:flex; align-items:center; justify-content:center; font-size:10px; text-align:center;">start</div>
+            <div class="diagram-connector"></div>
+            <div class="diagram-node" style="background:var(--sky);">load_context</div>
+            <div class="diagram-connector"></div>
+            <div class="diagram-node" style="background:var(--sky);">scope_guard</div>
+            <div class="diagram-connector"></div>
+            <div class="diagram-node" style="background:var(--sky);">extract_patch</div>
+            <div class="diagram-connector"></div>
+            <div class="diagram-node" style="background:var(--sky);">validate_patch</div>
+            <div class="diagram-connector"></div>
+            <div class="diagram-node" style="background:var(--sky);">apply_patch</div>
+            <div class="diagram-connector"></div>
+            <div class="diagram-node" style="background:var(--sky);">ask_slot</div>
+            <div class="diagram-connector"></div>
+            <div class="diagram-node" style="background:var(--sky);">intake_qa</div>
+          </div>
+          <!-- Tier 2: worker fan-out from supervisor -->
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div class="diagram-node" style="background:var(--peach);">supervisor</div>
+            <div class="diagram-connector"></div>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div class="diagram-node" style="background:var(--white);">hotel_node</div>
+              <div class="diagram-node" style="background:var(--white);">itinerary_node</div>
+              <div class="diagram-node" style="background:var(--white);">booking_node</div>
+              <div class="diagram-node" style="background:var(--white);">qa_node</div>
+            </div>
+            <div class="pill mini-chip" style="background:var(--yellow); margin-left:14px;">🔁 tối đa 5 lần</div>
+          </div>
+          <!-- Tier 3: finalize -->
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div class="diagram-node" style="background:var(--mint);">budget_check</div>
+            <div class="diagram-connector"></div>
+            <div class="diagram-node" style="background:var(--mint);">respond</div>
+            <div class="diagram-connector"></div>
+            <div class="diagram-node" style="border-radius:50%; width:44px; height:44px; padding:0; display:flex; align-items:center; justify-content:center; font-size:10px; text-align:center;">end</div>
+          </div>
+        </div>
+
+        <div class="node-cols reveal r4" style="margin-top:26px;">
+          <div class="pill-card" style="flex:1; background:var(--sky);">
+            <div class="card-tag" style="background:var(--white);">Checkpointer</div>
+            <p class="note-txt" style="color:var(--ink);">Mặc định <b>MemorySaver</b> (dev/CLI luôn dùng cái này). Production dùng <b>PostgresSaver</b>, setup lúc FastAPI khởi động.</p>
+          </div>
+          <div class="pill-card" style="flex:1; background:var(--violet); color:var(--white);">
+            <div class="card-tag" style="background:var(--white);">Contract enforcement</div>
+            <p class="note-txt" style="color:var(--white);">hotel_node, itinerary_node, booking_node được bọc bởi <b>enforce_contract()</b> — diff state trước/sau, raise nếu ghi ngoài khai báo hoặc kết thúc không có reply.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ NODE 01 — load_context ============ -->
+    <section class="slide" id="s18" data-appendix="true">
+      <div class="slide-pad">
+        <div class="node-top reveal r1">
+          <div>
+            <div class="pill header-tag" style="background:var(--sky);">Patch pipeline · Node 01/14</div>
+            <div class="node-fn">load_context()</div>
+          </div>
+          <div class="pill file-tag reveal r2">nodes/load_context.py:49-75</div>
+        </div>
+        <div class="phase-mini reveal r2">
+          <div class="pm-dot active">1</div><div class="pm-line"></div><div class="pm-dot">2</div><div class="pm-line"></div><div class="pm-dot">3</div>
+          <span class="pm-label label-txt">GIAI ĐOẠN 1 · HIỂU YÊU CẦU</span>
+        </div>
+        <p class="body-txt reveal r2" style="margin-top:26px; max-width:1650px;">Node đầu tiên sau START, chạy ở mọi turn. Reset các field chỉ tồn tại trong turn hiện tại (patch, intent, applied_changes, jailbreak_blocked, supervisor_iterations) — nhưng cố tình <b>không</b> reset các field xuyên-turn (missing_slots, trip_data, selected_hotel_id, pending_clarify_day).</p>
+        <div class="node-cols reveal r3">
+          <div class="pill-card" style="flex:1.3;">
+            <div class="card-tag">Key behavior</div>
+            <ul>
+              <li>Dùng <code>state.get(...)</code> thay vì <code>state[...]</code> — thread mới chưa có checkpoint</li>
+              <li>Ghi: patch=[], intent="", applied_changes=[], jailbreak_blocked=False, supervisor_iterations=0</li>
+            </ul>
+          </div>
+          <div class="pill-card" style="flex:0.8;">
+            <div class="card-tag">Routes to</div>
+            <p class="note-txt">scope_guard (luôn luôn)</p>
+            <div class="card-tag" style="background:var(--mint); margin-top:22px;">LLM calls</div>
+            <p class="note-txt">Không có</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ NODE 02 — scope_guard ============ -->
+    <section class="slide" id="s19" data-appendix="true">
+      <div class="slide-pad">
+        <div class="node-top reveal r1">
+          <div>
+            <div class="pill header-tag" style="background:var(--sky);">Patch pipeline · Node 02/14</div>
+            <div class="node-fn">scope_guard()</div>
+          </div>
+          <div class="pill file-tag reveal r2">nodes/scope_guard.py:47-67</div>
+        </div>
+        <div class="phase-mini reveal r2">
+          <div class="pm-dot active">1</div><div class="pm-line"></div><div class="pm-dot">2</div><div class="pm-line"></div><div class="pm-dot">3</div>
+          <span class="pm-label label-txt">GIAI ĐOẠN 1 · HIỂU YÊU CẦU</span>
+        </div>
+        <p class="body-txt reveal r2" style="margin-top:26px; max-width:1650px;">Chạy <code>detect_jailbreak()</code> trên tin nhắn cuối của user, theo cấu hình <code>jailbreak_guard_mode</code> (block/log/off, mặc định <b>block</b>). Nếu phát hiện jailbreak độ tin cậy cao ở mode block, set <code>jailbreak_blocked=True</code> và đi thẳng đến respond — bỏ qua toàn bộ patch pipeline.</p>
+        <div class="node-cols reveal r3">
+          <div class="pill-card" style="flex:1.3;">
+            <div class="card-tag">Key behavior</div>
+            <ul>
+              <li>Guardrail song sinh (từ chối câu hỏi ngoài phạm vi) <b>chưa được xây</b>, dù tài liệu kế hoạch cũ ghi là đã xong</li>
+              <li>Đây là bộ lọc an toàn duy nhất chạy trước khi patch pipeline động vào state</li>
+            </ul>
+          </div>
+          <div class="pill-card" style="flex:0.8;">
+            <div class="card-tag">Routes to</div>
+            <p class="note-txt">respond (nếu blocked) · extract_patch (bình thường)</p>
+            <div class="card-tag" style="background:var(--mint); margin-top:22px;">LLM calls</div>
+            <p class="note-txt">Không có (heuristic/regex detector)</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ NODE 03 — extract_patch ============ -->
+    <section class="slide" id="s20" data-appendix="true">
+      <div class="slide-pad">
+        <div class="node-top reveal r1">
+          <div>
+            <div class="pill header-tag" style="background:var(--sky);">Patch pipeline · Node 03/14</div>
+            <div class="node-fn">extract_patch()</div>
+          </div>
+          <div class="pill file-tag reveal r2">nodes/extract_patch.py:588-658</div>
+        </div>
+        <div class="phase-mini reveal r2">
+          <div class="pm-dot active">1</div><div class="pm-line"></div><div class="pm-dot">2</div><div class="pm-line"></div><div class="pm-dot">3</div>
+          <span class="pm-label label-txt">GIAI ĐOẠN 1 · HIỂU YÊU CẦU</span>
+        </div>
+        <p class="body-txt reveal r2" style="margin-top:26px; max-width:1650px;">Bước "hiểu người dùng" duy nhất trong toàn graph — 1 lời gọi reasoning LLM (temperature=0.0) trả về <code>{intent, changes[], reason}</code> dạng JSON, retry 1 lần nếu parse lỗi, fallback về patch rỗng không bao giờ raise.</p>
+        <div class="node-cols reveal r3">
+          <div class="pill-card" style="flex:1.3;">
+            <div class="card-tag">Key behavior</div>
+            <ul>
+              <li><code>intent</code> KHÔNG tự chọn worker — chỉ <code>detect_impact()</code> + <code>WORKFLOW_TO_WORKER</code> mới định tuyến</li>
+              <li>Nhiều lớp grounding tất định phủ lên kết quả LLM: khớp destination/theme/companion với danh mục đóng</li>
+              <li>Regex parse ngày tháng ghi đè LLM cho đúng định dạng date-picker của frontend</li>
+              <li>Resolve phạm vi ngày ("ngày 1"/"hôm cuối") thành field chính xác</li>
+            </ul>
+          </div>
+          <div class="pill-card" style="flex:0.8;">
+            <div class="card-tag">Routes to</div>
+            <p class="note-txt">validate_patch (luôn luôn)</p>
+            <div class="card-tag" style="background:var(--peach); margin-top:22px;">LLM calls</div>
+            <p class="note-txt">1 lần — get_reasoning_llm, temp 0.0</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ NODE 04 — validate_patch ============ -->
+    <section class="slide" id="s21" data-appendix="true">
+      <div class="slide-pad">
+        <div class="node-top reveal r1">
+          <div>
+            <div class="pill header-tag" style="background:var(--sky);">Patch pipeline · Node 04/14</div>
+            <div class="node-fn">validate_patch()</div>
+          </div>
+          <div class="pill file-tag reveal r2">nodes/validate_patch.py:132-154</div>
+        </div>
+        <div class="phase-mini reveal r2">
+          <div class="pm-dot active">1</div><div class="pm-line"></div><div class="pm-dot">2</div><div class="pm-line"></div><div class="pm-dot">3</div>
+          <span class="pm-label label-txt">GIAI ĐOẠN 1 · HIỂU YÊU CẦU</span>
+        </div>
+        <p class="body-txt reveal r2" style="margin-top:26px; max-width:1650px;">Dry-run áp patch (<code>domain.travel_state.apply_patch</code>) mà không commit, rồi chạy <code>detect_impact()</code> để biết worker nào cần chạy sau này. Thêm 2 bước suy ra khoảng ngân sách tất định trước khi validate.</p>
+        <div class="node-cols reveal r3">
+          <div class="pill-card" style="flex:1.3;">
+            <div class="card-tag">Key behavior</div>
+            <ul>
+              <li><code>budget.target</code> đơn lẻ → suy ra dải min/max ±20% (sàn 100k VND)</li>
+              <li><code>budget.trip_total</code> chia đều theo số đêm → dải min/max tương tự</li>
+              <li><code>interrupt()</code> do date-ambiguity ngày xưa nay đã là dead code — luôn resolve DD-MM tất định</li>
+            </ul>
+          </div>
+          <div class="pill-card" style="flex:0.8;">
+            <div class="card-tag">Routes to</div>
+            <p class="note-txt">apply_patch (luôn luôn)</p>
+            <div class="card-tag" style="background:var(--mint); margin-top:22px;">LLM calls</div>
+            <p class="note-txt">Không có</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ NODE 05 — apply_patch ============ -->
+    <section class="slide" id="s22" data-appendix="true">
+      <div class="slide-pad">
+        <div class="node-top reveal r1">
+          <div>
+            <div class="pill header-tag" style="background:var(--sky);">Patch pipeline · Node 05/14</div>
+            <div class="node-fn">apply_patch()</div>
+          </div>
+          <div class="pill file-tag reveal r2">nodes/apply_patch.py:35-74</div>
+        </div>
+        <div class="phase-mini reveal r2">
+          <div class="pm-dot active">1</div><div class="pm-line"></div><div class="pm-dot">2</div><div class="pm-line"></div><div class="pm-dot">3</div>
+          <span class="pm-label label-txt">GIAI ĐOẠN 1 · HIỂU YÊU CẦU</span>
+        </div>
+        <p class="body-txt reveal r2" style="margin-top:26px; max-width:1650px;">Commit <code>proposed_travel_state → travel_state</code>. Dựng hàng đợi <code>pending_tasks</code> (danh sách việc supervisor sẽ giao) từ <code>impacted_workflows</code>, sắp theo <code>WORKER_ORDER</code> cố định: hotel → itinerary → booking → qa.</p>
+        <div class="node-cols reveal r3">
+          <div class="pill-card" style="flex:1.3;">
+            <div class="card-tag">Key behavior</div>
+            <ul>
+              <li>Tự thêm <code>hotel_node</code> vào queue khi <code>selected_hotel_id</code> vừa được set — chọn khách sạn không tự sinh ra impacted_workflow</li>
+              <li>Ghi audit record best-effort vào <code>sessions.context_data["state_audit"]</code> — không bao giờ raise nếu lỗi</li>
+            </ul>
+          </div>
+          <div class="pill-card" style="flex:0.8;">
+            <div class="card-tag">Routes to</div>
+            <p class="note-txt">ask_slot (luôn luôn)</p>
+            <div class="card-tag" style="background:var(--mint); margin-top:22px;">LLM calls</div>
+            <p class="note-txt">Không có</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ NODE 06 — ask_slot ============ -->
+    <section class="slide" id="s23" data-appendix="true">
+      <div class="slide-pad">
+        <div class="node-top reveal r1">
+          <div>
+            <div class="pill header-tag" style="background:var(--sky);">Patch pipeline · Node 06/14</div>
+            <div class="node-fn">ask_slot()</div>
+          </div>
+          <div class="pill file-tag reveal r2">nodes/ask_slot.py:134-149</div>
+        </div>
+        <div class="phase-mini reveal r2">
+          <div class="pm-dot active">1</div><div class="pm-line"></div><div class="pm-dot">2</div><div class="pm-line"></div><div class="pm-dot">3</div>
+          <span class="pm-label label-txt">GIAI ĐOẠN 1 · HIỂU YÊU CẦU</span>
+        </div>
+        <p class="body-txt reveal r2" style="margin-top:26px; max-width:1650px;">Slot-filling tất định — tìm slot bắt buộc còn thiếu tiếp theo theo thứ tự cố định (destination → people → dates → budget) và render câu hỏi Việt/Anh thật sự sẽ gửi cho user.</p>
+        <div class="node-cols reveal r3">
+          <div class="pill-card" style="flex:1.3;">
+            <div class="card-tag">Key behavior</div>
+            <ul>
+              <li>Có dòng "không bắt được ý" khi slot vừa hỏi lại vẫn chưa có giá trị hợp lệ</li>
+              <li>Thứ tự slot cố định trong <code>SlotSpec</code>, không đổi theo ngữ cảnh</li>
+            </ul>
+          </div>
+          <div class="pill-card" style="flex:0.8;">
+            <div class="card-tag">Routes to</div>
+            <p class="note-txt">respond (hỏi) · intake_qa (câu hỏi giữa chừng) · supervisor (đủ slot)</p>
+            <div class="card-tag" style="background:var(--mint); margin-top:22px;">LLM calls</div>
+            <p class="note-txt">Không có (render template)</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ NODE 07 — intake_qa ============ -->
+    <section class="slide" id="s24" data-appendix="true">
+      <div class="slide-pad">
+        <div class="node-top reveal r1">
+          <div>
+            <div class="pill header-tag" style="background:var(--sky);">Patch pipeline · Node 07/14</div>
+            <div class="node-fn">intake_qa()</div>
+          </div>
+          <div class="pill file-tag reveal r2">nodes/intake_qa.py:66-92</div>
+        </div>
+        <div class="phase-mini reveal r2">
+          <div class="pm-dot active">1</div><div class="pm-line"></div><div class="pm-dot">2</div><div class="pm-line"></div><div class="pm-dot">3</div>
+          <span class="pm-label label-txt">GIAI ĐOẠN 1 · HIỂU YÊU CẦU</span>
+        </div>
+        <p class="body-txt reveal r2" style="margin-top:26px; max-width:1650px;">Van thoát read-only cho 2 tình huống: (1) user hỏi thật giữa lúc đang bị hỏi slot — trả lời thay vì hỏi lại; (2) patch rỗng vì không nêu giá trị cụ thể — hỏi làm rõ thay vì âm thầm không làm gì.</p>
+        <div class="node-cols reveal r3">
+          <div class="pill-card" style="flex:1.3;">
+            <div class="card-tag">Key behavior</div>
+            <ul>
+              <li>Không tool, không retry</li>
+              <li>Bất kỳ exception nào → trả về <code>{"intake_answer": None}</code>, không chặn turn</li>
+            </ul>
+          </div>
+          <div class="pill-card" style="flex:0.8;">
+            <div class="card-tag">Routes to</div>
+            <p class="note-txt">respond · supervisor</p>
+            <div class="card-tag" style="background:var(--peach); margin-top:22px;">LLM calls</div>
+            <p class="note-txt">1 lần — get_fast_llm, temp 0.2, streaming</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ NODE 08 — supervisor ============ -->
+    <section class="slide" id="s25" data-appendix="true">
+      <div class="slide-pad">
+        <div class="node-top reveal r1">
+          <div>
+            <div class="pill header-tag" style="background:var(--peach);">Worker · Node 08/14</div>
+            <div class="node-fn">supervisor()</div>
+          </div>
+          <div class="pill file-tag reveal r2">nodes/supervisor.py:185-336</div>
+        </div>
+        <div class="phase-mini reveal r2">
+          <div class="pm-dot">1</div><div class="pm-line filled"></div><div class="pm-dot active">2</div><div class="pm-line"></div><div class="pm-dot">3</div>
+          <span class="pm-label label-txt">GIAI ĐOẠN 2 · ĐIỀU PHỐI &amp; THỰC THI</span>
+        </div>
+        <p class="body-txt reveal r2" style="margin-top:26px; max-width:1650px;">Node điều phối thuần túy — <code>all_tasks_done</code> là predicate Python, không gọi LLM. 3 nhánh theo thứ tự: fast path (~90% turn, 0 LLM), LLM path (structured output), fallback (lỗi LLM → suy luận tất định).</p>
+        <div class="node-cols reveal r3">
+          <div class="pill-card" style="flex:1.3;">
+            <div class="card-tag">Key behavior</div>
+            <ul>
+              <li>Fast path: lấy task đầu theo <code>WORKER_ORDER</code>, không gọi LLM</li>
+              <li>LLM path: <code>get_fast_llm(temp=0)</code> + structured output trên <code>SessionManifest</code> gọn (chỉ boolean/count, không dữ liệu thật)</li>
+              <li><code>MAX_SUPERVISOR_ITERATIONS=5</code>, <code>MAX_DAY_REBUILD_HOPS=100</code> tách riêng để itinerary &gt;5 ngày không bị cắt</li>
+              <li>Route cứng <code>list_nearby</code> — fix bug: câu hỏi "gần khách sạn có gì" từng làm sinh lại cả itinerary</li>
+            </ul>
+          </div>
+          <div class="pill-card" style="flex:0.8;">
+            <div class="card-tag">Routes to</div>
+            <p class="note-txt">hotel_node · itinerary_node · booking_node · qa_node · respond</p>
+            <div class="card-tag" style="background:var(--peach); margin-top:22px;">LLM calls</div>
+            <p class="note-txt">0-1 lần (get_fast_llm, temp 0) — chỉ ~10% turn</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ NODE 09 — hotel_node ============ -->
+    <section class="slide" id="s26" data-appendix="true">
+      <div class="slide-pad">
+        <div class="node-top reveal r1">
+          <div>
+            <div class="pill header-tag" style="background:var(--peach);">Worker · Node 09/14</div>
+            <div class="node-fn">hotel_node()</div>
+          </div>
+          <div class="pill file-tag reveal r2">nodes/hotel_node.py:215-521</div>
+        </div>
+        <div class="phase-mini reveal r2">
+          <div class="pm-dot">1</div><div class="pm-line filled"></div><div class="pm-dot active">2</div><div class="pm-line"></div><div class="pm-dot">3</div>
+          <span class="pm-label label-txt">GIAI ĐOẠN 2 · ĐIỀU PHỐI &amp; THỰC THI</span>
+        </div>
+        <p class="body-txt reveal r2" style="margin-top:26px; max-width:1650px;">Áp <code>hotel_preferences</code> làm bộ lọc cứng cấp app qua <code>select_hotel_candidates()</code>. Khi user chọn khách sạn (<code>selected_hotel_id</code>), gọi <code>build_selected_hotel_trip</code> — dựng cả khách sạn VÀ itinerary trong một lần.</p>
+        <div class="node-cols reveal r3">
+          <div class="pill-card" style="flex:1.3;">
+            <div class="card-tag">Key behavior</div>
+            <ul>
+              <li>Khóa tuyệt đối: từ chối đụng vào <code>trip_data</code> nếu session đã có booking đã thanh toán</li>
+              <li>Có thể <code>interrupt()</code> một lần để hỏi tâm điểm tìm kiếm bán kính khi không tự resolve được</li>
+              <li>Chấm điểm/xếp hạng là Python thuần — xem slide 34 "Công thức chấm điểm khách sạn"</li>
+            </ul>
+          </div>
+          <div class="pill-card" style="flex:0.8;">
+            <div class="card-tag">Routes to</div>
+            <p class="note-txt">budget_check (hết task) · supervisor (còn task)</p>
+            <div class="card-tag" style="background:var(--mint); margin-top:22px;">LLM calls</div>
+            <p class="note-txt">0 trực tiếp trong node này</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ NODE 10 — itinerary_node ============ -->
+    <section class="slide" id="s27" data-appendix="true">
+      <div class="slide-pad">
+        <div class="node-top reveal r1">
+          <div>
+            <div class="pill header-tag" style="background:var(--peach);">Worker · Node 10/14</div>
+            <div class="node-fn">itinerary_node()</div>
+          </div>
+          <div class="pill file-tag reveal r2">nodes/itinerary_node.py:393-701</div>
+        </div>
+        <div class="phase-mini reveal r2">
+          <div class="pm-dot">1</div><div class="pm-line filled"></div><div class="pm-dot active">2</div><div class="pm-line"></div><div class="pm-dot">3</div>
+          <span class="pm-label label-txt">GIAI ĐOẠN 2 · ĐIỀU PHỐI &amp; THỰC THI</span>
+        </div>
+        <p class="body-txt reveal r2" style="margin-top:26px; max-width:1650px;">Trình <b>chỉnh sửa</b> itinerary, không phải trình dựng — mọi action cần <code>trip_data</code> đã tồn tại (chỉ hotel_node tạo ra nó). Đọc action từ <code>task_description</code> JSON: <code>rebuild_days</code>, <code>edit_item</code>, <code>lock_days</code>, <code>list_nearby</code>.</p>
+        <div class="node-cols reveal r3">
+          <div class="pill-card" style="flex:1.3;">
+            <div class="card-tag">Key behavior</div>
+            <ul>
+              <li><code>rebuild_days</code> lặp qua subgraph <code>rebuild_day</code> cho từng ngày, tự re-queue vào <code>pending_tasks</code></li>
+              <li><code>edit_item</code> dùng bộ 9-operation <code>trip_edit_planner</code> có sẵn</li>
+              <li><code>list_nearby</code> chỉ đọc — không đụng <code>trip_data</code></li>
+            </ul>
+          </div>
+          <div class="pill-card" style="flex:0.8;">
+            <div class="card-tag">Routes to</div>
+            <p class="note-txt">respond · budget_check · supervisor (loop)</p>
+            <div class="card-tag" style="background:var(--peach); margin-top:22px;">LLM calls</div>
+            <p class="note-txt">1 lần sinh day-theme — CHỈ khi Tier 1 Cache miss</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ NODE 11 — booking_node ============ -->
+    <section class="slide" id="s28" data-appendix="true">
+      <div class="slide-pad">
+        <div class="node-top reveal r1">
+          <div>
+            <div class="pill header-tag" style="background:var(--peach);">Worker · Node 11/14</div>
+            <div class="node-fn">booking_node()</div>
+          </div>
+          <div class="pill file-tag reveal r2">nodes/booking_node.py:35-42</div>
+        </div>
+        <div class="phase-mini reveal r2">
+          <div class="pm-dot">1</div><div class="pm-line filled"></div><div class="pm-dot active">2</div><div class="pm-line"></div><div class="pm-dot">3</div>
+          <span class="pm-label label-txt">GIAI ĐOẠN 2 · ĐIỀU PHỐI &amp; THỰC THI</span>
+        </div>
+        <p class="body-txt reveal r2" style="margin-top:26px; max-width:1650px;"><b>Luôn từ chối</b> — <code>_IMPOSSIBLE=True</code> cứng, supervisor không bao giờ thật sự delegate vào đây. Tồn tại để turn có ý định đặt phòng nhận phản hồi trung thực thay vì rơi vào ack chung chung.</p>
+        <div class="node-cols reveal r3">
+          <div class="pill-card" style="flex:1.3; background:var(--yellow);">
+            <div class="card-tag" style="background:var(--white);">Quan trọng — phân biệt rõ</div>
+            <p class="note-txt" style="color:var(--ink);">Đặt phòng &amp; thanh toán VNPay <b>thật sự tồn tại và hoạt động</b> (booking_service.py, payment_service.py, vnpay_service.py) — nhưng đi qua REST route riêng (api/routes.py), <b>không</b> qua chat agent này. Chat agent không thể tự đặt phòng.</p>
+          </div>
+          <div class="pill-card" style="flex:0.8;">
+            <div class="card-tag">Routes to</div>
+            <p class="note-txt">budget_check (ngay lập tức)</p>
+            <div class="card-tag" style="background:var(--mint); margin-top:22px;">LLM calls</div>
+            <p class="note-txt">Không có</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ NODE 12 — qa_node ============ -->
+    <section class="slide" id="s29" data-appendix="true">
+      <div class="slide-pad">
+        <div class="node-top reveal r1">
+          <div>
+            <div class="pill header-tag" style="background:var(--peach);">Worker · Node 12/14</div>
+            <div class="node-fn">qa_node()</div>
+          </div>
+          <div class="pill file-tag reveal r2">nodes/qa_node.py:186-195</div>
+        </div>
+        <div class="phase-mini reveal r2">
+          <div class="pm-dot">1</div><div class="pm-line filled"></div><div class="pm-dot active">2</div><div class="pm-line"></div><div class="pm-dot">3</div>
+          <span class="pm-label label-txt">GIAI ĐOẠN 2 · ĐIỀU PHỐI &amp; THỰC THI</span>
+        </div>
+        <p class="body-txt reveal r2" style="margin-top:26px; max-width:1650px;">Không phải hàm thường — 1 subgraph <code>create_react_agent</code> (ReAct loop). Read-only theo <b>cấu trúc</b>: schema <code>QAState</code> chỉ mở rộng field đọc — <code>travel_state</code>/<code>pending_tasks</code>/<code>task_results</code> không thể chạm tới, không chỉ là quy ước.</p>
+        <div class="node-cols reveal r3">
+          <div class="pill-card" style="flex:1.3;">
+            <div class="card-tag">Key behavior</div>
+            <ul>
+              <li>Tools: get_hotel_options, get_trip_plan, query_hotel, query_hotel_rooms, search_places</li>
+              <li><code>pre_model_hook</code> cắt transcript về ngân sách 30.000 token trước mỗi lời gọi LLM trong loop</li>
+            </ul>
+          </div>
+          <div class="pill-card" style="flex:0.8;">
+            <div class="card-tag">Routes to</div>
+            <p class="note-txt">respond (luôn luôn, edge thường)</p>
+            <div class="card-tag" style="background:var(--peach); margin-top:22px;">LLM calls</div>
+            <p class="note-txt">N lần thay đổi — giới hạn bởi token budget, không giới hạn số lượt</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ NODE 13 — budget_check ============ -->
+    <section class="slide" id="s30" data-appendix="true">
+      <div class="slide-pad">
+        <div class="node-top reveal r1">
+          <div>
+            <div class="pill header-tag" style="background:var(--mint);">Deterministic · Node 13/14</div>
+            <div class="node-fn">budget_check()</div>
+          </div>
+          <div class="pill file-tag reveal r2">nodes/budget_check.py:307-457</div>
+        </div>
+        <div class="phase-mini reveal r2">
+          <div class="pm-dot">1</div><div class="pm-line filled"></div><div class="pm-dot">2</div><div class="pm-line filled"></div><div class="pm-dot active">3</div>
+          <span class="pm-label label-txt">GIAI ĐOẠN 3 · HOÀN TẤT</span>
+        </div>
+        <p class="body-txt reveal r2" style="margin-top:26px; max-width:1650px;">Python thuần, 0 LLM. Pass-through nếu <code>budget.trip_total</code> chưa set. Nếu vượt ngân sách: suy ra trần giá khách sạn/đêm từ phần còn lại sau khi trừ chi phí hoạt động, chạy <b>đúng 1 lần</b> re-plan.</p>
+        <div class="node-cols reveal r3">
+          <div class="pill-card" style="flex:1.3;">
+            <div class="card-tag">Key behavior</div>
+            <ul>
+              <li>Re-plan: tìm lại khách sạn dưới trần giá (loại khách sạn hiện tại), rebuild chỉ những ngày chưa khóa</li>
+              <li>Không bao giờ lặp tối ưu vô hạn — đúng 1 pass</li>
+              <li>Không bao giờ âm thầm trả về plan vượt ngân sách mà không báo cho user</li>
+            </ul>
+          </div>
+          <div class="pill-card" style="flex:0.8;">
+            <div class="card-tag">Routes to</div>
+            <p class="note-txt">respond (luôn luôn)</p>
+            <div class="card-tag" style="background:var(--mint); margin-top:22px;">LLM calls</div>
+            <p class="note-txt">Không có</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ NODE 14 — respond ============ -->
+    <section class="slide" id="s31" data-appendix="true">
+      <div class="slide-pad">
+        <div class="node-top reveal r1">
+          <div>
+            <div class="pill header-tag" style="background:var(--mint);">Deterministic · Node 14/14</div>
+            <div class="node-fn">respond()</div>
+          </div>
+          <div class="pill file-tag reveal r2">nodes/respond.py:284-381</div>
+        </div>
+        <div class="phase-mini reveal r2">
+          <div class="pm-dot">1</div><div class="pm-line filled"></div><div class="pm-dot">2</div><div class="pm-line filled"></div><div class="pm-dot active">3</div>
+          <span class="pm-label label-txt">GIAI ĐOẠN 3 · HOÀN TẤT</span>
+        </div>
+        <p class="body-txt reveal r2" style="margin-top:26px; max-width:1650px;">Mọi nhánh của graph đều chảy qua đây trước END. Dựng câu trả lời theo thứ tự ưu tiên cố định, rồi gói toàn bộ <code>PlannerChatResponse</code> gửi về frontend.</p>
+        <div class="node-cols reveal r3">
+          <div class="pill-card" style="flex:1.3;">
+            <div class="card-tag">Thứ tự ưu tiên câu trả lời</div>
+            <ul>
+              <li>1. Câu hỏi intake_qa + câu hỏi ask_slot (ghép lại)</li>
+              <li>2. <code>task_results[-1]["reply"]</code> gần nhất</li>
+              <li>3. Tin nhắn AI chưa tiêu thụ trong <code>messages</code> (từ qa_node)</li>
+              <li>4. Ack chung "Đã cập nhật thông tin chuyến đi." — log ở mức <b>ERROR</b> như lưới an toàn phát hiện bug</li>
+            </ul>
+          </div>
+          <div class="pill-card" style="flex:0.8;">
+            <div class="card-tag">Routes to</div>
+            <p class="note-txt">END</p>
+            <div class="card-tag" style="background:var(--mint); margin-top:22px;">LLM calls</div>
+            <p class="note-txt">Không có</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ D1 — LLM MODEL CHOICE ============ -->
+    <section class="slide" id="s32" data-appendix="true">
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--peach);">Phụ lục · Q&amp;A</div>
+        <h2 class="h-headline reveal r2" style="margin-top:20px; font-size:42px;">Lựa chọn mô hình AI &amp; so sánh</h2>
+        <p class="mono-meta reveal r2" style="margin-top:8px;">Cấu hình đang chạy thật (backend/.env) — không phải ví dụ trong README</p>
+
+        <div class="node-cols reveal r3" style="margin-top:26px;">
+          <div class="pill-card" style="flex:1; padding:0; overflow:hidden;">
+            <div style="background:var(--peach); padding:16px 24px; border-bottom:2px solid var(--outline); border-radius:2rem 2rem 0 0;"><span class="pill mini-chip" style="background:transparent; border:none; padding:0;">Reasoning LLM</span></div>
+            <div style="padding:22px 24px 26px 24px;">
+              <div class="node-fn" style="font-size:28px; margin-top:0;">GPT-5.1</div>
+              <div class="mono-meta" style="font-size:12.5px; opacity:0.75; margin-top:2px;">LLM_MODEL=gpt-5.1-2025-11-13</div>
+              <p class="note-txt" style="margin-top:10px;">extract_patch · sinh day-theme khi cache miss</p>
+            </div>
+          </div>
+          <div class="pill-card" style="flex:1; padding:0; overflow:hidden;">
+            <div style="background:var(--sky); padding:16px 24px; border-bottom:2px solid var(--outline); border-radius:2rem 2rem 0 0;"><span class="pill mini-chip" style="background:transparent; border:none; padding:0;">Fast LLM</span></div>
+            <div style="padding:22px 24px 26px 24px;">
+              <div class="node-fn" style="font-size:28px; margin-top:0;">GPT-4o-mini</div>
+              <div class="mono-meta" style="font-size:12.5px; opacity:0.75; margin-top:2px;">LLM_FAST_MODEL=gpt-4o-mini</div>
+              <p class="note-txt" style="margin-top:10px;">supervisor · intake_qa · qa_node (ReAct)</p>
+            </div>
+          </div>
+          <div class="pill-card" style="flex:1; padding:0; overflow:hidden;">
+            <div style="background:var(--mint); padding:16px 24px; border-bottom:2px solid var(--outline); border-radius:2rem 2rem 0 0;"><span class="pill mini-chip" style="background:transparent; border:none; padding:0;">Embeddings</span></div>
+            <div style="padding:22px 24px 26px 24px;">
+              <div class="node-fn" style="font-size:26px; margin-top:0;">BGE-M3</div>
+              <div class="mono-meta" style="font-size:12.5px; opacity:0.75; margin-top:2px;">EMBEDDING_MODEL=@cf/baai/bge-m3</div>
+              <p class="note-txt" style="margin-top:10px;">qua Cloudflare Workers AI — 1024-d, RAG + Tier 1 Cache</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="node-cols reveal r4" style="margin-top:24px;">
+          <div class="pill-card" style="flex:1.2; background:var(--yellow);">
+            <div class="card-tag" style="background:var(--white);">Bằng chứng tuning thật</div>
+            <p class="note-txt" style="color:var(--ink);">Mặc định <code>reasoning_effort="low"</code> cho họ model reasoning (gpt-5.1 nằm trong họ này) sau khi đo được: mức "medium" mặc định của OpenAI tốn <b>76 giây / 1536 token reasoning ẩn</b> — 89% tổng 119s — chỉ để trả lời 1 câu hỏi năng lực đơn giản trong qa_node. (config.py:30-39)</p>
+          </div>
+          <div class="pill-card" style="flex:1;">
+            <div class="card-tag">Factory hỗ trợ 6 provider</div>
+            <div style="margin-top:6px;">
+              <span class="qty-tag">Ollama (fallback tự động)</span>
+              <span class="qty-tag" style="background:var(--peach);">OpenAI — đang dùng</span>
+              <span class="qty-tag">Google Gemini</span>
+              <span class="qty-tag">Anthropic</span>
+              <span class="qty-tag">OpenRouter</span>
+              <span class="qty-tag" style="background:var(--mint);">Cloudflare — đang dùng (embeddings)</span>
+            </div>
+            <p class="note-txt" style="margin-top:12px;">Đổi provider chỉ bằng biến môi trường, không đổi code. Ollama tự động là lưới an toàn khi provider chính lỗi.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ D1B — EMBEDDING MODEL CHOICE ============ -->
+    <section class="slide" id="s33" data-appendix="true">
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--peach);">Phụ lục · Q&amp;A</div>
+        <h2 class="h-headline reveal r2" style="margin-top:20px; font-size:42px;">Vì sao chọn BGE-M3 cho embedding?</h2>
+        <p class="mono-meta reveal r2" style="margin-top:8px;">EMBEDDING_MODEL=@cf/baai/bge-m3 qua Cloudflare Workers AI · 1024-d</p>
+
+        <div class="node-cols reveal r3" style="margin-top:22px;">
+          <div class="pill-card" style="flex:1; padding:22px 24px;">
+            <div class="card-tag">Đa ngôn ngữ Việt/Anh</div>
+            <p class="note-txt" style="font-size:15px;">BGE-M3 huấn luyện đa ngôn ngữ (100+), phù hợp truy vấn du lịch song ngữ mà không cần dịch trước.</p>
+          </div>
+          <div class="pill-card" style="flex:1; padding:22px 24px;">
+            <div class="card-tag">Khớp sẵn schema 1024-d</div>
+            <p class="note-txt" style="font-size:15px;"><code>EMBEDDING_DIMENSION=1024</code> bị ép cứng trong code (itinerary_reuse.py) — ghi vector sai chiều sẽ raise lỗi ngay.</p>
+          </div>
+          <div class="pill-card" style="flex:1; padding:22px 24px;">
+            <div class="card-tag">Không khóa 1 nhà cung cấp</div>
+            <p class="note-txt" style="font-size:15px;">Cùng model bge-m3 chạy được qua Ollama (local), Cloudflare Workers AI, hoặc OpenRouter — đổi hạ tầng mà không cần re-embed.</p>
+          </div>
+        </div>
+
+        <div class="pill-card reveal r4" style="margin-top:22px; padding:24px 28px;">
+          <table class="cmp-table">
+            <thead>
+              <tr>
+                <th>Model</th>
+                <th>Đa ngôn ngữ VN</th>
+                <th class="center">Chiều vector</th>
+                <th>Chi phí</th>
+                <th class="center">Tự host được</th>
+                <th>Khớp schema hiện tại</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="current">
+                <td>BGE-M3 (đang dùng)</td>
+                <td>Mạnh — tối ưu đa ngôn ngữ</td>
+                <td class="center">1024</td>
+                <td>Free tier (Cloudflare) / miễn phí (Ollama)</td>
+                <td class="center">Có</td>
+                <td>✓ Khớp sẵn</td>
+              </tr>
+              <tr>
+                <td>OpenAI text-embedding-3-small</td>
+                <td>Khá, thiên tiếng Anh</td>
+                <td class="center">1536</td>
+                <td>Trả phí / token</td>
+                <td class="center">Không</td>
+                <td>✗ Cần re-embed</td>
+              </tr>
+              <tr>
+                <td>Google text-embedding-004</td>
+                <td>Khá</td>
+                <td class="center">768</td>
+                <td>Trả phí / token</td>
+                <td class="center">Không</td>
+                <td>✗ Cần re-embed</td>
+              </tr>
+              <tr>
+                <td>Cohere embed-multilingual-v3</td>
+                <td>Mạnh</td>
+                <td class="center">1024</td>
+                <td>Trả phí / token</td>
+                <td class="center">Không</td>
+                <td>Dim khớp, nhưng vector space khác → vẫn cần re-embed</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="mono-meta reveal r4" style="margin-top:12px; font-size:13.5px;">Đổi model embedding không chỉ là đổi API key — mọi vector đã lưu (hotel, attraction, lịch trình đã cache) phải re-embed lại vì vector space không tương thích giữa các model.</p>
+      </div>
+    </section>
+
+    <!-- ============ D2 — HOTEL SCORING ============ -->
+    <section class="slide" id="s34" data-appendix="true">
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--peach);">Phụ lục · Q&amp;A</div>
+        <h2 class="h-headline reveal r2" style="margin-top:20px; font-size:42px;">Công thức chấm điểm khách sạn</h2>
+        <p class="mono-meta reveal r2" style="margin-top:8px;">services/hotel_selection.py</p>
+
+        <div style="display:flex; align-items:stretch; gap:14px; margin-top:24px;" class="reveal r3">
+          <div class="pill-card" style="flex:1; padding:20px 22px;">
+            <span class="pill mini-chip" style="background:var(--white);">Stage 1</span>
+            <div class="h-card" style="font-size:19px; margin-top:12px;">Lọc cứng</div>
+            <p class="body-sm" style="font-size:14px; margin-top:6px;">Giá (RPC) · rating · amenities · review · số khách — không bao giờ là điểm cộng mềm</p>
+          </div>
+          <div class="flow-arrow-col"><div class="diagram-connector"></div></div>
+          <div class="pill-card" style="flex:1; padding:20px 22px;">
+            <span class="pill mini-chip" style="background:var(--white);">Stage 2</span>
+            <div class="h-card" style="font-size:19px; margin-top:12px;">Semantic search</div>
+            <p class="body-sm" style="font-size:14px; margin-top:6px;">bge-m3 embed → Supabase RPC match_hotels_with_rooms, ngưỡng 0.35</p>
+          </div>
+          <div class="flow-arrow-col"><div class="diagram-connector"></div></div>
+          <div class="pill-card" style="flex:1; padding:20px 22px; background:var(--yellow);">
+            <span class="pill mini-chip" style="background:var(--white);">Stage 3</span>
+            <div class="h-card" style="font-size:19px; margin-top:12px;">Chấm điểm mềm</div>
+            <p class="body-sm" style="font-size:14px; margin-top:6px; color:var(--ink);">2 công thức song song — xem bên dưới</p>
+          </div>
+        </div>
+
+        <div class="pill-card reveal r4" style="margin-top:22px; padding:24px 30px;">
+          <div class="card-tag">_composite_score — dùng để SẮP XẾP (recommendation_score)</div>
+          <div class="bar-chart" style="margin-top:12px;">
+            <div class="bar-row"><span class="bar-label">Similarity</span><div class="bar-track"><div class="bar-fill" style="width:55%; background:var(--coral);"></div></div><span class="bar-val">0.55</span></div>
+            <div class="bar-row"><span class="bar-label">Rating</span><div class="bar-track"><div class="bar-fill" style="width:20%; background:var(--sky);"></div></div><span class="bar-val">0.20</span></div>
+            <div class="bar-row"><span class="bar-label">Review score</span><div class="bar-track"><div class="bar-fill" style="width:15%; background:var(--lime);"></div></div><span class="bar-val">0.15</span></div>
+            <div class="bar-row"><span class="bar-label">Price fit</span><div class="bar-track"><div class="bar-fill" style="width:10%; background:var(--yellow);"></div></div><span class="bar-val">0.10</span></div>
+          </div>
+          <p class="note-txt" style="margin-top:12px;">+ budget_bonus (≤0.05, decay tuyến tính quanh giá mục tiêu) + amenity_bonus (0.03/tag khớp, cộng dồn tối đa 0.20)</p>
+        </div>
+
+        <div class="pill-card reveal r4" style="margin-top:16px; padding:18px 28px; background:var(--yellow);">
+          <p class="body-sm" style="color:var(--ink);">⚠ <b>match_score</b> hiển thị cho user dùng công thức KHÁC (<code>_realistic_match_score</code>: 0.4×star + 0.6×review, trộn thêm price/amenity fit) — độc lập hoàn toàn với điểm sắp xếp ở trên, dễ gây nhầm khi debug thứ hạng.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ D3 — ITINERARY ALGORITHM ============ -->
+    <section class="slide" id="s35" data-appendix="true">
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--peach);">Phụ lục · Q&amp;A</div>
+        <h2 class="h-headline reveal r2" style="margin-top:20px; font-size:42px;">Thuật toán lập lịch trình</h2>
+        <p class="mono-meta reveal r2" style="margin-top:8px; font-size:14.5px;">services/trip_scheduler.py (1458 dòng, hàm thuần Python) — greedy theo khung giờ cố định. KHÔNG phải constraint solver, KHÔNG phải TSP cổ điển.</p>
+
+        <div class="pill-card reveal r3" style="margin-top:18px; padding:26px 30px 22px 30px;">
+          <div class="card-tag">8 khung giờ cố định / ngày</div>
+          <div class="mini-tl" style="margin-top:24px;">
+            <div class="mt-stop"><div class="dot"></div><div class="mt-time">07:00</div><div class="mt-lbl">Breakfast</div></div>
+            <div class="mt-stop"><div class="dot accent2" style="background:var(--sky);"></div><div class="mt-time">~08:15</div><div class="mt-lbl">Sáng</div></div>
+            <div class="mt-stop"><div class="dot"></div><div class="mt-time">11:00-12:30</div><div class="mt-lbl">Lunch</div></div>
+            <div class="mt-stop"><div class="dot accent2"></div><div class="mt-time">13:00</div><div class="mt-lbl">Nghỉ KS (90p)</div></div>
+            <div class="mt-stop"><div class="dot accent2" style="background:var(--sky);"></div><div class="mt-time">~15:30</div><div class="mt-lbl">Chiều</div></div>
+            <div class="mt-stop"><div class="dot accent"></div><div class="mt-time">~17:45</div><div class="mt-lbl">Coffee</div></div>
+            <div class="mt-stop"><div class="dot"></div><div class="mt-time">~18:45</div><div class="mt-lbl">Dinner</div></div>
+            <div class="mt-stop"><div class="dot" style="background:var(--cream);"></div><div class="mt-time">≤20:30</div><div class="mt-lbl">Tối (tùy chọn)</div></div>
+          </div>
+        </div>
+
+        <div class="node-cols reveal r4" style="margin-top:18px;">
+          <div class="pill-card" style="flex:1;">
+            <div class="card-tag">Scoring — CÓ điểm neo</div>
+            <div class="bar-chart" style="margin-top:8px;">
+              <div class="bar-row"><span class="bar-label" style="width:120px; font-size:13px;">similarity</span><div class="bar-track" style="height:20px;"><div class="bar-fill" style="width:45%; background:var(--coral);"></div></div><span class="bar-val" style="width:50px; font-size:12.5px;">0.45</span></div>
+              <div class="bar-row"><span class="bar-label" style="width:120px; font-size:13px;">dist→anchor</span><div class="bar-track" style="height:20px;"><div class="bar-fill" style="width:35%; background:var(--sky);"></div></div><span class="bar-val" style="width:50px; font-size:12.5px;">0.35</span></div>
+              <div class="bar-row"><span class="bar-label" style="width:120px; font-size:13px;">dist→hotel</span><div class="bar-track" style="height:20px;"><div class="bar-fill" style="width:10%; background:var(--lime);"></div></div><span class="bar-val" style="width:50px; font-size:12.5px;">0.10</span></div>
+              <div class="bar-row"><span class="bar-label" style="width:120px; font-size:13px;">rating</span><div class="bar-track" style="height:20px;"><div class="bar-fill" style="width:10%; background:var(--yellow);"></div></div><span class="bar-val" style="width:50px; font-size:12.5px;">0.10</span></div>
+            </div>
+            <p class="note-txt" style="margin-top:10px; font-size:14px;">− 0.55 × phạt đường vòng (detour/route_limit)</p>
+          </div>
+          <div class="pill-card" style="flex:1;">
+            <div class="card-tag">Gom cụm bán kính</div>
+            <div style="display:flex; align-items:center; gap:10px; margin-top:12px;">
+              <span class="qty-tag" style="background:var(--peach);">5 km</span>
+              <span style="font-family:'Space Grotesk',monospace; font-weight:700;">→</span>
+              <span class="qty-tag" style="background:var(--sky);">10 km</span>
+              <span style="font-family:'Space Grotesk',monospace; font-weight:700;">→</span>
+              <span class="qty-tag" style="background:var(--lime);">15 km</span>
+            </div>
+            <p class="note-txt" style="margin-top:12px; font-size:14px;">Nới dần chỉ khi bán kính chặt hơn ra 0 kết quả. Khoảng cách Haversine thẳng (không phải ETA routing thật) — thời gian di chuyển = distance/25km/h, làm tròn lên 5 phút, sàn 10 phút.</p>
+          </div>
+        </div>
+
+        <div class="node-cols reveal r5" style="margin-top:16px;">
+          <div class="pill-card" style="flex:1; padding:18px 22px;">
+            <div class="card-tag">Meal/rest insertion</div>
+            <p class="note-txt" style="font-size:14.5px;">Bữa ăn bị hotel-covered → thay bằng item tại khách sạn. Đúng 1 block nghỉ 90 phút lúc 13:00/ngày.</p>
+          </div>
+          <div class="pill-card" style="flex:1; padding:18px 22px;">
+            <div class="card-tag">Repair pass</div>
+            <p class="note-txt" style="font-size:14.5px;"><code>validate_or_repair_day</code>: gỡ trùng nghỉ, ép ≤1 điểm thiên nhiên/ngày, đẩy hoạt động biển khỏi giữa trưa.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ D4B — TIER 1 CACHE OVERVIEW ============ -->
+    <section class="slide" id="s36" data-appendix="true">
+      <div class="atmosphere" style="background:
+        radial-gradient(ellipse at 85% 20%, rgba(232,93,78,0.10), transparent 55%);"></div>
+      <div class="slide-pad">
+        <div style="display:flex; gap:60px; align-items:center; flex:1;">
+          <div style="flex:1.15;">
+            <div class="pill header-tag reveal r1" style="background:var(--peach);">Phụ lục · Q&amp;A</div>
+            <h2 class="h-quote reveal r2" style="margin-top:26px;">Tier 1 Cache: tái sử dụng lịch trình thông minh</h2>
+            <p class="body-txt reveal r3" style="margin-top:24px;">Mỗi lịch trình mới được mã hoá thành fingerprint ngữ nghĩa bằng mô hình embedding BGE-M3. Khi một yêu cầu tương tự xuất hiện, hệ thống lấy lại template gần giống thay vì lập lịch lại từ đầu — giúp phản hồi nhanh hơn và giảm tải cho LLM.</p>
+            <div class="reveal r4" style="display:flex; align-items:center; gap:16px; margin-top:22px;">
+              <div class="card-icon" style="background:var(--sky);">F</div>
+              <span class="mono-meta" style="font-size:17px; font-weight:600;">Fingerprint BGE-M3</span>
+            </div>
+            <div class="reveal r5" style="display:flex; align-items:center; gap:16px; margin-top:16px;">
+              <div class="card-icon" style="background:var(--lime);">D</div>
+              <span class="mono-meta" style="font-size:17px; font-weight:600;">Supabase pgvector (bge-m3, 1024-d)</span>
+            </div>
+          </div>
+          <div class="stat-pill tilt-n2 reveal r6" style="flex:0.85; padding:48px 28px;">
+            <div class="stat-num" style="font-size:70px;">88%</div>
+            <p>ngưỡng tương đồng tối thiểu để tái sử dụng lịch trình mẫu</p>
+            <span class="pill mini-chip" style="margin-top:18px;">Similarity threshold</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ D4 — TIER 1 CACHE DEEP DIVE ============ -->
+    <section class="slide" id="s37" data-appendix="true">
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--peach);">Phụ lục · Q&amp;A</div>
+        <h2 class="h-headline reveal r2" style="margin-top:20px; font-size:42px;">Tier 1 Cache — chi tiết</h2>
+        <div class="node-cols reveal r3" style="margin-top:24px;">
+          <div class="pill-card" style="flex:1;">
+            <div class="card-tag">Fingerprint &amp; ngưỡng</div>
+            <ul>
+              <li><code>ITINERARY_REUSE_TIER1_THRESHOLD</code> — trip_planner.py:69, mặc định <b>0.88</b>, override được qua env</li>
+              <li>Fingerprint: ghép text (destination, duration, adults/children, sở thích đã sort, planning_constraints canonical JSON) → embed bge-m3 (1024-d)</li>
+              <li>Gửi vector qua Supabase RPC <code>match_itineraries</code></li>
+            </ul>
+          </div>
+          <div class="pill-card" style="flex:1;">
+            <div class="card-tag">Lọc cứng TRƯỚC similarity</div>
+            <p class="note-txt">destination_id · duration_days · hotel_id (bắt buộc) · planning_constraints — phải khớp <b>chính xác</b> mới xét đến % tương đồng.</p>
+          </div>
+        </div>
+        <div class="pill-card reveal r4" style="margin-top:22px; padding:26px 30px 20px 30px;">
+          <div class="card-tag">classify_reuse_candidate() — 7 bước kiểm tra bảo thủ, theo thứ tự</div>
+          <div class="mini-tl" style="margin-top:24px;">
+            <div class="mt-stop" style="width:14%;"><div class="dot"></div><div class="mt-lbl" style="margin-top:9px;">Destination khớp</div></div>
+            <div class="mt-stop" style="width:14%;"><div class="dot"></div><div class="mt-lbl" style="margin-top:9px;">Hotel khớp</div></div>
+            <div class="mt-stop" style="width:14%;"><div class="dot"></div><div class="mt-lbl" style="margin-top:9px;">Duration khớp</div></div>
+            <div class="mt-stop" style="width:14%;"><div class="dot"></div><div class="mt-lbl" style="margin-top:9px;">Constraints khớp</div></div>
+            <div class="mt-stop" style="width:14%;"><div class="dot"></div><div class="mt-lbl" style="margin-top:9px;">Status Finalized</div></div>
+            <div class="mt-stop" style="width:14%;"><div class="dot accent"></div><div class="mt-lbl" style="margin-top:9px;">Similarity ≥ 0.88</div></div>
+            <div class="mt-stop" style="width:14%;"><div class="dot" style="background:var(--lime);"></div><div class="mt-lbl" style="margin-top:9px;">Bundle hợp lệ (≥7 item/ngày)</div></div>
+          </div>
+        </div>
+
+        <div class="node-cols reveal r5" style="margin-top:20px;">
+          <div class="pill-card" style="flex:1; padding:20px 26px; background:var(--lime);">
+            <span class="pill mini-chip" style="background:var(--white);">HIT</span>
+            <p class="body-sm" style="margin-top:10px; color:var(--ink);">Rebuild itinerary QUANH khách sạn hiện tại, dùng lại <code>day_themes</code> cũ — không copy y nguyên.</p>
+          </div>
+          <div class="pill-card" style="flex:1; padding:20px 26px; background:var(--peach);">
+            <span class="pill mini-chip" style="background:var(--white);">MISS</span>
+            <p class="body-sm" style="margin-top:10px; color:var(--ink);">Rơi xuống pipeline sinh theme bằng LLM (gpt-5.1) + scheduler bình thường.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ D5 — RAG PIPELINE ============ -->
+    <section class="slide" id="s38" data-appendix="true">
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--peach);">Phụ lục · Q&amp;A</div>
+        <h2 class="h-headline reveal r2" style="margin-top:20px; font-size:42px;">Pipeline tìm kiếm ngữ nghĩa (RAG)</h2>
+        <p class="mono-meta reveal r2" style="margin-top:8px;">Embedding lưu &amp; query hoàn toàn trên Supabase pgvector — không hybrid keyword/BM25, không reranker model</p>
+
+        <div class="timeline-row reveal r3" style="margin-top:52px;">
+          <div class="timeline-step">
+            <div class="step-node">1</div>
+            <h4>Trích filter</h4>
+            <p>(tùy chọn) LLM đọc category/giá/rating từ câu hỏi tự do</p>
+          </div>
+          <div class="timeline-step">
+            <div class="step-node">2</div>
+            <h4>Embed</h4>
+            <p>bge-m3 → vector 1024-d</p>
+          </div>
+          <div class="timeline-step">
+            <div class="step-node">3</div>
+            <h4>pgvector RPC</h4>
+            <p>Cosine similarity, ngưỡng 0.35 (hotel) / 0.40 (attraction)</p>
+          </div>
+          <div class="timeline-step">
+            <div class="step-node">4</div>
+            <h4>Lọc + degrade</h4>
+            <p>0 kết quả sau lọc chặt → trả về kết quả chưa lọc, không bao giờ rỗng</p>
+          </div>
+          <div class="timeline-step">
+            <div class="step-node" style="background:var(--yellow);">5</div>
+            <h4>Hydrate</h4>
+            <p>Query lần 2 lấy đầy đủ field canonical theo ID đã match</p>
+          </div>
+        </div>
+
+        <div class="pill-card reveal r4" style="margin-top:40px; padding:24px 30px;">
+          <div class="card-tag">Biến thể tiered — dùng cho trip_scheduler</div>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:10px; flex-wrap:wrap;">
+            <span class="qty-tag">3km / 0.40</span><span>→</span>
+            <span class="qty-tag">3km / 0.25</span><span>→</span>
+            <span class="qty-tag">8km / 0.40</span><span>→</span>
+            <span class="qty-tag">12km / 0.25</span>
+          </div>
+          <p class="note-txt" style="margin-top:8px;">Mở rộng dần từng tier — dừng ngay khi đủ số lượng ứng viên cần.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ D6 — SESSION & STATE ============ -->
+    <section class="slide" id="s39" data-appendix="true">
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--peach);">Phụ lục · Q&amp;A</div>
+        <h2 class="h-headline reveal r2" style="margin-top:20px; font-size:42px;">Quản lý session &amp; state</h2>
+        <div class="node-cols reveal r3" style="margin-top:24px;">
+          <div class="stat-pill" style="flex:1;">
+            <div class="stat-num" style="font-size:44px;">2h</div>
+            <p style="margin-top:4px;">TTL SessionRegistry</p>
+          </div>
+          <div class="stat-pill" style="flex:1;">
+            <div class="stat-num" style="font-size:44px; color:var(--violet);">200</div>
+            <p style="margin-top:4px;">Cap session / process</p>
+          </div>
+          <div class="stat-pill" style="flex:1;">
+            <div class="stat-num" style="font-size:44px; color:var(--sky);">1</div>
+            <p style="margin-top:4px;">Uvicorn worker (in-memory)</p>
+          </div>
+        </div>
+
+        <div class="pill-card reveal r4" style="margin-top:22px; padding:24px 30px;">
+          <div class="card-tag">Chuỗi khôi phục session (SessionRegistry.get)</div>
+          <div style="display:flex; align-items:center; gap:14px; margin-top:14px; flex-wrap:wrap;">
+            <span class="qty-tag" style="background:var(--sky);">1. In-memory dict</span>
+            <span style="font-family:'Space Grotesk',monospace; font-weight:700;">→</span>
+            <span class="qty-tag" style="background:var(--lime);">2. Supabase sessions row</span>
+            <span style="font-family:'Space Grotesk',monospace; font-weight:700;">→</span>
+            <span class="qty-tag" style="background:var(--peach);">3. Hỏi thẳng checkpointer</span>
+          </div>
+        </div>
+
+        <div class="node-cols reveal r5" style="margin-top:18px;">
+          <div class="pill-card" style="flex:1; padding:18px 22px;">
+            <div class="card-tag">TravelGraphState</div>
+            <p class="note-txt" style="font-size:14.5px;">State thật của LangGraph mỗi turn: messages, travel_state, patch fields, pending_tasks/task_results. <code>trip_data</code> cố tình để NGOÀI travel_state — round-trip dict sẽ âm thầm drop field lạ.</p>
+          </div>
+          <div class="pill-card" style="flex:1; padding:18px 22px;">
+            <div class="card-tag">Checkpointer</div>
+            <p class="note-txt" style="font-size:14.5px;">Mặc định <code>memory</code>; production dùng <code>PostgresSaver</code>. CLI/script <b>luôn</b> dùng <code>MemorySaver</code> bất kể config.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ D7 — COST & TOKEN ESTIMATE ============ -->
+    <section class="slide" id="s40" data-appendix="true">
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--peach);">Phụ lục · Q&amp;A</div>
+        <h2 class="h-headline reveal r2" style="margin-top:20px; font-size:42px;">Ước tính chi phí &amp; token</h2>
+        <div class="pill-card reveal r2" style="margin-top:18px; padding:18px 26px; background:var(--yellow); width:fit-content;">
+          <p class="body-sm" style="color:var(--ink);"><b>Sự thật trước tiên:</b> không có token counting hay cost tracking nào được đo đạc trong code hiện tại (đã tìm khắp backend/, eval/, docs/).</p>
+        </div>
+        <div class="pill-card reveal r3" style="margin-top:20px; padding:26px 32px;">
+          <div class="card-tag">Tần suất gọi LLM theo node / turn (đếm từ code)</div>
+          <div class="bar-chart" style="margin-top:14px;">
+            <div class="bar-row"><span class="bar-label">extract_patch</span><div class="bar-track"><div class="bar-fill" style="width:100%; background:var(--coral);"></div></div><span class="bar-val">100% turn · reasoning</span></div>
+            <div class="bar-row"><span class="bar-label">itinerary theme</span><div class="bar-track"><div class="bar-fill" style="width:30%; background:var(--coral);"></div></div><span class="bar-val">chỉ khi cache miss · reasoning</span></div>
+            <div class="bar-row"><span class="bar-label">intake_qa</span><div class="bar-track"><div class="bar-fill" style="width:15%; background:var(--sky);"></div></div><span class="bar-val">có điều kiện · fast</span></div>
+            <div class="bar-row"><span class="bar-label">supervisor</span><div class="bar-track"><div class="bar-fill" style="width:10%; background:var(--sky);"></div></div><span class="bar-val">~10% turn · fast</span></div>
+            <div class="bar-row"><span class="bar-label">qa_node</span><div class="bar-track"><div class="bar-fill" style="width:100%; background:repeating-linear-gradient(45deg, var(--sky), var(--sky) 8px, rgba(26,26,26,0.18) 8px, rgba(26,26,26,0.18) 16px);"></div></div><span class="bar-val">N lần, trần 30.000 token · fast</span></div>
+          </div>
+          <p class="note-txt" style="margin-top:14px;"><b>0 LLM call (Python thuần):</b> load_context, scope_guard, validate_patch, apply_patch, ask_slot, hotel_node (scoring), booking_node, budget_check, respond.</p>
+        </div>
+        <div class="node-cols reveal r4" style="margin-top:18px;">
+          <div class="pill-card" style="flex:1;">
+            <div class="card-tag">Con số thật duy nhất trong code</div>
+            <p class="note-txt" style="font-size:19px;"><code>qa_context_token_budget</code> = <b>30.000 token</b> / lời gọi (config.py)</p>
+          </div>
+          <div class="pill-card" style="flex:1.4; background:var(--yellow);">
+            <div class="card-tag" style="background:var(--white);">Chưa đo — ước tính định tính</div>
+            <p class="note-txt" style="color:var(--ink);">Không có token counting / cost tracking trong code (đã tìm khắp backend/, eval/, docs/). Model thật đang chạy: <b>gpt-5.1</b> (reasoning, đắt hơn/token) cho extract_patch &amp; sinh theme; <b>gpt-4o-mini</b> (fast, rẻ hơn) cho supervisor/intake_qa/qa_node. Muốn số $ chính xác cần bật đo token thật, không suy đoán từ giá công khai.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ D8 — DYNAMIC PRICE / AVAILABILITY ============ -->
+    <section class="slide" id="s41" data-appendix="true">
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--yellow);">Phụ lục · Câu hỏi dự kiến</div>
+        <h2 class="h-headline reveal r2" style="margin-top:20px; font-size:40px;">Giá phòng đổi giữa lúc khách thanh toán thì sao?</h2>
+        <div class="node-cols reveal r3" style="margin-top:26px;">
+          <div class="pill-card" style="flex:1; background:var(--lime);">
+            <div class="card-tag" style="background:var(--white);">Đã có</div>
+            <ul>
+              <li>Đối soát số tiền VNPay thật — làm tròn giá phòng trung bình về VND nguyên, tránh lệch <code>vnp_Amount</code> (fix đã merge)</li>
+              <li>Trạng thái <b>CANCELLED</b> rõ ràng khi VNPay timeout — khách không bao giờ "treo" không biết kết quả</li>
+            </ul>
+          </div>
+          <div class="pill-card" style="flex:1; background:var(--peach);">
+            <div class="card-tag" style="background:var(--white);">Chưa có (trung thực)</div>
+            <ul>
+              <li>Không tìm thấy re-check tồn phòng real-time ngay trước khi tạo booking (đã tìm booking_service.py)</li>
+              <li>Chưa có khóa tồn kho (inventory lock) giữ chỗ trong lúc khách điền thanh toán</li>
+            </ul>
+          </div>
+        </div>
+        <div class="pill-card reveal r4" style="margin-top:20px; padding:20px 28px;">
+          <p class="body-sm">Đây là khoảng cách thật, không phải điểm yếu che giấu — đối soát số tiền &amp; xử lý timeout đã production-ready; giữ chỗ real-time là hạng mục roadmap tiếp theo.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ D9 — WHY KEEP booking_node ============ -->
+    <section class="slide" id="s42" data-appendix="true">
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--yellow);">Phụ lục · Câu hỏi dự kiến</div>
+        <h2 class="h-headline reveal r2" style="margin-top:20px; font-size:36px;">booking_node luôn từ chối — sao không định tuyến ở API gateway?</h2>
+        <div class="formula-box reveal r3" style="margin-top:24px; font-size:16px;">Trích docstring thật của node (booking_node.py):
+
+"plan.md defers booking entirely: no auth model, no inventory source.
+But the supervisor needs a routable destination for a booking request,
+or such a turn would silently fall to respond with nothing said —
+<span class="hl">the exact silent no-op this whole plan exists to eliminate.</span>"</div>
+        <div class="node-cols reveal r4" style="margin-top:22px;">
+          <div class="pill-card" style="flex:1;">
+            <div class="card-tag">3 lý do giữ trong graph</div>
+            <ul>
+              <li>Tránh <b>silent no-op</b> — turn "đặt phòng giúp mình" phải luôn nhận phản hồi trung thực, không rơi vào ack chung chung</li>
+              <li>Đồng nhất framework: mọi worker đi qua cùng <code>pending_tasks</code> → <code>budget_check</code> → <code>respond</code>, không cần đường tắt riêng ở gateway</li>
+              <li>Scaffolding sẵn cho Phase 6: khi có intent-classification thật, chỉ cần đổi <code>_IMPOSSIBLE["booking_node"]</code>, không phải viết lại routing</li>
+            </ul>
+          </div>
+          <div class="pill-card" style="flex:0.8; background:var(--yellow);">
+            <div class="card-tag" style="background:var(--white);">Định tuyến ở API gateway?</div>
+            <p class="note-txt" style="color:var(--ink);">Sẽ tách rời logic "đặt phòng" khỏi vòng đời turn thống nhất — nghĩa là 2 hệ thống lỗi/log riêng biệt cho cùng 1 ý định người dùng.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ D10 — GREEDY VS CSP/ILP ============ -->
+    <section class="slide" id="s43" data-appendix="true">
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--yellow);">Phụ lục · Câu hỏi dự kiến</div>
+        <h2 class="h-headline reveal r2" style="margin-top:20px; font-size:40px;">Sao dùng greedy heuristic thay vì CSP / ILP solver?</h2>
+        <p class="mono-meta reveal r2" style="margin-top:8px;">Lý do kỹ thuật suy ra từ hành vi hệ thống — không phải trích tài liệu thiết kế có sẵn</p>
+        <div class="node-cols reveal r3" style="margin-top:24px;">
+          <div class="pill-card" style="flex:1;">
+            <div class="card-tag">Độ trễ hội thoại</div>
+            <p class="note-txt">Chat cần phản hồi trong vài giây. ILP với ràng buộc mềm (giờ mở cửa, sở thích, khoảng cách, ngân sách) có thể mất nhiều giây–phút để hội tụ tối ưu toàn cục.</p>
+          </div>
+          <div class="pill-card" style="flex:1;">
+            <div class="card-tag">Lịch trình luôn bị sửa lại</div>
+            <p class="note-txt">Khách chỉnh sửa liên tục (<code>edit_item</code>, <code>rebuild_days</code>) — tối ưu toàn cục 1 lần kém giá trị hơn khả năng sửa nhanh + repair pass cục bộ.</p>
+          </div>
+        </div>
+        <div class="node-cols reveal r4" style="margin-top:18px;">
+          <div class="pill-card" style="flex:1;">
+            <div class="card-tag">Ràng buộc thực tế khó mô hình hóa</div>
+            <p class="note-txt">Giờ mở cửa động, bữa ăn đã gồm trong khách sạn, tránh biển giữa trưa... là domain rule — biểu diễn trong ILP sẽ nổ số biến nhanh chóng.</p>
+          </div>
+          <div class="pill-card" style="flex:1;">
+            <div class="card-tag">Giải thích được cho khách</div>
+            <p class="note-txt">Mỗi lựa chọn log lý do cụ thể (<code>adjustments</code>) — nghiệm ILP dạng "hộp đen" khó trả lời "vì sao lịch trình lại như vậy".</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ D11 — CACHE HIT RATE / COST ============ -->
+    <section class="slide" id="s44" data-appendix="true">
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--yellow);">Phụ lục · Câu hỏi dự kiến</div>
+        <h2 class="h-headline reveal r2" style="margin-top:20px; font-size:40px;">Tier 1 Cache hit rate thật? Chi phí LLM / lịch trình?</h2>
+        <div class="pill-card reveal r2" style="margin-top:18px; padding:18px 26px; background:var(--yellow); width:fit-content;">
+          <p class="body-sm" style="color:var(--ink);"><b>Trung thực:</b> chưa có dashboard % hit rate hay $ cost — nhưng dữ liệu thô đã tồn tại, chỉ thiếu lớp tổng hợp.</p>
+        </div>
+        <div class="node-cols reveal r3" style="margin-top:22px;">
+          <div class="pill-card" style="flex:1; background:var(--lime);">
+            <div class="card-tag" style="background:var(--white);">Đã log mỗi lần</div>
+            <ul>
+              <li><code>reuse_miss reason=no_qualified_candidate</code> — log mỗi lần cache miss</li>
+              <li><code>reuse_rejected template=... reason=...</code> — log lý do từ chối từng template ứng viên</li>
+            </ul>
+          </div>
+          <div class="pill-card" style="flex:1;">
+            <div class="card-tag">Cần thêm để có con số thật</div>
+            <ul>
+              <li>Tổng hợp log hit/miss thành metric % theo thời gian (chưa có dashboard)</li>
+              <li>Bật token counting thật cho gpt-5.1 / gpt-4o-mini theo từng lời gọi (chưa instrument)</li>
+            </ul>
+          </div>
+        </div>
+        <div class="pill-card reveal r4" style="margin-top:18px; padding:18px 26px;">
+          <p class="body-sm">Đây là việc thêm 1 lớp aggregation, không phải xây lại từ đầu — hạ tầng log đã sẵn sàng để nối vào.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ APPENDIX — BOOKING FLOW OVERVIEW ============ -->
+    <section class="slide" id="s45" data-appendix="true">
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--white);">Phụ lục · Kiến trúc</div>
+        <h2 class="h-headline reveal r2" style="margin-top:20px;">Luồng đặt phòng &amp; thanh toán VNPay</h2>
+        <p class="mono-meta reveal r2" style="margin-top:8px;">use-room-hold.ts · routes.py · vnpay_service.py</p>
+
+        <div class="timeline-row reveal r3" style="margin-top:38px;">
+          <div class="timeline-step">
+            <div class="step-node">1</div>
+            <h4>Chọn phòng &amp; giữ chỗ</h4>
+            <p>RPC khoá theo room_id + guest_ref, TTL 15 phút</p>
+            <div class="step-connector"></div>
+          </div>
+          <div class="timeline-step">
+            <div class="step-node">2</div>
+            <h4>Đếm ngược</h4>
+            <p>Đọc lại expires_at từ server mỗi giây</p>
+            <div class="step-connector"></div>
+          </div>
+          <div class="timeline-step">
+            <div class="step-node">3</div>
+            <h4>Nhập thông tin khách</h4>
+            <p>Tên, email, số điện thoại</p>
+            <div class="step-connector"></div>
+          </div>
+          <div class="timeline-step">
+            <div class="step-node">4</div>
+            <h4>Tạo giao dịch VNPay</h4>
+            <p>Ký URL HMAC-SHA512, rời hẳn SPA</p>
+            <div class="step-connector"></div>
+          </div>
+          <div class="timeline-step">
+            <div class="step-node" style="background:var(--yellow);">5</div>
+            <h4>2 kênh xác nhận song song</h4>
+            <p>Chỉ 1 trong 2 đáng tin — xem bên dưới</p>
+          </div>
+        </div>
+
+        <div class="node-cols reveal r4" style="margin-top:26px;">
+          <div class="pill-card" style="flex:1; padding:20px 26px; background:var(--lime);">
+            <span class="pill mini-chip" style="background:var(--white);">IPN · Server-to-server</span>
+            <p class="body-sm" style="margin-top:10px; color:var(--ink);">Xác minh chữ ký + đối chiếu số tiền → <code>UPDATE ... WHERE status='PENDING'</code> (chính câu lệnh này LÀ cơ chế idempotent) → xác nhận booking → gửi email. Nguồn xác nhận DUY NHẤT đáng tin.</p>
+          </div>
+          <div class="pill-card" style="flex:1; padding:20px 26px; background:var(--peach);">
+            <span class="pill mini-chip" style="background:var(--white);">Redirect · Hiển thị</span>
+            <p class="body-sm" style="margin-top:10px; color:var(--ink);">Query string có thể bị sửa, không được tin. SPA tải lại toàn bộ, poll <code>GET /payments/{id}</code> tối đa ~20s để hiện màn kết quả.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ APPENDIX — ROOM HOLD DESIGN & RISK ============ -->
+    <section class="slide" id="s46" data-appendix="true">
+      <div class="slide-pad">
+        <div class="pill header-tag reveal r1" style="background:var(--peach);">Phụ lục · Q&amp;A</div>
+        <h2 class="h-headline reveal r2" style="margin-top:20px;">Giữ phòng — quyết định thiết kế &amp; rủi ro</h2>
+        <p class="mono-meta reveal r2" style="margin-top:8px;">use-room-hold.ts — state toàn cục theo tab, không theo session</p>
+
+        <div class="node-cols reveal r3" style="margin-top:24px;">
+          <div class="pill-card" style="flex:1;">
+            <div class="card-tag">Không có cron dọn dẹp</div>
+            <p class="note-txt">Hold hết hạn chỉ đơn giản ngừng được tính vào "phòng đang giữ" (<code>expires_at &gt; now()</code> trong truy vấn còn phòng) — chỉ thật sự đổi <code>status→EXPIRED</code> khi có ai cố <code>confirm</code> nó.</p>
+          </div>
+          <div class="pill-card" style="flex:1;">
+            <div class="card-tag">roomHold là state TOÀN CỤC</div>
+            <p class="note-txt">Không theo từng đoạn chat — quyết định có chủ đích. Gốc rễ của nhiều bản vá sau này: đổi khách sạn, xoá session đang giữ, hiển thị nhầm hold của đoạn chat khác.</p>
+          </div>
+        </div>
+
+        <div class="node-cols reveal r4" style="margin-top:18px;">
+          <div class="pill-card" style="flex:1;">
+            <div class="card-tag">Chỉ giữ 1 khách sạn 1 lúc</div>
+            <p class="note-txt">Khoá advisory theo <code>guest_ref</code> (không chỉ <code>room_id</code>) chặn ở tầng DB — không phụ thuộc frontend kiểm tra đúng hay không.</p>
+          </div>
+          <div class="pill-card" style="flex:1;">
+            <div class="card-tag">switchHold luôn huỷ rồi tạo lại</div>
+            <p class="note-txt">Không có API "sửa" hold — đổi loại phòng hay đổi khách sạn đều release toàn bộ + reserve lại, TTL 15 phút mới tinh.</p>
+          </div>
+        </div>
+
+        <div class="pill-card reveal r5" style="margin-top:20px; padding:20px 28px; background:var(--yellow);">
+          <p class="body-sm" style="color:var(--ink);">⚠ <b>Sự cố thật đã gặp:</b> thanh toán VNPay thật thành công nhưng app từng kẹt "đang chờ xác nhận" — do tính giá trung bình ra số lẻ <code>float</code>, lệch với số VND nguyên VNPay trả về trong IPN → <code>RspCode 04 "Invalid amount"</code>. Đã sửa bằng <code>Decimal</code> + làm tròn VND nguyên, dung sai &lt;1 VND khi so khớp — đã xác nhận chạy đúng trên staging thật.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Persistent chrome — outside slide design system -->
+<div class="grain-overlay"></div>
+<div class="slide-counter" id="counter">01 / 46</div>
+<div class="jump-hint" id="jumpHint"></div>
+<div class="nav-controls">
+  <div class="nav-back-btn" id="appendixBackBtn">← Phụ lục</div>
+  <div class="nav-btn" id="prevBtn" title="Previous"><svg viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2.5" stroke-linecap="square"><path d="M15 5l-7 7 7 7"/></svg></div>
+  <div class="nav-btn" id="nextBtn" title="Next"><svg viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2.5" stroke-linecap="square"><path d="M9 5l7 7-7 7"/></svg></div>
+</div>
+
+<div class="edit-hotzone" id="editHotzone"></div>
+<button class="edit-toggle" id="editToggle" title="Edit mode (E)">✏️</button>
+
+<script>
+/* ===========================================
+   SLIDE PRESENTATION CONTROLLER
+   =========================================== */
+class SlidePresentation{
+  constructor(){
+    this.slides = Array.from(document.querySelectorAll('.slide'));
+    this.currentSlide = 0;
+    this.stage = document.getElementById('deckStage');
+    this.counter = document.getElementById('counter');
+    this.appendixBackBtn = document.getElementById('appendixBackBtn');
+    this.jumpHint = document.getElementById('jumpHint');
+    this.jumpBuffer = '';
+    this.jumpTimer = null;
+    this.setupStageScale();
+    this.setupKeyboardNav();
+    this.setupTouchNav();
+    this.setupButtons();
+    this.setupIndexJump();
+    this.appendixBackBtn.addEventListener('click', ()=>{
+      const current = this.slides[this.currentSlide];
+      const isDivider = current.dataset.appendixDivider === 'true';
+      const target = isDivider
+        ? document.querySelector('[data-nav-architecture="true"]')
+        : document.querySelector('[data-appendix-divider="true"]');
+      const idx = target ? this.slides.indexOf(target) : -1;
+      if(idx >= 0) this.showSlide(idx);
+    });
+    this.showSlide(0);
+  }
+  setupIndexJump(){
+    document.querySelectorAll('.appendix-index .idx-item').forEach(item=>{
+      item.addEventListener('click', ()=>{
+        const n = parseInt(item.querySelector('.idx-num').textContent, 10);
+        if(!isNaN(n)) this.showSlide(n-1);
+      });
+    });
+    const jumpBtn = document.getElementById('jumpToAppendixBtn');
+    if(jumpBtn){
+      jumpBtn.addEventListener('click', ()=>{
+        const divider = document.querySelector('.slide[data-appendix="true"]');
+        if(divider){
+          const idx = this.slides.indexOf(divider);
+          if(idx >= 0) this.showSlide(idx);
+        }
+      });
+    }
+  }
+  handleDigit(digit){
+    clearTimeout(this.jumpTimer);
+    this.jumpBuffer = (this.jumpBuffer + digit).slice(-2);
+    this.jumpHint.textContent = 'Nhảy đến slide ' + this.jumpBuffer + ' — Enter để xác nhận';
+    this.jumpHint.classList.add('show');
+    this.jumpTimer = setTimeout(()=>{ this.jumpBuffer=''; this.jumpHint.classList.remove('show'); }, 2000);
+  }
+  confirmJump(){
+    const n = parseInt(this.jumpBuffer, 10);
+    this.jumpBuffer=''; this.jumpHint.classList.remove('show');
+    clearTimeout(this.jumpTimer);
+    if(!isNaN(n) && n>=1 && n<=this.slides.length) this.showSlide(n-1);
+  }
+  setupStageScale(){
+    const scale = () => {
+      const factor = Math.min(window.innerWidth/1920, window.innerHeight/1080);
+      const x = (window.innerWidth - 1920*factor)/2;
+      const y = (window.innerHeight - 1080*factor)/2;
+      this.stage.style.transform = `translate(${x}px, ${y}px) scale(${factor})`;
+    };
+    scale();
+    window.addEventListener('resize', scale);
+  }
+  setupKeyboardNav(){
+    document.addEventListener('keydown', (e) => {
+      if(editor.isActive) return;
+      if(/^[0-9]$/.test(e.key)){ this.handleDigit(e.key); return; }
+      if(e.key==='Enter' && this.jumpBuffer){ this.confirmJump(); return; }
+      if(e.key==='Escape' && this.jumpBuffer){ this.jumpBuffer=''; this.jumpHint.classList.remove('show'); return; }
+      if(['ArrowRight','PageDown',' '].includes(e.key)){ e.preventDefault(); this.next(); }
+      if(['ArrowLeft','PageUp'].includes(e.key)){ e.preventDefault(); this.prev(); }
+      if(e.key==='Home') this.showSlide(0);
+      if(e.key==='End') this.showSlide(this.slides.length-1);
+    });
+  }
+  setupTouchNav(){
+    let touchX = null;
+    document.addEventListener('touchstart', e=> touchX = e.touches[0].clientX);
+    document.addEventListener('touchend', e=>{
+      if(touchX===null) return;
+      const dx = e.changedTouches[0].clientX - touchX;
+      if(dx > 50) this.prev();
+      if(dx < -50) this.next();
+      touchX = null;
+    });
+  }
+  setupButtons(){
+    document.getElementById('prevBtn').addEventListener('click', ()=> this.prev());
+    document.getElementById('nextBtn').addEventListener('click', ()=> this.next());
+  }
+  next(){ this.showSlide(this.currentSlide+1); }
+  prev(){ this.showSlide(this.currentSlide-1); }
+  showSlide(index){
+    this.currentSlide = Math.max(0, Math.min(index, this.slides.length-1));
+    this.slides.forEach((slide,i)=>{
+      slide.classList.toggle('active', i===this.currentSlide);
+      slide.classList.toggle('visible', i===this.currentSlide);
+    });
+    const current = this.slides[this.currentSlide];
+    const isAppendix = current.dataset.appendix === 'true';
+    const isDivider = current.dataset.appendixDivider === 'true';
+    const num = String(this.currentSlide+1).padStart(2,'0') + ' / ' + String(this.slides.length).padStart(2,'0');
+    this.counter.textContent = isAppendix ? ('BACKUP · ' + num) : num;
+    this.appendixBackBtn.classList.toggle('show', isAppendix);
+    if(isAppendix) this.appendixBackBtn.textContent = isDivider ? '← Kiến trúc' : '← Phụ lục';
+  }
+}
+
+/* ===========================================
+   INLINE EDITING (contenteditable + localStorage)
+   =========================================== */
+const STORAGE_KEY = 'vsf-pitch-deck-capsule-edits';
+class InlineEditor{
+  constructor(){
+    this.isActive = false;
+    this.editableSelector = 'h1, h2, h4, p, span, li, div.node-fn, div.node-chip, div.idx-label, div.fd-text, div.k, div.v';
+    this.toggle = document.getElementById('editToggle');
+    this.hotzone = document.getElementById('editHotzone');
+    this.bindHover();
+    this.bindToggle();
+    this.bindKeyboard();
+    this.restore();
+  }
+  bindHover(){
+    let hideTimeout = null;
+    const show = () => { clearTimeout(hideTimeout); this.toggle.classList.add('show'); };
+    const scheduleHide = () => { hideTimeout = setTimeout(()=>{ if(!this.isActive) this.toggle.classList.remove('show'); }, 400); };
+    this.hotzone.addEventListener('mouseenter', show);
+    this.hotzone.addEventListener('mouseleave', scheduleHide);
+    this.toggle.addEventListener('mouseenter', show);
+    this.toggle.addEventListener('mouseleave', scheduleHide);
+  }
+  bindToggle(){
+    this.toggle.addEventListener('click', ()=> this.toggleEditMode());
+    this.hotzone.addEventListener('click', ()=> this.toggleEditMode());
+  }
+  bindKeyboard(){
+    document.addEventListener('keydown', (e)=>{
+      if((e.key==='e' || e.key==='E') && document.activeElement.getAttribute('contenteditable')!=='true'){
+        this.toggleEditMode();
+      }
+      if((e.key==='s' || e.key==='S') && (e.ctrlKey || e.metaKey)){
+        e.preventDefault(); this.save();
+      }
+    });
+  }
+  toggleEditMode(){
+    this.isActive = !this.isActive;
+    this.toggle.classList.toggle('active', this.isActive);
+    document.querySelectorAll('.slide').forEach(slide=>{
+      slide.querySelectorAll(this.editableSelector).forEach(el=>{
+        if(el.closest('.edit-toggle')) return;
+        el.setAttribute('contenteditable', this.isActive ? 'true' : 'false');
+      });
+    });
+    if(!this.isActive) this.persist();
+  }
+  persist(){
+    const data = {};
+    document.querySelectorAll('[id^="s"]').forEach(slide=>{
+      data[slide.id] = slide.innerHTML;
+    });
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }catch(e){}
+  }
+  restore(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return;
+      const data = JSON.parse(raw);
+      Object.keys(data).forEach(id=>{
+        const el = document.getElementById(id);
+        if(el) el.innerHTML = data[id];
+      });
+    }catch(e){}
+  }
+  save(){
+    this.persist();
+    const html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+    const blob = new Blob([html], {type:'text/html'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'VP-OTA-Pitch-Deck-Capsule.html';
+    a.click();
+  }
+}
+
+const editor = new InlineEditor();
+const presentation = new SlidePresentation();
+</script>
+</body>
+</html>
