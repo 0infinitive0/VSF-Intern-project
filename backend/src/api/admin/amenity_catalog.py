@@ -342,6 +342,17 @@ def list_amenity_catalog(
     )
 
 
+@amenity_catalog_router.get("/{amenity_id}", response_model=AmenityCatalogRow)
+def get_amenity(amenity_id: str) -> AmenityCatalogRow | JSONResponse:
+    """Single-row read -- lets the parent picker (amenity-parent-picker.tsx)
+    resolve just the one label it needs for an already-set parent_id instead
+    of the list endpoint's full-catalog fetch."""
+    row = _fetch_row(amenity_id)
+    if row is None:
+        return JSONResponse(status_code=404, content={"detail": "amenity_not_found"})
+    return _rows_to_models([row])[0]
+
+
 # ---------------------------------------------------------------------- #
 # Duplicate check + draft creation
 # ---------------------------------------------------------------------- #

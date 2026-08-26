@@ -1637,21 +1637,6 @@
               ],
               "title": "Authorization"
             }
-          },
-          {
-            "name": "embedding",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "enum": [
-                "embedded",
-                "missing",
-                "all"
-              ],
-              "type": "string",
-              "default": "all",
-              "title": "Embedding"
-            }
           }
         ],
         "responses": {
@@ -2098,6 +2083,691 @@
                     "$ref": "#/components/schemas/AmenityOption"
                   },
                   "title": "Response List Amenities Api V1 Admin Amenities Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/amenity-catalog": {
+      "get": {
+        "tags": [
+          "admin-amenity-catalog"
+        ],
+        "summary": "List Amenity Catalog",
+        "operationId": "list_amenity_catalog_api_v1_admin_amenity_catalog_get",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "hotel",
+                "room",
+                "all"
+              ],
+              "type": "string",
+              "default": "all",
+              "title": "Scope"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "approved",
+                "pending",
+                "retired",
+                "all"
+              ],
+              "type": "string",
+              "default": "all",
+              "title": "Status"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "all",
+              "title": "Category"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "name",
+                "category",
+                "scope",
+                "usage",
+                "status"
+              ],
+              "type": "string",
+              "default": "name",
+              "title": "Sort"
+            }
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string",
+              "default": "asc",
+              "title": "Direction"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmenityCatalogListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/amenity-catalog/{amenity_id}": {
+      "get": {
+        "tags": [
+          "admin-amenity-catalog"
+        ],
+        "summary": "Get Amenity",
+        "description": "Single-row read -- lets the parent picker (amenity-parent-picker.tsx)\nresolve just the one label it needs for an already-set parent_id instead\nof the list endpoint's full-catalog fetch.",
+        "operationId": "get_amenity_api_v1_admin_amenity_catalog__amenity_id__get",
+        "parameters": [
+          {
+            "name": "amenity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Amenity Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmenityCatalogRow"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "admin-amenity-catalog"
+        ],
+        "summary": "Update Amenity",
+        "operationId": "update_amenity_api_v1_admin_amenity_catalog__amenity_id__patch",
+        "parameters": [
+          {
+            "name": "amenity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Amenity Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAmenityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateAmenityResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "admin-amenity-catalog"
+        ],
+        "summary": "Delete Amenity",
+        "operationId": "delete_amenity_api_v1_admin_amenity_catalog__amenity_id__delete",
+        "parameters": [
+          {
+            "name": "amenity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Amenity Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/amenity-catalog/check-duplicate": {
+      "post": {
+        "tags": [
+          "admin-amenity-catalog"
+        ],
+        "summary": "Check Duplicate",
+        "operationId": "check_duplicate_api_v1_admin_amenity_catalog_check_duplicate_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckDuplicateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckDuplicateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/amenity-catalog/draft": {
+      "post": {
+        "tags": [
+          "admin-amenity-catalog"
+        ],
+        "summary": "Draft Amenities",
+        "operationId": "draft_amenities_api_v1_admin_amenity_catalog_draft_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/amenity-catalog/{amenity_id}/approve": {
+      "post": {
+        "tags": [
+          "admin-amenity-catalog"
+        ],
+        "summary": "Approve Amenity",
+        "operationId": "approve_amenity_api_v1_admin_amenity_catalog__amenity_id__approve_post",
+        "parameters": [
+          {
+            "name": "amenity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Amenity Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApproveResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/amenity-catalog/bulk-approve": {
+      "post": {
+        "tags": [
+          "admin-amenity-catalog"
+        ],
+        "summary": "Bulk Approve Amenities",
+        "operationId": "bulk_approve_amenities_api_v1_admin_amenity_catalog_bulk_approve_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkApproveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkApproveResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/amenity-catalog/{amenity_id}/retire": {
+      "patch": {
+        "tags": [
+          "admin-amenity-catalog"
+        ],
+        "summary": "Retire Amenity",
+        "operationId": "retire_amenity_api_v1_admin_amenity_catalog__amenity_id__retire_patch",
+        "parameters": [
+          {
+            "name": "amenity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Amenity Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetireResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/amenity-catalog/{amenity_id}/reactivate": {
+      "post": {
+        "tags": [
+          "admin-amenity-catalog"
+        ],
+        "summary": "Reactivate Amenity",
+        "operationId": "reactivate_amenity_api_v1_admin_amenity_catalog__amenity_id__reactivate_post",
+        "parameters": [
+          {
+            "name": "amenity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Amenity Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetireResponse"
                 }
               }
             }
@@ -3684,662 +4354,6 @@
           }
         }
       }
-    },
-    "/api/v1/admin/hotels/{hotel_id}/reembed": {
-      "post": {
-        "tags": [
-          "admin-hotels"
-        ],
-        "summary": "Reembed Hotel",
-        "description": "Always 503 until Phase 13 (Airflow client) exists -- there is no DAG\ntrigger to call yet. `update_hotel` already does the part that matters\n(`embedding = NULL`) without this endpoint; the reembed dialog's \"Chạy\nngay\" is a convenience this phase intentionally leaves unimplemented\nrather than fake.",
-        "operationId": "reembed_hotel_api_v1_admin_hotels__hotel_id__reembed_post",
-        "parameters": [
-          {
-            "name": "hotel_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Hotel Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReembedResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/admin/amenity-catalog": {
-      "get": {
-        "tags": [
-          "admin-amenity-catalog"
-        ],
-        "summary": "List Amenity Catalog",
-        "operationId": "list_amenity_catalog_api_v1_admin_amenity_catalog_get",
-        "parameters": [
-          {
-            "name": "scope",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "enum": [
-                "hotel",
-                "room",
-                "all"
-              ],
-              "type": "string",
-              "default": "all",
-              "title": "Scope"
-            }
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "enum": [
-                "approved",
-                "pending",
-                "retired",
-                "all"
-              ],
-              "type": "string",
-              "default": "all",
-              "title": "Status"
-            }
-          },
-          {
-            "name": "category",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "all",
-              "title": "Category"
-            }
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Q"
-            }
-          },
-          {
-            "name": "page",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "default": 1,
-              "title": "Page"
-            }
-          },
-          {
-            "name": "page_size",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 100,
-              "minimum": 1,
-              "default": 25,
-              "title": "Page Size"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AmenityCatalogListResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/admin/amenity-catalog/check-duplicate": {
-      "post": {
-        "tags": [
-          "admin-amenity-catalog"
-        ],
-        "summary": "Check Duplicate",
-        "operationId": "check_duplicate_api_v1_admin_amenity_catalog_check_duplicate_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CheckDuplicateRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CheckDuplicateResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/admin/amenity-catalog/draft": {
-      "post": {
-        "tags": [
-          "admin-amenity-catalog"
-        ],
-        "summary": "Draft Amenities",
-        "operationId": "draft_amenities_api_v1_admin_amenity_catalog_draft_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DraftRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DraftResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/admin/amenity-catalog/{amenity_id}": {
-      "patch": {
-        "tags": [
-          "admin-amenity-catalog"
-        ],
-        "summary": "Update Amenity",
-        "operationId": "update_amenity_api_v1_admin_amenity_catalog__amenity_id__patch",
-        "parameters": [
-          {
-            "name": "amenity_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Amenity Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateAmenityRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UpdateAmenityResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "admin-amenity-catalog"
-        ],
-        "summary": "Delete Amenity",
-        "operationId": "delete_amenity_api_v1_admin_amenity_catalog__amenity_id__delete",
-        "parameters": [
-          {
-            "name": "amenity_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Amenity Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/admin/amenity-catalog/{amenity_id}/approve": {
-      "post": {
-        "tags": [
-          "admin-amenity-catalog"
-        ],
-        "summary": "Approve Amenity",
-        "operationId": "approve_amenity_api_v1_admin_amenity_catalog__amenity_id__approve_post",
-        "parameters": [
-          {
-            "name": "amenity_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Amenity Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApproveResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/admin/amenity-catalog/bulk-approve": {
-      "post": {
-        "tags": [
-          "admin-amenity-catalog"
-        ],
-        "summary": "Bulk Approve Amenities",
-        "operationId": "bulk_approve_amenities_api_v1_admin_amenity_catalog_bulk_approve_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BulkApproveRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BulkApproveResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/admin/amenity-catalog/{amenity_id}/retire": {
-      "patch": {
-        "tags": [
-          "admin-amenity-catalog"
-        ],
-        "summary": "Retire Amenity",
-        "operationId": "retire_amenity_api_v1_admin_amenity_catalog__amenity_id__retire_patch",
-        "parameters": [
-          {
-            "name": "amenity_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Amenity Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RetireResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/admin/amenity-catalog/{amenity_id}/reactivate": {
-      "post": {
-        "tags": [
-          "admin-amenity-catalog"
-        ],
-        "summary": "Reactivate Amenity",
-        "operationId": "reactivate_amenity_api_v1_admin_amenity_catalog__amenity_id__reactivate_post",
-        "parameters": [
-          {
-            "name": "amenity_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Amenity Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RetireResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
     }
   },
   "components": {
@@ -4402,6 +4416,42 @@
         ],
         "title": "AdminMeResponse"
       },
+      "AmenityCatalogListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AmenityCatalogRow"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          },
+          "pending_count": {
+            "type": "integer",
+            "title": "Pending Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size",
+          "pending_count"
+        ],
+        "title": "AmenityCatalogListResponse"
+      },
       "AmenityCatalogPayload": {
         "properties": {
           "id": {
@@ -4443,6 +4493,133 @@
         "title": "AmenityCatalogPayload",
         "description": "Approved hotel amenity exposed to the browser for filters and pills."
       },
+      "AmenityCatalogRow": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label_vi": {
+            "type": "string",
+            "title": "Label Vi"
+          },
+          "label_en": {
+            "type": "string",
+            "title": "Label En"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "hotel",
+              "room",
+              "both"
+            ],
+            "title": "Scope"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "icon_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon Key"
+          },
+          "match_keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Match Keywords"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "is_approved": {
+            "type": "boolean",
+            "title": "Is Approved"
+          },
+          "retired_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired At"
+          },
+          "hotel_count": {
+            "type": "integer",
+            "title": "Hotel Count"
+          },
+          "room_count": {
+            "type": "integer",
+            "title": "Room Count"
+          },
+          "child_count": {
+            "type": "integer",
+            "title": "Child Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label_vi",
+          "label_en",
+          "scope",
+          "category",
+          "match_keywords",
+          "is_approved",
+          "hotel_count",
+          "room_count",
+          "child_count"
+        ],
+        "title": "AmenityCatalogRow"
+      },
+      "AmenityMatch": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label_vi": {
+            "type": "string",
+            "title": "Label Vi"
+          },
+          "label_en": {
+            "type": "string",
+            "title": "Label En"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label_vi",
+          "label_en",
+          "score"
+        ],
+        "title": "AmenityMatch"
+      },
       "AmenityOption": {
         "properties": {
           "id": {
@@ -4470,6 +4647,24 @@
           "category"
         ],
         "title": "AmenityOption"
+      },
+      "ApproveResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "is_approved": {
+            "type": "boolean",
+            "title": "Is Approved"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "is_approved"
+        ],
+        "title": "ApproveResponse"
       },
       "AttractionDetailPayload": {
         "properties": {
@@ -4640,9 +4835,8 @@
         "properties": {
           "file": {
             "type": "string",
-            "format": "binary",
-            "title": "File",
-            "contentMediaType": "application/octet-stream"
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
           }
         },
         "type": "object",
@@ -4655,9 +4849,8 @@
         "properties": {
           "file": {
             "type": "string",
-            "format": "binary",
-            "title": "File",
-            "contentMediaType": "application/octet-stream"
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
           }
         },
         "type": "object",
@@ -4987,8 +5180,8 @@
           },
           "room_count": {
             "type": "integer",
-            "maximum": 20,
-            "minimum": 1,
+            "maximum": 20.0,
+            "minimum": 1.0,
             "title": "Room Count",
             "default": 1
           },
@@ -4996,7 +5189,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "string",
@@ -5084,6 +5277,37 @@
           "blocked"
         ],
         "title": "BulkActiveResponse"
+      },
+      "BulkApproveRequest": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids"
+        ],
+        "title": "BulkApproveRequest"
+      },
+      "BulkApproveResponse": {
+        "properties": {
+          "approved": {
+            "type": "integer",
+            "title": "Approved"
+          }
+        },
+        "type": "object",
+        "required": [
+          "approved"
+        ],
+        "title": "BulkApproveResponse"
       },
       "BulkBlockedHotel": {
         "properties": {
@@ -5189,6 +5413,70 @@
         ],
         "title": "ChangeHotelRequest"
       },
+      "CheckDuplicateRequest": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Text"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "hotel",
+              "room"
+            ],
+            "title": "Scope"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "scope"
+        ],
+        "title": "CheckDuplicateRequest"
+      },
+      "CheckDuplicateResponse": {
+        "properties": {
+          "parsed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Parsed"
+          },
+          "exact": {
+            "items": {
+              "$ref": "#/components/schemas/FlaggedName"
+            },
+            "type": "array",
+            "title": "Exact"
+          },
+          "flagged": {
+            "items": {
+              "$ref": "#/components/schemas/FlaggedName"
+            },
+            "type": "array",
+            "title": "Flagged"
+          },
+          "clear": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Clear"
+          }
+        },
+        "type": "object",
+        "required": [
+          "parsed",
+          "exact",
+          "flagged",
+          "clear"
+        ],
+        "title": "CheckDuplicateResponse"
+      },
       "ConfirmOrderResponse": {
         "properties": {
           "payment_id": {
@@ -5276,8 +5564,8 @@
               {
                 "type": "number",
                 "multipleOf": 0.5,
-                "maximum": 5,
-                "minimum": 0
+                "maximum": 5.0,
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -5325,8 +5613,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 90,
-                "minimum": -90
+                "maximum": 90.0,
+                "minimum": -90.0
               },
               {
                 "type": "null"
@@ -5338,8 +5626,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 180,
-                "minimum": -180
+                "maximum": 180.0,
+                "minimum": -180.0
               },
               {
                 "type": "null"
@@ -5425,8 +5713,8 @@
             "anyOf": [
               {
                 "type": "integer",
-                "maximum": 10,
-                "minimum": 1
+                "maximum": 10.0,
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -5451,7 +5739,7 @@
               {
                 "type": "number",
                 "maximum": 9999.99,
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -5646,6 +5934,72 @@
         ],
         "title": "DestinationOption"
       },
+      "DraftRequest": {
+        "properties": {
+          "names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Names"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "hotel",
+              "room"
+            ],
+            "title": "Scope"
+          },
+          "acknowledge": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Acknowledge"
+          }
+        },
+        "type": "object",
+        "required": [
+          "names",
+          "scope"
+        ],
+        "title": "DraftRequest"
+      },
+      "DraftResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AmenityCatalogRow"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "skipped_exact": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skipped Exact"
+          },
+          "skipped_duplicate": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skipped Duplicate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "skipped_exact",
+          "skipped_duplicate"
+        ],
+        "title": "DraftResponse"
+      },
       "EmbeddingMissingItem": {
         "properties": {
           "id": {
@@ -5790,6 +6144,28 @@
         ],
         "title": "FinalizeTripPayload",
         "description": "Result of `POST /chat/{session_id}/finalize` — locks the itinerary and\nsaves it as a reusable, embedded template (`services/trip_finalize.py`).\n`embedding_saved=False` still means the lock itself succeeded; only the\nreuse-template's vector is missing and stays retryable."
+      },
+      "FlaggedName": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "closest": {
+            "$ref": "#/components/schemas/AmenityMatch"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "closest",
+          "score"
+        ],
+        "title": "FlaggedName"
       },
       "HTTPValidationError": {
         "properties": {
@@ -6115,7 +6491,7 @@
             "anyOf": [
               {
                 "type": "integer",
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -6682,8 +7058,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 1,
-                "minimum": 0
+                "maximum": 1.0,
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -9100,6 +9476,31 @@
         ],
         "title": "RestoredMessagePayload"
       },
+      "RetireResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "retired_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "retired_at"
+        ],
+        "title": "RetireResponse"
+      },
       "RoomDetailPayload": {
         "properties": {
           "id": {
@@ -9196,7 +9597,7 @@
             "anyOf": [
               {
                 "type": "integer",
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -9821,7 +10222,7 @@
               {
                 "type": "number",
                 "maximum": 9999999999.99,
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "string",
@@ -10403,6 +10804,124 @@
         ],
         "title": "UnpaidBookingRow"
       },
+      "UpdateAmenityRequest": {
+        "properties": {
+          "label_vi": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Vi"
+          },
+          "label_en": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label En"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "icon_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon Key"
+          },
+          "match_keywords": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 8
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match Keywords"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "hotel",
+                  "room",
+                  "both"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          }
+        },
+        "type": "object",
+        "title": "UpdateAmenityRequest"
+      },
+      "UpdateAmenityResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "changed_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Changed Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "changed_fields"
+        ],
+        "title": "UpdateAmenityResponse"
+      },
       "UpdateHotelRequest": {
         "properties": {
           "name": {
@@ -10459,8 +10978,8 @@
               {
                 "type": "number",
                 "multipleOf": 0.5,
-                "maximum": 5,
-                "minimum": 0
+                "maximum": 5.0,
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -10508,8 +11027,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 90,
-                "minimum": -90
+                "maximum": 90.0,
+                "minimum": -90.0
               },
               {
                 "type": "null"
@@ -10521,8 +11040,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 180,
-                "minimum": -180
+                "maximum": 180.0,
+                "minimum": -180.0
               },
               {
                 "type": "null"
@@ -10651,8 +11170,8 @@
             "anyOf": [
               {
                 "type": "integer",
-                "maximum": 10,
-                "minimum": 1
+                "maximum": 10.0,
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -10677,7 +11196,7 @@
               {
                 "type": "number",
                 "maximum": 9999.99,
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -10826,542 +11345,6 @@
           "type"
         ],
         "title": "ValidationError"
-      },
-      "AmenityCatalogListResponse": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/AmenityCatalogRow"
-            },
-            "type": "array",
-            "title": "Items"
-          },
-          "total": {
-            "type": "integer",
-            "title": "Total"
-          },
-          "page": {
-            "type": "integer",
-            "title": "Page"
-          },
-          "page_size": {
-            "type": "integer",
-            "title": "Page Size"
-          },
-          "pending_count": {
-            "type": "integer",
-            "title": "Pending Count"
-          }
-        },
-        "type": "object",
-        "required": [
-          "items",
-          "total",
-          "page",
-          "page_size",
-          "pending_count"
-        ],
-        "title": "AmenityCatalogListResponse"
-      },
-      "AmenityCatalogRow": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "label_vi": {
-            "type": "string",
-            "title": "Label Vi"
-          },
-          "label_en": {
-            "type": "string",
-            "title": "Label En"
-          },
-          "scope": {
-            "type": "string",
-            "enum": [
-              "hotel",
-              "room",
-              "both"
-            ],
-            "title": "Scope"
-          },
-          "category": {
-            "type": "string",
-            "title": "Category"
-          },
-          "icon_key": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Icon Key"
-          },
-          "match_keywords": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Match Keywords"
-          },
-          "parent_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parent Id"
-          },
-          "is_approved": {
-            "type": "boolean",
-            "title": "Is Approved"
-          },
-          "retired_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Retired At"
-          },
-          "hotel_count": {
-            "type": "integer",
-            "title": "Hotel Count"
-          },
-          "room_count": {
-            "type": "integer",
-            "title": "Room Count"
-          },
-          "child_count": {
-            "type": "integer",
-            "title": "Child Count"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "label_vi",
-          "label_en",
-          "scope",
-          "category",
-          "match_keywords",
-          "is_approved",
-          "hotel_count",
-          "room_count",
-          "child_count"
-        ],
-        "title": "AmenityCatalogRow"
-      },
-      "AmenityMatch": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "label_vi": {
-            "type": "string",
-            "title": "Label Vi"
-          },
-          "label_en": {
-            "type": "string",
-            "title": "Label En"
-          },
-          "score": {
-            "type": "number",
-            "title": "Score"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "label_vi",
-          "label_en",
-          "score"
-        ],
-        "title": "AmenityMatch"
-      },
-      "ApproveResponse": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "is_approved": {
-            "type": "boolean",
-            "title": "Is Approved"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "is_approved"
-        ],
-        "title": "ApproveResponse"
-      },
-      "BulkApproveRequest": {
-        "properties": {
-          "ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 200,
-            "minItems": 1,
-            "title": "Ids"
-          }
-        },
-        "type": "object",
-        "required": [
-          "ids"
-        ],
-        "title": "BulkApproveRequest"
-      },
-      "BulkApproveResponse": {
-        "properties": {
-          "approved": {
-            "type": "integer",
-            "title": "Approved"
-          }
-        },
-        "type": "object",
-        "required": [
-          "approved"
-        ],
-        "title": "BulkApproveResponse"
-      },
-      "CheckDuplicateRequest": {
-        "properties": {
-          "text": {
-            "type": "string",
-            "maxLength": 4000,
-            "minLength": 1,
-            "title": "Text"
-          },
-          "scope": {
-            "type": "string",
-            "enum": [
-              "hotel",
-              "room"
-            ],
-            "title": "Scope"
-          }
-        },
-        "type": "object",
-        "required": [
-          "text",
-          "scope"
-        ],
-        "title": "CheckDuplicateRequest"
-      },
-      "CheckDuplicateResponse": {
-        "properties": {
-          "parsed": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Parsed"
-          },
-          "exact": {
-            "items": {
-              "$ref": "#/components/schemas/FlaggedName"
-            },
-            "type": "array",
-            "title": "Exact"
-          },
-          "flagged": {
-            "items": {
-              "$ref": "#/components/schemas/FlaggedName"
-            },
-            "type": "array",
-            "title": "Flagged"
-          },
-          "clear": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Clear"
-          }
-        },
-        "type": "object",
-        "required": [
-          "parsed",
-          "exact",
-          "flagged",
-          "clear"
-        ],
-        "title": "CheckDuplicateResponse"
-      },
-      "DraftRequest": {
-        "properties": {
-          "names": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "minItems": 1,
-            "title": "Names"
-          },
-          "scope": {
-            "type": "string",
-            "enum": [
-              "hotel",
-              "room"
-            ],
-            "title": "Scope"
-          },
-          "acknowledge": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Acknowledge"
-          }
-        },
-        "type": "object",
-        "required": [
-          "names",
-          "scope"
-        ],
-        "title": "DraftRequest"
-      },
-      "DraftResponse": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/AmenityCatalogRow"
-            },
-            "type": "array",
-            "title": "Items"
-          },
-          "skipped_exact": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Skipped Exact"
-          },
-          "skipped_duplicate": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Skipped Duplicate"
-          }
-        },
-        "type": "object",
-        "required": [
-          "items",
-          "skipped_exact",
-          "skipped_duplicate"
-        ],
-        "title": "DraftResponse"
-      },
-      "FlaggedName": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "closest": {
-            "$ref": "#/components/schemas/AmenityMatch"
-          },
-          "score": {
-            "type": "number",
-            "title": "Score"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "closest",
-          "score"
-        ],
-        "title": "FlaggedName"
-      },
-      "ReembedResponse": {
-        "properties": {
-          "queued": {
-            "type": "boolean",
-            "title": "Queued"
-          },
-          "dag_run_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Dag Run Id"
-          },
-          "scope": {
-            "type": "string",
-            "title": "Scope"
-          }
-        },
-        "type": "object",
-        "required": [
-          "queued",
-          "scope"
-        ],
-        "title": "ReembedResponse"
-      },
-      "RetireResponse": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "retired_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Retired At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "retired_at"
-        ],
-        "title": "RetireResponse"
-      },
-      "UpdateAmenityRequest": {
-        "properties": {
-          "label_vi": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 80,
-                "minLength": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Label Vi"
-          },
-          "label_en": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 80,
-                "minLength": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Label En"
-          },
-          "category": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Category"
-          },
-          "icon_key": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 64
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Icon Key"
-          },
-          "match_keywords": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array",
-                "maxItems": 8
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Match Keywords"
-          },
-          "parent_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parent Id"
-          },
-          "scope": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "hotel",
-                  "room",
-                  "both"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Scope"
-          }
-        },
-        "type": "object",
-        "title": "UpdateAmenityRequest"
-      },
-      "UpdateAmenityResponse": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "changed_fields": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Changed Fields"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "changed_fields"
-        ],
-        "title": "UpdateAmenityResponse"
       }
     }
   }

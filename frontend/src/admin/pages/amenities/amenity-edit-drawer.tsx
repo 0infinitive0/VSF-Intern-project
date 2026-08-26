@@ -9,7 +9,7 @@ interface AmenityEditDrawerProps {
   open: boolean
   onClose: () => void
   row: AmenityCatalogRow | null
-  parentOptions: AmenityCatalogRow[]
+  scope: 'hotel' | 'room'
   onSaved: () => void
 }
 
@@ -30,7 +30,7 @@ function diff(row: AmenityCatalogRow, form: AmenityFormState): UpdateAmenityRequ
  * submit posture as room-drawer.tsx -- no unsaved-bar state for a single
  * catalog row. `id`/`is_approved`/`retired_at` are never part of the form:
  * the backend PATCH endpoint doesn't accept them either (G3/G9). */
-export function AmenityEditDrawer({ open, onClose, row, parentOptions, onSaved }: AmenityEditDrawerProps) {
+export function AmenityEditDrawer({ open, onClose, row, scope, onSaved }: AmenityEditDrawerProps) {
   const [form, setForm] = useState<AmenityFormState | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -81,7 +81,7 @@ export function AmenityEditDrawer({ open, onClose, row, parentOptions, onSaved }
 
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
           {error && <Banner tone="err">{error}</Banner>}
-          <AmenityFormFields value={form} onChange={setForm} parentOptions={parentOptions.filter((o) => o.id !== row.id)} idPreview={row.id} />
+          <AmenityFormFields value={form} onChange={setForm} scope={scope} excludeId={row.id} idPreview={row.id} />
         </div>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', borderTop: '1px solid var(--stroke)', paddingTop: 12 }}>

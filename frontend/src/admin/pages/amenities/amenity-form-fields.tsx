@@ -3,6 +3,7 @@ import { AMENITY_CATEGORY_ORDER, categoryLabel } from '../../lib/amenity-categor
 import { Input } from '../../ui/input'
 import { Select } from '../../ui/select'
 import type { AmenityCatalogRow } from '../../api/amenity-catalog-client'
+import { AmenityParentPicker } from './amenity-parent-picker'
 
 export interface AmenityFormState {
   labelVi: string
@@ -27,10 +28,14 @@ export function formFromRow(row: AmenityCatalogRow): AmenityFormState {
 interface AmenityFormFieldsProps {
   value: AmenityFormState
   onChange: (next: AmenityFormState) => void
-  /** Candidates for "Danh mục cha" -- pre-filtered by scope and excluding
-   * the row itself (edit mode) so admin can't hand-pick a self-reference;
-   * the multi-hop cycle check still happens server-side (G4). */
-  parentOptions: AmenityCatalogRow[]
+  /** Scope the "Danh mục cha" search runs against -- the active tab
+   * ('hotel'/'room'), not `value.scope` (which can be 'both' -- not a
+   * value the list endpoint's scope filter accepts). */
+  scope: 'hotel' | 'room'
+  /** Excluded from "Danh mục cha" results (edit mode) so admin can't
+   * hand-pick a self-reference; the multi-hop cycle check still happens
+   * server-side (G4). */
+  excludeId?: string
   idPreview?: string
 }
 
@@ -41,7 +46,7 @@ interface AmenityFormFieldsProps {
  * 3-way segmented control: no segmented primitive exists in ui/ yet and one
  * dropdown doesn't justify adding one (plan's "không sáng tác thành phần
  * mới" rule) -- a documented deviation from the design canvas's mockup. */
-export function AmenityFormFields({ value, onChange, parentOptions, idPreview }: AmenityFormFieldsProps) {
+export function AmenityFormFields({ value, onChange, scope, excludeId, idPreview }: AmenityFormFieldsProps) {
   const [keywordDraft, setKeywordDraft] = useState('')
 
   function addKeyword() {
@@ -115,14 +120,7 @@ export function AmenityFormFields({ value, onChange, parentOptions, idPreview }:
         )}
       </div>
 
-      <Select label="Danh mục cha (tuỳ chọn)" value={value.parentId} onChange={(e) => onChange({ ...value, parentId: e.target.value })}>
-        <option value="">Không có</option>
-        {parentOptions.map((option) => (
-          <option key={option.id} value={option.id}>
-            {option.label_vi}
-          </option>
-        ))}
-      </Select>
+      <AmenityParentPicker value={value.parentId} onChange={(parentId) => onChange({ ...value, parentId })} scope={scope} excludeId={excludeId} />
     </div>
   )
 }

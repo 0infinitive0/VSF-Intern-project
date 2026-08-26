@@ -9,7 +9,7 @@ interface AmenityDraftReviewListProps {
   open: boolean
   onClose: () => void
   items: AmenityCatalogRow[]
-  parentOptions: AmenityCatalogRow[]
+  scope: 'hotel' | 'room'
   onDone: () => void
 }
 
@@ -27,7 +27,7 @@ interface AmenityDraftReviewListProps {
  * never re-syncs on a later prop change, which left this drawer always
  * rendering "Đã xử lý xong." / 0 items even when /draft genuinely created a
  * new row -- the row was there in the main table, just never shown here. */
-export function AmenityDraftReviewList({ open, onClose, items, parentOptions, onDone }: AmenityDraftReviewListProps) {
+export function AmenityDraftReviewList({ open, onClose, items, scope, onDone }: AmenityDraftReviewListProps) {
   const [resolvedIds, setResolvedIds] = useState<Set<string>>(new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkError, setBulkError] = useState<string | null>(null)
@@ -86,7 +86,7 @@ export function AmenityDraftReviewList({ open, onClose, items, parentOptions, on
             <AmenityDraftCard
               key={row.id}
               row={row}
-              parentOptions={parentOptions}
+              scope={scope}
               onApproved={handleResolved}
               onRejected={handleResolved}
               disabled={bulkBusy}

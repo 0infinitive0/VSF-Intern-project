@@ -54,6 +54,10 @@ export function listAmenityCatalog(params: {
   return adminFetch<AmenityCatalogListResponse>(`/amenity-catalog?${query.toString()}`)
 }
 
+export function getAmenity(id: string): Promise<AdminApiResult<AmenityCatalogRow>> {
+  return adminFetch<AmenityCatalogRow>(`/amenity-catalog/${encodeURIComponent(id)}`)
+}
+
 export function checkDuplicateAmenities(body: CheckDuplicateRequest): Promise<AdminApiResult<CheckDuplicateResponse>> {
   return adminFetch<CheckDuplicateResponse>('/amenity-catalog/check-duplicate', {
     method: 'POST',
