@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ConfirmDialog from './confirm-dialog'
+import ImageGallery from './image-gallery'
 import MatchReasons from './match-reasons'
 import MatchScoreRing from './match-score-ring'
 import RemoteImage from './remote-image'
@@ -369,19 +370,17 @@ export default function HotelDetailPanel({
                 </a>
               )}
 
-              {/* Gallery — up to 4 thumbs, vFade staggered like the design */}
+              {/* Gallery — 4 thumbs, vFade staggered like the design; the
+                  rest of the array is reachable through the lightbox behind
+                  the last thumb's "+N" badge. */}
               {detail?.images && detail.images.length > 0 && (
-                <div className="grid grid-cols-4 gap-[9px]">
-                  {detail.images.slice(0, 4).map((url, i) => (
-                    <div key={url} style={{ animation: `vFade .5s ${i * 90}ms ease both` }}>
-                      <RemoteImage
-                        src={url}
-                        alt={t('galleryImgAlt', { index: i + 1, name })}
-                        className="h-[80px] rounded-[16px]"
-                      />
-                    </div>
-                  ))}
-                </div>
+                <ImageGallery
+                  images={detail.images}
+                  maxThumbs={4}
+                  columns={4}
+                  thumbClassName="h-[80px] rounded-[16px]"
+                  altFor={(i) => t('galleryImgAlt', { index: i + 1, name })}
+                />
               )}
 
               {/* "Vì sao" accent panel — ranking reasons from the option */}

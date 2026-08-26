@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import ImageGallery from './image-gallery'
 import RemoteImage from './remote-image'
 import { useBookedRooms } from '../hooks/use-booked-rooms'
 import { useHotelDetail } from '../hooks/use-hotel-detail'
@@ -233,19 +234,15 @@ export default function HotelStayPanel({
             </a>
           )}
 
-          {/* Gallery — up to 4 thumbs */}
+          {/* Gallery — 4 thumbs, the rest behind the "+N" badge's lightbox */}
           {detail?.images && detail.images.length > 0 && (
-            <div className="grid grid-cols-4 gap-[9px]">
-              {detail.images.slice(0, 4).map((url, i) => (
-                <div key={url} style={{ animation: `vFade .5s ${i * 90}ms ease both` }}>
-                  <RemoteImage
-                    src={url}
-                    alt={t('galleryImgAlt', { index: i + 1, name })}
-                    className="h-[80px] rounded-[16px]"
-                  />
-                </div>
-              ))}
-            </div>
+            <ImageGallery
+              images={detail.images}
+              maxThumbs={4}
+              columns={4}
+              thumbClassName="h-[80px] rounded-[16px]"
+              altFor={(i) => t('galleryImgAlt', { index: i + 1, name })}
+            />
           )}
 
           {/* Phòng đã đặt — read-only, from useBookedRooms. Never the full

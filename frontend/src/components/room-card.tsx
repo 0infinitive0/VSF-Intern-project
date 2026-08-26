@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import ImageGallery from './image-gallery'
 import RemoteImage from './remote-image'
 import { amenityPresentationItems } from '../lib/amenity-presentation'
 import { formatCurrency } from '../lib/format-currency'
@@ -255,17 +256,14 @@ export default function RoomCard({
             className="mt-3 pt-3 border-t border-line flex flex-col gap-[11px] animate-[vFade_0.35s_ease_both]"
           >
             {room.images && room.images.length > 0 && (
-              <div className="grid grid-cols-3 gap-2">
-                {room.images.slice(0, 3).map((url, i) => (
-                  <RemoteImage
-                    key={url}
-                    src={url}
-                    alt={t('galleryImgAlt', { index: i + 1, name: room.name ?? '' })}
-                    icon="king_bed"
-                    className="h-[70px] rounded-[14px]"
-                  />
-                ))}
-              </div>
+              <ImageGallery
+                images={room.images}
+                maxThumbs={3}
+                columns={3}
+                thumbClassName="h-[70px] rounded-[14px]"
+                icon="king_bed"
+                altFor={(i) => t('galleryImgAlt', { index: i + 1, name: room.name ?? '' })}
+              />
             )}
             {roomFacilityItems.length > 0 && (
               <div className="flex flex-wrap gap-1.5">

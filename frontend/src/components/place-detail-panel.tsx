@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import ImageGallery from './image-gallery'
 import RemoteImage from './remote-image'
 import { useAttractionDetail } from '../hooks/use-attraction-detail'
 import { formatCurrency } from '../lib/format-currency'
@@ -267,18 +268,15 @@ export default function PlaceDetailPanel({
           {detail?.images && detail.images.length > 0 && (
             <div>
               <div className={SECTION_EYEBROW}>{t('placeGallery')}</div>
-              <div className="grid grid-cols-3 gap-[9px]">
-                {detail.images.map((url, i) => (
-                  <div key={url} style={{ animation: `vFade .5s ${i * 90}ms ease both` }}>
-                    <RemoteImage
-                      src={url}
-                      alt={t('placeImgAlt', { name: displayName })}
-                      className="h-[92px] rounded-[16px]"
-                      icon="attractions"
-                    />
-                  </div>
-                ))}
-              </div>
+              {/* No maxThumbs — this gallery always showed every photo, and
+                  keeping that means no "+N" badge ever appears here. */}
+              <ImageGallery
+                images={detail.images}
+                columns={3}
+                thumbClassName="h-[92px] rounded-[16px]"
+                icon="attractions"
+                altFor={(i) => t('galleryImgAlt', { index: i + 1, name: displayName })}
+              />
             </div>
           )}
         </div>
