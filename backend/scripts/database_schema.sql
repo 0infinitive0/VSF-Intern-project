@@ -68,6 +68,10 @@ CREATE TABLE hotels (
     -- ON DELETE RESTRICT/CASCADE trên booking data. Xem
     -- scripts/migrations/20260824_add_hotel_is_active.sql.
     is_active BOOLEAN NOT NULL DEFAULT true,
+    -- Soft delete cho nút "Xoá" ở B1 -- khác is_active (đó là "Ngừng bán",
+    -- vẫn hiện trong danh sách). NULL = chưa xoá. Xem
+    -- scripts/migrations/20260826_add_hotels_deleted_at.sql.
+    deleted_at TIMESTAMPTZ,
     UNIQUE(source_platform, source_hotel_id) -- Khóa UPSERT khi crawl lại đúng khách sạn/đúng OTA
 );
 
@@ -780,6 +784,7 @@ SELECT
   h.updated_at
 FROM public.hotels h
 LEFT JOIN public.rooms r ON r.hotel_id = h.id
+WHERE h.deleted_at IS NULL
 GROUP BY h.id;
 
 REVOKE ALL ON public.admin_hotel_rows FROM anon, authenticated, PUBLIC;

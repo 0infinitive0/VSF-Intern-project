@@ -617,7 +617,16 @@ def bulk_set_hotel_active(body: BulkActiveRequest, admin: AdminUser = Depends(re
 
 
 def _fetch_hotel_row(hotel_id: str) -> dict[str, Any] | None:
-    rows = get_supabase_client().table("hotels").select(_HOTEL_DETAIL_COLUMNS).eq("id", hotel_id).limit(1).execute().data
+    rows = (
+        get_supabase_client()
+        .table("hotels")
+        .select(_HOTEL_DETAIL_COLUMNS)
+        .eq("id", hotel_id)
+        .is_("deleted_at", "null")
+        .limit(1)
+        .execute()
+        .data
+    )
     return rows[0] if rows else None
 
 
@@ -681,6 +690,27 @@ def get_hotel(hotel_id: str) -> HotelDetailResponse | JSONResponse:
     if row is None or aggregates is None:
         return JSONResponse(status_code=404, content={"detail": "hotel_not_found"})
     return _hotel_row_to_detail(row, aggregates)
+
+
+@hotels_router.delete("/{hotel_id}", status_code=204, response_model=None)
+def delete_hotel(hotel_id: str, admin: AdminUser = Depends(require_admin)) -> Response | JSONResponse:
+    """Soft delete (`deleted_at`, 20260826_add_hotels_deleted_at.sql) -- never
+    a hard `.delete()`. Same guard as `set_hotel_active`'s deactivate path:
+    a hotel a guest is mid-stay or about to check into can't just vanish
+    from the admin list with no way to manage their stay."""
+    current = _fetch_hotel_row(hotel_id)
+    if current is None:
+        return JSONResponse(status_code=404, content={"detail": "hotel_not_found"})
+
+    count, bookings = _blocking_bookings(hotel_id)
+    if count > 0:
+        return _blocked_response(count, bookings)
+
+    get_supabase_client().table("hotels").update({"deleted_at": datetime.now(timezone.utc).isoformat(), "is_active": False}).eq(
+        "id", hotel_id
+    ).execute()
+    write_audit(admin, action="hotel.delete", entity_type="hotel", entity_id=hotel_id, before=current)
+    return Response(status_code=204)
 
 
 def _invalid_amenity_ids(amenity_ids: list[str]) -> list[str]:

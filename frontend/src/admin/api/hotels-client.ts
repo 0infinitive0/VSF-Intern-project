@@ -166,6 +166,37 @@ export function reembedHotels(hotelIds: string[], includeRooms = false): Promise
   })
 }
 
+export type DeleteHotelResult =
+  | { ok: true }
+  | { ok: false; detail: string; count?: number; bookings?: HotelBlockedBooking[] }
+
+/** Not routed through `adminFetch`: DELETE returns 204 with no body on
+ * success, and the 409 body carries `count`/`bookings` alongside `detail` --
+ * same reasoning as `setHotelActive` above (this soft-delete shares its
+ * blocking-bookings check). */
+export async function deleteHotel(hotelId: string): Promise<DeleteHotelResult> {
+  let res: Response
+  try {
+    res = await fetch(`${BASE}/hotels/${hotelId}`, { method: 'DELETE', headers: await authHeaders() })
+  } catch {
+    return { ok: false, detail: 'Không thể kết nối tới máy chủ.' }
+  }
+  if (res.ok) return { ok: true }
+  let body: unknown = null
+  try {
+    body = await res.json()
+  } catch {
+    // No JSON body -- fall through to the generic detail below.
+  }
+  const record = (body ?? {}) as Record<string, unknown>
+  return {
+    ok: false,
+    detail: typeof record.detail === 'string' ? record.detail : `Lỗi máy chủ (${res.status}).`,
+    count: typeof record.count === 'number' ? record.count : undefined,
+    bookings: Array.isArray(record.bookings) ? (record.bookings as HotelBlockedBooking[]) : undefined,
+  }
+}
+
 export function listAmenities(): Promise<AdminApiResult<AmenityOption[]>> {
   return adminFetch<AmenityOption[]>('/amenities?scope=hotel')
 }

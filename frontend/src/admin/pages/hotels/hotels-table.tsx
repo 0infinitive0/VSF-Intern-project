@@ -11,6 +11,7 @@ interface HotelsTableProps {
   onToggleSelectAll: () => void
   onToggleActive: (row: HotelRow, nextActive: boolean) => void
   onOpenHotel: (id: string) => void
+  onDeleteHotel: (row: HotelRow) => void
   loading?: boolean
   sortState?: { key: string; direction: 'asc' | 'desc' } | null
   onSortChange?: (key: string) => void
@@ -48,6 +49,7 @@ export function HotelsTable({
   onToggleSelectAll,
   onToggleActive,
   onOpenHotel,
+  onDeleteHotel,
   loading,
   sortState,
   onSortChange,
@@ -112,7 +114,26 @@ export function HotelsTable({
         </div>
       ),
     },
-    { key: 'menu', header: '', width: 32, align: 'right', render: () => <span style={{ color: 'var(--t4)' }}>⋯</span> },
+    {
+      key: 'delete',
+      header: '',
+      width: 32,
+      align: 'right',
+      render: (row) => (
+        <button
+          type="button"
+          className="row-delete-btn"
+          aria-label={`Xoá ${row.name}`}
+          title="Xoá khách sạn"
+          onClick={(e) => {
+            e.stopPropagation()
+            onDeleteHotel(row)
+          }}
+        >
+          🗑
+        </button>
+      ),
+    },
   ]
 
   return (

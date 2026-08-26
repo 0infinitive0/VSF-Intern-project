@@ -692,6 +692,22 @@ button {
   color: var(--on-acc);
 }
 
+.row-delete-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--t4);
+}
+
+.row-delete-btn:hover {
+  background: var(--fill2);
+  color: var(--err, #d92d20);
+}
+
 /* ---------------------------------------------------------------------- */
 /* Hotel avatar -- KHÁCH SẠN column initials square (B1)                   */
 /* ---------------------------------------------------------------------- */

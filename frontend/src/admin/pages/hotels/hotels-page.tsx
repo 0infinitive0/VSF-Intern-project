@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   bulkSetHotelActive,
+  deleteHotel,
   exportHotelsCsv,
   listHotels,
   reembedHotels,
@@ -69,6 +70,9 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
   const [isFetching, setIsFetching] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [rowError, setRowError] = useState<RowBlockedError | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<HotelRow | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState<RowBlockedError | null>(null)
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false)
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkBlockedCount, setBulkBlockedCount] = useState<number | null>(null)
@@ -169,6 +173,30 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
     if (!result.ok) {
       setListState(snapshot)
       setRowError({ hotelName: row.name, count: result.count ?? 0, bookings: result.bookings ?? [] })
+    }
+  }
+
+  async function handleDeleteHotel() {
+    if (!deleteTarget) return
+    setDeleteBusy(true)
+    setDeleteError(null)
+    const target = deleteTarget
+    const result = await deleteHotel(target.id)
+    setDeleteBusy(false)
+    if (!result.ok) {
+      setDeleteError({ hotelName: target.name, count: result.count ?? 0, bookings: result.bookings ?? [] })
+      return
+    }
+    setDeleteTarget(null)
+    setSelectedIds((prev) => {
+      if (!prev.has(target.id)) return prev
+      const next = new Set(prev)
+      next.delete(target.id)
+      return next
+    })
+    if (listState.status === 'loaded') {
+      const items = listState.items.filter((row) => row.id !== target.id)
+      setListState(items.length === 0 ? { status: 'empty' } : { ...listState, items, total: listState.total - 1 })
     }
   }
 
@@ -434,6 +462,10 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
                 onToggleSelectAll={toggleSelectAll}
                 onToggleActive={handleToggleActive}
                 onOpenHotel={(id) => navigate(`/admin/hotels/${id}`)}
+                onDeleteHotel={(row) => {
+                  setDeleteError(null)
+                  setDeleteTarget(row)
+                }}
                 loading={isFetching}
                 sortState={sort}
                 onSortChange={handleSortChange}
@@ -466,6 +498,30 @@ export function HotelsPage({ navigate }: HotelsPageProps) {
           </Button>
           <Button variant="danger" size="sm" onClick={handleBulkDeactivate} disabled={bulkBusy}>
             Ngừng bán
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal open={deleteTarget !== null} onClose={() => setDeleteTarget(null)}>
+        <div style={{ fontSize: 15, fontWeight: 600 }}>Xoá {deleteTarget?.name}?</div>
+        <div style={{ fontSize: 13, color: 'var(--t3)' }}>
+          Khách sạn sẽ bị ẩn khỏi danh sách quản trị. Dữ liệu phòng và lịch sử đặt phòng vẫn được giữ lại.
+        </div>
+        {deleteError && (
+          <Banner tone="err">
+            {deleteError.count > 0
+              ? `Không thể xoá vì còn ${deleteError.count} đơn CONFIRMED chưa checkout.`
+              : deleteError.hotelName
+                ? `Không thể xoá "${deleteError.hotelName}".`
+                : 'Không thể xoá khách sạn này.'}
+          </Banner>
+        )}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <Button variant="secondary" size="sm" onClick={() => setDeleteTarget(null)} disabled={deleteBusy}>
+            Huỷ
+          </Button>
+          <Button variant="danger" size="sm" onClick={handleDeleteHotel} disabled={deleteBusy}>
+            {deleteBusy ? 'Đang xoá…' : 'Xoá khách sạn'}
           </Button>
         </div>
       </Modal>

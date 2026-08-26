@@ -684,7 +684,8 @@ export interface paths {
         get: operations["get_hotel_api_v1_admin_hotels__hotel_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete Hotel */
+        delete: operations["delete_hotel_api_v1_admin_hotels__hotel_id__delete"];
         options?: never;
         head?: never;
         /** Update Hotel */
@@ -1443,12 +1444,18 @@ export interface components {
         };
         /** Body_upload_hotel_image_api_v1_admin_hotels__hotel_id__images_upload_post */
         Body_upload_hotel_image_api_v1_admin_hotels__hotel_id__images_upload_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
         };
         /** Body_upload_room_image_api_v1_admin_rooms__room_id__images_upload_post */
         Body_upload_room_image_api_v1_admin_rooms__room_id__images_upload_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
         };
         /** BookingActionResult */
@@ -1781,6 +1788,8 @@ export interface components {
             room_facilities?: string[];
             /** Images */
             images?: string[];
+            /** Available Room Count */
+            available_room_count?: number | null;
         };
         /** CreateRoomResponse */
         CreateRoomResponse: {
@@ -3449,6 +3458,8 @@ export interface components {
             room_facilities?: string[] | null;
             /** Images */
             images?: string[] | null;
+            /** Available Room Count */
+            available_room_count?: number | null;
         };
         /** UpdateRoomResponse */
         UpdateRoomResponse: {
@@ -3479,10 +3490,6 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: Record<string, never>;
         };
     };
     responses: never;
@@ -4440,6 +4447,8 @@ export interface operations {
                 embedding?: "embedded" | "missing" | "incomplete" | "all";
                 page?: number;
                 page_size?: number;
+                sort?: string | null;
+                sort_dir?: "asc" | "desc";
                 format?: "json" | "csv";
             };
             header?: {
@@ -4598,6 +4607,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HotelDetailResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_hotel_api_v1_admin_hotels__hotel_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                hotel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
