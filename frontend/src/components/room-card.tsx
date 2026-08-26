@@ -293,7 +293,15 @@ export default function RoomCard({
               className="flex-1 p-2.5 rounded-[14px] border-none text-[12.5px] font-[590] tracking-[-0.1px] cursor-pointer transition-all duration-200 active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-50"
               style={{ background: 'var(--fill)', color: 'var(--t2)' }}
             >
-              {maxQty > 0 ? t('roomAddBtn') : t('roomSoldOut')}
+              {/* "Hết phòng" is reserved for an ACTUALLY sold-out room
+                  (price.sold_out, real data) — when maxQty is merely 0
+                  because the party-size cap across the cart's other room
+                  types is already used up (hotel-detail-panel.tsx's
+                  remainingRoomsAllowed), the button still reads "Thêm
+                  phòng", just disabled/dimmed via `canAdd` above — telling
+                  a guest "hết phòng" for a room type that's actually still
+                  available would be misleading. */}
+              {price?.sold_out ? t('roomSoldOut') : t('roomAddBtn')}
             </button>
           )}
           <button
