@@ -194,6 +194,8 @@ code{ font-family:'Space Grotesk',monospace; background:var(--accent-light); col
 
 .formula-box{ border:1.5px solid var(--border); background:var(--text); color:var(--bg); padding:30px 34px; border-radius:16px; font-family:'Space Grotesk',monospace; font-size:20px; line-height:1.7; white-space:pre-wrap; }
 .formula-box b{ color:#ffffff; }
+.formula-inline{ display:block; font-family:'Space Grotesk',monospace; font-size:18px; line-height:1.5; color:var(--primary); background:var(--accent-light); border-radius:10px; padding:11px 15px; margin:8px 0 12px; }
+.n-tag{ font-family:'Space Grotesk',monospace; font-weight:600; font-size:15px; letter-spacing:0.03em; color:var(--text-light); border:1px solid var(--border); border-radius:100px; padding:6px 14px; margin-left:10px; white-space:nowrap; }
 
 .qty-tag{ display:inline-flex; align-items:center; gap:8px; border:1px solid var(--border); background:var(--card-bg); padding:9px 20px; border-radius:100px; font-family:var(--f-display); font-size:17px; font-weight:500; color:var(--primary); margin:5px 10px 5px 0; }
 .kv-row{ display:flex; justify-content:space-between; gap:20px; font-family:var(--f-body); font-size:21px; padding:13px 0; border-bottom:1px solid var(--border); }
@@ -599,6 +601,11 @@ code{ font-family:'Space Grotesk',monospace; background:var(--accent-light); col
 #s45 .spec-hd{ font-size:24px !important; }
 #s45 .note{ font-size:30px !important; }
 #s45 code{ font-size:26px !important; }
+#s49 .cmp-table th, #s49 .cmp-table td{ padding:8px 10px; font-size:16px !important; }
+#s49 .note{ font-size:16px !important; line-height:1.45; }
+#s50 .spec-card{ padding:20px 24px; }
+#s50 .note{ font-size:18px !important; line-height:1.5; }
+#s50 .note code{ font-size:0.9em !important; }
 </style>
 </head>
 <body>
@@ -1202,8 +1209,9 @@ code{ font-family:'Space Grotesk',monospace; background:var(--accent-light); col
             <div class="idx-item" data-jump="s45"><div class="idx-num">27</div><div class="idx-label">Q&amp;A — Greedy vs CSP/ILP?</div></div>
             <div class="idx-item" data-jump="s46"><div class="idx-num">28</div><div class="idx-label">Q&amp;A — Cache hit rate &amp; cost thật?</div></div>
             <div class="idx-item" data-jump="s47"><div class="idx-num">29</div><div class="idx-label">Luồng đặt phòng &amp; thanh toán VNPay</div></div>
-            <div class="idx-item" data-jump="s49"><div class="idx-num">30</div><div class="idx-label">Giữ phòng — quyết định thiết kế &amp; rủi ro</div></div>
+            <div class="idx-item" data-jump="s48"><div class="idx-num">30</div><div class="idx-label">Giữ phòng — quyết định thiết kế &amp; rủi ro</div></div>
             <div class="idx-item" data-jump="s49"><div class="idx-num">31</div><div class="idx-label">Kết quả đánh giá — chi tiết</div></div>
+            <div class="idx-item" data-jump="s50"><div class="idx-num">32</div><div class="idx-label">Tiêu chí eval — công thức &amp; cách đọc</div></div>
           </div>
         </div>
       </div>
@@ -1214,7 +1222,7 @@ code{ font-family:'Space Grotesk',monospace; background:var(--accent-light); col
       <div class="slide-pad">
         <div class="slide-header">
           <div class="eyebrow reveal r1">Phụ lục · Kiến trúc</div>
-          <div class="tag-pill reveal r1">01 / 31</div>
+          <div class="tag-pill reveal r1">01 / 32</div>
         </div>
         <h2 class="h2 reveal r2" style="margin-top:20px;">Toàn bộ luồng LangGraph — định tuyến 14 node</h2>
 
@@ -1768,7 +1776,7 @@ code{ font-family:'Space Grotesk',monospace; background:var(--accent-light); col
       <div class="slide-pad">
         <div class="slide-header">
           <div class="eyebrow reveal r1">Phụ lục · Q&amp;A</div>
-          <div class="tag-pill reveal r1">17 / 31</div>
+          <div class="tag-pill reveal r1">17 / 32</div>
         </div>
         <h2 class="h2 reveal r2" style="margin-top:20px;">Lựa chọn mô hình AI &amp; so sánh</h2>
         <p class="mono-meta reveal r2" style="margin-top:6px; font-size:27px;">Cấu hình đang chạy thật (backend/.env) — không phải ví dụ trong README</p>
@@ -1828,7 +1836,7 @@ code{ font-family:'Space Grotesk',monospace; background:var(--accent-light); col
       <div class="slide-pad">
         <div class="slide-header">
           <div class="eyebrow reveal r1">Phụ lục · Q&amp;A</div>
-          <div class="tag-pill reveal r1">18 / 31</div>
+          <div class="tag-pill reveal r1">18 / 32</div>
         </div>
         <h2 class="h2 reveal r2" style="margin-top:20px;">Vì sao chọn BGE-M3 cho embedding?</h2>
         <p class="mono-meta reveal r2" style="margin-top:6px; font-size:18px;">EMBEDDING_MODEL=@cf/baai/bge-m3 qua Cloudflare Workers AI · 1024-d</p>
@@ -1878,7 +1886,7 @@ code{ font-family:'Space Grotesk',monospace; background:var(--accent-light); col
       <div class="slide-pad">
         <div class="slide-header">
           <div class="eyebrow reveal r1">Phụ lục · Q&amp;A</div>
-          <div class="tag-pill reveal r1">19 / 31</div>
+          <div class="tag-pill reveal r1">19 / 32</div>
         </div>
         <h2 class="h2 reveal r2" style="margin-top:20px;">Công thức chấm điểm khách sạn</h2>
         <p class="mono-meta reveal r2" style="margin-top:6px; font-size:18px;">services/hotel_selection.py</p>
@@ -1925,7 +1933,7 @@ code{ font-family:'Space Grotesk',monospace; background:var(--accent-light); col
       <div class="slide-pad">
         <div class="slide-header">
           <div class="eyebrow reveal r1">Phụ lục · Q&amp;A</div>
-          <div class="tag-pill reveal r1">20 / 31</div>
+          <div class="tag-pill reveal r1">20 / 32</div>
         </div>
         <h2 class="h2 reveal r2" style="margin-top:20px;">Thuật toán lập lịch trình</h2>
         <p class="mono-meta reveal r2" style="margin-top:6px; font-size:18px;">services/trip_scheduler.py (1458 dòng, hàm thuần Python) — greedy theo khung giờ cố định. KHÔNG phải constraint solver, KHÔNG phải TSP cổ điển.</p>
@@ -1965,7 +1973,7 @@ code{ font-family:'Space Grotesk',monospace; background:var(--accent-light); col
       <div class="slide-pad">
         <div class="slide-header">
           <div class="eyebrow reveal r1">Phụ lục · Q&amp;A</div>
-          <div class="tag-pill reveal r1">20 / 31 · tiếp</div>
+          <div class="tag-pill reveal r1">20 / 32 · tiếp</div>
         </div>
         <h2 class="h2 reveal r2" style="margin-top:20px;">Thuật toán lập lịch trình — chấm điểm &amp; gom cụm</h2>
 
@@ -2000,7 +2008,7 @@ code{ font-family:'Space Grotesk',monospace; background:var(--accent-light); col
       <div class="slide-pad">
         <div class="slide-header">
           <div class="eyebrow reveal r1">Phụ lục · Q&amp;A</div>
-          <div class="tag-pill reveal r1">21 / 31</div>
+          <div class="tag-pill reveal r1">21 / 32</div>
         </div>
         <div class="content-region" style="flex-direction:row; gap:64px; align-items:center;">
           <div style="flex:1.15;">
@@ -2029,7 +2037,7 @@ code{ font-family:'Space Grotesk',monospace; background:var(--accent-light); col
       <div class="slide-pad">
         <div class="slide-header">
           <div class="eyebrow reveal r1">Phụ lục · Q&amp;A</div>
-          <div class="tag-pill reveal r1">22 / 31</div>
+          <div class="tag-pill reveal r1">22 / 32</div>
         </div>
         <h2 class="h2 reveal r2" style="margin-top:20px;">Tier 1 Cache — chi tiết</h2>
 
@@ -2081,7 +2089,7 @@ code{ font-family:'Space Grotesk',monospace; background:var(--accent-light); col
       <div class="slide-pad">
         <div class="slide-header">
           <div class="eyebrow reveal r1">Phụ lục · Q&amp;A</div>
-          <div class="tag-pill reveal r1">23 / 31</div>
+          <div class="tag-pill reveal r1">23 / 32</div>
         </div>
         <h2 class="h2 reveal r2" style="margin-top:20px;">Pipeline tìm kiếm ngữ nghĩa (RAG)</h2>
         <p class="mono-meta reveal r2" style="margin-top:6px; font-size:27px;">Embedding lưu &amp; query hoàn toàn trên Supabase pgvector — không hybrid keyword/BM25, không reranker model</p>
@@ -2118,7 +2126,7 @@ code{ font-family:'Space Grotesk',monospace; background:var(--accent-light); col
       <div class="slide-pad">
         <div class="slide-header">
           <div class="eyebrow reveal r1">Phụ lục · Q&amp;A</div>
-          <div class="tag-pill reveal r1">24 / 31</div>
+          <div class="tag-pill reveal r1">24 / 32</div>
         </div>
         <h2 class="h2 reveal r2" style="margin-top:20px;">Quản lý session &amp; state</h2>
 
@@ -2166,7 +2174,7 @@ code{ font-family:'Space Grotesk',monospace; background:var(--accent-light); col
       <div class="slide-pad">
         <div class="slide-header">
           <div class="eyebrow reveal r1">Phụ lục · Q&amp;A</div>
-          <div class="tag-pill reveal r1">25 / 31</div>
+          <div class="tag-pill reveal r1">25 / 32</div>
         </div>
         <h2 class="h2 reveal r2" style="margin-top:20px;">Ước tính chi phí &amp; token</h2>
 
@@ -2194,7 +2202,7 @@ code{ font-family:'Space Grotesk',monospace; background:var(--accent-light); col
       <div class="slide-pad">
         <div class="slide-header">
           <div class="eyebrow reveal r1">Phụ lục · Q&amp;A</div>
-          <div class="tag-pill reveal r1">25 / 31 · tiếp</div>
+          <div class="tag-pill reveal r1">25 / 32 · tiếp</div>
         </div>
         <h2 class="h2 reveal r2" style="margin-top:20px;">Con số thật &amp; giới hạn của ước tính</h2>
 
@@ -2218,7 +2226,7 @@ code{ font-family:'Space Grotesk',monospace; background:var(--accent-light); col
       <div class="slide-pad">
         <div class="slide-header">
           <div class="eyebrow reveal r1">Phụ lục · Câu hỏi dự kiến</div>
-          <div class="tag-pill reveal r1">26 / 31</div>
+          <div class="tag-pill reveal r1">26 / 32</div>
         </div>
         <h2 class="h2 reveal r2" style="margin-top:20px; font-size:47px;">Giá phòng đổi giữa lúc khách thanh toán thì sao?</h2>
 
@@ -2251,7 +2259,7 @@ code{ font-family:'Space Grotesk',monospace; background:var(--accent-light); col
       <div class="slide-pad">
         <div class="slide-header">
           <div class="eyebrow reveal r1">Phụ lục · Câu hỏi dự kiến</div>
-          <div class="tag-pill reveal r1">27 / 31</div>
+          <div class="tag-pill reveal r1">27 / 32</div>
         </div>
         <h2 class="h2 reveal r2" style="margin-top:20px; font-size:43px;">booking_node luôn từ chối — sao không định tuyến ở API gateway?</h2>
 
@@ -2285,7 +2293,7 @@ or such a turn would silently fall to respond with nothing said —
       <div class="slide-pad">
         <div class="slide-header">
           <div class="eyebrow reveal r1">Phụ lục · Câu hỏi dự kiến</div>
-          <div class="tag-pill reveal r1">28 / 31</div>
+          <div class="tag-pill reveal r1">28 / 32</div>
         </div>
         <h2 class="h2 reveal r2" style="margin-top:20px; font-size:71px;">Sao dùng greedy heuristic thay vì CSP / ILP solver?</h2>
         <p class="mono-meta reveal r2" style="margin-top:6px; font-size:27px;">Lý do kỹ thuật suy ra từ hành vi hệ thống — không phải trích tài liệu thiết kế có sẵn</p>
@@ -2320,7 +2328,7 @@ or such a turn would silently fall to respond with nothing said —
       <div class="slide-pad">
         <div class="slide-header">
           <div class="eyebrow reveal r1">Phụ lục · Câu hỏi dự kiến</div>
-          <div class="tag-pill reveal r1">29 / 31</div>
+          <div class="tag-pill reveal r1">29 / 32</div>
         </div>
         <h2 class="h2 reveal r2" style="margin-top:20px; font-size:47px;">Tier 1 Cache hit rate thật? Chi phí LLM / lịch trình?</h2>
 
@@ -2354,7 +2362,7 @@ or such a turn would silently fall to respond with nothing said —
       <div class="slide-pad">
         <div class="slide-header">
           <div class="eyebrow reveal r1">Phụ lục · Kiến trúc</div>
-          <div class="tag-pill reveal r1">30 / 31</div>
+          <div class="tag-pill reveal r1">30 / 32</div>
         </div>
         <h2 class="h2 reveal r2" style="margin-top:20px;">Luồng đặt phòng &amp; thanh toán VNPay</h2>
         <p class="mono-meta reveal r2" style="margin-top:6px; font-size:18px;">use-room-hold.ts · routes.py · vnpay_service.py</p>
@@ -2391,7 +2399,7 @@ or such a turn would silently fall to respond with nothing said —
       <div class="slide-pad">
         <div class="slide-header">
           <div class="eyebrow reveal r1">Phụ lục · Q&amp;A</div>
-          <div class="tag-pill reveal r1">31 / 31</div>
+          <div class="tag-pill reveal r1">31 / 32</div>
         </div>
         <h2 class="h2 reveal r2" style="margin-top:20px;">Giữ phòng — quyết định thiết kế &amp; rủi ro</h2>
         <p class="mono-meta reveal r2" style="margin-top:6px; font-size:18px;">use-room-hold.ts — state toàn cục theo tab, không theo session</p>
@@ -2429,7 +2437,7 @@ or such a turn would silently fall to respond with nothing said —
       <div class="slide-pad">
         <div class="slide-header">
           <div class="eyebrow reveal r1">Phụ lục · Q&amp;A</div>
-          <div class="tag-pill reveal r1">31 / 31</div>
+          <div class="tag-pill reveal r1">31 / 32</div>
         </div>
         <h2 class="h2 reveal r2" style="margin-top:20px;">Kết quả thật trên bộ eval — không phải ước lượng</h2>
         <p class="mono-meta reveal r2" style="margin-top:6px; font-size:19px;">eval/results/ragas-20260820 · 23 record retrieval (VI) · 9 hội thoại / 35 lượt E2E · Cloudflare bge-m3</p>
@@ -2438,24 +2446,28 @@ or such a turn would silently fall to respond with nothing said —
           <div class="node-cols reveal r3">
             <div class="card-tinted-sm" style="flex:1; text-align:center;">
               <div class="metric-value">0.80–0.86</div>
-              <p class="metric-desc" style="margin-top:8px; font-size:18px;">Precision truy xuất (VI) — dao động qua các lần chạy</p>
+              <p class="metric-desc" style="margin-top:8px; font-size:18px;">Precision truy xuất (VI) — dao động qua các lần chạy<br><b>n = 23 record</b></p>
             </div>
             <div class="card-tinted-sm" style="flex:1; text-align:center;">
               <div class="metric-value">0.833</div>
-              <p class="metric-desc" style="margin-top:8px; font-size:18px;">Context relevance truy xuất (VI)</p>
+              <p class="metric-desc" style="margin-top:8px; font-size:18px;">Context relevance truy xuất (VI)<br><b>n = 23 record</b></p>
             </div>
             <div class="card-tinted-sm" style="flex:1; text-align:center;">
               <div class="metric-value">0.78–0.87</div>
-              <p class="metric-desc" style="margin-top:8px; font-size:18px;">Faithfulness E2E — dao động qua 5 lần chạy</p>
+              <p class="metric-desc" style="margin-top:8px; font-size:18px;">Faithfulness E2E — dao động qua 5 lần chạy<br><b>n = 8 lượt được chấm / 35</b></p>
             </div>
           </div>
 
           <div class="node-cols reveal r4">
             <div class="spec-card">
-              <div class="spec-hd">Latency (p50 / p95)</div>
-              <div class="kv-row"><span class="k">retrieval.search</span><span class="v">4.54s / 7.99s</span></div>
-              <div class="kv-row"><span class="k">e2e.turn</span><span class="v">6.98s / 12.82s</span></div>
-              <div class="kv-row"><span class="k">e2e.conversation</span><span class="v">29.03s / 37.44s</span></div>
+              <div class="spec-hd">Latency — n đi kèm mọi percentile</div>
+              <table class="cmp-table" style="margin-top:8px;">
+                <tr><th>Họ</th><th class="center">n</th><th class="center">p50</th><th class="center">p95</th><th class="center">p99</th></tr>
+                <tr><td>retrieval.search</td><td class="center">23</td><td class="center">4.54s</td><td class="center">7.99s</td><td class="center">9.43s</td></tr>
+                <tr><td>e2e.turn</td><td class="center">35</td><td class="center">6.98s</td><td class="center">12.82s</td><td class="center">14.25s*</td></tr>
+                <tr><td>e2e.conversation</td><td class="center">9</td><td class="center">29.03s</td><td class="center">37.44s</td><td class="center">37.84s*</td></tr>
+              </table>
+              <p class="note" style="margin-top:10px;">* Lớp 2 chỉ ghi <code>max</code>, không ghi <code>p99</code>. Với n = 9 / 35, p95–p99 trùng <code>max</code> theo cấu tạo — đọc là "lần chậm nhất đo được", không phải ước lượng đuôi phân phối.</p>
             </div>
             <div class="spec-card">
               <div class="spec-hd">Chi phí đo được / lần chạy eval</div>
@@ -2469,6 +2481,58 @@ or such a turn would silently fall to respond with nothing said —
       </div>
     </section>
 
+    <!-- ============ SLIDE 50 — EVAL METRIC FORMULAS ============ -->
+    <section class="slide" id="s50" data-appendix="true">
+      <div class="slide-pad">
+        <div class="slide-header">
+          <div class="eyebrow reveal r1">Phụ lục · Q&amp;A</div>
+          <div class="tag-pill reveal r1">32 / 32</div>
+        </div>
+        <h2 class="h2 reveal r2" style="margin-top:20px;">Các tiêu chí eval — công thức và cách đọc</h2>
+        <p class="mono-meta reveal r2" style="margin-top:6px; font-size:18px;">ragas 0.3.9 · judge gpt-4o-mini, temperature=0 · cỡ mẫu: Lớp 1 <b>n = 23 record</b> (17 hotels + 6 attractions, VI) · Lớp 2 <b>9 hội thoại / 35 lượt</b></p>
+
+        <div class="content-region" style="gap:18px;">
+          <div class="node-cols reveal r3" style="margin-top:12px;">
+            <div class="spec-card" style="flex:1;">
+              <div class="spec-hd">Lớp 1 · Precision truy xuất (theo ID)</div><span class="n-tag">n = 23</span>
+              <code class="formula-inline">precision = |ID trả về ∩ ID tham chiếu| / |ID trả về|</code>
+              <p class="note">Trong những gì hệ thống trả về, bao nhiêu phần là đúng chỗ. So khớp ID chính xác, không cần LLM nên miễn phí và tất định. Tập tham chiếu = <code>expected_ids + acceptable_ids</code> — một kết quả hợp lý nhưng không bắt buộc thì không bị tính là sai.</p>
+            </div>
+            <div class="spec-card" style="flex:1;">
+              <div class="spec-hd">Lớp 1 · Recall truy xuất (theo ID)</div><span class="n-tag">n = 23</span>
+              <code class="formula-inline">recall = |ID trả về ∩ expected_ids| / |expected_ids|</code>
+              <p class="note">Trong những gì bắt buộc phải tìm ra, bao nhiêu phần đã tìm được. Ở đây <code>acceptable_ids</code> <b>không</b> được tính — bất đối xứng có chủ đích: tìm thấy khách sạn "tạm được" không thay thế được khách sạn bắt buộc.</p>
+            </div>
+          </div>
+
+          <div class="node-cols reveal r4" style="margin-top:0;">
+            <div class="spec-card" style="flex:1;">
+              <div class="spec-hd">Lớp 1 · LLM precision (average precision@k)</div><span class="n-tag">n = 23</span>
+              <code class="formula-inline">AP = Σₖ (P@k × vₖ) / Σₖ vₖ ,  vₖ ∈ {0,1}</code>
+              <p class="note">Judge đọc từng context và gắn cờ liên quan/không so với <code>rationale</code> của record. Vì chia trung bình theo thứ hạng <code>k</code>, context đúng nằm càng gần đầu danh sách thì điểm càng cao — đây là tiêu chí duy nhất đo <b>thứ tự</b>, không chỉ đo tập hợp.</p>
+            </div>
+            <div class="spec-card" style="flex:1;">
+              <div class="spec-hd">Lớp 1 · Context relevance</div><span class="n-tag">n = 23</span>
+              <code class="formula-inline">score = (s₁ + s₂) / 2 ,  sᵢ ∈ {0 · 0.5 · 1}</code>
+              <p class="note">Hai prompt độc lập bắt judge chấm 0 / 1 / 2 (không liên quan · liên quan một phần · có thông tin trả lời được), chuẩn hoá về 0–1 rồi lấy trung bình. Chấm hai lần để một lần đoán lệch không kéo cả điểm đi.</p>
+            </div>
+          </div>
+
+          <div class="node-cols reveal r5" style="margin-top:0;">
+            <div class="spec-card" style="flex:1.45;">
+              <div class="spec-hd">Lớp 2 · Faithfulness (E2E)</div><span class="n-tag">n = 8 lượt / 35</span>
+              <code class="formula-inline">faithfulness = số mệnh đề suy ra được từ context / tổng số mệnh đề</code>
+              <p class="note">Judge tách câu trả lời thành các mệnh đề rời rồi kiểm tra từng mệnh đề có suy ra được từ context đã truy xuất hay không. Đây là thước đo <b>có bịa hay không</b> — nó không nói câu trả lời hay hay dở, cũng không nói có đúng ý người dùng hay không.</p>
+            </div>
+            <div class="spec-card" style="flex:1;">
+              <div class="spec-hd">Vì sao n nhỏ hơn số lượt</div>
+              <p class="note">Faithfulness đo một <b>quan hệ</b> giữa câu trả lời và context — lượt hỏi lại hay lượt click thẻ không có context để đối chiếu, chấm vào sẽ ra 0.0 giả. Trong 35 lượt: <b>20 lượt không có context</b> bị loại, phần còn lại chỉ chấm lượt <code>hotel_node</code> → <b>n = 8</b>. Mọi trung bình trong <code>breakdowns</code> vì thế luôn đi kèm <code>n</code>.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
 
 
 
@@ -2477,7 +2541,7 @@ or such a turn would silently fall to respond with nothing said —
 
 <!-- Persistent chrome — outside slide design system -->
 <div class="progress-bar" id="progressBar" style="width:2%;"></div>
-<div class="slide-counter" id="counter">01 / 49</div>
+<div class="slide-counter" id="counter">01 / 50</div>
 <div class="jump-hint" id="jumpHint"></div>
 <div class="kbd-hint">Dùng phím mũi tên để điều hướng</div>
 <div class="nav-controls">
