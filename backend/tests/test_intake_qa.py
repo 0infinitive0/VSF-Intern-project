@@ -20,6 +20,7 @@ import src.agents.graph.nodes.intake_qa as intake_qa_module
 from src.agents.graph.graph import build_graph
 from src.agents.graph.nodes.ask_slot import ask_slot
 from src.agents.graph.nodes.intake_qa import intake_qa
+from src.agents.graph.nodes.qa_node import QA_SYSTEM_PROMPT
 from src.agents.graph.nodes.respond import respond
 from src.agents.graph.prompts import INTAKE_QA_NO_ANSWER_SENTINEL, build_intake_qa_prompt
 from src.agents.graph.routing import is_incomplete_edit, is_intake_question, route_ask_slot, route_intake_qa
@@ -225,15 +226,18 @@ def test_ask_slot_keeps_blame_line_for_a_genuine_unrecognized_reply() -> None:
 #
 # No test here calls a real model -- these assert on the built string only.
 
-# Copied verbatim from the pre-Phase-16 `_INTAKE_QA_SYSTEM_PROMPT` literal --
-# an independent record of "today's output", not derived from the module
-# under test, so a refactor that silently changes the rendered text fails
-# this instead of passing vacuously.
-_PRE_CLARIFY_INTAKE_QA_PROMPT = """You are a trip-planning assistant answering one user question while some trip details are still being collected. Answer briefly and only from what you actually know -- if you don't know something (weather, prices, availability, real-time facts), say so plainly instead of guessing.
+# Copied verbatim from the `_INTAKE_QA_SYSTEM_PROMPT` literal -- an
+# independent record of "today's output", not derived from the module under
+# test, so a refactor that silently changes the rendered text fails this
+# instead of passing vacuously.
+_INTAKE_MODE_PROMPT = """You are a trip-planning assistant answering one user question while some trip details are still being collected. Answer briefly and only from what you actually know -- if you don't know something (weather, prices, availability, real-time facts), say so plainly instead of guessing.
 
 The message reaches you because an upstream classifier flagged it as "changes nothing about the trip" -- that classifier catches real questions, but ALSO greetings, acknowledgements ("ok", "cảm ơn"), and short replies it failed to connect to the pending question below. You must tell those apart: if the message does not actually ask something worth answering, reply with exactly the single word NO_ANSWER and nothing else -- do not greet back, do not comment, do not apologize.
 
 Rules:
+- Only travel planning for this trip is yours to answer. A request for anything else -- solving maths or homework, writing or debugging code, any unrelated topic -- gets one short sentence declining it and naming what you can help with instead. Do not lecture, and do not attempt it partially.
+- Flights are not covered by this product at all: no flight search, schedules, prices, or booking. Say that plainly instead of guessing.
+- Arithmetic about the trip itself ("chia 3 triệu cho 3 ngày", totalling costs) and a hotel near an airport are ordinary travel questions -- answer those normally.
 - Never invent a trip fact (destination, dates, budget, preferences) -- only use what is listed below as already known.
 - Never ask the user for any information yourself. Right after your answer, the assistant will separately ask: "{next_question}" -- do not repeat, rephrase, or anticipate that question.
 - Keep the answer short (1-3 sentences).
@@ -245,11 +249,11 @@ User's message: "{message}"
 """
 
 
-def test_build_intake_qa_prompt_default_is_byte_identical_to_the_pre_clarify_prompt() -> None:
+def test_build_intake_qa_prompt_default_renders_intake_mode_byte_for_byte() -> None:
     message = "Đà Nẵng tháng 7 mưa không?"
     known_facts = "destination=Đà Nẵng"
     next_question = "Bạn dự định đi và về ngày nào?"
-    expected = _PRE_CLARIFY_INTAKE_QA_PROMPT.format(
+    expected = _INTAKE_MODE_PROMPT.format(
         next_question=next_question, known_facts=known_facts, message=message, language_name="Vietnamese"
     )
 
@@ -287,6 +291,35 @@ def test_clarify_mode_contains_neither_the_no_ask_rule_nor_the_pending_question(
     )
     assert "Never ask the user for any information yourself" not in prompt
     assert "Bạn dự định đi và về ngày nào?" not in prompt
+
+
+# --- out-of-scope refusal, prompt layer -------------------------------------
+#
+# `guardrails/scope.py` was never built, so these clauses are the only
+# control on the intake and QA branches -- a refactor that drops one silently
+# re-opens maths/code/flight answering. Both modes carry them, and so does
+# `qa_node`, the post-intake branch.
+
+
+@pytest.mark.parametrize("clarify", [False, True])
+def test_both_intake_modes_refuse_out_of_scope_requests(clarify: bool) -> None:
+    prompt = build_intake_qa_prompt(
+        message="giải phương trình x^2+2x+1=0",
+        known_facts="destination=Đà Nẵng",
+        next_question="Bạn dự định đi và về ngày nào?",
+        language="vi",
+        clarify=clarify,
+    )
+    assert "Only travel planning for this trip is yours to answer" in prompt
+    assert "Flights are not covered by this product" in prompt
+    # The false-positive guard travels with the refusal, never separately.
+    assert "are ordinary travel questions" in prompt
+
+
+def test_qa_node_prompt_refuses_out_of_scope_requests() -> None:
+    assert "Only travel questions about this trip are yours to answer" in QA_SYSTEM_PROMPT
+    assert "Flights are not part of this product" in QA_SYSTEM_PROMPT
+    assert "are ordinary travel questions — answer those normally" in QA_SYSTEM_PROMPT
 
 
 def test_clarify_mode_offers_every_closed_set_label_from_the_imported_vocabulary() -> None:

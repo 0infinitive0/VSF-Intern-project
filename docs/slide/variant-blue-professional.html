@@ -261,6 +261,8 @@ code{ font-family:'Space Grotesk',monospace; background:var(--accent-light); col
   font-family:var(--f-display); font-weight:600; white-space:nowrap;
 }
 .g17-sub-end{ font-family:var(--f-body); font-weight:500; font-size:14px; color:var(--text-muted); margin-left:4px; }
+/* the routing diagram is the tallest content in the deck — reclaim bottom padding for it */
+#s17 .slide-pad{ padding-bottom:64px; }
 
 /* Product / admin mockups */
 .split-row{ display:flex; gap:56px; flex:1; align-items:stretch; }
@@ -1217,8 +1219,8 @@ code{ font-family:'Space Grotesk',monospace; background:var(--accent-light); col
         <h2 class="h2 reveal r2" style="margin-top:20px;">Toàn bộ luồng LangGraph — định tuyến 14 node</h2>
 
         <div class="content-region" style="gap:14px;">
-          <div class="graph-wrap reveal r3" style="position:relative; width:1760px; height:660px; margin:0 auto;">
-            <svg viewBox="0 0 1760 660" width="1760" height="660" style="position:absolute; left:0; top:0; z-index:1;">
+          <div class="graph-wrap reveal r3" style="position:relative; width:1760px; height:740px; margin:0 auto;">
+            <svg viewBox="0 0 1760 740" width="1760" height="740" style="position:absolute; left:0; top:0; z-index:1;">
               <defs>
                 <marker id="g17arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                   <path d="M0,0 L10,5 L0,10 z" fill="#1e2bfa"></path>
@@ -1226,67 +1228,67 @@ code{ font-family:'Space Grotesk',monospace; background:var(--accent-light); col
               </defs>
               <!-- primary spine + fan-out + converge (every "always" edge, arrowhead at destination) -->
               <g stroke="#1e2bfa" stroke-width="2.5" fill="none" marker-end="url(#g17arrow)">
-                <line x1="880" y1="34" x2="880" y2="56"></line>
-                <line x1="880" y1="92" x2="880" y2="114"></line>
-                <line x1="880" y1="150" x2="880" y2="172"></line>
-                <line x1="880" y1="208" x2="880" y2="230"></line>
-                <line x1="880" y1="266" x2="880" y2="288"></line>
-                <line x1="880" y1="324" x2="880" y2="346"></line>
-                <line x1="880" y1="382" x2="880" y2="418"></line>
-                <line x1="880" y1="454" x2="514" y2="493"></line>
-                <line x1="880" y1="454" x2="758" y2="493"></line>
-                <line x1="880" y1="454" x2="1002" y2="493"></line>
-                <line x1="880" y1="454" x2="1246" y2="493"></line>
-                <line x1="514" y1="529" x2="879" y2="563"></line>
-                <line x1="758" y1="529" x2="880" y2="563"></line>
-                <line x1="1002" y1="529" x2="881" y2="563"></line>
-                <line x1="880" y1="599" x2="880" y2="613"></line>
+                <line x1="880" y1="34" x2="880" y2="60"></line>
+                <line x1="880" y1="96" x2="880" y2="122"></line>
+                <line x1="880" y1="158" x2="880" y2="184"></line>
+                <line x1="880" y1="220" x2="880" y2="246"></line>
+                <line x1="880" y1="282" x2="880" y2="308"></line>
+                <line x1="880" y1="344" x2="880" y2="370"></line>
+                <line x1="880" y1="406" x2="880" y2="446"></line>
+                <line x1="880" y1="482" x2="460" y2="548"></line>
+                <line x1="880" y1="482" x2="740" y2="548"></line>
+                <line x1="880" y1="482" x2="1020" y2="548"></line>
+                <line x1="880" y1="482" x2="1300" y2="548"></line>
+                <line x1="460" y1="584" x2="879" y2="640"></line>
+                <line x1="740" y1="584" x2="880" y2="640"></line>
+                <line x1="1020" y1="584" x2="881" y2="640"></line>
+                <line x1="880" y1="676" x2="880" y2="704"></line>
                 <!-- ask_slot -> supervisor bypass (skip intake_qa when info already complete) -->
-                <path d="M1050,307 L1130,307 L1130,437 L1090,437"></path>
+                <path d="M1050,327 L1130,327 L1130,465 L1090,465"></path>
               </g>
               <!-- "respond" bus — collects every conditional/early-exit edge that terminates in respond -->
               <g stroke="#1e2bfa" stroke-width="1.5" fill="none" opacity="0.55">
-                <line x1="1050" y1="75" x2="1600" y2="75"></line>
-                <line x1="1050" y1="307" x2="1600" y2="307"></line>
-                <line x1="1050" y1="365" x2="1600" y2="365"></line>
-                <line x1="1090" y1="447" x2="1600" y2="447"></line>
-                <path d="M868,495 L868,478 L1600,478"></path>
-                <line x1="1356" y1="512" x2="1600" y2="512"></line>
-                <line x1="1600" y1="75" x2="1600" y2="600"></line>
+                <line x1="1050" y1="79" x2="1600" y2="79"></line>
+                <line x1="1050" y1="327" x2="1600" y2="327"></line>
+                <line x1="1050" y1="389" x2="1600" y2="389"></line>
+                <line x1="1090" y1="475" x2="1600" y2="475"></line>
+                <path d="M850,550 L850,533 L1600,533"></path>
+                <line x1="1410" y1="567" x2="1600" y2="567"></line>
+                <line x1="1600" y1="79" x2="1600" y2="680"></line>
               </g>
-              <path d="M1600,600 L1020,600 L1020,613" stroke="#1e2bfa" stroke-width="2.5" fill="none" marker-end="url(#g17arrow)"></path>
+              <path d="M1600,680 L1020,680 L1020,704" stroke="#1e2bfa" stroke-width="2.5" fill="none" marker-end="url(#g17arrow)"></path>
               <!-- "supervisor loop" bus — hotel_node / itinerary_node returning control to supervisor -->
               <g stroke="#1e2bfa" stroke-width="1.5" fill="none" opacity="0.55">
-                <line x1="404" y1="512" x2="250" y2="512"></line>
-                <path d="M690,495 L690,470 L250,470"></path>
-                <line x1="250" y1="437" x2="250" y2="512"></line>
+                <line x1="350" y1="567" x2="250" y2="567"></line>
+                <path d="M672,550 L672,525 L250,525"></path>
+                <line x1="250" y1="465" x2="250" y2="567"></line>
               </g>
-              <line x1="250" y1="437" x2="670" y2="437" stroke="#1e2bfa" stroke-width="2.5" marker-end="url(#g17arrow)"></line>
-              <text x="1605" y="200" fill="#1e2bfa" font-family="Space Grotesk" font-size="12" font-weight="600" transform="rotate(90 1605 200)" opacity="0.7">→ RESPOND (early exit)</text>
-              <text x="145" y="478" fill="#1e2bfa" font-family="Space Grotesk" font-size="12" font-weight="600" text-anchor="middle" opacity="0.7">↺ LOOP</text>
+              <line x1="250" y1="465" x2="670" y2="465" stroke="#1e2bfa" stroke-width="2.5" marker-end="url(#g17arrow)"></line>
+              <text x="1605" y="215" fill="#1e2bfa" font-family="Space Grotesk" font-size="12" font-weight="600" transform="rotate(90 1605 215)" opacity="0.7">→ RESPOND (early exit)</text>
+              <text x="145" y="516" fill="#1e2bfa" font-family="Space Grotesk" font-size="12" font-weight="600" text-anchor="middle" opacity="0.7">↺ LOOP</text>
             </svg>
 
-            <!-- patch pipeline spine -->
+            <!-- patch pipeline spine — 62px pitch (34px box + 28px gap) -->
             <div class="g17-box" style="left:710px; top:0px;">load_context</div>
-            <div class="g17-box" style="left:710px; top:58px;">scope_guard</div>
-            <div class="g17-box" style="left:710px; top:116px;">extract_patch</div>
-            <div class="g17-box" style="left:710px; top:174px;">validate_patch</div>
-            <div class="g17-box" style="left:710px; top:232px;">apply_patch</div>
-            <div class="g17-box" style="left:710px; top:290px;">ask_slot</div>
-            <div class="g17-box" style="left:710px; top:348px;">intake_qa</div>
+            <div class="g17-box" style="left:710px; top:62px;">scope_guard</div>
+            <div class="g17-box" style="left:710px; top:124px;">extract_patch</div>
+            <div class="g17-box" style="left:710px; top:186px;">validate_patch</div>
+            <div class="g17-box" style="left:710px; top:248px;">apply_patch</div>
+            <div class="g17-box" style="left:710px; top:310px;">ask_slot</div>
+            <div class="g17-box" style="left:710px; top:372px;">intake_qa</div>
 
             <!-- orchestrator -->
-            <div class="g17-box g17-wide" style="left:670px; top:420px;">supervisor</div>
+            <div class="g17-box g17-wide" style="left:670px; top:448px;">supervisor</div>
 
-            <!-- workers -->
-            <div class="g17-box g17-worker" style="left:404px; top:495px;">hotel_node</div>
-            <div class="g17-box g17-worker" style="left:648px; top:495px;">itinerary_node</div>
-            <div class="g17-box g17-worker" style="left:892px; top:495px;">booking_node</div>
-            <div class="g17-box g17-worker" style="left:1136px; top:495px;">qa_node</div>
+            <!-- workers — 280px pitch (220px box + 60px gap), row centered on x=880 -->
+            <div class="g17-box g17-worker" style="left:350px; top:550px;">hotel_node</div>
+            <div class="g17-box g17-worker" style="left:630px; top:550px;">itinerary_node</div>
+            <div class="g17-box g17-worker" style="left:910px; top:550px;">booking_node</div>
+            <div class="g17-box g17-worker" style="left:1190px; top:550px;">qa_node</div>
 
             <!-- finalize -->
-            <div class="g17-box g17-wide2" style="left:730px; top:565px;">budget_check</div>
-            <div class="g17-box g17-wide2" style="left:730px; top:615px;">respond<span class="g17-sub-end">→ END</span></div>
+            <div class="g17-box g17-wide2" style="left:730px; top:642px;">budget_check</div>
+            <div class="g17-box g17-wide2" style="left:730px; top:706px;">respond<span class="g17-sub-end">→ END</span></div>
           </div>
 
           <p class="mono-meta reveal r4" style="margin-top:auto; font-size:16px;">Đường liền = bước tuần tự · đường phải (mờ) = mọi nhánh thoát sớm hội tụ về <b>respond</b> · đường trái (mờ) = <b>hotel_node</b>/<b>itinerary_node</b> lặp lại với supervisor tối đa 5 lần · <b>enforce_contract()</b> bọc hotel_node/itinerary_node/booking_node.</p>
