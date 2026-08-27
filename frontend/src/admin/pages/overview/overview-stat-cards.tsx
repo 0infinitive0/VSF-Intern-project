@@ -82,7 +82,14 @@ export function OverviewStatCards({ orders }: OverviewStatCardsProps) {
 
   return (
     <div style={{ display: 'flex', gap: 12 }}>
-      <StatCard label="Đơn hôm nay" value={orders.today} subline={`${orders.confirmed_today} đã xác nhận · ${orders.pending_today} chờ`} />
+      <StatCard
+        label="Đơn hôm nay"
+        value={orders.today}
+        subline={
+          `${orders.confirmed_today} đã xác nhận · ${orders.pending_today} chờ` +
+          (orders.cancelled_today > 0 ? ` · ${orders.cancelled_today} khách huỷ` : '')
+        }
+      />
       <StatCard
         label="Doanh thu hôm nay"
         value={<Money value={Number(orders.revenue_today)} />}

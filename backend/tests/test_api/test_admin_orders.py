@@ -52,6 +52,7 @@ class _FakeQuery:
     def __init__(self, rows):
         self._rows = rows
         self._eq: list[tuple[str, object]] = []
+        self._neq: list[tuple[str, object]] = []
         self._gte: list[tuple[str, object]] = []
         self._lt: list[tuple[str, object]] = []
         self._lte: list[tuple[str, object]] = []
@@ -72,6 +73,10 @@ class _FakeQuery:
 
     def eq(self, field, value):
         self._eq.append((field, value))
+        return self
+
+    def neq(self, field, value):
+        self._neq.append((field, value))
         return self
 
     def gte(self, field, value):
@@ -118,6 +123,9 @@ class _FakeQuery:
     def _matches(self, row) -> bool:
         for field, value in self._eq:
             if row.get(field) != value:
+                return False
+        for field, value in self._neq:
+            if row.get(field) == value:
                 return False
         for field, value in self._gte:
             if row.get(field) is None or _comparable(row[field]) < _comparable(value):
@@ -444,6 +452,91 @@ async def test_release_expired_holds_counts_failures_as_skipped(client, admin_ov
     assert response.json() == {"released": 0, "skipped": 1}
 
 
+def _stub_mark_payment_failed(monkeypatch):
+    calls: list[dict] = []
+
+    def fake(*, payment_id, vnp_response_code, status="FAILED"):
+        calls.append({"payment_id": str(payment_id), "vnp_response_code": vnp_response_code, "status": status})
+        return {"id": str(payment_id), "status": status}
+
+    monkeypatch.setattr(orders_module.payment_service, "mark_payment_failed", fake)
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_release_expired_holds_settles_stalled_checkout_with_lapsed_hold(client, admin_override, no_audit, monkeypatch):
+    now = datetime.now(timezone.utc)
+    payment_id = "cccccccc-0000-0000-0000-000000000001"
+    booking_id = "dddddddd-0000-0000-0000-000000000002"
+    admin_orders = [{
+        "payment_id": payment_id,
+        "payment_status": "PENDING",
+        "booking_status": "RESERVED",
+        "earliest_expires_at": (now - timedelta(minutes=5)).isoformat(),
+    }]
+    payments = [{"id": payment_id, "status": "PENDING", "booking_ids": [booking_id], "temporary_user_ref": "guest-ref-9"}]
+    fake_client = _FakeClient({"admin_unpaid_bookings": [], "admin_orders": admin_orders, "payments": payments})
+    monkeypatch.setattr(orders_module, "get_supabase_client", lambda: fake_client)
+
+    cancelled: list[str] = []
+    monkeypatch.setattr(orders_module, "cancel_booking", lambda *, booking_id, temporary_user_ref: cancelled.append(str(booking_id)))
+    mpf_calls = _stub_mark_payment_failed(monkeypatch)
+
+    response = await client.post("/api/v1/admin/orders/holds/release-expired")
+
+    assert response.status_code == 200
+    assert response.json() == {"released": 1, "skipped": 0}
+    assert cancelled == [booking_id]
+    assert mpf_calls == [{"payment_id": payment_id, "vnp_response_code": "HOLD_EXPIRED", "status": "CANCELLED"}]
+
+
+@pytest.mark.asyncio
+async def test_release_expired_holds_settles_orphaned_pending_payment(client, admin_override, no_audit, monkeypatch):
+    """Bookings already CANCELLED, only the PENDING payment row is left."""
+    payment_id = "cccccccc-0000-0000-0000-000000000003"
+    admin_orders = [{
+        "payment_id": payment_id,
+        "payment_status": "PENDING",
+        "booking_status": "CANCELLED",
+        "earliest_expires_at": None,
+    }]
+    payments = [{"id": payment_id, "status": "PENDING", "booking_ids": ["b-old"], "temporary_user_ref": "r"}]
+    fake_client = _FakeClient({"admin_unpaid_bookings": [], "admin_orders": admin_orders, "payments": payments})
+    monkeypatch.setattr(orders_module, "get_supabase_client", lambda: fake_client)
+
+    cancelled: list[str] = []
+    monkeypatch.setattr(orders_module, "cancel_booking", lambda *, booking_id, temporary_user_ref: cancelled.append(str(booking_id)))
+    mpf_calls = _stub_mark_payment_failed(monkeypatch)
+
+    response = await client.post("/api/v1/admin/orders/holds/release-expired")
+
+    assert response.status_code == 200
+    assert response.json() == {"released": 0, "skipped": 0}
+    assert cancelled == []  # rollup is CANCELLED, no live booking to cancel
+    assert [c["status"] for c in mpf_calls] == ["CANCELLED"]
+
+
+@pytest.mark.asyncio
+async def test_release_expired_holds_leaves_stalled_checkout_whose_hold_is_still_live(client, admin_override, no_audit, monkeypatch):
+    now = datetime.now(timezone.utc)
+    admin_orders = [{
+        "payment_id": "cccccccc-0000-0000-0000-000000000004",
+        "payment_status": "PENDING",
+        "booking_status": "RESERVED",
+        "earliest_expires_at": (now + timedelta(minutes=20)).isoformat(),
+    }]
+    fake_client = _FakeClient({"admin_unpaid_bookings": [], "admin_orders": admin_orders, "payments": []})
+    monkeypatch.setattr(orders_module, "get_supabase_client", lambda: fake_client)
+    monkeypatch.setattr(orders_module, "cancel_booking", lambda **_: None)
+    mpf_calls = _stub_mark_payment_failed(monkeypatch)
+
+    response = await client.post("/api/v1/admin/orders/holds/release-expired")
+
+    assert response.status_code == 200
+    assert response.json() == {"released": 0, "skipped": 0}
+    assert mpf_calls == []
+
+
 # ---------------------------------------------------------------------------
 # GET /api/v1/admin/orders/stats
 # ---------------------------------------------------------------------------
@@ -516,6 +609,33 @@ async def test_order_stats_splits_todays_orders_into_confirmed_and_pending(clien
     assert body["orders_today"] == 3
     assert body["confirmed_today"] == 1
     assert body["pending_today"] == 2
+
+
+@pytest.mark.asyncio
+async def test_order_stats_cancelled_today_excludes_sweep_cancelled_payments(client, admin_override, monkeypatch):
+    """`cancelled_today` is the guest hitting "huỷ" at VNPay, NOT a payment the
+    expiry sweep settled -- those carry `vnp_response_code = "HOLD_EXPIRED"`
+    and would otherwise inflate the donut's "Khách huỷ" slice with orders no
+    guest actually abandoned."""
+    from zoneinfo import ZoneInfo
+
+    vn_tz = ZoneInfo("Asia/Ho_Chi_Minh")
+    today = datetime.now(vn_tz).date()
+    morning = datetime(today.year, today.month, today.day, 8, 0, tzinfo=vn_tz).isoformat()
+    payments = [
+        {"id": "pay0", "amount": "0", "status": "CANCELLED", "vnp_response_code": "24", "created_at": morning, "paid_at": None},
+        {"id": "pay1", "amount": "0", "status": "CANCELLED", "vnp_response_code": "HOLD_EXPIRED", "created_at": morning, "paid_at": None},
+        {"id": "pay2", "amount": "0", "status": "PENDING", "vnp_response_code": None, "created_at": morning, "paid_at": None},
+    ]
+    fake_client = _FakeClient({"payments": payments, "bookings": [], "admin_orders": []})
+    monkeypatch.setattr(orders_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.get("/api/v1/admin/orders/stats")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["orders_today"] == 3
+    assert body["cancelled_today"] == 1  # only the vnp_ResponseCode=24 guest cancel
 
 
 @pytest.mark.asyncio

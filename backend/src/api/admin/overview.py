@@ -13,7 +13,6 @@ two (L78 / risk table: "Một khối lỗi làm trắng cả trang").
 
 from __future__ import annotations
 
-import concurrent.futures
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -39,6 +38,10 @@ class OverviewOrders(BaseModel):
     today: int
     confirmed_today: int
     pending_today: int
+    # Orders opened today whose payment the guest cancelled at the VNPay
+    # gateway (not the expiry sweep) -- a slice of `pending_today`, broken out
+    # for the "Trạng thái đơn hôm nay" donut.
+    cancelled_today: int
     revenue_today: str
     currency: str
     # `pending_count` counts payments still in PENDING -- checkout started,
@@ -102,6 +105,9 @@ class OverviewResponse(BaseModel):
     expiring_holds: list[OverviewExpiringHold] = Field(default_factory=list)
     embedding: OverviewEmbedding | None = None
     pipeline: OverviewPipeline | None = None
+    # Revenue charts. `None` (block raised) blanks only its own cards, same
+    # posture as every other block here.
+    money: orders_module.MoneySummary | None = None
 
 
 def _fetch_orders_block() -> OverviewOrders | None:
@@ -114,6 +120,7 @@ def _fetch_orders_block() -> OverviewOrders | None:
         today=stats.orders_today,
         confirmed_today=stats.confirmed_today,
         pending_today=stats.pending_today,
+        cancelled_today=stats.cancelled_today,
         revenue_today=stats.revenue_today,
         currency=stats.currency,
         pending_count=stats.pending_count,
@@ -243,6 +250,14 @@ def _fetch_embedding_block() -> OverviewEmbedding | None:
     return OverviewEmbedding(embedded=embedded, total=total, missing=summary.total_missing, missing_label=_missing_label(summary.tables))
 
 
+def _fetch_money_block() -> orders_module.MoneySummary | None:
+    try:
+        return orders_module.get_money_summary()
+    except Exception:
+        logger.exception("Overview: money block failed")
+        return None
+
+
 def _fetch_pipeline_block() -> OverviewPipeline | None:
     """`list_pipelines()` never raises (Phase 14's own contract) and is
     already 10s-cached, so this reuses it as-is rather than calling
@@ -272,26 +287,27 @@ def _fetch_pipeline_block() -> OverviewPipeline | None:
 
 @overview_router.get("", response_model=OverviewResponse)
 def get_overview() -> OverviewResponse:
-    """The 5 blocks are independent reads against different backends
-    (Supabase twice over, Supabase again, Supabase again, Airflow via
-    Phase 14's own 10s cache) -- run sequentially they summed to ~3s in
-    testing against real data, blowing this phase's own "dưới 2 giây"
-    criterion. Fetched in parallel here (same `ThreadPoolExecutor` pattern
-    as Phase 14's `_fetch_pipelines_list`) since none of them depend on
-    another's result, bringing real-data latency to roughly the slowest
-    single block instead of their sum."""
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
-        orders_future = pool.submit(_fetch_orders_block)
-        pending_future = pool.submit(_fetch_pending_orders)
-        holds_future = pool.submit(_fetch_expiring_holds)
-        embedding_future = pool.submit(_fetch_embedding_block)
-        pipeline_future = pool.submit(_fetch_pipeline_block)
+    """The blocks are independent reads (Supabase several times over, Airflow
+    via Phase 14's own 10s cache) with no data dependency between them, so
+    they *could* run in parallel -- and originally did, via a
+    `ThreadPoolExecutor`, to keep the page under this phase's "dưới 2 giây"
+    target (~3s sequential against real data).
 
-        return OverviewResponse(
-            date=datetime.now(VN_TZ).date().isoformat(),
-            orders=orders_future.result(),
-            pending_orders=pending_future.result(),
-            expiring_holds=holds_future.result(),
-            embedding=embedding_future.result(),
-            pipeline=pipeline_future.result(),
-        )
+    That fan-out is gone: `get_supabase_client()` is one `@lru_cache`d
+    `httpx.Client` with HTTP/2, shared process-wide, and a sync httpx client
+    is **not safe for concurrent use across threads** -- interleaved writes
+    from the worker threads corrupt the single HPACK encoder on the h2
+    connection, the server sends GOAWAY(COMPRESSION_ERROR), and *every*
+    in-flight block fails at once. Under load that was ~100% reproducible
+    (the whole landing page rendered skeletons). Run sequentially on the one
+    request thread it is correct and ~2-3s; the durable fix for the speed is
+    a per-thread client or HTTP/1.1 on the shared one, tracked separately."""
+    return OverviewResponse(
+        date=datetime.now(VN_TZ).date().isoformat(),
+        orders=_fetch_orders_block(),
+        pending_orders=_fetch_pending_orders(),
+        expiring_holds=_fetch_expiring_holds(),
+        embedding=_fetch_embedding_block(),
+        money=_fetch_money_block(),
+        pipeline=_fetch_pipeline_block(),
+    )

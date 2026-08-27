@@ -3693,7 +3693,7 @@
           "admin-orders"
         ],
         "summary": "Release Expired Holds",
-        "description": "Cancels every unpaid hold this request itself finds already expired --\n`expires_at < now()` is re-evaluated here against `admin_unpaid_bookings`,\nnever taken from the client, so a stale/forged id list can't cancel a\nbooking that's still live (plan's L4 mitigation, same posture as\n`cancel_reserved_bookings_for_session`).",
+        "description": "Cancels expired unpaid holds, and settles the payment behind them.\n`expires_at < now()` (and payment/booking state) is re-evaluated here\nserver-side, never taken from the client, so a stale/forged id list can't\ntouch anything still live (plan's L4 mitigation).\n\nPass 1 -- payment-less holds (`admin_unpaid_bookings`): a hold started, no\ncheckout, `expires_at < now()` -> cancel the booking.\n\nPass 2 -- stalled checkouts (`admin_orders`, `payment_status = PENDING`):\nthe guest went to VNPay and never came back and the hold has since lapsed\n(`booking_status = RESERVED` with `earliest_expires_at < now()`), or its\nbooking is already CANCELLED/EXPIRED and only the payment row is left\ndangling. Cancel any still-live booking, then flip the payment to\nCANCELLED via `mark_payment_failed` -- a guarded\n`UPDATE ... WHERE status = 'PENDING'`, so a genuine late VNPay IPN that\nalready marked it PAID is never clobbered. CONFIRMED/MIXED rollups are\nleft for an admin (they show as `needs_attention`).",
         "operationId": "release_expired_holds_api_v1_admin_orders_holds_release_expired_post",
         "parameters": [
           {
@@ -4330,7 +4330,7 @@
           "admin-overview"
         ],
         "summary": "Get Overview",
-        "description": "The 5 blocks are independent reads against different backends\n(Supabase twice over, Supabase again, Supabase again, Airflow via\nPhase 14's own 10s cache) -- run sequentially they summed to ~3s in\ntesting against real data, blowing this phase's own \"dưới 2 giây\"\ncriterion. Fetched in parallel here (same `ThreadPoolExecutor` pattern\nas Phase 14's `_fetch_pipelines_list`) since none of them depend on\nanother's result, bringing real-data latency to roughly the slowest\nsingle block instead of their sum.",
+        "description": "The blocks are independent reads (Supabase several times over, Airflow\nvia Phase 14's own 10s cache) with no data dependency between them, so\nthey *could* run in parallel -- and originally did, via a\n`ThreadPoolExecutor`, to keep the page under this phase's \"dưới 2 giây\"\ntarget (~3s sequential against real data).\n\nThat fan-out is gone: `get_supabase_client()` is one `@lru_cache`d\n`httpx.Client` with HTTP/2, shared process-wide, and a sync httpx client\nis **not safe for concurrent use across threads** -- interleaved writes\nfrom the worker threads corrupt the single HPACK encoder on the h2\nconnection, the server sends GOAWAY(COMPRESSION_ERROR), and *every*\nin-flight block fails at once. Under load that was ~100% reproducible\n(the whole landing page rendered skeletons). Run sequentially on the one\nrequest thread it is correct and ~2-3s; the durable fix for the speed is\na per-thread client or HTTP/1.1 on the shared one, tracked separately.",
         "operationId": "get_overview_api_v1_admin_overview_get",
         "parameters": [
           {
@@ -7703,6 +7703,53 @@
         "title": "MatchReasonPayload",
         "description": "One piece of ranking evidence behind \"AI đề xuất vì…\".\n\n`code` is an i18n key the frontend owns (matchReason.*); `value` is the raw\nnumber or label it describes. The backend never sends display text — the\nshape `hotel_selection._match_reasons` has always produced, now declared so\na generated client sees it instead of an open dict."
       },
+      "MoneySummary": {
+        "properties": {
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "collected_today": {
+            "type": "string",
+            "title": "Collected Today"
+          },
+          "outstanding": {
+            "type": "string",
+            "title": "Outstanding"
+          },
+          "revenue_trend": {
+            "items": {
+              "$ref": "#/components/schemas/RevenueTrendPoint"
+            },
+            "type": "array",
+            "title": "Revenue Trend"
+          },
+          "revenue_by_hotel": {
+            "items": {
+              "$ref": "#/components/schemas/RevenueSlicePoint"
+            },
+            "type": "array",
+            "title": "Revenue By Hotel"
+          },
+          "revenue_by_destination": {
+            "items": {
+              "$ref": "#/components/schemas/RevenueSlicePoint"
+            },
+            "type": "array",
+            "title": "Revenue By Destination"
+          }
+        },
+        "type": "object",
+        "required": [
+          "currency",
+          "collected_today",
+          "outstanding",
+          "revenue_trend",
+          "revenue_by_hotel",
+          "revenue_by_destination"
+        ],
+        "title": "MoneySummary"
+      },
       "NearbyPlacePayload": {
         "properties": {
           "name": {
@@ -8316,6 +8363,10 @@
             "type": "integer",
             "title": "Pending Today"
           },
+          "cancelled_today": {
+            "type": "integer",
+            "title": "Cancelled Today"
+          },
           "revenue_today": {
             "type": "string",
             "title": "Revenue Today"
@@ -8347,6 +8398,7 @@
           "orders_yesterday",
           "confirmed_today",
           "pending_today",
+          "cancelled_today",
           "revenue_today",
           "currency",
           "avg_order_value",
@@ -8611,6 +8663,10 @@
             "type": "integer",
             "title": "Pending Today"
           },
+          "cancelled_today": {
+            "type": "integer",
+            "title": "Cancelled Today"
+          },
           "revenue_today": {
             "type": "string",
             "title": "Revenue Today"
@@ -8637,6 +8693,7 @@
           "today",
           "confirmed_today",
           "pending_today",
+          "cancelled_today",
           "revenue_today",
           "currency",
           "pending_count",
@@ -8807,6 +8864,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/OverviewPipeline"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "money": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneySummary"
               },
               {
                 "type": "null"
@@ -9604,6 +9671,43 @@
           "retired_at"
         ],
         "title": "RetireResponse"
+      },
+      "RevenueSlicePoint": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "revenue": {
+            "type": "string",
+            "title": "Revenue"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "revenue"
+        ],
+        "title": "RevenueSlicePoint",
+        "description": "One bar of a \"revenue by X\" breakdown -- `label` is the hotel name or\nthe destination name depending on which list it's in."
+      },
+      "RevenueTrendPoint": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "revenue": {
+            "type": "string",
+            "title": "Revenue"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "revenue"
+        ],
+        "title": "RevenueTrendPoint"
       },
       "RoomDetailPayload": {
         "properties": {
@@ -11448,6 +11552,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",

@@ -12,6 +12,9 @@ export type OverviewPendingOrder = components['schemas']['OverviewPendingOrder']
 export type OverviewExpiringHold = components['schemas']['OverviewExpiringHold']
 export type OverviewEmbedding = components['schemas']['OverviewEmbedding']
 export type OverviewPipeline = components['schemas']['OverviewPipeline']
+export type MoneySummary = components['schemas']['MoneySummary']
+export type RevenueTrendPoint = components['schemas']['RevenueTrendPoint']
+export type RevenueSlicePoint = components['schemas']['RevenueSlicePoint']
 
 export function getOverview(): Promise<AdminApiResult<OverviewResponse>> {
   return adminFetch<OverviewResponse>('/overview')

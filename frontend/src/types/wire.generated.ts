@@ -1034,11 +1034,23 @@ export interface paths {
         put?: never;
         /**
          * Release Expired Holds
-         * @description Cancels every unpaid hold this request itself finds already expired --
-         *     `expires_at < now()` is re-evaluated here against `admin_unpaid_bookings`,
-         *     never taken from the client, so a stale/forged id list can't cancel a
-         *     booking that's still live (plan's L4 mitigation, same posture as
-         *     `cancel_reserved_bookings_for_session`).
+         * @description Cancels expired unpaid holds, and settles the payment behind them.
+         *     `expires_at < now()` (and payment/booking state) is re-evaluated here
+         *     server-side, never taken from the client, so a stale/forged id list can't
+         *     touch anything still live (plan's L4 mitigation).
+         *
+         *     Pass 1 -- payment-less holds (`admin_unpaid_bookings`): a hold started, no
+         *     checkout, `expires_at < now()` -> cancel the booking.
+         *
+         *     Pass 2 -- stalled checkouts (`admin_orders`, `payment_status = PENDING`):
+         *     the guest went to VNPay and never came back and the hold has since lapsed
+         *     (`booking_status = RESERVED` with `earliest_expires_at < now()`), or its
+         *     booking is already CANCELLED/EXPIRED and only the payment row is left
+         *     dangling. Cancel any still-live booking, then flip the payment to
+         *     CANCELLED via `mark_payment_failed` -- a guarded
+         *     `UPDATE ... WHERE status = 'PENDING'`, so a genuine late VNPay IPN that
+         *     already marked it PAID is never clobbered. CONFIRMED/MIXED rollups are
+         *     left for an admin (they show as `needs_attention`).
          */
         post: operations["release_expired_holds_api_v1_admin_orders_holds_release_expired_post"];
         delete?: never;
@@ -1246,14 +1258,21 @@ export interface paths {
         };
         /**
          * Get Overview
-         * @description The 5 blocks are independent reads against different backends
-         *     (Supabase twice over, Supabase again, Supabase again, Airflow via
-         *     Phase 14's own 10s cache) -- run sequentially they summed to ~3s in
-         *     testing against real data, blowing this phase's own "dưới 2 giây"
-         *     criterion. Fetched in parallel here (same `ThreadPoolExecutor` pattern
-         *     as Phase 14's `_fetch_pipelines_list`) since none of them depend on
-         *     another's result, bringing real-data latency to roughly the slowest
-         *     single block instead of their sum.
+         * @description The blocks are independent reads (Supabase several times over, Airflow
+         *     via Phase 14's own 10s cache) with no data dependency between them, so
+         *     they *could* run in parallel -- and originally did, via a
+         *     `ThreadPoolExecutor`, to keep the page under this phase's "dưới 2 giây"
+         *     target (~3s sequential against real data).
+         *
+         *     That fan-out is gone: `get_supabase_client()` is one `@lru_cache`d
+         *     `httpx.Client` with HTTP/2, shared process-wide, and a sync httpx client
+         *     is **not safe for concurrent use across threads** -- interleaved writes
+         *     from the worker threads corrupt the single HPACK encoder on the h2
+         *     connection, the server sends GOAWAY(COMPRESSION_ERROR), and *every*
+         *     in-flight block fails at once. Under load that was ~100% reproducible
+         *     (the whole landing page rendered skeletons). Run sequentially on the one
+         *     request thread it is correct and ~2-3s; the durable fix for the speed is
+         *     a per-thread client or HTTP/1.1 on the shared one, tracked separately.
          */
         get: operations["get_overview_api_v1_admin_overview_get"];
         put?: never;
@@ -2370,6 +2389,21 @@ export interface components {
             /** Value */
             value: number | string;
         };
+        /** MoneySummary */
+        MoneySummary: {
+            /** Currency */
+            currency: string;
+            /** Collected Today */
+            collected_today: string;
+            /** Outstanding */
+            outstanding: string;
+            /** Revenue Trend */
+            revenue_trend: components["schemas"]["RevenueTrendPoint"][];
+            /** Revenue By Hotel */
+            revenue_by_hotel: components["schemas"]["RevenueSlicePoint"][];
+            /** Revenue By Destination */
+            revenue_by_destination: components["schemas"]["RevenueSlicePoint"][];
+        };
         /**
          * NearbyPlacePayload
          * @description An entry of `hotels.nearby_attractions` (a jsonb column).
@@ -2572,6 +2606,8 @@ export interface components {
             confirmed_today: number;
             /** Pending Today */
             pending_today: number;
+            /** Cancelled Today */
+            cancelled_today: number;
             /** Revenue Today */
             revenue_today: string;
             /** Currency */
@@ -2659,6 +2695,8 @@ export interface components {
             confirmed_today: number;
             /** Pending Today */
             pending_today: number;
+            /** Cancelled Today */
+            cancelled_today: number;
             /** Revenue Today */
             revenue_today: string;
             /** Currency */
@@ -2711,6 +2749,7 @@ export interface components {
             expiring_holds?: components["schemas"]["OverviewExpiringHold"][];
             embedding?: components["schemas"]["OverviewEmbedding"] | null;
             pipeline?: components["schemas"]["OverviewPipeline"] | null;
+            money?: components["schemas"]["MoneySummary"] | null;
         };
         /** PaymentPayload */
         PaymentPayload: {
@@ -2991,6 +3030,24 @@ export interface components {
             id: string;
             /** Retired At */
             retired_at: string | null;
+        };
+        /**
+         * RevenueSlicePoint
+         * @description One bar of a "revenue by X" breakdown -- `label` is the hotel name or
+         *     the destination name depending on which list it's in.
+         */
+        RevenueSlicePoint: {
+            /** Label */
+            label: string;
+            /** Revenue */
+            revenue: string;
+        };
+        /** RevenueTrendPoint */
+        RevenueTrendPoint: {
+            /** Date */
+            date: string;
+            /** Revenue */
+            revenue: string;
         };
         /** RoomDetailPayload */
         RoomDetailPayload: {
@@ -3513,6 +3570,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
     };
     responses: never;

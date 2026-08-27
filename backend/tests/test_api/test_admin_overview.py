@@ -34,12 +34,25 @@ def _order_stats(**overrides):
         orders_yesterday=14,
         confirmed_today=12,
         pending_today=6,
+        cancelled_today=1,
         revenue_today="62400000.00",
         currency="VND",
         avg_order_value="3466667.00",
         pending_count=7,
         pending_over_2h=2,
         expiring_holds_30m=3,
+    )
+    return base.model_copy(update=overrides)
+
+
+def _money_summary(**overrides):
+    base = orders_module.MoneySummary(
+        currency="VND",
+        collected_today="62400000.00",
+        outstanding="8100000.00",
+        revenue_trend=[orders_module.RevenueTrendPoint(date=f"2026-08-2{i}", revenue="1000000.00") for i in range(1, 8)],
+        revenue_by_hotel=[orders_module.RevenueSlicePoint(label="Mường Thanh Luxury", revenue="24000000.00")],
+        revenue_by_destination=[orders_module.RevenueSlicePoint(label="Nha Trang", revenue="24000000.00")],
     )
     return base.model_copy(update=overrides)
 
@@ -97,6 +110,11 @@ def test_embedding_block_returns_none_on_failure(monkeypatch):
     assert overview_module._fetch_embedding_block() is None
 
 
+def test_money_block_returns_none_on_failure(monkeypatch):
+    monkeypatch.setattr(orders_module, "get_money_summary", lambda: (_ for _ in ()).throw(RuntimeError("db down")))
+    assert overview_module._fetch_money_block() is None
+
+
 def test_pipeline_block_returns_connected_false_object_not_none_when_airflow_down(monkeypatch):
     monkeypatch.setattr(pipelines_module, "list_pipelines", lambda: pipelines_module.PipelinesListResponse(connected=False, items=[], reason="airflow_unavailable"))
     result = overview_module._fetch_pipeline_block()
@@ -112,6 +130,7 @@ async def test_route_returns_200_even_when_every_block_fails(client, admin_overr
     monkeypatch.setattr(orders_module, "fetch_orders", lambda **kwargs: (_ for _ in ()).throw(RuntimeError("x")))
     monkeypatch.setattr(orders_module, "fetch_unpaid_bookings", lambda **kwargs: (_ for _ in ()).throw(RuntimeError("x")))
     monkeypatch.setattr(embedding_module, "get_embedding_summary", lambda: (_ for _ in ()).throw(RuntimeError("x")))
+    monkeypatch.setattr(orders_module, "get_money_summary", lambda: (_ for _ in ()).throw(RuntimeError("x")))
     monkeypatch.setattr(pipelines_module, "list_pipelines", lambda: (_ for _ in ()).throw(RuntimeError("x")))
 
     response = await client.get("/api/v1/admin/overview")
@@ -122,6 +141,7 @@ async def test_route_returns_200_even_when_every_block_fails(client, admin_overr
     assert body["pending_orders"] == []
     assert body["expiring_holds"] == []
     assert body["embedding"] is None
+    assert body["money"] is None
     assert body["pipeline"] is None
 
 
@@ -136,6 +156,7 @@ async def test_route_reuses_order_stats_verbatim(client, admin_override, monkeyp
     monkeypatch.setattr(orders_module, "fetch_orders", lambda **kwargs: ([], 0))
     monkeypatch.setattr(orders_module, "fetch_unpaid_bookings", lambda **kwargs: ([], 0))
     monkeypatch.setattr(embedding_module, "get_embedding_summary", lambda: embedding_module.EmbeddingSummaryResponse(tables=[], total_missing=0))
+    monkeypatch.setattr(orders_module, "get_money_summary", _money_summary)
     monkeypatch.setattr(pipelines_module, "list_pipelines", lambda: pipelines_module.PipelinesListResponse(connected=True, items=[]))
 
     response = await client.get("/api/v1/admin/overview")
@@ -146,6 +167,7 @@ async def test_route_reuses_order_stats_verbatim(client, admin_override, monkeyp
         "today": 18,
         "confirmed_today": 12,
         "pending_today": 6,
+        "cancelled_today": 1,
         "revenue_today": "62400000.00",
         "currency": "VND",
         "pending_count": 7,

@@ -155,6 +155,12 @@ class OrderStatsResponse(BaseModel):
     # rare same-day CANCELLED/EXPIRED all land in this one bucket).
     confirmed_today: int
     pending_today: int
+    # Orders opened today whose payment was CANCELLED by something other than
+    # the expiry sweep (`vnp_response_code != "HOLD_EXPIRED"`) -- in practice a
+    # guest hitting "huỷ" at the VNPay gateway. A subset of `pending_today`
+    # (a cancelled payment isn't CONFIRMED), surfaced separately for the
+    # overview donut.
+    cancelled_today: int
     revenue_today: str
     currency: str
     avg_order_value: str
@@ -548,17 +554,39 @@ def list_orders(
     return OrderListResponse(items=[_row_to_order(row) for row in rows], total=total, page=page, page_size=page_size)
 
 
+# `vnp_response_code` sentinel written when this sweep (not VNPay) is what
+# settled a payment -- distinguishable from real VNPay codes ("00", "24", ...)
+# in the order-detail view and in reconciliation.
+_HOLD_EXPIRED_CODE = "HOLD_EXPIRED"
+
+
 @orders_router.post("/holds/release-expired", response_model=ReleaseExpiredResponse)
 def release_expired_holds(admin: AdminUser = Depends(require_admin)) -> ReleaseExpiredResponse:
-    """Cancels every unpaid hold this request itself finds already expired --
-    `expires_at < now()` is re-evaluated here against `admin_unpaid_bookings`,
-    never taken from the client, so a stale/forged id list can't cancel a
-    booking that's still live (plan's L4 mitigation, same posture as
-    `cancel_reserved_bookings_for_session`)."""
+    """Cancels expired unpaid holds, and settles the payment behind them.
+    `expires_at < now()` (and payment/booking state) is re-evaluated here
+    server-side, never taken from the client, so a stale/forged id list can't
+    touch anything still live (plan's L4 mitigation).
+
+    Pass 1 -- payment-less holds (`admin_unpaid_bookings`): a hold started, no
+    checkout, `expires_at < now()` -> cancel the booking.
+
+    Pass 2 -- stalled checkouts (`admin_orders`, `payment_status = PENDING`):
+    the guest went to VNPay and never came back and the hold has since lapsed
+    (`booking_status = RESERVED` with `earliest_expires_at < now()`), or its
+    booking is already CANCELLED/EXPIRED and only the payment row is left
+    dangling. Cancel any still-live booking, then flip the payment to
+    CANCELLED via `mark_payment_failed` -- a guarded
+    `UPDATE ... WHERE status = 'PENDING'`, so a genuine late VNPay IPN that
+    already marked it PAID is never clobbered. CONFIRMED/MIXED rollups are
+    left for an admin (they show as `needs_attention`)."""
     now = datetime.now(timezone.utc).isoformat()
-    rows = (
-        get_supabase_client()
-        .table(_UNPAID_VIEW)
+    supabase = get_supabase_client()
+    released_ids: list[str] = []
+    skipped = 0
+
+    # Pass 1 -- payment-less expired holds
+    unpaid_rows = (
+        supabase.table(_UNPAID_VIEW)
         .select("booking_id,temporary_user_ref")
         .in_("status", ["RESERVED", "PENDING"])
         .lt("expires_at", now)
@@ -567,9 +595,7 @@ def release_expired_holds(admin: AdminUser = Depends(require_admin)) -> ReleaseE
         .data
         or []
     )
-    released_ids: list[str] = []
-    skipped = 0
-    for row in rows:
+    for row in unpaid_rows:
         booking_id = str(row["booking_id"])
         try:
             cancel_booking(booking_id=UUID(booking_id), temporary_user_ref=row["temporary_user_ref"])
@@ -577,13 +603,53 @@ def release_expired_holds(admin: AdminUser = Depends(require_admin)) -> ReleaseE
         except Exception:
             logger.exception("Unable to release expired hold %s", booking_id)
             skipped += 1
-    if released_ids or skipped:
+
+    # Pass 2 -- stalled checkouts still holding a PENDING payment open
+    payments_cancelled = 0
+    stalled_rows = (
+        supabase.table(_ORDERS_VIEW)
+        .select("payment_id,booking_status,earliest_expires_at")
+        .eq("payment_status", "PENDING")
+        .in_("booking_status", ["RESERVED", "CANCELLED", "EXPIRED"])
+        .limit(_RELEASE_BATCH_CAP)
+        .execute()
+        .data
+        or []
+    )
+    for row in stalled_rows:
+        rollup = row["booking_status"]
+        if rollup == "RESERVED":
+            expires_at = row.get("earliest_expires_at")
+            if not expires_at or expires_at >= now:
+                continue  # hold still live -- leave the checkout a chance to finish
+        payment_id = str(row["payment_id"])
+        payment = _fetch_payment(payment_id)
+        if not payment or payment.get("status") != "PENDING":
+            continue
+        ref = payment.get("temporary_user_ref") or ""
+        if rollup == "RESERVED":
+            for booking_id in payment.get("booking_ids") or []:
+                try:
+                    cancel_booking(booking_id=UUID(str(booking_id)), temporary_user_ref=ref)
+                    released_ids.append(str(booking_id))
+                except Exception:
+                    logger.info("Booking %s not cancellable while settling stalled payment %s", booking_id, payment_id)
+        try:
+            if payment_service.mark_payment_failed(
+                payment_id=UUID(payment_id), vnp_response_code=_HOLD_EXPIRED_CODE, status="CANCELLED"
+            ):
+                payments_cancelled += 1
+        except Exception:
+            logger.exception("Unable to settle stalled payment %s", payment_id)
+            skipped += 1
+
+    if released_ids or skipped or payments_cancelled:
         write_audit(
             admin,
             action="orders.release_expired_holds",
             entity_type="booking",
             entity_id="bulk",
-            after={"released_booking_ids": released_ids, "skipped": skipped},
+            after={"released_booking_ids": released_ids, "skipped": skipped, "payments_cancelled": payments_cancelled},
         )
     return ReleaseExpiredResponse(released=len(released_ids), skipped=skipped)
 
@@ -617,6 +683,22 @@ def get_order_stats() -> OrderStatsResponse:
         or 0
     )
     pending_today = max(0, orders_today - confirmed_today)
+    # Orders opened today whose payment ended in CANCELLED for a reason other
+    # than the expiry sweep -- i.e. the guest hit "huỷ" at the VNPay gateway
+    # (`vnp_response_code = "24"`). `_HOLD_EXPIRED_CODE` is the only other way
+    # a payment reaches CANCELLED, so excluding it isolates real abandons.
+    cancelled_today = (
+        supabase.table("payments")
+        .select("id", count="exact")
+        .eq("status", "CANCELLED")
+        .neq("vnp_response_code", _HOLD_EXPIRED_CODE)
+        .gte("created_at", today_start)
+        .lt("created_at", tomorrow_start)
+        .range(0, 0)
+        .execute()
+        .count
+        or 0
+    )
 
     # Explicitly bounded (unlike every other query here, which counts rather
     # than transfers rows) -- H2 code-review finding: without a range,
@@ -677,12 +759,153 @@ def get_order_stats() -> OrderStatsResponse:
         orders_yesterday=orders_yesterday,
         confirmed_today=confirmed_today,
         pending_today=pending_today,
+        cancelled_today=cancelled_today,
         revenue_today=money_str(revenue_today),
         currency="VND",
         avg_order_value=money_str(avg_order_value),
         pending_count=pending_count,
         pending_over_2h=pending_over_2h,
         expiring_holds_30m=expiring_holds_30m,
+    )
+
+
+# --- Money charts (A3 overview, "biểu đồ doanh thu") ------------------------
+# overview.py stays SQL-free by contract; these read-only revenue aggregates
+# live here with the rest of the payments/orders queries. All VND. The trend
+# is `paid_at`-scoped exactly like `revenue_today` above, so one day of the
+# series is that tile's number narrowed to a single day.
+_REVENUE_TREND_DAYS = 7
+_REVENUE_SLICE_WINDOW_DAYS = 7
+_REVENUE_SLICE_TOP_N = 5
+
+
+class RevenueTrendPoint(BaseModel):
+    date: str  # VN-local calendar day, ISO (YYYY-MM-DD)
+    revenue: str
+
+
+class RevenueSlicePoint(BaseModel):
+    """One bar of a "revenue by X" breakdown -- `label` is the hotel name or
+    the destination name depending on which list it's in."""
+
+    label: str
+    revenue: str
+
+
+class MoneySummary(BaseModel):
+    currency: str
+    # PAID payments whose money landed today (VN day) -- the last bucket of
+    # `revenue_trend`, surfaced on its own so the donut card doesn't re-sum.
+    collected_today: str
+    # Every still-PENDING payment's amount, all-time: checkout money that
+    # never came back from VNPay. Row-count twin of `pending_count`.
+    outstanding: str
+    revenue_trend: list[RevenueTrendPoint]
+    revenue_by_hotel: list[RevenueSlicePoint]
+    revenue_by_destination: list[RevenueSlicePoint]
+
+
+def get_money_summary() -> MoneySummary:
+    """Revenue aggregates for A3's charts. PostgREST has no `sum()`, so each
+    is a bounded fetch-then-sum in Python behind the same `_REVENUE_ROWS_CAP`
+    guard `revenue_today` uses -- past the cap the figure is logged as
+    possibly truncated rather than silently wrong."""
+    supabase = get_supabase_client()
+    today = datetime.now(VN_TZ).date()
+    tomorrow_start = _vn_day_start(today + timedelta(days=1))
+    trend_start_day = today - timedelta(days=_REVENUE_TREND_DAYS - 1)
+    trend_window_start = _vn_day_start(trend_start_day)
+    slice_window_start = _vn_day_start(today - timedelta(days=_REVENUE_SLICE_WINDOW_DAYS - 1))
+
+    # 1. revenue_trend (+ collected_today) -- one scan of PAID payments across
+    #    the window, bucketed by VN-local calendar day of `paid_at`.
+    paid_rows = (
+        supabase.table("payments")
+        .select("amount, paid_at")
+        .eq("status", "PAID")
+        .gte("paid_at", trend_window_start)
+        .lt("paid_at", tomorrow_start)
+        .range(0, _REVENUE_ROWS_CAP - 1)
+        .execute()
+        .data
+        or []
+    )
+    if len(paid_rows) >= _REVENUE_ROWS_CAP:
+        logger.warning("money_summary revenue_trend hit the %d-row cap -- figures may be truncated", _REVENUE_ROWS_CAP)
+    buckets: dict[str, Decimal] = {(trend_start_day + timedelta(days=i)).isoformat(): Decimal("0") for i in range(_REVENUE_TREND_DAYS)}
+    for row in paid_rows:
+        paid_at = row.get("paid_at")
+        if not paid_at:
+            continue
+        day = datetime.fromisoformat(str(paid_at).replace("Z", "+00:00")).astimezone(VN_TZ).date().isoformat()
+        if day in buckets:
+            buckets[day] += Decimal(str(row["amount"]))
+    revenue_trend = [RevenueTrendPoint(date=day, revenue=money_str(total)) for day, total in buckets.items()]
+
+    # 2. outstanding -- every PENDING payment's amount, all-time (same
+    #    population the `pending_count` tile counts).
+    pending_rows = (
+        supabase.table("payments").select("amount").eq("status", "PENDING").range(0, _REVENUE_ROWS_CAP - 1).execute().data or []
+    )
+    if len(pending_rows) >= _REVENUE_ROWS_CAP:
+        logger.warning("money_summary outstanding hit the %d-row cap -- figure may be truncated", _REVENUE_ROWS_CAP)
+    outstanding = sum((Decimal(str(row["amount"])) for row in pending_rows), Decimal("0"))
+
+    # 3. revenue_by_hotel / revenue_by_destination -- PAID orders of the last 7
+    #    days, each order's whole `amount` credited to its first hotel (and
+    #    that hotel's destination). `admin_orders` is already rolled up per
+    #    payment, so a rare multi-hotel order isn't split; single-hotel orders
+    #    (the overwhelming majority) are exact. `created_at`-scoped -- the view
+    #    carries no `paid_at`. `hotel_names`/`hotel_ids` come from two separate
+    #    `array_agg(DISTINCT ...)`s so `[0]` isn't guaranteed to be the *same*
+    #    hotel across both, but both are just "the primary hotel" heuristics.
+    order_rows = (
+        supabase.table(_ORDERS_VIEW)
+        .select("amount, hotel_names, hotel_ids")
+        .eq("payment_status", "PAID")
+        .gte("created_at", slice_window_start)
+        .range(0, _REVENUE_ROWS_CAP - 1)
+        .execute()
+        .data
+        or []
+    )
+    if len(order_rows) >= _REVENUE_ROWS_CAP:
+        logger.warning("money_summary revenue slices hit the %d-row cap -- figures may be truncated", _REVENUE_ROWS_CAP)
+
+    primary_hotel_ids = {(row.get("hotel_ids") or [None])[0] for row in order_rows}
+    primary_hotel_ids.discard(None)
+    destination_by_hotel: dict[str, str] = {}
+    if primary_hotel_ids:
+        hotel_rows = supabase.table("hotels").select("id, city, destination_id").in_("id", list(primary_hotel_ids)).execute().data or []
+        dest_ids = {r["destination_id"] for r in hotel_rows if r.get("destination_id")}
+        dest_name_by_id: dict[str, str] = {}
+        if dest_ids:
+            dest_rows = supabase.table("destinations").select("id, name").in_("id", list(dest_ids)).execute().data or []
+            dest_name_by_id = {r["id"]: r["name"] for r in dest_rows}
+        for r in hotel_rows:
+            destination_by_hotel[r["id"]] = dest_name_by_id.get(r.get("destination_id")) or r.get("city") or "Khác"
+
+    by_hotel: dict[str, Decimal] = {}
+    by_destination: dict[str, Decimal] = {}
+    for row in order_rows:
+        amount = Decimal(str(row["amount"]))
+        names = row.get("hotel_names") or []
+        by_hotel[names[0] if names else "Khác"] = by_hotel.get(names[0] if names else "Khác", Decimal("0")) + amount
+        hid = (row.get("hotel_ids") or [None])[0]
+        dest = destination_by_hotel.get(hid, "Khác") if hid else "Khác"
+        by_destination[dest] = by_destination.get(dest, Decimal("0")) + amount
+
+    def _top_slices(totals: dict[str, Decimal]) -> list[RevenueSlicePoint]:
+        ranked = sorted(totals.items(), key=lambda kv: kv[1], reverse=True)[:_REVENUE_SLICE_TOP_N]
+        return [RevenueSlicePoint(label=label, revenue=money_str(total)) for label, total in ranked]
+
+    return MoneySummary(
+        currency="VND",
+        collected_today=money_str(buckets[today.isoformat()]),
+        outstanding=money_str(outstanding),
+        revenue_trend=revenue_trend,
+        revenue_by_hotel=_top_slices(by_hotel),
+        revenue_by_destination=_top_slices(by_destination),
     )
 
 
