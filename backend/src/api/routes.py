@@ -654,7 +654,13 @@ def restore_session(
         stage=derive_stage(state, hotel_options, reply=""),
         hotel_options=hotel_options,
         hotel_amenities=hotel_amenities_from_hotel_options(hotel_options),
-        trip_plan=to_trip_plan_payload(state.get("trip_data")),
+        # Live-refreshed, not the raw checkpoint snapshot: `state["trip_data"]`
+        # bakes each item's image_url in at generation time and never updates
+        # it again for the life of the checkpoint (session_store.
+        # refresh_trip_data_image_urls's doc comment has the full story) --
+        # without this, a photo the guest can already see on the place detail
+        # panel (always fetched live) can still show broken here.
+        trip_plan=to_trip_plan_payload(session_store.refresh_trip_data_image_urls(state.get("trip_data"))),
         intake=intake_status_from_travel_state(travel_state),
     )
 
@@ -673,7 +679,9 @@ def get_session_plan(
     app = _get_graph_v2()
     snapshot = app.get_state({"configurable": {"thread_id": session_id}})
     state = snapshot.values or {}
-    return {"trip_plan": to_trip_plan_payload(state.get("trip_data"))}
+    # See restore_session's identical call, above, for why this isn't just
+    # `to_trip_plan_payload(state.get("trip_data"))`.
+    return {"trip_plan": to_trip_plan_payload(session_store.refresh_trip_data_image_urls(state.get("trip_data")))}
 
 
 @router.delete("/chat/{session_id}", status_code=204)
