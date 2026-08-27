@@ -7,7 +7,7 @@ import { Banner } from '../../ui/banner'
 import { Button } from '../../ui/button'
 import { DateText } from '../../ui/date-text'
 import { PipelineTriggerDialog } from '../pipelines/pipeline-trigger-dialog'
-import { AttentionOrdersCard } from './attention-orders-card'
+import { PendingOrdersCard } from './pending-orders-card'
 import { EmbeddingStatusCard } from './embedding-status-card'
 import { ExpiringHoldsCard } from './expiring-holds-card'
 import { OverviewStatCards } from './overview-stat-cards'
@@ -106,7 +106,7 @@ export function OverviewPage({ navigate }: OverviewPageProps) {
         <OverviewStatCards orders={data?.orders ?? null} />
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
-          <AttentionOrdersCard items={state.status === 'loaded' ? (state.data.attention_orders ?? []) : null} navigate={navigate} />
+          <PendingOrdersCard items={state.status === 'loaded' ? (state.data.pending_orders ?? []) : null} navigate={navigate} />
           <ExpiringHoldsCard holds={state.status === 'loaded' ? (state.data.expiring_holds ?? []) : null} />
         </div>
 

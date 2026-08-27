@@ -354,10 +354,15 @@ def _apply_unpaid_filters(
     return query
 
 
-def fetch_orders(*, start: int, end: int, with_count: bool = True, **filters: Any) -> tuple[list[dict[str, Any]], int]:
+def fetch_orders(*, start: int, end: int, with_count: bool = True, oldest_first: bool = False, **filters: Any) -> tuple[list[dict[str, Any]], int]:
+    """`oldest_first` flips the default newest-first ordering. D1's table wants
+    newest-first (what happened lately); a "longest waiting" list wants the
+    opposite, and it has to be the *database* that orders it -- sorting a
+    newest-first page in Python would only ever surface the oldest rows within
+    that page, not the oldest overall."""
     query = get_supabase_client().table(_ORDERS_VIEW).select("*", count="exact" if with_count else None)
     query = _apply_paid_filters(query, **filters)
-    response = query.order("created_at", desc=True).range(start, end).execute()
+    response = query.order("created_at", desc=not oldest_first).range(start, end).execute()
     return response.data or [], response.count or 0
 
 

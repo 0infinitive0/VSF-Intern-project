@@ -684,7 +684,13 @@ export interface paths {
         get: operations["get_hotel_api_v1_admin_hotels__hotel_id__get"];
         put?: never;
         post?: never;
-        /** Delete Hotel */
+        /**
+         * Delete Hotel
+         * @description Soft delete (`deleted_at`, 20260826_add_hotels_deleted_at.sql) -- never
+         *     a hard `.delete()`. Same guard as `set_hotel_active`'s deactivate path:
+         *     a hotel a guest is mid-stay or about to check into can't just vanish
+         *     from the admin list with no way to manage their stay.
+         */
         delete: operations["delete_hotel_api_v1_admin_hotels__hotel_id__delete"];
         options?: never;
         head?: never;
@@ -2594,31 +2600,6 @@ export interface components {
             /** Currency */
             currency: string;
         };
-        /** OverviewAttentionOrder */
-        OverviewAttentionOrder: {
-            /** Payment Id */
-            payment_id: string;
-            /** Order Code */
-            order_code: string;
-            /** Guest Name */
-            guest_name?: string | null;
-            /** Guest Email */
-            guest_email?: string | null;
-            /** Amount */
-            amount: string;
-            /**
-             * Issue
-             * @enum {string}
-             */
-            issue: "expiring_hold" | "paid_not_confirmed" | "awaiting_long" | "payment_failed";
-            /** Issue Label */
-            issue_label: string;
-            /**
-             * Severity
-             * @enum {string}
-             */
-            severity: "err" | "warn" | "mute";
-        };
         /** OverviewEmbedding */
         OverviewEmbedding: {
             /** Embedded */
@@ -2659,8 +2640,25 @@ export interface components {
             currency: string;
             /** Pending Count */
             pending_count: number;
+            /** Pending Over 2H */
+            pending_over_2h: number;
             /** Expiring Holds 30M */
             expiring_holds_30m: number;
+        };
+        /** OverviewPendingOrder */
+        OverviewPendingOrder: {
+            /** Payment Id */
+            payment_id: string;
+            /** Order Code */
+            order_code: string;
+            /** Guest Name */
+            guest_name?: string | null;
+            /** Guest Email */
+            guest_email?: string | null;
+            /** Amount */
+            amount: string;
+            /** Waiting Label */
+            waiting_label: string;
         };
         /** OverviewPipeline */
         OverviewPipeline: {
@@ -2682,8 +2680,8 @@ export interface components {
             /** Date */
             date: string;
             orders?: components["schemas"]["OverviewOrders"] | null;
-            /** Attention Orders */
-            attention_orders?: components["schemas"]["OverviewAttentionOrder"][];
+            /** Pending Orders */
+            pending_orders?: components["schemas"]["OverviewPendingOrder"][];
             /** Expiring Holds */
             expiring_holds?: components["schemas"]["OverviewExpiringHold"][];
             embedding?: components["schemas"]["OverviewEmbedding"] | null;

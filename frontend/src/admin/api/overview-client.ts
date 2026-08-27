@@ -8,7 +8,7 @@ import { adminFetch, type AdminApiResult } from './client'
 
 export type OverviewResponse = components['schemas']['OverviewResponse']
 export type OverviewOrders = components['schemas']['OverviewOrders']
-export type OverviewAttentionOrder = components['schemas']['OverviewAttentionOrder']
+export type OverviewPendingOrder = components['schemas']['OverviewPendingOrder']
 export type OverviewExpiringHold = components['schemas']['OverviewExpiringHold']
 export type OverviewEmbedding = components['schemas']['OverviewEmbedding']
 export type OverviewPipeline = components['schemas']['OverviewPipeline']

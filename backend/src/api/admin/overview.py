@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
-from datetime import UTC, datetime, timedelta
-from typing import Any, Literal
+from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -30,16 +30,9 @@ logger = logging.getLogger(__name__)
 
 overview_router = APIRouter(prefix="/overview", tags=["admin-overview"])
 
-# Same window used by orders.py's own stats -- "sắp hết hạn" / "chờ lâu" must
-# agree with the numbers those tiles already show.
-_EXPIRING_SOON_MINUTES = orders_module._EXPIRING_SOON_MINUTES
-_PENDING_OVER_HOURS = orders_module._PENDING_OVER_HOURS
-# Bounded candidate pool for "Đơn cần xử lý ngay" -- classified and ranked in
-# Python from here, not a new query per issue type. Recent orders only: an
-# order that's been sitting for weeks isn't "cần xử lý ngay" so much as
-# abandoned, and D1 is where an admin goes looking for that.
-_ATTENTION_LOOKBACK_DAYS = 3
-_ATTENTION_CANDIDATE_LIMIT = 100
+# Rows in the "Chờ thanh toán" card. Not a filter -- the tile above it still
+# counts every PENDING payment; this only bounds what the card renders.
+_PENDING_ORDERS_LIMIT = 5
 
 
 class OverviewOrders(BaseModel):
@@ -48,19 +41,29 @@ class OverviewOrders(BaseModel):
     pending_today: int
     revenue_today: str
     currency: str
+    # `pending_count` counts payments still in PENDING -- checkout started,
+    # VNPay never came back with PAID/FAILED/CANCELLED. That is a guest who
+    # hasn't finished paying, not an order queued for an admin (the
+    # admin-actionable state is `needs_attention`: PAID but booking not yet
+    # CONFIRMED). `pending_over_2h` carries the same 2-hour cut D1's tile
+    # already shows, so A3's subline can name the actionable subset instead
+    # of mislabelling the whole all-time backlog.
     pending_count: int
+    pending_over_2h: int
     expiring_holds_30m: int
 
 
-class OverviewAttentionOrder(BaseModel):
+class OverviewPendingOrder(BaseModel):
     payment_id: str
     order_code: str
     guest_name: str | None = None
     guest_email: str | None = None
     amount: str
-    issue: Literal["expiring_hold", "paid_not_confirmed", "awaiting_long", "payment_failed"]
-    issue_label: str
-    severity: Literal["err", "warn", "mute"]
+    # Backend-generated, same posture as `OverviewEmbedding.missing_label`:
+    # the "9 giờ" / "3 ngày" rounding is a labelling rule, and the tile above
+    # this card already gets its 2-hour cut from the backend too -- splitting
+    # it so the frontend re-derives the unit would let the two drift.
+    waiting_label: str
 
 
 class OverviewExpiringHold(BaseModel):
@@ -95,7 +98,7 @@ class OverviewPipeline(BaseModel):
 class OverviewResponse(BaseModel):
     date: str
     orders: OverviewOrders | None = None
-    attention_orders: list[OverviewAttentionOrder] = Field(default_factory=list)
+    pending_orders: list[OverviewPendingOrder] = Field(default_factory=list)
     expiring_holds: list[OverviewExpiringHold] = Field(default_factory=list)
     embedding: OverviewEmbedding | None = None
     pipeline: OverviewPipeline | None = None
@@ -114,93 +117,66 @@ def _fetch_orders_block() -> OverviewOrders | None:
         revenue_today=stats.revenue_today,
         currency=stats.currency,
         pending_count=stats.pending_count,
+        pending_over_2h=stats.pending_over_2h,
         expiring_holds_30m=stats.expiring_holds_30m,
     )
 
 
-AttentionIssue = Literal["expiring_hold", "paid_not_confirmed", "awaiting_long", "payment_failed"]
-AttentionSeverity = Literal["err", "warn", "mute"]
+def _waiting_label(created_at: str, *, now: datetime) -> str:
+    """Rounds to the coarsest unit that still reads honestly. This list is
+    an all-time backlog -- `payments` has no sweeper, so a guest who
+    abandoned checkout in May is still PENDING today -- and "2136 giờ" is
+    noise where "89 ngày" is a fact an admin can act on."""
+    created = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+    hours = (now - created).total_seconds() / 3600
+    if hours < 1:
+        return f"{max(1, round(hours * 60))} phút"
+    if hours < 48:
+        return f"{round(hours)} giờ"
+    return f"{round(hours / 24)} ngày"
 
 
-# (issue, issue_label, severity, rank) -- rank is the plan's explicit order:
-# sắp hết hạn trước, rồi đã trả tiền chưa xác nhận, rồi chờ lâu nhất.
-# payment_failed has no stated rank in the plan -- placed last (lowest
-# urgency: nothing time-sensitive is happening, the guest already knows).
-def _classify_attention(row: dict[str, Any], *, now: datetime) -> tuple[AttentionIssue, str, AttentionSeverity, int] | None:
-    booking_status = row.get("booking_status")
-    earliest_expires_at = row.get("earliest_expires_at")
-    if booking_status == "RESERVED" and earliest_expires_at:
-        expires = datetime.fromisoformat(str(earliest_expires_at).replace("Z", "+00:00"))
-        minutes_left = (expires - now).total_seconds() / 60
-        # Lower bound (H2 code-review finding): without `0 <`, a hold that
-        # expired hours ago and was never released still matches here,
-        # rounds to "Hết hạn giữ sau 0 phút", and permanently occupies
-        # rank-0 -- shadowing genuine paid_not_confirmed issues below it.
-        # An already-expired hold isn't "expiring soon", it's stale.
-        if 0 < minutes_left <= _EXPIRING_SOON_MINUTES:
-            minutes_label = max(0, round(minutes_left))
-            return ("expiring_hold", f"Hết hạn giữ sau {minutes_label} phút", "err", 0)
-    if row.get("needs_attention"):
-        return ("paid_not_confirmed", "Trả tiền, chưa xác nhận", "warn", 1)
-    if booking_status == "PENDING":
-        created = datetime.fromisoformat(str(row["created_at"]).replace("Z", "+00:00"))
-        hours_waiting = (now - created).total_seconds() / 3600
-        if hours_waiting >= _PENDING_OVER_HOURS:
-            return ("awaiting_long", f"Chờ xác nhận {round(hours_waiting)} giờ", "warn", 2)
-    if row.get("payment_status") == "FAILED":
-        return ("payment_failed", "Thanh toán thất bại", "mute", 3)
-    return None
+def _fetch_pending_orders() -> list[OverviewPendingOrder]:
+    """"Chờ thanh toán" -- orders whose payment never came back from VNPay,
+    longest-waiting first.
 
-
-def _fetch_attention_orders() -> list[OverviewAttentionOrder]:
+    Deliberately unfiltered by date and by booking status, so this card and
+    the `pending_count` tile above it describe the same population: the tile
+    counts every PENDING payment ever, and an admin who reads "13" then sees
+    a list scoped to the last 3 days has been shown two different things
+    under one heading. Ordering is pushed into `fetch_orders` (`oldest_first`)
+    rather than done here -- with only 5 rows displayed, sorting a
+    newest-first page in Python would surface the newest orders' oldest
+    members, not the genuinely longest-waiting ones.
+    """
     try:
         now = datetime.now(UTC)
-        # `from_` is orders.py's own server-side date filter (M6 code-review
-        # finding) -- the prior lexicographic string comparison on
-        # `created_at` happened to sort correctly only because ISO 8601
-        # timestamps do, and did an unbounded fetch-then-filter that wasted
-        # the rows PostgREST already excluded via `.gte()`.
-        since_date = (datetime.now(VN_TZ) - timedelta(days=_ATTENTION_LOOKBACK_DAYS)).date()
         rows, _total = orders_module.fetch_orders(
             start=0,
-            end=_ATTENTION_CANDIDATE_LIMIT - 1,
+            end=_PENDING_ORDERS_LIMIT - 1,
             with_count=False,
+            oldest_first=True,
             booking_status=None,
-            payment_status=None,
-            from_=since_date,
+            payment_status="PENDING",
+            from_=None,
             to_=None,
             hotel_id=None,
             q=None,
             needs_attention=None,
         )
-        classified: list[tuple[tuple[AttentionIssue, str, AttentionSeverity, int], dict[str, Any]]] = []
-        for row in rows:
-            result = _classify_attention(row, now=now)
-            if result is not None:
-                classified.append((result, row))
-        # Secondary key (M1 code-review finding): within the same issue
-        # rank, ties used to fall back to `fetch_orders`' own
-        # `created_at DESC` ordering (newest-first) -- the opposite of
-        # "chờ lâu nhất" (longest-waiting first). Ascending `created_at`
-        # as the tiebreak makes the oldest, most-neglected order in each
-        # bucket surface first.
-        classified.sort(key=lambda pair: (pair[0][3], str(pair[1].get("created_at", ""))))
-        top = classified[:5]
         return [
-            OverviewAttentionOrder(
+            OverviewPendingOrder(
                 payment_id=row["payment_id"],
                 order_code=orders_module.short_code("DH", row["payment_id"]),
                 guest_name=row.get("guest_name"),
                 guest_email=row.get("guest_email"),
                 amount=orders_module.money_str(row["amount"]),
-                issue=issue,
-                issue_label=issue_label,
-                severity=severity,
+                waiting_label=_waiting_label(row["created_at"], now=now),
             )
-            for (issue, issue_label, severity, _rank), row in top
+            for row in rows
         ]
     except Exception:
-        logger.exception("Overview: attention_orders block failed")
+        logger.exception("Overview: pending_orders block failed")
         return []
 
 
@@ -306,7 +282,7 @@ def get_overview() -> OverviewResponse:
     single block instead of their sum."""
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
         orders_future = pool.submit(_fetch_orders_block)
-        attention_future = pool.submit(_fetch_attention_orders)
+        pending_future = pool.submit(_fetch_pending_orders)
         holds_future = pool.submit(_fetch_expiring_holds)
         embedding_future = pool.submit(_fetch_embedding_block)
         pipeline_future = pool.submit(_fetch_pipeline_block)
@@ -314,7 +290,7 @@ def get_overview() -> OverviewResponse:
         return OverviewResponse(
             date=datetime.now(VN_TZ).date().isoformat(),
             orders=orders_future.result(),
-            attention_orders=attention_future.result(),
+            pending_orders=pending_future.result(),
             expiring_holds=holds_future.result(),
             embedding=embedding_future.result(),
             pipeline=pipeline_future.result(),

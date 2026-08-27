@@ -16,7 +16,7 @@ interface StatCardProps {
 
 /** D1's 4 `orderStats` cards (phase-04-orders-list.md) -- `--g3` background,
  * 16px radius, 26px tabular-nums figures. `rail`/`valueColor` are only set
- * for the two attention-worthy cards (Chờ xử lý, Giữ chỗ sắp hết hạn). */
+ * for the two attention-worthy cards (Chờ thanh toán, Giữ chỗ sắp hết hạn). */
 function StatCard({ label, value, subline, valueColor, rail }: StatCardProps) {
   return (
     <div
@@ -84,9 +84,9 @@ export function OrderStatCards({ stats }: OrderStatCardsProps) {
         }
       />
       <StatCard
-        label="Chờ xử lý"
+        label="Chờ thanh toán"
         value={stats.pending_count}
-        subline={`${stats.pending_over_2h} quá 2 giờ`}
+        subline={`Chưa thanh toán · ${stats.pending_over_2h} đơn quá 2 giờ`}
         valueColor="var(--warn-ink)"
         rail="inset 3px 0 0 var(--warn)"
       />

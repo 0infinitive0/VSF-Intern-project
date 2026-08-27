@@ -16,8 +16,12 @@ interface StatCardProps {
 
 /** overview-stat-cards.tsx — A3's 4 `overviewStats` cards (phase-17-
  * overview-kpi.md), same shape as D1's order-stat-cards.tsx (`--g3`
- * background, 16px radius, 26px tabular-nums). L76 softens "Cần xác nhận
- * trong hôm nay" (a fake SLA) to "Đang chờ admin xác nhận". */
+ * background, 16px radius, 26px tabular-nums). The third tile drops the
+ * plan's "Cần xác nhận trong hôm nay" (a fake SLA) and its "Đang chờ admin
+ * xác nhận" replacement: `pending_count` is payments stuck in PENDING --
+ * a guest who never finished paying, which no admin action clears. It
+ * names the wait honestly and surfaces `pending_over_2h`, the subset
+ * actually worth chasing, matching D1's tile. */
 function StatCard({ label, value, subline, valueColor, rail }: StatCardProps) {
   return (
     <div
@@ -85,9 +89,9 @@ export function OverviewStatCards({ orders }: OverviewStatCardsProps) {
         subline="Đã về tài khoản VNPay"
       />
       <StatCard
-        label="Chờ xử lý"
+        label="Chờ thanh toán"
         value={orders.pending_count}
-        subline="Đang chờ admin xác nhận"
+        subline={`Chưa thanh toán · ${orders.pending_over_2h} đơn quá 2 giờ`}
         valueColor="var(--warn-ink)"
         rail="inset 3px 0 0 var(--warn)"
       />

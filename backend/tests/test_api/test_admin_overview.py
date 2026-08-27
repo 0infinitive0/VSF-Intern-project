@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -81,9 +82,9 @@ def test_orders_block_returns_none_on_failure(monkeypatch):
     assert overview_module._fetch_orders_block() is None
 
 
-def test_attention_orders_returns_empty_list_on_failure(monkeypatch):
+def test_pending_orders_returns_empty_list_on_failure(monkeypatch):
     monkeypatch.setattr(orders_module, "fetch_orders", lambda **kwargs: (_ for _ in ()).throw(RuntimeError("db down")))
-    assert overview_module._fetch_attention_orders() == []
+    assert overview_module._fetch_pending_orders() == []
 
 
 def test_expiring_holds_returns_empty_list_on_failure(monkeypatch):
@@ -118,7 +119,7 @@ async def test_route_returns_200_even_when_every_block_fails(client, admin_overr
     assert response.status_code == 200
     body = response.json()
     assert body["orders"] is None
-    assert body["attention_orders"] == []
+    assert body["pending_orders"] == []
     assert body["expiring_holds"] == []
     assert body["embedding"] is None
     assert body["pipeline"] is None
@@ -148,128 +149,110 @@ async def test_route_reuses_order_stats_verbatim(client, admin_override, monkeyp
         "revenue_today": "62400000.00",
         "currency": "VND",
         "pending_count": 7,
+        "pending_over_2h": 2,
         "expiring_holds_30m": 3,
     }
 
 
 # ---------------------------------------------------------------------------
-# attention_orders -- classification, ranking, ≤5
+# pending_orders -- "Chờ thanh toán": unpaid orders, longest-waiting first
 # ---------------------------------------------------------------------------
 
 
-def test_attention_classifies_expiring_hold_as_highest_priority(monkeypatch):
-    now = datetime.now(UTC)
-    row = _order_row(booking_status="RESERVED", earliest_expires_at=(now + timedelta(minutes=4)).isoformat())
-    monkeypatch.setattr(orders_module, "fetch_orders", lambda **kwargs: ([row], 1))
+def _capture_fetch_orders_kwargs(monkeypatch, rows=()):
+    """Ordering and filtering both live in the query now, so the contract
+    worth asserting is the arguments -- a fake that sorts its own rows would
+    pass even if the real query came back newest-first."""
+    captured: dict[str, Any] = {}
 
-    items = overview_module._fetch_attention_orders()
+    def fake(**kwargs):
+        captured.update(kwargs)
+        return list(rows), len(rows)
 
-    assert items[0].issue == "expiring_hold"
-    assert items[0].severity == "err"
-    assert "phút" in items[0].issue_label
-
-
-def test_attention_classifies_paid_not_confirmed(monkeypatch):
-    row = _order_row(needs_attention=True)
-    monkeypatch.setattr(orders_module, "fetch_orders", lambda **kwargs: ([row], 1))
-
-    items = overview_module._fetch_attention_orders()
-
-    assert items[0].issue == "paid_not_confirmed"
-    assert items[0].severity == "warn"
+    monkeypatch.setattr(orders_module, "fetch_orders", fake)
+    return captured
 
 
-def test_attention_classifies_awaiting_long_only_past_the_2h_threshold(monkeypatch):
-    now = datetime.now(UTC)
-    fresh = _order_row(payment_id="p-fresh", booking_status="PENDING", created_at=(now - timedelta(minutes=30)).isoformat())
-    stale = _order_row(payment_id="p-stale", booking_status="PENDING", created_at=(now - timedelta(hours=3)).isoformat())
-    monkeypatch.setattr(orders_module, "fetch_orders", lambda **kwargs: ([fresh, stale], 2))
+def test_pending_orders_asks_the_query_for_unpaid_rows_oldest_first(monkeypatch):
+    captured = _capture_fetch_orders_kwargs(monkeypatch)
 
-    items = overview_module._fetch_attention_orders()
+    overview_module._fetch_pending_orders()
+
+    assert captured["payment_status"] == "PENDING"
+    assert captured["oldest_first"] is True
+
+
+def test_pending_orders_are_not_scoped_to_a_date_window(monkeypatch):
+    """The tile above this card counts every PENDING payment ever. A card
+    scoped to recent orders would show "13" next to a list explaining three
+    of them, so the list must span the same all-time population."""
+    captured = _capture_fetch_orders_kwargs(monkeypatch)
+
+    overview_module._fetch_pending_orders()
+
+    assert captured["from_"] is None
+    assert captured["to_"] is None
+
+
+def test_pending_orders_caps_the_page_at_5_rows(monkeypatch):
+    captured = _capture_fetch_orders_kwargs(monkeypatch)
+
+    overview_module._fetch_pending_orders()
+
+    assert captured["start"] == 0
+    assert captured["end"] == 4
+
+
+def test_pending_orders_maps_row_fields_onto_the_card_shape(monkeypatch):
+    row = _order_row(payment_id="11111111-1111-1111-1111-111111111111", amount="1850000.00")
+    _capture_fetch_orders_kwargs(monkeypatch, [row])
+
+    items = overview_module._fetch_pending_orders()
 
     assert len(items) == 1
-    assert items[0].payment_id == "p-stale"
-    assert items[0].issue == "awaiting_long"
+    assert items[0].payment_id == "11111111-1111-1111-1111-111111111111"
+    assert items[0].order_code == orders_module.short_code("DH", row["payment_id"])
+    assert items[0].guest_name == "Trần Quốc Bảo"
+    assert items[0].amount == "1850000.00"
 
 
-def test_attention_classifies_payment_failed_as_lowest_priority(monkeypatch):
-    row = _order_row(payment_status="FAILED")
-    monkeypatch.setattr(orders_module, "fetch_orders", lambda **kwargs: ([row], 1))
-
-    items = overview_module._fetch_attention_orders()
-
-    assert items[0].issue == "payment_failed"
-    assert items[0].severity == "mute"
-
-
-def test_attention_sorted_expiring_before_paid_before_awaiting_before_failed(monkeypatch):
+def test_pending_orders_preserves_the_order_the_query_returned(monkeypatch):
+    """No Python re-sort: rows arrive already ordered by `created_at ASC`,
+    and re-sorting a 5-row page could only ever reorder within it."""
     now = datetime.now(UTC)
     rows = [
-        _order_row(payment_id="p-failed", payment_status="FAILED"),
-        _order_row(payment_id="p-expiring", booking_status="RESERVED", earliest_expires_at=(now + timedelta(minutes=5)).isoformat()),
-        _order_row(payment_id="p-awaiting", booking_status="PENDING", created_at=(now - timedelta(hours=3)).isoformat()),
-        _order_row(payment_id="p-paid", needs_attention=True),
+        _order_row(payment_id="p-oldest", created_at=(now - timedelta(days=9)).isoformat()),
+        _order_row(payment_id="p-middle", created_at=(now - timedelta(hours=6)).isoformat()),
+        _order_row(payment_id="p-newest", created_at=(now - timedelta(minutes=20)).isoformat()),
     ]
-    monkeypatch.setattr(orders_module, "fetch_orders", lambda **kwargs: (rows, len(rows)))
+    _capture_fetch_orders_kwargs(monkeypatch, rows)
 
-    items = overview_module._fetch_attention_orders()
+    items = overview_module._fetch_pending_orders()
 
-    assert [item.payment_id for item in items] == ["p-expiring", "p-paid", "p-awaiting", "p-failed"]
-
-
-def test_attention_orders_capped_at_5(monkeypatch):
-    rows = [_order_row(payment_id=f"p{i}", needs_attention=True) for i in range(8)]
-    monkeypatch.setattr(orders_module, "fetch_orders", lambda **kwargs: (rows, len(rows)))
-
-    items = overview_module._fetch_attention_orders()
-
-    assert len(items) == 5
+    assert [item.payment_id for item in items] == ["p-oldest", "p-middle", "p-newest"]
 
 
-def test_attention_ignores_orders_with_no_real_issue(monkeypatch):
-    row = _order_row(booking_status="CONFIRMED", payment_status="PAID")
-    monkeypatch.setattr(orders_module, "fetch_orders", lambda **kwargs: ([row], 1))
-
-    assert overview_module._fetch_attention_orders() == []
-
-
-def test_classify_attention_does_not_flag_an_already_expired_hold_h2():
-    """H2 code-review finding: a RESERVED hold whose `earliest_expires_at`
-    is already in the past (nothing auto-releases it) must not be
-    mislabeled "expiring soon" and permanently occupy rank-0."""
+@pytest.mark.parametrize(
+    ("waited", "expected"),
+    [
+        (timedelta(minutes=20), "20 phút"),
+        (timedelta(hours=3), "3 giờ"),
+        (timedelta(hours=47), "47 giờ"),
+        (timedelta(days=9), "9 ngày"),
+    ],
+)
+def test_waiting_label_rounds_to_the_coarsest_honest_unit(waited, expected):
+    """This backlog has no sweeper, so waits run to months -- "2136 giờ" is
+    noise where "89 ngày" is actionable."""
     now = datetime.now(UTC)
-    row = _order_row(booking_status="RESERVED", earliest_expires_at=(now - timedelta(minutes=5)).isoformat())
-
-    assert overview_module._classify_attention(row, now=now) is None
+    assert overview_module._waiting_label((now - waited).isoformat(), now=now) == expected
 
 
-def test_attention_expiring_hold_requires_positive_minutes_left(monkeypatch):
+def test_waiting_label_never_reports_zero_for_a_brand_new_order():
+    """A just-created order is "1 phút", not "0 phút" -- a zero reads as a
+    rendering bug, and the row is on screen precisely because it is waiting."""
     now = datetime.now(UTC)
-    expired = _order_row(payment_id="p-expired", booking_status="RESERVED", earliest_expires_at=(now - timedelta(minutes=5)).isoformat())
-    paid = _order_row(payment_id="p-paid", needs_attention=True)
-    monkeypatch.setattr(orders_module, "fetch_orders", lambda **kwargs: ([expired, paid], 2))
-
-    items = overview_module._fetch_attention_orders()
-
-    assert [item.payment_id for item in items] == ["p-paid"]
-
-
-def test_attention_within_bucket_ties_break_by_longest_waiting_first_m1(monkeypatch):
-    """M1 code-review finding: two orders with the same issue rank used to
-    fall back to `fetch_orders`' own `created_at DESC` ordering (newest
-    first, the order rows arrive in). The secondary sort key must put the
-    longest-waiting order (oldest `created_at`) first within a bucket
-    instead -- rows are deliberately passed newest-first here, matching
-    `fetch_orders`' real ordering, so a passing test can't be an accident
-    of input order."""
-    now = datetime.now(UTC)
-    newer = _order_row(payment_id="p-newer", needs_attention=True, created_at=(now - timedelta(hours=1)).isoformat())
-    older = _order_row(payment_id="p-older", needs_attention=True, created_at=(now - timedelta(hours=5)).isoformat())
-    monkeypatch.setattr(orders_module, "fetch_orders", lambda **kwargs: ([newer, older], 2))
-
-    items = overview_module._fetch_attention_orders()
-
-    assert [item.payment_id for item in items] == ["p-older", "p-newer"]
+    assert overview_module._waiting_label(now.isoformat(), now=now) == "1 phút"
 
 
 # ---------------------------------------------------------------------------

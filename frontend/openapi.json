@@ -1882,6 +1882,7 @@
           "admin-hotels"
         ],
         "summary": "Delete Hotel",
+        "description": "Soft delete (`deleted_at`, 20260826_add_hotels_deleted_at.sql) -- never\na hard `.delete()`. Same guard as `set_hotel_active`'s deactivate path:\na hotel a guest is mid-stay or about to check into can't just vanish\nfrom the admin list with no way to manage their stay.",
         "operationId": "delete_hotel_api_v1_admin_hotels__hotel_id__delete",
         "parameters": [
           {
@@ -8478,77 +8479,6 @@
         ],
         "title": "OrderVnpay"
       },
-      "OverviewAttentionOrder": {
-        "properties": {
-          "payment_id": {
-            "type": "string",
-            "title": "Payment Id"
-          },
-          "order_code": {
-            "type": "string",
-            "title": "Order Code"
-          },
-          "guest_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Guest Name"
-          },
-          "guest_email": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Guest Email"
-          },
-          "amount": {
-            "type": "string",
-            "title": "Amount"
-          },
-          "issue": {
-            "type": "string",
-            "enum": [
-              "expiring_hold",
-              "paid_not_confirmed",
-              "awaiting_long",
-              "payment_failed"
-            ],
-            "title": "Issue"
-          },
-          "issue_label": {
-            "type": "string",
-            "title": "Issue Label"
-          },
-          "severity": {
-            "type": "string",
-            "enum": [
-              "err",
-              "warn",
-              "mute"
-            ],
-            "title": "Severity"
-          }
-        },
-        "type": "object",
-        "required": [
-          "payment_id",
-          "order_code",
-          "amount",
-          "issue",
-          "issue_label",
-          "severity"
-        ],
-        "title": "OverviewAttentionOrder"
-      },
       "OverviewEmbedding": {
         "properties": {
           "embedded": {
@@ -8665,6 +8595,10 @@
             "type": "integer",
             "title": "Pending Count"
           },
+          "pending_over_2h": {
+            "type": "integer",
+            "title": "Pending Over 2H"
+          },
           "expiring_holds_30m": {
             "type": "integer",
             "title": "Expiring Holds 30M"
@@ -8678,9 +8612,60 @@
           "revenue_today",
           "currency",
           "pending_count",
+          "pending_over_2h",
           "expiring_holds_30m"
         ],
         "title": "OverviewOrders"
+      },
+      "OverviewPendingOrder": {
+        "properties": {
+          "payment_id": {
+            "type": "string",
+            "title": "Payment Id"
+          },
+          "order_code": {
+            "type": "string",
+            "title": "Order Code"
+          },
+          "guest_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Name"
+          },
+          "guest_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Email"
+          },
+          "amount": {
+            "type": "string",
+            "title": "Amount"
+          },
+          "waiting_label": {
+            "type": "string",
+            "title": "Waiting Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "payment_id",
+          "order_code",
+          "amount",
+          "waiting_label"
+        ],
+        "title": "OverviewPendingOrder"
       },
       "OverviewPipeline": {
         "properties": {
@@ -8766,12 +8751,12 @@
               }
             ]
           },
-          "attention_orders": {
+          "pending_orders": {
             "items": {
-              "$ref": "#/components/schemas/OverviewAttentionOrder"
+              "$ref": "#/components/schemas/OverviewPendingOrder"
             },
             "type": "array",
-            "title": "Attention Orders"
+            "title": "Pending Orders"
           },
           "expiring_holds": {
             "items": {
