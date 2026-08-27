@@ -49,6 +49,7 @@ CREATE TABLE hotels (
     coordinates VARCHAR(50), -- Tọa độ GPS (VD: '10.762622, 106.660172') để tính khoảng cách đi bộ
     amenities TEXT[], -- Canonical amenity_catalog IDs, e.g. '{"swimming_pool", "wifi"}'
     embedding vector(1024), -- Semantic hotel-search vector
+    embedding_stale BOOLEAN NOT NULL DEFAULT false, -- Vector còn dùng được nhưng text RAG đã sửa sau lần embed cuối
     amenity_groups JSONB, -- Tiện ích nhóm theo danh mục (cấu trúc khác nhau giữa 2 nguồn)
     awards TEXT[], -- Chỉ có ở Agoda
     warnings TEXT[],
@@ -84,6 +85,10 @@ CREATE TABLE hotels (
 );
 
 CREATE INDEX hotels_is_active_idx ON hotels (is_active) WHERE is_active = false;
+
+-- Partial: mọi truy vấn đều hỏi "dòng nào còn cần embed lại", không bao giờ
+-- hỏi phía false. Xem scripts/migrations/20260827_add_embedding_stale.sql.
+CREATE INDEX hotels_embedding_stale_idx ON hotels (embedding_stale) WHERE embedding_stale;
 
 -- coordinates là chuỗi "lat,lng" nên phải parse trước khi so sánh được khoảng cách.
 -- Gói phần parse vào một hàm IMMUTABLE để index bên dưới và predicate trong
@@ -130,6 +135,7 @@ CREATE TABLE rooms (
     room_facilities TEXT[], -- Canonical amenity_catalog IDs for this room
     available_room_count INTEGER CHECK (available_room_count >= 0), -- Latest inventory snapshot for this room type; it is not date-specific
     embedding vector(1024), -- Semantic room-search vector
+    embedding_stale BOOLEAN NOT NULL DEFAULT false, -- Xem hotels.embedding_stale
     amenity_groups JSONB, -- Nullable, chỉ có ở Agoda
     images TEXT[], -- Mảng URL hình ảnh của phòng
     image_count INT,
@@ -137,6 +143,8 @@ CREATE TABLE rooms (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(hotel_id, source_room_id)
 );
+
+CREATE INDEX rooms_embedding_stale_idx ON rooms (embedding_stale) WHERE embedding_stale;
 
 -- Bảng 4: Giá phòng (Room Prices - Chỉ lưu giá mới nhất theo ngày check-in/check-out)
 CREATE TABLE room_prices (
@@ -851,7 +859,14 @@ SELECT
   (h.embedding IS NOT NULL)                         AS hotel_embedded,
   count(r.id)                                       AS room_count,
   count(r.id) FILTER (WHERE r.embedding IS NULL)    AS rooms_missing_embedding,
-  h.updated_at
+  h.updated_at,
+  -- "Đã có embedding nhưng chưa cập nhật" -- gated on an existing vector:
+  -- a stale row with no vector is already the stronger "Chưa embed"
+  -- (20260827_add_embedding_stale.sql).
+  (h.embedding IS NOT NULL AND h.embedding_stale)   AS hotel_embedding_stale,
+  count(r.id) FILTER (
+    WHERE r.embedding IS NOT NULL AND r.embedding_stale
+  )                                                 AS rooms_stale_embedding
 FROM public.hotels h
 LEFT JOIN public.rooms r ON r.hotel_id = h.id
 WHERE h.deleted_at IS NULL

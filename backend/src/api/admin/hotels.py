@@ -30,9 +30,13 @@ means an ETL-sourced hotel is still fully editable here -- `pipeline_managed_fie
 (from `embedding_fields.PIPELINE_MANAGED_FIELDS_HOTEL`) only drives a UI
 warning, never a server-side write block. `update_hotel` diffs the request
 body against the current row itself (`model_fields_set`, not a client-sent
-flag) and clears `embedding` whenever a touched column intersects
+flag) and sets `embedding_stale` whenever a touched column intersects
 `embedding_fields.EMBEDDING_FIELDS` -- the same "backend decides, not the
-client" posture as B2's `source_platform`.
+client" posture as B2's `source_platform`. It marks the vector out of date
+rather than deleting it (20260827_add_embedding_stale.sql): a NULL
+`embedding` drops the hotel out of `match_hotels_with_rooms` entirely, so a
+one-word description fix would make the bot unable to find the hotel at all
+until the DAG next ran.
 
 `upload_hotel_image` (B3's Hình ảnh tab, L38) uploads to the `hotel-images`
 Storage bucket (scripts/migrations/20260824_add_hotel_images_storage_bucket.sql)
@@ -128,7 +132,13 @@ class HotelRow(BaseModel):
     room_count: int
     hotel_embedded: bool
     rooms_missing_embedding: int
-    embedding_state: Literal["embedded", "partial", "missing"]
+    # "Đã có embedding nhưng chưa cập nhật" -- the vector is still there and
+    # still searchable, it just predates the row's current text
+    # (20260827_add_embedding_stale.sql). Defaulted so a row read from a view
+    # that predates that migration reads as "not stale" instead of 500ing.
+    hotel_embedding_stale: bool = False
+    rooms_stale_embedding: int = 0
+    embedding_state: Literal["embedded", "stale", "partial", "missing"]
     image_url: str | None = None
 
 
@@ -240,8 +250,9 @@ class HotelDetailResponse(BaseModel):
     is_manual: bool
     is_active: bool
     room_count: int
-    embedding_state: Literal["embedded", "partial", "missing"]
+    embedding_state: Literal["embedded", "stale", "partial", "missing"]
     rooms_missing_embedding: int
+    rooms_stale_embedding: int = 0
     pipeline_managed_fields: list[str]
     rag_fields: list[str]
 
@@ -308,24 +319,54 @@ class UpdateHotelResponse(BaseModel):
     id: str
     changed_fields: list[str]
     rag_fields_changed: list[str]
-    embedding_cleared: bool
-    embedding_state: Literal["embedded", "partial", "missing"]
+    # Replaces the old `embedding_cleared`: a RAG edit no longer nulls the
+    # vector, it marks it out of date (20260827_add_embedding_stale.sql).
+    embedding_stale: bool
+    embedding_state: Literal["embedded", "stale", "partial", "missing"]
 
 
 class UploadImageResponse(BaseModel):
     url: str
 
 
-def _embedding_state(hotel_embedded: bool, rooms_missing_embedding: int) -> Literal["embedded", "partial", "missing"]:
+def _embedding_state(
+    hotel_embedded: bool,
+    rooms_missing_embedding: int,
+    hotel_embedding_stale: bool = False,
+    rooms_stale_embedding: int = 0,
+) -> Literal["embedded", "stale", "partial", "missing"]:
+    """Worst state wins, most urgent first: a row with no vector at all is
+    invisible to search ("missing"), a hotel whose rooms have no vector is
+    half-invisible ("partial"), and only then does "stale" apply -- there the
+    bot still finds everything, it just answers from pre-edit text
+    (20260827_add_embedding_stale.sql)."""
     if not hotel_embedded:
         return "missing"
     if rooms_missing_embedding > 0:
         return "partial"
+    if hotel_embedding_stale or rooms_stale_embedding > 0:
+        return "stale"
     return "embedded"
+
+
+def _aggregates_to_state(aggregates: dict[str, Any] | None) -> Literal["embedded", "stale", "partial", "missing"]:
+    """`_embedding_state` over an `admin_hotel_rows` row. A hotel with no view
+    row at all (deleted between the write and this read) is reported
+    "missing", the safest of the four."""
+    if not aggregates:
+        return "missing"
+    return _embedding_state(
+        aggregates["hotel_embedded"],
+        aggregates.get("rooms_missing_embedding") or 0,
+        bool(aggregates.get("hotel_embedding_stale")),
+        aggregates.get("rooms_stale_embedding") or 0,
+    )
 
 
 def _row_to_hotel(row: dict[str, Any]) -> HotelRow:
     rooms_missing = row.get("rooms_missing_embedding") or 0
+    hotel_stale = bool(row.get("hotel_embedding_stale"))
+    rooms_stale = row.get("rooms_stale_embedding") or 0
     return HotelRow(
         id=row["id"],
         name=row["name"],
@@ -338,7 +379,9 @@ def _row_to_hotel(row: dict[str, Any]) -> HotelRow:
         room_count=row.get("room_count") or 0,
         hotel_embedded=row["hotel_embedded"],
         rooms_missing_embedding=rooms_missing,
-        embedding_state=_embedding_state(row["hotel_embedded"], rooms_missing),
+        hotel_embedding_stale=hotel_stale,
+        rooms_stale_embedding=rooms_stale,
+        embedding_state=_embedding_state(row["hotel_embedded"], rooms_missing, hotel_stale, rooms_stale),
         image_url=row.get("image_url"),
     )
 
@@ -349,7 +392,7 @@ def _apply_filters(
     q: str | None,
     source: Literal["manual", "pipeline", "all"],
     is_active: bool | None,
-    embedding: Literal["embedded", "missing", "incomplete", "all"],
+    embedding: Literal["embedded", "missing", "stale", "incomplete", "all"],
 ) -> Any:
     if q:
         # `,` is the postgrest .or_() clause separator -- stripped so a
@@ -366,13 +409,23 @@ def _apply_filters(
         query = query.eq("hotel_embedded", True)
     elif embedding == "missing":
         query = query.eq("hotel_embedded", False)
+    elif embedding == "stale":
+        # "Cần chạy lại": the vector exists but its text has since been
+        # edited, on the hotel row itself or on any of its rooms
+        # (20260827_add_embedding_stale.sql).
+        query = query.or_("hotel_embedding_stale.eq.true,rooms_stale_embedding.gt.0")
     elif embedding == "incomplete":
         # B7's own filter (phase-12-embedding-status.md): a hotel with its
         # own embedding set but rooms still missing theirs ("partial" in
         # `_embedding_state`) is not "missing" by B1's `hotel_embedded`-only
         # definition, but B7 exists to surface exactly this case too --
-        # answering "bot còn chưa học những gì?" requires both.
-        query = query.or_("hotel_embedded.eq.false,rooms_missing_embedding.gt.0")
+        # answering "bot còn chưa học những gì?" requires both. A stale row
+        # is the same question in a third shape: the bot has learned it, but
+        # not what it currently says.
+        query = query.or_(
+            "hotel_embedded.eq.false,rooms_missing_embedding.gt.0,"
+            "hotel_embedding_stale.eq.true,rooms_stale_embedding.gt.0"
+        )
     return query
 
 
@@ -381,7 +434,7 @@ def _fetch_hotels(
     q: str | None,
     source: Literal["manual", "pipeline", "all"],
     is_active: bool | None,
-    embedding: Literal["embedded", "missing", "incomplete", "all"],
+    embedding: Literal["embedded", "missing", "stale", "incomplete", "all"],
     start: int,
     end: int,
     sort: str | None = None,
@@ -509,7 +562,7 @@ def list_hotels(
     q: str | None = Query(default=None),
     source: Literal["manual", "pipeline", "all"] = Query(default="all"),
     is_active: bool | None = Query(default=None),
-    embedding: Literal["embedded", "missing", "incomplete", "all"] = Query(default="all"),
+    embedding: Literal["embedded", "missing", "stale", "incomplete", "all"] = Query(default="all"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=_DEFAULT_PAGE_SIZE, ge=1, le=_MAX_PAGE_SIZE),
     sort: str | None = Query(default=None),
@@ -631,13 +684,13 @@ def _fetch_hotel_row(hotel_id: str) -> dict[str, Any] | None:
 
 
 def _fetch_hotel_admin_aggregates(hotel_id: str) -> dict[str, Any] | None:
-    """`room_count`/`hotel_embedded`/`rooms_missing_embedding` -- the same
-    per-hotel aggregates B1 lists, read from `admin_hotel_rows` (see module
-    docstring) instead of recomputed here."""
+    """`room_count`/`hotel_embedded`/`rooms_missing_embedding` plus the two
+    staleness aggregates -- the same per-hotel aggregates B1 lists, read from
+    `admin_hotel_rows` (see module docstring) instead of recomputed here."""
     rows = (
         get_supabase_client()
         .table(_VIEW)
-        .select("is_manual,hotel_embedded,rooms_missing_embedding,room_count")
+        .select("is_manual,hotel_embedded,rooms_missing_embedding,room_count,hotel_embedding_stale,rooms_stale_embedding")
         .eq("id", hotel_id)
         .limit(1)
         .execute()
@@ -650,6 +703,7 @@ def _hotel_row_to_detail(row: dict[str, Any], aggregates: dict[str, Any]) -> Hot
     is_manual = bool(aggregates["is_manual"])
     coords = parse_coordinates(row.get("coordinates"))
     rooms_missing = aggregates.get("rooms_missing_embedding") or 0
+    rooms_stale = aggregates.get("rooms_stale_embedding") or 0
     return HotelDetailResponse(
         id=row["id"],
         name=row["name"],
@@ -676,8 +730,9 @@ def _hotel_row_to_detail(row: dict[str, Any], aggregates: dict[str, Any]) -> Hot
         is_manual=is_manual,
         is_active=row["is_active"],
         room_count=aggregates.get("room_count") or 0,
-        embedding_state=_embedding_state(aggregates["hotel_embedded"], rooms_missing),
+        embedding_state=_aggregates_to_state(aggregates),
         rooms_missing_embedding=rooms_missing,
+        rooms_stale_embedding=rooms_stale,
         pipeline_managed_fields=[] if is_manual else list(PIPELINE_MANAGED_FIELDS_HOTEL),
         rag_fields=list(EMBEDDING_FIELDS),
     )
@@ -802,15 +857,20 @@ def update_hotel(
     rag_changed = sorted(set(changed) & set(EMBEDDING_FIELDS))
     if not changed:
         aggregates = _fetch_hotel_admin_aggregates(hotel_id)
-        state = _embedding_state(aggregates["hotel_embedded"], aggregates.get("rooms_missing_embedding") or 0) if aggregates else "missing"
-        return UpdateHotelResponse(id=hotel_id, changed_fields=[], rag_fields_changed=[], embedding_cleared=False, embedding_state=state)
+        state = _aggregates_to_state(aggregates)
+        return UpdateHotelResponse(id=hotel_id, changed_fields=[], rag_fields_changed=[], embedding_stale=False, embedding_state=state)
 
     write_payload = dict(changed)
     if rag_changed:
-        # Bot keeps answering from the pre-edit vector until the next
-        # only-null embedding DAG run re-embeds this row -- same contract as
-        # B2's create path (module docstring), decided server-side only.
-        write_payload["embedding"] = None
+        # Marked stale, NOT cleared: nulling `embedding` would drop the hotel
+        # out of `match_hotels_with_rooms` entirely (it filters on
+        # `embedding IS NOT NULL`), so an admin fixing a typo would make the
+        # bot unable to find the hotel at all until the next DAG run. Keeping
+        # the pre-edit vector means the bot answers from slightly outdated
+        # text instead of nothing, and the admin UI shows "Cần chạy lại"
+        # until "Chạy embedding" re-embeds the row. Decided server-side only,
+        # same posture as B2's `source_platform` (module docstring).
+        write_payload["embedding_stale"] = True
     # No DB trigger bumps `updated_at` on a postgrest write (only ETL's raw
     # SQL path sets it explicitly) -- B1 orders by `updated_at desc`, so an
     # edited hotel needs this set here or it stays stranded wherever it last
@@ -828,14 +888,18 @@ def update_hotel(
     )
 
     aggregates = _fetch_hotel_admin_aggregates(hotel_id)
-    hotel_embedded = not rag_changed and aggregates is not None and aggregates["hotel_embedded"]
-    rooms_missing = aggregates.get("rooms_missing_embedding") or 0 if aggregates else 0
+    state = _aggregates_to_state(aggregates)
+    # Folded in rather than read back off the view: the flag was just written
+    # here, and "embedded" is the only state staleness outranks -- "missing"
+    # and "partial" are both worse and must survive (see `_embedding_state`).
+    if rag_changed and state == "embedded":
+        state = "stale"
     return UpdateHotelResponse(
         id=hotel_id,
         changed_fields=sorted(changed),
         rag_fields_changed=rag_changed,
-        embedding_cleared=bool(rag_changed),
-        embedding_state=_embedding_state(hotel_embedded, rooms_missing),
+        embedding_stale=bool(rag_changed),
+        embedding_state=state,
     )
 
 

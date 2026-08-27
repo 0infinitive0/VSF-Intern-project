@@ -60,7 +60,12 @@ export function EmbeddingStatusTable({ rows, selectedIds, onToggleSelect, onTogg
       key: 'status',
       header: 'TRẠNG THÁI',
       render: (row) => (
-        <HotelEmbeddingDot embeddingState={row.embedding_state} roomCount={row.room_count} roomsMissingEmbedding={row.rooms_missing_embedding} />
+        <HotelEmbeddingDot
+          embeddingState={row.embedding_state}
+          roomCount={row.room_count}
+          roomsMissingEmbedding={row.rooms_missing_embedding}
+          roomsStaleEmbedding={row.rooms_stale_embedding}
+        />
       ),
     },
     { key: 'menu', header: '', width: 32, align: 'right', render: () => <span style={{ color: 'var(--t4)' }}>⋯</span> },

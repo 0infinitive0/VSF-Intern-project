@@ -1904,6 +1904,11 @@ export interface components {
             tables: components["schemas"]["EmbeddingTableSummary"][];
             /** Total Missing */
             total_missing: number;
+            /**
+             * Total Stale
+             * @default 0
+             */
+            total_stale: number;
         };
         /** EmbeddingTableSummary */
         EmbeddingTableSummary: {
@@ -1920,6 +1925,11 @@ export interface components {
             embedded: number;
             /** Missing */
             missing: number;
+            /**
+             * Stale
+             * @default 0
+             */
+            stale: number;
         };
         /**
          * FinalizeTripPayload
@@ -2094,9 +2104,14 @@ export interface components {
              * Embedding State
              * @enum {string}
              */
-            embedding_state: "embedded" | "partial" | "missing";
+            embedding_state: "embedded" | "stale" | "partial" | "missing";
             /** Rooms Missing Embedding */
             rooms_missing_embedding: number;
+            /**
+             * Rooms Stale Embedding
+             * @default 0
+             */
+            rooms_stale_embedding: number;
             /** Pipeline Managed Fields */
             pipeline_managed_fields: string[];
             /** Rag Fields */
@@ -2242,10 +2257,20 @@ export interface components {
             /** Rooms Missing Embedding */
             rooms_missing_embedding: number;
             /**
+             * Hotel Embedding Stale
+             * @default false
+             */
+            hotel_embedding_stale: boolean;
+            /**
+             * Rooms Stale Embedding
+             * @default 0
+             */
+            rooms_stale_embedding: number;
+            /**
              * Embedding State
              * @enum {string}
              */
-            embedding_state: "embedded" | "partial" | "missing";
+            embedding_state: "embedded" | "stale" | "partial" | "missing";
             /** Image Url */
             image_url?: string | null;
         };
@@ -2923,10 +2948,10 @@ export interface components {
         };
         /** ReembedHotelsResponse */
         ReembedHotelsResponse: {
-            /** Cleared Hotels */
-            cleared_hotels: number;
-            /** Cleared Rooms */
-            cleared_rooms: number;
+            /** Marked Hotels */
+            marked_hotels: number;
+            /** Marked Rooms */
+            marked_rooms: number;
             /** Dag Run Id */
             dag_run_id?: string | null;
             /** Queued */
@@ -3065,7 +3090,7 @@ export interface components {
              * Embedding State
              * @enum {string}
              */
-            embedding_state: "embedded" | "missing";
+            embedding_state: "embedded" | "stale" | "missing";
             /** Is Manual */
             is_manual: boolean;
             /** Booking Count */
@@ -3427,13 +3452,13 @@ export interface components {
             changed_fields: string[];
             /** Rag Fields Changed */
             rag_fields_changed: string[];
-            /** Embedding Cleared */
-            embedding_cleared: boolean;
+            /** Embedding Stale */
+            embedding_stale: boolean;
             /**
              * Embedding State
              * @enum {string}
              */
-            embedding_state: "embedded" | "partial" | "missing";
+            embedding_state: "embedded" | "stale" | "partial" | "missing";
         };
         /**
          * UpdateRoomRequest
@@ -3467,13 +3492,13 @@ export interface components {
             changed_fields: string[];
             /** Rag Fields Changed */
             rag_fields_changed: string[];
-            /** Embedding Cleared */
-            embedding_cleared: boolean;
+            /** Embedding Stale */
+            embedding_stale: boolean;
             /**
              * Embedding State
              * @enum {string}
              */
-            embedding_state: "embedded" | "missing";
+            embedding_state: "embedded" | "stale" | "missing";
         };
         /** UploadImageResponse */
         UploadImageResponse: {
@@ -4442,7 +4467,7 @@ export interface operations {
                 q?: string | null;
                 source?: "manual" | "pipeline" | "all";
                 is_active?: boolean | null;
-                embedding?: "embedded" | "missing" | "incomplete" | "all";
+                embedding?: "embedded" | "missing" | "stale" | "incomplete" | "all";
                 page?: number;
                 page_size?: number;
                 sort?: string | null;

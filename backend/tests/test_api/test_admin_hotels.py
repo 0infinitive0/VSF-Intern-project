@@ -34,6 +34,7 @@ class _FakeQuery:
         self._eq: list[tuple[str, object]] = []
         self._in: list[tuple[str, list]] = []
         self._gte: list[tuple[str, object]] = []
+        self._is: list[tuple[str, object]] = []
         self._or: str | None = None
         self._start: int | None = None
         self._end: int | None = None
@@ -53,6 +54,13 @@ class _FakeQuery:
 
     def gte(self, field, value):
         self._gte.append((field, value))
+        return self
+
+    def is_(self, field, value):
+        """postgrest `is.null` -- `get_hotel`/`update_hotel` read through
+        `.is_("deleted_at", "null")` so a soft-deleted hotel 404s
+        (20260826_add_hotels_deleted_at.sql)."""
+        self._is.append((field, None if value == "null" else value))
         return self
 
     def or_(self, expr):
@@ -89,6 +97,9 @@ class _FakeQuery:
                 return False
         for field, value in self._gte:
             if row.get(field) is None or row.get(field) < value:
+                return False
+        for field, value in self._is:
+            if row.get(field) is not value:
                 return False
         return True
 
@@ -192,6 +203,25 @@ def test_embedding_state_embedded_when_fully_embedded():
     assert hotels_module._embedding_state(True, 0) == "embedded"
 
 
+def test_embedding_state_stale_when_hotel_vector_predates_its_text():
+    assert hotels_module._embedding_state(True, 0, True, 0) == "stale"
+
+
+def test_embedding_state_stale_when_only_a_room_vector_predates_its_text():
+    assert hotels_module._embedding_state(True, 0, False, 2) == "stale"
+
+
+def test_embedding_state_missing_beats_stale():
+    """A hotel with no vector is invisible to search; one with an outdated
+    vector is merely answering from old text. The worse state must win, or
+    the badge would tell the admin the cheaper problem."""
+    assert hotels_module._embedding_state(False, 0, True, 5) == "missing"
+
+
+def test_embedding_state_partial_beats_stale():
+    assert hotels_module._embedding_state(True, 3, True, 5) == "partial"
+
+
 def test_row_to_hotel_maps_view_row():
     row = {
         "id": "hotel-1",
@@ -211,6 +241,45 @@ def test_row_to_hotel_maps_view_row():
     assert hotel.embedding_state == "partial"
     assert hotel.room_count == 42
     assert hotel.is_manual is False
+
+
+def test_row_to_hotel_reads_stale_flags_from_the_view():
+    row = {
+        "id": "hotel-1",
+        "name": "Mường Thanh Grand Đà Nẵng",
+        "source_platform": "booking",
+        "is_manual": False,
+        "is_active": True,
+        "room_count": 42,
+        "hotel_embedded": True,
+        "rooms_missing_embedding": 0,
+        "hotel_embedding_stale": True,
+        "rooms_stale_embedding": 4,
+    }
+    hotel = hotels_module._row_to_hotel(row)
+    assert hotel.embedding_state == "stale"
+    assert hotel.hotel_embedding_stale is True
+    assert hotel.rooms_stale_embedding == 4
+
+
+def test_row_to_hotel_from_a_view_without_the_stale_columns_is_not_stale():
+    """Rolling deploy: a Postgres that hasn't had
+    20260827_add_embedding_stale.sql applied returns rows without the two
+    staleness columns. Those rows must read as the pre-staleness states
+    rather than 500 the whole list."""
+    row = {
+        "id": "hotel-1",
+        "name": "Mường Thanh Grand Đà Nẵng",
+        "source_platform": "booking",
+        "is_manual": False,
+        "is_active": True,
+        "room_count": 42,
+        "hotel_embedded": True,
+        "rooms_missing_embedding": 0,
+    }
+    hotel = hotels_module._row_to_hotel(row)
+    assert hotel.embedding_state == "embedded"
+    assert hotel.hotel_embedding_stale is False
 
 
 # ---------------------------------------------------------------------------
@@ -278,7 +347,8 @@ async def test_list_hotels_embedding_incomplete_covers_missing_hotel_or_missing_
     """B7's own filter (phase-12-embedding-status.md): unlike `missing`
     (`hotel_embedded=false` only), `incomplete` must also catch a hotel
     whose own embedding is set but still has rooms missing theirs -- B1's
-    `missing` filter would silently skip that hotel."""
+    `missing` filter would silently skip that hotel. Stale rows belong here
+    too: the bot has learned the hotel, but not what it currently says."""
     fake_client = _FakeClient({"admin_hotel_rows": [_hotel_row()]})
     monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
 
@@ -286,7 +356,25 @@ async def test_list_hotels_embedding_incomplete_covers_missing_hotel_or_missing_
 
     assert response.status_code == 200
     query = fake_client.queries["admin_hotel_rows"][0]
-    assert query._or == "hotel_embedded.eq.false,rooms_missing_embedding.gt.0"
+    assert query._or == (
+        "hotel_embedded.eq.false,rooms_missing_embedding.gt.0,"
+        "hotel_embedding_stale.eq.true,rooms_stale_embedding.gt.0"
+    )
+    assert ("hotel_embedded", False) not in query._eq
+
+
+@pytest.mark.asyncio
+async def test_list_hotels_embedding_stale_filter_covers_hotel_or_room_staleness(client, admin_override, monkeypatch):
+    """"Cần chạy lại" is its own filter, not a slice of `missing`: those rows
+    still have a vector, so `hotel_embedded` is true for every one of them."""
+    fake_client = _FakeClient({"admin_hotel_rows": [_hotel_row()]})
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.get("/api/v1/admin/hotels", params={"embedding": "stale"})
+
+    assert response.status_code == 200
+    query = fake_client.queries["admin_hotel_rows"][0]
+    assert query._or == "hotel_embedding_stale.eq.true,rooms_stale_embedding.gt.0"
     assert ("hotel_embedded", False) not in query._eq
 
 
@@ -699,7 +787,11 @@ async def test_get_hotel_not_found_returns_404(client, admin_override, monkeypat
 
 
 @pytest.mark.asyncio
-async def test_update_hotel_description_clears_embedding_and_flags_rag_changed(client, admin_override, no_audit, monkeypatch):
+async def test_update_hotel_description_marks_embedding_stale_and_flags_rag_changed(client, admin_override, no_audit, monkeypatch):
+    """A RAG edit keeps the vector and marks it out of date. Nulling it would
+    drop the hotel out of `match_hotels_with_rooms` (it filters on
+    `embedding IS NOT NULL`), so the bot would stop finding the hotel at all
+    over a description edit (20260827_add_embedding_stale.sql)."""
     hotel = _hotel_detail_row()
     aggregates = _admin_aggregates_row()
     fake_client = _fake_client_for_hotel(hotel, aggregates)
@@ -711,17 +803,46 @@ async def test_update_hotel_description_clears_embedding_and_flags_rag_changed(c
     body = response.json()
     assert body["changed_fields"] == ["description"]
     assert body["rag_fields_changed"] == ["description"]
-    assert body["embedding_cleared"] is True
-    assert body["embedding_state"] == "missing"
+    assert body["embedding_stale"] is True
+    assert body["embedding_state"] == "stale"
     hotels_update = fake_client.queries["hotels"][1]  # [0] was the current-row read
     assert hotels_update.update_payload["description"] == "Mô tả mới."
-    assert hotels_update.update_payload["embedding"] is None
+    assert hotels_update.update_payload["embedding_stale"] is True
+    assert "embedding" not in hotels_update.update_payload
     assert no_audit[0]["action"] == "hotel.update"
     assert "embedding" not in no_audit[0]["after"]
 
 
 @pytest.mark.asyncio
-async def test_update_hotel_star_rating_only_does_not_clear_embedding(client, admin_override, no_audit, monkeypatch):
+async def test_update_hotel_rag_field_keeps_missing_when_hotel_has_no_vector(client, admin_override, no_audit, monkeypatch):
+    """Staleness never downgrades a worse state: a hotel that was never
+    embedded stays "Chưa embed", not "Cần chạy lại"."""
+    hotel = _hotel_detail_row()
+    aggregates = _admin_aggregates_row(hotel_embedded=False)
+    fake_client = _fake_client_for_hotel(hotel, aggregates)
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.patch("/api/v1/admin/hotels/hotel-1", json={"description": "Mô tả mới."})
+
+    assert response.status_code == 200
+    assert response.json()["embedding_state"] == "missing"
+
+
+@pytest.mark.asyncio
+async def test_update_hotel_rag_field_keeps_partial_when_rooms_are_unembedded(client, admin_override, no_audit, monkeypatch):
+    hotel = _hotel_detail_row()
+    aggregates = _admin_aggregates_row(rooms_missing_embedding=3)
+    fake_client = _fake_client_for_hotel(hotel, aggregates)
+    monkeypatch.setattr(hotels_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.patch("/api/v1/admin/hotels/hotel-1", json={"description": "Mô tả mới."})
+
+    assert response.status_code == 200
+    assert response.json()["embedding_state"] == "partial"
+
+
+@pytest.mark.asyncio
+async def test_update_hotel_star_rating_only_does_not_mark_embedding_stale(client, admin_override, no_audit, monkeypatch):
     hotel = _hotel_detail_row()
     aggregates = _admin_aggregates_row()
     fake_client = _fake_client_for_hotel(hotel, aggregates)
@@ -733,10 +854,11 @@ async def test_update_hotel_star_rating_only_does_not_clear_embedding(client, ad
     body = response.json()
     assert body["changed_fields"] == ["star_rating"]
     assert body["rag_fields_changed"] == []
-    assert body["embedding_cleared"] is False
+    assert body["embedding_stale"] is False
     assert body["embedding_state"] == "embedded"
     hotels_update = fake_client.queries["hotels"][1]
     assert "embedding" not in hotels_update.update_payload
+    assert "embedding_stale" not in hotels_update.update_payload
 
 
 @pytest.mark.asyncio
@@ -822,7 +944,7 @@ async def test_update_hotel_amenities_reorder_only_is_not_a_change(client, admin
     assert response.status_code == 200
     body = response.json()
     assert body["changed_fields"] == []
-    assert body["embedding_cleared"] is False
+    assert body["embedding_stale"] is False
     assert len(fake_client.queries["hotels"]) == 1  # only the current-row read, no write
     assert no_audit == []
 
@@ -863,7 +985,7 @@ async def test_update_hotel_no_changes_writes_nothing(client, admin_override, no
     assert response.status_code == 200
     body = response.json()
     assert body["changed_fields"] == []
-    assert body["embedding_cleared"] is False
+    assert body["embedding_stale"] is False
     assert len(fake_client.queries["hotels"]) == 1  # only the current-row read
     assert no_audit == []
 
@@ -965,7 +1087,7 @@ async def test_update_hotel_images_changed_but_not_rag_relevant(client, admin_ov
     body = response.json()
     assert body["changed_fields"] == ["images"]
     assert body["rag_fields_changed"] == []
-    assert body["embedding_cleared"] is False
+    assert body["embedding_stale"] is False
 
 
 # ---------------------------------------------------------------------------

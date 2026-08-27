@@ -53,6 +53,7 @@ export function HotelsToolbar({
         <option value="all">Embedding: Tất cả</option>
         <option value="embedded">Embedding: Đã embed</option>
         <option value="missing">Embedding: Chưa embed</option>
+        <option value="stale">Embedding: Cần chạy lại</option>
       </Select>
 
       <div style={{ flex: 1 }} />

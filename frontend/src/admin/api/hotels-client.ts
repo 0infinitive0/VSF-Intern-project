@@ -39,7 +39,7 @@ export type SetRoomPricesRequest = components['schemas']['SetRoomPricesRequest']
 export type SetRoomPricesResponse = components['schemas']['SetRoomPricesResponse']
 
 export type SourceFilter = 'all' | 'manual' | 'pipeline'
-export type EmbeddingFilter = 'all' | 'embedded' | 'missing' | 'incomplete'
+export type EmbeddingFilter = 'all' | 'embedded' | 'missing' | 'stale' | 'incomplete'
 
 export interface HotelListParams {
   q?: string

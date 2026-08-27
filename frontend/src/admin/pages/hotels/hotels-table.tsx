@@ -100,7 +100,12 @@ export function HotelsTable({
       header: 'EMBEDDING',
       sortValue: (row) => row.embedding_state,
       render: (row) => (
-        <HotelEmbeddingDot embeddingState={row.embedding_state} roomCount={row.room_count} roomsMissingEmbedding={row.rooms_missing_embedding} />
+        <HotelEmbeddingDot
+          embeddingState={row.embedding_state}
+          roomCount={row.room_count}
+          roomsMissingEmbedding={row.rooms_missing_embedding}
+          roomsStaleEmbedding={row.rooms_stale_embedding}
+        />
       ),
     },
     {

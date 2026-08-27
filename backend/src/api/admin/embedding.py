@@ -9,9 +9,9 @@ criterion).
 `POST /hotels/reembed` is the one reembed trigger for every caller: B1's bulk
 bar, B7's row action, and B3/B5's post-save dialogs (phase-09/10, which
 previously called a since-removed `POST /hotels/{hotel_id}/reembed` stub --
-this replaces it with `hotel_ids: [hotel_id]`). It always does step 1 (clear
-`embedding` to NULL, which alone has real value: the next `@daily` `only_null`
-run picks the row up regardless), then does step 2 -- trigger
+this replaces it with `hotel_ids: [hotel_id]`). It always does step 1 (set
+`embedding_stale`, so the admin UI keeps showing "Cần chạy lại" if step 2
+never lands), then does step 2 -- trigger
 `embed_supabase_tables_pipeline` via Phase 13's Airflow client, passing
 `hotel_ids`/`include_rooms` as the trigger `conf`. The DAG
 (`embed_supabase_dag.py`'s `fetch_pending_rows_task`) reads that conf and, when
@@ -57,11 +57,15 @@ class EmbeddingTableSummary(BaseModel):
     total: int
     embedded: int
     missing: int
+    # Subset of `embedded`: has a vector, but its text changed after that
+    # vector was built. Always 0 for `attractions` (see `_STALE_TABLES`).
+    stale: int = 0
 
 
 class EmbeddingSummaryResponse(BaseModel):
     tables: list[EmbeddingTableSummary]
     total_missing: int
+    total_stale: int = 0
 
 
 class EmbeddingMissingItem(BaseModel):
@@ -81,20 +85,32 @@ class ReembedHotelsRequest(BaseModel):
 
 
 class ReembedHotelsResponse(BaseModel):
-    cleared_hotels: int
-    cleared_rooms: int
+    # Renamed from cleared_hotels/cleared_rooms: this endpoint now marks the
+    # rows stale instead of nulling their vector
+    # (20260827_add_embedding_stale.sql).
+    marked_hotels: int
+    marked_rooms: int
     dag_run_id: str | None = None
     queued: bool
     detail: str | None = None
 
 
-def _count(table: EmbeddedTable, *, missing: bool) -> int:
+# Only the admin-editable tables carry `embedding_stale`; `attractions` is
+# ETL-only, so asking postgrest for that column there would 42703.
+_STALE_TABLES: frozenset[str] = frozenset({"hotels", "rooms"})
+
+
+def _count(table: EmbeddedTable, *, missing: bool = False, stale: bool = False) -> int:
     """`count="exact"` + `range(0, 0)` (inclusive, so one row at most) keeps
     the body negligible while the exact count still comes from the
     Content-Range header -- same idiom as orders.py's stat queries."""
     query = get_supabase_client().table(table).select("id", count="exact")
     if missing:
         query = query.is_("embedding", "null")
+    if stale:
+        # `not.is.null` too: a row with no vector is already counted as
+        # missing, and must not be double-counted as stale.
+        query = query.eq("embedding_stale", True).not_.is_("embedding", "null")
     return query.range(0, 0).execute().count or 0
 
 
@@ -102,12 +118,17 @@ def _count(table: EmbeddedTable, *, missing: bool) -> int:
 def get_embedding_summary() -> EmbeddingSummaryResponse:
     tables: list[EmbeddingTableSummary] = []
     total_missing = 0
+    total_stale = 0
     for table, label in _TABLE_LABELS.items():
-        total = _count(table, missing=False)
+        total = _count(table)
         missing = _count(table, missing=True)
-        tables.append(EmbeddingTableSummary(table=table, label=label, total=total, embedded=total - missing, missing=missing))
+        stale = _count(table, stale=True) if table in _STALE_TABLES else 0
+        tables.append(
+            EmbeddingTableSummary(table=table, label=label, total=total, embedded=total - missing, missing=missing, stale=stale)
+        )
         total_missing += missing
-    return EmbeddingSummaryResponse(tables=tables, total_missing=total_missing)
+        total_stale += stale
+    return EmbeddingSummaryResponse(tables=tables, total_missing=total_missing, total_stale=total_stale)
 
 
 @embedding_router.get("/embedding/missing", response_model=EmbeddingMissingResponse)
@@ -156,18 +177,23 @@ def get_embedding_missing(table: EmbeddedTable = Query(...), limit: int = Query(
 @embedding_router.post("/hotels/reembed", response_model=ReembedHotelsResponse)
 def reembed_hotels(body: ReembedHotelsRequest, admin: AdminUser = Depends(require_admin)) -> ReembedHotelsResponse:
     client = get_supabase_client()
-    # `returning="minimal"` -- a 25-hotel bulk clear has no reason to pull
+    # `returning="minimal"` -- a 25-hotel bulk mark has no reason to pull
     # every column of every touched row back over the wire just to discard
     # it; `count="exact"` still reports the affected-row count from the
     # Content-Range header regardless of `returning`.
-    cleared_hotels = (
-        client.table("hotels").update({"embedding": None}, count="exact", returning="minimal").in_("id", body.hotel_ids).execute().count or 0
+    marked_hotels = (
+        client.table("hotels")
+        .update({"embedding_stale": True}, count="exact", returning="minimal")
+        .in_("id", body.hotel_ids)
+        .execute()
+        .count
+        or 0
     )
-    cleared_rooms = 0
+    marked_rooms = 0
     if body.include_rooms:
-        cleared_rooms = (
+        marked_rooms = (
             client.table("rooms")
-            .update({"embedding": None}, count="exact", returning="minimal")
+            .update({"embedding_stale": True}, count="exact", returning="minimal")
             .in_("hotel_id", body.hotel_ids)
             .execute()
             .count
@@ -177,7 +203,7 @@ def reembed_hotels(body: ReembedHotelsRequest, admin: AdminUser = Depends(requir
     # One row per hotel, not one joined row for the whole batch: every other
     # admin write here logs per-entity (bulk_set_hotel_active loops the same
     # way), and `admin_audit_log` is indexed on (entity_type, entity_id) --
-    # a comma-joined id would make "who cleared hotel X's embedding"
+    # a comma-joined id would make "who re-embedded hotel X"
     # unanswerable by that index.
     for hotel_id in body.hotel_ids:
         write_audit(
@@ -185,7 +211,7 @@ def reembed_hotels(body: ReembedHotelsRequest, admin: AdminUser = Depends(requir
             action="embedding.reembed",
             entity_type="hotel",
             entity_id=hotel_id,
-            after={"hotel_ids": body.hotel_ids, "cleared_hotels": cleared_hotels, "cleared_rooms": cleared_rooms},
+            after={"hotel_ids": body.hotel_ids, "marked_hotels": marked_hotels, "marked_rooms": marked_rooms},
         )
 
     # Step 2: actually run the pipeline now, scoped to exactly these hotels
@@ -210,5 +236,5 @@ def reembed_hotels(body: ReembedHotelsRequest, admin: AdminUser = Depends(requir
         detail = "airflow_request_failed"
 
     return ReembedHotelsResponse(
-        cleared_hotels=cleared_hotels, cleared_rooms=cleared_rooms, dag_run_id=dag_run_id, queued=queued, detail=detail
+        marked_hotels=marked_hotels, marked_rooms=marked_rooms, dag_run_id=dag_run_id, queued=queued, detail=detail
     )

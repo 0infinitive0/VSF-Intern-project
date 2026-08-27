@@ -789,6 +789,21 @@ button {
   font-weight: 600;
 }
 
+/* "Cần chạy lại" -- accent blue, not warn orange: the hotel IS embedded and
+   the bot still finds it, the vector just predates the latest edit
+   (20260827_add_embedding_stale.sql). Sharing warn's colour with "Chưa
+   embed" would flatten two states an admin has to tell apart: one costs
+   freshness, the other costs the hotel appearing in search at all. */
+.embedding-dot__mark--stale {
+  background: var(--acc);
+}
+
+.embedding-dot__label--stale {
+  font-size: 12.5px;
+  color: var(--acc);
+  font-weight: 600;
+}
+
 /* Third dot state -- reused by amenity-table.tsx's "Đã ngừng dùng" status
    (phase-18-amenity-catalog.md), same 2-part mark+label shape as the
    embedded/missing pair above, extended rather than duplicated. */

@@ -13,10 +13,12 @@ created rooms get `source_room_id = nextval('manual_room_source_id_seq')`
 9,000,000,000) chosen to never collide with a real OTA numeric room id.
 
 `RAG_FIELDS_ROOM` (embedding_fields.py) mirrors B3's `EMBEDDING_FIELDS`
-pattern: touching `name`/`bed_description`/`view`/`room_facilities` clears
-`rooms.embedding`; `max_guests`/`room_size_sqm`/`images` do not. The DAG's
-`rooms` branch of `_build_text` must stay byte-for-byte unchanged -- this
-file never touches embed_supabase_dag.py.
+pattern: touching `name`/`bed_description`/`view`/`room_facilities` marks
+`rooms.embedding_stale`; `max_guests`/`room_size_sqm`/`images` do not. The
+vector itself is kept (20260827_add_embedding_stale.sql) -- see hotels.py's
+module docstring for why marking beats clearing. The DAG's `rooms` branch of
+`_build_text` must stay byte-for-byte unchanged -- this file never touches
+embed_supabase_dag.py.
 
 `lowest_price_30d` (L44) is computed as ONE query across every room_id of the
 hotel (not per-room -- see the plan's N+1 risk mitigation), same
@@ -65,14 +67,15 @@ _MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 _ALLOWED_IMAGE_TYPES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
 _ROOM_FIELDS = (
     "id,hotel_id,source_room_id,name,bed_description,room_size_sqm,max_occupancy_raw,max_guests,"
-    "view,room_facilities,available_room_count,embedding,images,image_count"
+    "view,room_facilities,available_room_count,embedding,embedding_stale,images,image_count"
 )
-# Rolling-deploy fallback: `max_occupancy_raw` is declared in
-# database_schema.sql and written by hotel_pipeline.py, but a deployment
-# whose Postgres hasn't had that column added yet 42703s on the select
-# above. Same posture as amenity_catalog.py's `_LEGACY_CATALOG_FIELDS`
-# retry -- degrade the one field rather than 500 the whole tab.
-_ROOM_FIELDS_LEGACY = _ROOM_FIELDS.replace("max_occupancy_raw,", "")
+# Rolling-deploy fallback: both of these are declared in database_schema.sql
+# (`max_occupancy_raw` written by hotel_pipeline.py, `embedding_stale` added
+# by 20260827_add_embedding_stale.sql), but a deployment whose Postgres
+# hasn't had the column added yet 42703s on the select above. Same posture as
+# amenity_catalog.py's `_LEGACY_CATALOG_FIELDS` retry -- degrade the one
+# field rather than 500 the whole tab.
+_OPTIONAL_ROOM_COLUMNS = ("max_occupancy_raw", "embedding_stale")
 
 
 class RoomRow(BaseModel):
@@ -90,7 +93,7 @@ class RoomRow(BaseModel):
     available_room_count: int | None = None
     lowest_price_30d: str | None = None
     currency: str
-    embedding_state: Literal["embedded", "missing"]
+    embedding_state: Literal["embedded", "stale", "missing"]
     is_manual: bool
     booking_count: int
 
@@ -174,8 +177,10 @@ class UpdateRoomResponse(BaseModel):
     id: str
     changed_fields: list[str]
     rag_fields_changed: list[str]
-    embedding_cleared: bool
-    embedding_state: Literal["embedded", "missing"]
+    # Replaces the old `embedding_cleared` -- see hotels.py's
+    # UpdateHotelResponse for why a RAG edit marks instead of clears.
+    embedding_stale: bool
+    embedding_state: Literal["embedded", "stale", "missing"]
 
 
 def _fetch_hotel_ref(hotel_id: str) -> dict[str, Any] | None:
@@ -184,16 +189,23 @@ def _fetch_hotel_ref(hotel_id: str) -> dict[str, Any] | None:
 
 
 def _select_rooms(query_fn: Any) -> list[dict[str, Any]]:
-    """Runs `query_fn(fields)` against `_ROOM_FIELDS`, retrying with
-    `_ROOM_FIELDS_LEGACY` on a missing-column error (see `_ROOM_FIELDS_LEGACY`
-    docstring above)."""
-    try:
-        return query_fn(_ROOM_FIELDS).execute().data or []
-    except Exception as exc:
-        if "max_occupancy_raw" not in str(exc):
-            raise
-        logger.warning("rooms.max_occupancy_raw missing -- falling back to legacy field list: %s", exc)
-        return query_fn(_ROOM_FIELDS_LEGACY).execute().data or []
+    """Runs `query_fn(fields)` against `_ROOM_FIELDS`, dropping whichever
+    `_OPTIONAL_ROOM_COLUMNS` entry a missing-column error names and retrying
+    (see `_OPTIONAL_ROOM_COLUMNS` comment above). Loops so a deployment
+    missing more than one of them still degrades instead of 500ing; any other
+    error propagates untouched."""
+    fields = _ROOM_FIELDS
+    remaining: list[str] = list(_OPTIONAL_ROOM_COLUMNS)
+    while True:
+        try:
+            return query_fn(fields).execute().data or []
+        except Exception as exc:
+            missing = next((column for column in remaining if column in str(exc)), None)
+            if missing is None:
+                raise
+            logger.warning("rooms.%s missing -- retrying without it: %s", missing, exc)
+            remaining.remove(missing)
+            fields = fields.replace(f"{missing},", "")
 
 
 def _fetch_room_row(room_id: str) -> dict[str, Any] | None:
@@ -248,6 +260,16 @@ def _fetch_booking_counts(room_ids: list[str]) -> dict[str, int]:
     return dict(Counter(row["room_id"] for row in rows))
 
 
+def _room_embedding_state(row: dict[str, Any]) -> Literal["embedded", "stale", "missing"]:
+    """No vector at all is the stronger state: a room the bot cannot find is
+    a worse problem than one it finds with pre-edit text
+    (20260827_add_embedding_stale.sql). Mirrors the same precedence as
+    hotels.py's `_embedding_state`."""
+    if row.get("embedding") is None:
+        return "missing"
+    return "stale" if row.get("embedding_stale") else "embedded"
+
+
 def _row_to_room(row: dict[str, Any], *, is_manual: bool, lowest_price: tuple[Decimal, str] | None, booking_count: int) -> RoomRow:
     facilities = row.get("room_facilities") or []
     images = row.get("images") or []
@@ -271,7 +293,7 @@ def _row_to_room(row: dict[str, Any], *, is_manual: bool, lowest_price: tuple[De
         available_room_count=row.get("available_room_count"),
         lowest_price_30d=str(lowest_price[0]) if lowest_price else None,
         currency=lowest_price[1] if lowest_price else "VND",
-        embedding_state="embedded" if row.get("embedding") is not None else "missing",
+        embedding_state=_room_embedding_state(row),
         is_manual=is_manual,
         booking_count=booking_count,
     )
@@ -388,13 +410,13 @@ def update_room(room_id: str, body: UpdateRoomRequest, admin: AdminUser = Depend
             id=room_id,
             changed_fields=[],
             rag_fields_changed=[],
-            embedding_cleared=False,
-            embedding_state="embedded" if current.get("embedding") is not None else "missing",
+            embedding_stale=False,
+            embedding_state=_room_embedding_state(current),
         )
 
     write_payload = dict(changed)
     if rag_changed:
-        write_payload["embedding"] = None
+        write_payload["embedding_stale"] = True
 
     get_supabase_client().table("rooms").update(write_payload).eq("id", room_id).execute()
     write_audit(
@@ -406,13 +428,15 @@ def update_room(room_id: str, body: UpdateRoomRequest, admin: AdminUser = Depend
         after=changed,
     )
 
-    embedded = not rag_changed and current.get("embedding") is not None
     return UpdateRoomResponse(
         id=room_id,
         changed_fields=sorted(changed),
         rag_fields_changed=rag_changed,
-        embedding_cleared=bool(rag_changed),
-        embedding_state="embedded" if embedded else "missing",
+        embedding_stale=bool(rag_changed),
+        # `current` pre-dates the write, so the just-set flag is folded in
+        # here. A room that had no vector to begin with stays "missing" --
+        # `_room_embedding_state` checks `embedding` first.
+        embedding_state=_room_embedding_state({**current, "embedding_stale": current.get("embedding_stale") or bool(rag_changed)}),
     )
 
 

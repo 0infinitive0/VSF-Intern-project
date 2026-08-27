@@ -10,7 +10,11 @@ them all in one space.
 Airflow Variables:
 - `embed_supabase_only_null` (default "true") limits each run to rows where
   `embedding IS NULL`, so scheduled runs only backfill new data. Set "false" to
-  force a full re-embed of every row in every table.
+  force a full re-embed of every row in every table. Deliberately NOT widened
+  to include `embedding_stale` rows: a stale row is still searchable (with
+  pre-edit text), so re-embedding it is a paid call the admin should be the
+  one to ask for, via the "Chạy embedding" trigger conf below. The scheduled
+  sweep stays cheap and only closes real coverage gaps.
 - `embed_supabase_force_tables` (default "") — comma-separated table names that
   ignore the switch above and always re-embed in full, e.g. "hotels". Use this
   after changing one table's embedding text, so the other tables aren't
@@ -34,7 +38,9 @@ their rooms, only if `include_rooms`) instead of the Variables above --
 `attractions` is skipped entirely (that table isn't hotel-edit scoped) and the
 `only_null`/`force_tables`/`batch_limit` Variables are bypassed, since an
 admin who explicitly asked to re-embed these specific rows wants them redone
-now, not gated by a global scheduler switch. The unscheduled trigger from the
+now, not gated by a global scheduler switch. This is the only path that picks
+up `embedding_stale` rows, and every successful write clears that flag (see
+`STALE_FLAG_TABLES`). The unscheduled trigger from the
 Pipelines page still sends `conf: {}`, which falls through to the normal
 Variable-driven full/incremental behavior unchanged.
 """
@@ -68,6 +74,12 @@ TABLE_COLUMNS = {
     "rooms": "id,name,bed_description,view,room_facilities",
     "attractions": "id,name,description,category",
 }
+
+# Tables whose rows an admin can edit, and which therefore carry the
+# `embedding_stale` flag this DAG clears when it writes a fresh vector
+# (backend/scripts/migrations/20260827_add_embedding_stale.sql).
+# `attractions` is ETL-only and has no such column.
+STALE_FLAG_TABLES = {"hotels", "rooms"}
 
 
 def _joined(value):
@@ -343,10 +355,17 @@ def embed_chunk_task(item):
         if len(vector) != EMBEDDING_DIMENSION:
             print(f"[{table}/{row_id}] unexpected embedding dimension {len(vector)} != {EMBEDDING_DIMENSION}")
             continue
+        payload: dict = {"embedding": vector}
+        if table in STALE_FLAG_TABLES:
+            # The vector now matches the row's current text, so the admin's
+            # "Cần chạy lại" flag is satisfied. Written in the same PATCH as
+            # the vector so the two can never disagree
+            # (scripts/migrations/20260827_add_embedding_stale.sql).
+            payload["embedding_stale"] = False
         patch_response = requests.patch(
             f"{supabase_url}/rest/v1/{table}?id=eq.{row_id}",
             headers=headers,
-            json={"embedding": vector},
+            json=payload,
         )
         patch_response.raise_for_status()
         embedded += 1

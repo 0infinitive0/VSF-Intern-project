@@ -200,6 +200,7 @@ def _room_row(**overrides) -> dict:
         "room_facilities": ["air_conditioning", "minibar"],
         "available_room_count": 5,
         "embedding": [0.1] * 4,
+        "embedding_stale": False,
         "images": ["https://example.com/1.jpg"],
         "image_count": 1,
     }
@@ -301,6 +302,19 @@ async def test_list_rooms_no_price_rows_returns_null_lowest_price(client, admin_
     item = response.json()["items"][0]
     assert item["lowest_price_30d"] is None
     assert item["embedding_state"] == "missing"
+
+
+@pytest.mark.asyncio
+async def test_list_rooms_reports_stale_embedding_separately_from_missing(client, admin_override, monkeypatch):
+    room = _room_row(embedding_stale=True)
+    fake_client = _fake_client_for_room(room)
+    fake_client._tables["room_prices"] = []
+    fake_client._tables["bookings"] = []
+    monkeypatch.setattr(rooms_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.get("/api/v1/admin/hotels/hotel-1/rooms")
+
+    assert response.json()["items"][0]["embedding_state"] == "stale"
 
 
 @pytest.mark.asyncio
@@ -437,7 +451,10 @@ async def test_create_room_blank_name_returns_422(client, admin_override, monkey
 
 
 @pytest.mark.asyncio
-async def test_update_room_bed_description_clears_embedding(client, admin_override, no_audit, monkeypatch):
+async def test_update_room_bed_description_marks_embedding_stale(client, admin_override, no_audit, monkeypatch):
+    """The vector is kept, not nulled: dropping it would make the parent
+    hotel's rooms unmatchable over a bed-description typo
+    (20260827_add_embedding_stale.sql)."""
     room = _room_row()
     fake_client = _fake_client_for_room(room)
     monkeypatch.setattr(rooms_module, "get_supabase_client", lambda: fake_client)
@@ -448,15 +465,30 @@ async def test_update_room_bed_description_clears_embedding(client, admin_overri
     body = response.json()
     assert body["changed_fields"] == ["bed_description"]
     assert body["rag_fields_changed"] == ["bed_description"]
-    assert body["embedding_cleared"] is True
-    assert body["embedding_state"] == "missing"
+    assert body["embedding_stale"] is True
+    assert body["embedding_state"] == "stale"
     update_payload = fake_client.queries["rooms"][1].update_payload
-    assert update_payload["embedding"] is None
+    assert update_payload["embedding_stale"] is True
+    assert "embedding" not in update_payload
     assert update_payload["bed_description"] == "2 giường đơn"
 
 
 @pytest.mark.asyncio
-async def test_update_room_size_does_not_clear_embedding(client, admin_override, no_audit, monkeypatch):
+async def test_update_room_rag_field_on_an_unembedded_room_stays_missing(client, admin_override, no_audit, monkeypatch):
+    """Staleness only means anything on top of an existing vector -- a room
+    that was never embedded is still the stronger "Chưa embed"."""
+    room = _room_row(embedding=None)
+    fake_client = _fake_client_for_room(room)
+    monkeypatch.setattr(rooms_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.patch("/api/v1/admin/rooms/room-1", json={"bed_description": "2 giường đơn"})
+
+    assert response.status_code == 200
+    assert response.json()["embedding_state"] == "missing"
+
+
+@pytest.mark.asyncio
+async def test_update_room_size_does_not_mark_embedding_stale(client, admin_override, no_audit, monkeypatch):
     room = _room_row()
     fake_client = _fake_client_for_room(room)
     monkeypatch.setattr(rooms_module, "get_supabase_client", lambda: fake_client)
@@ -467,10 +499,11 @@ async def test_update_room_size_does_not_clear_embedding(client, admin_override,
     body = response.json()
     assert body["changed_fields"] == ["room_size_sqm"]
     assert body["rag_fields_changed"] == []
-    assert body["embedding_cleared"] is False
+    assert body["embedding_stale"] is False
     assert body["embedding_state"] == "embedded"
     update_payload = fake_client.queries["rooms"][1].update_payload
     assert "embedding" not in update_payload
+    assert "embedding_stale" not in update_payload
 
 
 @pytest.mark.asyncio
@@ -500,7 +533,7 @@ async def test_update_room_facilities_reorder_only_is_not_a_change(client, admin
     assert response.status_code == 200
     body = response.json()
     assert body["changed_fields"] == []
-    assert body["embedding_cleared"] is False
+    assert body["embedding_stale"] is False
     assert len(fake_client.queries["rooms"]) == 1  # only the current-row read
     assert no_audit == []
 

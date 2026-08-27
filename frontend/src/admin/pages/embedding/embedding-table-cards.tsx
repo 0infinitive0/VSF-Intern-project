@@ -12,6 +12,11 @@ export function EmbeddingTableCards({ tables }: { tables: EmbeddingTableSummary[
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
       {tables.map((t) => {
         const hasMissing = t.missing > 0
+        // Stale rows are a subset of `embedded` (they still have a vector),
+        // so they never move the N/total headline -- they get their own
+        // accent-blue line below the missing count, keeping the two apart:
+        // one costs freshness, the other costs coverage.
+        const staleCount = t.stale
         return (
           <div
             key={t.table}
@@ -32,6 +37,9 @@ export function EmbeddingTableCards({ tables }: { tables: EmbeddingTableSummary[
             <div style={{ fontSize: 12, fontWeight: 600, color: hasMissing ? 'var(--warn-ink)' : 'var(--ok-ink)' }}>
               {hasMissing ? `${formatInt(t.missing)} chưa embed` : '✓ Đủ'}
             </div>
+            {staleCount > 0 && (
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--acc)' }}>{formatInt(staleCount)} cần chạy lại</div>
+            )}
           </div>
         )
       })}

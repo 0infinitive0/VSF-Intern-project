@@ -27,13 +27,14 @@ function joinWithVa(names: string[]): string {
 /** room-reembed-dialog.tsx -- B5's post-save dialog (phase-10-rooms.md):
  * "cùng hộp thoại `Chạy lại embedding ngay?` của Phase 9, phạm vi ghi
  * `1 phòng`". Deliberately does NOT call the shared `POST /hotels/reembed`
- * (phase-12-embedding-status.md): that endpoint is hotel-scoped (it clears
- * `hotels.embedding` for the given `hotel_ids`), so calling it here would
- * de-index the whole parent hotel from bot search over an unrelated
- * room-description edit -- exactly what this dialog's own copy ("Chỉ nhúng
- * lại phòng này — không ảnh hưởng các phòng còn lại") promises won't
- * happen. `update_room` already cleared this room's `embedding` at save
- * time (rooms.py), so there is nothing left to trigger for the room itself
+ * (phase-12-embedding-status.md): that endpoint is hotel-scoped (it marks
+ * `hotels.embedding_stale` for the given `hotel_ids` and triggers a run over
+ * all of them), so calling it here would re-embed the whole parent hotel
+ * over an unrelated room-description edit -- exactly what this dialog's own
+ * copy ("Chỉ nhúng lại phòng này — không ảnh hưởng các phòng còn lại")
+ * promises won't happen. `update_room` already marked this room's
+ * `embedding_stale` at save time (rooms.py), so there is nothing left to
+ * trigger for the room itself
  * until Phase 13's Airflow client can kick off a real re-embed run -- "Chạy
  * ngay" just surfaces that state instead of firing a request. */
 export function RoomReembedDialog({ open, onClose, hotelId: _hotelId, ragFieldsChanged }: RoomReembedDialogProps) {

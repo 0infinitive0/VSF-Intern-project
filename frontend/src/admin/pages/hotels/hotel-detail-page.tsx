@@ -294,9 +294,9 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
     } else {
       setHotel((current) => (current ? { ...current, embedding_state: result.data.embedding_state } : current))
     }
-    // No confirm dialog here: `update_hotel` already cleared `embedding`
+    // No confirm dialog here: `update_hotel` already marked `embedding_stale`
     // when a RAG field changed, so the header's HotelEmbeddingDot already
-    // reflects the "cần nhúng lại" state on its own. The persistent
+    // reflects the "Cần chạy lại" state on its own. The persistent
     // "Chạy embedding" button below reads that same state instead of
     // interrupting every save with a popup.
   }
@@ -304,10 +304,10 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
   async function handleReembedNow() {
     setReembedState('loading')
     // includeRooms=true: this button appears whenever embedding_state is
-    // 'missing' or 'partial' (L437), and 'partial' specifically means the
-    // hotel row itself is already embedded but its rooms aren't -- a
-    // hotel-only reembed would re-embed a row that's already fine and never
-    // touch the rooms, leaving "Thiếu embedding" stuck forever. Unlike the
+    // anything but 'embedded', and both 'partial' and 'stale' can be driven
+    // by the rooms alone while the hotel row itself is fine -- a hotel-only
+    // reembed would re-embed a row that's already current and never touch
+    // the rooms, leaving the badge stuck forever. Unlike the
     // bulk reembed action (reembed-confirm-dialog.tsx), this is already
     // scoped to exactly one hotel by being on its own detail page, so it
     // doesn't need the same confirm-before-including-rooms gate.
@@ -441,6 +441,7 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
                 embeddingState={hotel.embedding_state}
                 roomCount={hotel.room_count}
                 roomsMissingEmbedding={hotel.rooms_missing_embedding}
+                roomsStaleEmbedding={hotel.rooms_stale_embedding}
               />
               {hotel.embedding_state !== 'embedded' && (
                 <Button

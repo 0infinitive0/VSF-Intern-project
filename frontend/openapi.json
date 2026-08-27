@@ -1577,6 +1577,7 @@
               "enum": [
                 "embedded",
                 "missing",
+                "stale",
                 "incomplete",
                 "all"
               ],
@@ -6160,6 +6161,11 @@
           "total_missing": {
             "type": "integer",
             "title": "Total Missing"
+          },
+          "total_stale": {
+            "type": "integer",
+            "title": "Total Stale",
+            "default": 0
           }
         },
         "type": "object",
@@ -6195,6 +6201,11 @@
           "missing": {
             "type": "integer",
             "title": "Missing"
+          },
+          "stale": {
+            "type": "integer",
+            "title": "Stale",
+            "default": 0
           }
         },
         "type": "object",
@@ -6894,6 +6905,7 @@
             "type": "string",
             "enum": [
               "embedded",
+              "stale",
               "partial",
               "missing"
             ],
@@ -6902,6 +6914,11 @@
           "rooms_missing_embedding": {
             "type": "integer",
             "title": "Rooms Missing Embedding"
+          },
+          "rooms_stale_embedding": {
+            "type": "integer",
+            "title": "Rooms Stale Embedding",
+            "default": 0
           },
           "pipeline_managed_fields": {
             "items": {
@@ -7308,10 +7325,21 @@
             "type": "integer",
             "title": "Rooms Missing Embedding"
           },
+          "hotel_embedding_stale": {
+            "type": "boolean",
+            "title": "Hotel Embedding Stale",
+            "default": false
+          },
+          "rooms_stale_embedding": {
+            "type": "integer",
+            "title": "Rooms Stale Embedding",
+            "default": 0
+          },
           "embedding_state": {
             "type": "string",
             "enum": [
               "embedded",
+              "stale",
               "partial",
               "missing"
             ],
@@ -9438,13 +9466,13 @@
       },
       "ReembedHotelsResponse": {
         "properties": {
-          "cleared_hotels": {
+          "marked_hotels": {
             "type": "integer",
-            "title": "Cleared Hotels"
+            "title": "Marked Hotels"
           },
-          "cleared_rooms": {
+          "marked_rooms": {
             "type": "integer",
-            "title": "Cleared Rooms"
+            "title": "Marked Rooms"
           },
           "dag_run_id": {
             "anyOf": [
@@ -9475,8 +9503,8 @@
         },
         "type": "object",
         "required": [
-          "cleared_hotels",
-          "cleared_rooms",
+          "marked_hotels",
+          "marked_rooms",
           "queued"
         ],
         "title": "ReembedHotelsResponse"
@@ -9967,6 +9995,7 @@
             "type": "string",
             "enum": [
               "embedded",
+              "stale",
               "missing"
             ],
             "title": "Embedding State"
@@ -11203,14 +11232,15 @@
             "type": "array",
             "title": "Rag Fields Changed"
           },
-          "embedding_cleared": {
+          "embedding_stale": {
             "type": "boolean",
-            "title": "Embedding Cleared"
+            "title": "Embedding Stale"
           },
           "embedding_state": {
             "type": "string",
             "enum": [
               "embedded",
+              "stale",
               "partial",
               "missing"
             ],
@@ -11222,7 +11252,7 @@
           "id",
           "changed_fields",
           "rag_fields_changed",
-          "embedding_cleared",
+          "embedding_stale",
           "embedding_state"
         ],
         "title": "UpdateHotelResponse"
@@ -11358,14 +11388,15 @@
             "type": "array",
             "title": "Rag Fields Changed"
           },
-          "embedding_cleared": {
+          "embedding_stale": {
             "type": "boolean",
-            "title": "Embedding Cleared"
+            "title": "Embedding Stale"
           },
           "embedding_state": {
             "type": "string",
             "enum": [
               "embedded",
+              "stale",
               "missing"
             ],
             "title": "Embedding State"
@@ -11376,7 +11407,7 @@
           "id",
           "changed_fields",
           "rag_fields_changed",
-          "embedding_cleared",
+          "embedding_stale",
           "embedding_state"
         ],
         "title": "UpdateRoomResponse"

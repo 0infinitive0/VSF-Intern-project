@@ -20,12 +20,25 @@ class _Response:
         self.count = count
 
 
+class _FakeNot:
+    """Proxy for postgrest's `.not_` -- only `.is_()` is used here
+    (`_count`'s stale branch: `.not_.is_("embedding", "null")`)."""
+
+    def __init__(self, query: "_FakeQuery"):
+        self._query = query
+
+    def is_(self, field, value):
+        self._query._is_not.append((field, value))
+        return self._query
+
+
 class _FakeQuery:
     def __init__(self, rows):
         self._rows = rows
         self._eq: list[tuple[str, object]] = []
         self._in: list[tuple[str, list]] = []
         self._is: list[tuple[str, object]] = []
+        self._is_not: list[tuple[str, object]] = []
         self._count_exact = False
         self._start: int | None = None
         self._end: int | None = None
@@ -48,6 +61,10 @@ class _FakeQuery:
     def is_(self, field, value):
         self._is.append((field, value))
         return self
+
+    @property
+    def not_(self):
+        return _FakeNot(self)
 
     def order(self, column, **kwargs):
         self.order_calls.append((column, kwargs))
@@ -76,6 +93,10 @@ class _FakeQuery:
         for field, value in self._is:
             expects_none = value in (None, "null")
             if (row.get(field) is None) != expects_none:
+                return False
+        for field, value in self._is_not:
+            expects_none = value in (None, "null")
+            if (row.get(field) is None) == expects_none:
                 return False
         return True
 
@@ -118,12 +139,18 @@ def no_audit(monkeypatch):
     return calls
 
 
-def _hotels(n_total: int, n_missing: int) -> list[dict]:
-    return [{"id": f"h{i}", "embedding": None if i < n_missing else [0.1]} for i in range(n_total)]
+def _hotels(n_total: int, n_missing: int, n_stale: int = 0) -> list[dict]:
+    return [
+        {"id": f"h{i}", "embedding": None if i < n_missing else [0.1], "embedding_stale": n_missing <= i < n_missing + n_stale}
+        for i in range(n_total)
+    ]
 
 
-def _rooms(n_total: int, n_missing: int) -> list[dict]:
-    return [{"id": f"r{i}", "embedding": None if i < n_missing else [0.1]} for i in range(n_total)]
+def _rooms(n_total: int, n_missing: int, n_stale: int = 0) -> list[dict]:
+    return [
+        {"id": f"r{i}", "embedding": None if i < n_missing else [0.1], "embedding_stale": n_missing <= i < n_missing + n_stale}
+        for i in range(n_total)
+    ]
 
 
 def _attractions(n_total: int, n_missing: int) -> list[dict]:
@@ -151,10 +178,50 @@ async def test_summary_counts_match_missing_and_embedded_per_table(client, admin
     assert response.status_code == 200
     body = response.json()
     by_table = {t["table"]: t for t in body["tables"]}
-    assert by_table["hotels"] == {"table": "hotels", "label": "Khách sạn", "total": 64, "embedded": 64, "missing": 0}
-    assert by_table["rooms"] == {"table": "rooms", "label": "Phòng", "total": 1246, "embedded": 1184, "missing": 62}
-    assert by_table["attractions"] == {"table": "attractions", "label": "Địa điểm", "total": 312, "embedded": 312, "missing": 0}
+    assert by_table["hotels"] == {"table": "hotels", "label": "Khách sạn", "total": 64, "embedded": 64, "missing": 0, "stale": 0}
+    assert by_table["rooms"] == {"table": "rooms", "label": "Phòng", "total": 1246, "embedded": 1184, "missing": 62, "stale": 0}
+    assert by_table["attractions"] == {
+        "table": "attractions",
+        "label": "Địa điểm",
+        "total": 312,
+        "embedded": 312,
+        "missing": 0,
+        "stale": 0,
+    }
     assert body["total_missing"] == 62
+    assert body["total_stale"] == 0
+
+
+@pytest.mark.asyncio
+async def test_summary_reports_stale_separately_from_missing_and_never_double_counts(client, admin_override, monkeypatch):
+    """A row with no vector is `missing`; a row with a vector that predates
+    its text is `stale` (20260827_add_embedding_stale.sql). The same row must
+    never land in both buckets, and `attractions` -- ETL-only, no
+    `embedding_stale` column -- must always report 0."""
+    fake_client = _FakeClient(
+        {
+            "hotels": _hotels(10, n_missing=2, n_stale=3),
+            "rooms": _rooms(5, n_missing=1, n_stale=1),
+            "attractions": _attractions(4, 0),
+        }
+    )
+    monkeypatch.setattr(embedding_module, "get_supabase_client", lambda: fake_client)
+
+    response = await client.get("/api/v1/admin/embedding/summary")
+
+    assert response.status_code == 200
+    by_table = {t["table"]: t for t in response.json()["tables"]}
+    assert by_table["hotels"]["missing"] == 2
+    assert by_table["hotels"]["stale"] == 3
+    assert by_table["rooms"]["missing"] == 1
+    assert by_table["rooms"]["stale"] == 1
+    assert by_table["attractions"]["stale"] == 0
+    assert response.json()["total_stale"] == 4
+    # attractions has no `embedding_stale` column, so it must never be queried
+    # for one -- the fake would 42703-equivalent (KeyError via .get) rather
+    # than silently pass if `_STALE_TABLES` gating broke.
+    attraction_queries = fake_client.queries.get("attractions", [])
+    assert not any(field == "embedding_stale" for q in attraction_queries for field, _ in q._eq)
 
 
 @pytest.mark.asyncio
@@ -219,7 +286,11 @@ async def test_missing_rejects_unknown_table(client, admin_override):
 
 
 @pytest.mark.asyncio
-async def test_reembed_clears_hotel_embedding_and_reports_airflow_unavailable(client, admin_override, no_audit, monkeypatch):
+async def test_reembed_marks_hotel_embedding_stale_and_reports_airflow_unavailable(client, admin_override, no_audit, monkeypatch):
+    """Marks, doesn't clear: nulling `embedding` would drop the hotel out of
+    `match_hotels_with_rooms` (it filters on `embedding IS NOT NULL`) for
+    however long Airflow stays unreachable
+    (20260827_add_embedding_stale.sql)."""
     fake_client = _FakeClient({"hotels": [{"id": "h1", "embedding": [0.1]}, {"id": "h2", "embedding": [0.1]}]})
     monkeypatch.setattr(embedding_module, "get_supabase_client", lambda: fake_client)
 
@@ -227,17 +298,18 @@ async def test_reembed_clears_hotel_embedding_and_reports_airflow_unavailable(cl
 
     assert response.status_code == 200
     body = response.json()
-    assert body == {"cleared_hotels": 2, "cleared_rooms": 0, "dag_run_id": None, "queued": False, "detail": "airflow_unavailable"}
-    assert fake_client._tables["hotels"][0]["embedding"] is None
-    assert fake_client._tables["hotels"][1]["embedding"] is None
+    assert body == {"marked_hotels": 2, "marked_rooms": 0, "dag_run_id": None, "queued": False, "detail": "airflow_unavailable"}
+    assert fake_client._tables["hotels"][0]["embedding"] == [0.1]
+    assert fake_client._tables["hotels"][0]["embedding_stale"] is True
+    assert fake_client._tables["hotels"][1]["embedding_stale"] is True
     assert "rooms" not in fake_client.table_calls
     # One audit row per hotel, not one row for the whole batch -- keeps
     # `admin_audit_log`'s (entity_type, entity_id) index answerable per hotel.
     assert len(no_audit) == 2
     assert {call["entity_id"] for call in no_audit} == {"h1", "h2"}
     assert all(call["action"] == "embedding.reembed" for call in no_audit)
-    assert all(call["after"] == {"hotel_ids": ["h1", "h2"], "cleared_hotels": 2, "cleared_rooms": 0} for call in no_audit)
-    # `returning="minimal"` -- a bulk clear has no reason to pull every
+    assert all(call["after"] == {"hotel_ids": ["h1", "h2"], "marked_hotels": 2, "marked_rooms": 0} for call in no_audit)
+    # `returning="minimal"` -- a bulk mark has no reason to pull every
     # touched row's full columns back just to discard them; `count="exact"`
     # still reports the affected-row count independent of `returning`.
     hotels_update = fake_client.queries["hotels"][0]
@@ -245,7 +317,7 @@ async def test_reembed_clears_hotel_embedding_and_reports_airflow_unavailable(cl
 
 
 @pytest.mark.asyncio
-async def test_reembed_with_include_rooms_also_clears_hotel_rooms(client, admin_override, no_audit, monkeypatch):
+async def test_reembed_with_include_rooms_also_marks_hotel_rooms_stale(client, admin_override, no_audit, monkeypatch):
     fake_client = _FakeClient(
         {
             "hotels": [{"id": "h1", "embedding": [0.1]}],
@@ -257,9 +329,9 @@ async def test_reembed_with_include_rooms_also_clears_hotel_rooms(client, admin_
     response = await client.post("/api/v1/admin/hotels/reembed", json={"hotel_ids": ["h1"], "include_rooms": True})
 
     assert response.status_code == 200
-    assert response.json()["cleared_rooms"] == 1
-    assert fake_client._tables["rooms"][0]["embedding"] is None
-    assert fake_client._tables["rooms"][1]["embedding"] == [0.1]
+    assert response.json()["marked_rooms"] == 1
+    assert fake_client._tables["rooms"][0]["embedding_stale"] is True
+    assert fake_client._tables["rooms"][1].get("embedding_stale") is not True
 
 
 @pytest.mark.asyncio
@@ -284,7 +356,7 @@ async def test_reembed_triggers_the_embedding_dag_scoped_to_the_given_hotels(cli
     response = await client.post("/api/v1/admin/hotels/reembed", json={"hotel_ids": ["h1"]})
 
     assert response.status_code == 200
-    assert response.json() == {"cleared_hotels": 1, "cleared_rooms": 0, "dag_run_id": "run1", "queued": True, "detail": None}
+    assert response.json() == {"marked_hotels": 1, "marked_rooms": 0, "dag_run_id": "run1", "queued": True, "detail": None}
     # `conf` is what actually scopes the DAG run to this hotel (and no others)
     # -- `embed_supabase_dag.py`'s `fetch_pending_rows_task` reads it back.
     assert calls == [(embedding_module._EMBED_DAG_ID, {"hotel_ids": ["h1"], "include_rooms": False})]
@@ -357,4 +429,4 @@ async def test_reembed_reports_airflow_request_failed_when_trigger_errors(client
     response = await client.post("/api/v1/admin/hotels/reembed", json={"hotel_ids": ["h1"]})
 
     assert response.status_code == 200
-    assert response.json() == {"cleared_hotels": 1, "cleared_rooms": 0, "dag_run_id": None, "queued": False, "detail": "airflow_request_failed"}
+    assert response.json() == {"marked_hotels": 1, "marked_rooms": 0, "dag_run_id": None, "queued": False, "detail": "airflow_request_failed"}
