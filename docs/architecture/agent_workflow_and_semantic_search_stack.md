@@ -1,5 +1,21 @@
 # Agent Workflow and Semantic Search Stack
 
+> ⚠️ **HISTORICAL — describes the terminal POC (`scripts/poc_trip_planner.py`), not the
+> current runtime.** The live system is the 14-node LangGraph orchestrator behind FastAPI;
+> the terminal CLI it documents is now broken (imports the deleted `process_chat_turn`).
+> For the current architecture see:
+> - [`langgraph_orchestrator_vi.md`](langgraph_orchestrator_vi.md) + [`langgraph_orchestrator_detail_vi.md`](langgraph_orchestrator_detail_vi.md) — the graph
+> - [`chatbot-capabilities-and-happy-path-vi.md`](chatbot-capabilities-and-happy-path-vi.md) — what the bot does today
+> - [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) — system overview
+>
+> Still broadly accurate below: the **semantic-search request path** (`match_hotels_with_rooms`
+> / `match_attractions`, embed-query-only, hydrate-by-UUID), the **deterministic scheduler
+> policy**, and the **"LLM interprets, Python selects"** design rationale — these carried
+> forward into the graph. Everything about the terminal loop, `TripIntakeState`,
+> `create_react_agent`, and `current_trip_plan.json` persistence is superseded. The default
+> LLM/embedding provider is now Cloudflare Workers AI, not Ollama. The trailing "Proposed
+> 5-Agent LangGraph Extension" was superseded by the shipped 14-node graph.
+
 ## Purpose and scope
 
 This document describes the implemented terminal trip-planning flow and the
@@ -357,7 +373,7 @@ source template exactly once, and makes its embedding eligible for reuse. Hotel
 availability and cost recalculation remain outside the reuse MVP until travel
 dates and grounded room-price contracts are added.
 
-See `docs/ideas/itinerary-embedding-reuse-v2.md` for the reviewed schema,
+See [`../proposals/itinerary-embedding-reuse-v2.md`](../proposals/itinerary-embedding-reuse-v2.md) for the reviewed schema,
 service boundaries, phased tasks, tests, and rollout gates.
 
 ## Operational requirements and limits

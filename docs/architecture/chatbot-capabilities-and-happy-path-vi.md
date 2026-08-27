@@ -125,7 +125,7 @@ Công cụ: `query_hotel`, `query_hotel_rooms`, `search_places`, `get_hotel_opti
 - Luồng thật chạy trên giao diện: `room-card` → `booking-modal` (wizard 3 bước) → `hold-banner`:
   - `POST /bookings` — giữ phòng **TTL 15 phút** qua RPC `create_booking_reservation` (advisory lock theo `room_id` + `guest_ref`); chặn giữ 2 khách sạn cùng lúc.
   - `POST /payments/vnpay` — tạo URL ký HMAC-SHA512, điều hướng cả trang sang VNPay.
-  - `GET /payments/vnpay/ipn` — **nguồn xác nhận duy nhất đáng tin** (redirect về chỉ để hiển thị); IPN → `confirm_booking_reservation` → gửi email xác nhận qua Resend.
+  - `GET /payments/vnpay/ipn` — **nguồn xác nhận duy nhất đáng tin** (redirect về chỉ để hiển thị); IPN → `confirm_booking_reservation` → gửi email xác nhận qua Brevo (đổi từ Resend 2026-08-26).
   - `GET /chat/{id}/booking-receipt` — mở lại biên nhận của phiên cũ.
 - Khách **không cần đăng nhập**: định danh bằng `temporary_user_ref` (UUID trong `localStorage`).
 
@@ -145,7 +145,7 @@ Công cụ: `query_hotel`, `query_hotel_rooms`, `search_places`, `get_hotel_opti
 | Không có "mở khoá ngày" | chỉ có `lock_days` |
 | Chips chỉ có trên SSE | POST thường luôn `[]` |
 | `POST /hotels/change` là nợ kỹ thuật | vẫn bắn chuỗi `"đổi khách sạn"` vào extractor thay vì đặt tín hiệu state tất định |
-| Embedding luôn dùng Ollama `bge-m3` | cố định 1024 chiều, kể cả khi `LLM_PROVIDER=openai` |
+| Embedding **model** cố định `bge-m3` (1024 chiều) | `EMBEDDING_PROVIDER` đổi được (mặc định `cloudflare`, hoặc `ollama`/`openai`/…); chỉ đổi *nơi chạy*, không đổi model — đổi model là hỏng similarity search |
 | Không có cron dọn hold hết hạn | hold hết hạn tự hết tác dụng khi `expires_at` trôi qua |
 
 ---
@@ -154,13 +154,13 @@ Công cụ: `query_hotel`, `query_hotel_rooms`, `search_places`, `get_hotel_opti
 
 **Bối cảnh:** khách Việt, 2 người, đi Đà Nẵng 3 ngày, ngân sách ~1.5 triệu/đêm, thích biển và ẩm thực, muốn khách sạn gần Cầu Rồng có hồ bơi và bao ăn sáng, đặt phòng thật và chốt lịch.
 
-**Điều kiện tiên quyết:** backend `:8000` + frontend `:5173` đang chạy, Supabase có dữ liệu Đà Nẵng, Ollama đã pull `bge-m3`, VNPay sandbox đã cấu hình.
+**Điều kiện tiên quyết:** ứng dụng đang chạy (bản deploy tại `⟨PRODUCTION_URL⟩`, hoặc backend + frontend chạy local khi phát triển), Supabase có dữ liệu Đà Nẵng, embedding provider hoạt động (`EMBEDDING_PROVIDER` — Cloudflare mặc định), VNPay sandbox + Brevo đã cấu hình.
 
 ### Bước 0 — Mở phiên
 
 | | |
 |---|---|
-| Hành động | Mở `http://localhost:5173` |
+| Hành động | Mở ứng dụng (`⟨PRODUCTION_URL⟩`) |
 | API | `POST /api/v1/chat/session` → `{session_id, created_at}` |
 | Kỳ vọng | Màn hình intake, `stage="intake"`, chưa có phiên nào trong sidebar (phiên chỉ được lưu khi có lượt chat đầu) |
 
@@ -256,7 +256,7 @@ Công cụ: `query_hotel`, `query_hotel_rooms`, `search_places`, `get_hotel_opti
 | Hành động | Wizard bước 2 → nhập tên/email/điện thoại → "Thanh toán" |
 | API | `POST /payments/vnpay` → `{pay_url}` (ký HMAC-SHA512, `vnp_TxnRef` = `payment.id` bỏ dấu `-`) |
 | Hành động | Trình duyệt điều hướng **cả trang** sang VNPay sandbox → thanh toán thành công |
-| Xác nhận | VNPay gọi `GET /payments/vnpay/ipn` (server-to-server) → `confirm_booking_reservation` → booking `CONFIRMED`, `expires_at = NULL`, payment `PAID` → email Resend gửi đi |
+| Xác nhận | VNPay gọi `GET /payments/vnpay/ipn` (server-to-server) → `confirm_booking_reservation` → booking `CONFIRMED`, `expires_at = NULL`, payment `PAID` → email Brevo gửi đi |
 | Kỳ vọng | Quay lại app: hold chuyển `BOOKED`, đồng hồ biến mất, email xác nhận (hero ảnh khách sạn + danh sách phòng) tới hộp thư. **Redirect chỉ để hiển thị — trạng thái thật luôn hỏi lại backend** |
 
 ### Bước 9 — Chốt lịch trình

@@ -1,5 +1,16 @@
 # V-OTA AI Chat - Architecture & Design Proposal
 
+> ℹ️ **Tài liệu ĐỀ XUẤT ban đầu (pre-build).** Kiến trúc đã ship khác ở vài điểm — nguồn
+> chuẩn hiện tại là [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) và `docs/architecture/`.
+> Khác biệt chính so với bản đề xuất dưới đây:
+> - **Styling:** đã dùng **Tailwind 4**, không phải Vanilla CSS / CSS Modules.
+> - **LLM:** mặc định **Cloudflare Workers AI** (two-tier 70B/8B) + OpenAI / OpenRouter / Ollama — không phải Gemini.
+> - **Embedding:** `bge-m3` 1024-dim (không phải "Gọi Gemini API tạo Vector").
+> - **Data pipeline:** Playwright (không phải Scrapy); Airflow đúng như đề xuất.
+> - **Orchestration:** LangGraph 14 node đã ship (patch pipeline + supervisor + workers) — đúng tinh thần, chi tiết ở `langgraph_orchestrator_vi.md`.
+> - Các cơ chế failsafe ở §4 (Qdrant→SQL fallback, canned responses, Stale Data Mode) phần lớn **chưa được xây**; grounding guardrail thì có.
+> - Auth (Supabase anonymous JWT), Admin console, và thanh toán VNPay thật là tính năng đã ship **không có** trong bản đề xuất này.
+
 Dựa trên yêu cầu từ tài liệu BRD, dưới đây là đề xuất chi tiết về Tech Stack, Luồng xử lý (Flow) và Wireframe cho dự án V-OTA AI Chat.
 
 ## 1. Tech Stack Đề xuất

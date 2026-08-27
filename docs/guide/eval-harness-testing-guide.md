@@ -134,7 +134,7 @@ thành destination) cùng 2 bug harness. Chi tiết adjudication từng record:
 ## 3. Cách chạy từng test
 
 ```bash
-cd "/Users/takiet/Documents/projects/ai_thuc_chien_2026/thuc tap/VSF-Intern-project"
+cd <repo-root>          # thư mục gốc repo (chứa backend/, eval/, docs/)
 
 # --- Layer 1: retrieval ---
 ollama serve &                          # nếu chưa chạy (bge-m3 cần Ollama, xem mục 1)

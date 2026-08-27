@@ -2,6 +2,12 @@
 
 Tài liệu này gom toàn bộ câu hỏi/nội dung trong phần **Phụ lục kỹ thuật** của bài slide (`docs/slide/index.html`, slide 13→42) thành các cặp Hỏi–Đáp để tra cứu nhanh khi bảo vệ, không cần lật từng slide. Số slide được giữ nguyên để đối chiếu.
 
+> ⚠️ **Đây là tài liệu chuẩn bị bảo vệ (chốt tại một thời điểm).** Tên field / số dòng trong
+> code có thể đã đổi. Nguồn chuẩn hiện tại về graph:
+> [`../architecture/langgraph_orchestrator_vi.md`](../architecture/langgraph_orchestrator_vi.md)
+> (+ `_detail_vi.md`). Ví dụ: danh sách field turn-scoped mà `load_context` reset đã thay đổi —
+> xem §2.3 của tài liệu đó thay vì bản liệt kê ở Slide 15 dưới đây.
+
 ---
 
 ## Slide 14 — Toàn bộ luồng LangGraph có bao nhiêu node, cấu trúc thế nào?

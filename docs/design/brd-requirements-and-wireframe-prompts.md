@@ -4,28 +4,31 @@ Nguồn: [`docs/brd/BRD_V-OTA_AI-Chat_VSF2026_2.pdf`](../brd/BRD_V-OTA_AI-Chat_V
 
 ## 1. Yêu cầu nghiệp vụ (BR) — bắt buộc, có mã truy vết
 
-| Mã | Yêu cầu | Sprint |
-|---|---|---|
-| BR-01 | Kho dữ liệu du lịch chuẩn hóa từ **≥ 2 nguồn OTA**, có ghi nguồn gốc + cập nhật được | 1 |
-| BR-02 | Thu thập dữ liệu phải trong khuôn khổ pháp lý (ToS, robots.txt), đánh giá rủi ro trước khi mở rộng | 1 |
-| BR-03 | Tìm dịch vụ bằng **hội thoại tự nhiên** (VI hoặc EN), thay thao tác từ khóa + bộ lọc | 2 |
-| BR-04 | **Tinh chỉnh kết quả trong hội thoại** (giá, hạng sao, tiện ích, khu vực) không cần bắt đầu lại | 2 |
-| BR-05 | Luồng **liền mạch tìm kiếm → đặt phòng**, không mất ngữ cảnh lựa chọn | 2 |
-| BR-06 | Lịch trình cá nhân hóa theo **ngày – ngân sách – sở thích**, tối ưu hành trình, gắn khách sạn/điểm tham quan | 3 |
-| BR-07 | Mọi thông tin AI đưa ra (giá, khách sạn, lịch trình) **phải grounding trên dữ liệu thật** của hệ thống | 2–3 |
-| BR-08 | Tài liệu hóa đủ để đội khác tiếp nhận sau khi intern kết thúc | 1–3 |
-| BR-09 | Kết thúc PoC phải có đánh giá KPI + khuyến nghị **go/no-go** | 3 |
-| BR-10 | Hiểu **truy vấn trộn VI/EN** (vd tên địa danh/khách sạn tiếng Anh trong câu tiếng Việt), trả lời đúng ngôn ngữ người dùng đang dùng | 2–3 |
+> Cột **Trạng thái** là ánh xạ best-effort vào code trên `main` (2026-08-27), cần đội tiếp nhận xác nhận lại.
+> ✅ xong · ⚠️ một phần / chưa đo · ❌ chưa làm · 🔄 đang làm
+
+| Mã | Yêu cầu | Sprint | Trạng thái |
+|---|---|---|---|
+| BR-01 | Kho dữ liệu du lịch chuẩn hóa từ **≥ 2 nguồn OTA**, có ghi nguồn gốc + cập nhật được | 1 | ✅ Agoda + Booking; `source_platform`/`source_hotel_id`; UPSERT |
+| BR-02 | Thu thập dữ liệu phải trong khuôn khổ pháp lý (ToS, robots.txt), đánh giá rủi ro trước khi mở rộng | 1 | ⚠️ ràng buộc PoC ghi trong `data_pipeline_flow.md`; chưa có tài liệu đánh giá rủi ro riêng |
+| BR-03 | Tìm dịch vụ bằng **hội thoại tự nhiên** (VI hoặc EN), thay thao tác từ khóa + bộ lọc | 2 | ✅ graph + RAG semantic search |
+| BR-04 | **Tinh chỉnh kết quả trong hội thoại** (giá, hạng sao, tiện ích, khu vực) không cần bắt đầu lại | 2 | ✅ `hotel_preferences.*`, pill filter |
+| BR-05 | Luồng **liền mạch tìm kiếm → đặt phòng**, không mất ngữ cảnh lựa chọn | 2 | ✅ room-card → booking-modal → VNPay; hold theo `session_id` |
+| BR-06 | Lịch trình cá nhân hóa theo **ngày – ngân sách – sở thích**, tối ưu hành trình, gắn khách sạn/điểm tham quan | 3 | ✅ `trip_scheduler` + `budget_check` |
+| BR-07 | Mọi thông tin AI đưa ra (giá, khách sạn, lịch trình) **phải grounding trên dữ liệu thật** của hệ thống | 2–3 | ✅ enforce bằng contract + assertion tất định trong eval |
+| BR-08 | Tài liệu hóa đủ để đội khác tiếp nhận sau khi intern kết thúc | 1–3 | 🔄 `docs/` đang được rà soát/cập nhật; còn thiếu runbook vận hành, env reference, tài liệu Admin/Auth |
+| BR-09 | Kết thúc PoC phải có đánh giá KPI + khuyến nghị **go/no-go** | 3 | ❌ chưa có báo cáo KPI / go-no-go (eval harness có sẵn số liệu retrieval/e2e để dựng) |
+| BR-10 | Hiểu **truy vấn trộn VI/EN** (vd tên địa danh/khách sạn tiếng Anh trong câu tiếng Việt), trả lời đúng ngôn ngữ người dùng đang dùng | 2–3 | ✅ `bge-m3` xuyên ngữ; `language` trong request; eval có cặp vi/en |
 
 ## 2. Mục tiêu kinh doanh (BO) — có ngưỡng đo được
 
-| Mã | Mục tiêu | Ngưỡng đề xuất | Hạn |
-|---|---|---|---|
-| BO-01 | PoC end-to-end chạy dữ liệu thật | Demo nghiệm thu + báo cáo go/no-go | Cuối S3 |
-| BO-02 | Dữ liệu chuẩn hóa | ≥2 nguồn OTA, **≥1.000 bản ghi** truy vấn được | Cuối S1 |
-| BO-03 | Rút ngắn thời gian tìm-lập kế hoạch | **<5 phút hội thoại** thay hàng chục phút thao tác | S2–3 |
-| BO-04 | Luồng dẫn đặt phòng liền mạch | **≥70%** kịch bản test hoàn thành đến bước chuyển đặt phòng | Cuối S2 |
-| BO-05 | Năng lực AI nội bộ | 2 intern hoàn thành 3 sprint + gói bàn giao | Cuối chương trình |
+| Mã | Mục tiêu | Ngưỡng đề xuất | Hạn | Trạng thái |
+|---|---|---|---|---|
+| BO-01 | PoC end-to-end chạy dữ liệu thật | Demo nghiệm thu + báo cáo go/no-go | Cuối S3 | ⚠️ chạy được end-to-end; báo cáo go/no-go chưa có (xem BR-09) |
+| BO-02 | Dữ liệu chuẩn hóa | ≥2 nguồn OTA, **≥1.000 bản ghi** truy vấn được | Cuối S1 | ✅ ~1.103 khách sạn / 6.375 phòng (data_dictionary §1.4b) |
+| BO-03 | Rút ngắn thời gian tìm-lập kế hoạch | **<5 phút hội thoại** thay hàng chục phút thao tác | S2–3 | ⚠️ chưa đo chính thức |
+| BO-04 | Luồng dẫn đặt phòng liền mạch | **≥70%** kịch bản test hoàn thành đến bước chuyển đặt phòng | Cuối S2 | ⚠️ luồng có (VNPay thật); tỉ lệ chưa đo chính thức |
+| BO-05 | Năng lực AI nội bộ | 2 intern hoàn thành 3 sprint + gói bàn giao | Cuối chương trình | 🔄 gói bàn giao đang chuẩn bị |
 
 ## 3. Phạm vi (Scope)
 

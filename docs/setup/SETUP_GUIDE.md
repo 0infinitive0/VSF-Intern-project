@@ -1,7 +1,17 @@
-# VSF Trip Planner — Setup Guide
+# VSF Trip Planner — Local Development Setup
 
-Complete setup guide for running the full VSF Trip Planner stack: FastAPI backend,
-React+Vite frontend, Qdrant vector store, and Ollama (local LLM).
+**This guide is for running the stack locally to develop against it.** The live
+application is deployed at `⟨PRODUCTION_URL⟩` (EC2 + Docker Compose behind Caddy) —
+to deploy, roll back, read logs, or operate that system, use
+[`../ops/deployment-runbook.md`](../ops/deployment-runbook.md), not this guide.
+
+Local stack: FastAPI backend (`backend/`), React + Vite frontend (`frontend/`),
+Supabase (Postgres + pgvector — shared with the deployed app), Qdrant
+(hotel/attraction vectors), and an LLM + embedding provider.
+
+> **Backend paths:** all backend commands run from `backend/`. The repo is split
+> `backend/` · `frontend/` · `eval/` · `docs/` · `plans/` since the reorg — there is
+> no importable `src/` at the repo root.
 
 ---
 
@@ -10,9 +20,12 @@ React+Vite frontend, Qdrant vector store, and Ollama (local LLM).
 - **Git** (to clone the repository)
 - **Python 3.11+** with `pip`
 - **Node.js 20+** and `npm`
-- **Docker Desktop** (or Docker Engine + Docker Compose) — for Qdrant, Ollama, and the full stack
-- **Resources:** Allocate at least **8 GB RAM** to Docker (Ollama + llama3.1 model is ~4.7 GB).
-  On cloud deployments, set `LLM_PROVIDER=openai` to skip local LLM entirely.
+- **Docker Desktop** (or Docker Engine + Docker Compose) — for the full stack, Qdrant, and (optionally) local Ollama
+- **An LLM + embedding provider.** Default is **Cloudflare Workers AI** (`LLM_PROVIDER=cloudflare`,
+  `EMBEDDING_PROVIDER=cloudflare`, `EMBEDDING_MODEL=@cf/baai/bge-m3`) — see `backend/.env.example`.
+  Local **Ollama** (`llama3.1` + `bge-m3`) also works; OpenAI / OpenRouter / Google are supported too.
+  The embedding **model** is locked to `bge-m3` (1024-dim) — only *where* it runs is swappable.
+- **Resources:** if you run Ollama locally, allocate **≥ 8 GB RAM** to Docker (`llama3.1` ≈ 4.7 GB, `bge-m3` ≈ 0.55 GB).
 
 ---
 
@@ -28,19 +41,23 @@ cd VSF-Intern-project
 ### Step 2 — Configure environment variables
 
 ```bash
+cd backend
 cp .env.example .env
-# Open .env and fill in:
-#   SUPABASE_URL and SUPABASE_SERVICE_KEY (required for hotel/attraction search)
-#   LLM_PROVIDER / LLM_MODEL / LLM_API_KEY (if using cloud LLM — see .env.example)
+# Open backend/.env and fill in:
+#   SUPABASE_URL and SUPABASE_SERVICE_KEY   (required for hotel/attraction search)
+#   SUPABASE_JWT_SECRET                     (required to verify auth tokens; AUTH_REQUIRED defaults false)
+#   LLM_PROVIDER / LLM_MODEL / LLM_API_KEY  (default: cloudflare — see backend/.env.example)
+#   EMBEDDING_PROVIDER / EMBEDDING_MODEL    (default: cloudflare / @cf/baai/bge-m3; model locked to bge-m3)
 #   LLM_USE_RESPONSES_API / LLM_REASONING_SUMMARY — both off by default; leave them
-#     off unless you specifically want the OpenAI Responses API transport. Rationale
-#     and constraints are in .env.example next to each variable.
-#   AI_LOG_API_KEY (from BTC invite link)
+#     off unless you want the OpenAI Responses API transport. Rationale is in .env.example.
+#   VNPAY_* / BREVO_API_KEY / BREVO_FROM_EMAIL — only for the booking + payment + email flow
 ```
 
 ### Step 3 — Start the backend
 
 ```bash
+cd backend        # all backend commands run from here
+
 # Create and activate a Python virtual environment
 python3.11 -m venv .venv
 source .venv/bin/activate        # Linux / macOS
@@ -69,61 +86,57 @@ npm run dev
 Vite automatically proxies `/api → http://localhost:8000` in development — no CORS
 configuration needed.
 
-### Step 5 — Start local Ollama (for local LLM)
+### Step 5 — (Optional) Start local Ollama
 
-If `LLM_PROVIDER=ollama` (the default), Ollama must be running and the models pulled:
+Only if you set `LLM_PROVIDER=ollama` / `EMBEDDING_PROVIDER=ollama` instead of the
+Cloudflare default. Ollama must be running with the models pulled:
 
 ```bash
-ollama pull bge-m3    # Embedding model (~550 MB) — required in all environments
-ollama pull llama3.1  # Chat model (~4.7 GB) — only needed for local LLM
+ollama pull bge-m3    # Embedding model (~550 MB)
+ollama pull llama3.1  # Chat model (~4.7 GB)
 ```
 
-> **Tip:** On low-RAM machines or cloud deployments, switch to a cloud provider:
->
-> ```bash
-> # In .env:
-> LLM_PROVIDER=openai
-> LLM_MODEL=gpt-4o-mini
-> LLM_API_KEY=sk-proj-...
-> ```
->
-> Embeddings always use local Ollama `bge-m3` regardless of `LLM_PROVIDER`.
+> `EMBEDDING_MODEL` stays `bge-m3` (1024-dim) whatever the provider — switching the
+> model, not the host, breaks similarity search against the existing vectors.
+> Note: an `EMBEDDING_PROVIDER` value exported in your OS shell overrides `backend/.env`
+> (pydantic-settings precedence) — `unset EMBEDDING_PROVIDER` if that surprises you.
 
 ---
 
 ## Full Stack via Docker Compose
 
-For a one-command start (backend + Qdrant + Ollama + model pull):
-
 ```bash
+# From the repo root. Cloud LLM (default): backend + frontend only.
 docker compose up
-# First run pulls llama3.1 (~4.7 GB) and bge-m3 (~550 MB) — this takes a while.
-# Subsequent starts reuse the cached models in ./data/ollama/.
+
+# With local Ollama (adds ollama + a one-shot model pull of llama3.1 + bge-m3):
+docker compose --profile local-llm up
 ```
 
-The `frontend/` is **not** included in docker-compose — run it separately with
-`npm run dev` (Step 4 above) pointing at `http://localhost:8000`.
+Services after `docker compose up`:
 
-Services exposed after `docker compose up`:
+| Service | URL | Notes |
+|---------|-----|-------|
+| FastAPI backend | http://localhost:8000 | |
+| React frontend | http://localhost:5173 | in compose since the reorg |
+| Ollama API | http://localhost:11434 | only with `--profile local-llm` |
 
-| Service | URL |
-|---------|-----|
-| FastAPI backend | http://localhost:8000 |
-| Qdrant vector store | http://localhost:6333 |
-| Ollama API | http://localhost:11434 |
+Qdrant is **not** in `docker-compose.yml` — it is an external/managed instance
+addressed by `QDRANT_URL` (default `http://localhost:6333`); run it yourself if you
+need local hotel-vector search.
 
 ---
 
 ## Environment Matrix
 
-| Setting | Local dev | Deployed (cloud) |
-|---------|-----------|-----------------|
-| `LLM_PROVIDER` | `ollama` | `openai` / `openrouter` |
-| `LLM_MODEL` | `llama3.1` | `gpt-4o-mini` or an OpenRouter model id |
-| `EMBEDDING_PROVIDER` | `ollama` | `ollama` |
-| `EMBEDDING_MODEL` | `bge-m3` | `bge-m3` (⚠️ do **not** change — vectors are locked to 1024 dim) |
-| Frontend | `npm run dev` (Vite, port 5173) | Built assets — host TBD |
-| Ollama required? | Yes (both models) | Yes (bge-m3 only; chat model is cloud) |
+| Setting | Local dev (default) | Local dev (Ollama) | Deployed (cloud) |
+|---------|--------------------|--------------------|------------------|
+| `LLM_PROVIDER` | `cloudflare` | `ollama` | `cloudflare` / `openai` / `openrouter` |
+| `LLM_MODEL` | Cloudflare 70B/8B two-tier | `llama3.1` | per provider |
+| `EMBEDDING_PROVIDER` | `cloudflare` | `ollama` | `cloudflare` |
+| `EMBEDDING_MODEL` | `@cf/baai/bge-m3` | `bge-m3` | `@cf/baai/bge-m3` (⚠️ model locked, 1024-dim) |
+| Frontend | Vite dev (5173) or compose | same | built assets behind Caddy |
+| Ollama required? | No | Yes (both models) | No |
 
 ---
 
@@ -148,8 +161,10 @@ read/proxy timeout to at least 120 s, otherwise long turns will result in a gate
 ## Running Tests
 
 ```bash
-# Full test suite (excluding live Qdrant schema tests)
-pytest tests -q --ignore=tests/test_qdrant_schema.py
+cd backend
+
+# Full test suite (~100 files)
+pytest tests -q
 
 # API-layer tests only
 pytest tests/test_api/ -q
@@ -163,11 +178,15 @@ ruff check src/
 ## Terminal CLI (Alternative to Web UI)
 
 ```bash
-# With virtual environment active
+cd backend        # with the virtual environment active
 python -m scripts.poc_trip_planner
 ```
 
-Conversation commands:
+> ⚠️ **Currently broken.** `src/cli/terminal_chat.py` still imports `process_chat_turn`,
+> which was deleted in the LangGraph cutover, so the CLI raises `ImportError` on start.
+> Use the Web UI until it is ported onto `build_graph`. See `ARCHITECTURE.md` § Known debt.
+
+Conversation commands (once the CLI works again):
 - **New trip:** *"Tôi muốn đi Đà Nẵng 3 ngày 2 người thích lịch sử"*
 - **Modify plan:** *"Đổi khách sạn sang Caravelle Saigon"*
 - **Finalize:** *"Chốt lịch trình"*
@@ -178,7 +197,7 @@ Conversation commands:
 ## Airflow Data Pipeline (Advanced)
 
 ```bash
-cd src/airflow
+cd backend/src/airflow
 echo -e "AIRFLOW_UID=$(id -u)\nFERNET_KEY=$(python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')" > .env
 docker compose up airflow-init   # First-time init
 docker compose up -d
@@ -217,6 +236,7 @@ live). The admin trigger endpoint (Phase 15) unpauses automatically; a raw
 |---------|-----|
 | `POST /api/v1/chat/session` returns CORS error | Check `CORS_ORIGINS` in `.env` includes `http://localhost:5173` |
 | LLM call times out after ~30 s | Raise proxy timeout to 120 s; or switch to `LLM_PROVIDER=openai` |
-| `ollama pull` fails (disk full) | `llama3.1` needs ~4.7 GB free; use cloud LLM instead |
-| Qdrant connection refused | Run `docker compose up qdrant` or start Qdrant manually |
+| `ollama pull` fails (disk full) | `llama3.1` needs ~4.7 GB free; use the Cloudflare/cloud provider instead |
+| Qdrant connection refused | Qdrant is not in `docker-compose.yml` — start your own at `QDRANT_URL` (default `http://localhost:6333`) |
+| Embedding provider isn't what `backend/.env` says | An OS-shell `EMBEDDING_PROVIDER` overrides the file — `unset EMBEDDING_PROVIDER` |
 | `pip install -r requirements.txt` fails | Ensure Python 3.11+ and a fresh venv |

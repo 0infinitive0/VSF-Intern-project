@@ -10,10 +10,10 @@ VSF Trip Planner là một hệ thống AI Agent thông minh phục vụ lập k
 graph TB
     subgraph Clients
         CLI[Terminal CLI / Interactive POC]
-        UI[React + Vite Frontend<br/>localhost:5173]
+        UI[React + Vite Frontend]
     end
 
-    subgraph Backend[FastAPI & Agent Engine — localhost:8000]
+    subgraph Backend[FastAPI & Agent Engine]
         API[API Routes /routes.py]
         Agent[LangGraph Orchestrator<br/>build_graph]
         State[TravelGraphState + checkpointer]
@@ -77,13 +77,22 @@ graph TB
     Airflow -->|Vector Embeddings| Qdrant
 ```
 
+> The diagram covers the **chat turn**. Three REST subsystems sit beside it and do not
+> run through the graph: **Auth** (Supabase JWT on every request), **Booking & Payment**
+> (room hold → VNPay → email), and the **Admin API** (+ its own SPA). See § Booking &
+> Payment, § Admin API, and the Authentication note under Backend.
+
 ## Components
 
 ### 1. Frontend (React + Vite Web UI)
 
-- **Technology:** React 18 + Vite 6, served at `http://localhost:5173` in development.
+- **Deployment:** built and served on the EC2 host behind Caddy (auto-HTTPS) at the
+  project's domain — see [`docs/ops/deployment-runbook.md`](docs/ops/deployment-runbook.md).
+- **Technology:** React 19 + Vite 8 + Tailwind 4 (+ i18next). Local dev server on
+  `5173` with a `/api` proxy (see [`docs/setup/SETUP_GUIDE.md`](docs/setup/SETUP_GUIDE.md)).
 - **Purpose:** Full-featured chat UI for the trip planner — multi-turn conversation,
-  hotel selection cards, itinerary panel, and suggestion chips.
+  hotel selection cards, itinerary panel, and suggestion chips. A separate **admin
+  console SPA** lives under `frontend/src/admin/` (see § Admin API).
 - **Key Features:**
   - Single-page app (`src/App.tsx`, TypeScript) with split layout: `ChatPanel` + `ItineraryPanel`.
   - `useChatSession` hook owns all state via `useReducer`; no component calls `fetch` directly.
@@ -113,9 +122,19 @@ graph TB
   `POST /hotels/search`, `POST /itineraries/generate`, and `POST /chat/select_place` were
   **removed** (2026-08-15): they read state belonging to the deleted control plane and
   answered `success` with empty data. See the contract doc's "Removed endpoints" table.
+
+  Booking, payment, and the admin console are separate surfaces — see § Booking &
+  Payment and § Admin API below.
 - **Session registry:** `SessionRegistry` in `src/agents/session.py` holds in-memory `TripSession`
   objects with per-session locks, configurable TTL (`SESSION_TTL_SECONDS`) and cap (`MAX_SESSIONS`).
-- **Authentication:** Environment variable API Keys & Supabase Service Role JWT.
+- **Authentication:** Supabase Auth. Every visitor — anonymous or permanent — carries a
+  real Supabase-issued JWT; guests get one via Anonymous Auth. `backend/src/auth/jwt_verifier.py`
+  verifies it **locally** (primary path: JWKS / ES256 from `{SUPABASE_URL}/auth/v1/.well-known/jwks.json`,
+  cached 5 min — not a per-request network call; `SUPABASE_JWT_SECRET` HS256 is an unused legacy
+  fallback). `AUTH_REQUIRED` (default `false`) governs only what happens to a request with no/invalid
+  token: `false` → `current_user = None`; `true` → `401`. Session ownership mismatches return
+  `404`, never `403` (anti-enumeration). Admin endpoints sit behind an always-strict `require_admin`
+  (`app_role == "admin"` claim). Full model: `docs/architecture/authentication.md`.
 - **Running:**
   ```bash
   uvicorn src.main:app --reload --port 8000
@@ -317,14 +336,20 @@ argument, not a new model.
 ### 4. Database (Supabase PostgreSQL)
 
 - **Type:** PostgreSQL 15+ with `pgvector` extension.
-- **Tables:** `destinations`, `hotels`, `rooms`, `room_prices`, `attractions`, `events`,
-  `sessions`, `chat_messages`, `itineraries`, `itinerary_items`.
-- **Schema Management:** Centralised in `scripts/database_schema.sql` and migrations
-  in `scripts/migrations/`.
+- **Tables:**
+  - Catalog & planning: `destinations`, `hotels`, `rooms`, `room_prices`, `attractions`,
+    `tours`, `events`, `itineraries`, `itinerary_items`, `amenity_catalog`.
+  - Sessions & chat: `sessions` (`user_id → auth.users`), `chat_messages`.
+  - Booking & payment: `bookings`, `payments`.
+  - Hotel identity resolution (ETL dedup): `hotel_identity_groups`, `hotel_identity_members`.
+  - Admin: `admin_audit_log`.
+  - `auth.users` is managed by Supabase Auth, not by the app schema.
+- **Schema Management:** Centralised in `backend/scripts/database_schema.sql` and migrations
+  in `backend/scripts/migrations/` (dated `YYYYMMDD_*.sql`).
 
 ### 4.1. Data Pipelines
 
-- **Airflow Stack:** `src/airflow/docker-compose.yaml`.
+- **Airflow Stack:** `backend/src/airflow/docker-compose.yaml`.
 - **Attraction Producers:** Crawl & normalise attraction data from OSM, OTA, and Google Maps.
 - **Hotel Producer:** ETL pipeline normalising hotel data from Agoda & Booking.com
   (`data/agoda.json`, `data/booking.json`).
@@ -338,6 +363,35 @@ argument, not a new model.
   Tier 1 Itinerary Reuse Fingerprint match (>88% similarity).
 - **Embedding provider:** Ollama `bge-m3` is required in every environment (local and cloud).
   Only the *chat* model (`llm_model`) is swappable via `LLM_PROVIDER`.
+
+### 6. Booking & Payment
+
+Booking is a **REST feature, not a graph worker.** The graph's `booking_node` still
+declines unconditionally (`_IMPOSSIBLE["booking_node"] = True`) — chat never books. The
+flow runs entirely through `src/api/routes.py` + `src/services/`:
+
+- `POST /api/v1/bookings` → `booking_service.reserve_booking` — creates a `RESERVED`
+  hold (`bookings` table), guarded so a guest can hold only one hotel at a time.
+- `POST /api/v1/payments/vnpay` → `vnpay_service` — builds a signed VNPay payment URL;
+  `GET /api/v1/payments/vnpay/ipn` receives VNPay's server-to-server IPN and is the
+  **only** path that moves a booking to `CONFIRMED` (`payments` table).
+- `booking_service.confirm_booking` → `email_service.send_booking_confirmation_email`
+  (Brevo API; migrated from Resend, commit `3ae8137`).
+- `POST /api/v1/bookings/{id}/cancel`, `GET /api/v1/payments/{id}`,
+  `GET /api/v1/chat/{session_id}/booking-receipt` round out the surface.
+
+RPCs: migrations `20260818_add_booking_reservation_rpcs.sql`,
+`20260818_add_payments_table.sql`, `20260819_add_guest_single_hotel_hold_guard.sql`.
+Full flow, data model, and incident log: `docs/architecture/booking_and_payment_workflow_vi.md`.
+
+### 7. Admin API
+
+`src/api/admin/` — an `APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])`
+mounted at `/api/v1`, with a dedicated SPA at `frontend/src/admin/`. Sub-routers:
+`hotels`, `rooms`, `room_prices`, `destinations`, `amenities`, `amenity_catalog`,
+`orders`, `embedding`, `pipelines`, `overview`; the `audit` module records mutations to
+`admin_audit_log`. It manages the catalog the planner reads from and the bookings the
+payment flow creates; it does not touch graph state.
 
 ---
 
@@ -353,11 +407,14 @@ api  →  agents  →  services  →  domain  →  models
 
 | Layer | Package | Role |
 |-------|---------|------|
-| `api` | `src/api/` | HTTP handlers — call `agents.session`, return Pydantic schemas |
+| `api` | `src/api/` | HTTP handlers — public `routes.py` / `streaming.py` and `admin/`; call `agents.session`, return Pydantic schemas |
 | `agents` | `src/agents/` | LangGraph graph, session registry, turn routing |
-| `services` | `src/services/` | Business logic — LLM, Supabase search, scheduler, intake |
+| `services` | `src/services/` | Business logic — LLM, Supabase search, scheduler, intake, booking, payment (VNPay), email |
 | `domain` | `src/domain/` | Pure state, validation, constraints — imports nothing above it (no `services`, no I/O, no LLM, no Supabase) |
 | `models` | `src/models/` | Pydantic schemas only — no imports from upper layers |
+| `auth` | `src/auth/` | Supabase JWT verification; used as FastAPI dependencies by `api` |
+| `guardrails` | `src/guardrails/` | Deterministic pre-model guards (jailbreak detection), called from `scope_guard` |
+| `clients` | `src/clients/` | Supabase client construction — leaf, used by `services` |
 | `config` | `src/config.py` | Settings — imported by any layer, imports nothing above it |
 
 **Never import upward** (e.g. `services` must not import from `api`).
@@ -412,7 +469,7 @@ what is wrong and why it was left.
 | `src/cli/terminal_chat.py` | **Broken — raises `ImportError` on import.** It imports `process_chat_turn` from `src.agents.session`, which no longer exists after the graph cutover. | Nothing imports it, so nothing failed loudly. Fixing it means either porting the CLI onto `build_graph` or deleting it — a product call, not a cleanup. The main diagram marks the CLI edge as broken for this reason. |
 | `POST /hotels/change` | Works, frontend depends on it. | It drives the turn by sending the natural-language string `"đổi khách sạn"` into the graph for an extractor to re-interpret, instead of setting a deterministic state signal the way `POST /hotels/select` does (`extra_state={"selected_hotel_id": …}`). Fixing it needs a new signal `hotel_node` reads. |
 | Legacy fields on `TripSession` | Present, no longer read by the API layer. | `intake_state`, `hotel_pref_state`, `pending_hotel_selection`, and `session.trip_data` belong to the deleted plane. `src/api/routes.py` no longer reads any of them, but `agents/session.py` (serialize/restore, `derive_stage`), `models/schemas.py`, `services/trip_planner.py`, `services/session_store.py`, several `agents/tools/*`, and the broken CLI still do. Removing them is its own plan. |
-| `booking_node` | Registered, wired, and unconditionally impossible (`_IMPOSSIBLE["booking_node"] = True`). | Deliberate: booking is a planned product feature, so the node stays in `WORKER_ORDER` and in the supervisor's `Literal` rather than being removed and re-added later. |
+| `booking_node` | Registered, wired, and unconditionally impossible (`_IMPOSSIBLE["booking_node"] = True`). | Deliberate: booking ships as a **REST flow** (§ Booking & Payment), not through chat. The node stays in `WORKER_ORDER` and the supervisor's `Literal` in case chat-driven booking is added later, rather than being removed and re-added. |
 | Stale references to `process_chat_turn` | In docstrings only (`api/streaming.py`, `agents/tools/*`, `agents/graph/__init__.py`). | Harmless prose describing a function that is gone; worth a sweep, not worth a risky edit pass. |
 
 ---
