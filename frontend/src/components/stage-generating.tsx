@@ -50,7 +50,7 @@ export default function StageGenerating({
     ? t(currentPhaseLabelKey)
     : seconds >= 10
       ? t('pendingBuildingPlan')
-      : seconds >= 3
+      : seconds >= 3 && !hasTripPlan
         ? t('pendingSearchingHotels')
         : t('pendingDefault')
 

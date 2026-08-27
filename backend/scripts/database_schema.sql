@@ -3,6 +3,14 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS vector;
 
+-- Lọc bán kính cho match_hotels_with_rooms. earthdistance gọi hàm của cube không
+-- kèm schema nên cube phải resolve được bằng tên trong lúc script cài chạy.
+CREATE SCHEMA IF NOT EXISTS extensions;
+CREATE EXTENSION IF NOT EXISTS cube WITH SCHEMA extensions;
+SET search_path = extensions, public;
+CREATE EXTENSION IF NOT EXISTS earthdistance WITH SCHEMA extensions;
+RESET search_path;
+
 -- Bảng 1: Điểm đến (Destinations - Tỉnh/Thành phố hoặc Khu vực)
 CREATE TABLE destinations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -76,6 +84,35 @@ CREATE TABLE hotels (
 );
 
 CREATE INDEX hotels_is_active_idx ON hotels (is_active) WHERE is_active = false;
+
+-- coordinates là chuỗi "lat,lng" nên phải parse trước khi so sánh được khoảng cách.
+-- Gói phần parse vào một hàm IMMUTABLE để index bên dưới và predicate trong
+-- match_hotels_with_rooms viết giống hệt nhau — điều kiện để planner khớp được index.
+-- Regex guard làm hàm này toàn phần: dòng sai định dạng trả NULL thay vì raise, nên
+-- một dòng dữ liệu bẩn không làm hỏng build index hay fail cả câu tìm kiếm. Chỉ dùng
+-- một dấu gạch chéo ngược — nhân đôi chính là lỗi mà
+-- scripts/migrations/20260817_fix_match_attractions_radius_regex.sql phải sửa.
+CREATE FUNCTION public.coordinates_to_earth(coordinates TEXT)
+RETURNS extensions.earth
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+SET search_path = ''
+AS $$
+  SELECT CASE
+    WHEN coordinates ~ '^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$'
+    THEN extensions.ll_to_earth(
+           split_part(coordinates, ',', 1)::double precision,
+           split_part(coordinates, ',', 2)::double precision
+         )
+  END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.coordinates_to_earth(TEXT)
+    TO anon, authenticated, service_role;
+
+CREATE INDEX idx_hotels_coordinates_earth ON hotels
+    USING gist (public.coordinates_to_earth(coordinates));
 
 -- Bảng 3: Thông tin Loại Phòng (Rooms) — theo đúng 1 OTA của khách sạn đó
 CREATE TABLE rooms (
@@ -633,6 +670,25 @@ AS $$
     WHERE h.embedding IS NOT NULL
       AND h.is_active
       AND (filter_destination_id IS NULL OR h.destination_id = filter_destination_id)
+      -- Lọc trong CTE chấm điểm (không phải WHERE cuối) để khoảng cách cắt bớt khách
+      -- sạn TRƯỚC khi so vector và chạy subquery availability — cũng là chỗ duy nhất
+      -- index GiST phục vụ được. earth_box là hình hộp bao nên nhận cả điểm ở góc xa
+      -- hơn max_radius_km; nó là phần index trả lời được. earth_distance là phép đo
+      -- great-circle chính xác loại chúng ra. Cần cả hai.
+      AND (
+        root_latitude IS NULL OR root_longitude IS NULL OR max_radius_km IS NULL
+        OR (
+          public.coordinates_to_earth(h.coordinates) OPERATOR(extensions.<@)
+            extensions.earth_box(
+              extensions.ll_to_earth(root_latitude, root_longitude),
+              max_radius_km * 1000.0
+            )
+          AND extensions.earth_distance(
+                public.coordinates_to_earth(h.coordinates),
+                extensions.ll_to_earth(root_latitude, root_longitude)
+              ) <= max_radius_km * 1000.0
+        )
+      )
       AND (
         filter_start_date IS NULL OR filter_end_date IS NULL
         OR EXISTS (
@@ -658,6 +714,20 @@ AS $$
     WHERE r.embedding IS NOT NULL
       AND h.is_active
       AND (filter_destination_id IS NULL OR h.destination_id = filter_destination_id)
+      AND (
+        root_latitude IS NULL OR root_longitude IS NULL OR max_radius_km IS NULL
+        OR (
+          public.coordinates_to_earth(h.coordinates) OPERATOR(extensions.<@)
+            extensions.earth_box(
+              extensions.ll_to_earth(root_latitude, root_longitude),
+              max_radius_km * 1000.0
+            )
+          AND extensions.earth_distance(
+                public.coordinates_to_earth(h.coordinates),
+                extensions.ll_to_earth(root_latitude, root_longitude)
+              ) <= max_radius_km * 1000.0
+        )
+      )
       AND (
         filter_start_date IS NULL OR filter_end_date IS NULL
         OR (
