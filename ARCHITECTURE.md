@@ -10,10 +10,10 @@ VSF Trip Planner là một hệ thống AI Agent thông minh phục vụ lập k
 graph TB
     subgraph Clients
         CLI[Terminal CLI / Interactive POC]
-        UI[React + Vite Frontend<br/>localhost:5173]
+        UI[React + Vite Frontend]
     end
 
-    subgraph Backend[FastAPI & Agent Engine — localhost:8000]
+    subgraph Backend[FastAPI & Agent Engine]
         API[API Routes /routes.py]
         Agent[LangGraph Orchestrator<br/>build_graph]
         State[TravelGraphState + checkpointer]
@@ -86,8 +86,10 @@ graph TB
 
 ### 1. Frontend (React + Vite Web UI)
 
-- **Technology:** React 19 + Vite 8 + Tailwind 4 (+ i18next), served at
-  `http://localhost:5173` in development.
+- **Deployment:** built and served on the EC2 host behind Caddy (auto-HTTPS) at the
+  project's domain — see [`docs/ops/deployment-runbook.md`](docs/ops/deployment-runbook.md).
+- **Technology:** React 19 + Vite 8 + Tailwind 4 (+ i18next). Local dev server on
+  `5173` with a `/api` proxy (see [`docs/setup/SETUP_GUIDE.md`](docs/setup/SETUP_GUIDE.md)).
 - **Purpose:** Full-featured chat UI for the trip planner — multi-turn conversation,
   hotel selection cards, itinerary panel, and suggestion chips. A separate **admin
   console SPA** lives under `frontend/src/admin/` (see § Admin API).
@@ -127,11 +129,12 @@ graph TB
   objects with per-session locks, configurable TTL (`SESSION_TTL_SECONDS`) and cap (`MAX_SESSIONS`).
 - **Authentication:** Supabase Auth. Every visitor — anonymous or permanent — carries a
   real Supabase-issued JWT; guests get one via Anonymous Auth. `backend/src/auth/jwt_verifier.py`
-  verifies it locally (HS256 against `SUPABASE_JWT_SECRET`, no per-request call to Supabase).
-  `AUTH_REQUIRED` (default `false`) governs only what happens to a request with no/invalid
+  verifies it **locally** (primary path: JWKS / ES256 from `{SUPABASE_URL}/auth/v1/.well-known/jwks.json`,
+  cached 5 min — not a per-request network call; `SUPABASE_JWT_SECRET` HS256 is an unused legacy
+  fallback). `AUTH_REQUIRED` (default `false`) governs only what happens to a request with no/invalid
   token: `false` → `current_user = None`; `true` → `401`. Session ownership mismatches return
-  `404`, never `403` (anti-enumeration). Admin endpoints sit behind `require_admin`. Full model:
-  `docs/chat_api_contract.md` § Authentication.
+  `404`, never `403` (anti-enumeration). Admin endpoints sit behind an always-strict `require_admin`
+  (`app_role == "admin"` claim). Full model: `docs/architecture/authentication.md`.
 - **Running:**
   ```bash
   uvicorn src.main:app --reload --port 8000

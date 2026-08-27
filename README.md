@@ -4,7 +4,10 @@ AI Agent lập kế hoạch du lịch **đa lượt (multi-turn)** cho khách du
 
 Kiến trúc gồm **LangGraph Orchestrator**, **FastAPI Backend**, **Supabase (PostgreSQL + pgvector)**, **React + Vite Frontend** và **Airflow Data Pipeline**.
 
-> 📐 Xem thêm: [ARCHITECTURE.md](./ARCHITECTURE.md) · [Setup Guide](./docs/setup/SETUP_GUIDE.md) · [Docs Index](./docs/README.md)
+**🌐 Ứng dụng đã deploy:** `⟨PRODUCTION_URL⟩` (EC2 + Docker Compose sau Caddy — xem [Deployment Runbook](./docs/ops/deployment-runbook.md)).
+Phần *Quick Start* bên dưới là để **chạy local khi phát triển**.
+
+> 📐 Xem thêm: [ARCHITECTURE.md](./ARCHITECTURE.md) · [Docs Index](./docs/README.md) · [Handoff](./docs/handoff/README.md)
 
 ---
 
@@ -65,7 +68,10 @@ Kiến trúc gồm **LangGraph Orchestrator**, **FastAPI Backend**, **Supabase (
 └── babel.cfg             # pybabel message extraction (backend/src/**.py)
 ```
 
-## 🚀 Quick Start
+## 🚀 Quick Start (local development)
+
+> Để vận hành bản đã deploy (deploy, rollback, logs, DB), xem
+> [docs/ops/deployment-runbook.md](./docs/ops/deployment-runbook.md).
 
 ### Yêu cầu
 
@@ -204,7 +210,7 @@ docker compose up airflow-init   # Lần đầu khởi tạo
 docker compose up -d
 ```
 
-Airflow UI tại http://localhost:8080 (user/pass: `airflow` / `airflow`).
+Airflow UI tại http://localhost:8088 (user/pass: `airflow` / `airflow`) — compose map cổng `8088:8080`.
 
 ## 📚 Tài liệu liên quan
 

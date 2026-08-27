@@ -4,7 +4,7 @@
 
 Tài liệu này mô tả toàn bộ tính năng đặt phòng của V-OTA: từ lúc khách chọn phòng và **giữ chỗ tạm thời** (room hold), qua **thanh toán thật qua VNPay**, tới khi hệ thống **xác nhận đặt phòng** và **gửi email** cho khách — cùng với các quyết định kiến trúc, sự cố đã gặp và cách khắc phục trong quá trình xây dựng.
 
-Đây là nguồn tham khảo (source of truth) khớp với code đang chạy trên `main`, tính tới commit `c6ba298` (2026-08-20). Toàn bộ tính năng được xây trong khoảng 2026-08-18 → 2026-08-20, bắt đầu từ commit `bce43b6` ("room hold + real VNPay payment with Resend email confirmation").
+Đây là nguồn tham khảo (source of truth) khớp với code đang chạy trên `main`, tính tới commit `c6ba298` (2026-08-20), **cập nhật 2026-08-26**: email xác nhận đã chuyển từ **Resend sang Brevo** (`email_service.py` — sandbox sender của Resend chỉ gửi được cho chủ tài khoản; Brevo chỉ cần verify **một** địa chỉ gửi). Toàn bộ tính năng được xây trong khoảng 2026-08-18 → 2026-08-20, bắt đầu từ commit `bce43b6` ("room hold + real VNPay payment with … email confirmation").
 
 Không thuộc phạm vi tài liệu này: luồng chat/lập lịch trình AI (xem `docs/architecture/agent_workflow_and_semantic_search_stack_vi.md`), luồng tìm kiếm khách sạn/địa điểm.
 
@@ -34,7 +34,7 @@ flowchart LR
     end
 
     VNP["VNPay<br/>(sandbox, bên ngoài)"]
-    MAIL["Resend<br/>(email API, bên ngoài)"]
+    MAIL["Brevo<br/>(email API, bên ngoài)"]
 
     RH <--> RT
     BM --> RT
@@ -61,7 +61,7 @@ Frontend không bao giờ tự xác nhận thanh toán — nó chỉ tạo yêu 
 | CSDL | Supabase Postgres | bảng `bookings`/`payments`, RPC `SECURITY DEFINER` |
 | Khoá đồng thời | Postgres advisory lock (`pg_advisory_xact_lock`) | chặn race condition khi 2 request giữ phòng chạm nhau |
 | Cổng thanh toán | VNPay (sandbox) | tạo URL thanh toán ký HMAC-SHA512, xác nhận qua IPN webhook |
-| Email | Resend API | gửi email xác nhận đặt phòng (hero ảnh khách sạn + danh sách phòng) |
+| Email | Brevo API (`https://api.brevo.com/v3/smtp/email`) | gửi email xác nhận đặt phòng (hero ảnh khách sạn + danh sách phòng) |
 | Đồng bộ type | FastAPI tự sinh OpenAPI + `openapi-typescript` | type TypeScript sinh tự động từ Pydantic model, tránh lệch tay giữa 2 phía |
 
 ## Mô hình dữ liệu
@@ -193,7 +193,7 @@ sequenceDiagram
     participant BE as Backend
     participant DB as Postgres
     participant VNP as VNPay
-    participant MAIL as Resend
+    participant MAIL as Brevo
 
     G->>FE: Điền thông tin khách, bấm "Thanh toán qua VNPay"
     FE->>BE: POST /payments/vnpay (booking_ids, thông tin khách)
@@ -252,7 +252,7 @@ Trong lúc `paymentReturnPending`, `App.tsx` chỉ render `<BootSplash messageKe
 
 ## Email xác nhận đặt phòng
 
-Gửi qua Resend, chỉ gửi **sau khi** IPN xác nhận thanh toán thành công (không bao giờ gửi trước — một email gửi lỗi/hỏng chỉ là vấn đề nhỏ so với việc gửi nhầm khi chưa chắc đã thanh toán). Lỗi gửi email bị bắt và ghi log, không làm hỏng luồng xác nhận thanh toán/booking.
+Gửi qua Brevo, chỉ gửi **sau khi** IPN xác nhận thanh toán thành công (không bao giờ gửi trước — một email gửi lỗi/hỏng chỉ là vấn đề nhỏ so với việc gửi nhầm khi chưa chắc đã thanh toán). Lỗi gửi email bị bắt và ghi log, không làm hỏng luồng xác nhận thanh toán/booking.
 
 Nội dung email: ảnh bìa khách sạn, huy hiệu "V", mã đặt phòng, ngày nhận/trả phòng, **bảng danh sách từng loại phòng** (ảnh thumbnail, tên, số lượng, giá), tổng tiền. Toàn bộ HTML dùng `<table>` và `line-height`/`text-align` để canh giữa — **cố ý không dùng `display:flex`**, vì flexbox không được nhiều email client hỗ trợ ổn định (đặc biệt Outlook desktop dùng engine render của Word).
 
@@ -283,6 +283,7 @@ Route `GET /chat/{session_id}/booking-receipt` cố ý dùng **quyền sở hữ
 Toàn bộ tính năng được xây và vá liên tục trong ~1 ngày rưỡi; dưới đây là trình tự đầy đủ theo lịch sử commit, mỗi mục nêu **vấn đề → nguyên nhân gốc → giải pháp**.
 
 1. **Ship tính năng gốc** — thay QR giả/nút bấm ép trạng thái demo bằng giữ phòng thật + thanh toán VNPay thật + email xác nhận qua Resend. — `bce43b6`
+   - *(2026-08-26)* Chuyển provider email **Resend → Brevo**: sandbox sender của Resend (`onboarding@resend.dev`) chỉ gửi được cho email của chủ tài khoản, gửi cho khách thật thất bại âm thầm. Brevo free-tier chỉ cần verify một địa chỉ gửi. Xem `email_service.py` + `config.py` (`brevo_api_key`, `brevo_from_email`).
 2. Thiếu dependency `email-validator` khiến `pydantic.EmailStr` lỗi ngay khi khởi động backend → bổ sung vào `requirements.txt`. — `1ce02f9`
 3. Trạng thái `BOOKED` (đã thanh toán ở đoạn chat cũ) bị chặn chung với `HELD` khi mở đoạn chat mới để chọn khách sạn khác → tách riêng 2 điều kiện, chỉ `HELD` mới thực sự cần chặn. — `03c59c7`
 4. Không có cách sửa một hold đang giữ (đổi loại phòng/khách sạn) mà không tự chặn bởi bẫy stale closure của `useCallback` → tách `runReservation` khỏi `startHold`, thêm `switchHold` gọi thẳng `runReservation` sau `releaseHold()`. — `22c992e`
@@ -320,7 +321,7 @@ Một sợi chỉ xuyên suốt gần một nửa danh sách trên (mục 5, 6�
 | `backend/src/services/booking_service.py` | `reserve_booking`, `confirm_booking`, `cancel_booking`, `cancel_reserved_bookings_for_session`, `get_booking` |
 | `backend/src/services/payment_service.py` | `create_payment`, `mark_payment_paid/failed`, `get_booking_receipt_for_session`, `booking_summary_for_email` |
 | `backend/src/services/vnpay_service.py` | Ký/xác minh chữ ký HMAC-SHA512, build URL thanh toán |
-| `backend/src/services/email_service.py` | Render HTML + gửi email xác nhận qua Resend |
+| `backend/src/services/email_service.py` | Render HTML + gửi email xác nhận qua Brevo |
 | `backend/src/api/routes.py` | Route `/bookings*`, `/payments/vnpay*`, `/chat/{id}/booking-receipt`, `/chat/sessions` |
 | `backend/src/models/schemas.py` | Pydantic model cho toàn bộ request/response ở trên |
 | `backend/src/services/session_store.py` | `booking_states_for_sessions`, `summarize` (nhãn sidebar) |
@@ -357,7 +358,7 @@ Một sợi chỉ xuyên suốt gần một nửa danh sách trên (mục 5, 6�
 |---|---|
 | `test_booking_service.py` | `reserve_booking`, dịch lỗi RPC, `cancel_reserved_bookings_for_session` |
 | `test_payment_service.py` | `get_payment_for_booking_ids`, `get_booking_receipt_for_session`, `booking_summary_for_email` |
-| `test_email_service.py` | Render HTML email (không flexbox, ảnh bìa, danh sách phòng), gửi qua Resend (mock) |
+| `test_email_service.py` | Render HTML email (không flexbox, ảnh bìa, danh sách phòng), gửi qua Brevo (mock) |
 | `test_vnpay_service.py` | Ký/xác minh chữ ký, build URL thanh toán, quy đổi số tiền |
 | `test_api/test_routes.py` | Toàn bộ route `/bookings*`, `/payments/vnpay*`, `/chat/{id}/booking-receipt` ở tầng HTTP |
 | `test_booking_reservation_schema.py` | Pin nội dung migration/RPC bằng text-assertion (không cần DB thật) |

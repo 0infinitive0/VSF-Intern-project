@@ -96,8 +96,8 @@ Nhóm các dòng `hotels` cùng 1 khách sạn vật lý (VD: cùng khách sạn
 
 **Nguồn nạp dữ liệu:** `booking_agoda_hotel_loader_pipeline` (`src/airflow/dags/data_pipeline/hotel_dag.py`) đọc `data/agoda.json` và `data/booking.json`, gọi `hotel_pipeline.py` theo chuỗi Extract -> Validate -> Normalize -> Dedupe -> Load -> QualityCheck. Lần xác thực 2026-07-23 nạp 1,103 khách sạn, 6,375 phòng và 6,375 giá phòng; cross-OTA physical-hotel dedup chưa nằm trong phạm vi M1.
 
-### 1.5. Bảng `attractions` (Điểm tham quan & Tour)
-Lưu trữ thông tin chi tiết về các địa điểm tham quan hoặc các Tour tuyến hoạt động tại điểm đến.
+### 1.5. Bảng `attractions` (Điểm tham quan & Nhà hàng)
+Lưu trữ thông tin chi tiết về các địa điểm tham quan / nhà hàng tại điểm đến. Cờ `is_tour` là di sản; tour tuyến từ Booking.com nay nằm ở bảng riêng **`tours`** (xem §1.10a).
 | Tên Cột | Kiểu Dữ Liệu | Khóa | Ràng Buộc / Mô Tả |
 | :--- | :--- | :--- | :--- |
 | `id` | UUID | PK | Khóa chính |
@@ -189,6 +189,7 @@ Quản lý Context (Ngữ cảnh) cho AI.
 | :--- | :--- | :--- | :--- |
 | `session_id` | VARCHAR(255) | PK | Khóa chính (ID phiên chat) |
 | `context_data` | JSONB | | Lưu trữ profiling (Đi đâu, khi nào, với ai, vibe) |
+| `user_id` | UUID | FK | `auth.users.id` (Supabase Auth) — nullable; plan `260814`. Mọi visitor kể cả khách vãng lai đều có row `auth.users` thật qua Anonymous Auth |
 | `created_at` | TIMESTAMP | | Thời gian tạo |
 | `updated_at` | TIMESTAMP | | Thời gian cập nhật |
 
@@ -202,15 +203,58 @@ Lưu trữ lịch sử hội thoại chi tiết.
 | `message_content`| TEXT | | Nội dung tin nhắn |
 | `created_at` | TIMESTAMP | | Thời điểm gửi tin nhắn |
 
+### 1.10a. Bảng `tours` (Tour Booking.com)
+Tour tuyến từ Booking.com — tách khỏi `attractions` (migration `20260817_add_tours_table.sql`). Khóa UPSERT `(source_platform, source_id)`; `source_id` là **STRING** (VD `"PRo2nc0TvHBe"`), không phải BIGINT. Cột chính: `destination_id` FK, `name`, `category`, `duration_minutes` / `duration_label`, `price` + `currency` (thường USD), `rating` / `review_count`, `is_bookable`, `has_free_cancellation`, `whats_included` / `not_included` (TEXT[]), `itinerary_details` (JSONB nguyên khối), `images`, `scraped_at`.
+
+### 1.10b. Bảng `bookings` (Giữ chỗ & Đặt phòng)
+Plan `260818-vnpay-payment-and-email-confirmation`. Tách hẳn khỏi snapshot giá của crawler. RLS bật, chỉ `service_role`.
+| Cột | Kiểu | Mô tả |
+| :--- | :--- | :--- |
+| `id` | UUID | PK |
+| `temporary_user_ref` | TEXT | Định danh khách vãng lai (UUID trong `localStorage`, không cần đăng nhập) |
+| `session_id` | VARCHAR(255) FK | Phiên chat tạo hold (nullable, thêm ở `20260819` cho badge sidebar) |
+| `room_id` | UUID FK | `ON DELETE RESTRICT` |
+| `check_in_date` / `check_out_date` | DATE | `CHECK (check_out > check_in)` |
+| `room_count` | INTEGER | `CHECK (> 0)` |
+| `status` | TEXT | `PENDING` \| `RESERVED` \| `CONFIRMED` \| `CANCELLED` \| `EXPIRED` |
+| `expires_at` | TIMESTAMPTZ | Hạn giữ chỗ (TTL 15'); `NULL` khi `CONFIRMED`. `CHECK (status <> 'RESERVED' OR expires_at IS NOT NULL)` |
+| `total_amount` / `currency` | NUMERIC / VARCHAR | |
+| `created_at` / `updated_at` / `cancelled_at` | TIMESTAMPTZ | |
+
+Index riêng `bookings_room_dates_idx` chỉ trên `status = 'CONFIRMED'`.
+
+### 1.10c. Bảng `payments` (Thanh toán VNPay)
+| Cột | Kiểu | Mô tả |
+| :--- | :--- | :--- |
+| `id` | UUID | PK; `vnp_TxnRef` = `id` bỏ dấu `-` |
+| `temporary_user_ref` | TEXT | NOT NULL |
+| `booking_ids` | UUID[] | `CHECK (array_length >= 1)` — 1 thanh toán phủ N booking |
+| `amount` | NUMERIC | `CHECK (>= 0)` |
+| `currency` | VARCHAR(10) | mặc định `VND` |
+| `status` | TEXT | `PENDING` \| `PAID` \| `FAILED` \| `CANCELLED` |
+| `guest_name` / `guest_email` / `guest_phone` | TEXT | Nhập ở wizard bước 2 |
+| `vnp_transaction_no` / `vnp_response_code` | TEXT | Từ IPN VNPay |
+| `paid_at` / `created_at` / `updated_at` | TIMESTAMPTZ | `PAID` chỉ đặt bởi IPN |
+
+### 1.10d. Bảng `amenity_catalog` (Danh mục tiện nghi chuẩn hóa)
+Migration `20260821_hotel_preference_catalog_redesign.sql`. `id` là slug `^[a-z0-9_]{1,64}$`. Cột: `label_vi` / `label_en`, `scope` (`hotel` \| `room` \| `both`), `category` (14 enum: accessibility, business, connectivity, facility, family, food, general, language, outdoor, policies, room_comfort, safety, transport, wellness), `icon_key`, `match_keywords` (TEXT[] — dùng để grounding tiện ích từ câu người dùng), `is_approved`. `hotel_node` mở rộng tiện ích cha → con theo bảng này.
+
+### 1.10e. Bảng `admin_audit_log` (Nhật ký admin)
+Migration `20260824_add_admin_audit_log.sql`. Ghi lại mọi thao tác ghi của admin lên dữ liệu khách thật: `actor_id` / `actor_email`, `action`, `entity_type`, `entity_id`, `before` / `after` (JSONB), `created_at`. Index theo `created_at DESC` và `(entity_type, entity_id)`.
+
 ### 1.11. Các Hàm Stored Procedures / RPC Functions trong Supabase
 
 Các hàm SQL nguyên tử được triển khai trên Supabase để phục vụ tìm kiếm ngữ nghĩa, chuyển trạng thái và lưu gói lịch trình:
 
 | Tên Hàm RPC | Tham Số Đầu Vào | Mục Đích & Mô Tả |
 | :--- | :--- | :--- |
+| `match_hotels_with_rooms` | `query_embedding vector(1024)`, `match_threshold float`, `match_count int`, `filter_destination_id uuid`, `root_latitude/root_longitude/max_radius_km` (optional), lọc ngày + sức chứa (`20260820`), lọc giá (`20260730`) | RPC tìm khách sạn chính: similarity + lọc bán kính + đêm còn giá live. Ngưỡng mặc định 0.35. |
+| `match_attractions` | `query_embedding vector(1024)`, `match_threshold float`, `match_count int`, `filter_destination_id uuid`, radius (optional) | RPC tìm điểm tham quan / nhà hàng theo theme. Ngưỡng mặc định 0.40. |
 | `match_itineraries` | `query_embedding vector(1024)`, `match_threshold float`, `match_count int`, `filter_destination_id uuid`, `filter_duration_days smallint`, `filter_hotel_id uuid` | Tìm kiếm semantic search các lịch trình mẫu đã Finalized trong `pgvector` với bộ lọc cứng theo điểm đến, số ngày và đúng khách sạn người dùng đã chọn. Gom nhóm khử trùng cùng lineage bằng `DISTINCT ON (COALESCE(reuse_root_id, id))`. |
 | `finalize_itinerary` | `p_itinerary_id uuid`, `p_summary text` | Chuyển trạng thái lịch trình từ `Draft` sang `Finalized` nguyên tử (`FOR UPDATE` row lock), tự động cộng `reuse_count` cho `parent_itinerary_id` đúng 1 lần (Idempotent). |
 | `persist_itinerary_bundle` | `p_itinerary jsonb`, `p_items jsonb` | Ghi nguyên tử toàn bộ lịch trình (Metadata + danh sách tất cả các `itinerary_items`) vào PostgreSQL trong 1 transaction. |
+| `create_booking_reservation` / `confirm_booking_reservation` / `cancel_booking` | xem `20260818_add_booking_reservation_rpcs.sql`, `20260819_add_guest_single_hotel_hold_guard.sql` | Giữ chỗ (advisory lock theo `room_id` + `guest_ref`, chặn giữ 2 khách sạn), xác nhận sau IPN VNPay, huỷ. `SECURITY DEFINER`. |
+| Admin RPCs | `20260824_add_admin_*` | View đơn hàng, upsert `room_prices`, tạo `source_id` thủ công cho hotel/room, view khách sạn admin. |
 
 ---
 

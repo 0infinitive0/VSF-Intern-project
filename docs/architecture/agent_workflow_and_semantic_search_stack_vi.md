@@ -1,5 +1,20 @@
 # Luồng Công Việc của Agent và Ngăn Xếp Tìm Kiếm Ngữ Nghĩa
 
+> ⚠️ **TÀI LIỆU LỊCH SỬ — mô tả POC chạy qua terminal (`scripts/poc_trip_planner.py`),
+> KHÔNG phải runtime hiện tại.** Hệ thống thật giờ là orchestrator LangGraph 14 node sau
+> FastAPI; CLI terminal mà tài liệu này mô tả **đã hỏng** (import `process_chat_turn` đã bị xoá).
+> Kiến trúc hiện tại xem:
+> - [`langgraph_orchestrator_vi.md`](langgraph_orchestrator_vi.md) + [`langgraph_orchestrator_detail_vi.md`](langgraph_orchestrator_detail_vi.md)
+> - [`chatbot-capabilities-and-happy-path-vi.md`](chatbot-capabilities-and-happy-path-vi.md)
+> - [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md)
+>
+> Phần **còn đúng**: đường đi của semantic search (`match_hotels_with_rooms` /
+> `match_attractions`, chỉ embed query, hydrate theo UUID), **chính sách scheduler tất định**,
+> và triết lý "LLM diễn giải, Python chọn" — tất cả đã mang sang graph. Mọi thứ về vòng lặp
+> terminal, `TripIntakeState`, `create_react_agent`, và lưu `current_trip_plan.json` đã bị
+> thay thế. Provider LLM/embedding mặc định giờ là Cloudflare Workers AI, không phải Ollama.
+> Mục "Proposed 5-Agent LangGraph Extension" ở cuối đã bị thay bởi graph 14 node đã ship.
+
 ## Mục đích và phạm vi
 
 Tài liệu này mô tả luồng lập kế hoạch chuyến đi qua terminal đã được triển khai và ngăn xếp (stack) tìm kiếm ngữ nghĩa mà hệ thống hiện đang sử dụng. Đây là nguồn chân lý (source of truth) cho `scripts/poc_trip_planner.py`; tài liệu này cố ý phân biệt rõ giữa môi trường runtime thực tế với các tài liệu kiến trúc cũ mô tả về đề xuất thiết kế đa agent (multi-agent) với Qdrant.
@@ -254,7 +269,7 @@ Quá trình nhúng tích hợp cho việc tái sử dụng lịch trình đượ
 
 Khâu chốt cuối (Finalization) sẽ được thăng cấp biến hình thành một kĩ năng riêng của Agent (narrow agent capability) đứng ngang hàng như lúc Tạo (generation) hay lúc Sửa (modification). Chỉ khi có cái gật đầu của User thì nó mới đem ra chốt sổ lịch trình (finalizes a draft), ghi công ơn đánh dấu (credits) cho nguồn nào đẻ ra nó để chống tính lặp nhiều lần (exactly once), và quẳng phiên bản đã xử lý lên trên kệ dưới dạng Embedding vector cho những lứa User tới xài chung. Kiểm tra mức độ ế hàng phòng (Hotel availability) hay tự nhảy giá (cost recalculation) tạm thời không đưa vô bản này (MVP) tới khi ngày đi/về (travel dates) kết hợp với các dữ liệu hợp đồng phòng (room-price contracts) được đem vô cài cắm thật chặt.
 
-Hãy xem bảng `docs/ideas/itinerary-embedding-reuse-v2.md` để hiểu sâu về phần schema, ranh giới dịch vụ (service boundaries), chuỗi phân nhỏ (phased tasks), testings, và cách vượt ải (rollout gates).
+Hãy xem [`../proposals/itinerary-embedding-reuse-v2.md`](../proposals/itinerary-embedding-reuse-v2.md) để hiểu sâu về phần schema, ranh giới dịch vụ (service boundaries), chuỗi phân nhỏ (phased tasks), testings, và cách vượt ải (rollout gates).
 
 ## Yêu cầu và giới hạn vận hành
 

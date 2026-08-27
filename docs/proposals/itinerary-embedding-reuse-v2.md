@@ -2,10 +2,15 @@
 
 ## Status
 
-Proposed for review. This plan replaces the assumptions in
-`docs/ideas/itinerary-embedding-reuse.md` with an implementation sequence that
-fits the current terminal agent, Supabase search services, and deterministic
-scheduler.
+**Largely implemented.** Kept as the design record. The core landed: `itineraries` carries
+`embedding VECTOR(1024)`, `summary`, `parent_itinerary_id`, `reuse_root_id`, `reuse_count`;
+RPCs `match_itineraries` / `finalize_itinerary` exist; Tier-1 reuse (BGE-M3 fingerprint,
+>88% threshold) runs in the graph's finalize path — see
+[`../architecture/chatbot-capabilities-and-happy-path-vi.md`](../architecture/chatbot-capabilities-and-happy-path-vi.md)
+§1.11. Note the doc predates the LangGraph cutover, so "current terminal agent" below now
+means the graph's `hotel_node` / `itinerary_node` / finalize flow.
+
+The original `docs/ideas/itinerary-embedding-reuse.md` (v1) is gone; this file superseded it.
 
 ## Goal
 
