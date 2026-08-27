@@ -218,6 +218,7 @@ Airflow UI tại http://localhost:8088 (user/pass: `airflow` / `airflow`) — co
 - [docs/setup/SETUP_GUIDE.md](./docs/setup/SETUP_GUIDE.md) — hướng dẫn setup chi tiết
 - [docs/README.md](./docs/README.md) — chỉ mục tài liệu (architecture, design, BRD, proposals)
 - [docs/brd/BRD_V-OTA_AI-Chat_VSF2026_2.pdf](./docs/brd/BRD_V-OTA_AI-Chat_VSF2026_2.pdf) — Business Requirements Document
+- [docs/slide/index.html](./docs/slide/index.html) — Pitch deck (mở trực tiếp bằng trình duyệt)
 
 ## 🤝 Đóng góp
 
