@@ -455,7 +455,10 @@ export function HotelDetailPage({ hotelId, navigate }: HotelDetailPageProps) {
               )}
             </div>
           </div>
-          <Switch checked={hotel.is_active} onChange={handleToggleActive} label="Đang bán" disabled={activeBusy} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12.5, color: 'var(--t3)' }}>Đang bán</span>
+            <Switch checked={hotel.is_active} onChange={handleToggleActive} label="Đang bán" disabled={activeBusy} />
+          </div>
         </div>
 
         <Tabs
