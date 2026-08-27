@@ -565,6 +565,36 @@ def recover_hotel_options(session_id: str) -> list[dict[str, Any]] | None:
     return options or None
 
 
+def recover_travel_state(session_id: str) -> dict[str, Any] | None:
+    """Recovers `travel_state` (TravelState.to_dict() shape -- destination,
+    dates, party size, hotel_preferences, ...) for a session whose checkpoint
+    is gone -- see `_v3_context`'s doc comment for why the embedded copy
+    exists. Same shape as `recover_hotel_options`: no second structured-table
+    copy exists for `travel_state` (unlike `trip_data`'s `itineraries`
+    fallback), so the embedded `context_data.travel_state` copy is the only
+    durable source.
+
+    Added 2026-08-27 after a live report: a guest whose hold expired, then
+    left the session idle past the checkpoint TTL, could no longer re-hold a
+    room on returning -- `restore_session` recovered `trip_data` (this
+    session_id's itinerary/hotel) but never `travel_state`, so
+    `TravelState.from_dict(None)` came back with every slot UNKNOWN and the
+    frontend's `checkInDate`/`checkOutDate` (sourced from `intake_status_
+    from_travel_state`) went null, silently disabling HotelDetailPanel's
+    "Giữ phòng" button (`canStart` requires both). Re-holding right after
+    the hold itself expired worked fine (checkpoint still warm, travel_state
+    still in memory) -- only a long-idle return, past the checkpoint's own
+    TTL, hit this gap. Returns None when genuinely nothing was ever saved
+    for this session (predates this fix, or the session never got past its
+    first turn).
+    """
+    row = load(session_id)
+    if row is None:
+        return None
+    travel_state = (row.get("context_data") or {}).get("travel_state")
+    return travel_state or None
+
+
 def delete(session_id: str, *, user_id: str | None = None) -> None:
     """Delete a persisted session row.
 
