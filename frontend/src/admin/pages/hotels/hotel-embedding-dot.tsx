@@ -42,7 +42,7 @@ export function HotelEmbeddingDot({
     return (
       <span className="embedding-dot" title={tooltip}>
         <span className="embedding-dot__mark embedding-dot__mark--stale" />
-        <span className="embedding-dot__label embedding-dot__label--stale">Cần chạy lại</span>
+        <span className="embedding-dot__label embedding-dot__label--stale">Cần chạy lại embedding</span>
       </span>
     )
   }
