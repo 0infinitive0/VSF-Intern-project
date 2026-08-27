@@ -93,7 +93,7 @@ export function OrderStatCards({ stats }: OrderStatCardsProps) {
       <StatCard
         label="Giữ chỗ sắp hết hạn"
         value={stats.expiring_holds_30m}
-        subline="Hết hạn trong 30 phút tới"
+        subline=""
         valueColor="var(--err)"
         rail="inset 3px 0 0 var(--err)"
       />

@@ -66,7 +66,7 @@ export function ExpiringHoldsCard({ holds }: ExpiringHoldsCardProps) {
       {holds === null && <SkeletonRows />}
 
       {holds !== null && holds.length === 0 && (
-        <EmptyState title="✓ Không có giữ chỗ nào sắp hết hạn." description="Chưa có khách nào giữ chỗ sắp hết hạn trong 30 phút tới." />
+        <EmptyState title="✓ Không có giữ chỗ nào sắp hết hạn." description="Chưa có khách nào giữ chỗ sắp hết hạn." />
       )}
 
       {holds !== null &&

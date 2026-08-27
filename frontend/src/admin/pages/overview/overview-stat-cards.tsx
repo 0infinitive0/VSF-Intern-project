@@ -98,7 +98,7 @@ export function OverviewStatCards({ orders }: OverviewStatCardsProps) {
       <StatCard
         label="Giữ chỗ sắp hết hạn"
         value={orders.expiring_holds_30m}
-        subline="Hết hạn trong 30 phút tới"
+        subline=""
         valueColor="var(--err)"
         rail="inset 3px 0 0 var(--err)"
       />
