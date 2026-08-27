@@ -501,3 +501,31 @@ class TestRecoverHotelOptions:
         monkeypatch.setattr(session_store, "load", lambda _sid: {"context_data": {"hotel_options": []}})
 
         assert session_store.recover_hotel_options("s1") is None
+
+
+class TestRecoverTravelState:
+    """Sibling to TestRecoverTripData/TestRecoverHotelOptions for
+    `travel_state` (destination/dates/party size/preferences) -- same shape
+    as recover_hotel_options: no structured-table copy to try first, only
+    the embedded `context_data.travel_state` copy."""
+
+    def test_reads_the_embedded_copy(self, monkeypatch: pytest.MonkeyPatch):
+        travel_state = {"destination": {"presence": "set", "value": "Đà Nẵng"}}
+        monkeypatch.setattr(session_store, "load", lambda _sid: {"context_data": {"travel_state": travel_state}})
+
+        assert session_store.recover_travel_state("s1") == travel_state
+
+    def test_returns_none_when_the_session_row_does_not_exist(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(session_store, "load", lambda _sid: None)
+
+        assert session_store.recover_travel_state("s1") is None
+
+    def test_returns_none_when_context_data_never_embedded_travel_state(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(session_store, "load", lambda _sid: {"context_data": {"trip_data": {}}})
+
+        assert session_store.recover_travel_state("s1") is None
+
+    def test_returns_none_for_an_embedded_empty_dict_not_just_a_missing_key(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(session_store, "load", lambda _sid: {"context_data": {"travel_state": {}}})
+
+        assert session_store.recover_travel_state("s1") is None

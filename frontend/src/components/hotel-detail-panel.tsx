@@ -653,6 +653,31 @@ function HoldFooter({
   const cartCount = rows.reduce((n, r) => n + r.qty, 0)
   const total = rows.reduce((sum, r) => sum + (r.subtotal ?? 0), 0)
 
+  // Restore the room selection from the real hold whenever this hotel IS the
+  // held one (HELD or EXPIRED -- same root cause either way) but the local
+  // cart is empty: cartByHotel only ever lives in React state, never
+  // sessionStorage (see use-room-hold.ts's module doc comment -- only
+  // heldHotelId/bookings survive a reload/re-open, not the cart that
+  // produced them). Without this, handleClick's `cartCount === 0` branch
+  // fires first and just scrolls to the rooms section instead of calling
+  // startHold -- "Giữ phòng" silently does nothing until the guest re-picks
+  // every room by hand. Only seeds while the cart is genuinely empty, so it
+  // never overwrites anything the guest is actively editing, and only runs
+  // again if hotelId/heldHotelId/bookings actually change.
+  useEffect(() => {
+    if (roomHold.heldHotelId !== hotelId) return
+    if (roomHold.bookings.length === 0) return
+    const alreadyHasSomething = Object.values(roomHold.cartFor(hotelId)).some((qty) => qty > 0)
+    if (alreadyHasSomething) return
+    for (const booking of roomHold.bookings) {
+      roomHold.setQty(hotelId, booking.room_id, booking.room_count)
+    }
+    // roomHold.setQty/.cartFor are re-created on every cartByHotel change
+    // (use-room-hold.ts) -- including them would re-run this on every seed
+    // itself. hotelId/heldHotelId/bookings are the real triggers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hotelId, roomHold.heldHotelId, roomHold.bookings])
+
   // The cart summary stays mounted while it collapses (see .smooth-collapse),
   // so removing the last room would otherwise flash "0 phòng đã chọn" and
   // "0 ₫" for the entire exit animation. Keep rendering the last non-empty

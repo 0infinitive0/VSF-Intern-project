@@ -386,6 +386,74 @@ class TestCheckpointEvictedFallback:
         assert payload.stage == "planned"
 
 
+class TestTravelStateRecovery:
+    """The other thing an evicted checkpoint takes with it: `travel_state`
+    (destination/dates/party size/preferences). Before this fix, only
+    `trip_data`/`hotel_options` were recovered from `context_data` -- a
+    session restored after eviction came back with `TravelState.from_dict
+    (None)`, every slot UNKNOWN, so `intake.start_date`/`end_date` went null
+    even though the guest answered them long ago. That silently disabled
+    HotelDetailPanel's "Giữ phòng" button on the frontend (canStart requires
+    both dates) for anyone re-holding a room after a long-idle return --
+    session_store.recover_travel_state's own doc comment has the full
+    incident story."""
+
+    def test_recovers_dates_from_the_embedded_travel_state(
+        self, restored, monkeypatch: pytest.MonkeyPatch
+    ):
+        fake_store = _FakeItineraryStore(trip_data=None)
+        monkeypatch.setattr(
+            "src.services.itinerary_store.ItineraryStore.from_default",
+            classmethod(lambda cls: fake_store),
+        )
+
+        payload = restored(state={}, context_data={"travel_state": _travel_state()})
+
+        assert payload.intake.start_date == "2026-08-10"
+        assert payload.intake.end_date == "2026-08-14"
+        assert payload.intake.destination == "Đà Nẵng"
+
+    def test_a_session_with_nothing_embedded_still_restores_empty_intake(
+        self, restored, monkeypatch: pytest.MonkeyPatch
+    ):
+        fake_store = _FakeItineraryStore(trip_data=None)
+        monkeypatch.setattr(
+            "src.services.itinerary_store.ItineraryStore.from_default",
+            classmethod(lambda cls: fake_store),
+        )
+
+        payload = restored(state={})
+
+        assert payload.intake.start_date is None
+        assert payload.intake.end_date is None
+
+    def test_an_intact_checkpoint_never_triggers_the_travel_state_recovery(
+        self, restored, monkeypatch: pytest.MonkeyPatch
+    ):
+        """The common case (checkpoint still alive) must keep reading
+        travel_state straight off the checkpoint, not pay for an extra
+        Supabase round trip -- and an embedded copy that happens to disagree
+        must never override the live one."""
+        fake_store = _FakeItineraryStore(trip_data=None)
+        monkeypatch.setattr(
+            "src.services.itinerary_store.ItineraryStore.from_default",
+            classmethod(lambda cls: fake_store),
+        )
+        stale_embedded = {
+            "destination": {"presence": "set", "value": "Hà Nội"},
+            "dates.start": {"presence": "set", "value": "2020-01-01"},
+            "dates.end": {"presence": "set", "value": "2020-01-02"},
+        }
+
+        payload = restored(
+            state={"travel_state": _travel_state(), "trip_data": {"destination": "Đà Nẵng"}},
+            context_data={"travel_state": stale_embedded},
+        )
+
+        assert payload.intake.start_date == "2026-08-10"
+        assert payload.intake.destination == "Đà Nẵng"
+
+
 class TestHotelListSurvivesAReload:
     """The actual bug: `task_results[-1]` is whatever the session's LAST
     action happened to be, and for anyone past the search step that is an

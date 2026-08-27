@@ -363,6 +363,17 @@ def run_turn(
             recovered_options = session_store.recover_hotel_options(session_id)
             if recovered_options:
                 extra_state = {**(extra_state or {}), "previous_hotel_options": recovered_options}
+            # Same recovery for travel_state (destination/dates/party size/
+            # preferences) -- without this, a turn resumed after eviction
+            # runs with every slot UNKNOWN, as if the guest had never
+            # answered intake at all, even though their chat transcript
+            # shows otherwise. session_store.recover_travel_state's own doc
+            # comment has the full incident story (a stale checkInDate/
+            # checkOutDate on the frontend silently disabled re-holding a
+            # room after a long-idle return).
+            recovered_travel_state = session_store.recover_travel_state(session_id)
+            if recovered_travel_state:
+                extra_state = {**(extra_state or {}), "travel_state": recovered_travel_state}
         if snapshot.interrupts:
             result = _drive_turn(app, config, Command(resume=message), stream=stream)
             unresolved = result.get("unresolved_resume_text")

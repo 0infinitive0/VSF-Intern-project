@@ -641,6 +641,21 @@ def restore_session(
         recovered = session_store.recover_trip_data(session_id)
         if recovered:
             state = {**state, "trip_data": recovered}
+    if not state.get("travel_state"):
+        # Same TTL-eviction gap as trip_data above, for the OTHER thing the
+        # checkpoint takes with it: travel_state (destination/dates/party
+        # size/preferences -- TravelState.from_dict's input). Without this,
+        # a session restored after eviction comes back with every slot
+        # UNKNOWN, so intake_status_from_travel_state below reports null
+        # start_date/end_date even though the guest answered them long ago
+        # -- which silently disables HotelDetailPanel's "Giữ phòng" button
+        # (canStart requires both dates) for anyone re-holding a room after
+        # returning from a long-idle session, not just anyone re-reading
+        # their trip_plan. session_store.recover_travel_state's own doc
+        # comment has the full incident story.
+        recovered_travel_state = session_store.recover_travel_state(session_id)
+        if recovered_travel_state:
+            state = {**state, "travel_state": recovered_travel_state}
     travel_state = TravelState.from_dict(state.get("travel_state"))
     hotel_options = durable_hotel_options(state) or recovered_hotel_options(session_id, state.get("trip_data"))
 

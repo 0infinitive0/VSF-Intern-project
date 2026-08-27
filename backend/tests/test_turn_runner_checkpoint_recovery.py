@@ -113,6 +113,30 @@ class TestRecoversTripDataForAFreshTurn:
 
         assert captured["turn_input"]["previous_hotel_options"] == recovered_options
 
+    def test_injects_recovered_travel_state_alongside_trip_data(self, monkeypatch: pytest.MonkeyPatch):
+        """Sibling recovery for travel_state (destination/dates/party size/
+        preferences) -- session_store.recover_travel_state's own doc comment
+        has the full incident story (a stale checkInDate/checkOutDate on the
+        frontend silently disabled re-holding a room after a long-idle
+        return; the SAME gap applies to a fresh chat turn resumed after
+        eviction, which would otherwise run as if intake had never
+        happened)."""
+        captured: dict[str, Any] = {}
+        monkeypatch.setattr(turn_runner, "_drive_turn", _fake_drive_turn(captured))
+        fake_store = _FakeItineraryStore(trip_data=_RECOVERED_TRIP_DATA)
+        monkeypatch.setattr(
+            "src.services.itinerary_store.ItineraryStore.from_default",
+            classmethod(lambda cls: fake_store),
+        )
+        recovered_travel_state = {"destination": {"presence": "set", "value": "Đà Nẵng"}}
+        monkeypatch.setattr(
+            session_store, "load", lambda _sid: {"context_data": {"travel_state": recovered_travel_state}}
+        )
+
+        turn_runner.run_turn(_FakeApp({}), "s1", "khách sạn đó có gì gần đó", "vi")
+
+        assert captured["turn_input"]["travel_state"] == recovered_travel_state
+
     def test_a_session_with_no_durable_itinerary_runs_the_turn_unchanged(self, monkeypatch: pytest.MonkeyPatch):
         """No itinerary row for this session (it genuinely never built a
         trip), AND no trip_data embedded in context_data either (the second
@@ -133,6 +157,7 @@ class TestRecoversTripDataForAFreshTurn:
         assert fake_store.calls == ["s1"]
         assert "trip_data" not in captured["turn_input"]
         assert "previous_hotel_options" not in captured["turn_input"]
+        assert "travel_state" not in captured["turn_input"]
 
     def test_falls_back_to_the_trip_data_embedded_in_context_data(self, monkeypatch: pytest.MonkeyPatch):
         """Companion to test_restore_endpoint.py's identically-named test:
@@ -189,3 +214,4 @@ class TestRecoversTripDataForAFreshTurn:
 
         assert fake_store.calls == []
         assert "trip_data" not in captured["turn_input"]
+        assert "travel_state" not in captured["turn_input"]
