@@ -290,6 +290,107 @@ class ItineraryStore:
             return None
         return self.load_session_trip_data(str(row["id"]))
 
+    def refresh_itinerary_image_urls(self, trip_data: dict[str, Any] | None) -> dict[str, Any] | None:
+        """Overwrites each itinerary item's `image_url` with whatever
+        `attractions.images[0]` / `hotels.image_url` says RIGHT NOW, without
+        touching anything else in `trip_data`.
+
+        `item.image_url` is baked in once, at generation time
+        (`trip_scheduler.py`'s `PlaceCandidate.from_mapping`), and then never
+        refreshed again for the practical lifetime of a session:
+        `to_trip_plan_payload` (`trip_formatter.py`) is a pure pass-through of
+        whatever `trip_data` already holds, and this checkpoint is only ever
+        re-hydrated from scratch after 2h+ idle eviction
+        (`load_session_trip_data_by_session`, above). Meanwhile
+        `place_details.py`'s `GET /attractions/{id}` queries Supabase live on
+        every open. If an attraction's `images` changes after the plan was
+        generated (a later crawl re-run, or an admin edit), the itinerary
+        keeps showing the old snapshot — sometimes a since-expired Google
+        Photos link — while the detail panel shows the current one. This
+        closes exactly that gap, for the two places a plan is served for
+        DISPLAY (`routes.py`'s `restore_session`/`get_session_plan`) — never
+        wired into the hot chat-turn path (`respond.py`, the `get_trip_plan`
+        agent tool), where an extra DB round trip would buy nothing: neither
+        renders a photo.
+
+        Best-effort by design: any failure returns `trip_data` completely
+        unchanged rather than raising, and a reference whose live row has no
+        image keeps its existing (possibly still-usable) frozen value rather
+        than being blanked. A cosmetic refresh must never be able to break
+        loading the itinerary itself.
+        """
+        if not trip_data:
+            return trip_data
+        items = trip_data.get("itinerary_items")
+        if not isinstance(items, list) or not items:
+            return trip_data
+
+        attraction_ids = {
+            str(item["reference_id"])
+            for item in items
+            if isinstance(item, Mapping)
+            and str(item.get("reference_type") or "").casefold() == "attraction"
+            and item.get("reference_id")
+        }
+        hotel_ids = {
+            str(item["reference_id"])
+            for item in items
+            if isinstance(item, Mapping)
+            and str(item.get("reference_type") or "").casefold() == "hotel"
+            and item.get("reference_id")
+        }
+        if not attraction_ids and not hotel_ids:
+            return trip_data
+
+        try:
+            images_by_attraction: dict[str, Any] = {}
+            if attraction_ids:
+                response = (
+                    self._client.table("attractions")
+                    .select("id,images")
+                    .in_("id", list(attraction_ids))
+                    .execute()
+                )
+                images_by_attraction = {
+                    str(row.get("id")): row.get("images") or []
+                    for row in _rows(getattr(response, "data", None))
+                }
+            image_url_by_hotel: dict[str, Any] = {}
+            if hotel_ids:
+                response = (
+                    self._client.table("hotels")
+                    .select("id,image_url")
+                    .in_("id", list(hotel_ids))
+                    .execute()
+                )
+                image_url_by_hotel = {
+                    str(row.get("id")): row.get("image_url")
+                    for row in _rows(getattr(response, "data", None))
+                }
+        except Exception:
+            logger.exception("Live image_url refresh failed; serving the frozen snapshot instead.")
+            return trip_data
+
+        refreshed_items = []
+        for item in items:
+            if not isinstance(item, Mapping):
+                refreshed_items.append(item)
+                continue
+            reference_type = str(item.get("reference_type") or "").casefold()
+            reference_id = str(item.get("reference_id") or "")
+            refreshed = dict(item)
+            if reference_type == "attraction":
+                images = images_by_attraction.get(reference_id)
+                if images and isinstance(images, list) and images[0]:
+                    refreshed["image_url"] = images[0]
+            elif reference_type == "hotel":
+                live_url = image_url_by_hotel.get(reference_id)
+                if live_url:
+                    refreshed["image_url"] = live_url
+            refreshed_items.append(refreshed)
+
+        return {**trip_data, "itinerary_items": refreshed_items}
+
     @staticmethod
     def _itinerary_record(trip_data: Mapping[str, Any]) -> dict[str, Any]:
         itineraries = trip_data.get("itineraries") or []

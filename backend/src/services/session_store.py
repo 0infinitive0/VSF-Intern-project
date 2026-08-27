@@ -519,6 +519,33 @@ def recover_trip_data(session_id: str) -> dict[str, Any] | None:
     return embedded or None
 
 
+def refresh_trip_data_image_urls(trip_data: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Thin wrapper over `ItineraryStore.refresh_itinerary_image_urls` (see
+    its own doc comment for the full "why") -- kept here rather than imported
+    directly into routes.py so callers go through this module's boundary the
+    same way `recover_trip_data` above already does.
+
+    Call ONLY where a plan is served for display (routes.py's
+    `restore_session`/`get_session_plan`), right before `to_trip_plan_payload`
+    -- never on the hot chat-turn path, where no photo is rendered and an
+    extra DB round trip would be pure cost.
+
+    Short-circuits before constructing `ItineraryStore` at all when there's
+    plainly nothing to refresh (no plan yet is the common case -- most
+    sessions render `trip_plan: null`) -- `ItineraryStore.from_default()`
+    pulls in an embeddings client this operation never uses, so building one
+    just to immediately no-op would be pure waste, and in an environment
+    where that client isn't configured, an avoidable way to fail loading an
+    itinerary-less session.
+    """
+    if not trip_data or not trip_data.get("itinerary_items"):
+        return trip_data
+
+    from src.services.itinerary_store import ItineraryStore
+
+    return ItineraryStore.from_default().refresh_itinerary_image_urls(trip_data)
+
+
 def recover_hotel_options(session_id: str) -> list[dict[str, Any]] | None:
     """Recovers the real hotel search-results list (`previous_hotel_options`
     in graph state) for a session whose checkpoint is gone -- see
