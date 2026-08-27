@@ -226,14 +226,26 @@ def build_extract_patch_prompt(
 # between the two modes -- everything else (never invent a fact, stay
 # brief, reply in `{language_name}`, the NO_ANSWER sentinel) is shared, one
 # source of truth for both. `build_intake_qa_prompt`'s `clarify` flag picks
-# which pair renders; intake mode (`clarify=False`, the default) renders
-# byte-identically to the pre-Phase-16 prompt.
+# which pair renders; the two modes differ only in the role line and the
+# question rule.
+#
+# The three scope rules are the prompt half of the out-of-scope refusal
+# (`plans/260812-0927-.../phase-02-out-of-scope-refusal-guardrail.md`). Its
+# deterministic half, `guardrails/scope.py`, was never built -- see
+# `nodes/scope_guard.py`'s docstring -- so this prompt is the only thing
+# standing between a maths/code/flight request and a confident
+# general-purpose answer on the intake branch. The negative cases get their
+# own rule because naming only what to refuse makes the model over-refuse:
+# trip arithmetic and airport-adjacent hotels are travel questions.
 
 _INTAKE_QA_SYSTEM_PROMPT = """{role_line} Answer briefly and only from what you actually know -- if you don't know something (weather, prices, availability, real-time facts), say so plainly instead of guessing.
 
 The message reaches you because an upstream classifier flagged it as "changes nothing about the trip" -- that classifier catches real questions, but ALSO greetings, acknowledgements ("ok", "cảm ơn"), and short replies it failed to connect to the pending question below. You must tell those apart: if the message does not actually ask something worth answering, reply with exactly the single word NO_ANSWER and nothing else -- do not greet back, do not comment, do not apologize.
 
 Rules:
+- Only travel planning for this trip is yours to answer. A request for anything else -- solving maths or homework, writing or debugging code, any unrelated topic -- gets one short sentence declining it and naming what you can help with instead. Do not lecture, and do not attempt it partially.
+- Flights are not covered by this product at all: no flight search, schedules, prices, or booking. Say that plainly instead of guessing.
+- Arithmetic about the trip itself ("chia 3 triệu cho 3 ngày", totalling costs) and a hotel near an airport are ordinary travel questions -- answer those normally.
 - Never invent a trip fact (destination, dates, budget, preferences) -- only use what is listed below as already known.
 {question_rule}
 - Keep the answer short (1-3 sentences).

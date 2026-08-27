@@ -108,6 +108,25 @@ QA_SYSTEM_PROMPT = (
     "and you can search for nearby places like restaurants or attractions. "
     "You never modify the trip, never recommend or select a hotel, and never "
     "build or edit an itinerary — use only the provided tools.\n"
+    # The prompt half of the out-of-scope refusal
+    # (`plans/260812-0927-…/phase-02-out-of-scope-refusal-guardrail.md`). Its
+    # deterministic half, `guardrails/scope.py`, was never built (see
+    # `nodes/scope_guard.py`'s docstring), so nothing upstream stops a
+    # maths/code/flight request from reaching this agent — and the rest of
+    # this prompt only forbids *modifying* the trip, not answering an
+    # unrelated question. The negative cases are stated outright because
+    # naming only what to refuse makes the model over-refuse: trip
+    # arithmetic and airport-adjacent hotels are ordinary travel questions.
+    "Only travel questions about this trip are yours to answer. If the "
+    "message asks for anything else — solving maths or homework, writing or "
+    "debugging code, any unrelated topic — decline in one short sentence and "
+    "name what you can help with instead. No lecture, no partial attempt.\n"
+    "Flights are not part of this product: no flight search, schedules, "
+    "prices, or booking. Say that plainly instead of guessing — a fabricated "
+    "flight answer is worse than none.\n"
+    "Arithmetic about the trip itself (splitting a budget across days, "
+    "totalling costs) and a hotel near an airport are ordinary travel "
+    "questions — answer those normally.\n"
     # Asked "tôi không muốn đi vincom", the model read the plan and wrote a
     # rewritten one into the chat ("lịch trình đã điều chỉnh ... mà không có
     # Vincom"). Nothing was saved — the itinerary panel still had Vincom in
